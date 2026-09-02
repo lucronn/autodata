@@ -117,6 +117,52 @@ services:
       AUTODATA_FAKE_PAYMENT_SIGNING_SECRET: local-fixture-signing-key
     command: ["python", "scripts/dev/fake_integrations_smoke.py"]
 
+  ingest-fixture:
+    build:
+      context: ../..
+      dockerfile: workers/ingestion-python/Dockerfile
+    environment:
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_POSTGRES_DB: ${AUTODATA_POSTGRES_DB:-autodata}
+      AUTODATA_POSTGRES_USER: ${AUTODATA_POSTGRES_USER:-autodata}
+      AUTODATA_POSTGRES_PASSWORD: ${AUTODATA_POSTGRES_PASSWORD:?set AUTODATA_POSTGRES_PASSWORD for local development}
+      AUTODATA_NATS_URL: "nats://nats:4222"
+      AUTODATA_S3_ENDPOINT: "minio:9000"
+      AUTODATA_S3_ACCESS_KEY: ${AUTODATA_MINIO_ROOT_USER:?set AUTODATA_MINIO_ROOT_USER for local development}
+      AUTODATA_S3_SECRET_KEY: ${AUTODATA_MINIO_ROOT_PASSWORD:?set AUTODATA_MINIO_ROOT_PASSWORD for local development}
+      AUTODATA_SOURCE_BUCKET: "autodata-sources"
+      AUTODATA_FAKE_PAYMENT_SIGNING_SECRET: local-fixture-signing-key
+    command: ["python", "-m", "autodata_ingestion.ingest_fixture"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+
+  ingestion-smoke:
+    build:
+      context: ../..
+      dockerfile: workers/ingestion-python/Dockerfile
+    environment:
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_POSTGRES_DB: ${AUTODATA_POSTGRES_DB:-autodata}
+      AUTODATA_POSTGRES_USER: ${AUTODATA_POSTGRES_USER:-autodata}
+      AUTODATA_POSTGRES_PASSWORD: ${AUTODATA_POSTGRES_PASSWORD:?set AUTODATA_POSTGRES_PASSWORD for local development}
+      AUTODATA_NATS_URL: "nats://nats:4222"
+      AUTODATA_S3_ENDPOINT: "minio:9000"
+      AUTODATA_S3_ACCESS_KEY: ${AUTODATA_MINIO_ROOT_USER:?set AUTODATA_MINIO_ROOT_USER for local development}
+      AUTODATA_S3_SECRET_KEY: ${AUTODATA_MINIO_ROOT_PASSWORD:?set AUTODATA_MINIO_ROOT_PASSWORD for local development}
+      AUTODATA_SOURCE_BUCKET: "autodata-sources"
+      AUTODATA_FAKE_PAYMENT_SIGNING_SECRET: local-fixture-signing-key
+    command: ["python", "/app/scripts/ingestion_smoke.py"]
+    depends_on:
+      ingest-fixture:
+        condition: service_completed_successfully
+
   migration-runner:
     image: ${AUTODATA_POSTGRES_CLIENT_IMAGE:-postgres:17-alpine}
     working_dir: /workspace

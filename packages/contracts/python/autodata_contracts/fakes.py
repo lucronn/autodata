@@ -44,6 +44,11 @@ class FakePrimarySource:
             },
             "source_version": version,
             "minimum_sections": ["vehicle_identity", "source_metadata", "specifications"],
+            "specifications": {
+                "engine_displacement_l": 2.0,
+                "cylinders": 4,
+                "fuel_type": "gasoline",
+            },
         }
         serialized = json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
         return SourceSnapshot(
