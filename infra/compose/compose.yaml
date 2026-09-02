@@ -109,13 +109,17 @@ services:
       test: ["CMD", "python", "-c", "from autodata_enrichment.worker import run_once; assert run_once()['status'] == 'idle'"]
 
   migration-runner:
-    image: ${AUTODATA_PYTHON_IMAGE:-python:3.14-slim}
+    image: ${AUTODATA_POSTGRES_CLIENT_IMAGE:-postgres:17-alpine}
     working_dir: /workspace
     volumes:
       - ../..:/workspace:ro
     environment:
-      AUTODATA_DB_ADDRESS: "postgres:5432"
-    command: ["python", "scripts/dev/migrate.py"]
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${AUTODATA_POSTGRES_DB:-autodata}
+      PGUSER: ${AUTODATA_POSTGRES_USER:-autodata}
+      PGPASSWORD: ${AUTODATA_POSTGRES_PASSWORD:?set AUTODATA_POSTGRES_PASSWORD for local development}
+    command: ["sh", "-c", "set -eu; for migration in /workspace/db/migrations/[0-9][0-9][0-9]_*.sql; do echo applying $${migration}; psql --set ON_ERROR_STOP=1 --file $${migration}; done"]
     depends_on:
       postgres:
         condition: service_healthy
