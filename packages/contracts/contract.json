@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "dataset_availability": [
+    "purchased",
+    "fast_lane_processing",
+    "viewable",
+    "enriching",
+    "complete",
+    "failed",
+    "needs_review",
+    "revoked"
+  ],
+  "section_status": [
+    "pending",
+    "processing",
+    "viewable",
+    "complete",
+    "failed",
+    "needs_review"
+  ],
+  "event_subjects": [
+    "dataset.fast.requested",
+    "dataset.viewable",
+    "dataset.deep.requested",
+    "dataset.section.published",
+    "dataset.enrichment.failed",
+    "dataset.review.requested",
+    "dataset.revision.revoked"
+  ],
+  "dataset_read": {
+    "required": [
+      "dataset_id",
+      "revision_id",
+      "availability",
+      "source_watermark",
+      "sections"
+    ],
+    "properties": {
+      "dataset_id": {"type": "uuid"},
+      "revision_id": {"type": "uuid"},
+      "availability": {"enum_ref": "dataset_availability"},
+      "source_watermark": {"type": "string"},
+      "sections": {"type": "array", "items": "dataset_section"},
+      "data": {"type": "object", "optional": true},
+      "warnings": {"type": "array", "optional": true}
+    }
+  },
+  "dataset_section": {
+    "required": ["name", "status", "last_published_revision", "updated_at"],
+    "properties": {
+      "name": {"type": "string"},
+      "status": {"enum_ref": "section_status"},
+      "last_published_revision": {"type": "uuid", "nullable": true},
+      "updated_at": {"type": "string"}
+    }
+  },
+  "dataset_request": {
+    "required": ["request_id", "product_id", "vehicle_key", "status"],
+    "properties": {
+      "request_id": {"type": "uuid"},
+      "product_id": {"type": "uuid"},
+      "vehicle_key": {"type": "string"},
+      "status": {"enum_ref": "dataset_availability"}
+    }
+  },
+  "entitlement": {
+    "required": ["entitlement_id", "organization_id", "dataset_request_id", "status"],
+    "properties": {
+      "entitlement_id": {"type": "uuid"},
+      "organization_id": {"type": "uuid"},
+      "dataset_request_id": {"type": "uuid"},
+      "status": {"enum": ["active", "revoked"]}
+    }
+  },
+  "evidence": {
+    "required": ["evidence_id", "source_snapshot_id", "extraction_run_id", "locator", "confidence"],
+    "properties": {
+      "evidence_id": {"type": "uuid"},
+      "source_snapshot_id": {"type": "uuid"},
+      "extraction_run_id": {"type": "uuid", "nullable": true},
+      "locator": {"type": "string"},
+      "confidence": {"type": "number"}
+    }
+  },
+  "feedback": {
+    "required": ["feedback_id", "dataset_id", "category", "body"],
+    "properties": {
+      "feedback_id": {"type": "uuid"},
+      "dataset_id": {"type": "uuid"},
+      "category": {"enum": ["correction", "missing", "quality", "safety"]},
+      "body": {"type": "string"}
+    }
+  },
+  "error": {
+    "required": ["code", "message", "request_id", "retryable", "details"],
+    "properties": {
+      "code": {"enum": [
+        "UNAUTHENTICATED",
+        "ENTITLEMENT_REQUIRED",
+        "ENTITLEMENT_REVOKED",
+        "DATASET_NOT_VIEWABLE",
+        "SECTION_FAILED",
+        "REVISION_NOT_FOUND",
+        "DUPLICATE_REQUEST",
+        "INVALID_EVIDENCE",
+        "REVIEW_REQUIRED"
+      ]},
+      "message": {"type": "string"},
+      "request_id": {"type": "uuid"},
+      "retryable": {"type": "boolean"},
+      "details": {"type": "object"}
+    }
+  },
+  "event_envelope": {
+    "required": [
+      "event_id",
+      "event_type",
+      "event_version",
+      "occurred_at",
+      "producer",
+      "request_id",
+      "projection_id",
+      "revision_id",
+      "correlation_id",
+      "idempotency_key",
+      "payload"
+    ],
+    "properties": {
+      "event_id": {"type": "uuid"},
+      "event_type": {"type": "string"},
+      "event_version": {"type": "integer"},
+      "occurred_at": {"type": "string"},
+      "producer": {"type": "string"},
+      "request_id": {"type": "uuid"},
+      "projection_id": {"type": "uuid"},
+      "revision_id": {"type": "uuid", "nullable": true},
+      "correlation_id": {"type": "uuid"},
+      "idempotency_key": {"type": "string"},
+      "payload": {"type": "object"}
+    }
+  }
+}
