@@ -77,6 +77,22 @@ The first-success developer path is:
 8. Verify a new revision and evidence link.
 9. Inject a deep failure, confirm the core dataset remains viewable, replay the dead-letter job, and verify section recovery.
 
+The implemented foundation smoke path can be run with the local fake values below:
+
+```sh
+AUTODATA_POSTGRES_PASSWORD=local-dev-only \
+AUTODATA_MINIO_ROOT_USER=localadmin \
+AUTODATA_MINIO_ROOT_PASSWORD=local-dev-password \
+docker compose -f infra/compose/compose.yaml up -d postgres nats minio migration-runner
+
+AUTODATA_POSTGRES_PASSWORD=local-dev-only \
+AUTODATA_MINIO_ROOT_USER=localadmin \
+AUTODATA_MINIO_ROOT_PASSWORD=local-dev-password \
+docker compose -f infra/compose/compose.yaml run --rm ingestion-smoke
+```
+
+`ingestion-smoke` runs the deterministic `ingest-fixture` dependency first. It fails with a non-zero exit and an actionable message when the migration, payment/entitlement, normalized vehicle, source object, or `dataset.viewable` event contract is not satisfied. It is safe to rerun: the fixture uses stable identifiers and idempotency keys, while published revisions remain immutable.
+
 ## Configuration contract
 
 Configuration is grouped by subsystem and supplied through environment variables or a secret manager:

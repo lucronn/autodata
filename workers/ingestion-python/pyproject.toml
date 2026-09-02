@@ -2,4 +2,8 @@
 name = "autodata-ingestion-worker"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "minio>=7.2,<8",
+    "nats-py>=2.9,<3",
+    "psycopg[binary]>=3.2,<4",
+]

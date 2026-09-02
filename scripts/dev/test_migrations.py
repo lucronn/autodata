@@ -17,7 +17,10 @@ class MigrationPlanTests(unittest.TestCase):
     def test_migrations_are_numeric_and_ordered(self):
         paths = migration_files(ROOT / "db/migrations")
 
-        self.assertEqual([path.name for path in paths], ["001_extensions.sql", "002_platform_spine.sql"])
+        self.assertEqual(
+            [path.name for path in paths],
+            ["001_extensions.sql", "002_platform_spine.sql", "003_canonical_vehicle.sql"],
+        )
 
     def test_schema_migrations_cover_platform_spine_and_vector(self):
         errors = validate_migration_set(ROOT / "db/migrations")
