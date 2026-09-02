@@ -1,0 +1,39 @@
+name: Autonomous Verification
+
+on:
+  pull_request:
+    paths:
+      - ".autodata-autonomy-policy.json"
+      - ".cursor/agents/**"
+      - "docs/agents/**"
+      - "scripts/autonomy/**"
+      - ".github/workflows/autonomous-verification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  autonomy-policy:
+    name: Validate autonomy policy and evidence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run validator unit tests
+        run: python -m unittest discover -s scripts/autonomy -p 'test_*.py' -v
+
+      - name: Validate deterministic evidence fixture
+        run: >-
+          python scripts/autonomy/validate_run.py
+          --manifest scripts/autonomy/fixtures/pass.json
+          --policy .autodata-autonomy-policy.json
+          --evidence-root scripts/autonomy/fixtures/evidence
+          --json
