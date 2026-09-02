@@ -1,0 +1,110 @@
+{
+  "registry_version": 1,
+  "default_authority": "dev-and-ephemeral-only",
+  "agents": [
+    {
+      "name": "autodata-orchestrator",
+      "role": "coordination",
+      "prompt": ".cursor/agents/autodata-orchestrator.md",
+      "can_write": ["run-metadata", "task-state"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
+      "name": "autodata-architect",
+      "role": "architecture",
+      "prompt": ".cursor/agents/autodata-architect.md",
+      "can_write": ["design", "contracts"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
+      "name": "autodata-go-builder",
+      "role": "implementation",
+      "prompt": ".cursor/agents/autodata-go-builder.md",
+      "can_write": ["isolated-implementation-branch"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
+      "name": "autodata-python-builder",
+      "role": "implementation",
+      "prompt": ".cursor/agents/autodata-python-builder.md",
+      "can_write": ["isolated-implementation-branch"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
+      "name": "autodata-schema-agent",
+      "role": "schema-gate",
+      "prompt": ".cursor/agents/autodata-schema-agent.md",
+      "can_write": ["isolated-reports", "test-fixtures"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
+      "name": "autodata-contract-agent",
+      "role": "contract-gate",
+      "prompt": ".cursor/agents/autodata-contract-agent.md",
+      "can_write": ["isolated-reports", "contract-fixtures"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
+      "name": "autodata-source-agent",
+      "role": "provenance-gate",
+      "prompt": ".cursor/agents/autodata-source-agent.md",
+      "can_write": ["isolated-reports", "source-fixtures"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
+      "name": "autodata-data-quality-agent",
+      "role": "data-quality-gate",
+      "prompt": ".cursor/agents/autodata-data-quality-agent.md",
+      "can_write": ["isolated-reports", "quality-fixtures"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
+      "name": "autodata-test-agent",
+      "role": "test-gate",
+      "prompt": ".cursor/agents/autodata-test-agent.md",
+      "can_write": ["isolated-test-branch", "test-reports"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
+      "name": "autodata-security-agent",
+      "role": "security-gate",
+      "prompt": ".cursor/agents/autodata-security-agent.md",
+      "can_write": ["security-reports"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
+      "name": "autodata-reliability-agent",
+      "role": "reliability-gate",
+      "prompt": ".cursor/agents/autodata-reliability-agent.md",
+      "can_write": ["recovery-tests", "reliability-reports"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
+      "name": "autodata-review-agent",
+      "role": "independent-review",
+      "prompt": ".cursor/agents/autodata-review-agent.md",
+      "can_write": ["review-reports"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
+      "name": "autodata-release-agent",
+      "role": "release-control",
+      "prompt": ".cursor/agents/autodata-release-agent.md",
+      "can_write": ["pull-request-metadata", "project-state", "dev-deployment"],
+      "can_merge": true,
+      "can_deploy": ["ephemeral", "dev"]
+    }
+  ]
+}

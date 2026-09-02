@@ -1,0 +1,83 @@
+{
+  "run_id": "fixture-pass-run",
+  "task_id": "fixture-task",
+  "repository": "lucronn/autodata",
+  "base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "implementation_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "agent": "autodata-orchestrator",
+  "phase": "verifying",
+  "decision": "pass",
+  "evidence": [
+    {
+      "kind": "test-result",
+      "ref": "fixture-tests.json",
+      "sha256": "6e9bff0cc83d9755a375f3395a16f28d12d7f32dfb164854273e81e4ec7d2aaf"
+    }
+  ],
+  "gate_decisions": {
+    "deterministic_ci": "pass",
+    "contract_compatibility": "pass",
+    "schema_integrity": "pass",
+    "source_provenance": "pass",
+    "data_quality": "pass",
+    "security": "pass",
+    "reliability": "pass",
+    "independent_review": "pass"
+  },
+  "gate_reports": [
+    {
+      "gate": "deterministic_ci",
+      "decision": "pass",
+      "implementation_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "evidence": [{"ref": "ci.json", "sha256": "486fc26882954b3ce53cf99be48537bd6e39b407592b16b1a511063bbadc220f"}]
+    },
+    {
+      "gate": "contract_compatibility",
+      "decision": "pass",
+      "implementation_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "evidence": [{"ref": "contracts.json", "sha256": "2f17ff725c9d7a82320d6583fed52cabe14b6b907b22e566257bc65d89226495"}]
+    },
+    {
+      "gate": "schema_integrity",
+      "decision": "pass",
+      "implementation_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "evidence": [{"ref": "schema.json", "sha256": "ff9c6303d9341e155e10fb3b5d388f04bcbd730177d5122d989e9f662d8ac70e"}]
+    },
+    {
+      "gate": "source_provenance",
+      "decision": "pass",
+      "implementation_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "evidence": [{"ref": "source.json", "sha256": "964c11a7c182d7d5fe8efd1ec49c895bff1d0fdb2b0adfd319136884700214dd"}]
+    },
+    {
+      "gate": "data_quality",
+      "decision": "pass",
+      "implementation_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "evidence": [{"ref": "quality.json", "sha256": "b35138795181e4275f1274fc0aea5c74b8bd89dc4358b8d512929387c37c61d0"}]
+    },
+    {
+      "gate": "security",
+      "decision": "pass",
+      "implementation_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "evidence": [{"ref": "security.json", "sha256": "12310fc6f6ecd640784cb0f77814e3539e42d92c88a0784786f0a621947b151c"}]
+    },
+    {
+      "gate": "reliability",
+      "decision": "pass",
+      "implementation_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "evidence": [{"ref": "reliability.json", "sha256": "81bcd894181a719cd7fcfc8143821746ca4ce14b50d478e98a922fb1814ccb70"}]
+    },
+    {
+      "gate": "independent_review",
+      "decision": "pass",
+      "implementation_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "evidence": [{"ref": "review.json", "sha256": "6bee1cb66c94e067e810b5a16e251bd40c77ab43e9b349d782001fecb596d947"}]
+    }
+  ],
+  "findings": [],
+  "evidence_completeness": 1.0,
+  "fast_lane_provenance_coverage": 1.0,
+  "correlation_id": "fixture-correlation",
+  "idempotency_key": "fixture-key",
+  "retry_count": 0
+}
