@@ -1,0 +1,126 @@
+name: autodata
+
+services:
+  postgres:
+    image: ${AUTODATA_POSTGRES_IMAGE:-pgvector/pgvector:pg17}
+    environment:
+      POSTGRES_DB: ${AUTODATA_POSTGRES_DB:-autodata}
+      POSTGRES_USER: ${AUTODATA_POSTGRES_USER:-autodata}
+      POSTGRES_PASSWORD: ${AUTODATA_POSTGRES_PASSWORD:?set AUTODATA_POSTGRES_PASSWORD for local development}
+    ports:
+      - "${AUTODATA_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  nats:
+    image: ${AUTODATA_NATS_IMAGE:-nats:2.10-alpine}
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "${AUTODATA_NATS_PORT:-4222}:4222"
+      - "${AUTODATA_NATS_MONITOR_PORT:-8222}:8222"
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8222/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  minio:
+    image: ${AUTODATA_MINIO_IMAGE:-minio/minio:latest}
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${AUTODATA_MINIO_ROOT_USER:?set AUTODATA_MINIO_ROOT_USER for local development}
+      MINIO_ROOT_PASSWORD: ${AUTODATA_MINIO_ROOT_PASSWORD:?set AUTODATA_MINIO_ROOT_PASSWORD for local development}
+    ports:
+      - "${AUTODATA_S3_PORT:-9000}:9000"
+      - "${AUTODATA_MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api-go/Dockerfile
+    environment:
+      AUTODATA_API_ADDR: ":8080"
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_NATS_ADDRESS: "nats:4222"
+      AUTODATA_S3_ADDRESS: "minio:9000"
+    ports:
+      - "${AUTODATA_API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  ingestion-worker:
+    build:
+      context: ../..
+      dockerfile: workers/ingestion-python/Dockerfile
+    environment:
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_NATS_ADDRESS: "nats:4222"
+      AUTODATA_S3_ADDRESS: "minio:9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from autodata_ingestion.worker import run_once; assert run_once()['status'] == 'idle'"]
+
+  enrichment-worker:
+    build:
+      context: ../..
+      dockerfile: workers/enrichment-python/Dockerfile
+    environment:
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_NATS_ADDRESS: "nats:4222"
+      AUTODATA_S3_ADDRESS: "minio:9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from autodata_enrichment.worker import run_once; assert run_once()['status'] == 'idle'"]
+
+  migration-runner:
+    image: ${AUTODATA_PYTHON_IMAGE:-python:3.14-slim}
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace:ro
+    environment:
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+    command: ["python", "scripts/dev/migrate.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  nats-data:
+  minio-data:

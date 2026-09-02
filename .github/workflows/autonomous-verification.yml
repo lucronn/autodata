@@ -7,6 +7,13 @@ on:
       - ".cursor/agents/**"
       - "docs/agents/**"
       - "scripts/autonomy/**"
+      - "apps/api-go/**"
+      - "workers/**"
+      - "packages/contracts/**"
+      - "db/migrations/**"
+      - "infra/compose/**"
+      - "infra/k8s/**"
+      - "scripts/dev/**"
       - ".github/workflows/autonomous-verification.yml"
   push:
     paths:
@@ -14,6 +21,13 @@ on:
       - ".cursor/agents/**"
       - "docs/agents/**"
       - "scripts/autonomy/**"
+      - "apps/api-go/**"
+      - "workers/**"
+      - "packages/contracts/**"
+      - "db/migrations/**"
+      - "infra/compose/**"
+      - "infra/k8s/**"
+      - "scripts/dev/**"
       - ".github/workflows/autonomous-verification.yml"
   workflow_dispatch:
 
@@ -34,6 +48,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+
       - name: Run validator unit tests
         run: python -m unittest discover -s scripts/autonomy -p 'test_*.py' -v
 
@@ -44,3 +63,22 @@ jobs:
           --policy .autodata-autonomy-policy.json
           --evidence-root scripts/autonomy/fixtures/evidence
           --json
+
+      - name: Run Go API tests
+        working-directory: apps/api-go
+        run: go test ./...
+
+      - name: Run ingestion worker tests
+        working-directory: workers/ingestion-python
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Run enrichment worker tests
+        working-directory: workers/enrichment-python
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Validate Compose definition
+        env:
+          AUTODATA_POSTGRES_PASSWORD: ci-validation-only
+          AUTODATA_MINIO_ROOT_USER: ci-validation-admin
+          AUTODATA_MINIO_ROOT_PASSWORD: ci-validation-only
+        run: docker compose -f infra/compose/compose.yaml config --quiet
