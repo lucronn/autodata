@@ -1,4 +1,5 @@
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ from runner import (
     build_provider_command,
     changed_paths,
     redact_text,
+    _make_guard_bin,
     validate_envelope,
 )
 
@@ -105,6 +107,19 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("github_pat_abc123", redacted)
         self.assertNotIn("AKIAIOSFODNN7EXAMPLE", redacted)
         self.assertEqual(redacted.count("[REDACTED_SECRET]"), 3)
+
+    def test_command_guard_blocks_subcommands_after_git_options(self):
+        with tempfile.TemporaryDirectory() as directory:
+            guard = _make_guard_bin(Path(directory) / "bin")
+            result = subprocess.run(
+                [str(guard / "git"), "-C", directory, "push"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 126)
+        self.assertIn("blocked by AutoData runner", result.stderr)
 
 
 if __name__ == "__main__":

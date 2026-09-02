@@ -50,6 +50,7 @@ The orchestrator owns state and evidence, not code correctness. Builders own imp
 | `autodata-go-builder` | Implement Go API/auth/projection behavior | Isolated implementation branch | None |
 | `autodata-python-builder` | Implement ingestion/enrichment workers | Isolated implementation branch | None |
 | `autodata-schema-agent` | Validate migrations and relational invariants | Schema branch/reports | Schema gate |
+| `autodata-contract-agent` | Validate API, event, persistence, and compatibility contracts | Contract fixtures/reports | Contract gate |
 | `autodata-source-agent` | Validate source adapters and provenance | Source fixtures/reports | Source gate |
 | `autodata-data-quality-agent` | Validate completeness, evidence, units, applicability | Quality fixtures/reports | Data-quality gate |
 | `autodata-test-agent` | Add and execute deterministic test coverage | Test branch/reports | Test gate |
@@ -64,7 +65,7 @@ The orchestrator owns state and evidence, not code correctness. Builders own imp
 2. The architect emits a task contract with affected bounded contexts, interfaces, acceptance tests, and forbidden scope.
 3. The orchestrator creates isolated implementation work and assigns one or more builders.
 4. Builders implement only the task contract and record commands, changed paths, and outputs.
-5. Schema, source, data-quality, test, security, reliability, and independent-review agents run in parallel when their inputs are available.
+5. Contract, schema, source, data-quality, test, security, reliability, and independent-review agents run in parallel when their inputs are available.
 6. The orchestrator merges reports into one evidence bundle without changing their decisions.
 7. The release agent evaluates deterministic policy and all independent decisions.
 8. A passing run creates/updates the PR, updates the GitHub Project, merges with the exact head SHA, and deploys to ephemeral/dev.

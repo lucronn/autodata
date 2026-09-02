@@ -32,18 +32,6 @@ KEY_VALUE_SECRET_RE = re.compile(
 )
 DECISIONS = {"pass", "fail", "blocked", "needs_review", "not_applicable"}
 BLOCKED_TOOLS = ("gh", "aws", "gcloud", "az", "kubectl", "helm", "terraform", "stripe")
-BLOCKED_GIT_SUBCOMMANDS = {
-    "clone",
-    "fetch",
-    "pull",
-    "push",
-    "remote",
-    "reset",
-    "restore",
-    "clean",
-}
-
-
 class RunnerError(RuntimeError):
     """A runner configuration or execution error."""
 
@@ -112,6 +100,10 @@ def validate_envelope(
     for field in ("run_id", "task_id", "agent_name", "deployment_target"):
         if field in envelope and not isinstance(envelope[field], str):
             errors.append(f"{field} must be a string")
+
+    run_id = envelope.get("run_id")
+    if isinstance(run_id, str) and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", run_id):
+        errors.append("run_id contains unsupported characters")
 
     base_sha = envelope.get("base_sha")
     if not isinstance(base_sha, str) or not SHA_RE.fullmatch(base_sha):
@@ -204,6 +196,17 @@ def _git_show(root: Path, revision: str, path: str) -> str:
     return result.stdout
 
 
+def _commit_exists(root: Path, revision: str) -> bool:
+    result = subprocess.run(
+        ["git", "cat-file", "-e", f"{revision}^{{commit}}"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
 def _write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -219,12 +222,14 @@ def _make_guard_bin(directory: Path) -> Path:
     git_guard = directory / "git"
     git_guard.write_text(
         "#!/bin/sh\n"
-        "case \"$1\" in\n"
-        "  clone|fetch|pull|push|remote|reset|restore|clean)\n"
-        "    echo 'blocked by AutoData runner: external or destructive git command' >&2\n"
-        "    exit 126\n"
-        "    ;;\n"
-        "esac\n"
+        "for arg in \"$@\"; do\n"
+        "  case \"$arg\" in\n"
+        "    clone|fetch|pull|push|remote|reset|restore|clean|checkout|--force|--force-with-lease)\n"
+        "      echo 'blocked by AutoData runner: external or destructive git command' >&2\n"
+        "      exit 126\n"
+        "      ;;\n"
+        "  esac\n"
+        "done\n"
         f"exec {shlex_quote(real_git)} \"$@\"\n",
         encoding="utf-8",
     )
@@ -294,6 +299,7 @@ def _result_manifest(
     output_hash: str,
     commands: list[dict[str, Any]],
     findings: list[Any],
+    require_commit: bool,
 ) -> dict[str, Any]:
     result = response or {}
     response_findings = result.get("findings")
@@ -316,7 +322,7 @@ def _result_manifest(
             },
         ]
         decision = "blocked"
-    if changed and implementation_sha == base_sha:
+    if require_commit and changed and implementation_sha == base_sha:
         findings = [
             *findings,
             {
@@ -354,7 +360,7 @@ def _result_manifest(
         "base_sha": base_sha,
         "implementation_sha": implementation_sha,
         "agent": envelope["agent_name"],
-        "phase": result.get("phase", "implementing"),
+        "phase": result.get("phase", envelope.get("phase", "implementing")),
         "contract_versions": result.get(
             "contract_versions", {"api": "v1", "events": "v1", "schema": "v1", "policy": "1"}
         ),
@@ -370,6 +376,7 @@ def _result_manifest(
                 "description": "structured response emitted by the isolated provider run",
             }
         ],
+        "task_contract": result.get("task_contract"),
         "gate_decisions": gate_decisions,
         "gate_reports": gate_reports,
         "correlation_id": result.get("correlation_id", envelope["run_id"]),
@@ -393,7 +400,15 @@ def run_agent(
 
     registry = _load_json(repo_root / ".autodata-agent-registry.json")
     policy = _load_json(repo_root / ".autodata-autonomy-policy.json")
-    actual_base_sha = _run_git(repo_root, ["rev-parse", "HEAD"]).strip()
+    repository_head_sha = _run_git(repo_root, ["rev-parse", "HEAD"]).strip()
+    requested_base_sha = envelope.get("base_sha")
+    if (
+        isinstance(requested_base_sha, str)
+        and requested_base_sha.lower() != repository_head_sha.lower()
+        and not _commit_exists(repo_root, requested_base_sha)
+    ):
+        raise RunnerError("base_sha is not an existing commit in the repository")
+    actual_base_sha = requested_base_sha if isinstance(requested_base_sha, str) else repository_head_sha
     envelope_errors = validate_envelope(envelope, registry, policy, actual_base_sha)
     if envelope_errors:
         raise RunnerError("invalid task envelope: " + "; ".join(envelope_errors))
@@ -404,7 +419,7 @@ def run_agent(
     if not isinstance(prompt_path, str) or not prompt_path or Path(prompt_path).is_absolute():
         raise RunnerError("registered agent prompt must be a repository-relative path")
     prompt = _git_show(repo_root, actual_base_sha, prompt_path)
-    task_contract = envelope.get("task_contract_ref", "not supplied")
+    task_contract = envelope.get("task_contract", envelope.get("task_contract_ref", "not supplied"))
     if isinstance(task_contract, str) and task_contract.startswith("path:"):
         task_contract = _git_show(repo_root, actual_base_sha, task_contract.removeprefix("path:"))
 
@@ -414,7 +429,7 @@ def run_agent(
     logs_root = output_root / "logs"
     logs_root.mkdir()
     _write_json(output_root / "task-envelope.json", envelope)
-    _write_json(output_root / "task-contract.json", {"ref": task_contract})
+    _write_json(output_root / "task-contract.json", task_contract if isinstance(task_contract, dict) else {"ref": task_contract})
     schema_file = output_root / "agent-output.schema.json"
     _write_json(
         schema_file,
@@ -424,8 +439,41 @@ def run_agent(
             "properties": {
                 "decision": {"enum": sorted(DECISIONS)},
                 "summary": {"type": "string"},
+                "task_contract": {
+                    "type": ["object", "null"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "task_id": {"type": "string"},
+                        "goal": {"type": "string"},
+                        "bounded_contexts": {"type": "array", "items": {"type": "string"}},
+                        "inputs": {"type": "array", "items": {"type": "string"}},
+                        "outputs": {"type": "array", "items": {"type": "string"}},
+                        "acceptance_tests": {"type": "array", "items": {"type": "string"}},
+                        "forbidden_scope": {"type": "array", "items": {"type": "string"}},
+                        "compatibility": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "api": {"type": "string"},
+                                "events": {"type": "string"},
+                                "schema": {"type": "string"},
+                            },
+                            "required": ["api", "events", "schema"],
+                        },
+                    },
+                    "required": [
+                        "task_id",
+                        "goal",
+                        "bounded_contexts",
+                        "inputs",
+                        "outputs",
+                        "acceptance_tests",
+                        "forbidden_scope",
+                        "compatibility",
+                    ],
+                },
             },
-            "required": ["decision", "summary"],
+            "required": ["decision", "summary", "task_contract"],
         },
     )
     response_file = evidence_root / "provider-output.json"
@@ -474,6 +522,11 @@ def run_agent(
         changed = changed_paths(worktree, actual_base_sha)
         implementation_sha = _run_git(worktree, ["rev-parse", "HEAD"]).strip()
         _run_git(repo_root, ["worktree", "remove", "--force", str(worktree)])
+        if implementation_sha != actual_base_sha:
+            _run_git(
+                repo_root,
+                ["update-ref", f"refs/autodata/runs/{envelope['run_id']}", implementation_sha],
+            )
     finished = utc_now()
 
     stdout = redact_text(process.stdout or "")
@@ -537,6 +590,7 @@ def run_agent(
         output_hash,
         commands,
         findings,
+        require_commit=_registry_agent(registry, envelope["agent_name"]).get("role") == "implementation",
     )
     if outside_scope or process.returncode != 0:
         manifest["decision"] = "blocked"

@@ -81,6 +81,12 @@ The provider receives the prompt from the exact pinned commit plus the envelope 
 
 The command guards are defense in depth, not a substitute for an externally isolated runner. `gh`, cloud CLIs, deployment CLIs, and external/destructive Git subcommands are blocked for the provider process. Provider authentication must use an isolated automation identity configured outside the repository; common token, key, password, and credential environment variables are removed before invocation. Production credentials must never be made available to this adapter.
 
+## Local orchestration
+
+[`scripts/autonomy/orchestrator.py`](../../scripts/autonomy/orchestrator.py) composes the adapter into the local lifecycle. It obtains a structured contract from `autodata-architect`, runs the selected implementation builder from the original pinned base, retains the resulting implementation commit under `refs/autodata/runs/<run-id>`, and runs each policy gate against that exact commit. It copies provider responses into a single evidence bundle and invokes the deterministic validator only after all seven gate decisions have been assembled.
+
+An orchestration run is not allowed to infer a task contract from prose, reuse a stale builder SHA, or turn a provider process exit into a gate pass. Missing contracts, missing commits, non-pass gate decisions, missing evidence, and mismatched SHAs produce a blocked run. GitHub and deployment actions remain outside this local coordinator and require a separately permissioned release controller.
+
 ## Runner safety requirements
 
 - The runner must refuse production deployment targets because policy sets `production_deployment` to false.

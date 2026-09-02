@@ -43,6 +43,14 @@
       "can_deploy": []
     },
     {
+      "name": "autodata-contract-agent",
+      "role": "contract-gate",
+      "prompt": ".cursor/agents/autodata-contract-agent.md",
+      "can_write": ["isolated-reports", "contract-fixtures"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
       "name": "autodata-source-agent",
       "role": "provenance-gate",
       "prompt": ".cursor/agents/autodata-source-agent.md",

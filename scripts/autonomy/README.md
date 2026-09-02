@@ -47,3 +47,19 @@ python3 scripts/autonomy/runner.py \
 The envelope must pin `base_sha` to the current `HEAD`. Use a unique output directory because the runner refuses to overwrite an existing evidence bundle. Exit `0` is reserved for a complete policy pass; `20` means the provider ran but deterministic validation failed; `30` means runner configuration/execution failed. The resulting `run-manifest.json` and `decision.json` are the source of truth for the caller.
 
 The runner removes secrets from the provider environment and redacts provider logs. It also blocks `gh`, cloud/deployment CLIs, and external/destructive Git subcommands in the provider process. These controls are intentionally tested as policy behavior and must be supplemented by the deployment environment's network and credential isolation.
+
+## Run the full local agent chain
+
+[`orchestrator.py`](orchestrator.py) coordinates one architect, one builder, and all seven independent policy gates. It accepts a task JSON document, obtains a structured architect contract, passes that contract to the builder, pins the builder commit for downstream gate worktrees, preserves each agent response, and assembles a final manifest for `validate_run.py`.
+
+The task document must contain `task_id`, `goal`, `builder_agent`, `allowed_paths`, `bounded_contexts`, `inputs`, `outputs`, `acceptance_tests`, `forbidden_scope`, and `compatibility`. `run_id`, `repository`, and `deployment_target` are optional; the orchestrator supplies a unique run ID and always uses `none` for this local chain. Example command:
+
+```bash
+python3 scripts/autonomy/orchestrator.py \
+  --repo-root . \
+  --task /path/to/task.json \
+  --provider codex \
+  --output-root /path/to/autodata-runs/<run-id>
+```
+
+The chain is fail-closed. Architect output must contain a complete task contract; builders must create a local implementation commit; every gate must return `pass`; all gate reports must reference the same implementation SHA; and the final deterministic validator must pass. This coordinator never creates a PR, updates a GitHub Project, merges, pushes, or deploys. Those actions remain a separately permissioned release-controller step.

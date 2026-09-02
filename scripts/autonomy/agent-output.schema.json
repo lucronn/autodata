@@ -7,7 +7,40 @@
     "decision": {
       "enum": ["pass", "fail", "blocked", "needs_review", "not_applicable"]
     },
-    "summary": {"type": "string"}
+    "summary": {"type": "string"},
+    "task_contract": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {"type": "string"},
+        "goal": {"type": "string"},
+        "bounded_contexts": {"type": "array", "items": {"type": "string"}},
+        "inputs": {"type": "array", "items": {"type": "string"}},
+        "outputs": {"type": "array", "items": {"type": "string"}},
+        "acceptance_tests": {"type": "array", "items": {"type": "string"}},
+        "forbidden_scope": {"type": "array", "items": {"type": "string"}},
+        "compatibility": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "api": {"type": "string"},
+            "events": {"type": "string"},
+            "schema": {"type": "string"}
+          },
+          "required": ["api", "events", "schema"]
+        }
+      },
+      "required": [
+        "task_id",
+        "goal",
+        "bounded_contexts",
+        "inputs",
+        "outputs",
+        "acceptance_tests",
+        "forbidden_scope",
+        "compatibility"
+      ]
+    }
   },
   "required": ["decision", "summary"]
 }
