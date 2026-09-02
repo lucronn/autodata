@@ -1,0 +1,9 @@
+[project]
+name = "autodata-contracts"
+version = "0.1.0"
+description = "Versioned API and event contract package boundary for AutoData"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
