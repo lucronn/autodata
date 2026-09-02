@@ -8,7 +8,7 @@ var SectionStatusValues = []string{"pending", "processing", "viewable", "complet
 var EventSubjects = []string{"dataset.fast.requested", "dataset.viewable", "dataset.deep.requested", "dataset.section.published", "dataset.enrichment.failed", "dataset.review.requested", "dataset.revision.revoked"}
 var EntitlementStatusValues = []string{"active", "revoked"}
 var FeedbackCategoryValues = []string{"correction", "missing", "quality", "safety"}
-var ErrorCodeValues = []string{"UNAUTHENTICATED", "ENTITLEMENT_REQUIRED", "ENTITLEMENT_REVOKED", "DATASET_NOT_VIEWABLE", "SECTION_FAILED", "REVISION_NOT_FOUND", "DUPLICATE_REQUEST", "INVALID_EVIDENCE", "REVIEW_REQUIRED"}
+var ErrorCodeValues = []string{"UNAUTHENTICATED", "ENTITLEMENT_REQUIRED", "FORBIDDEN", "ENTITLEMENT_REVOKED", "DATASET_NOT_VIEWABLE", "SECTION_FAILED", "REVISION_NOT_FOUND", "DUPLICATE_REQUEST", "INVALID_EVIDENCE", "REVIEW_REQUIRED", "INVALID_REQUEST"}
 
 var DatasetReadRequiredFields = []string{"dataset_id", "revision_id", "availability", "source_watermark", "sections"}
 var DatasetRequestRequiredFields = []string{"request_id", "product_id", "vehicle_key", "status"}

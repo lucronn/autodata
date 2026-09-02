@@ -97,13 +97,15 @@
       "code": {"enum": [
         "UNAUTHENTICATED",
         "ENTITLEMENT_REQUIRED",
+        "FORBIDDEN",
         "ENTITLEMENT_REVOKED",
         "DATASET_NOT_VIEWABLE",
         "SECTION_FAILED",
         "REVISION_NOT_FOUND",
         "DUPLICATE_REQUEST",
         "INVALID_EVIDENCE",
-        "REVIEW_REQUIRED"
+        "REVIEW_REQUIRED",
+        "INVALID_REQUEST"
       ]},
       "message": {"type": "string"},
       "request_id": {"type": "uuid"},

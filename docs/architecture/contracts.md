@@ -87,6 +87,7 @@ Required error classes include:
 | --- | ---: | :---: | --- |
 | `UNAUTHENTICATED` | 401 | no | Credentials are absent or invalid |
 | `ENTITLEMENT_REQUIRED` | 403 | no | Caller lacks access to the requested dataset |
+| `FORBIDDEN` | 403 | no | Caller is authenticated but lacks the required role |
 | `ENTITLEMENT_REVOKED` | 410 | no | Access was withdrawn |
 | `DATASET_NOT_VIEWABLE` | 409 | yes | Fast-lane minimum contract is not published |
 | `SECTION_FAILED` | 200/207 | yes | Dataset is readable but one section has failed |
@@ -94,6 +95,7 @@ Required error classes include:
 | `DUPLICATE_REQUEST` | 200/202 | no | Existing request is returned or processing is reused |
 | `INVALID_EVIDENCE` | 422 | no | Evidence reference does not resolve to a published artifact |
 | `REVIEW_REQUIRED` | 409 | yes | Publication is blocked pending review |
+| `INVALID_REQUEST` | 422 | no | Request body or required idempotency input is invalid |
 
 ## Event envelope
 
