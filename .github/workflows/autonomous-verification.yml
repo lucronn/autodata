@@ -90,9 +90,19 @@ jobs:
         working-directory: workers/enrichment-python
         run: python -m unittest discover -s tests -p 'test_*.py' -v
 
+      - name: Run development adapter tests
+        run: python -m unittest discover -s scripts/dev -p 'test_*.py' -v
+
       - name: Validate Compose definition
         env:
           AUTODATA_POSTGRES_PASSWORD: ci-validation-only
           AUTODATA_MINIO_ROOT_USER: ci-validation-admin
           AUTODATA_MINIO_ROOT_PASSWORD: ci-validation-only
         run: docker compose -f infra/compose/compose.yaml config --quiet
+
+      - name: Run fake integration smoke
+        env:
+          AUTODATA_POSTGRES_PASSWORD: ci-validation-only
+          AUTODATA_MINIO_ROOT_USER: ci-validation-admin
+          AUTODATA_MINIO_ROOT_PASSWORD: ci-validation-only
+        run: docker compose -f infra/compose/compose.yaml run --rm fake-integrations
