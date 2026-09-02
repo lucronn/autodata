@@ -81,3 +81,11 @@ Issue forms cover feature, source/ingestion, data-quality defect, infrastructure
 One portfolio GitHub Project is the planning system. Its views are Roadmap, Current Work, Ingestion and Data Quality, Platform and Developer Infrastructure, and Release Readiness. The project fields and parameterized provisioning steps are in [project-bootstrap.md](project-bootstrap.md).
 
 The Project is not a substitute for repository history: issues hold problem/acceptance context, pull requests hold implementation evidence, and releases hold shipped-version notes. Project items link those records rather than duplicating their full content.
+
+## Documentation source of truth
+
+Normative architecture, infrastructure, API, data-quality, agent, and delivery documents live under `docs/`. The Project is the synchronized roadmap and navigation index; it must link to the canonical repository document and must not contain a competing copy of its acceptance criteria, operating rules, or technical contract. Issues may summarize the relevant outcome, but the repository document at the pinned implementation commit remains authoritative.
+
+Agents may create or modify Markdown, MDX, reStructuredText, and AsciiDoc only under `docs/`. The runner treats a document changed outside that tree as a critical scope violation. Run evidence, logs, and machine-readable reports belong in the external run directory or their explicitly declared fixture/report paths; they are not replacement documentation.
+
+Every documentation change must update the relevant Project index item or linked implementation issue in the same release flow. The item records the canonical document path, affected area, review status, source/dependency reference, and the commit or release where it was verified. If a Project item and repository document disagree, the repository document at the exact verified SHA wins and the Project item is marked `Blocked` until synchronized.

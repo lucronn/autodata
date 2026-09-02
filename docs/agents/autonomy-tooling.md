@@ -1,6 +1,6 @@
 # Autonomy Gate Tooling
 
-The scripts in this directory are deterministic controls for autonomous agent runs. They do not invoke a model, access production, or decide that an incomplete run is safe. An external orchestrator or project-scoped agent supplies the run manifest and gate reports; this tooling independently evaluates the evidence.
+The scripts in `scripts/autonomy/` are deterministic controls for autonomous agent runs. They do not invoke a model, access production, or decide that an incomplete run is safe. An external orchestrator or project-scoped agent supplies the run manifest and gate reports; this tooling independently evaluates the evidence.
 
 ## Validate a run
 
@@ -25,10 +25,11 @@ The checked-in `fixtures/pass.json` is a synthetic policy fixture only. It conta
 ## Agent registry and policy
 
 - `.autodata-agent-registry.json` is the machine-readable roster and capability matrix.
-- `.autodata-autonomy-policy.json` contains merge, data-quality, retry, and protected-path policy.
-- [Agent contracts](../../docs/agents/agent-contracts.md) define manifests, findings, decisions, and evidence bundles.
-- [Data-integrity gates](../../docs/agents/data-integrity-gates.md) define publication and release invariants.
-- [Runner interface](../../docs/agents/runner-interface.md) defines the provider-neutral invocation and output boundary.
+- `.autodata-autonomy-policy.json` contains merge, data-quality, retry, documentation, and protected-path policy.
+- [Agent contracts](agent-contracts.md) define manifests, findings, decisions, and evidence bundles.
+- [Data-integrity gates](data-integrity-gates.md) define publication and release invariants.
+- [Runner interface](runner-interface.md) defines the provider-neutral invocation and output boundary.
+- [Documentation and Project source-of-truth policy](../github/operating-model.md#documentation-source-of-truth) defines where normative documents live and how Project items link to them.
 
 The registry and policy are protected inputs. A task cannot modify them and then use the modified policy to approve itself in the same run; policy changes require their own independently verified change.
 
@@ -46,11 +47,11 @@ python3 scripts/autonomy/runner.py \
 
 The envelope must pin `base_sha` to the current `HEAD`. Use a unique output directory because the runner refuses to overwrite an existing evidence bundle. Exit `0` is reserved for a complete policy pass; `20` means the provider ran but deterministic validation failed; `30` means runner configuration/execution failed. The resulting `run-manifest.json` and `decision.json` are the source of truth for the caller.
 
-The runner removes secrets from the provider environment and redacts provider logs. It also blocks `gh`, cloud/deployment CLIs, and external/destructive Git subcommands in the provider process. These controls are intentionally tested as policy behavior and must be supplemented by the deployment environment's network and credential isolation.
+The runner removes secrets from the provider environment and redacts provider logs. It also blocks `gh`, cloud/deployment CLIs, and external/destructive Git subcommands in the provider process. Documents changed by an agent must remain under `docs/`; a document created elsewhere is a critical scope violation. These controls are intentionally tested as policy behavior and must be supplemented by the deployment environment's network and credential isolation.
 
 ## Run the full local agent chain
 
-[`orchestrator.py`](orchestrator.py) coordinates one architect, one builder, and all seven independent policy gates. It accepts a task JSON document, obtains a structured architect contract, passes that contract to the builder, pins the builder commit for downstream gate worktrees, preserves each agent response, and assembles a final manifest for `validate_run.py`.
+[`orchestrator.py`](../../scripts/autonomy/orchestrator.py) coordinates one architect, one builder, and all independent policy gates. It accepts a task JSON document, obtains a structured architect contract, passes that contract to the builder, pins the builder commit for downstream gate worktrees, preserves each agent response, and assembles a final manifest for `validate_run.py`.
 
 The task document must contain `task_id`, `goal`, `builder_agent`, `allowed_paths`, `bounded_contexts`, `inputs`, `outputs`, `acceptance_tests`, `forbidden_scope`, and `compatibility`. `run_id`, `repository`, and `deployment_target` are optional; the orchestrator supplies a unique run ID and always uses `none` for this local chain. Example command:
 
@@ -66,4 +67,4 @@ The chain is fail-closed. Architect output must contain a complete task contract
 
 ## Release transition
 
-[`release_controller.py`](release_controller.py) validates a complete manifest against the policy and produces an exact-SHA GitHub PR/Project/merge plan. It is read-only by default. The separate `--execute` path requires `AUTODATA_RELEASE_AUTOMATION=enabled`, a known PR number, a checked-out `HEAD` equal to the verified implementation SHA, and an isolated release-job identity. It executes structured `gh` argv only; it does not use a shell, force-push, deploy production, or rewrite published data.
+[`release_controller.py`](../../scripts/autonomy/release_controller.py) validates a complete manifest against the policy and produces an exact-SHA GitHub PR/Project/merge plan. It is read-only by default. The separate `--execute` path requires `AUTODATA_RELEASE_AUTOMATION=enabled`, a known PR number, a checked-out `HEAD` equal to the verified implementation SHA, and an isolated release-job identity. It executes structured GitHub CLI arguments only; it does not use a shell, force-push, deploy production, or rewrite published data.

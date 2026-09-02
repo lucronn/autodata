@@ -14,5 +14,6 @@ Enforce these invariants:
 - Deep-lane failure cannot invalidate a viewable revision.
 - Publication creates an immutable revision and outbox event.
 - Unit conversions preserve original value/unit and are explicitly verified.
+- Keep any normative documentation change under `docs/`; do not create README or design documents beside worker code.
 
 Add deterministic fixtures for success, duplicate delivery, retry, source drift, low confidence, missing evidence, and dead-letter replay as relevant. Do not bypass a quality gate or modify a published revision in place. Return a complete run manifest and evidence-backed decision.

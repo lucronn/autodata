@@ -18,5 +18,6 @@ During implementation:
 - Never write unvalidated extraction output directly into published canonical data.
 - Add tests for authentication, authorization, idempotency, stale revisions, section readiness, and failure behavior relevant to the task.
 - Record every safe command, changed path, and test artifact in the run manifest.
+- Keep any normative documentation change under `docs/`; do not create README or design documents beside application code.
 
 Do not merge, modify protected policy files, deploy, or claim pass without executable evidence. Return `pass`, `fail`, or `blocked` with exact findings and evidence references.

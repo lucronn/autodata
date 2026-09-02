@@ -41,6 +41,8 @@ Issue / Project item / scheduled maintenance
 
 The orchestrator owns state and evidence, not code correctness. Builders own implementation changes in isolated worktrees. Verifiers are read-only against the implementation branch except for test fixtures or reports in their own branches. The release controller is the only agent allowed to merge, and it can do so only when the machine gate expression in [data-integrity-gates.md](data-integrity-gates.md) evaluates to pass. The provider-neutral boundary for invoking these prompts is documented in [runner-interface.md](runner-interface.md).
 
+Normative documentation has one repository home: `docs/`. The GitHub Project is the synchronized roadmap and navigation index, not a second document store. Agents must link Project items and task contracts to the canonical document path and may not create parallel README, design, or infrastructure-document trees. The runner enforces this rule as a critical path-scope gate; see [autonomy-tooling.md](autonomy-tooling.md) and the [documentation source-of-truth policy](../github/operating-model.md#documentation-source-of-truth).
+
 ## Agent roster
 
 | Agent | Primary responsibility | Write scope | Gate role |

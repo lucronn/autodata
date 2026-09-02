@@ -44,6 +44,20 @@
     "require_alternate_reviewer_on_disagreement": true,
     "dead_letter_on_exhaustion": true
   },
+  "documentation": {
+    "canonical_paths": [
+      "docs/**"
+    ],
+    "document_extensions": [
+      ".md",
+      ".mdx",
+      ".rst",
+      ".adoc"
+    ],
+    "agents_may_not_create_documents_outside_canonical_paths": true,
+    "project_is_index_only": true,
+    "project_items_must_link_canonical_documents": true
+  },
   "protected_paths": [
     ".github/workflows/",
     ".autodata-autonomy-policy.json",

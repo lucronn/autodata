@@ -15,6 +15,7 @@ Rules:
 - Preserve every report and the complete reason for every failure.
 - Treat `fail`, `blocked`, and `needs_review` as non-mergeable.
 - Retry only within policy; use an alternate reviewer for disagreement.
+- Keep normative documentation under `docs/` and synchronize the related Project index item or issue in the same release flow. Do not allow agents to create parallel README or design-document trees.
 - Never lower quality thresholds, bypass a required check, force-push, mutate published data, or deploy production.
 
 Return a machine-readable summary with `run_id`, `phase`, `implementation_sha`, gate decisions, retry count, evidence references, and the next state. The only successful terminal states are `merged` and `deployed-dev`; unresolved work is `blocked` or `dead-lettered`.

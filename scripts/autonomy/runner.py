@@ -173,6 +173,35 @@ def path_is_allowed(path: str, allowed_patterns: Sequence[str]) -> bool:
     )
 
 
+def document_scope_violations(paths: Sequence[str], policy: dict[str, Any]) -> list[str]:
+    """Return documentation paths outside the repository's canonical document tree."""
+
+    document_paths = sorted(
+        path
+        for path in paths
+        if PurePosixPath(path).suffix.lower() in {".md", ".mdx", ".rst", ".adoc"}
+    )
+    if not document_paths:
+        return []
+    documentation = policy.get("documentation")
+    if not isinstance(documentation, dict):
+        return document_paths
+    extensions = documentation.get("document_extensions", [])
+    allowed_paths = documentation.get("canonical_paths", [])
+    if not isinstance(extensions, list) or not all(isinstance(item, str) for item in extensions):
+        return document_paths
+    if not isinstance(allowed_paths, list) or not all(
+        isinstance(item, str) for item in allowed_paths
+    ):
+        return document_paths
+    return sorted(
+        path
+        for path in document_paths
+        if PurePosixPath(path).suffix.lower() in extensions
+        and not path_is_allowed(path, allowed_paths)
+    )
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -556,6 +585,7 @@ def run_agent(
     outside_scope = [
         path for path in changed if not path_is_allowed(path, envelope["allowed_paths"])
     ]
+    documentation_outside_scope = document_scope_violations(changed, policy)
     if outside_scope:
         findings.append(
             {
@@ -566,6 +596,20 @@ def run_agent(
                 "line": 0,
                 "message": "agent changed a path outside the declared allowed_paths",
                 "reproduction": ", ".join(outside_scope),
+                "blocking": True,
+                "resolved_by": None,
+            }
+        )
+    if documentation_outside_scope:
+        findings.append(
+            {
+                "finding_id": "runner.documentation-scope",
+                "severity": "critical",
+                "category": "security",
+                "path": documentation_outside_scope[0],
+                "line": 0,
+                "message": "agent changed a document outside the canonical docs/ tree",
+                "reproduction": ", ".join(documentation_outside_scope),
                 "blocking": True,
                 "resolved_by": None,
             }
@@ -592,7 +636,7 @@ def run_agent(
         findings,
         require_commit=_registry_agent(registry, envelope["agent_name"]).get("role") == "implementation",
     )
-    if outside_scope or process.returncode != 0:
+    if outside_scope or documentation_outside_scope or process.returncode != 0:
         manifest["decision"] = "blocked"
     manifest_path = output_root / "run-manifest.json"
     _write_json(manifest_path, manifest)
