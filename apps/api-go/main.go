@@ -2,11 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -49,17 +52,108 @@ func (staticReadiness) Check() map[string]string {
 
 type Server struct {
 	readiness ReadinessChecker
+	auth      Authenticator
+	requests  RequestStore
 }
 
 func NewServer(readiness ReadinessChecker) *Server {
-	return &Server{readiness: readiness}
+	return NewServerWithDependencies(readiness, HeaderAuthenticator{}, newMemoryRequestStore())
+}
+
+func NewServerWithDependencies(readiness ReadinessChecker, auth Authenticator, requests RequestStore) *Server {
+	return &Server{readiness: readiness, auth: auth, requests: requests}
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
+	mux.Handle("POST /dataset-requests", s.requireRole("dataset_viewer", s.createDatasetRequest))
+	mux.Handle("GET /dataset-requests/{id}", s.requireRole("dataset_viewer", s.getDatasetRequest))
 	return mux
+}
+
+type authenticatedHandler func(http.ResponseWriter, *http.Request, Principal)
+
+func (s *Server) requireRole(role string, next authenticatedHandler) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		principal, err := s.auth.Authenticate(request)
+		if err != nil {
+			writeAPIError(response, request, http.StatusUnauthorized, "UNAUTHENTICATED", err.Error(), false)
+			return
+		}
+		if !principal.HasRole(role) {
+			writeAPIError(response, request, http.StatusForbidden, "FORBIDDEN", "the caller lacks the required role", false)
+			return
+		}
+		next(response, request, principal)
+	})
+}
+
+func (s *Server) createDatasetRequest(response http.ResponseWriter, request *http.Request, principal Principal) {
+	if request.Header.Get("Idempotency-Key") == "" {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "Idempotency-Key is required", false)
+		return
+	}
+	var input DatasetRequestInput
+	decoder := json.NewDecoder(io.LimitReader(request.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil || input.ProductID == "" || input.VehicleKey == "" || input.Region == "" {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "product_id, vehicle_key, and region are required", false)
+		return
+	}
+	record, duplicate, err := s.requests.Create(principal, input, request.Header.Get("Idempotency-Key"))
+	if errors.Is(err, ErrEntitlementRequired) {
+		writeAPIError(response, request, http.StatusForbidden, "ENTITLEMENT_REQUIRED", err.Error(), false)
+		return
+	}
+	if err != nil {
+		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "request could not be created", true)
+		return
+	}
+	status := http.StatusAccepted
+	if duplicate {
+		status = http.StatusOK
+	}
+	writeJSON(response, status, record)
+}
+
+func (s *Server) getDatasetRequest(response http.ResponseWriter, request *http.Request, principal Principal) {
+	id := strings.TrimSpace(request.PathValue("id"))
+	if id == "" {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "dataset request ID is required", false)
+		return
+	}
+	record, err := s.requests.Get(id, principal)
+	if errors.Is(err, ErrRequestNotFound) {
+		writeAPIError(response, request, http.StatusNotFound, "REVISION_NOT_FOUND", "dataset request was not found", false)
+		return
+	}
+	if errors.Is(err, ErrEntitlementRequired) {
+		writeAPIError(response, request, http.StatusForbidden, "ENTITLEMENT_REQUIRED", err.Error(), false)
+		return
+	}
+	if err != nil {
+		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "request could not be read", true)
+		return
+	}
+	writeJSON(response, http.StatusOK, record)
+}
+
+func writeAPIError(response http.ResponseWriter, request *http.Request, status int, code, message string, retryable bool) {
+	requestID := request.Header.Get("X-Request-ID")
+	if requestID == "" {
+		requestID = "request-unassigned"
+	}
+	writeJSON(response, status, map[string]any{
+		"error": map[string]any{
+			"code":       code,
+			"message":    message,
+			"request_id": requestID,
+			"retryable":  retryable,
+			"details":    map[string]any{},
+		},
+	})
 }
 
 func (s *Server) health(response http.ResponseWriter, _ *http.Request) {
