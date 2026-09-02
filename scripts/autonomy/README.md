@@ -31,3 +31,19 @@ The checked-in `fixtures/pass.json` is a synthetic policy fixture only. It conta
 - [Runner interface](../../docs/agents/runner-interface.md) defines the provider-neutral invocation and output boundary.
 
 The registry and policy are protected inputs. A task cannot modify them and then use the modified policy to approve itself in the same run; policy changes require their own independently verified change.
+
+## Invoke one local agent
+
+The Codex adapter is deliberately one-agent-at-a-time. An external orchestrator supplies the task envelope, assigns isolated worktrees, invokes the architect/builder/verifier agents in order, and assembles the complete gate bundle before release. The adapter does not create GitHub resources, push branches, merge pull requests, deploy production, or treat a provider response as a release decision.
+
+```bash
+python3 scripts/autonomy/runner.py \
+  --repo-root . \
+  --envelope /path/to/task-envelope.json \
+  --provider codex \
+  --output-root /path/to/autodata-runs/<run-id>
+```
+
+The envelope must pin `base_sha` to the current `HEAD`. Use a unique output directory because the runner refuses to overwrite an existing evidence bundle. Exit `0` is reserved for a complete policy pass; `20` means the provider ran but deterministic validation failed; `30` means runner configuration/execution failed. The resulting `run-manifest.json` and `decision.json` are the source of truth for the caller.
+
+The runner removes secrets from the provider environment and redacts provider logs. It also blocks `gh`, cloud/deployment CLIs, and external/destructive Git subcommands in the provider process. These controls are intentionally tested as policy behavior and must be supplemented by the deployment environment's network and credential isolation.

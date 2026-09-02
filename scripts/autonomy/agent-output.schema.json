@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AutoData provider agent result",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "decision": {
+      "enum": ["pass", "fail", "blocked", "needs_review", "not_applicable"]
+    },
+    "summary": {"type": "string"}
+  },
+  "required": ["decision", "summary"]
+}

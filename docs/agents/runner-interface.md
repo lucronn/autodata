@@ -61,6 +61,26 @@ The external runner may be invoked by a GitHub Actions job after a task receives
 
 The repository's `autonomous-verification.yml` workflow validates the deterministic policy tool and synthetic evidence fixture. It does not pretend to invoke an agent provider. A provider binding is complete only when the runner contract above is implemented, its permissions are tested, and a real fixture task completes end to end.
 
+## Local Codex provider binding
+
+The checked-in `scripts/autonomy/runner.py` is the first provider adapter. It invokes the installed Codex CLI in non-interactive JSON mode with an ephemeral session and a workspace-write sandbox. It does not invoke GitHub, deployment, or cloud commands from the provider process. The runner creates the worktree and removes it itself; the provider can only leave evidence in the external run directory and local commits in its isolated worktree.
+
+Example future local execution, after replacing the placeholders with intentional values:
+
+```bash
+python3 scripts/autonomy/runner.py \
+  --repo-root . \
+  --envelope /path/to/task-envelope.json \
+  --provider codex \
+  --output-root /path/to/autodata-runs/<run-id>
+```
+
+The task envelope must pin the current repository `HEAD` in `base_sha`, name an agent present in `.autodata-agent-registry.json`, declare a non-empty `allowed_paths` scope, and use `none`, `ephemeral`, or `dev` according to policy. The runner rejects stale base SHAs, unknown agents, production targets, parent traversal, and scopes that do not match the task contract.
+
+The provider receives the prompt from the exact pinned commit plus the envelope and contract reference. It is instructed to commit local changes and return a structured response. The runner records redacted stdout/stderr, the provider response, changed paths, the implementation commit SHA, and the deterministic validator decision under the run directory. A malformed response, non-zero process exit, uncommitted change, out-of-scope path, missing gate report, or stale evidence is a blocked/failing run and cannot reach release.
+
+The command guards are defense in depth, not a substitute for an externally isolated runner. `gh`, cloud CLIs, deployment CLIs, and external/destructive Git subcommands are blocked for the provider process. Provider authentication must use an isolated automation identity configured outside the repository; common token, key, password, and credential environment variables are removed before invocation. Production credentials must never be made available to this adapter.
+
 ## Runner safety requirements
 
 - The runner must refuse production deployment targets because policy sets `production_deployment` to false.
