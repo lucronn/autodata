@@ -39,7 +39,7 @@ class ReleaseControllerTests(unittest.TestCase):
 
         plan = build_release_plan(
             manifest,
-            head_branch="codex/task-1",
+            head_branch="automation/task-1",
             project_number=7,
             pr_number=12,
         )

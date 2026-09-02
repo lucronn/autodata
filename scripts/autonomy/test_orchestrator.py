@@ -103,7 +103,7 @@ class OrchestratorTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory, patch("orchestrator.run_agent", fake_run_agent):
             code, manifest_path = orchestrate_task(
-                Path.cwd(), task, "codex", Path(directory) / "run", 1
+                Path.cwd(), task, "local-cli", Path(directory) / "run", 1
             )
             final = json.loads(manifest_path.read_text(encoding="utf-8"))
 

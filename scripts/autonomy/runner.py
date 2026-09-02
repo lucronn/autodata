@@ -55,7 +55,7 @@ def build_provider_command(
 ) -> list[str]:
     """Return a provider command that reads the prompt from stdin."""
 
-    if provider == "codex":
+    if provider == "local-cli":
         return [
             "codex",
             "exec",
@@ -613,7 +613,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--envelope", type=Path, required=True)
-    parser.add_argument("--provider", choices=["codex"], default="codex")
+    parser.add_argument("--provider", choices=["local-cli"], default="local-cli")
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--timeout-seconds", type=int, default=1800)
     args = parser.parse_args(argv)
