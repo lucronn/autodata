@@ -2,12 +2,12 @@
 
 ## Repository workflow
 
-AutoData uses trunk-based development with a protected `main` branch:
+AutoData uses trunk-based development with a protected `master` branch (the repository's current default branch):
 
-- Work is performed on short-lived branches named `codex/<topic>` or an equivalent team convention.
+- Work is performed on short-lived branches named `automation/<topic>` or an equivalent team convention.
 - Pull requests are small, linked to a GitHub Issue, and use squash merge.
-- `main` requires successful CI, review from the owning CODEOWNERS group, and no unresolved blocking review thread.
-- Releases are created from tagged commits on `main`; release notes identify schema, API, worker, and data-contract changes.
+- `master` requires successful CI, review from the owning CODEOWNERS group, and no unresolved blocking review thread.
+- Releases are created from tagged commits on `master`; release notes identify schema, API, worker, and data-contract changes.
 - No long-lived `develop` or release branches are required for the initial organization.
 - Emergency changes still pass the same automated checks and receive a follow-up incident or review record.
 

@@ -15,9 +15,9 @@ from runner import (
 
 
 class RunnerTests(unittest.TestCase):
-    def test_codex_command_is_noninteractive_and_workspace_scoped(self):
+    def test_local_cli_command_is_noninteractive_and_workspace_scoped(self):
         command = build_provider_command(
-            provider="codex",
+            provider="local-cli",
             cwd=Path("/tmp/worktree"),
             output_file=Path("/tmp/last.json"),
             schema_file=Path("/tmp/schema.json"),

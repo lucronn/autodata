@@ -23,7 +23,7 @@ python3 scripts/autonomy/release_controller.py \
   --repo-root . \
   --manifest /path/to/run-manifest.json \
   --evidence-root /path/to/run \
-  --head-branch codex/task-123 \
+  --head-branch automation/task-123 \
   --project-number 7 \
   --pr-number 12
 ```
@@ -38,7 +38,7 @@ python3 scripts/autonomy/release_controller.py \
   --repo-root . \
   --manifest /path/to/run-manifest.json \
   --evidence-root /path/to/run \
-  --head-branch codex/task-123 \
+  --head-branch automation/task-123 \
   --project-number 7 \
   --pr-number 12 \
   --execute

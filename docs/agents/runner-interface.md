@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The project-scoped prompts define agent behavior, but a model/provider runtime must still invoke them. This document is the boundary between that runtime and the repository. A runner may be Codex, another agent host, or an organization-controlled service; the repository does not assume a provider-specific API.
+The project-scoped prompts define agent behavior, but a model/provider runtime must still invoke them. This document is the boundary between that runtime and the repository. A runner may use a local CLI, another agent host, or an organization-controlled service; the repository does not assume a provider-specific API.
 
 ## Invocation
 
@@ -61,9 +61,9 @@ The external runner may be invoked by a GitHub Actions job after a task receives
 
 The repository's `autonomous-verification.yml` workflow validates the deterministic policy tool and synthetic evidence fixture. It does not pretend to invoke an agent provider. A provider binding is complete only when the runner contract above is implemented, its permissions are tested, and a real fixture task completes end to end.
 
-## Local Codex provider binding
+## Local CLI provider binding
 
-The checked-in `scripts/autonomy/runner.py` is the first provider adapter. It invokes the installed Codex CLI in non-interactive JSON mode with an ephemeral session and a workspace-write sandbox. It does not invoke GitHub, deployment, or cloud commands from the provider process. The runner creates the worktree and removes it itself; the provider can only leave evidence in the external run directory and local commits in its isolated worktree.
+The checked-in `scripts/autonomy/runner.py` is the first provider adapter. It invokes the installed local agent CLI in non-interactive JSON mode with an ephemeral session and a workspace-write sandbox. It does not invoke GitHub, deployment, or cloud commands from the provider process. The runner creates the worktree and removes it itself; the provider can only leave evidence in the external run directory and local commits in its isolated worktree.
 
 Example future local execution, after replacing the placeholders with intentional values:
 
@@ -71,7 +71,7 @@ Example future local execution, after replacing the placeholders with intentiona
 python3 scripts/autonomy/runner.py \
   --repo-root . \
   --envelope /path/to/task-envelope.json \
-  --provider codex \
+  --provider local-cli \
   --output-root /path/to/autodata-runs/<run-id>
 ```
 

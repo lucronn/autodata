@@ -8,6 +8,13 @@ on:
       - "docs/agents/**"
       - "scripts/autonomy/**"
       - ".github/workflows/autonomous-verification.yml"
+  push:
+    paths:
+      - ".autodata-autonomy-policy.json"
+      - ".cursor/agents/**"
+      - "docs/agents/**"
+      - "scripts/autonomy/**"
+      - ".github/workflows/autonomous-verification.yml"
   workflow_dispatch:
 
 permissions:
