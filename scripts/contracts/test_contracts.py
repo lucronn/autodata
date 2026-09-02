@@ -1,6 +1,6 @@
 import json
-import sys
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 
@@ -15,6 +15,7 @@ from generate import (  # noqa: E402
     load_contract,
     render_go,
     render_python,
+    write_generated,
 )
 
 
@@ -81,6 +82,12 @@ class ContractTests(unittest.TestCase):
             json.dump(self.source, fixture)
             fixture.flush()
             self.assertEqual(load_contract(Path(fixture.name)), self.source)
+
+    def test_generated_output_is_replaced_as_one_complete_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "generated.py"
+            write_generated(output, "complete contract")
+            self.assertEqual(output.read_text(), "complete contract")
 
 
 if __name__ == "__main__":

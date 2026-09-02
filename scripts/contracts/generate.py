@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import tempfile
 from typing import Any
 
 
@@ -52,6 +54,23 @@ def is_backward_compatible_addition(old: dict[str, Any], new: dict[str, Any]) ->
     old_properties = set(old.get("properties", {}))
     new_properties = set(new.get("properties", {}))
     return old_required == new_required and old_properties.issubset(new_properties)
+
+
+def write_generated(path: Path, content: str) -> None:
+    """Replace generated output atomically so parallel checks never read a partial file."""
+
+    temporary_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=path.parent, prefix=f".{path.name}.", delete=False
+        ) as temporary:
+            temporary.write(content)
+            temporary_name = temporary.name
+        os.replace(temporary_name, path)
+        temporary_name = None
+    finally:
+        if temporary_name:
+            Path(temporary_name).unlink(missing_ok=True)
 
 
 def _json_strings(values: list[str]) -> str:
@@ -301,8 +320,8 @@ def main() -> None:
     contract = load_contract(root / "packages/contracts/contract.json")
     go_path = root / "packages/contracts/go/contracts.go"
     python_path = root / "packages/contracts/python/autodata_contracts/contracts.py"
-    go_path.write_text(render_go(contract))
-    python_path.write_text(render_python(contract))
+    write_generated(go_path, render_go(contract))
+    write_generated(python_path, render_python(contract))
 
 
 if __name__ == "__main__":
