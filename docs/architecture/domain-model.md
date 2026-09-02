@@ -106,4 +106,3 @@ publication_events ---- feedback_items / audit records
 ## Data retention and deletion
 
 Raw source and derived artifacts follow source-specific retention and takedown policy. Deleting or revoking user access does not delete audit records, hashes, or the fact that a revision existed. A takedown marks affected content revoked and prevents new projection publication while preserving an auditable tombstone.
-

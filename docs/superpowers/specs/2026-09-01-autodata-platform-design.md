@@ -108,4 +108,3 @@ The initial organization uses these roles: platform admin, ingestion operator, d
 - [Infrastructure and developer environment](../../architecture/infrastructure-and-dev.md)
 - [GitHub operating model](../../github/operating-model.md)
 - [GitHub Project bootstrap](../../github/project-bootstrap.md)
-

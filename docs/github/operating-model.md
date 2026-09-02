@@ -81,4 +81,3 @@ Issue forms cover feature, source/ingestion, data-quality defect, infrastructure
 One portfolio GitHub Project is the planning system. Its views are Roadmap, Current Work, Ingestion and Data Quality, Platform and Developer Infrastructure, and Release Readiness. The project fields and parameterized provisioning steps are in [project-bootstrap.md](project-bootstrap.md).
 
 The Project is not a substitute for repository history: issues hold problem/acceptance context, pull requests hold implementation evidence, and releases hold shipped-version notes. Project items link those records rather than duplicating their full content.
-

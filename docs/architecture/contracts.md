@@ -148,4 +148,3 @@ Stripe is the reference production adapter. The local fake provider emits determ
 Every published fact must resolve to a source snapshot and, for extracted document content, an extraction run and evidence record. Evidence includes source document, page number, bounding box or region when available, extracted string, confidence, model version, reviewer state, and timestamps.
 
 A stale revision may be requested only when the caller is entitled to that revision. The default dataset read returns the latest permitted revision. A revision is never updated in place; corrections, enrichment, unit conversion changes, and source replacement produce a new revision with a changelog.
-

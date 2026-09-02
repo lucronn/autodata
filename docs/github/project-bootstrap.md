@@ -191,4 +191,3 @@ If a field or label was created incorrectly, stop and inspect the exact object I
 - [`gh project field-create`](https://cli.github.com/manual/gh_project_field-create)
 - [`gh project item-edit`](https://cli.github.com/manual/gh_project_item-edit)
 - [Customizing views in GitHub Projects](https://docs.github.com/en/issues/planning-and-tracking-with-projects/customizing-views-in-your-project)
-
