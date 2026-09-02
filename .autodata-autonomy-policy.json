@@ -14,6 +14,7 @@
       "deterministic_ci",
       "contract_compatibility",
       "schema_integrity",
+      "source_provenance",
       "data_quality",
       "security",
       "reliability",

@@ -36,7 +36,16 @@ class RegistryTests(unittest.TestCase):
     def test_policy_requires_independent_quality_gates(self):
         required = set(self.policy["merge_gate"]["required_decisions"])
 
-        self.assertTrue({"data_quality", "security", "reliability", "independent_review"}.issubset(required))
+        self.assertTrue(
+            {
+                "contract_compatibility",
+                "source_provenance",
+                "data_quality",
+                "security",
+                "reliability",
+                "independent_review",
+            }.issubset(required)
+        )
         self.assertEqual(self.policy["merge_gate"]["max_critical_findings"], 0)
         self.assertEqual(self.policy["merge_gate"]["max_high_findings"], 0)
 

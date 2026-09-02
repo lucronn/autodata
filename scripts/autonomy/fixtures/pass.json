@@ -18,6 +18,7 @@
     "deterministic_ci": "pass",
     "contract_compatibility": "pass",
     "schema_integrity": "pass",
+    "source_provenance": "pass",
     "data_quality": "pass",
     "security": "pass",
     "reliability": "pass",
@@ -41,6 +42,12 @@
       "decision": "pass",
       "implementation_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "evidence": [{"ref": "schema.json", "sha256": "ff9c6303d9341e155e10fb3b5d388f04bcbd730177d5122d989e9f662d8ac70e"}]
+    },
+    {
+      "gate": "source_provenance",
+      "decision": "pass",
+      "implementation_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "evidence": [{"ref": "source.json", "sha256": "964c11a7c182d7d5fe8efd1ec49c895bff1d0fdb2b0adfd319136884700214dd"}]
     },
     {
       "gate": "data_quality",

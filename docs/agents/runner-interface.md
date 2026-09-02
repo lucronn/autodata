@@ -83,7 +83,7 @@ The command guards are defense in depth, not a substitute for an externally isol
 
 ## Local orchestration
 
-[`scripts/autonomy/orchestrator.py`](../../scripts/autonomy/orchestrator.py) composes the adapter into the local lifecycle. It obtains a structured contract from `autodata-architect`, runs the selected implementation builder from the original pinned base, retains the resulting implementation commit under `refs/autodata/runs/<run-id>`, and runs each policy gate against that exact commit. It copies provider responses into a single evidence bundle and invokes the deterministic validator only after all seven gate decisions have been assembled.
+[`scripts/autonomy/orchestrator.py`](../../scripts/autonomy/orchestrator.py) composes the adapter into the local lifecycle. It obtains a structured contract from `autodata-architect`, runs the selected implementation builder from the original pinned base, retains the resulting implementation commit under `refs/autodata/runs/<run-id>`, and runs each policy gate plus source/provenance validation against that exact commit. It copies provider responses into a single evidence bundle and invokes the deterministic validator only after all required gate decisions have been assembled.
 
 An orchestration run is not allowed to infer a task contract from prose, reuse a stale builder SHA, or turn a provider process exit into a gate pass. Missing contracts, missing commits, non-pass gate decisions, missing evidence, and mismatched SHAs produce a blocked run. GitHub and deployment actions remain outside this local coordinator and require a separately permissioned release controller.
 

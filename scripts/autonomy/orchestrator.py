@@ -21,6 +21,7 @@ GATE_AGENTS = {
     "deterministic_ci": "autodata-test-agent",
     "contract_compatibility": "autodata-contract-agent",
     "schema_integrity": "autodata-schema-agent",
+    "source_provenance": "autodata-source-agent",
     "data_quality": "autodata-data-quality-agent",
     "security": "autodata-security-agent",
     "reliability": "autodata-reliability-agent",

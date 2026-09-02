@@ -34,7 +34,7 @@ The registry and policy are protected inputs. A task cannot modify them and then
 
 ## Invoke one local agent
 
-The Codex adapter is deliberately one-agent-at-a-time. An external orchestrator supplies the task envelope, assigns isolated worktrees, invokes the architect/builder/verifier agents in order, and assembles the complete gate bundle before release. The adapter does not create GitHub resources, push branches, merge pull requests, deploy production, or treat a provider response as a release decision.
+The Codex adapter is deliberately one-agent-at-a-time. An external orchestrator supplies the task envelope, assigns isolated worktrees, invokes the architect/builder/verifier agents in order, and assembles the complete gate bundle before release. The local coordinator runs the seven policy gates plus the dedicated source/provenance gate. The adapter does not create GitHub resources, push branches, merge pull requests, deploy production, or treat a provider response as a release decision.
 
 ```bash
 python3 scripts/autonomy/runner.py \

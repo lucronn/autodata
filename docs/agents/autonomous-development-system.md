@@ -65,7 +65,7 @@ The orchestrator owns state and evidence, not code correctness. Builders own imp
 2. The architect emits a task contract with affected bounded contexts, interfaces, acceptance tests, and forbidden scope.
 3. The orchestrator creates isolated implementation work and assigns one or more builders.
 4. Builders implement only the task contract and record commands, changed paths, and outputs.
-5. Contract, schema, source, data-quality, test, security, reliability, and independent-review agents run in parallel when their inputs are available.
+5. Contract, schema, source/provenance, data-quality, test, security, reliability, and independent-review agents run in parallel when their inputs are available.
 6. The orchestrator merges reports into one evidence bundle without changing their decisions.
 7. The release agent evaluates deterministic policy and all independent decisions.
 8. A passing run creates/updates the PR, updates the GitHub Project, merges with the exact head SHA, and deploys to ephemeral/dev.
