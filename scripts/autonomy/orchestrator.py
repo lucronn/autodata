@@ -13,8 +13,12 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from runner import run_agent
-from validate_run import evaluate
+try:
+    from .runner import run_agent
+    from .validate_run import evaluate
+except ImportError:  # Support direct execution: python scripts/autonomy/orchestrator.py
+    from runner import run_agent
+    from validate_run import evaluate
 
 
 GATE_AGENTS = {

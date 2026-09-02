@@ -597,7 +597,10 @@ def run_agent(
     manifest_path = output_root / "run-manifest.json"
     _write_json(manifest_path, manifest)
 
-    from validate_run import evaluate
+    try:
+        from .validate_run import evaluate
+    except ImportError:  # Support direct execution: python scripts/autonomy/runner.py
+        from validate_run import evaluate
 
     validation = evaluate(manifest, policy, evidence_root=output_root)
     _write_json(output_root / "decision.json", validation)
