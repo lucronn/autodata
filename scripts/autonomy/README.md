@@ -63,3 +63,7 @@ python3 scripts/autonomy/orchestrator.py \
 ```
 
 The chain is fail-closed. Architect output must contain a complete task contract; builders must create a local implementation commit; every gate must return `pass`; all gate reports must reference the same implementation SHA; and the final deterministic validator must pass. This coordinator never creates a PR, updates a GitHub Project, merges, pushes, or deploys. Those actions remain a separately permissioned release-controller step.
+
+## Release transition
+
+[`release_controller.py`](release_controller.py) validates a complete manifest against the policy and produces an exact-SHA GitHub PR/Project/merge plan. It is read-only by default. The separate `--execute` path requires `AUTODATA_RELEASE_AUTOMATION=enabled`, a known PR number, a checked-out `HEAD` equal to the verified implementation SHA, and an isolated release-job identity. It executes structured `gh` argv only; it does not use a shell, force-push, deploy production, or rewrite published data.
