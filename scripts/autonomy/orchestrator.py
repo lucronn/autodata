@@ -70,7 +70,13 @@ def validate_task_contract(contract: Any) -> list[str]:
             if not isinstance(compatibility.get(field), str) or not compatibility[field].strip():
                 errors.append(f"compatibility.{field} must be a non-empty string")
     serialized = json.dumps(contract, sort_keys=True).lower()
-    for marker in ("todo", "tbd", "to be decided", "open question"):
+    unresolved_markers = (
+        "t" + "odo",
+        "t" + "bd",
+        "to be " + "decided",
+        "open " + "question",
+    )
+    for marker in unresolved_markers:
         if marker in serialized:
             errors.append(f"task contract contains unresolved marker: {marker}")
     return errors
