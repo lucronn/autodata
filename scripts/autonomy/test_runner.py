@@ -8,6 +8,7 @@ from pathlib import Path
 from runner import (
     build_provider_command,
     changed_paths,
+    document_scope_violations,
     redact_text,
     _make_guard_bin,
     validate_envelope,
@@ -97,6 +98,29 @@ class RunnerTests(unittest.TestCase):
             result = changed_paths(root, "a" * 40, git_executable=str(git))
 
         self.assertEqual(result, ["apps/api/main.go", "docs/new.md"])
+
+    def test_document_scope_allows_canonical_docs_and_rejects_parallel_docs(self):
+        policy = {
+            "documentation": {
+                "canonical_paths": ["docs/**"],
+                "document_extensions": [".md", ".mdx"]
+            }
+        }
+
+        violations = document_scope_violations(
+            ["docs/architecture/contracts.md", "apps/api/README.md", "notes/design.md"],
+            policy,
+        )
+
+        self.assertEqual(violations, ["apps/api/README.md", "notes/design.md"])
+
+    def test_document_scope_fails_closed_when_policy_configuration_is_invalid(self):
+        violations = document_scope_violations(
+            ["apps/api/README.md", "apps/api/main.go"],
+            {"documentation": {"canonical_paths": "docs/**"}},
+        )
+
+        self.assertEqual(violations, ["apps/api/README.md"])
 
     def test_redacts_common_secret_shapes(self):
         text = "token=sk-abc123 github_pat_abc123 AKIAIOSFODNN7EXAMPLE"

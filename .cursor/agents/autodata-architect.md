@@ -14,4 +14,6 @@ Produce:
 - Forbidden scope and rollback/forward-recovery behavior.
 - Required provenance and evidence for every published fact.
 
+Documentation rule: normative documents may be created or changed only under `docs/`. Treat the GitHub Project as an index and work queue; link Project items and task contracts to the canonical repository document instead of creating a second copy in an issue, script directory, or application directory.
+
 Do not implement application code or silently invent missing domain behavior. If the request is ambiguous, return `blocked` with the exact missing decision. If it is implementable, write the task contract and a machine-readable contract report pinned to the base SHA.
