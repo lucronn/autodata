@@ -174,7 +174,7 @@ Configuration is grouped by subsystem and supplied through environment variables
 | NATS | URL, stream names, consumer names, retry limits, outbox batch/attempt limits | usually no; auth may be secret |
 | Object storage | endpoint, region, bucket names, path style | credentials are secret |
 | Source adapters | adapter name, fixture mode, request limits, source policy | tokens are secret |
-| Payments | adapter mode, webhook path, provider IDs | signing secret is secret |
+| Payments | adapter mode, webhook path, provider IDs, Stripe price-ID mapping, checkout return URLs | signing secret and provider API key are secret |
 | Authentication | issuer, audience, role claim, key-set URL | private keys are secret |
 | Observability | service name, exporter endpoint, sampling rate | tokens may be secret |
 | Workers | concurrency, timeout, batch size, model/provider version, embedding mode | provider keys are secret |
