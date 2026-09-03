@@ -46,6 +46,8 @@ type KnowledgeSearchResponse struct {
 	SourceWatermark string                 `json:"source_watermark"`
 	Sections        []DatasetSection       `json:"sections"`
 	VehicleIdentity map[string]any         `json:"vehicle_identity,omitempty"`
+	FallbackStatus   string                 `json:"fallback_status,omitempty"`
+	FallbackRequestID string                `json:"fallback_request_id,omitempty"`
 	Results         []KnowledgeResult      `json:"results"`
 }
 

@@ -55,6 +55,8 @@ class KnowledgeSearchResponse:
     sections: list[DatasetSection]
     results: list["KnowledgeResult"]
     vehicle_identity: dict[str, Any] | None = None
+    fallback_status: str | None = None
+    fallback_request_id: str | None = None
 
 
 @dataclass(frozen=True)

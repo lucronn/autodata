@@ -91,6 +91,21 @@ def run_nats_once() -> dict[str, object]:
     )
 
 
+def run_knowledge_fallback_once() -> dict[str, object]:
+    """Poll one durable vehicle-scoped knowledge fallback request."""
+
+    from .knowledge_fallback_consumer import consume_once
+    from .knowledge_fallback_runtime import fulfill_once
+
+    return asyncio.run(
+        consume_once(
+            fulfill_once,
+            fetch_timeout=float(os.getenv("AUTODATA_KNOWLEDGE_CONSUMER_FETCH_TIMEOUT_SECONDS", "1")),
+            max_deliveries=int(os.getenv("AUTODATA_KNOWLEDGE_CONSUMER_MAX_DELIVERIES", "3")),
+        )
+    )
+
+
 def _handle_fast_request(request: object) -> dict[str, str | int | list[str]]:
     from .fast_lane import FastLaneRequest, FastLaneRequestError, connector_for_request
 
@@ -193,12 +208,19 @@ def _publication_for_request(request: object):
 def main() -> None:
     interval = float(os.getenv("AUTODATA_WORKER_HEARTBEAT_SECONDS", "30"))
     consumer_enabled = os.getenv("AUTODATA_FAST_CONSUMER_ENABLED") == "1"
+    knowledge_consumer_enabled = os.getenv("AUTODATA_KNOWLEDGE_CONSUMER_ENABLED") == "1"
     if os.getenv("AUTODATA_WORKER_ONCE") == "1":
-        result = run_nats_once() if consumer_enabled else run_once()
+        if knowledge_consumer_enabled:
+            result = run_knowledge_fallback_once()
+        else:
+            result = run_nats_once() if consumer_enabled else run_once()
         print(json.dumps(result, sort_keys=True))
         return
     while True:
-        result = run_nats_once() if consumer_enabled else run_once()
+        if knowledge_consumer_enabled:
+            result = run_knowledge_fallback_once()
+        else:
+            result = run_nats_once() if consumer_enabled else run_once()
         print(json.dumps(result, sort_keys=True), flush=True)
         time.sleep(interval)
 

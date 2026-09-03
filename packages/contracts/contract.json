@@ -55,6 +55,8 @@
       "source_watermark": {"type": "string"},
       "sections": {"type": "array", "items": "dataset_section"},
       "vehicle_identity": {"type": "object", "optional": true},
+      "fallback_status": {"enum": ["pending", "fetched"], "optional": true},
+      "fallback_request_id": {"type": "uuid", "optional": true},
       "results": {"type": "array", "items": "knowledge_result"}
     }
   },
