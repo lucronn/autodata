@@ -43,6 +43,9 @@ def persist_source_bundle(
                 cursor, artifact_list, adapter_name, now, Jsonb
             )
             _persist_artifact_rows(cursor, artifact_list, snapshot_ids, bundle, now, Jsonb)
+            _persist_extraction_evidence(
+                cursor, artifact_list, snapshot_ids, evidence_by_id, bundle.status, now
+            )
             if bundle.vehicle is None:
                 connection.commit()
                 return {"status": bundle.status, "source_artifacts": len(artifact_list), "quarantined": len(bundle.quarantined)}
@@ -305,6 +308,76 @@ def _persist_artifact_rows(cursor: Any, artifacts: list[SourceArtifact], snapsho
                 extraction_status,
             ),
         )
+
+
+def _persist_extraction_evidence(
+    cursor: Any,
+    artifacts: list[SourceArtifact],
+    snapshot_ids: dict[str, str],
+    evidence_by_id: dict[str, dict[str, Any]],
+    bundle_status: str,
+    now: datetime,
+) -> None:
+    """Persist evidence with deterministic IDs so a source replay is idempotent."""
+
+    artifact_by_hash = {artifact.content_sha256: artifact for artifact in artifacts}
+    evidence_by_hash: dict[str, list[dict[str, Any]]] = {}
+    for evidence in evidence_by_id.values():
+        evidence_by_hash.setdefault(evidence["content_sha256"], []).append(evidence)
+
+    for content_sha256, evidence_items in evidence_by_hash.items():
+        extraction_run_id = _stable_uuid(f"extraction-run:{content_sha256}")
+        status = "needs_review" if bundle_status == "needs_review" else "completed"
+        cursor.execute(
+            """
+            INSERT INTO extraction_runs
+                (extraction_run_id, source_snapshot_id, processor_name,
+                 processor_version, status, confidence, input_hash,
+                 started_at, completed_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (extraction_run_id) DO UPDATE SET status = EXCLUDED.status,
+                confidence = EXCLUDED.confidence, completed_at = EXCLUDED.completed_at
+            """,
+            (
+                extraction_run_id,
+                snapshot_ids[content_sha256],
+                "universal-normalizer",
+                "1",
+                status,
+                min(float(item["confidence"]) for item in evidence_items),
+                content_sha256,
+                now,
+                now,
+            ),
+        )
+        artifact = artifact_by_hash.get(content_sha256)
+        if artifact is None:
+            continue
+        for evidence in evidence_items:
+            cursor.execute(
+                """
+                INSERT INTO extraction_evidence
+                    (extraction_evidence_id, source_snapshot_id, extraction_run_id,
+                     locator, artifact_key, extracted_text, confidence, reviewer_state)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (extraction_evidence_id) DO UPDATE SET
+                    locator = EXCLUDED.locator,
+                    artifact_key = EXCLUDED.artifact_key,
+                    extracted_text = EXCLUDED.extracted_text,
+                    confidence = EXCLUDED.confidence,
+                    reviewer_state = EXCLUDED.reviewer_state
+                """,
+                (
+                    evidence["evidence_id"],
+                    snapshot_ids[content_sha256],
+                    extraction_run_id,
+                    evidence["locator"],
+                    artifact.object_key,
+                    evidence["extracted_text"],
+                    evidence["confidence"],
+                    evidence["reviewer_state"],
+                ),
+            )
 
 
 def _upsert_returning_id(cursor: Any, query: str, params: tuple[Any, ...]) -> str:

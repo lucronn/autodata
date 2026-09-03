@@ -144,6 +144,7 @@ def normalize_source_bundle(artifacts: Iterable[SourceArtifact], region: str) ->
         quarantined.append({"reason": "vehicle_identity_not_found"})
     if not evidence:
         quarantined.append({"reason": "no_evidence"})
+    evidence = list(dict((item["evidence_id"], item) for item in evidence).values())
     status = "ready" if vehicle and not quarantined else "needs_review"
     return SourceBundle(
         status=status,
