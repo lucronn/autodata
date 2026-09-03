@@ -12,6 +12,7 @@ ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
 
 from autodata_ingestion.source_adapters import SourceResource, adapt_source_resource  # noqa: E402
+from autodata_ingestion.quality import evaluate_source_bundle  # noqa: E402
 from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E402
 
 
@@ -42,6 +43,7 @@ def main() -> None:
             raise SystemExit(1) from error
 
     bundle = normalize_source_bundle(artifacts, args.region)
+    quality = evaluate_source_bundle(bundle)
     persistence = None
     if args.persist:
         from autodata_ingestion.bundle_persistence import persist_source_bundle
@@ -63,6 +65,7 @@ def main() -> None:
                     "quarantined": len(bundle.quarantined),
                 },
                 "quarantine_reasons": sorted({item.get("reason") for item in bundle.quarantined}),
+                "quality": quality.to_dict(),
                 "persistence": persistence,
             },
             sort_keys=True,

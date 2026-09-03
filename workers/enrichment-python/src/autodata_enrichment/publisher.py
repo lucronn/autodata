@@ -288,6 +288,14 @@ def publish_deep_section(job: DeepSectionJob) -> dict[str, Any]:
             )
             cursor.execute(
                 """
+                UPDATE extraction_evidence
+                SET dataset_revision_id = %s
+                WHERE extraction_run_id = %s
+                """,
+                (revision_id, extraction_run_id),
+            )
+            cursor.execute(
+                """
                 UPDATE dataset_section_status
                 SET status = 'complete', last_published_revision_id = %s, updated_at = %s
                 WHERE dataset_projection_id = %s AND section_name = %s
