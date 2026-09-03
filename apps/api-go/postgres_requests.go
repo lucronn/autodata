@@ -126,7 +126,7 @@ func (s *postgresRequestStore) Create(
 	// ON CONFLICT DO NOTHING returns no row for an idempotency replay. The
 	// existing row is read inside the same transaction so the replay cannot
 	// accidentally create a second request or cross organization boundaries.
-	record, err = scanDatasetRequest(tx.QueryRow(ctx, requestByIdempotencyQuery), idempotencyKey)
+	record, err = scanDatasetRequest(tx.QueryRow(ctx, requestByIdempotencyQuery, idempotencyKey))
 	if errors.Is(err, pgx.ErrNoRows) {
 		// A valid UUID with no product is a client error; it must not be retried
 		// as if the database were unavailable.

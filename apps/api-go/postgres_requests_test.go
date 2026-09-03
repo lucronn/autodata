@@ -43,11 +43,13 @@ func (r fakeRequestRow) Scan(dest ...any) error {
 type fakeRequestTx struct {
 	rows       []fakeRequestRow
 	execSQL    []string
+	queryArgs  [][]any
 	committed  bool
 	rolledBack bool
 }
 
-func (t *fakeRequestTx) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
+func (t *fakeRequestTx) QueryRow(_ context.Context, _ string, args ...any) pgx.Row {
+	t.queryArgs = append(t.queryArgs, args)
 	if len(t.rows) == 0 {
 		return fakeRequestRow{err: errors.New("fake transaction has no scripted row")}
 	}
@@ -170,6 +172,9 @@ func TestPostgresRequestStoreReplaysIdempotencyAndRejectsOtherOrganization(t *te
 			}
 			if duplicate != test.wantDup {
 				t.Fatalf("duplicate = %t, want %t", duplicate, test.wantDup)
+			}
+			if len(tx.queryArgs) != 2 || len(tx.queryArgs[1]) != 1 || tx.queryArgs[1][0] != "request-unique-1" {
+				t.Fatalf("idempotency replay args = %#v, want the idempotency key", tx.queryArgs)
 			}
 		})
 	}
