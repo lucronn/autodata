@@ -147,6 +147,28 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(candidates[1].key, "part:22943127")
         self.assertEqual(candidates[2].key, "model:168702")
 
+    def test_common_specification_shapes_emit_typed_candidates(self):
+        payload = {
+            "body": {
+                "make": "Cadillac",
+                "model": "Escalade ESV",
+                "year": 2019,
+                "specifications": {
+                    "engine_displacement_l": {"value": 6.2, "unit": "L"},
+                    "fuel": "gasoline",
+                },
+            }
+        }
+
+        candidates = classify_json_candidates(payload)
+
+        self.assertEqual([candidate.kind for candidate in candidates], [
+            "vehicle_identity", "specification", "specification"
+        ])
+        self.assertEqual(candidates[1].data["value"], 6.2)
+        self.assertEqual(candidates[1].data["unit"], "L")
+        self.assertEqual(candidates[2].data["name"], "fuel")
+
     def test_valid_but_unrecognized_json_is_retained_for_review(self):
         resource = SourceResource.from_bytes(
             "https://source.example/new-shape",

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any, Iterable
 
+from .fast_lane_persistence import FastLanePublication, publish_fast_lane_revision
 from .source_adapters import SourceArtifact
 from .object_storage import ensure_versioned_bucket
 from .source_bundle import SourceBundle
@@ -17,8 +18,13 @@ def persist_source_bundle(
     bundle: SourceBundle,
     artifacts: Iterable[SourceArtifact],
     adapter_name: str = "source-connector",
+    publication: FastLanePublication | None = None,
 ) -> dict[str, Any]:
-    """Store resources first, then atomically persist normalized records."""
+    """Store resources first, then atomically persist normalized records.
+
+    A supplied publication is committed with canonical rows, evidence, the
+    immutable projection revision, and its viewable outbox event.
+    """
 
     artifact_list = list(artifacts)
     store_source_artifacts(artifact_list)
@@ -37,6 +43,7 @@ def persist_source_bundle(
     now = datetime.now(UTC).replace(microsecond=0)
     evidence_by_id = {item["evidence_id"]: item for item in bundle.evidence}
     artifact_by_hash = {artifact.content_sha256: artifact for artifact in artifact_list}
+    publication_result: dict[str, Any] | None = None
 
     with psycopg.connect(**conninfo) as connection:
         with connection.cursor() as cursor:
@@ -48,6 +55,8 @@ def persist_source_bundle(
                 cursor, artifact_list, snapshot_ids, evidence_by_id, bundle.status, now
             )
             if bundle.vehicle is None:
+                if publication is not None:
+                    raise ValueError("cannot publish a fast-lane projection without vehicle identity")
                 connection.commit()
                 return {"status": bundle.status, "source_artifacts": len(artifact_list), "quarantined": len(bundle.quarantined)}
 
@@ -78,6 +87,29 @@ def persist_source_bundle(
                     _source_version(artifact_by_hash[vehicle_evidence["content_sha256"]]),
                 ),
             )
+
+            for specification in bundle.specifications:
+                specification_evidence = evidence_by_id[specification["evidence_id"]]
+                cursor.execute(
+                    """
+                    INSERT INTO vehicle_specifications
+                        (vehicle_specification_id, vehicle_id, name, value_json, unit,
+                         source_snapshot_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (vehicle_id, name)
+                    DO UPDATE SET value_json = EXCLUDED.value_json,
+                                  unit = EXCLUDED.unit,
+                                  source_snapshot_id = EXCLUDED.source_snapshot_id
+                    """,
+                    (
+                        _stable_uuid(f"vehicle-specification:{vehicle_id}:{specification['name']}"),
+                        vehicle_id,
+                        specification["name"],
+                        Jsonb(specification["value"]),
+                        specification.get("unit"),
+                        snapshot_ids[specification_evidence["content_sha256"]],
+                    ),
+                )
 
             model_ids: dict[str, str] = {}
             for model in bundle.models:
@@ -208,11 +240,24 @@ def persist_source_bundle(
                         article_evidence["confidence"],
                     ),
                 )
+            if publication is not None:
+                publication_result = publish_fast_lane_revision(
+                    cursor,
+                    bundle,
+                    artifact_list,
+                    snapshot_ids,
+                    vehicle_id,
+                    vehicle_snapshot_id,
+                    publication,
+                    now,
+                    Jsonb,
+                )
             connection.commit()
-    return {
+    result = {
         "status": bundle.status,
         "vehicle_id": str(vehicle_id),
         "vehicle_key": vehicle["vehicle_key"],
+        "specifications": len(bundle.specifications),
         "source_artifacts": len(artifact_list),
         "models": len(bundle.models),
         "powertrains": len(bundle.powertrains),
@@ -223,6 +268,9 @@ def persist_source_bundle(
         "evidence": len(bundle.evidence),
         "quarantined": len(bundle.quarantined),
     }
+    if publication_result is not None:
+        result["publication"] = publication_result
+    return result
 
 
 def store_source_artifacts(artifacts: Iterable[SourceArtifact]) -> None:

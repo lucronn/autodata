@@ -3,11 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from re import fullmatch
+from typing import Any, Callable
 
 
 class FastLaneRequestError(ValueError):
     """A fast-lane event cannot be safely dispatched."""
+
+
+_SOURCE_CONNECTORS: dict[str, Callable[["FastLaneRequest"], Any]] = {}
+
+
+def register_source_connector(kind: str, factory: Callable[["FastLaneRequest"], Any]) -> None:
+    """Register a provider-specific connector behind the universal boundary."""
+
+    normalized_kind = str(kind).strip().casefold()
+    if fullmatch(r"[a-z][a-z0-9_-]{1,31}", normalized_kind) is None:
+        raise ValueError("source connector kind must be a stable lowercase token")
+    _SOURCE_CONNECTORS[normalized_kind] = factory
 
 
 @dataclass(frozen=True)
@@ -50,8 +63,8 @@ class FastLaneRequest:
         if not isinstance(raw_source, dict):
             raise FastLaneRequestError("fast-lane payload requires one source descriptor")
         kind = _required_text(raw_source, "kind").casefold()
-        if kind not in {"directory", "http"}:
-            raise FastLaneRequestError("fast-lane source kind must be directory or http")
+        if fullmatch(r"[a-z][a-z0-9_-]{1,31}", kind) is None:
+            raise FastLaneRequestError("fast-lane source kind must be a stable lowercase token")
         location = _required_text(raw_source, "location")
         version = str(raw_source.get("version", "")).strip() or None
         if kind == "directory" and version is None:
@@ -85,15 +98,22 @@ def connector_for_request(
         from .directory_connector import DirectorySourceConnector
 
         return DirectorySourceConnector(request.source.location, request.source.version or "")
-    from .http_connector import HttpSourceConnector
+    if request.source.kind == "http":
+        from .http_connector import HttpSourceConnector
 
-    return HttpSourceConnector(
-        request.source.location,
-        request.source.version,
-        request_headers=request_headers,
-        timeout_seconds=timeout_seconds,
-        max_bytes=max_bytes,
-    )
+        return HttpSourceConnector(
+            request.source.location,
+            request.source.version,
+            request_headers=request_headers,
+            timeout_seconds=timeout_seconds,
+            max_bytes=max_bytes,
+        )
+    factory = _SOURCE_CONNECTORS.get(request.source.kind)
+    if factory is None:
+        raise FastLaneRequestError(
+            f"no source connector is registered for kind {request.source.kind}"
+        )
+    return factory(request)
 
 
 def _required_text(container: dict[str, Any], field: str) -> str:

@@ -65,9 +65,25 @@ class FastLaneRequestTests(unittest.TestCase):
 
     def test_request_rejects_missing_or_ambiguous_source_descriptor(self):
         base = {"vehicle_key": "toyota-corolla-2024-us", "region": "US"}
-        for source in (None, {}, {"kind": "ftp", "location": "ftp://a", "version": "v1"}):
+        for source in (None, {}, {"kind": "FTP unsupported", "location": "ftp://a", "version": "v1"}):
             with self.subTest(source=source), self.assertRaises(FastLaneRequestError):
                 FastLaneRequest.from_envelope(event({**base, "source": source}))
+
+    def test_registered_connector_kind_keeps_provider_specific_logic_out_of_the_event(self):
+        from autodata_ingestion.fast_lane import register_source_connector
+
+        register_source_connector("vendor-api", lambda request: {"kind": request.source.kind})
+        request = FastLaneRequest.from_envelope(
+            event(
+                {
+                    "vehicle_key": "toyota-corolla-2024-us",
+                    "region": "US",
+                    "source": {"kind": "vendor-api", "location": "vendor://vehicle", "version": "v1"},
+                }
+            )
+        )
+
+        self.assertEqual(connector_for_request(request), {"kind": "vendor-api"})
 
     def test_request_rejects_wrong_version_and_embedded_source_credentials(self):
         with self.assertRaisesRegex(FastLaneRequestError, "event type"):

@@ -7,6 +7,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 
 class PaymentEventConflict(ValueError):
@@ -56,6 +57,21 @@ def canonical_payment_payload(payload: dict[str, Any]) -> str:
     """Return a deterministic representation suitable for replay comparison."""
 
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _source_descriptor(source_uri: str, source_version: str) -> dict[str, Any] | None:
+    """Translate a persisted source identity into safe worker dispatch data."""
+
+    parsed = urlparse(str(source_uri))
+    if parsed.scheme in {"http", "https"}:
+        return {"kind": "http", "location": str(source_uri), "version": str(source_version)}
+    if parsed.scheme == "file":
+        return {"kind": "directory", "location": parsed.path, "version": str(source_version)}
+    if parsed.scheme == "directory":
+        return {"kind": "directory", "location": parsed.path or parsed.netloc, "version": str(source_version)}
+    if not parsed.scheme and str(source_uri).startswith("/"):
+        return {"kind": "directory", "location": str(source_uri), "version": str(source_version)}
+    return None
 
 
 def revoke_entitlement(connection: Any, entitlement_id: str, reason: str) -> dict[str, Any]:
@@ -229,7 +245,8 @@ def reconcile_payment_event(connection: Any, event: dict[str, Any]) -> dict[str,
             cursor.execute(
                 """
                 SELECT dr.dataset_request_id::text, dp.dataset_product_id::text,
-                       dp.product_key, dr.status
+                       dp.product_key, dr.status, dr.processing_version,
+                       dr.vehicle_key, dr.region
                 FROM dataset_requests dr
                 JOIN dataset_products dp ON dp.dataset_product_id = dr.dataset_product_id
                 WHERE dr.dataset_request_id::text = %s
@@ -240,7 +257,15 @@ def reconcile_payment_event(connection: Any, event: dict[str, Any]) -> dict[str,
             request = cursor.fetchone()
             if request is None:
                 return _mark_pending(cursor, stored_id, attempts, "dataset request is not available yet")
-            request_id, product_id, product_key, request_status = request
+            (
+                request_id,
+                product_id,
+                product_key,
+                request_status,
+                processing_version,
+                vehicle_key,
+                region,
+            ) = request
             if product_key != intent.product_id:
                 return _mark_failed(
                     cursor,
@@ -338,6 +363,61 @@ def reconcile_payment_event(connection: Any, event: dict[str, Any]) -> dict[str,
             )
             cursor.execute(
                 """
+                SELECT source_snapshot_id::text, source_uri, source_version
+                FROM source_snapshots
+                WHERE source_snapshot_id = (
+                    SELECT source_snapshot_id
+                    FROM dataset_requests
+                    WHERE dataset_request_id = %s
+                )
+                FOR SHARE
+                """,
+                (request_id,),
+            )
+            source_snapshot = cursor.fetchone()
+            if source_snapshot is None:
+                return _mark_pending(cursor, stored_id, attempts, "source snapshot is not available yet")
+            source_snapshot_id, source_uri, source_version = source_snapshot
+            source = _source_descriptor(source_uri, source_version)
+            if source is None:
+                return _mark_pending(
+                    cursor,
+                    stored_id,
+                    attempts,
+                    "source connector is not registered for the snapshot URI scheme",
+                )
+            fast_idempotency_key = ":".join(
+                ("fast", str(source_snapshot_id), str(request_id), "fast", str(processing_version))
+            )
+            cursor.execute(
+                """
+                INSERT INTO publication_events
+                    (event_type, event_version, dataset_request_id,
+                     dataset_projection_id, correlation_id, idempotency_key,
+                     payload, producer)
+                SELECT 'dataset.fast.requested', 1, dr.dataset_request_id,
+                       dp.dataset_projection_id, dr.correlation_id, %s, %s,
+                       'payment-reconciler'
+                FROM dataset_requests dr
+                JOIN dataset_projections dp ON dp.dataset_request_id = dr.dataset_request_id
+                WHERE dr.dataset_request_id = %s
+                ON CONFLICT (idempotency_key) DO NOTHING
+                """,
+                (
+                    fast_idempotency_key,
+                    Jsonb(
+                        {
+                            "vehicle_key": vehicle_key,
+                            "region": region,
+                            "processing_version": processing_version,
+                            "source": source,
+                        }
+                    ),
+                    request_id,
+                ),
+            )
+            cursor.execute(
+                """
                 UPDATE payment_events
                 SET fulfillment_status = 'fulfilled', fulfilled_at = now(),
                     last_fulfillment_error = NULL
@@ -352,6 +432,7 @@ def reconcile_payment_event(connection: Any, event: dict[str, Any]) -> dict[str,
                 "dataset_request_id": request_id,
                 "dataset_projection_id": projection_id,
                 "fulfillment_attempts": attempts,
+                "fast_event_idempotency_key": fast_idempotency_key,
             }
 
 

@@ -154,7 +154,14 @@ def _aggregate_findings(findings: list[QualityFinding]) -> list[QualityFinding]:
 def _fact_records(bundle: SourceBundle) -> Iterable[tuple[str, dict[str, Any]]]:
     if bundle.vehicle is not None:
         yield "vehicle", bundle.vehicle
-    for collection_name in ("models", "powertrains", "parts", "articles", "documents"):
+    for collection_name in (
+        "specifications",
+        "models",
+        "powertrains",
+        "parts",
+        "articles",
+        "documents",
+    ):
         for index, record in enumerate(getattr(bundle, collection_name)):
             if "evidence_id" in record:
                 yield f"{collection_name}[{index}]", record
