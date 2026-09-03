@@ -10,6 +10,7 @@ from autodata_ingestion.source_adapters import (  # noqa: E402
     SourceResource,
     adapt_source_resource,
     classify_json_candidates,
+    detect_media_type,
 )
 
 
@@ -83,6 +84,26 @@ class SourceAdapterTests(unittest.TestCase):
 
         self.assertEqual(html.media_type, "text/html")
         self.assertEqual(pdf.media_type, "application/pdf")
+
+    def test_content_sniffing_takes_precedence_over_misleading_file_extensions(self):
+        xml = b'\xef\xbb\xbf<?xml version="1.0"?><vehicle><make>Ford</make></vehicle>'
+
+        self.assertEqual(detect_media_type("file://drop/payload.json", xml, None), "application/xml")
+        self.assertEqual(adapt_source_resource(SourceResource.from_bytes(
+            "file://drop/payload.json", "v1", xml, None,
+        )).kind, "structured")
+
+    def test_html_and_svg_sniffing_accepts_utf8_bom(self):
+        html = b"\xef\xbb\xbf<!doctype html><html><body>procedure</body></html>"
+        svg = b"\xef\xbb\xbf<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"
+
+        self.assertEqual(detect_media_type("file://drop/unknown", html, None), "text/html")
+        self.assertEqual(detect_media_type("file://drop/unknown", svg, None), "image/svg+xml")
+
+    def test_path_hint_covers_delimited_text_after_content_sniffing(self):
+        csv = b"part_number,description\nA-1,Connector\n"
+
+        self.assertEqual(detect_media_type("file://drop/parts.csv", csv, None), "text/csv")
 
     def test_sample_shaped_json_yields_typed_candidates(self):
         payload = {

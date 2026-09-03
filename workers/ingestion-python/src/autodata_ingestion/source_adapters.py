@@ -101,10 +101,10 @@ def detect_media_type(source_uri: str, payload: bytes, media_type: str | None = 
 
     if media_type:
         return media_type.split(";", 1)[0].strip().lower()
-    path_type, _ = mimetypes.guess_type(urlparse(source_uri).path)
-    if path_type:
-        return path_type.lower()
-    stripped = payload.lstrip()
+    # A source URL or filename is only a hint: provider exports frequently use
+    # generic or misleading extensions. Prefer cheap content signatures before
+    # falling back to the path-derived type.
+    stripped = payload.lstrip(b"\xef\xbb\xbf \t\r\n")
     if stripped.startswith(b"%PDF-"):
         return "application/pdf"
     if stripped.startswith(b"<svg") or b"<svg" in stripped[:512]:
@@ -116,6 +116,9 @@ def detect_media_type(source_uri: str, payload: bytes, media_type: str | None = 
     try:
         json.loads(payload)
     except (UnicodeDecodeError, json.JSONDecodeError):
+        path_type, _ = mimetypes.guess_type(urlparse(source_uri).path)
+        if path_type:
+            return path_type.lower()
         if b"\x00" not in payload:
             return "text/plain"
         return "application/octet-stream"
