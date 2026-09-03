@@ -248,18 +248,19 @@ def reconcile_pending_payments(connection: Any, limit: int = 50) -> list[dict[st
 
     if limit < 1 or limit > 500:
         raise ValueError("limit must be between 1 and 500")
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT payload
-            FROM payment_events
-            WHERE verified = true AND fulfillment_status = 'pending'
-            ORDER BY recorded_at, payment_event_id
-            LIMIT %s
-            """,
-            (limit,),
-        )
-        events = [dict(row[0]) for row in cursor.fetchall()]
+    with connection.transaction():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT payload
+                FROM payment_events
+                WHERE verified = true AND fulfillment_status = 'pending'
+                ORDER BY recorded_at, payment_event_id
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            events = [dict(row[0]) for row in cursor.fetchall()]
     return [reconcile_payment_event(connection, event) for event in events]
 
 

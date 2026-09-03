@@ -13,7 +13,10 @@ sys.path.insert(0, str(ROOT / "packages/contracts/python"))
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
 
 from autodata_contracts.fakes import FakePaymentProvider  # noqa: E402
-from autodata_ingestion.payment_reconciliation import reconcile_payment_event  # noqa: E402
+from autodata_ingestion.payment_reconciliation import (  # noqa: E402
+    reconcile_payment_event,
+    reconcile_pending_payments,
+)
 
 
 REQUEST_ID = "91000000-0000-0000-0000-000000000001"
@@ -83,7 +86,11 @@ def main() -> None:
                     """,
                     (REQUEST_ID, CORRELATION_ID, IDEMPOTENCY_KEY),
                 )
-        fulfilled = reconcile_payment_event(connection, event)
+        fulfilled_results = reconcile_pending_payments(connection)
+        fulfilled = next(
+            result for result in fulfilled_results
+            if result.get("payment_event_id") == pending["payment_event_id"]
+        )
         replay = reconcile_payment_event(connection, event)
         with connection.cursor() as cursor:
             cursor.execute(
