@@ -6,5 +6,6 @@ RUN pip install --no-cache-dir "minio>=7.2,<8" "nats-py>=2.9,<3" "psycopg[binary
 COPY workers/ingestion-python/src ./src
 COPY packages/contracts/python ./contracts
 COPY scripts/dev/ingestion_smoke.py ./scripts/ingestion_smoke.py
+COPY scripts/dev/normalize_source_directory.py ./scripts/normalize_source_directory.py
 ENV PYTHONPATH=/app/src:/app/contracts
 CMD ["python", "-m", "autodata_ingestion.worker"]

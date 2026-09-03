@@ -11,6 +11,11 @@
 | `dataset_section_status` | Independent section readiness | One failed section does not hide another successful section |
 | `entitlements` | Access grant for a purchaser/org | Provider event ID and request are idempotent |
 | `source_snapshots` | Content-addressed source capture | Hash and retrieval metadata are retained |
+| `source_artifacts` | Format-classified raw source resources | Raw object, media type, hash, and extraction status are retained |
+| `vehicle_models` | Provider model variants for a canonical vehicle | Source/evidence locator and provider ID are retained |
+| `powertrains` | Engine or powertrain variants for a model | Powertrain identity remains linked to its model and source |
+| `inventory_parts` | Normalized parts and price observations | Ambiguous prices remain `needs_review` rather than being guessed |
+| `catalog_articles` | Source article index for procedures, diagnostics, TSBs, and specifications | Article IDs, classification, source, and evidence are retained |
 | `ingestion_jobs` | Lane-specific work and retries | Lane, processing version, and stable idempotency key are explicit |
 | `extraction_runs` | OCR/LLM/embedding execution metadata | Model/provider/version and confidence are retained |
 | `extraction_evidence` | Fact-to-source/page/region traceability | Evidence references an immutable source artifact |
