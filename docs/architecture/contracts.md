@@ -79,9 +79,19 @@ Dataset responses include:
       "last_published_revision": "uuid",
       "updated_at": "timestamp"
     }
-  ]
+  ],
+  "fallback_status": "pending",
+  "fallback_request_id": "uuid"
 }
 ```
+
+Knowledge search is warm-path first. Add `fallback=true` to explicitly request
+asynchronous source resolution after a cache miss. A warm hit returns `200`
+with `fallback_status: "fetched"`; an entitled miss returns `202` with
+`fallback_status: "pending"` and the deterministic `fallback_request_id`.
+The default endpoint never fetches a source. The pending response preserves
+the selected revision, and a later request against the newly published
+revision returns the normalized article and its evidence references.
 
 The response may include a `data` object for published sections and a `warnings` array for incomplete, low-confidence, stale, or review-gated content. A client must be able to render the dataset from status and revision metadata without guessing whether missing fields are unavailable, not applicable, or still processing.
 
@@ -173,6 +183,7 @@ Subjects are versioned by event type and schema version at the contract package 
 dataset.fast.requested
 dataset.viewable
 dataset.deep.requested
+dataset.knowledge.fallback.requested
 dataset.section.published
 dataset.enrichment.failed
 dataset.review.requested
@@ -180,6 +191,16 @@ dataset.revision.revoked
 ```
 
 Consumers must tolerate redelivery, reject unsupported event versions explicitly, and record the envelope before applying a side effect. Publication events are written through an outbox so database state and emitted events can be reconciled.
+
+`dataset.knowledge.fallback.requested` version 1 carries the entitled
+projection/revision and the canonical vehicle key, region, query, keywords,
+result kind, and optional source hint. The worker first searches the selected
+normalized revision; only a miss may invoke the provider-neutral source
+resolver. A successful fetch persists canonical source snapshots and evidence,
+then appends an immutable projection revision and emits
+`dataset.section.published` for `articles`. The request event and the
+publication event use stable idempotency keys; retries are safe, while
+permanent validation or vehicle-identity failures are dead-lettered.
 
 The `dataset.fast.requested` payload is version-one provider-neutral dispatch data:
 

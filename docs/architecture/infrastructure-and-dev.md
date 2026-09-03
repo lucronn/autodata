@@ -166,6 +166,21 @@ To capture one HTTP(S) source resource through the same worker, replace the dire
 
 The ingestion worker also contains a durable pull-consumer boundary for version-one `dataset.fast.requested` events. The consumer is wired to the transactional fast-lane projection publisher but remains disabled by default as a deployment safety gate. Enable it only with `AUTODATA_FAST_CONSUMER_ENABLED=1` and `AUTODATA_SOURCE_PERSIST=1`, after database and object-storage credentials are available through the environment or secret interface. Use `AUTODATA_FAST_CONSUMER_DURABLE` for the stable consumer name and `AUTODATA_FAST_CONSUMER_MAX_DELIVERIES` for the bounded delivery limit. The consumer acknowledges only successful handler completion, applies exponential `nak` delays to retryable failures, immediately dead-letters malformed or incorrectly configured requests, and publishes exhausted work to `dataset.fast.dead_letter` with a stable NATS message ID. It never receives source credentials from an event.
 
+The ingestion worker also contains the vehicle-scoped knowledge fallback
+consumer. Enable it with `AUTODATA_KNOWLEDGE_CONSUMER_ENABLED=1`,
+`AUTODATA_SOURCE_PERSIST=1`, and either an explicit source hint in the event
+or `AUTODATA_KNOWLEDGE_SOURCE_URL_TEMPLATE` with `{make}`, `{model}`,
+`{year}`, `{region}`, `{vehicle_key}`, `{query}`, and `{keywords}`
+placeholders. The handler loads the latest normalized revision for a warm
+lookup, resolves and fetches only on a miss, persists source/evidence data,
+appends an immutable article revision, and emits `dataset.section.published`.
+Use `AUTODATA_KNOWLEDGE_CONSUMER_DURABLE` and
+`AUTODATA_KNOWLEDGE_CONSUMER_MAX_DELIVERIES` for durable delivery settings.
+Retryable source failures use bounded exponential NAK delays; invalid events,
+vehicle mismatches, and unresolved source configuration are dead-lettered.
+The URL template and request headers are configuration only and must not
+contain credentials committed to the repository.
+
 The enrichment worker has a separate durable `dataset.viewable` consumer for deep-lane fan-out. Enable it with `AUTODATA_VIEWABLE_CONSUMER_ENABLED=1` after the fast-lane consumer is enabled. It validates the event, selects the default independent sections (`diagnostics`, `procedures`, `electrical`, `inventory`, `maintenance`, `search`, and `quality`) unless the event supplies an explicit list, and calls the idempotent deep scheduler. A duplicate viewable event reuses the existing job and event idempotency keys. Invalid events are dead-lettered immediately; transient scheduling failures use bounded exponential retry. Deep section execution remains independent, so a failed section does not withdraw a viewable revision.
 
 The same enrichment deployment can consume `dataset.deep.requested` events when `AUTODATA_DEEP_CONSUMER_ENABLED=1`. That consumer validates the source snapshot, projection, section, processing version, and idempotency identity before invoking the registered section processor. The reference image registers conservative `diagnostics`, `procedures`, `electrical`, `inventory`, `maintenance`, `search`, and `quality` processors. Diagnostics selects only approved evidence containing an explicit DTC code or diagnostic term; the procedures, electrical, inventory, and maintenance processors select approved evidence with explicit section signals; search indexes approved source evidence with its original locator and artifact key; and quality summarizes approved evidence counts, artifacts, and confidence buckets. All processors delegate publication to the immutable section publisher, which creates embeddings and the next revision, and none turns unreviewed text into canonical facts or claims that a heuristic match is a canonical domain fact. Section processors remain the extension point for richer OCR, document extraction, normalization, evidence approval, and domain-specific validation; an unregistered section is dead-lettered as an explicit configuration failure rather than acknowledged. Processor failures are retried with bounded backoff, and successful processors must invoke the immutable section publication contract.
