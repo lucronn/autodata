@@ -9,6 +9,7 @@ tests without changing the orchestration contract.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -24,7 +25,7 @@ class SourceResolver(Protocol):
 
     def __call__(
         self, target: VehicleTarget, query: str, keywords: tuple[str, ...]
-    ) -> "ResolvedSource | str | Mapping[str, Any] | None":
+    ) -> ResolvedSource | str | Mapping[str, Any] | None:
         ...
 
 
@@ -67,6 +68,267 @@ class KnowledgeFallbackResult:
         return deepcopy(asdict(self))
 
 
+KNOWLEDGE_FALLBACK_EVENT_TYPE = "dataset.knowledge.fallback.requested"
+KNOWLEDGE_FALLBACK_EVENT_VERSION = 1
+
+
+class KnowledgeFallbackRequestError(ValueError):
+    """A knowledge-fallback event cannot be safely processed."""
+
+
+class PermanentKnowledgeFallbackError(KnowledgeFallbackRequestError):
+    """A knowledge-fallback failure must not be retried."""
+
+
+class RetryableKnowledgeFallbackError(RuntimeError):
+    """A temporary dependency failure may be retried."""
+
+
+@dataclass(frozen=True)
+class KnowledgeFallbackRequest:
+    """Validated version-one request received from the API event boundary."""
+
+    event_id: str
+    request_id: str
+    projection_id: str
+    correlation_id: str
+    idempotency_key: str
+    dataset_id: str
+    revision_id: str
+    vehicle_key: str
+    region: str
+    query: str
+    keywords: tuple[str, ...]
+    kind: str
+    source_hint: Any | None = None
+
+    @classmethod
+    def from_envelope(cls, envelope: Mapping[str, Any]) -> KnowledgeFallbackRequest:
+        if not isinstance(envelope, Mapping):
+            raise PermanentKnowledgeFallbackError("knowledge fallback envelope must be an object")
+        if envelope.get("event_type") != KNOWLEDGE_FALLBACK_EVENT_TYPE:
+            raise PermanentKnowledgeFallbackError(
+                f"knowledge fallback event type must be {KNOWLEDGE_FALLBACK_EVENT_TYPE}"
+            )
+        if envelope.get("event_version") != KNOWLEDGE_FALLBACK_EVENT_VERSION:
+            raise PermanentKnowledgeFallbackError("knowledge fallback event version must be 1")
+        for field in (
+            "event_id",
+            "occurred_at",
+            "producer",
+            "request_id",
+            "projection_id",
+            "correlation_id",
+            "idempotency_key",
+        ):
+            if not str(envelope.get(field, "")).strip():
+                raise PermanentKnowledgeFallbackError(
+                    f"knowledge fallback event is missing {field}"
+                )
+        payload = envelope.get("payload")
+        if not isinstance(payload, Mapping):
+            raise PermanentKnowledgeFallbackError("knowledge fallback payload must be an object")
+        required = (
+            "vehicle_key",
+            "region",
+            "query",
+            "keywords",
+            "kind",
+            "dataset_id",
+            "revision_id",
+        )
+        for field in required:
+            if field not in payload:
+                raise PermanentKnowledgeFallbackError(
+                    f"knowledge fallback payload is missing {field}"
+                )
+
+        vehicle_key = _required_fallback_text(payload, "vehicle_key")
+        region = _required_fallback_text(payload, "region").upper()
+        target = _target_from_vehicle_key(vehicle_key, region)
+        query = _normalize_query(_required_fallback_text(payload, "query"))
+        keywords = _normalize_keywords(_fallback_keywords(payload["keywords"]))
+        if not _query_tokens(query, keywords):
+            raise PermanentKnowledgeFallbackError(
+                "knowledge fallback query requires query text or keywords"
+            )
+        kind = str(payload["kind"]).strip().casefold()
+        if kind not in {"article", "procedure", "all"}:
+            raise PermanentKnowledgeFallbackError(
+                "knowledge fallback kind must be article, procedure, or all"
+            )
+        dataset_id = _required_fallback_text(payload, "dataset_id")
+        revision_id = _required_fallback_text(payload, "revision_id")
+        envelope_revision = envelope.get("revision_id")
+        if envelope_revision is not None and str(envelope_revision).strip() != revision_id:
+            raise PermanentKnowledgeFallbackError(
+                "knowledge fallback payload revision_id does not match the event envelope"
+            )
+        source_hint = payload.get("source_hint")
+        if source_hint is not None and not isinstance(source_hint, (str, Mapping)):
+            raise PermanentKnowledgeFallbackError(
+                "knowledge fallback source_hint must be a string or object"
+            )
+        return cls(
+            event_id=str(envelope["event_id"]).strip(),
+            request_id=str(envelope["request_id"]).strip(),
+            projection_id=str(envelope["projection_id"]).strip(),
+            correlation_id=str(envelope["correlation_id"]).strip(),
+            idempotency_key=str(envelope["idempotency_key"]).strip(),
+            dataset_id=dataset_id,
+            revision_id=revision_id,
+            vehicle_key=target.vehicle_key,
+            region=target.region,
+            query=query,
+            keywords=keywords,
+            kind=kind,
+            source_hint=deepcopy(source_hint),
+        )
+
+    @property
+    def target(self) -> VehicleTarget:
+        return _target_from_vehicle_key(self.vehicle_key, self.region)
+
+    def fingerprint(self) -> str:
+        value = json.dumps(
+            {
+                "dataset_id": self.dataset_id,
+                "revision_id": self.revision_id,
+                "vehicle_key": self.vehicle_key,
+                "region": self.region,
+                "query": self.query,
+                "keywords": self.keywords,
+                "kind": self.kind,
+                "source_hint": self.source_hint,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class _StoredKnowledgeFallback:
+    fingerprint: str
+    payload: dict[str, Any]
+
+
+class KnowledgeFallbackFulfillmentHandler:
+    """Fulfill API fallback events while keeping source work off the read path."""
+
+    def __init__(
+        self,
+        *,
+        catalog: Iterable[Mapping[str, Any]] | Mapping[str, Any] = (),
+        source_resolver: SourceResolver | Callable[..., Any],
+        intake: Callable[..., VehicleArticleIntake] | None = None,
+        persistence: Callable[..., Any] | None = None,
+        result_store: Any | None = None,
+    ) -> None:
+        self.catalog = catalog
+        self.source_resolver = source_resolver
+        self.intake = intake
+        self.persistence = persistence
+        self._results: dict[str, _StoredKnowledgeFallback] = {}
+        self.result_store = result_store if result_store is not None else self._results
+
+    def handle(self, envelope: Mapping[str, Any]) -> dict[str, Any]:
+        request = KnowledgeFallbackRequest.from_envelope(envelope)
+        fingerprint = request.fingerprint()
+        stored = self._get_stored(request.idempotency_key)
+        if stored is not None:
+            if stored.fingerprint != fingerprint:
+                raise PermanentKnowledgeFallbackError(
+                    "idempotency key was previously used for a different request"
+                )
+            return deepcopy(stored.payload)
+
+        captured: list[VehicleArticleIntake] = []
+
+        def intake_and_capture(source_uri: str, target: VehicleTarget, **options: Any) -> VehicleArticleIntake:
+            ingest = self.intake or ingest_vehicle_article
+            result = ingest(source_uri, target, **options)
+            captured.append(result)
+            return result
+
+        try:
+            result = query_vehicle_knowledge(
+                request.target,
+                request.query,
+                catalog=self.catalog,
+                source_resolver=self.source_resolver,
+                keywords=request.keywords,
+                kind=request.kind,
+                ingest=intake_and_capture,
+                source_hint=request.source_hint,
+            )
+            persistence_result = None
+            if result.status == "fetched" and captured and self.persistence is not None:
+                persistence_result = self.persistence(
+                    captured[0].bundle,
+                    captured[0].artifacts,
+                    adapter_name="knowledge-fallback",
+                )
+        except Exception as error:
+            raise classify_knowledge_fallback_error(error) from error
+
+        result_payload = result.to_dict()
+        publication = {
+            "event_type": "dataset.knowledge.fallback.fulfilled",
+            "event_version": KNOWLEDGE_FALLBACK_EVENT_VERSION,
+            "event_id": "knowledge-publication:" + request.idempotency_key,
+            "request_id": request.request_id,
+            "projection_id": request.projection_id,
+            "revision_id": request.revision_id,
+            "correlation_id": request.correlation_id,
+            "idempotency_key": request.idempotency_key,
+            "dataset_id": request.dataset_id,
+            "vehicle_key": request.vehicle_key,
+            "query": request.query,
+            "keywords": list(request.keywords),
+            "kind": request.kind,
+            "status": result.status,
+            "results": deepcopy(result_payload["results"]),
+            "evidence": deepcopy(result_payload["evidence"]),
+            "source_uri": result.source_uri,
+        }
+        payload = {
+            "status": "completed",
+            "request_id": request.request_id,
+            "idempotency_key": request.idempotency_key,
+            "dataset_id": request.dataset_id,
+            "revision_id": request.revision_id,
+            "result": result_payload,
+            "publication": publication,
+        }
+        if persistence_result is not None:
+            payload["persistence"] = deepcopy(persistence_result)
+        self._put_stored(request.idempotency_key, _StoredKnowledgeFallback(fingerprint, payload))
+        return deepcopy(payload)
+
+    def _get_stored(self, key: str) -> _StoredKnowledgeFallback | None:
+        if isinstance(self.result_store, dict):
+            return self.result_store.get(key)
+        value = self.result_store.get(key)
+        return value
+
+    def _put_stored(self, key: str, value: _StoredKnowledgeFallback) -> None:
+        if isinstance(self.result_store, dict):
+            self.result_store[key] = value
+        else:
+            self.result_store.put(key, value)
+
+
+def classify_knowledge_fallback_error(error: Exception) -> Exception:
+    """Map dependency failures to the explicit retry/permanent contract."""
+
+    if isinstance(error, (PermanentKnowledgeFallbackError, RetryableKnowledgeFallbackError)):
+        return error
+    if isinstance(error, (TimeoutError, ConnectionError, OSError)):
+        return RetryableKnowledgeFallbackError(str(error) or type(error).__name__)
+    return PermanentKnowledgeFallbackError(str(error) or type(error).__name__)
+
+
 def derive_idempotency_key(
     target: VehicleTarget, query: str, keywords: Iterable[str] = ()
 ) -> str:
@@ -95,6 +357,7 @@ def query_vehicle_knowledge(
     keywords: Iterable[str] = (),
     kind: str = "all",
     ingest: Callable[..., VehicleArticleIntake] | None = None,
+    source_hint: Any | None = None,
 ) -> KnowledgeFallbackResult:
     """Search normalized vehicle records and fetch exactly one fallback source.
 
@@ -141,7 +404,15 @@ def query_vehicle_knowledge(
             evidence=evidence,
         )
 
-    resolved = _coerce_resolved_source(_call_resolver(source_resolver, target, normalized_query, normalized_keywords))
+    resolved = _coerce_resolved_source(
+        _call_resolver(
+            source_resolver,
+            target,
+            normalized_query,
+            normalized_keywords,
+            source_hint,
+        )
+    )
     if resolved is None:
         raise LookupError("source resolver returned no source for the knowledge query")
 
@@ -212,13 +483,32 @@ def _call_resolver(
     target: VehicleTarget,
     query: str,
     keywords: tuple[str, ...],
+    source_hint: Any | None = None,
 ) -> Any:
     resolve = getattr(resolver, "resolve", None)
     if callable(resolve):
-        return resolve(target, query, keywords)
+        return _invoke_resolver(resolve, target, query, keywords, source_hint)
     if not callable(resolver):
         raise TypeError("source resolver must be callable or expose resolve()")
-    return resolver(target, query, keywords)
+    return _invoke_resolver(resolver, target, query, keywords, source_hint)
+
+
+def _invoke_resolver(
+    resolver: Callable[..., Any],
+    target: VehicleTarget,
+    query: str,
+    keywords: tuple[str, ...],
+    source_hint: Any | None,
+) -> Any:
+    arguments = (target, query, keywords)
+    if source_hint is not None:
+        try:
+            inspect.signature(resolver).bind(*arguments, source_hint)
+        except (TypeError, ValueError):
+            pass
+        else:
+            return resolver(*arguments, source_hint)
+    return resolver(*arguments)
 
 
 def _coerce_resolved_source(value: Any) -> ResolvedSource | None:
@@ -459,3 +749,51 @@ def _text(value: Any) -> str:
     if isinstance(value, (list, tuple, set)):
         return " ".join(_text(item) for item in value)
     return str(value or "")
+
+
+def _required_fallback_text(payload: Mapping[str, Any], field: str) -> str:
+    value = str(payload.get(field, "")).strip()
+    if not value:
+        raise PermanentKnowledgeFallbackError(
+            f"knowledge fallback payload requires {field}"
+        )
+    return value
+
+
+def _fallback_keywords(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str) or not isinstance(value, Iterable):
+        raise PermanentKnowledgeFallbackError(
+            "knowledge fallback keywords must be an array of strings"
+        )
+    values = tuple(value)
+    if any(not isinstance(item, str) for item in values):
+        raise PermanentKnowledgeFallbackError(
+            "knowledge fallback keywords must be an array of strings"
+        )
+    return values
+
+
+def _target_from_vehicle_key(vehicle_key: str, region: str) -> VehicleTarget:
+    parts = vehicle_key.casefold().split("-")
+    if len(parts) < 4 or not parts[-2].isdigit():
+        raise PermanentKnowledgeFallbackError(
+            "knowledge fallback vehicle_key must be make-model-year-region"
+        )
+    if parts[-1] != region.casefold():
+        raise PermanentKnowledgeFallbackError(
+            "knowledge fallback vehicle_key region does not match payload region"
+        )
+    try:
+        target = VehicleTarget(
+            parts[0],
+            "-".join(parts[1:-2]),
+            int(parts[-2]),
+            region,
+        )
+    except ValueError as error:
+        raise PermanentKnowledgeFallbackError(str(error)) from error
+    if target.vehicle_key.casefold() != vehicle_key.casefold():
+        raise PermanentKnowledgeFallbackError(
+            "knowledge fallback vehicle_key is not a canonical vehicle identity"
+        )
+    return target
