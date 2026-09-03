@@ -13,6 +13,9 @@ data:
   AUTODATA_NATS_URL: nats://nats.example.internal:4222
   AUTODATA_S3_ADDRESS: object-storage.example.internal:9000
   AUTODATA_S3_ENDPOINT: object-storage.example.internal:9000
+  AUTODATA_VIEWABLE_CONSUMER_ENABLED: "0"
+  AUTODATA_VIEWABLE_CONSUMER_DURABLE: autodata-viewable-fanout
+  AUTODATA_VIEWABLE_CONSUMER_MAX_DELIVERIES: "3"
   AUTODATA_SOURCE_BUCKET: autodata-sources
   AUTODATA_EMBEDDING_MODE: provider
   AUTODATA_SOURCE_PERSIST: "0"

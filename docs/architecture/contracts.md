@@ -187,6 +187,8 @@ The `dataset.fast.requested` payload is version-one provider-neutral dispatch da
 
 The publication outbox adds `producer`, `delivery_status`, `delivery_attempts`, `last_delivery_error`, and `delivered_at` to the audit row. A relay claims the oldest `pending` or retryable `failed` row with `FOR UPDATE SKIP LOCKED`, commits the claim, publishes the stored envelope to its allow-listed subject, and then records success. A crash between the database commit and NATS publish can produce a duplicate; this is intentional at-least-once delivery. The relay sends the event idempotency key as the NATS `Nats-Msg-Id`, and every consumer must deduplicate by `idempotency_key`. Delivery failures are retried up to the configured attempt limit and then remain auditable as `dead_letter` for operator replay or correction.
 
+The `dataset.viewable` payload may include an optional `deep_sections` array of stable section tokens. When absent, the enrichment fan-out consumer uses the configured default deep catalog. Fan-out is a separate durable consumer boundary: it acknowledges only after all requested section jobs and `dataset.deep.requested` outbox events have been idempotently claimed. Re-delivery must not create duplicate jobs, and a failure in one section must not change the already-published viewable revision.
+
 ## Payment adapter
 
 The internal payment boundary is provider-neutral:
