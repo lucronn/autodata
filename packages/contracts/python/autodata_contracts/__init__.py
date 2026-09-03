@@ -16,6 +16,7 @@ from .contracts import (
     SECTION_STATUS_VALUES,
 )
 from .fakes import FakeEntitlement, FakePaymentEvent, FakePaymentProvider, FakePrimarySource, SourceSnapshot
+from .payment import PaymentProvider
 
 __all__ = [
     "DATASET_AVAILABILITY_VALUES",
@@ -35,6 +36,7 @@ __all__ = [
     "FakePaymentEvent",
     "FakePaymentProvider",
     "FakePrimarySource",
+    "PaymentProvider",
     "SCHEMA_VERSION",
     "SECTION_STATUS_VALUES",
     "SourceSnapshot",
