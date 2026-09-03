@@ -61,6 +61,8 @@ The format layer is provider-neutral:
 
 Extractors are selected by declared capabilities and observed content, not by a hard-coded filename convention. Generic connector media types such as `application/octet-stream` and `text/plain` are content-sniffed for recognizable JSON, HTML, XML, SVG, PDF, and conservative delimited-text signatures; a filename is never the sole parser. A source may emit multiple resource types in one request: for example, a vehicle identity response, a parts collection, an article index, an HTML procedure, a PDF, and an SVG diagram. Each resource receives its own content hash, object key, extraction run, and evidence path, while the request correlation ID joins them into one dataset projection.
 
+The reference `HttpSourceConnector` provides a protocol-neutral HTTP(S) capture for sources that expose one resource per request. It rejects non-HTTP(S) URIs and embedded URL credentials, applies a bounded timeout and maximum payload size, records the response status and non-request response headers, and retains the final URI when a source redirects. A request or deployment may provide an explicit source version; otherwise the connector uses the configured version, ETag, Last-Modified value, or a content-hash version. Authentication headers are supplied only through secret-managed runtime configuration (`AUTODATA_SOURCE_REQUEST_HEADERS_JSON`) and are never placed in source fixtures, logs, or committed examples. Multi-resource provider APIs can implement the same `SourceConnector` contract and return one `SourceResource` per response/page/file.
+
 The intake invariants are:
 
 - Raw bytes are retained even when extraction fails or the shape is unfamiliar.
@@ -147,6 +149,8 @@ docker compose -f infra/compose/compose.yaml run --rm --no-deps \
 ```
 
 The worker emits a deterministic JSON summary with bundle readiness, quality/review status, source artifact count, evidence count, and quarantine reasons. Set `AUTODATA_SOURCE_PERSIST=1` only when the local PostgreSQL and MinIO connection variables are configured; this remains an explicit local execution path, not the production NATS dispatcher.
+
+To capture one HTTP(S) source resource through the same worker, replace the directory variables with `AUTODATA_SOURCE_URI=https://source.example/resource`. If authentication is required, inject `AUTODATA_SOURCE_REQUEST_HEADERS_JSON` from the deployment secret interface; keep its value out of shell history, documentation, and logs. The HTTP connector enforces `AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS` and `AUTODATA_SOURCE_MAX_BYTES` limits, defaulting to 30 seconds and 50 MiB.
 
 Persistence is opt-in and local-only. When database and object-storage variables are configured, append `--persist` to write content-addressed artifacts and normalized records to the Compose stack. A bundle with review items is still stored for audit, but it cannot be treated as fully publishable until its quarantine items are resolved.
 

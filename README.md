@@ -83,6 +83,13 @@ Set `AUTODATA_SOURCE_PERSIST=1` only when the local PostgreSQL and MinIO
 connection variables are also provided. The worker reports bundle readiness and
 quality/review status separately.
 
+For one HTTP(S) source resource, set `AUTODATA_SOURCE_URI` instead of
+`AUTODATA_SOURCE_DIRECTORY`. The connector captures the response status,
+non-secret response headers, redirect target, and raw bytes before the same
+content-first classification and normalization path. Source authentication, if
+required, belongs in secret-managed `AUTODATA_SOURCE_REQUEST_HEADERS_JSON`; do
+not commit header values or credentials to the repository.
+
 ## Run tests
 
 ```sh

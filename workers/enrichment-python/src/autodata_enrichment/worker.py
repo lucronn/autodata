@@ -29,8 +29,6 @@ def run_once() -> dict[str, str]:
     )
     return {"worker": "enrichment", "lane": "deep", **{key: str(value) for key, value in result.items()}}
 
-    return {"worker": "enrichment", "lane": "deep", "status": "idle"}
-
 
 def main() -> None:
     interval = float(os.getenv("AUTODATA_WORKER_HEARTBEAT_SECONDS", "30"))
