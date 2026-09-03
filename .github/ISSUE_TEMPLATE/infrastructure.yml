@@ -1,0 +1,48 @@
+name: Infrastructure change
+description: Propose a change to Compose, Kubernetes, CI, storage, messaging, or observability
+title: "[Infrastructure] "
+labels: ["type:infrastructure", "area:dev-infra"]
+body:
+  - type: markdown
+    attributes:
+      value: Keep provider-specific credentials and private configuration out of the issue.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dev Infra
+        - Platform
+        - Security
+        - Fast Lane
+        - Deep Lane
+    validations:
+      required: true
+  - type: textarea
+    id: user-impact
+    attributes:
+      label: User or operator impact
+      description: Describe reliability, capacity, recovery, delivery, or developer-experience impact.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Include health checks, resource limits, startup/retry behavior, rollback or recovery, and local parity.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Source or evidence reference
+      description: Link the canonical operations document, failing run, metric, or safe fixture; do not include credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: contract-impact
+    attributes:
+      label: Contract impact
+      description: Explain API, event, schema, secret, deployment, or observability contract effects; write none if not applicable.
+    validations:
+      required: true

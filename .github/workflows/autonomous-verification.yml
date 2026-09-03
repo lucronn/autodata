@@ -20,6 +20,12 @@ on:
       - "scripts/dev/**"
       - "scripts/contracts/**"
       - ".github/workflows/autonomous-verification.yml"
+      - ".github/CODEOWNERS"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "scripts/dev/test_repository_governance.py"
   push:
     paths:
       - ".autodata-autonomy-policy.json"
@@ -39,6 +45,12 @@ on:
       - "scripts/dev/**"
       - "scripts/contracts/**"
       - ".github/workflows/autonomous-verification.yml"
+      - ".github/CODEOWNERS"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "scripts/dev/test_repository_governance.py"
   workflow_dispatch:
 
 permissions:

@@ -1,0 +1,50 @@
+name: Security or privacy incident
+description: Report a security, privacy, access-control, source-rights, or secret-handling concern
+title: "[Security] "
+labels: ["type:security", "area:security", "priority:p0"]
+body:
+  - type: markdown
+    attributes:
+      value: For vulnerabilities or exposed secrets, close this form and use the private reporting link in SECURITY.md. Do not include exploit details, credentials, or private source data here.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Security
+        - API
+        - Billing
+        - Fast Lane
+        - Deep Lane
+        - Platform
+        - Dev Infra
+    validations:
+      required: true
+  - type: textarea
+    id: user-impact
+    attributes:
+      label: User or operator impact
+      description: Describe the affected boundary using non-sensitive identifiers and severity.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Define the safe remediation, containment, verification, and disclosure requirements.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Source or evidence reference
+      description: Link a safe run, commit, control, or document. Submit sensitive evidence privately instead.
+    validations:
+      required: true
+  - type: textarea
+    id: contract-impact
+    attributes:
+      label: Contract impact
+      description: Explain auth, entitlement, webhook, provenance, retention, or operational contract effects; write none if not applicable.
+    validations:
+      required: true

@@ -1,0 +1,49 @@
+name: Source or ingestion change
+description: Propose a source adapter, extraction, normalization, or provenance change
+title: "[Source] "
+labels: ["type:source-ingestion", "area:fast-lane"]
+body:
+  - type: markdown
+    attributes:
+      value: Describe the source behavior without exposing credentials or restricted source content.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Fast Lane
+        - Deep Lane
+        - Data Model
+        - Dev Infra
+        - Security
+        - Product
+    validations:
+      required: true
+  - type: textarea
+    id: user-impact
+    attributes:
+      label: User or operator impact
+      description: Which source classes, datasets, or review workflows are affected?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Include recognized types, unknown or malformed input behavior, idempotency, retries, and dead-letter behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Source or evidence reference
+      description: Provide a safe URI, fixture name, hash, terms reference, or canonical document link; never paste secrets or raw restricted data.
+    validations:
+      required: true
+  - type: textarea
+    id: contract-impact
+    attributes:
+      label: Contract impact
+      description: Explain source snapshot, evidence, publication, API, event, or persistence changes; write none if not applicable.
+    validations:
+      required: true

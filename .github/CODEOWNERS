@@ -1,0 +1,12 @@
+# Domain ownership is explicit even while the repository has one current
+# maintainer. Replace only with verified GitHub handles when additional owners
+# are established; never use placeholder handles in this file.
+/.github/ @lucronn
+/apps/api-go/ @lucronn
+/workers/ingestion-python/ @lucronn
+/workers/enrichment-python/ @lucronn
+/packages/contracts/ @lucronn
+/db/ @lucronn
+/infra/ @lucronn
+/docs/ @lucronn
+* @lucronn

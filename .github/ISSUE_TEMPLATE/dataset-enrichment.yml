@@ -1,0 +1,49 @@
+name: Dataset enrichment request
+description: Request a new evidence-backed dataset section, source class, or enrichment rule
+title: "[Enrichment] "
+labels: ["type:feature", "area:deep-lane"]
+body:
+  - type: markdown
+    attributes:
+      value: Describe the purchaser-visible section or evidence-backed enrichment without pasting restricted source material.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Deep Lane
+        - Fast Lane
+        - Search
+        - Data Model
+        - Product
+        - Security
+    validations:
+      required: true
+  - type: textarea
+    id: user-impact
+    attributes:
+      label: User or operator impact
+      description: Which vehicle-specific dataset section or review workflow needs improvement?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Include section readiness, immutable revision behavior, evidence requirements, partial failure behavior, and review routing.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Source or evidence reference
+      description: Link a safe source reference, evidence ID, fixture, hash, or canonical document; do not paste raw payloads.
+    validations:
+      required: true
+  - type: textarea
+    id: contract-impact
+    attributes:
+      label: Contract impact
+      description: Explain API, event, schema, revision, search, entitlement, or provenance impact; write none if not applicable.
+    validations:
+      required: true
