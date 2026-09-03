@@ -17,6 +17,7 @@ from autodata_ingestion.source_adapters import (  # noqa: E402
     detect_media_type,
     register_media_type_adapter,
 )
+from autodata_ingestion.ocr import OCRTextBlock  # noqa: E402
 
 
 class SourceAdapterTests(unittest.TestCase):
@@ -196,6 +197,25 @@ class SourceAdapterTests(unittest.TestCase):
         )
         self.assertTrue(all(candidate.kind == "diagram_text" for candidate in artifact.candidates))
         self.assertEqual(artifact.metadata["extracted_label_count"], 3)
+
+    def test_image_source_wires_provider_ocr_into_reviewable_evidence(self):
+        image = SourceResource.from_bytes(
+            "file://drop/cluster.png",
+            "v1",
+            b"not-a-real-image",
+            "image/png",
+        )
+
+        with patch(
+            "autodata_ingestion.source_adapters.extract_image_text",
+            return_value=(OCRTextBlock("C101", 0.88, (1, 2, 30, 10)),),
+        ):
+            artifact = adapt_source_resource(image)
+
+        self.assertEqual(artifact.kind, "document")
+        self.assertEqual(artifact.metadata["extracted_region_count"], 1)
+        self.assertEqual(artifact.candidates[0].kind, "image_text")
+        self.assertEqual(artifact.candidates[0].data["confidence"], 0.88)
 
     def test_content_sniffing_takes_precedence_over_misleading_file_extensions(self):
         xml = b'\xef\xbb\xbf<?xml version="1.0"?><vehicle><make>Ford</make></vehicle>'

@@ -2,7 +2,10 @@ FROM python:3.14-slim
 
 WORKDIR /app
 COPY workers/ingestion-python/pyproject.toml ./
-RUN pip install --no-cache-dir "minio>=7.2,<8" "nats-py>=2.9,<3" "pypdf>=5,<6" "psycopg[binary]>=3.2,<4"
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir "minio>=7.2,<8" "nats-py>=2.9,<3" "Pillow>=11,<13" "pypdf>=5,<6" "psycopg[binary]>=3.2,<4" "pytesseract>=0.3,<0.4"
 COPY workers/ingestion-python/src ./src
 COPY packages/contracts/python ./contracts
 COPY scripts/dev/ingestion_smoke.py ./scripts/ingestion_smoke.py
