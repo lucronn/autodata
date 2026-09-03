@@ -1,0 +1,251 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autodata-config
+  labels:
+    app.kubernetes.io/part-of: autodata
+data:
+  AUTODATA_DB_ADDRESS: postgres.example.internal:5432
+  AUTODATA_POSTGRES_DB: autodata
+  AUTODATA_POSTGRES_USER: autodata
+  AUTODATA_PROJECTION_STORE: postgres
+  AUTODATA_NATS_ADDRESS: nats.example.internal:4222
+  AUTODATA_NATS_URL: nats://nats.example.internal:4222
+  AUTODATA_S3_ADDRESS: object-storage.example.internal:9000
+  AUTODATA_S3_ENDPOINT: object-storage.example.internal:9000
+  AUTODATA_SOURCE_BUCKET: autodata-sources
+  AUTODATA_EMBEDDING_MODE: provider
+  AUTODATA_WORKER_HEARTBEAT_SECONDS: "30"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autodata-api
+  labels:
+    app.kubernetes.io/name: autodata-api
+    app.kubernetes.io/part-of: autodata
+spec:
+  selector:
+    app.kubernetes.io/name: autodata-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autodata-api
+  labels:
+    app.kubernetes.io/name: autodata-api
+    app.kubernetes.io/part-of: autodata
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: autodata-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: autodata-api
+        app.kubernetes.io/part-of: autodata
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          image: ghcr.io/lucronn/autodata-api:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: autodata-config
+            - secretRef:
+                name: autodata-runtime-secrets
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autodata-ingestion-worker
+  labels:
+    app.kubernetes.io/name: autodata-ingestion-worker
+    app.kubernetes.io/part-of: autodata
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: autodata-ingestion-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: autodata-ingestion-worker
+        app.kubernetes.io/part-of: autodata
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: ingestion-worker
+          image: ghcr.io/lucronn/autodata-ingestion-worker:dev
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: autodata-config
+            - secretRef:
+                name: autodata-runtime-secrets
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "from autodata_ingestion.worker import run_once; assert run_once()['status'] == 'idle'"]
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "from autodata_ingestion.worker import run_once; assert run_once()['status'] == 'idle'"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autodata-enrichment-worker
+  labels:
+    app.kubernetes.io/name: autodata-enrichment-worker
+    app.kubernetes.io/part-of: autodata
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: autodata-enrichment-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: autodata-enrichment-worker
+        app.kubernetes.io/part-of: autodata
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: enrichment-worker
+          image: ghcr.io/lucronn/autodata-enrichment-worker:dev
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: autodata-config
+            - secretRef:
+                name: autodata-runtime-secrets
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "from autodata_enrichment.worker import run_once; assert run_once()['status'] == 'idle'"]
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "from autodata_enrichment.worker import run_once; assert run_once()['status'] == 'idle'"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: autodata-migrations
+  labels:
+    app.kubernetes.io/name: autodata-migrations
+    app.kubernetes.io/part-of: autodata
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: autodata-migrations
+        app.kubernetes.io/part-of: autodata
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migration-runner
+          image: ghcr.io/lucronn/autodata-migration-runner:dev
+          imagePullPolicy: IfNotPresent
+          command: ["/app/bin/migrate"]
+          envFrom:
+            - configMapRef:
+                name: autodata-config
+            - secretRef:
+                name: autodata-runtime-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: autodata-api
+  labels:
+    app.kubernetes.io/name: autodata-api
+    app.kubernetes.io/part-of: autodata
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: autodata-api

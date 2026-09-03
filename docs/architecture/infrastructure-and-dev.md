@@ -193,6 +193,10 @@ The deployment design is provider-neutral and Kubernetes-compatible:
 
 The platform keeps cloud-specific adapters behind interfaces for ingress, secrets, object storage, managed PostgreSQL, and observability. Docker Compose remains the contract for local parity; Kubernetes manifests are the contract for deployable topology, not a requirement to operate Kubernetes during development.
 
+The initial deployable baseline is `infra/k8s/base.yaml`. It contains the API Service and two-replica rolling Deployment, independently scalable ingestion and enrichment Deployments, a one-shot migration Job, and an API PodDisruptionBudget. The manifest references the externally managed `autodata-runtime-secrets` Secret and deliberately does not define or embed secret values. The `autodata-config` endpoint values and image references are provider-neutral defaults that must be replaced by an environment overlay before a cluster apply. Migration images are built and published as release artifacts; the migration Job is run and verified before API rollout.
+
+Validate the manifest structure locally with `python scripts/dev/test_k8s_manifests.py`. A cluster-specific deployment pipeline may additionally run `kubectl apply --dry-run=server` against the target cluster and then apply the same reviewed manifest plus its environment overlay. The repository does not assume a Kubernetes context is available on a developer workstation.
+
 ## Reliability behavior
 
 - Database writes and publication events use an outbox record so a committed revision cannot silently lose its event.
