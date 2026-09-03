@@ -26,6 +26,7 @@ _JSON_TYPES = {"application/json", "application/problem+json", "text/json"}
 _STRUCTURED_TYPES = _JSON_TYPES | {"application/xml", "text/xml", "text/csv"}
 _DOCUMENT_TYPES = {"text/html", "application/pdf", "text/plain"}
 _DIAGRAM_TYPES = {"image/svg+xml"}
+_IMAGE_TYPES = {"image/bmp", "image/jpeg", "image/png", "image/tiff", "image/webp"}
 _GENERIC_MEDIA_TYPES = {"application/octet-stream", "binary/octet-stream", "text/plain"}
 
 
@@ -228,6 +229,8 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
         )
     if resource.media_type in _DIAGRAM_TYPES:
         return _adapt_svg_resource(resource, metadata)
+    if resource.media_type in _IMAGE_TYPES:
+        return _adapt_image_resource(resource, metadata)
     if resource.media_type in _DOCUMENT_TYPES:
         return _adapt_document_resource(resource, metadata)
     if resource.media_type == "text/csv":
@@ -569,6 +572,58 @@ def _adapt_svg_resource(
         payload=resource.payload,
         raw_payload=resource.payload,
         metadata=extraction_metadata,
+        candidates=tuple(candidates),
+    )
+
+
+def extract_image_text(
+    content_sha256: str,
+    payload: bytes,
+    media_type: str,
+) -> Iterable[Any]:
+    """Load the configured OCR provider lazily to keep intake provider-neutral."""
+
+    from .ocr import extract_image_text as extract
+
+    return extract(content_sha256, payload, media_type)
+
+
+def _adapt_image_resource(
+    resource: SourceResource,
+    metadata: dict[str, Any],
+) -> SourceArtifact:
+    """Run optional OCR and retain the original image when it is unavailable."""
+
+    from .ocr import build_ocr_candidates
+
+    try:
+        blocks = extract_image_text(resource.content_sha256, resource.payload, resource.media_type)
+        candidates = build_ocr_candidates(resource.content_sha256, blocks)
+    except Exception as error:
+        return _binary_artifact(
+            "document",
+            resource,
+            {
+                **metadata,
+                "media_role": "image",
+                "extraction_status": "needs_review",
+                "extraction_error": f"image OCR unavailable: {error}",
+            },
+        )
+    return SourceArtifact(
+        kind="document",
+        source_uri=resource.source_uri,
+        source_version=resource.source_version,
+        media_type=resource.media_type,
+        content_sha256=resource.content_sha256,
+        payload=resource.payload,
+        raw_payload=resource.payload,
+        metadata={
+            **metadata,
+            "media_role": "image",
+            "extracted_region_count": len(candidates),
+            "extraction_status": "candidate_ready" if candidates else "needs_review",
+        },
         candidates=tuple(candidates),
     )
 

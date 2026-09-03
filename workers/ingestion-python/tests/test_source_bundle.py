@@ -1,5 +1,6 @@
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -7,6 +8,7 @@ ROOT = Path(__file__).parents[3]
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from autodata_ingestion.source_adapters import SourceResource, adapt_source_resource  # noqa: E402
+from autodata_ingestion.ocr import OCRTextBlock  # noqa: E402
 from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E402
 
 
@@ -100,6 +102,33 @@ class SourceBundleTests(unittest.TestCase):
             "Inspect the brake connector before service.",
         )
         self.assertEqual(document_evidence[0]["reviewer_state"], "pending")
+
+    def test_ocr_evidence_preserves_provider_confidence(self):
+        image = SourceResource.from_bytes(
+            "provider://vehicle/wiring.png",
+            "source-v1",
+            b"image bytes",
+            "image/png",
+        )
+        identity = SourceResource.from_bytes(
+            "provider://vehicle/name",
+            "source-v1",
+            b'{"body":"2019 Cadillac Escalade ESV"}',
+            "application/json",
+        )
+
+        with patch(
+            "autodata_ingestion.source_adapters.extract_image_text",
+            return_value=(OCRTextBlock("C101", 0.88, (1, 2, 30, 10)),),
+        ):
+            bundle = normalize_source_bundle(
+                [adapt_source_resource(identity), adapt_source_resource(image)], "US"
+            )
+
+        image_evidence = [item for item in bundle.evidence if item["content_sha256"] == image.content_sha256]
+        self.assertEqual(len(image_evidence), 1)
+        self.assertEqual(image_evidence[0]["confidence"], 0.88)
+        self.assertEqual(image_evidence[0]["extracted_text"], "C101")
 
     def test_price_parser_rejects_ambiguous_currency_instead_of_guessing(self):
         resources = [

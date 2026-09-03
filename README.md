@@ -50,11 +50,13 @@ The source normalizer accepts mixed JSON/API envelopes, XML, CSV, HTML, plain
 text, PDF, SVG, and unsupported media without relying on filenames. It retains
 raw bytes and provenance, emits typed candidates where the shape is recognized,
 extracts literal HTML/plain text, page-level text from text-based PDFs, and
-literal SVG labels into reviewable evidence, and routes ambiguous or unknown
-material to review. New source media types can register an adapter without
-changing the connector or event contract; scanned PDFs, unlabeled diagrams,
-and other unconfigured binary types remain content-addressed raw artifacts
-until an explicit OCR/media extractor is deployed.
+literal SVG labels into reviewable evidence. Configured raster images can use
+the worker's Tesseract OCR boundary to emit confidence-aware region evidence.
+Ambiguous or unknown material is routed to review. New source media types can
+register an adapter without changing the connector or event contract; scanned
+PDFs, unlabeled diagrams, OCR-unavailable images, and other unconfigured
+binary types remain content-addressed raw artifacts until an explicit
+rasterization/OCR/media extractor is deployed.
 
 For a local-only source directory:
 

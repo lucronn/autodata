@@ -5,6 +5,8 @@ requires-python = ">=3.12"
 dependencies = [
     "minio>=7.2,<8",
     "nats-py>=2.9,<3",
+    "Pillow>=11,<13",
     "pypdf>=5,<6",
     "psycopg[binary]>=3.2,<4",
+    "pytesseract>=0.3,<0.4",
 ]
