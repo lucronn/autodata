@@ -133,6 +133,21 @@ python3 scripts/dev/normalize_source_directory.py "sample data" --region US
 
 The command reports the normalized vehicle, typed candidate counts, evidence count, and quarantine reasons. It exits non-zero for missing directories or invalid source payloads. Raw sample files remain local fixtures unless their redistribution terms are explicitly approved.
 
+The same provider-neutral path can run once through the ingestion worker boundary. This is useful for a local source drop and exercises connector discovery, content-first media detection, normalization, and quality evaluation without requiring a provider-specific adapter:
+
+```sh
+AUTODATA_SOURCE_DIRECTORY=/sample-data \
+AUTODATA_SOURCE_VERSION=local-sample-v1 \
+AUTODATA_SOURCE_REGION=US \
+AUTODATA_SOURCE_PERSIST=0 \
+AUTODATA_WORKER_ONCE=1 \
+docker compose -f infra/compose/compose.yaml run --rm --no-deps \
+  -v "$PWD/sample data:/sample-data:ro" \
+  ingestion-worker python -m autodata_ingestion.worker
+```
+
+The worker emits a deterministic JSON summary with bundle readiness, quality/review status, source artifact count, evidence count, and quarantine reasons. Set `AUTODATA_SOURCE_PERSIST=1` only when the local PostgreSQL and MinIO connection variables are configured; this remains an explicit local execution path, not the production NATS dispatcher.
+
 Persistence is opt-in and local-only. When database and object-storage variables are configured, append `--persist` to write content-addressed artifacts and normalized records to the Compose stack. A bundle with review items is still stored for audit, but it cannot be treated as fully publishable until its quarantine items are resolved.
 
 To persist a local directory through the same container image used by the ingestion worker, mount the directory read-only and provide only local development values:
