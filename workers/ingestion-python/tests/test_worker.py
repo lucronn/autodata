@@ -5,7 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
@@ -95,6 +95,55 @@ class IngestionWorkerTests(unittest.TestCase):
 
         self.assertNotIn("RuntimeWarning", completed.stderr)
         self.assertEqual(json.loads(completed.stdout), {"worker": "ingestion", "lane": "fast", "status": "idle"})
+
+    def test_fast_event_json_dispatches_a_source_descriptor_through_the_worker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "vehicle.json").write_bytes(b'{"body":"2019 Cadillac Escalade ESV"}')
+            fast_event = {
+                "event_id": "event-1",
+                "event_type": "dataset.fast.requested",
+                "event_version": 1,
+                "occurred_at": "2026-09-03T12:00:00+00:00",
+                "producer": "payment-reconciler",
+                "request_id": "request-1",
+                "projection_id": "projection-1",
+                "revision_id": None,
+                "correlation_id": "correlation-1",
+                "idempotency_key": "fast-request-1",
+                "payload": {
+                    "vehicle_key": "cadillac-escalade-esv-2019-us",
+                    "region": "US",
+                    "source": {"kind": "directory", "location": directory, "version": "drop-v1"},
+                },
+            }
+            with patch.dict(
+                "os.environ",
+                {
+                    "AUTODATA_SOURCE_DIRECTORY": "",
+                    "AUTODATA_SOURCE_URI": "",
+                    "AUTODATA_FAST_EVENT_JSON": json.dumps(fast_event),
+                    "AUTODATA_SOURCE_PERSIST": "0",
+                },
+                clear=False,
+            ):
+                result = run_once()
+
+        self.assertEqual(result["request_id"], "request-1")
+        self.assertEqual(result["projection_id"], "projection-1")
+        self.assertEqual(result["idempotency_key"], "fast-request-1")
+        self.assertEqual(result["bundle_status"], "ready")
+        self.assertEqual(result["vehicle_key"], "cadillac-escalade-esv-2019-us")
+
+    def test_nats_once_delegates_to_the_durable_consumer(self):
+        with patch("autodata_ingestion.consumer.consume_once", new_callable=AsyncMock) as consume:
+            consume.return_value = {"status": "idle", "received": 0}
+
+            from autodata_ingestion.worker import run_nats_once
+
+            result = run_nats_once()
+
+        self.assertEqual(result, {"status": "idle", "received": 0})
+        consume.assert_awaited_once()
 
 
 if __name__ == "__main__":

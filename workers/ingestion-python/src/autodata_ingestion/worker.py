@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import asyncio
 import os
 import time
 
@@ -16,6 +17,9 @@ def run_once() -> dict[str, object]:
     source_uri = os.getenv("AUTODATA_SOURCE_URI", "").strip()
     if source_uri:
         return run_source_uri(source_uri)
+    fast_event = os.getenv("AUTODATA_FAST_EVENT_JSON", "").strip()
+    if fast_event:
+        return run_fast_event(fast_event)
 
     return {"worker": "ingestion", "lane": "fast", "status": "idle"}
 
@@ -43,6 +47,60 @@ def run_source_uri(source_uri: str) -> dict[str, str | int | list[str]]:
         timeout_seconds=float(os.getenv("AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS", "30")),
         max_bytes=int(os.getenv("AUTODATA_SOURCE_MAX_BYTES", str(50 * 1024 * 1024))),
         request_headers=_source_request_headers(),
+    )
+    return _run_connector(connector)
+
+
+def run_fast_event(serialized_event: str) -> dict[str, object]:
+    """Dispatch one validated fast-lane event through its source connector."""
+
+    from .fast_lane import FastLaneRequest, connector_for_request
+
+    try:
+        envelope = json.loads(serialized_event)
+    except json.JSONDecodeError as error:
+        raise ValueError("AUTODATA_FAST_EVENT_JSON must be valid JSON") from error
+    request = FastLaneRequest.from_envelope(envelope)
+    connector = connector_for_request(
+        request,
+        request_headers=_source_request_headers(),
+        timeout_seconds=float(os.getenv("AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS", "30")),
+        max_bytes=int(os.getenv("AUTODATA_SOURCE_MAX_BYTES", str(50 * 1024 * 1024))),
+    )
+    return {
+        **_run_connector(connector),
+        "request_id": request.request_id,
+        "projection_id": request.projection_id,
+        "correlation_id": request.correlation_id,
+        "idempotency_key": request.idempotency_key,
+        "processing_version": request.processing_version,
+    }
+
+
+def run_nats_once() -> dict[str, object]:
+    """Poll one durable fast-lane message through the shared source handler."""
+
+    from .consumer import consume_once
+
+    return asyncio.run(
+        consume_once(
+            _handle_fast_request,
+            fetch_timeout=float(os.getenv("AUTODATA_FAST_CONSUMER_FETCH_TIMEOUT_SECONDS", "1")),
+            max_deliveries=int(os.getenv("AUTODATA_FAST_CONSUMER_MAX_DELIVERIES", "3")),
+        )
+    )
+
+
+def _handle_fast_request(request: object) -> dict[str, str | int | list[str]]:
+    from .fast_lane import FastLaneRequest, connector_for_request
+
+    if not isinstance(request, FastLaneRequest):
+        raise TypeError("fast-lane handler received an invalid request")
+    connector = connector_for_request(
+        request,
+        request_headers=_source_request_headers(),
+        timeout_seconds=float(os.getenv("AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS", "30")),
+        max_bytes=int(os.getenv("AUTODATA_SOURCE_MAX_BYTES", str(50 * 1024 * 1024))),
     )
     return _run_connector(connector)
 
@@ -99,11 +157,14 @@ def _run_connector(connector: object) -> dict[str, str | int | list[str]]:
 
 def main() -> None:
     interval = float(os.getenv("AUTODATA_WORKER_HEARTBEAT_SECONDS", "30"))
+    consumer_enabled = os.getenv("AUTODATA_FAST_CONSUMER_ENABLED") == "1"
     if os.getenv("AUTODATA_WORKER_ONCE") == "1":
-        print(json.dumps(run_once(), sort_keys=True))
+        result = run_nats_once() if consumer_enabled else run_once()
+        print(json.dumps(result, sort_keys=True))
         return
     while True:
-        print(json.dumps(run_once(), sort_keys=True), flush=True)
+        result = run_nats_once() if consumer_enabled else run_once()
+        print(json.dumps(result, sort_keys=True), flush=True)
         time.sleep(interval)
 
 
