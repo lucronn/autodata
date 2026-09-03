@@ -177,4 +177,6 @@ Stripe is the reference production adapter. The local fake provider emits determ
 
 Every published fact must resolve to a source snapshot and, for extracted document content, an extraction run and evidence record. Evidence includes source document, page number, bounding box or region when available, extracted string, confidence, model version, reviewer state, and timestamps.
 
+Approved evidence may be indexed in the `extraction_evidence.embedding` `vector(1536)` column. Embedding generation is behind the provider-neutral worker boundary and records its provider/version in the revision changelog; the local deterministic adapter is only a reproducible development implementation. Pending or rejected evidence is never embedded for purchaser-facing retrieval, and a missing vector does not alter the already-published dataset revision.
+
 A stale revision may be requested only when the caller is entitled to that revision. The default dataset read returns the latest permitted revision. A revision is never updated in place; corrections, enrichment, unit conversion changes, and source replacement produce a new revision with a changelog.

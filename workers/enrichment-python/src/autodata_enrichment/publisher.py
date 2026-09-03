@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from .embeddings import embedding_provider_from_env, format_pgvector
 from .section_lifecycle import (
     DeepSectionValidationError,
     deep_job_idempotency_key,
@@ -152,6 +153,7 @@ def publish_deep_section(job: DeepSectionJob) -> dict[str, Any]:
     from psycopg.types.json import Jsonb
 
     now = _timestamp()
+    embedding_provider = embedding_provider_from_env()
     with psycopg.connect(**_connection_kwargs()) as connection:
         with connection.cursor() as cursor:
             dataset = _load_dataset(cursor, job.projection_id)
@@ -230,14 +232,15 @@ def publish_deep_section(job: DeepSectionJob) -> dict[str, Any]:
                     """
                     INSERT INTO extraction_evidence
                         (extraction_evidence_id, source_snapshot_id, extraction_run_id,
-                         locator, artifact_key, extracted_text, confidence, reviewer_state)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved')
+                         locator, artifact_key, extracted_text, confidence, reviewer_state, embedding)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved', %s::vector)
                     ON CONFLICT (extraction_evidence_id) DO UPDATE SET
                         locator = EXCLUDED.locator,
                         artifact_key = EXCLUDED.artifact_key,
                         extracted_text = EXCLUDED.extracted_text,
                         confidence = EXCLUDED.confidence,
-                        reviewer_state = EXCLUDED.reviewer_state
+                        reviewer_state = EXCLUDED.reviewer_state,
+                        embedding = EXCLUDED.embedding
                     """,
                     (
                         evidence_id,
@@ -247,6 +250,7 @@ def publish_deep_section(job: DeepSectionJob) -> dict[str, Any]:
                         item.get("artifact_key", f"source-snapshot/{source_snapshot_id}"),
                         item["extracted_text"],
                         item["confidence"],
+                        format_pgvector(embedding_provider.embed(item["extracted_text"])),
                     ),
                 )
 
@@ -264,6 +268,8 @@ def publish_deep_section(job: DeepSectionJob) -> dict[str, Any]:
                 "source_snapshot_id": source_snapshot_id,
                 "source_watermark": source_version,
                 "processing_version": job.processing_version,
+                "embedding_provider": embedding_provider.name,
+                "embedding_version": embedding_provider.version,
                 "prior_revision_id": prior_revision_id,
                 "evidence_ids": evidence_ids,
             }
