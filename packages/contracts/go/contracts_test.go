@@ -35,6 +35,9 @@ func TestGeneratedBindingsExposeLifecycleAndEventSubjects(t *testing.T) {
 	if !contains(EventSubjects, "dataset.section.published") {
 		t.Fatal("event subjects must include section publication")
 	}
+	if !contains(EventSubjects, "dataset.knowledge.fallback.requested") {
+		t.Fatal("event subjects must include knowledge fallback requests")
+	}
 	if !contains(KnowledgeResultKindValues, "article") || !contains(KnowledgeResultKindValues, "procedure") {
 		t.Fatal("knowledge result kinds must include article and procedure")
 	}

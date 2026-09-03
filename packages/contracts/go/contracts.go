@@ -5,7 +5,7 @@ const SchemaVersion = 1
 
 var DatasetAvailabilityValues = []string{"purchased", "fast_lane_processing", "viewable", "enriching", "complete", "failed", "needs_review", "revoked"}
 var SectionStatusValues = []string{"pending", "processing", "viewable", "complete", "failed", "needs_review"}
-var EventSubjects = []string{"dataset.fast.requested", "dataset.viewable", "dataset.deep.requested", "dataset.section.published", "dataset.enrichment.failed", "dataset.review.requested", "dataset.revision.revoked"}
+var EventSubjects = []string{"dataset.fast.requested", "dataset.viewable", "dataset.deep.requested", "dataset.knowledge.fallback.requested", "dataset.section.published", "dataset.enrichment.failed", "dataset.review.requested", "dataset.revision.revoked"}
 var KnowledgeResultKindValues = []string{"article", "procedure"}
 var EntitlementStatusValues = []string{"active", "revoked"}
 var FeedbackCategoryValues = []string{"correction", "missing", "quality", "safety"}

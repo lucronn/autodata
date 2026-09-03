@@ -53,11 +53,12 @@ func (staticReadiness) Check() map[string]string {
 }
 
 type Server struct {
-	readiness   ReadinessChecker
-	auth        Authenticator
-	requests    RequestStore
-	projections ProjectionStore
-	metrics     *apiMetrics
+	readiness                  ReadinessChecker
+	auth                       Authenticator
+	requests                   RequestStore
+	projections                ProjectionStore
+	knowledgeFallbackPublisher KnowledgeFallbackPublisher
+	metrics                    *apiMetrics
 }
 
 func NewServer(readiness ReadinessChecker) *Server {
@@ -65,16 +66,24 @@ func NewServer(readiness ReadinessChecker) *Server {
 }
 
 func NewServerWithDependencies(readiness ReadinessChecker, auth Authenticator, requests RequestStore, projections ...ProjectionStore) *Server {
+	return NewServerWithDependenciesAndPublisher(readiness, auth, requests, newMemoryKnowledgeFallbackPublisher(), projections...)
+}
+
+func NewServerWithDependenciesAndPublisher(readiness ReadinessChecker, auth Authenticator, requests RequestStore, publisher KnowledgeFallbackPublisher, projections ...ProjectionStore) *Server {
 	projectionStore := ProjectionStore(newMemoryProjectionStore())
 	if len(projections) > 0 && projections[0] != nil {
 		projectionStore = projections[0]
 	}
+	if publisher == nil {
+		publisher = newMemoryKnowledgeFallbackPublisher()
+	}
 	return &Server{
-		readiness:   readiness,
-		auth:        auth,
-		requests:    requests,
-		projections: projectionStore,
-		metrics:     new(apiMetrics),
+		readiness:                  readiness,
+		auth:                       auth,
+		requests:                   requests,
+		projections:                projectionStore,
+		knowledgeFallbackPublisher: publisher,
+		metrics:                    new(apiMetrics),
 	}
 }
 
@@ -442,9 +451,13 @@ func main() {
 		log.Fatal(fmt.Errorf("configure API stores: %w", err))
 	}
 	defer cleanup()
+	publisher, err := configuredKnowledgeFallbackPublisher(projectionStore)
+	if err != nil {
+		log.Fatal(fmt.Errorf("configure knowledge fallback publisher: %w", err))
+	}
 	server := &http.Server{
 		Addr:              address,
-		Handler:           NewServerWithDependencies(configuredReadiness(), HeaderAuthenticator{}, requestStore, projectionStore).Handler(),
+		Handler:           NewServerWithDependenciesAndPublisher(configuredReadiness(), HeaderAuthenticator{}, requestStore, publisher, projectionStore).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	log.Printf("autodata api listening on %s", address)
@@ -466,4 +479,15 @@ func configuredStores(ctx context.Context) (RequestStore, ProjectionStore, func(
 		return nil, nil, func() {}, err
 	}
 	return newPostgresRequestStore(store.pool), store, store.Close, nil
+}
+
+func configuredKnowledgeFallbackPublisher(projection ProjectionStore) (KnowledgeFallbackPublisher, error) {
+	if os.Getenv("AUTODATA_PROJECTION_STORE") != "postgres" {
+		return newMemoryKnowledgeFallbackPublisher(), nil
+	}
+	store, ok := projection.(*postgresProjectionStore)
+	if !ok || store == nil || store.pool == nil {
+		return nil, fmt.Errorf("postgres projection store is required for durable knowledge fallback publishing")
+	}
+	return newPostgresKnowledgeFallbackPublisher(store.pool), nil
 }

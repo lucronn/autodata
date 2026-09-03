@@ -8,7 +8,7 @@ from typing import Any
 SCHEMA_VERSION = 1
 DATASET_AVAILABILITY_VALUES = ('purchased', 'fast_lane_processing', 'viewable', 'enriching', 'complete', 'failed', 'needs_review', 'revoked',)
 SECTION_STATUS_VALUES = ('pending', 'processing', 'viewable', 'complete', 'failed', 'needs_review',)
-EVENT_SUBJECTS = ('dataset.fast.requested', 'dataset.viewable', 'dataset.deep.requested', 'dataset.section.published', 'dataset.enrichment.failed', 'dataset.review.requested', 'dataset.revision.revoked',)
+EVENT_SUBJECTS = ('dataset.fast.requested', 'dataset.viewable', 'dataset.deep.requested', 'dataset.knowledge.fallback.requested', 'dataset.section.published', 'dataset.enrichment.failed', 'dataset.review.requested', 'dataset.revision.revoked',)
 KNOWLEDGE_RESULT_KIND_VALUES = ('article', 'procedure',)
 ENTITLEMENT_STATUS_VALUES = ('active', 'revoked',)
 FEEDBACK_CATEGORY_VALUES = ('correction', 'missing', 'quality', 'safety',)
