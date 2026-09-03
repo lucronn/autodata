@@ -119,6 +119,15 @@ def evaluate_source_bundle(bundle: SourceBundle) -> QualityReport:
                 "the bundle has no canonical vehicle identity",
             )
         )
+    for conflict in bundle.conflicts:
+        findings.append(
+            QualityFinding(
+                "source_conflict",
+                "critical",
+                f"conflicting source candidates require human resolution for {conflict.get('field', 'a domain field')}",
+                conflict.get("kind"),
+            )
+        )
 
     findings = _aggregate_findings(findings)
     coverage = resolved / len(referenced) if referenced else 0.0

@@ -44,6 +44,8 @@ The intake layer computes `content_sha256`, stores the raw resource before extra
 
 One dataset request may combine resources from different protocols and media types. The request correlation ID joins them, while each resource retains its own hash, source version, object key, extraction run, and evidence path. Duplicate payloads deduplicate by content hash, and distinct versions remain auditable.
 
+When two or more source resources provide incompatible candidates for the same canonical field, normalization emits a conflict record containing the field, every candidate value, source URI/version, and evidence IDs. The affected fact is not selected by arrival order or filename; it remains unresolved until a reviewer records a decision. Conflict records are part of the normalized bundle and quality report, so a later implementation can persist and resolve them without changing the universal resource contract.
+
 ## Public API
 
 The API is projection-oriented. Clients do not depend on table names or internal canonical joins.
