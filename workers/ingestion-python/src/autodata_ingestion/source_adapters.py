@@ -412,7 +412,7 @@ def _adapt_document_resource(
     """Extract only literal text from safe document types; preserve other bytes."""
 
     if resource.media_type == "application/pdf":
-        return _binary_artifact("document", resource, {**metadata, "extraction_status": "needs_review"})
+        return _adapt_pdf_resource(resource, metadata)
     try:
         if resource.media_type == "text/html":
             text = _html_text(resource.payload)
@@ -443,6 +443,78 @@ def _adapt_document_resource(
         raw_payload=resource.payload,
         metadata={**metadata, "extraction_status": "candidate_ready", "text_char_count": len(text)},
         candidates=(candidate,),
+    )
+
+
+def _adapt_pdf_resource(
+    resource: SourceResource,
+    metadata: dict[str, Any],
+) -> SourceArtifact:
+    """Extract text per page when the optional PDF extractor is available."""
+
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return _binary_artifact(
+            "document",
+            resource,
+            {
+                **metadata,
+                "extraction_status": "needs_review",
+                "extraction_error": "PDF text extractor is not installed",
+            },
+        )
+
+    try:
+        reader = PdfReader(io.BytesIO(resource.payload))
+        pages = list(reader.pages)
+    except Exception as error:
+        return _binary_artifact(
+            "document",
+            resource,
+            {
+                **metadata,
+                "extraction_status": "needs_review",
+                "extraction_error": f"PDF could not be read: {error}",
+            },
+        )
+
+    candidates: list[NormalizationCandidate] = []
+    page_errors: list[dict[str, str]] = []
+    for index, page in enumerate(pages, start=1):
+        try:
+            text = re.sub(r"\s+", " ", str(page.extract_text() or "")).strip()
+        except Exception as error:
+            page_errors.append({"locator": f"page:{index}", "error": str(error)})
+            continue
+        if text:
+            candidates.append(
+                NormalizationCandidate(
+                    "document_text",
+                    f"document-text:{resource.content_sha256}:page:{index}",
+                    {"text": text},
+                    f"page:{index}",
+                )
+            )
+
+    extraction_metadata: dict[str, Any] = {
+        **metadata,
+        "page_count": len(pages),
+        "extracted_page_count": len(candidates),
+        "extraction_status": "candidate_ready" if candidates else "needs_review",
+    }
+    if page_errors:
+        extraction_metadata["page_errors"] = page_errors
+    return SourceArtifact(
+        kind="document",
+        source_uri=resource.source_uri,
+        source_version=resource.source_version,
+        media_type=resource.media_type,
+        content_sha256=resource.content_sha256,
+        payload=resource.payload,
+        raw_payload=resource.payload,
+        metadata=extraction_metadata,
+        candidates=tuple(candidates),
     )
 
 
