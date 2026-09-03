@@ -75,39 +75,7 @@ def process_search_request(request: Any) -> dict[str, Any]:
     does not infer or write canonical vehicle facts.
     """
 
-    import psycopg
-
-    with psycopg.connect(**_connection_kwargs()) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT ee.extraction_evidence_id::text, ee.locator,
-                       ee.artifact_key, ee.extracted_text, ee.confidence,
-                       ee.reviewer_state
-                FROM dataset_projections dp
-                JOIN dataset_requests dr ON dr.dataset_request_id = dp.dataset_request_id
-                JOIN entitlements e ON e.entitlement_id = dp.entitlement_id
-                JOIN extraction_evidence ee ON ee.source_snapshot_id = dr.source_snapshot_id
-                WHERE dp.dataset_projection_id = %s
-                  AND dr.source_snapshot_id = %s
-                  AND dr.status <> 'revoked'
-                  AND e.status <> 'revoked'
-                  AND ee.reviewer_state = 'approved'
-                ORDER BY ee.locator, ee.extraction_evidence_id
-                """,
-                (request.projection_id, request.source_snapshot_id),
-            )
-            rows = [
-                {
-                    "evidence_id": row[0],
-                    "locator": row[1],
-                    "artifact_key": row[2],
-                    "extracted_text": row[3],
-                    "confidence": row[4],
-                    "reviewer_state": row[5],
-                }
-                for row in cursor.fetchall()
-            ]
+    rows = load_approved_source_evidence(request)
 
     try:
         content, evidence = build_search_index(
@@ -134,5 +102,45 @@ def register_builtin_processors() -> None:
     """Register processors shipped by this worker image."""
 
     from .deep_dispatch import register_section_processor
+    from .quality_processor import process_quality_request
 
     register_section_processor("search", process_search_request)
+    register_section_processor("quality", process_quality_request)
+
+
+def load_approved_source_evidence(request: Any) -> list[dict[str, Any]]:
+    """Load evidence scoped to the projection and source snapshot in a request."""
+
+    import psycopg
+
+    with psycopg.connect(**_connection_kwargs()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ee.extraction_evidence_id::text, ee.locator,
+                       ee.artifact_key, ee.extracted_text, ee.confidence,
+                       ee.reviewer_state
+                FROM dataset_projections dp
+                JOIN dataset_requests dr ON dr.dataset_request_id = dp.dataset_request_id
+                JOIN entitlements e ON e.entitlement_id = dp.entitlement_id
+                JOIN extraction_evidence ee ON ee.source_snapshot_id = dr.source_snapshot_id
+                WHERE dp.dataset_projection_id = %s
+                  AND dr.source_snapshot_id = %s
+                  AND dr.status <> 'revoked'
+                  AND e.status <> 'revoked'
+                  AND ee.reviewer_state = 'approved'
+                ORDER BY ee.locator, ee.extraction_evidence_id
+                """,
+                (request.projection_id, request.source_snapshot_id),
+            )
+            return [
+                {
+                    "evidence_id": row[0],
+                    "locator": row[1],
+                    "artifact_key": row[2],
+                    "extracted_text": row[3],
+                    "confidence": row[4],
+                    "reviewer_state": row[5],
+                }
+                for row in cursor.fetchall()
+            ]
