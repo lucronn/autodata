@@ -1,8 +1,3 @@
-
-
-![Repository Social Image](https://githubusercontent.com)
-
-
 # AutoData
 
 AutoData is a cloud-neutral, containerized automotive data platform. It turns
