@@ -83,6 +83,9 @@ def run_deep_once() -> dict[str, str]:
 
     from .deep_consumer import consume_once
     from .deep_dispatch import dispatch_validated_deep_request
+    from .search_processor import register_builtin_processors
+
+    register_builtin_processors()
 
     result = asyncio.run(
         consume_once(

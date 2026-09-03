@@ -10,8 +10,9 @@ The repository is a modular monorepo:
   and reviewer commands.
 - `workers/ingestion-python` — provider-neutral source intake, normalization,
   provenance, fast-lane publication, and payment reconciliation.
-- `workers/enrichment-python` — deep-lane section enrichment, embeddings,
-  immutable revisions, and publication outbox handling.
+- `workers/enrichment-python` — deep-lane section enrichment, the initial
+  evidence-backed search index, embeddings, immutable revisions, and
+  publication outbox handling.
 - `packages/contracts` — versioned API, event, and payment contracts.
 - `db/migrations` — forward-only PostgreSQL and pgvector schema migrations.
 - `infra/compose` and `infra/k8s` — local and Kubernetes-compatible topology.
