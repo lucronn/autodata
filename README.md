@@ -52,11 +52,12 @@ raw bytes and provenance, emits typed candidates where the shape is recognized,
 extracts literal HTML/plain text, page-level text from text-based PDFs, and
 literal SVG labels into reviewable evidence. Configured raster images can use
 the worker's Tesseract OCR boundary to emit confidence-aware region evidence.
-Ambiguous or unknown material is routed to review. New source media types can
-register an adapter without changing the connector or event contract; scanned
-PDFs, unlabeled diagrams, OCR-unavailable images, and other unconfigured
-binary types remain content-addressed raw artifacts until an explicit
-rasterization/OCR/media extractor is deployed.
+Mixed or scanned PDFs rasterize only pages without native text and send those
+pages through the same OCR/evidence boundary. Ambiguous or unknown material is
+routed to review. New source media types can register an adapter without
+changing the connector or event contract; if the optional PDF rasterizer or
+OCR runtime is unavailable, the original PDF remains a content-addressed raw
+artifact with `needs_review` status.
 
 For a local-only source directory:
 

@@ -176,6 +176,77 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual([candidate.locator for candidate in artifact.candidates], ["page:1", "page:2"])
         self.assertEqual(artifact.candidates[1].data["text"], "Safety warning")
 
+    def test_scanned_pdf_pages_use_ocr_for_blank_pages_and_preserve_page_regions(self):
+        class FakePage:
+            def __init__(self, text):
+                self._text = text
+
+            def extract_text(self):
+                return self._text
+
+        class FakeReader:
+            pages = [FakePage(""), FakePage("Native PDF text")]
+
+            def __init__(self, stream):
+                self.stream = stream
+
+        pdf = SourceResource.from_bytes(
+            "file://drop/mixed-manual.pdf",
+            "v1",
+            b"%PDF-1.7 mixed bytes",
+            "application/pdf",
+        )
+
+        with (
+            patch.dict(sys.modules, {"pypdf": types.SimpleNamespace(PdfReader=FakeReader)}),
+            patch(
+                "autodata_ingestion.source_adapters.extract_scanned_pdf_text",
+                return_value=(OCRTextBlock("Safety warning", 0.76, (2, 3, 40, 12), page_number=1),),
+            ) as extract_scanned,
+        ):
+            artifact = adapt_source_resource(pdf)
+
+        extract_scanned.assert_called_once_with(pdf.content_sha256, pdf.payload, {2})
+        self.assertEqual(artifact.metadata["extraction_mode"], "mixed_pdf_ocr")
+        self.assertEqual(artifact.metadata["rasterized_page_count"], 1)
+        self.assertEqual(artifact.metadata["extracted_region_count"], 1)
+        self.assertEqual([candidate.kind for candidate in artifact.candidates], ["document_text", "image_text"])
+        self.assertEqual(artifact.candidates[1].locator, "page:1:region:2,3,40,12")
+        self.assertEqual(artifact.candidates[1].data["page_number"], 1)
+
+    def test_scanned_pdf_failure_retains_raw_document_for_review(self):
+        class FakePage:
+            def extract_text(self):
+                return ""
+
+        class FakeReader:
+            pages = [FakePage()]
+
+            def __init__(self, stream):
+                self.stream = stream
+
+        pdf = SourceResource.from_bytes(
+            "file://drop/scanned-manual.pdf",
+            "v1",
+            b"%PDF-1.7 scanned bytes",
+            "application/pdf",
+        )
+
+        with (
+            patch.dict(sys.modules, {"pypdf": types.SimpleNamespace(PdfReader=FakeReader)}),
+            patch(
+                "autodata_ingestion.source_adapters.extract_scanned_pdf_text",
+                side_effect=RuntimeError("PDF rasterizer is not installed"),
+            ),
+        ):
+            artifact = adapt_source_resource(pdf)
+
+        self.assertEqual(artifact.raw_payload, pdf.payload)
+        self.assertEqual(artifact.candidates, ())
+        self.assertEqual(artifact.metadata["extraction_status"], "needs_review")
+        self.assertEqual(artifact.metadata["rasterization_status"], "unavailable")
+        self.assertIn("rasterizer", artifact.metadata["extraction_error"])
+
     def test_svg_extracts_literal_labels_without_interpreting_geometry(self):
         svg = SourceResource.from_bytes(
             "file://drop/wiring.svg",
