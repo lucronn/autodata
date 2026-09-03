@@ -75,6 +75,12 @@ repository. Do not stage or publish source payloads unless their redistribution
 terms have been explicitly approved. The Compose-mounted persistence form and
 its review semantics are documented in the infrastructure guide.
 
+The normalizer also emits a `source_report` array with one payload-free record
+per resource. It includes the source URI/version, media type, content hash,
+artifact kind, candidate counts and kinds, extraction status, and stable review
+reasons. Embedded-resource summaries include their locator and content hash but
+never copy raw source contents or credentials.
+
 The same pipeline can run through the ingestion worker boundary instead of the
 developer script:
 
