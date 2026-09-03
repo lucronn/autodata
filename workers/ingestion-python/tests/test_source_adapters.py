@@ -160,6 +160,60 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(artifact.kind, "structured")
         self.assertEqual(artifact.metadata["extraction_status"], "needs_review")
 
+    def test_csv_records_emit_conservative_vehicle_and_part_candidates(self):
+        resource = SourceResource.from_bytes(
+            "file://drop/catalog.csv",
+            "v1",
+            (
+                b"record_type,make,model,year,region,partNumber,partDescription\n"
+                b"vehicle,Toyota,Corolla,2024,US,,\n"
+                b"part,,,,US,A-1,Oil filter\n"
+            ),
+            None,
+        )
+
+        artifact = adapt_source_resource(resource)
+
+        self.assertEqual(artifact.kind, "structured")
+        self.assertEqual(artifact.metadata["record_count"], 2)
+        self.assertEqual([candidate.kind for candidate in artifact.candidates], ["vehicle_identity", "part"])
+        self.assertEqual(artifact.candidates[0].data["make"], "Toyota")
+        self.assertEqual(artifact.candidates[1].data["partNumber"], "A-1")
+
+    def test_xml_records_emit_conservative_vehicle_and_part_candidates(self):
+        resource = SourceResource.from_bytes(
+            "https://source.example/catalog.xml",
+            "v1",
+            (
+                b"<catalog><vehicle><make>Toyota</make><model>Corolla</model>"
+                b"<year>2024</year><region>US</region></vehicle>"
+                b"<part><partNumber>A-1</partNumber><description>Oil filter</description></part></catalog>"
+            ),
+            None,
+        )
+
+        artifact = adapt_source_resource(resource)
+
+        self.assertEqual(artifact.kind, "structured")
+        self.assertEqual(artifact.metadata["record_count"], 2)
+        self.assertEqual([candidate.kind for candidate in artifact.candidates], ["vehicle_identity", "part"])
+        self.assertEqual(artifact.candidates[0].locator, "vehicle")
+        self.assertEqual(artifact.candidates[1].data["partNumber"], "A-1")
+
+    def test_malformed_structured_content_is_retained_for_review(self):
+        resource = SourceResource.from_bytes(
+            "file://drop/broken.xml",
+            "v1",
+            b"<catalog><vehicle>",
+            "application/xml",
+        )
+
+        artifact = adapt_source_resource(resource)
+
+        self.assertEqual(artifact.kind, "structured")
+        self.assertEqual(artifact.metadata["extraction_status"], "needs_review")
+        self.assertIn("extraction_error", artifact.metadata)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 import mimetypes
 import re
@@ -17,6 +18,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 from urllib.parse import urlparse
+from xml.etree import ElementTree
 
 
 _JSON_TYPES = {"application/json", "application/problem+json", "text/json"}
@@ -209,8 +211,10 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
         return _binary_artifact("diagram", resource, metadata)
     if resource.media_type in _DOCUMENT_TYPES:
         return _binary_artifact("document", resource, metadata)
-    if resource.media_type in {"application/xml", "text/xml", "text/csv"}:
-        return _binary_artifact("structured", resource, metadata)
+    if resource.media_type == "text/csv":
+        return _adapt_csv_resource(resource, metadata)
+    if resource.media_type in {"application/xml", "text/xml"}:
+        return _adapt_xml_resource(resource, metadata)
     return _binary_artifact("quarantine", resource, {**metadata, "quarantine_reason": "unsupported_media_type"})
 
 
@@ -263,6 +267,187 @@ def classify_json_candidates(document: Any) -> list[NormalizationCandidate]:
         if "html" in body or "pdf" in body:
             candidates.append(NormalizationCandidate("document", f"document:{document_id}", body, "body"))
     return candidates
+
+
+def _adapt_csv_resource(resource: SourceResource, metadata: dict[str, Any]) -> SourceArtifact:
+    try:
+        text = resource.payload.decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(text))
+        if not reader.fieldnames or any(not str(field).strip() for field in reader.fieldnames):
+            raise ValueError("CSV source is missing a non-empty header")
+        records = [dict(row) for row in reader]
+        candidates = [
+            candidate
+            for index, record in enumerate(records)
+            if (candidate := _candidate_from_record(record, f"row[{index}]")) is not None
+        ]
+        return _structured_artifact(
+            resource,
+            metadata,
+            records,
+            candidates,
+        )
+    except (UnicodeDecodeError, csv.Error, ValueError) as error:
+        return _structured_error_artifact(resource, metadata, error)
+
+
+def _adapt_xml_resource(resource: SourceResource, metadata: dict[str, Any]) -> SourceArtifact:
+    try:
+        lowered = resource.payload.lower()
+        if b"<!doctype" in lowered or b"<!entity" in lowered:
+            raise ValueError("XML DTD and entity declarations are not supported")
+        root = ElementTree.fromstring(resource.payload)
+        records: list[dict[str, Any]] = []
+        candidates: list[NormalizationCandidate] = []
+        for element in root.iter():
+            record_type = _local_name(element.tag).casefold()
+            if record_type not in {"vehicle", "vehicleidentity", "part", "model", "article"}:
+                continue
+            if not list(element):
+                continue
+            record = {
+                _local_name(child.tag): (child.text or "").strip()
+                for child in element
+                if isinstance(child.tag, str)
+            }
+            records.append(record)
+            candidate = _candidate_from_record(record, _local_name(element.tag), record_type=record_type)
+            if candidate is not None:
+                candidates.append(candidate)
+        return _structured_artifact(resource, metadata, records, candidates)
+    except (ElementTree.ParseError, ValueError) as error:
+        return _structured_error_artifact(resource, metadata, error)
+
+
+def _structured_artifact(
+    resource: SourceResource,
+    metadata: dict[str, Any],
+    records: list[dict[str, Any]],
+    candidates: list[NormalizationCandidate],
+) -> SourceArtifact:
+    metadata = {
+        **metadata,
+        "record_count": len(records),
+        "candidate_count": len(candidates),
+        "extraction_status": "candidate_ready" if candidates else "needs_review",
+    }
+    return SourceArtifact(
+        kind="structured",
+        source_uri=resource.source_uri,
+        source_version=resource.source_version,
+        media_type=resource.media_type,
+        content_sha256=resource.content_sha256,
+        payload=records,
+        raw_payload=resource.payload,
+        metadata=metadata,
+        candidates=tuple(candidates),
+    )
+
+
+def _structured_error_artifact(
+    resource: SourceResource,
+    metadata: dict[str, Any],
+    error: Exception,
+) -> SourceArtifact:
+    return _structured_artifact(
+        resource,
+        {**metadata, "extraction_error": str(error)},
+        [],
+        [],
+    )
+
+
+def _candidate_from_record(
+    record: dict[str, Any],
+    locator: str,
+    record_type: str | None = None,
+) -> NormalizationCandidate | None:
+    kind = _field(record, "record_type", "recordType", "type", "kind")
+    kind = (record_type or kind or "").replace("_", "").replace("-", "").casefold()
+    make = _field(record, "make", "manufacturer")
+    model = _field(record, "model", "model_name", "modelName")
+    year = _field(record, "year", "model_year", "modelYear")
+    region = _field(record, "region", "market")
+    if kind in {"vehicle", "vehicleidentity"} or (make and model and year):
+        data = {"make": make, "model": model, "year": _number_or_text(year)}
+        if region:
+            data["region"] = region
+        trim = _field(record, "trim", "variant")
+        if trim:
+            data["trim"] = trim
+        return NormalizationCandidate("vehicle_identity", f"vehicle-identity:{locator}", data, locator)
+
+    part_number = _field(record, "part_number", "partNumber", "part_no", "partNo")
+    if kind == "part" or part_number:
+        if not part_number:
+            return None
+        data = {
+            "partNumber": part_number,
+            "partDescription": _field(record, "part_description", "partDescription", "description"),
+        }
+        for source_name, target_name in (
+            ("quantity", "quantity"),
+            ("price", "price"),
+            ("currency", "currency"),
+        ):
+            value = _field(record, source_name)
+            if value:
+                data[target_name] = value
+        return NormalizationCandidate("part", f"part:{part_number}:{locator}", data, locator)
+
+    model_id = _field(record, "id", "model_id", "modelId")
+    if kind == "model" or (model_id and model):
+        if not model_id or not model:
+            return None
+        return NormalizationCandidate(
+            "model",
+            f"model:{model_id}:{locator}",
+            {"id": model_id, "model": model},
+            locator,
+        )
+
+    article_id = _field(record, "article_id", "articleId", "id")
+    title = _field(record, "title", "name")
+    if kind == "article" or (article_id and title):
+        if not article_id or not title:
+            return None
+        return NormalizationCandidate(
+            "article",
+            f"article:{article_id}:{locator}",
+            {
+                "id": article_id,
+                "title": title,
+                "bucket": _field(record, "bucket", "category"),
+                "bulletinNumber": _field(record, "bulletin_number", "bulletinNumber"),
+                "releaseDate": _field(record, "release_date", "releaseDate"),
+            },
+            locator,
+        )
+    return None
+
+
+def _field(record: dict[str, Any], *names: str) -> str:
+    normalized = {
+        re.sub(r"[^a-z0-9]", "", str(key).casefold()): str(value).strip()
+        for key, value in record.items()
+        if key is not None and value is not None
+    }
+    for name in names:
+        value = normalized.get(re.sub(r"[^a-z0-9]", "", name.casefold()), "")
+        if value:
+            return value
+    return ""
+
+
+def _number_or_text(value: str) -> int | str:
+    try:
+        return int(value)
+    except ValueError:
+        return value
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
 
 
 def parse_vehicle_display_name(display_name: str) -> dict[str, Any] | None:
