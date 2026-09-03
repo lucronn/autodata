@@ -105,6 +105,32 @@ class SourceAdapterTests(unittest.TestCase):
 
         self.assertEqual(detect_media_type("file://drop/parts.csv", csv, None), "text/csv")
 
+    def test_generic_declared_media_type_uses_content_signatures(self):
+        json_payload = b'{"body":"2019 Cadillac Escalade ESV"}'
+        html_payload = b"<!doctype html><html><body>procedure</body></html>"
+        xml_payload = b"<?xml version=\"1.0\"?><vehicle><make>Ford</make></vehicle>"
+
+        self.assertEqual(
+            detect_media_type("file://drop/payload", json_payload, "application/octet-stream"),
+            "application/json",
+        )
+        self.assertEqual(
+            detect_media_type("file://drop/payload", html_payload, "text/plain"),
+            "text/html",
+        )
+        self.assertEqual(
+            detect_media_type("file://drop/payload", xml_payload, "application/octet-stream"),
+            "application/xml",
+        )
+
+    def test_extensionless_delimited_text_with_generic_media_type_is_structured(self):
+        csv = b"part_number,description\nA-1,Connector\n"
+
+        self.assertEqual(
+            detect_media_type("file://drop/parts", csv, "application/octet-stream"),
+            "text/csv",
+        )
+
     def test_sample_shaped_json_yields_typed_candidates(self):
         payload = {
             "body": {
