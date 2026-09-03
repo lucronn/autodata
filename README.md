@@ -49,7 +49,10 @@ JetStream event. The full developer workflows and recovery checks are in
 The source normalizer accepts mixed JSON/API envelopes, XML, CSV, HTML, plain
 text, PDF, SVG, and unsupported media without relying on filenames. It retains
 raw bytes and provenance, emits typed candidates where the shape is recognized,
-and routes ambiguous or unknown material to review.
+extracts literal HTML/plain text into reviewable evidence, and routes ambiguous
+or unknown material to review. New source media types can register an adapter
+without changing the connector or event contract; unconfigured binary types
+remain content-addressed raw artifacts.
 
 For a local-only source directory:
 
