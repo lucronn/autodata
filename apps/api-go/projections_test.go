@@ -125,6 +125,44 @@ func TestDatasetRevisionAndEvidenceEndpointsHandleReviewState(t *testing.T) {
 	assertErrorCode(t, response, "INVALID_EVIDENCE")
 }
 
+func TestEvidenceSearchReturnsOnlyApprovedRevisionScopedResults(t *testing.T) {
+	store := newMemoryProjectionStore()
+	fixture := memoryDatasetFixture()
+	fixture.evidence["evidence-approved"] = EvidenceRecord{
+		EvidenceID:       "evidence-approved",
+		SourceSnapshotID: "snapshot-1",
+		ExtractionRunID:  stringPtr("run-2"),
+		DatasetRevisionID: stringPtr("revision-2"),
+		Locator:          "page=9",
+		ExtractedText:    "brake fluid DOT 4",
+		Confidence:       0.99,
+		ReviewerState:    "approved",
+		Embedding:        fixtureVector(1),
+	}
+	fixture.evidence["evidence-no-vector"] = EvidenceRecord{
+		EvidenceID:    "evidence-no-vector",
+		ExtractedText: "unindexed approved text",
+		Confidence:   0.99,
+		ReviewerState: "approved",
+	}
+	store.put(fixture)
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}, newMemoryRequestStore(), store)
+
+	response := performRequest(server, http.MethodGet, "/datasets/dataset-1/search?q=brake+fluid&limit=5")
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("search status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var body EvidenceSearchResponse
+	decodeJSON(t, response, &body)
+	if body.DatasetID != "dataset-1" || len(body.Results) != 1 {
+		t.Fatalf("unexpected search response: %#v", body)
+	}
+	if body.Results[0].EvidenceID != "evidence-approved" || body.Results[0].RevisionID != "revision-2" {
+		t.Fatalf("search result is not revision-scoped evidence: %#v", body.Results[0])
+	}
+}
+
 func performRequest(server *Server, method, path string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, path, nil)
 	response := httptest.NewRecorder()
@@ -153,3 +191,9 @@ func memoryDatasetFixture() memoryDataset {
 }
 
 func stringPtr(value string) *string { return &value }
+
+func fixtureVector(first float64) []float64 {
+	vector := make([]float64, 1536)
+	vector[0] = first
+	return vector
+}

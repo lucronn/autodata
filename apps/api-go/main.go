@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -80,6 +81,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /datasets/{id}/sections", s.requireRole("dataset_viewer", s.getDatasetSections))
 	mux.Handle("GET /datasets/{id}/revisions", s.requireRole("dataset_viewer", s.getDatasetRevisions))
 	mux.Handle("GET /datasets/{id}/evidence/{evidence_id}", s.requireRole("dataset_viewer", s.getDatasetEvidence))
+	mux.Handle("GET /datasets/{id}/search", s.requireRole("dataset_viewer", s.searchEvidence))
 	return mux
 }
 
@@ -205,6 +207,38 @@ func (s *Server) getDatasetEvidence(response http.ResponseWriter, request *http.
 		return
 	}
 	writeJSON(response, http.StatusOK, evidence)
+}
+
+func (s *Server) searchEvidence(response http.ResponseWriter, request *http.Request, principal Principal) {
+	datasetID, ok := datasetPathValue(request)
+	if !ok {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "dataset ID is required", false)
+		return
+	}
+	query := strings.TrimSpace(request.URL.Query().Get("q"))
+	if query == "" {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "search query is required", false)
+		return
+	}
+	limit := 10
+	if rawLimit := strings.TrimSpace(request.URL.Query().Get("limit")); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed < 1 || parsed > 50 {
+			writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "limit must be between 1 and 50", false)
+			return
+		}
+		limit = parsed
+	}
+	vector, err := deterministicQueryEmbedding(query)
+	if err != nil {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", err.Error(), false)
+		return
+	}
+	result, err := s.projections.SearchEvidence(datasetID, vector, limit, principal)
+	if !writeProjectionError(response, request, err) {
+		return
+	}
+	writeJSON(response, http.StatusOK, result)
 }
 
 func datasetPathValue(request *http.Request) (string, bool) {
