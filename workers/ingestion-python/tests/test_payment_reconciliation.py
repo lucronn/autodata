@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 from autodata_ingestion.payment_reconciliation import (  # noqa: E402
     PaymentIntent,
     canonical_payment_payload,
+    revoke_entitlement,
 )
 
 
@@ -39,6 +40,10 @@ class PaymentReconciliationTests(unittest.TestCase):
             PaymentIntent.from_event({"provider_event_id": "event-1", "event_type": "charge.refunded"})
         with self.assertRaises(ValueError):
             PaymentIntent.from_event({"event_type": "checkout.completed", "product_id": "p", "purchaser_id": "o"})
+
+    def test_entitlement_revocation_requires_an_auditable_reason(self):
+        with self.assertRaises(ValueError):
+            revoke_entitlement(None, "entitlement-1", "")
 
 
 if __name__ == "__main__":

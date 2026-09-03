@@ -16,13 +16,14 @@ from autodata_contracts.fakes import FakePaymentProvider  # noqa: E402
 from autodata_ingestion.payment_reconciliation import (  # noqa: E402
     reconcile_payment_event,
     reconcile_pending_payments,
+    revoke_entitlement,
 )
 
 
-REQUEST_ID = "91000000-0000-0000-0000-000000000001"
-ORGANIZATION_ID = "91000000-0000-0000-0000-000000000002"
-CORRELATION_ID = "91000000-0000-0000-0000-000000000003"
-IDEMPOTENCY_KEY = "payment-reconciliation-smoke-001"
+REQUEST_ID = "91000000-0000-0000-0000-000000000004"
+ORGANIZATION_ID = "91000000-0000-0000-0000-000000000005"
+CORRELATION_ID = "91000000-0000-0000-0000-000000000006"
+IDEMPOTENCY_KEY = "payment-reconciliation-smoke-004"
 
 
 def db_connection():
@@ -41,6 +42,32 @@ def db_connection():
 def cleanup(connection, provider_event_id: str) -> None:
     with connection.transaction():
         with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM publication_events WHERE dataset_request_id = %s",
+                (REQUEST_ID,),
+            )
+            cursor.execute(
+                """
+                DELETE FROM dataset_section_status
+                WHERE dataset_projection_id IN (
+                    SELECT dataset_projection_id
+                    FROM dataset_projections
+                    WHERE dataset_request_id = %s
+                )
+                """,
+                (REQUEST_ID,),
+            )
+            cursor.execute(
+                """
+                DELETE FROM dataset_revisions
+                WHERE dataset_projection_id IN (
+                    SELECT dataset_projection_id
+                    FROM dataset_projections
+                    WHERE dataset_request_id = %s
+                )
+                """,
+                (REQUEST_ID,),
+            )
             cursor.execute(
                 "DELETE FROM dataset_projections WHERE dataset_request_id = %s",
                 (REQUEST_ID,),
@@ -92,18 +119,45 @@ def main() -> None:
             if result.get("payment_event_id") == pending["payment_event_id"]
         )
         replay = reconcile_payment_event(connection, event)
+        with connection.transaction():
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    -- The ingestion smoke owns the published-revision immutability check.
+                    -- This disposable revision stays unpublished so the fixture can remove it after verification.
+                    INSERT INTO dataset_revisions
+                        (dataset_projection_id, revision_number, availability,
+                         source_watermark, schema_version, changelog, content)
+                    VALUES (%s, 1, 'viewable', 'payment-smoke-source-v1', 1,
+                            '{"kind":"payment-reconciliation-smoke"}'::jsonb,
+                            '{"vehicle_key":"payment-smoke-vehicle"}'::jsonb)
+                    ON CONFLICT (dataset_projection_id, revision_number) DO NOTHING
+                    """,
+                    (fulfilled["dataset_projection_id"],),
+                )
+        revoked = revoke_entitlement(connection, fulfilled["entitlement_id"], "refund")
+        revoked_replay = revoke_entitlement(
+            connection,
+            fulfilled["entitlement_id"],
+            "a-different-reason-is-ignored",
+        )
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT pe.fulfillment_status, pe.fulfillment_attempts,
-                       dr.status, count(DISTINCT e.entitlement_id),
-                       count(DISTINCT dp.dataset_projection_id)
+                       dr.status, e.status, count(DISTINCT dvr.dataset_revision_id),
+                       count(DISTINCT dp.dataset_projection_id),
+                       count(DISTINCT pe2.publication_event_id)
                 FROM payment_events pe
                 JOIN dataset_requests dr ON dr.dataset_request_id::text = %s
                 LEFT JOIN entitlements e ON e.dataset_request_id = dr.dataset_request_id
                 LEFT JOIN dataset_projections dp ON dp.dataset_request_id = dr.dataset_request_id
+                LEFT JOIN dataset_revisions dvr ON dvr.dataset_projection_id = dp.dataset_projection_id
+                LEFT JOIN publication_events pe2
+                    ON pe2.dataset_projection_id = dp.dataset_projection_id
+                   AND pe2.event_type = 'dataset.revision.revoked'
                 WHERE pe.provider_event_id = %s
-                GROUP BY pe.fulfillment_status, pe.fulfillment_attempts, dr.status
+                GROUP BY pe.fulfillment_status, pe.fulfillment_attempts, dr.status, e.status
                 """,
                 (REQUEST_ID, provider_event_id),
             )
@@ -114,9 +168,27 @@ def main() -> None:
         raise SystemExit(f"delayed payment was not held pending: {pending}")
     if fulfilled["status"] != "fulfilled" or replay["status"] != "fulfilled":
         raise SystemExit(f"payment reconciliation did not fulfill/replay: {fulfilled}/{replay}")
-    if status != ("fulfilled", 3, "fast_lane_processing", 1, 1):
+    if (
+        revoked["status"] != "revoked"
+        or revoked_replay["status"] != "revoked"
+        or revoked_replay["publication_event_id"] != revoked["publication_event_id"]
+        or revoked_replay["reason"] != "refund"
+    ):
+        raise SystemExit(f"entitlement revocation was not idempotent: {revoked}/{revoked_replay}")
+    if status != ("fulfilled", 3, "revoked", "revoked", 1, 1, 1):
         raise SystemExit(f"unexpected durable reconciliation state: {status}")
-    print(json.dumps({"pending": pending, "fulfilled": fulfilled, "replay": replay, "durable_state": status}))
+    print(
+        json.dumps(
+            {
+                "pending": pending,
+                "fulfilled": fulfilled,
+                "replay": replay,
+                "revoked": revoked,
+                "revoked_replay": revoked_replay,
+                "durable_state": status,
+            }
+        )
+    )
 
 
 if __name__ == "__main__":
