@@ -134,7 +134,15 @@ jobs:
           AUTODATA_MINIO_ROOT_PASSWORD: ci-validation-only
         run: |
           set -eu
-          trap 'docker compose -f infra/compose/compose.yaml down --volumes --remove-orphans' EXIT
+          cleanup() {
+            exit_status=$?
+            if [ "$exit_status" -ne 0 ]; then
+              docker compose -f infra/compose/compose.yaml logs api || true
+            fi
+            docker compose -f infra/compose/compose.yaml down --volumes --remove-orphans
+            exit "$exit_status"
+          }
+          trap cleanup EXIT
           docker compose -f infra/compose/compose.yaml up -d --wait postgres nats minio
           docker compose -f infra/compose/compose.yaml run migration-runner
           docker compose -f infra/compose/compose.yaml run --rm ingest-fixture

@@ -137,6 +137,7 @@ func (s *Server) createDatasetRequest(response http.ResponseWriter, request *htt
 		return
 	}
 	if err != nil {
+		log.Printf("create dataset request %s: %v", requestIDFrom(request), err)
 		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "request could not be created", true)
 		return
 	}
@@ -167,6 +168,7 @@ func (s *Server) getDatasetRequest(response http.ResponseWriter, request *http.R
 		return
 	}
 	if err != nil {
+		log.Printf("read dataset request %s: %v", requestIDFrom(request), err)
 		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "request could not be read", true)
 		return
 	}
