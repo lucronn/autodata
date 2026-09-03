@@ -86,6 +86,7 @@ class SourceArtifact:
     media_type: str
     content_sha256: str
     payload: Any
+    raw_payload: bytes
     metadata: dict[str, Any]
     candidates: tuple[NormalizationCandidate, ...] = ()
 
@@ -161,6 +162,7 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
             media_type=resource.media_type,
             content_sha256=resource.content_sha256,
             payload=document,
+            raw_payload=resource.payload,
             metadata=metadata,
             candidates=tuple(candidates),
         )
@@ -199,7 +201,7 @@ def classify_json_candidates(document: Any) -> list[NormalizationCandidate]:
         for index, article in enumerate(articles):
             if isinstance(article, dict):
                 article_id = str(article.get("id") or f"index-{index}")
-                candidates.append(NormalizationCandidate("article", f"article:{article_id}", article, f"body.articleDetails[{index}]"))
+                candidates.append(NormalizationCandidate("article", f"article:{article_id}:{index}", article, f"body.articleDetails[{index}]"))
 
     parts = body.get("parts") if isinstance(body, dict) else body if isinstance(body, list) else None
     if isinstance(parts, list):
@@ -251,5 +253,6 @@ def _binary_artifact(kind: str, resource: SourceResource, metadata: dict[str, An
         media_type=resource.media_type,
         content_sha256=resource.content_sha256,
         payload=resource.payload,
+        raw_payload=resource.payload,
         metadata=metadata,
     )

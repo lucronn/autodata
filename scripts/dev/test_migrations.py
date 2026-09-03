@@ -19,7 +19,14 @@ class MigrationPlanTests(unittest.TestCase):
 
         self.assertEqual(
             [path.name for path in paths],
-            ["001_extensions.sql", "002_platform_spine.sql", "003_canonical_vehicle.sql"],
+            [
+                "001_extensions.sql",
+                "002_platform_spine.sql",
+                "003_canonical_vehicle.sql",
+                "004_normalized_source_bundle.sql",
+                "005_preserve_duplicate_article_ids.sql",
+                "006_backfill_article_source_locators.sql",
+            ],
         )
 
     def test_schema_migrations_cover_platform_spine_and_vector(self):

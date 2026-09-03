@@ -119,6 +119,17 @@ docker compose -f infra/compose/compose.yaml run --rm ingestion-smoke
 
 `ingestion-smoke` runs the deterministic `ingest-fixture` dependency first. It fails with a non-zero exit and an actionable message when the migration, payment/entitlement, normalized vehicle, source object, or `dataset.viewable` event contract is not satisfied. It is safe to rerun: the fixture uses stable identifiers and idempotency keys, while published revisions remain immutable.
 
+For a local source drop containing mixed JSON, HTML, PDF, SVG, XML, or CSV resources, inspect the normalized bundle without uploading the raw files:
+
+```sh
+PYTHONPATH=workers/ingestion-python/src \
+python3 scripts/dev/normalize_source_directory.py "sample data" --region US
+```
+
+The command reports the normalized vehicle, typed candidate counts, evidence count, and quarantine reasons. It exits non-zero for missing directories or invalid source payloads. Raw sample files remain local fixtures unless their redistribution terms are explicitly approved.
+
+Persistence is opt-in and local-only. When database and object-storage variables are configured, append `--persist` to write content-addressed artifacts and normalized records to the Compose stack. A bundle with review items is still stored for audit, but it cannot be treated as fully publishable until its quarantine items are resolved.
+
 ## Configuration contract
 
 Configuration is grouped by subsystem and supplied through environment variables or a secret manager:

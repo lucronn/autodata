@@ -44,6 +44,7 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(artifact.kind, "structured")
         self.assertEqual(artifact.metadata["response_status_code"], 200)
         self.assertEqual(artifact.payload["body"], "2019 Cadillac Escalade ESV - 2WD")
+        self.assertEqual(artifact.raw_payload, resource.payload)
 
         candidates = classify_json_candidates(artifact.payload)
         self.assertEqual(candidates[0].kind, "vehicle_identity")
@@ -95,7 +96,7 @@ class SourceAdapterTests(unittest.TestCase):
         candidates = classify_json_candidates(payload)
 
         self.assertEqual([candidate.kind for candidate in candidates], ["article", "part", "model"])
-        self.assertEqual(candidates[0].key, "article:6158075")
+        self.assertEqual(candidates[0].key, "article:6158075:0")
         self.assertEqual(candidates[1].key, "part:22943127")
         self.assertEqual(candidates[2].key, "model:168702")
 
