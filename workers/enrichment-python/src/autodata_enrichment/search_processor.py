@@ -103,9 +103,19 @@ def register_builtin_processors() -> None:
 
     from .deep_dispatch import register_section_processor
     from .diagnostics_processor import process_diagnostics_request
+    from .domain_processors import (
+        process_electrical_request,
+        process_inventory_request,
+        process_maintenance_request,
+        process_procedures_request,
+    )
     from .quality_processor import process_quality_request
 
     register_section_processor("diagnostics", process_diagnostics_request)
+    register_section_processor("procedures", process_procedures_request)
+    register_section_processor("electrical", process_electrical_request)
+    register_section_processor("inventory", process_inventory_request)
+    register_section_processor("maintenance", process_maintenance_request)
     register_section_processor("search", process_search_request)
     register_section_processor("quality", process_quality_request)
 
