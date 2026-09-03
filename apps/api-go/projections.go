@@ -11,15 +11,18 @@ import (
 )
 
 var (
-	ErrDatasetNotFound    = errors.New("dataset projection not found")
-	ErrEntitlementRevoked = errors.New("dataset entitlement has been revoked")
-	ErrDatasetNotViewable = errors.New("dataset does not have a viewable revision")
-	ErrRevisionNotFound   = errors.New("dataset revision not found")
-	ErrInvalidEvidence    = errors.New("evidence reference is invalid")
-	ErrReviewRequired     = errors.New("evidence is pending human review")
-	ErrInvalidFeedback    = errors.New("feedback category or body is invalid")
-	ErrInvalidReview      = errors.New("review decision or reason is invalid")
-	ErrReviewConflict     = errors.New("evidence review state has already changed")
+	ErrDatasetNotFound       = errors.New("dataset projection not found")
+	ErrEntitlementRevoked    = errors.New("dataset entitlement has been revoked")
+	ErrDatasetNotViewable    = errors.New("dataset does not have a viewable revision")
+	ErrRevisionNotFound      = errors.New("dataset revision not found")
+	ErrInvalidEvidence       = errors.New("evidence reference is invalid")
+	ErrReviewRequired        = errors.New("evidence is pending human review")
+	ErrInvalidFeedback       = errors.New("feedback category or body is invalid")
+	ErrInvalidReview         = errors.New("review decision or reason is invalid")
+	ErrReviewConflict        = errors.New("evidence review state has already changed")
+	ErrInvalidFeedbackReview = errors.New("feedback review decision or reason is invalid")
+	ErrFeedbackNotFound      = errors.New("feedback item not found")
+	ErrFeedbackConflict      = errors.New("feedback review state has already changed")
 )
 
 // ProjectionStore is the authorization-aware read boundary for purchaser-facing
@@ -32,6 +35,7 @@ type ProjectionStore interface {
 	SearchEvidence(string, []float64, int, Principal) (EvidenceSearchResponse, error)
 	SubmitFeedback(string, FeedbackInput, Principal) (FeedbackRecord, error)
 	ReviewEvidence(string, string, EvidenceReviewInput, Principal) (EvidenceRecord, error)
+	ReviewFeedback(string, string, FeedbackReviewInput, Principal) (FeedbackRecord, error)
 }
 
 type DatasetReadRecord struct {
@@ -102,14 +106,24 @@ type FeedbackInput struct {
 }
 
 type FeedbackRecord struct {
-	FeedbackID string `json:"feedback_id"`
-	DatasetID  string `json:"dataset_id"`
-	RevisionID string `json:"revision_id,omitempty"`
-	EvidenceID string `json:"evidence_id,omitempty"`
-	Category   string `json:"category"`
-	Body       string `json:"body"`
-	Status     string `json:"status"`
-	CreatedAt  string `json:"created_at"`
+	FeedbackID        string  `json:"feedback_id"`
+	DatasetID         string  `json:"dataset_id"`
+	RevisionID        string  `json:"revision_id,omitempty"`
+	EvidenceID        string  `json:"evidence_id,omitempty"`
+	Category          string  `json:"category"`
+	Body              string  `json:"body"`
+	Status            string  `json:"status"`
+	CreatedAt         string  `json:"created_at"`
+	AppliedRevisionID string  `json:"applied_revision_id,omitempty"`
+	ReviewerID        *string `json:"reviewer_id,omitempty"`
+	ReviewedAt        *string `json:"reviewed_at,omitempty"`
+	ReviewReason      string  `json:"review_reason,omitempty"`
+}
+
+type FeedbackReviewInput struct {
+	Decision          string `json:"decision"`
+	Reason            string `json:"reason"`
+	AppliedRevisionID string `json:"applied_revision_id,omitempty"`
 }
 
 type memoryDataset struct {
@@ -337,6 +351,58 @@ func (s *memoryProjectionStore) ReviewEvidence(datasetID, evidenceID string, inp
 	return evidence, nil
 }
 
+func (s *memoryProjectionStore) ReviewFeedback(datasetID, feedbackID string, input FeedbackReviewInput, principal Principal) (FeedbackRecord, error) {
+	dataset, err := s.authorize(datasetID, principal)
+	if err != nil {
+		return FeedbackRecord{}, err
+	}
+	if err := validateFeedbackReview(input); err != nil {
+		return FeedbackRecord{}, err
+	}
+	if input.Decision == "resolve" {
+		if input.AppliedRevisionID == "" {
+			return FeedbackRecord{}, ErrInvalidFeedbackReview
+		}
+		if _, err := selectRevision(dataset.revisions, input.AppliedRevisionID); err != nil {
+			return FeedbackRecord{}, err
+		}
+	} else if input.AppliedRevisionID != "" {
+		return FeedbackRecord{}, ErrInvalidFeedbackReview
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.datasets[datasetID]
+	for index, feedback := range current.feedback {
+		if feedback.FeedbackID != feedbackID {
+			continue
+		}
+		wantStatus := "rejected"
+		if input.Decision == "resolve" {
+			wantStatus = "resolved"
+		}
+		if feedback.Status != "open" && feedback.Status != "in_review" && feedback.Status != wantStatus {
+			return FeedbackRecord{}, ErrFeedbackConflict
+		}
+		if feedback.Status == wantStatus {
+			if input.Decision == "resolve" && feedback.AppliedRevisionID != input.AppliedRevisionID {
+				return FeedbackRecord{}, ErrFeedbackConflict
+			}
+			return feedback, nil
+		}
+		reviewedAt := time.Now().UTC().Format(time.RFC3339)
+		reviewerID := principal.OrganizationID
+		feedback.Status = wantStatus
+		feedback.AppliedRevisionID = input.AppliedRevisionID
+		feedback.ReviewerID = &reviewerID
+		feedback.ReviewedAt = &reviewedAt
+		feedback.ReviewReason = strings.TrimSpace(input.Reason)
+		current.feedback[index] = feedback
+		s.datasets[datasetID] = current
+		return feedback, nil
+	}
+	return FeedbackRecord{}, ErrFeedbackNotFound
+}
+
 func validateFeedbackInput(input FeedbackInput) error {
 	switch input.Category {
 	case "correction", "missing", "quality", "safety":
@@ -357,6 +423,17 @@ func validateEvidenceReview(input EvidenceReviewInput) error {
 	reason := strings.TrimSpace(input.Reason)
 	if reason == "" || len(reason) > 4000 {
 		return ErrInvalidReview
+	}
+	return nil
+}
+
+func validateFeedbackReview(input FeedbackReviewInput) error {
+	if input.Decision != "resolve" && input.Decision != "reject" {
+		return ErrInvalidFeedbackReview
+	}
+	reason := strings.TrimSpace(input.Reason)
+	if reason == "" || len(reason) > 4000 {
+		return ErrInvalidFeedbackReview
 	}
 	return nil
 }
