@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any, Callable
 import uuid
 
@@ -37,6 +38,13 @@ class CatalogArticleReplayIdentity:
     article_id: str
     source_snapshot_id: str
     source_locator: str
+
+
+@dataclass(frozen=True)
+class VehicleIdentityObservationPersistenceResult:
+    vehicle_identity_observation_id: str
+    observation_key: str
+    resolution_status: str
 
 
 def persist_vehicle_identity_resolution(
@@ -274,6 +282,84 @@ def persist_vehicle_identity_resolution(
     )
 
 
+def persist_unresolved_vehicle_identity_observation(
+    cursor: Any,
+    *,
+    raw_observation: Any,
+    source_snapshot_id: str,
+    extraction_evidence_id: str,
+    source_locator: str,
+    evidence_locator: str,
+    evidence_confidence: float,
+    reviewer_state: str,
+    resolution_status: str,
+    resolution_reason: str | None = None,
+    candidates: list[dict[str, Any]] | None = None,
+    jsonb: JsonAdapter = lambda value: value,
+) -> VehicleIdentityObservationPersistenceResult:
+    """Persist reviewable raw identity evidence before a vehicle is resolved."""
+
+    _validate_reviewer_state(reviewer_state)
+    _validate_confidence(evidence_confidence)
+    _validate_resolution_status(resolution_status)
+    if resolution_status == "matched":
+        raise ValueError("matched observations require resolved vehicle identity persistence")
+
+    observation_key = _unresolved_observation_key(
+        source_snapshot_id,
+        source_locator,
+        raw_observation,
+    )
+    observation_id = _upsert_returning_id(
+        cursor,
+        """
+        INSERT INTO vehicle_identity_observations
+            (vehicle_identity_observation_id, observation_key, vehicle_id,
+             vehicle_identity_base_id, vehicle_configuration_id, source_snapshot_id,
+             extraction_evidence_id, source_locator, evidence_locator,
+             evidence_confidence, reviewer_state, raw_observation,
+             canonical_observation, resolution_status, resolution_reason,
+             selected_candidate_key, candidates)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (observation_key)
+        DO UPDATE SET extraction_evidence_id = EXCLUDED.extraction_evidence_id,
+                      evidence_locator = EXCLUDED.evidence_locator,
+                      evidence_confidence = EXCLUDED.evidence_confidence,
+                      reviewer_state = EXCLUDED.reviewer_state,
+                      raw_observation = EXCLUDED.raw_observation,
+                      resolution_status = EXCLUDED.resolution_status,
+                      resolution_reason = EXCLUDED.resolution_reason,
+                      candidates = EXCLUDED.candidates,
+                      updated_at = now()
+        RETURNING vehicle_identity_observation_id
+        """,
+        (
+            _stable_uuid(f"vehicle-identity-observation:{observation_key}"),
+            observation_key,
+            None,
+            None,
+            None,
+            source_snapshot_id,
+            extraction_evidence_id,
+            source_locator,
+            evidence_locator,
+            evidence_confidence,
+            reviewer_state,
+            jsonb(raw_observation),
+            jsonb({}),
+            resolution_status,
+            resolution_reason,
+            None,
+            jsonb(candidates or []),
+        ),
+    )
+    return VehicleIdentityObservationPersistenceResult(
+        vehicle_identity_observation_id=observation_id,
+        observation_key=observation_key,
+        resolution_status=resolution_status,
+    )
+
+
 def persist_catalog_article_duplicate_link(
     cursor: Any,
     *,
@@ -391,6 +477,21 @@ def _observation_key(
     return "|".join(parts)
 
 
+def _unresolved_observation_key(
+    source_snapshot_id: str,
+    source_locator: str,
+    raw_observation: Any,
+) -> str:
+    raw_identity = json.dumps(raw_observation, sort_keys=True, separators=(",", ":"), default=str)
+    return f"{source_snapshot_id}|{source_locator}|unresolved|{raw_identity}"
+
+
+def _validate_resolution_status(resolution_status: str) -> None:
+    allowed = {"matched", "ambiguous", "unmatched", "rejected", "needs_review"}
+    if resolution_status not in allowed:
+        raise ValueError("resolution_status must be matched, ambiguous, unmatched, rejected, or needs_review")
+
+
 def _validate_reviewer_state(reviewer_state: str) -> None:
     if reviewer_state not in {"pending", "approved", "rejected"}:
         raise ValueError("reviewer_state must be pending, approved, or rejected")
@@ -421,8 +522,10 @@ def _slug(value: str) -> str:
 
 __all__ = [
     "CatalogArticleReplayIdentity",
+    "VehicleIdentityObservationPersistenceResult",
     "VehicleIdentityPersistenceResult",
     "canonicalize_vehicle_observation",
     "persist_catalog_article_duplicate_link",
+    "persist_unresolved_vehicle_identity_observation",
     "persist_vehicle_identity_resolution",
 ]

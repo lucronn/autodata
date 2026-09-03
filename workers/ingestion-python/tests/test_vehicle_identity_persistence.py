@@ -9,6 +9,12 @@ ROOT = Path(__file__).parents[3]
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 
+def _table_definition(sql, table_name):
+    start = sql.index(f"CREATE TABLE IF NOT EXISTS {table_name}")
+    end = sql.index("\n);", start)
+    return sql[start:end]
+
+
 class RecordingCursor:
     def __init__(self, select_results=None):
         self.calls = []
@@ -63,6 +69,72 @@ class VehicleIdentityPersistenceTests(unittest.TestCase):
         self.assertNotIn("DROP CONSTRAINT", migration)
         self.assertIn("INSERT INTO schema_migrations (version)", migration)
         self.assertIn("015_vehicle_identity_resolution", migration)
+
+    def test_unresolved_observations_do_not_require_resolved_vehicle_foreign_keys(self):
+        migration = (ROOT / "db/migrations/015_vehicle_identity_resolution.sql").read_text()
+        observations = _table_definition(migration, "vehicle_identity_observations")
+
+        for column in (
+            "vehicle_id uuid REFERENCES vehicles(vehicle_id)",
+            "vehicle_identity_base_id uuid REFERENCES vehicle_identity_bases(vehicle_identity_base_id)",
+            "vehicle_configuration_id uuid REFERENCES vehicle_configurations(vehicle_configuration_id)",
+        ):
+            self.assertIn(column, observations)
+        self.assertNotIn("vehicle_id uuid NOT NULL REFERENCES vehicles(vehicle_id)", observations)
+        self.assertNotIn(
+            "vehicle_identity_base_id uuid NOT NULL REFERENCES vehicle_identity_bases(vehicle_identity_base_id)",
+            observations,
+        )
+        self.assertNotIn(
+            "vehicle_configuration_id uuid NOT NULL REFERENCES vehicle_configurations(vehicle_configuration_id)",
+            observations,
+        )
+
+    def test_persist_unresolved_observation_records_review_provenance_without_vehicle_rows(self):
+        module = self._module()
+        cursor = RecordingCursor()
+
+        result = module.persist_unresolved_vehicle_identity_observation(
+            cursor,
+            raw_observation={
+                "year": 2024,
+                "make": "Chevrolet",
+                "model": "Silverado 1500",
+                "trim": "LTZ",
+            },
+            source_snapshot_id="snapshot-review",
+            extraction_evidence_id="evidence-review",
+            source_locator="json:vehicle[review]",
+            evidence_locator="json:vehicle[review]",
+            evidence_confidence=0.72,
+            reviewer_state="pending",
+            resolution_status="needs_review",
+            resolution_reason="multiple_top_candidates",
+            candidates=[
+                {
+                    "candidate_key": "chevrolet-silverado-1500-2024-us-trim-lt",
+                    "score": 100.0,
+                },
+                {
+                    "candidate_key": "chevrolet-silverado-1500-2024-us-trim-ltz",
+                    "score": 100.0,
+                },
+            ],
+            jsonb=lambda value: value,
+        )
+
+        self.assertEqual(len(cursor.calls), 1)
+        query, params = cursor.calls[0]
+        compact_query = " ".join(query.split())
+        self.assertIn("INSERT INTO vehicle_identity_observations", compact_query)
+        self.assertIn("ON CONFLICT (observation_key)", compact_query)
+        self.assertNotIn("INSERT INTO vehicles", compact_query)
+        self.assertEqual(params[2:5], (None, None, None))
+        self.assertEqual(params[5:11], ("snapshot-review", "evidence-review", "json:vehicle[review]", "json:vehicle[review]", 0.72, "pending"))
+        self.assertEqual(params[11]["trim"], "LTZ")
+        self.assertEqual(params[12], {})
+        self.assertEqual(params[13:16], ("needs_review", "multiple_top_candidates", None))
+        self.assertEqual(result.resolution_status, "needs_review")
 
     def test_persist_observation_keeps_legacy_vehicle_identity_and_writes_graph_provenance(self):
         module = self._module()

@@ -57,9 +57,9 @@ CREATE TABLE IF NOT EXISTS vehicle_aliases (
 CREATE TABLE IF NOT EXISTS vehicle_identity_observations (
     vehicle_identity_observation_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     observation_key text NOT NULL UNIQUE,
-    vehicle_id uuid NOT NULL REFERENCES vehicles(vehicle_id),
-    vehicle_identity_base_id uuid NOT NULL REFERENCES vehicle_identity_bases(vehicle_identity_base_id),
-    vehicle_configuration_id uuid NOT NULL REFERENCES vehicle_configurations(vehicle_configuration_id),
+    vehicle_id uuid REFERENCES vehicles(vehicle_id),
+    vehicle_identity_base_id uuid REFERENCES vehicle_identity_bases(vehicle_identity_base_id),
+    vehicle_configuration_id uuid REFERENCES vehicle_configurations(vehicle_configuration_id),
     source_snapshot_id uuid NOT NULL REFERENCES source_snapshots(source_snapshot_id),
     extraction_evidence_id uuid NOT NULL REFERENCES extraction_evidence(extraction_evidence_id),
     source_locator text NOT NULL,
