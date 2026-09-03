@@ -388,6 +388,11 @@ func TestKnowledgeFallbackCacheMissPublishesExactVersionedEnvelope(t *testing.T)
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("fallback cache miss status = %d, want %d", response.Code, http.StatusAccepted)
 	}
+	var responseBody KnowledgeSearchResponse
+	decodeJSON(t, response, &responseBody)
+	if responseBody.FallbackStatus != "pending" || responseBody.FallbackRequestID == "" {
+		t.Fatalf("fallback response status = %q request = %q, want pending and request ID", responseBody.FallbackStatus, responseBody.FallbackRequestID)
+	}
 	events := publisher.Events()
 	if len(events) != 1 {
 		t.Fatalf("published events = %d, want 1", len(events))

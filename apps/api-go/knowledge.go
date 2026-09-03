@@ -57,6 +57,9 @@ func (s *Server) searchKnowledge(response http.ResponseWriter, request *http.Req
 		return
 	}
 	if !fallback || len(result.Results) > 0 {
+		if fallback {
+			result.FallbackStatus = "fetched"
+		}
 		writeJSON(response, http.StatusOK, result)
 		return
 	}
@@ -71,6 +74,8 @@ func (s *Server) searchKnowledge(response http.ResponseWriter, request *http.Req
 		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "knowledge fallback request could not be published", true)
 		return
 	}
+	result.FallbackStatus = "pending"
+	result.FallbackRequestID = event.EventID
 	writeJSON(response, http.StatusAccepted, result)
 }
 
