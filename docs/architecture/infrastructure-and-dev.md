@@ -59,7 +59,7 @@ The format layer is provider-neutral:
 | SVG or other diagram media | Diagram artifact | Diagram metadata, rendering, and diagram evidence |
 | Unknown or unsupported media | Quarantined artifact | Operator review or a newly registered capability |
 
-Extractors are selected by declared capabilities and observed content, not by a hard-coded filename convention. A source may emit multiple resource types in one request: for example, a vehicle identity response, a parts collection, an article index, an HTML procedure, a PDF, and an SVG diagram. Each resource receives its own content hash, object key, extraction run, and evidence path, while the request correlation ID joins them into one dataset projection.
+Extractors are selected by declared capabilities and observed content, not by a hard-coded filename convention. Generic connector media types such as `application/octet-stream` and `text/plain` are content-sniffed for recognizable JSON, HTML, XML, SVG, PDF, and conservative delimited-text signatures; a filename is never the sole parser. A source may emit multiple resource types in one request: for example, a vehicle identity response, a parts collection, an article index, an HTML procedure, a PDF, and an SVG diagram. Each resource receives its own content hash, object key, extraction run, and evidence path, while the request correlation ID joins them into one dataset projection.
 
 The intake invariants are:
 

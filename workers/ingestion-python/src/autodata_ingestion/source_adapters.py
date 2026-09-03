@@ -8,6 +8,7 @@ never silently dropped.
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import mimetypes
@@ -22,6 +23,7 @@ _JSON_TYPES = {"application/json", "application/problem+json", "text/json"}
 _STRUCTURED_TYPES = _JSON_TYPES | {"application/xml", "text/xml", "text/csv"}
 _DOCUMENT_TYPES = {"text/html", "application/pdf", "text/plain"}
 _DIAGRAM_TYPES = {"image/svg+xml"}
+_GENERIC_MEDIA_TYPES = {"application/octet-stream", "binary/octet-stream", "text/plain"}
 
 
 class SourceConnector(Protocol):
@@ -99,30 +101,64 @@ class SourceArtifact:
 def detect_media_type(source_uri: str, payload: bytes, media_type: str | None = None) -> str:
     """Resolve a stable media type from connector metadata, URL, and magic bytes."""
 
-    if media_type:
-        return media_type.split(";", 1)[0].strip().lower()
-    # A source URL or filename is only a hint: provider exports frequently use
-    # generic or misleading extensions. Prefer cheap content signatures before
-    # falling back to the path-derived type.
     stripped = payload.lstrip(b"\xef\xbb\xbf \t\r\n")
-    if stripped.startswith(b"%PDF-"):
+    declared_type = media_type.split(";", 1)[0].strip().lower() if media_type else None
+    sniffed_type = _sniff_media_type(stripped)
+    # Connector media types and filenames are hints when they are generic. A
+    # provider may label JSON, HTML, XML, or CSV as octet-stream/text/plain;
+    # content signatures take precedence in that case. Specific declared
+    # types remain authoritative enough to preserve invalid-payload errors.
+    if sniffed_type and (declared_type is None or declared_type in _GENERIC_MEDIA_TYPES):
+        return sniffed_type
+    if declared_type:
+        return declared_type
+    path_type, _ = mimetypes.guess_type(urlparse(source_uri).path)
+    if path_type:
+        return path_type.lower()
+    if b"\x00" not in payload:
+        return "text/plain"
+    return "application/octet-stream"
+
+
+def _sniff_media_type(payload: bytes) -> str | None:
+    if payload.startswith(b"%PDF-"):
         return "application/pdf"
-    if stripped.startswith(b"<svg") or b"<svg" in stripped[:512]:
+    if payload.startswith(b"<svg") or b"<svg" in payload[:512]:
         return "image/svg+xml"
-    if stripped.startswith(b"<"):
-        if stripped.lower().startswith((b"<!doctype html", b"<html", b"<head", b"<body")):
+    if payload.startswith(b"<"):
+        if payload.lower().startswith((b"<!doctype html", b"<html", b"<head", b"<body")):
             return "text/html"
         return "application/xml"
     try:
         json.loads(payload)
     except (UnicodeDecodeError, json.JSONDecodeError):
-        path_type, _ = mimetypes.guess_type(urlparse(source_uri).path)
-        if path_type:
-            return path_type.lower()
-        if b"\x00" not in payload:
-            return "text/plain"
-        return "application/octet-stream"
+        if _looks_like_csv(payload):
+            return "text/csv"
+        return None
     return "application/json"
+
+
+def _looks_like_csv(payload: bytes) -> bool:
+    """Recognize delimited text conservatively without trusting a filename."""
+
+    if b"\x00" in payload:
+        return False
+    try:
+        sample = payload[:65536].decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return False
+    lines = [line for line in sample.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return False
+    try:
+        dialect = csv.Sniffer().sniff("\n".join(lines[:10]), delimiters=",\t;|")
+        rows = list(csv.reader(lines[:10], dialect))
+    except csv.Error:
+        return False
+    if len(rows) < 2 or len(rows[0]) < 2:
+        return False
+    width = len(rows[0])
+    return all(len(row) == width for row in rows[1:]) and all(cell.strip() for cell in rows[0])
 
 
 def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
