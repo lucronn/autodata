@@ -122,37 +122,27 @@ func (s *postgresProjectionStore) GetEvidence(datasetID, evidenceID string, prin
 	if err := s.authorize(datasetID, principal); err != nil {
 		return EvidenceRecord{}, err
 	}
-	var evidence EvidenceRecord
-	var extractionRunID *string
-	var datasetRevisionID *string
-	var confidence float64
-	var reviewerState string
-	err := s.pool.QueryRow(context.Background(), `
+	evidence, err := scanEvidence(s.pool.QueryRow(context.Background(), `
 		SELECT ee.extraction_evidence_id::text, ee.source_snapshot_id::text,
 		       ee.extraction_run_id::text, ee.dataset_revision_id::text,
-		       ee.locator, ee.artifact_key,
-		       ee.extracted_text, ee.confidence, ee.reviewer_state
+		       ee.locator, ee.artifact_key, ee.extracted_text,
+		       ee.confidence, ee.reviewer_state, ee.reviewer_id::text,
+		       ee.reviewed_at::text, ee.review_reason
 		FROM extraction_evidence ee
 		JOIN dataset_requests dr ON dr.source_snapshot_id = ee.source_snapshot_id
 		JOIN dataset_projections dp ON dp.dataset_request_id = dr.dataset_request_id
 		JOIN entitlements e ON e.entitlement_id = dp.entitlement_id
 		WHERE dp.dataset_projection_id = $1
 		  AND ee.extraction_evidence_id = $2
-		  AND e.organization_id::text = $3`, datasetID, evidenceID, principal.OrganizationID).
-		Scan(&evidence.EvidenceID, &evidence.SourceSnapshotID, &extractionRunID,
-			&datasetRevisionID, &evidence.Locator, &evidence.ArtifactKey, &evidence.ExtractedText,
-			&confidence, &reviewerState)
+		  AND e.organization_id::text = $3
+		  AND ee.dataset_revision_id IS NOT NULL`, datasetID, evidenceID, principal.OrganizationID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return EvidenceRecord{}, ErrInvalidEvidence
 	}
 	if err != nil {
 		return EvidenceRecord{}, err
 	}
-	evidence.ExtractionRunID = extractionRunID
-	evidence.DatasetRevisionID = datasetRevisionID
-	evidence.Confidence = confidence
-	evidence.ReviewerState = reviewerState
-	if reviewerState != "approved" {
+	if evidence.ReviewerState != "approved" {
 		return EvidenceRecord{}, ErrReviewRequired
 	}
 	return evidence, nil
@@ -278,6 +268,89 @@ func (s *postgresProjectionStore) SubmitFeedback(datasetID string, input Feedbac
 		return FeedbackRecord{}, err
 	}
 	return record, nil
+}
+
+func (s *postgresProjectionStore) ReviewEvidence(datasetID, evidenceID string, input EvidenceReviewInput, principal Principal) (EvidenceRecord, error) {
+	if err := s.authorize(datasetID, principal); err != nil {
+		return EvidenceRecord{}, err
+	}
+	if err := validateEvidenceReview(input); err != nil {
+		return EvidenceRecord{}, err
+	}
+	tx, err := s.pool.Begin(context.Background())
+	if err != nil {
+		return EvidenceRecord{}, err
+	}
+	defer tx.Rollback(context.Background())
+	evidence, err := scanEvidence(tx.QueryRow(context.Background(), `
+		SELECT ee.extraction_evidence_id::text, ee.source_snapshot_id::text,
+		       ee.extraction_run_id::text, ee.dataset_revision_id::text,
+		       ee.locator, ee.artifact_key, ee.extracted_text,
+		       ee.confidence, ee.reviewer_state, ee.reviewer_id::text,
+		       ee.reviewed_at::text, ee.review_reason
+		FROM extraction_evidence ee
+		JOIN dataset_requests dr ON dr.source_snapshot_id = ee.source_snapshot_id
+		JOIN dataset_projections dp ON dp.dataset_request_id = dr.dataset_request_id
+		WHERE dp.dataset_projection_id = $1
+		  AND ee.extraction_evidence_id::text = $2
+		FOR UPDATE`, datasetID, evidenceID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return EvidenceRecord{}, ErrInvalidEvidence
+	}
+	if err != nil {
+		return EvidenceRecord{}, err
+	}
+	if evidence.DatasetRevisionID != nil {
+		return EvidenceRecord{}, ErrReviewConflict
+	}
+	wantState := "rejected"
+	if input.Decision == "approve" {
+		wantState = "approved"
+	}
+	if evidence.ReviewerState != "pending" && evidence.ReviewerState != wantState {
+		return EvidenceRecord{}, ErrReviewConflict
+	}
+	if evidence.ReviewerState == "pending" {
+		var reviewedAt *string
+		if err := tx.QueryRow(context.Background(), `
+			UPDATE extraction_evidence
+			SET reviewer_state = $1, reviewer_id = NULLIF($2, '')::uuid,
+			    reviewed_at = now(), review_reason = $3
+			WHERE extraction_evidence_id::text = $4
+			RETURNING reviewed_at::text`, wantState, principal.OrganizationID,
+			strings.TrimSpace(input.Reason), evidenceID).Scan(&reviewedAt); err != nil {
+			return EvidenceRecord{}, err
+		}
+		evidence.ReviewerState = wantState
+		evidence.ReviewerID = stringPointer(principal.OrganizationID)
+		evidence.ReviewedAt = reviewedAt
+		evidence.ReviewReason = strings.TrimSpace(input.Reason)
+	}
+	if err := tx.Commit(context.Background()); err != nil {
+		return EvidenceRecord{}, err
+	}
+	return evidence, nil
+}
+
+func scanEvidence(row rowScanner) (EvidenceRecord, error) {
+	var evidence EvidenceRecord
+	var reviewReason *string
+	if err := row.Scan(
+		&evidence.EvidenceID, &evidence.SourceSnapshotID, &evidence.ExtractionRunID,
+		&evidence.DatasetRevisionID, &evidence.Locator, &evidence.ArtifactKey,
+		&evidence.ExtractedText, &evidence.Confidence, &evidence.ReviewerState,
+		&evidence.ReviewerID, &evidence.ReviewedAt, &reviewReason,
+	); err != nil {
+		return EvidenceRecord{}, err
+	}
+	if reviewReason != nil {
+		evidence.ReviewReason = *reviewReason
+	}
+	return evidence, nil
+}
+
+func stringPointer(value string) *string {
+	return &value
 }
 
 func (s *postgresProjectionStore) authorize(datasetID string, principal Principal) error {
