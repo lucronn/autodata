@@ -90,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /datasets/{id}/revisions", s.requireRole("dataset_viewer", s.getDatasetRevisions))
 	mux.Handle("GET /datasets/{id}/evidence/{evidence_id}", s.requireRole("dataset_viewer", s.getDatasetEvidence))
 	mux.Handle("GET /datasets/{id}/search", s.requireRole("dataset_viewer", s.searchEvidence))
+	mux.Handle("GET /datasets/{id}/knowledge", s.requireRole("dataset_viewer", s.searchKnowledge))
 	mux.Handle("POST /datasets/{id}/feedback", s.requireRole("dataset_viewer", s.submitFeedback))
 	mux.Handle("POST /datasets/{id}/feedback/{feedback_id}/review", s.requireRole("data_reviewer", s.reviewFeedback))
 	mux.Handle("POST /datasets/{id}/evidence/{evidence_id}/review", s.requireRole("data_reviewer", s.reviewEvidence))

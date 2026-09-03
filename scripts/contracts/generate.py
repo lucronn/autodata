@@ -11,6 +11,11 @@ from typing import Any
 
 CONTRACT_NAMES = (
     "dataset_read",
+    "knowledge_search_response",
+    "knowledge_result",
+    "knowledge_article",
+    "knowledge_procedure",
+    "knowledge_evidence",
     "dataset_section",
     "dataset_request",
     "entitlement",
@@ -28,6 +33,7 @@ def load_contract(path: Path) -> dict[str, Any]:
         "dataset_availability",
         "section_status",
         "event_subjects",
+        "knowledge_result_kind",
         *CONTRACT_NAMES,
     }
     missing = required_top_level - contract.keys()
@@ -35,6 +41,8 @@ def load_contract(path: Path) -> dict[str, Any]:
         raise ValueError(f"contract is missing top-level keys: {sorted(missing)}")
     if not isinstance(contract["schema_version"], int) or contract["schema_version"] < 1:
         raise ValueError("schema_version must be a positive integer")
+    if not isinstance(contract["knowledge_result_kind"], list) or not contract["knowledge_result_kind"]:
+        raise ValueError("knowledge_result_kind must be a non-empty list")
     for name in CONTRACT_NAMES:
         definition = contract[name]
         required = definition.get("required")
@@ -91,8 +99,13 @@ package contracts
 
 const SchemaVersion = %(schema_version)d
 
-%(dataset_availability)s%(section_status)s%(event_subjects)s%(entitlement_status)s%(feedback_category)s%(error_codes)s
+%(dataset_availability)s%(section_status)s%(event_subjects)s%(knowledge_result_kind)s%(entitlement_status)s%(feedback_category)s%(error_codes)s
 var DatasetReadRequiredFields = []string{%(dataset_read_required)s}
+var KnowledgeSearchResponseRequiredFields = []string{%(knowledge_search_response_required)s}
+var KnowledgeResultRequiredFields = []string{%(knowledge_result_required)s}
+var KnowledgeArticleRequiredFields = []string{%(knowledge_article_required)s}
+var KnowledgeProcedureRequiredFields = []string{%(knowledge_procedure_required)s}
+var KnowledgeEvidenceRequiredFields = []string{%(knowledge_evidence_required)s}
 var DatasetRequestRequiredFields = []string{%(dataset_request_required)s}
 var EntitlementRequiredFields = []string{%(entitlement_required)s}
 var EvidenceRequiredFields = []string{%(evidence_required)s}
@@ -113,6 +126,54 @@ type DatasetReadEnvelope struct {
 	Availability    string           `json:"availability"`
 	SourceWatermark string           `json:"source_watermark"`
 	Sections        []DatasetSection `json:"sections"`
+}
+
+type KnowledgeSearchResponse struct {
+	DatasetID       string                 `json:"dataset_id"`
+	RevisionID      string                 `json:"revision_id"`
+	Availability    string                 `json:"availability"`
+	SourceWatermark string                 `json:"source_watermark"`
+	Sections        []DatasetSection       `json:"sections"`
+	VehicleIdentity map[string]any         `json:"vehicle_identity,omitempty"`
+	Results         []KnowledgeResult      `json:"results"`
+}
+
+type KnowledgeResult struct {
+	Kind      string             `json:"kind"`
+	ID        string             `json:"id"`
+	Score     float64            `json:"score"`
+	Article   *KnowledgeArticle  `json:"article,omitempty"`
+	Procedure *KnowledgeProcedure `json:"procedure,omitempty"`
+	Evidence  []KnowledgeEvidence `json:"evidence"`
+}
+
+type KnowledgeArticle struct {
+	ArticleID      string `json:"article_id"`
+	ArticleKey     string `json:"article_key,omitempty"`
+	Bucket         string `json:"bucket,omitempty"`
+	Title          string `json:"title,omitempty"`
+	BulletinNumber string `json:"bulletin_number,omitempty"`
+	ReleaseDate    string `json:"release_date,omitempty"`
+	Body           string `json:"body,omitempty"`
+	Steps          []any  `json:"steps,omitempty"`
+}
+
+type KnowledgeProcedure struct {
+	ProcedureID  string   `json:"procedure_id"`
+	Section      string   `json:"section"`
+	Excerpt      string   `json:"excerpt"`
+	MatchedTerms []string `json:"matched_terms,omitempty"`
+}
+
+type KnowledgeEvidence struct {
+	EvidenceID       string  `json:"evidence_id"`
+	Locator          string  `json:"locator"`
+	SourceSnapshotID string  `json:"source_snapshot_id,omitempty"`
+	ArtifactKey      string  `json:"artifact_key,omitempty"`
+	SourceURI        string  `json:"source_uri,omitempty"`
+	SourceVersion    string  `json:"source_version,omitempty"`
+	ExtractedText    string  `json:"extracted_text,omitempty"`
+	Confidence       float64 `json:"confidence"`
 }
 
 type DatasetRequest struct {
@@ -170,6 +231,7 @@ type EventEnvelope struct {
         "dataset_availability": _go_enum("DatasetAvailabilityValues", contract["dataset_availability"]),
         "section_status": _go_enum("SectionStatusValues", contract["section_status"]),
         "event_subjects": _go_enum("EventSubjects", contract["event_subjects"]),
+        "knowledge_result_kind": _go_enum("KnowledgeResultKindValues", contract["knowledge_result_kind"]),
         "entitlement_status": _go_enum(
             "EntitlementStatusValues", _enum_values(contract, "entitlement", "status")
         ),
@@ -181,6 +243,11 @@ type EventEnvelope struct {
             f"{name}_required": _json_strings(contract[name]["required"])
             for name in (
                 "dataset_read",
+                "knowledge_search_response",
+                "knowledge_result",
+                "knowledge_article",
+                "knowledge_procedure",
+                "knowledge_evidence",
                 "dataset_request",
                 "entitlement",
                 "evidence",
@@ -194,6 +261,8 @@ type EventEnvelope struct {
 
 def render_python(contract: dict[str, Any]) -> str:
     return """# Code generated by scripts/contracts/generate.py; DO NOT EDIT.
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -202,10 +271,16 @@ SCHEMA_VERSION = %(schema_version)d
 DATASET_AVAILABILITY_VALUES = (%(dataset_availability)s,)
 SECTION_STATUS_VALUES = (%(section_status)s,)
 EVENT_SUBJECTS = (%(event_subjects)s,)
+KNOWLEDGE_RESULT_KIND_VALUES = (%(knowledge_result_kind)s,)
 ENTITLEMENT_STATUS_VALUES = (%(entitlement_status)s,)
 FEEDBACK_CATEGORY_VALUES = (%(feedback_category)s,)
 ERROR_CODE_VALUES = (%(error_codes)s,)
 DATASET_READ_REQUIRED_FIELDS = (%(dataset_read_required)s,)
+KNOWLEDGE_SEARCH_RESPONSE_REQUIRED_FIELDS = (%(knowledge_search_response_required)s,)
+KNOWLEDGE_RESULT_REQUIRED_FIELDS = (%(knowledge_result_required)s,)
+KNOWLEDGE_ARTICLE_REQUIRED_FIELDS = (%(knowledge_article_required)s,)
+KNOWLEDGE_PROCEDURE_REQUIRED_FIELDS = (%(knowledge_procedure_required)s,)
+KNOWLEDGE_EVIDENCE_REQUIRED_FIELDS = (%(knowledge_evidence_required)s,)
 DATASET_REQUEST_REQUIRED_FIELDS = (%(dataset_request_required)s,)
 ENTITLEMENT_REQUIRED_FIELDS = (%(entitlement_required)s,)
 EVIDENCE_REQUIRED_FIELDS = (%(evidence_required)s,)
@@ -231,6 +306,59 @@ class DatasetReadEnvelope:
     sections: list[DatasetSection]
     data: dict[str, Any] | None = None
     warnings: list[dict[str, Any]] | None = None
+
+
+@dataclass(frozen=True)
+class KnowledgeSearchResponse:
+    dataset_id: str
+    revision_id: str
+    availability: str
+    source_watermark: str
+    sections: list[DatasetSection]
+    results: list["KnowledgeResult"]
+    vehicle_identity: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class KnowledgeResult:
+    kind: str
+    id: str
+    score: float
+    evidence: list["KnowledgeEvidence"]
+    article: "KnowledgeArticle" | None = None
+    procedure: "KnowledgeProcedure" | None = None
+
+
+@dataclass(frozen=True)
+class KnowledgeArticle:
+    article_id: str
+    article_key: str | None = None
+    bucket: str | None = None
+    title: str | None = None
+    bulletin_number: str | None = None
+    release_date: str | None = None
+    body: str | None = None
+    steps: list[Any] | None = None
+
+
+@dataclass(frozen=True)
+class KnowledgeProcedure:
+    procedure_id: str
+    section: str
+    excerpt: str
+    matched_terms: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class KnowledgeEvidence:
+    evidence_id: str
+    locator: str
+    confidence: float
+    source_snapshot_id: str | None = None
+    artifact_key: str | None = None
+    source_uri: str | None = None
+    source_version: str | None = None
+    extracted_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -293,6 +421,7 @@ class EventEnvelope:
         "dataset_availability": ", ".join(repr(value) for value in contract["dataset_availability"]),
         "section_status": ", ".join(repr(value) for value in contract["section_status"]),
         "event_subjects": ", ".join(repr(value) for value in contract["event_subjects"]),
+        "knowledge_result_kind": ", ".join(repr(value) for value in contract["knowledge_result_kind"]),
         "entitlement_status": ", ".join(
             repr(value) for value in _enum_values(contract, "entitlement", "status")
         ),
@@ -304,6 +433,11 @@ class EventEnvelope:
             f"{name}_required": ", ".join(repr(value) for value in contract[name]["required"])
             for name in (
                 "dataset_read",
+                "knowledge_search_response",
+                "knowledge_result",
+                "knowledge_article",
+                "knowledge_procedure",
+                "knowledge_evidence",
                 "dataset_request",
                 "entitlement",
                 "evidence",

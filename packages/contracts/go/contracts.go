@@ -6,11 +6,17 @@ const SchemaVersion = 1
 var DatasetAvailabilityValues = []string{"purchased", "fast_lane_processing", "viewable", "enriching", "complete", "failed", "needs_review", "revoked"}
 var SectionStatusValues = []string{"pending", "processing", "viewable", "complete", "failed", "needs_review"}
 var EventSubjects = []string{"dataset.fast.requested", "dataset.viewable", "dataset.deep.requested", "dataset.section.published", "dataset.enrichment.failed", "dataset.review.requested", "dataset.revision.revoked"}
+var KnowledgeResultKindValues = []string{"article", "procedure"}
 var EntitlementStatusValues = []string{"active", "revoked"}
 var FeedbackCategoryValues = []string{"correction", "missing", "quality", "safety"}
 var ErrorCodeValues = []string{"UNAUTHENTICATED", "ENTITLEMENT_REQUIRED", "FORBIDDEN", "ENTITLEMENT_REVOKED", "DATASET_NOT_VIEWABLE", "SECTION_FAILED", "REVISION_NOT_FOUND", "DUPLICATE_REQUEST", "INVALID_EVIDENCE", "REVIEW_REQUIRED", "INVALID_REQUEST"}
 
 var DatasetReadRequiredFields = []string{"dataset_id", "revision_id", "availability", "source_watermark", "sections"}
+var KnowledgeSearchResponseRequiredFields = []string{"dataset_id", "revision_id", "availability", "source_watermark", "sections", "results"}
+var KnowledgeResultRequiredFields = []string{"kind", "id", "score", "evidence"}
+var KnowledgeArticleRequiredFields = []string{"article_id"}
+var KnowledgeProcedureRequiredFields = []string{"procedure_id", "section", "excerpt"}
+var KnowledgeEvidenceRequiredFields = []string{"evidence_id", "locator", "confidence"}
 var DatasetRequestRequiredFields = []string{"request_id", "product_id", "vehicle_key", "status"}
 var EntitlementRequiredFields = []string{"entitlement_id", "organization_id", "dataset_request_id", "status"}
 var EvidenceRequiredFields = []string{"evidence_id", "source_snapshot_id", "extraction_run_id", "locator", "confidence"}
@@ -31,6 +37,54 @@ type DatasetReadEnvelope struct {
 	Availability    string           `json:"availability"`
 	SourceWatermark string           `json:"source_watermark"`
 	Sections        []DatasetSection `json:"sections"`
+}
+
+type KnowledgeSearchResponse struct {
+	DatasetID       string                 `json:"dataset_id"`
+	RevisionID      string                 `json:"revision_id"`
+	Availability    string                 `json:"availability"`
+	SourceWatermark string                 `json:"source_watermark"`
+	Sections        []DatasetSection       `json:"sections"`
+	VehicleIdentity map[string]any         `json:"vehicle_identity,omitempty"`
+	Results         []KnowledgeResult      `json:"results"`
+}
+
+type KnowledgeResult struct {
+	Kind      string             `json:"kind"`
+	ID        string             `json:"id"`
+	Score     float64            `json:"score"`
+	Article   *KnowledgeArticle  `json:"article,omitempty"`
+	Procedure *KnowledgeProcedure `json:"procedure,omitempty"`
+	Evidence  []KnowledgeEvidence `json:"evidence"`
+}
+
+type KnowledgeArticle struct {
+	ArticleID      string `json:"article_id"`
+	ArticleKey     string `json:"article_key,omitempty"`
+	Bucket         string `json:"bucket,omitempty"`
+	Title          string `json:"title,omitempty"`
+	BulletinNumber string `json:"bulletin_number,omitempty"`
+	ReleaseDate    string `json:"release_date,omitempty"`
+	Body           string `json:"body,omitempty"`
+	Steps          []any  `json:"steps,omitempty"`
+}
+
+type KnowledgeProcedure struct {
+	ProcedureID  string   `json:"procedure_id"`
+	Section      string   `json:"section"`
+	Excerpt      string   `json:"excerpt"`
+	MatchedTerms []string `json:"matched_terms,omitempty"`
+}
+
+type KnowledgeEvidence struct {
+	EvidenceID       string  `json:"evidence_id"`
+	Locator          string  `json:"locator"`
+	SourceSnapshotID string  `json:"source_snapshot_id,omitempty"`
+	ArtifactKey      string  `json:"artifact_key,omitempty"`
+	SourceURI        string  `json:"source_uri,omitempty"`
+	SourceVersion    string  `json:"source_version,omitempty"`
+	ExtractedText    string  `json:"extracted_text,omitempty"`
+	Confidence       float64 `json:"confidence"`
 }
 
 type DatasetRequest struct {
