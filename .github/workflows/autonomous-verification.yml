@@ -4,8 +4,12 @@ on:
   pull_request:
     paths:
       - ".autodata-autonomy-policy.json"
+      - "README.md"
       - ".cursor/agents/**"
       - "docs/agents/**"
+      - "docs/architecture/**"
+      - "docs/github/**"
+      - "docs/superpowers/specs/**"
       - "scripts/autonomy/**"
       - "apps/api-go/**"
       - "workers/**"
@@ -19,8 +23,12 @@ on:
   push:
     paths:
       - ".autodata-autonomy-policy.json"
+      - "README.md"
       - ".cursor/agents/**"
       - "docs/agents/**"
+      - "docs/architecture/**"
+      - "docs/github/**"
+      - "docs/superpowers/specs/**"
       - "scripts/autonomy/**"
       - "apps/api-go/**"
       - "workers/**"
