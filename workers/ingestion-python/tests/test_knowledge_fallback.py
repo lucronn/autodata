@@ -185,6 +185,25 @@ class KnowledgeFallbackTests(unittest.TestCase):
             json.dumps(replay.to_dict(), sort_keys=True),
         )
 
+    def test_fetched_source_still_requires_a_query_match(self):
+        source_uri = "https://source.example/articles/unrelated"
+        unrelated = _html().replace(b"Brake connector", b"Oil filter")
+        connector = _StaticConnector(
+            [SourceResource.from_bytes(source_uri, "unrelated-v1", unrelated, "text/html")]
+        )
+
+        result = query_vehicle_knowledge(
+            TARGET,
+            "airbag wiring",
+            catalog=[],
+            source_resolver=lambda target, query, keywords: ResolvedSource(
+                source_uri, connector
+            ),
+        )
+
+        self.assertEqual(result.status, "fetched")
+        self.assertEqual(result.results, ())
+
     def test_kind_filter_keeps_the_normalized_result_type_vehicle_scoped(self):
         catalog = [
             {

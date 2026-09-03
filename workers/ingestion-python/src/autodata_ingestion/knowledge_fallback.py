@@ -180,7 +180,7 @@ def query_vehicle_knowledge(
         target,
         query_tokens,
         normalized_kind,
-        require_match=False,
+        require_match=True,
     )
     return KnowledgeFallbackResult(
         status="fetched",
