@@ -573,12 +573,14 @@ def _adapt_document_resource(
     if not text:
         return _binary_artifact("document", resource, {**metadata, "extraction_status": "needs_review"})
     locator = resource.locator or "document"
-    candidate = NormalizationCandidate(
+    candidates = [NormalizationCandidate(
         "document_text",
         f"document-text:{resource.content_sha256}",
         {"text": text},
         locator,
-    )
+    )]
+    if resource.media_type == "text/html":
+        candidates.extend(_html_article_candidates(resource))
     return SourceArtifact(
         kind="document",
         source_uri=resource.source_uri,
@@ -587,8 +589,13 @@ def _adapt_document_resource(
         content_sha256=resource.content_sha256,
         payload=resource.payload,
         raw_payload=resource.payload,
-        metadata={**metadata, "extraction_status": "candidate_ready", "text_char_count": len(text)},
-        candidates=(candidate,),
+        metadata={
+            **metadata,
+            "candidate_count": len(candidates),
+            "extraction_status": "candidate_ready",
+            "text_char_count": len(text),
+        },
+        candidates=tuple(candidates),
     )
 
 
@@ -833,6 +840,216 @@ def _html_text(payload: bytes) -> str:
     parser.feed(payload.decode("utf-8-sig"))
     parser.close()
     return re.sub(r"\s+", " ", " ".join(parser.parts)).strip()
+
+
+class _ArticleHTMLParser(HTMLParser):
+    """Collect low-risk HTML metadata without interpreting arbitrary markup."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.meta: dict[str, list[str]] = {}
+        self.headings: list[str] = []
+        self._heading_parts: list[str] | None = None
+        self._title_parts: list[str] | None = None
+        self._title_value = ""
+        self._json_ld_parts: list[str] | None = None
+        self.json_ld: list[str] = []
+        self.has_article_element = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = {
+            str(key).casefold(): str(value).strip()
+            for key, value in attrs
+            if value is not None
+        }
+        normalized_tag = tag.casefold()
+        if normalized_tag == "article":
+            self.has_article_element = True
+        if normalized_tag == "meta":
+            key = attributes.get("name") or attributes.get("property") or attributes.get("itemprop")
+            content = attributes.get("content", "")
+            if key and content:
+                self.meta.setdefault(key.casefold(), []).append(content)
+        elif normalized_tag == "title":
+            self._title_parts = []
+        elif normalized_tag in {"h1", "h2", "h3"}:
+            self._heading_parts = []
+        elif normalized_tag == "script" and attributes.get("type", "").casefold() == "application/ld+json":
+            self._json_ld_parts = []
+
+    def handle_endtag(self, tag: str) -> None:
+        normalized_tag = tag.casefold()
+        if normalized_tag == "title" and self._title_parts is not None:
+            self._title_value = _compact_text(" ".join(self._title_parts))
+            self._title_parts = None
+        elif normalized_tag in {"h1", "h2", "h3"} and self._heading_parts is not None:
+            value = _compact_text(" ".join(self._heading_parts))
+            if value:
+                self.headings.append(value)
+            self._heading_parts = None
+        elif normalized_tag == "script" and self._json_ld_parts is not None:
+            value = "".join(self._json_ld_parts).strip()
+            if value:
+                self.json_ld.append(value)
+            self._json_ld_parts = None
+
+    def handle_data(self, data: str) -> None:
+        if self._title_parts is not None:
+            self._title_parts.append(data)
+        if self._heading_parts is not None:
+            self._heading_parts.append(data)
+        if self._json_ld_parts is not None:
+            self._json_ld_parts.append(data)
+
+    @property
+    def title(self) -> str:
+        return self._title_value
+
+
+def _html_article_candidates(resource: SourceResource) -> list[NormalizationCandidate]:
+    """Extract one article and any explicit vehicle identity from generic HTML."""
+
+    parser = _ArticleHTMLParser()
+    parser.feed(resource.payload.decode("utf-8-sig"))
+    parser.close()
+    json_ld_records = _json_ld_records(parser.json_ld)
+
+    vehicle_values = _meta_values(
+        parser.meta,
+        "vehicle",
+        "vehicle.name",
+        "vehicle_name",
+        "dc.vehicle",
+    )
+    article_meta_title = _first_meta_value(parser.meta, "og:title", "article:title", "headline")
+    article_values: dict[str, Any] = {
+        "title": article_meta_title or parser.title,
+        "id": _first_meta_value(parser.meta, "article:id", "article_id", "dc.identifier", "identifier"),
+        "bucket": _first_meta_value(parser.meta, "article:section", "article_section", "section", "category"),
+        "releaseDate": _first_meta_value(
+            parser.meta, "article:published_time", "datepublished", "date_published", "published_time"
+        ),
+        "bulletinNumber": _first_meta_value(
+            parser.meta, "article:bulletin_number", "bulletin_number", "bulletin", "tsb"
+        ),
+    }
+    for record in json_ld_records:
+        record_types = _json_ld_types(record)
+        if any("article" in record_type for record_type in record_types):
+            article_values = {
+                **article_values,
+                "title": _json_ld_text(record, "headline", "name") or article_values["title"],
+                "id": _json_ld_text(record, "identifier", "articleBodyId") or article_values["id"],
+                "bucket": _json_ld_text(record, "articleSection", "section") or article_values["bucket"],
+                "releaseDate": _json_ld_text(record, "datePublished") or article_values["releaseDate"],
+                "bulletinNumber": _json_ld_text(record, "bulletinNumber") or article_values["bulletinNumber"],
+            }
+        for field in ("vehicle", "about", "mainEntity"):
+            value = record.get(field)
+            if isinstance(value, str):
+                vehicle_values.append(value.strip())
+            elif isinstance(value, dict):
+                name = _json_ld_text(value, "name", "vehicleName")
+                if name:
+                    vehicle_values.append(name)
+
+    candidates: list[NormalizationCandidate] = []
+    for index, display_name in enumerate(dict.fromkeys(value for value in vehicle_values if value)):
+        identity = parse_vehicle_display_name(display_name)
+        if identity is None:
+            continue
+        candidates.append(
+            NormalizationCandidate(
+                "vehicle_identity",
+                f"vehicle-identity:html:{index}",
+                identity,
+                f"html:vehicle[{index}]",
+            )
+        )
+
+    article_signal = bool(
+        article_values["title"]
+        or article_meta_title
+        or parser.has_article_element
+        or any("article" in record_type for record in json_ld_records for record_type in _json_ld_types(record))
+    )
+    title = _compact_text(
+        str(article_values.get("title") or (parser.headings[0] if article_signal and parser.headings else ""))
+    )
+    if title:
+        article_id = _compact_text(str(article_values.get("id") or ""))
+        if not article_id:
+            article_id = f"url:{hashlib.sha256(resource.source_uri.encode()).hexdigest()[:24]}"
+        article_data = {
+            "id": article_id,
+            "title": title,
+            "bucket": _compact_text(str(article_values.get("bucket") or "")) or None,
+            "bulletinNumber": _compact_text(str(article_values.get("bulletinNumber") or "")) or None,
+            "releaseDate": _compact_text(str(article_values.get("releaseDate") or "")) or None,
+        }
+        candidates.append(
+            NormalizationCandidate(
+                "article",
+                f"article:{article_id}:html",
+                article_data,
+                "html:article",
+            )
+        )
+    return candidates
+
+
+def _compact_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _meta_values(meta: dict[str, list[str]], *keys: str) -> list[str]:
+    return [value for key in keys for value in meta.get(key.casefold(), [])]
+
+
+def _first_meta_value(meta: dict[str, list[str]], *keys: str) -> str:
+    values = _meta_values(meta, *keys)
+    return values[0] if values else ""
+
+
+def _json_ld_records(values: list[str]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for value in values:
+        try:
+            document = json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        records.extend(_flatten_json_ld(document))
+    return records
+
+
+def _flatten_json_ld(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        records = [value]
+        graph = value.get("@graph")
+        if isinstance(graph, list):
+            records.extend(item for item in graph if isinstance(item, dict))
+        return records
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _json_ld_types(record: dict[str, Any]) -> set[str]:
+    value = record.get("@type")
+    values = value if isinstance(value, list) else [value]
+    return {str(item).casefold() for item in values if item}
+
+
+def _json_ld_text(record: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = record.get(key)
+        if isinstance(value, (str, int, float)):
+            return str(value).strip()
+        if isinstance(value, dict):
+            nested = value.get("value") or value.get("name")
+            if nested:
+                return str(nested).strip()
+    return ""
 
 
 def _candidate_from_record(
