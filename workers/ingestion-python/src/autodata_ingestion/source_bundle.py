@@ -276,13 +276,18 @@ def _slug(value: str) -> str:
 
 def _evidence(artifact: SourceArtifact, candidate: NormalizationCandidate) -> dict[str, Any]:
     evidence_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"autodata-evidence:{artifact.content_sha256}:{candidate.locator}"))
+    extracted_text = (
+        str(candidate.data["text"])
+        if candidate.kind == "document_text" and candidate.data.get("text")
+        else json.dumps(candidate.data, sort_keys=True, separators=(",", ":"))
+    )
     return {
         "evidence_id": evidence_id,
         "source_uri": artifact.source_uri,
         "content_sha256": artifact.content_sha256,
         "locator": candidate.locator,
         "candidate_key": candidate.key,
-        "extracted_text": json.dumps(candidate.data, sort_keys=True, separators=(",", ":")),
+        "extracted_text": extracted_text,
         "confidence": 1.0,
         "reviewer_state": "pending",
     }

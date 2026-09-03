@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import csv
 import hashlib
+from html.parser import HTMLParser
 import io
 import json
 import mimetypes
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 from urllib.parse import urlparse
 from xml.etree import ElementTree
 
@@ -100,6 +101,21 @@ class SourceArtifact:
         return f"sources/{digest_prefix}/{self.content_sha256}"
 
 
+MediaTypeAdapter = Callable[[SourceResource, dict[str, Any]], SourceArtifact]
+_MEDIA_TYPE_ADAPTERS: dict[str, MediaTypeAdapter] = {}
+
+
+def register_media_type_adapter(media_type: str, adapter: MediaTypeAdapter) -> None:
+    """Register an extractor for a source media type without changing intake."""
+
+    normalized_type = str(media_type).split(";", 1)[0].strip().casefold()
+    if "/" not in normalized_type or any(character.isspace() for character in normalized_type):
+        raise ValueError("media type must be a lowercase type/subtype token")
+    if not callable(adapter):
+        raise TypeError("media type adapter must be callable")
+    _MEDIA_TYPE_ADAPTERS[normalized_type] = adapter
+
+
 def detect_media_type(source_uri: str, payload: bytes, media_type: str | None = None) -> str:
     """Resolve a stable media type from connector metadata, URL, and magic bytes."""
 
@@ -174,6 +190,9 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
         "media_type": resource.media_type,
         "locator": resource.locator,
     }
+    custom_adapter = _MEDIA_TYPE_ADAPTERS.get(resource.media_type)
+    if custom_adapter is not None:
+        return custom_adapter(resource, metadata)
     if resource.media_type in _JSON_TYPES:
         try:
             document = json.loads(resource.payload)
@@ -210,7 +229,7 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
     if resource.media_type in _DIAGRAM_TYPES:
         return _binary_artifact("diagram", resource, metadata)
     if resource.media_type in _DOCUMENT_TYPES:
-        return _binary_artifact("document", resource, metadata)
+        return _adapt_document_resource(resource, metadata)
     if resource.media_type == "text/csv":
         return _adapt_csv_resource(resource, metadata)
     if resource.media_type in {"application/xml", "text/xml"}:
@@ -384,6 +403,73 @@ def _structured_error_artifact(
         [],
         [],
     )
+
+
+def _adapt_document_resource(
+    resource: SourceResource,
+    metadata: dict[str, Any],
+) -> SourceArtifact:
+    """Extract only literal text from safe document types; preserve other bytes."""
+
+    if resource.media_type == "application/pdf":
+        return _binary_artifact("document", resource, {**metadata, "extraction_status": "needs_review"})
+    try:
+        if resource.media_type == "text/html":
+            text = _html_text(resource.payload)
+        else:
+            text = resource.payload.decode("utf-8-sig").strip()
+    except UnicodeDecodeError as error:
+        return _binary_artifact(
+            "document",
+            resource,
+            {**metadata, "extraction_status": "needs_review", "extraction_error": str(error)},
+        )
+    if not text:
+        return _binary_artifact("document", resource, {**metadata, "extraction_status": "needs_review"})
+    locator = resource.locator or "document"
+    candidate = NormalizationCandidate(
+        "document_text",
+        f"document-text:{resource.content_sha256}",
+        {"text": text},
+        locator,
+    )
+    return SourceArtifact(
+        kind="document",
+        source_uri=resource.source_uri,
+        source_version=resource.source_version,
+        media_type=resource.media_type,
+        content_sha256=resource.content_sha256,
+        payload=resource.payload,
+        raw_payload=resource.payload,
+        metadata={**metadata, "extraction_status": "candidate_ready", "text_char_count": len(text)},
+        candidates=(candidate,),
+    )
+
+
+class _VisibleTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._ignored_depth = 0
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, _attrs: list[tuple[str, str | None]]) -> None:
+        if tag.casefold() in {"script", "style", "template"}:
+            self._ignored_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() in {"script", "style", "template"} and self._ignored_depth:
+            self._ignored_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if not self._ignored_depth:
+            self.parts.append(data)
+
+
+def _html_text(payload: bytes) -> str:
+    parser = _VisibleTextParser()
+    parser.feed(payload.decode("utf-8-sig"))
+    parser.close()
+    return re.sub(r"\s+", " ", " ".join(parser.parts)).strip()
 
 
 def _candidate_from_record(

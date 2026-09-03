@@ -74,6 +74,33 @@ class SourceBundleTests(unittest.TestCase):
         self.assertEqual(bundle.quarantined[0]["reason"], "no_typed_candidates")
         self.assertEqual(bundle.quarantined[0]["content_sha256"], resource.content_sha256)
 
+    def test_literal_document_text_is_retained_as_searchable_evidence(self):
+        resources = [
+            SourceResource.from_bytes(
+                "provider://vehicle/name",
+                "source-v1",
+                b'{"body":"2019 Cadillac Escalade ESV"}',
+                "application/json",
+            ),
+            SourceResource.from_bytes(
+                "provider://vehicle/procedure.html",
+                "source-v1",
+                b"<html><body>Inspect the brake connector before service.</body></html>",
+                "text/html",
+            ),
+        ]
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource) for resource in resources], "US")
+
+        html_hash = resources[1].content_sha256
+        document_evidence = [item for item in bundle.evidence if item["content_sha256"] == html_hash]
+        self.assertEqual(len(document_evidence), 1)
+        self.assertEqual(
+            document_evidence[0]["extracted_text"],
+            "Inspect the brake connector before service.",
+        )
+        self.assertEqual(document_evidence[0]["reviewer_state"], "pending")
+
     def test_price_parser_rejects_ambiguous_currency_instead_of_guessing(self):
         resources = [
             SourceResource.from_bytes(

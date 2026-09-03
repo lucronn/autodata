@@ -7,14 +7,51 @@ ROOT = Path(__file__).parents[3]
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from autodata_ingestion.source_adapters import (  # noqa: E402
+    NormalizationCandidate,
+    SourceArtifact,
     SourceResource,
     adapt_source_resource,
     classify_json_candidates,
     detect_media_type,
+    register_media_type_adapter,
 )
 
 
 class SourceAdapterTests(unittest.TestCase):
+    def test_registered_media_type_adapter_handles_new_source_types(self):
+        def adapt_custom_type(resource, metadata):
+            return SourceArtifact(
+                kind="structured",
+                source_uri=resource.source_uri,
+                source_version=resource.source_version,
+                media_type=resource.media_type,
+                content_sha256=resource.content_sha256,
+                payload={"custom": True},
+                raw_payload=resource.payload,
+                metadata={**metadata, "adapter": "test-custom"},
+                candidates=(
+                    NormalizationCandidate(
+                        "vehicle_identity",
+                        "vehicle-identity:test",
+                        {"make": "Test", "model": "Vehicle", "year": 2026},
+                        "custom.vehicle",
+                    ),
+                ),
+            )
+
+        register_media_type_adapter("application/x-autodata-test", adapt_custom_type)
+        artifact = adapt_source_resource(
+            SourceResource.from_bytes(
+                "https://source.example/custom",
+                "v1",
+                b"custom payload",
+                "application/x-autodata-test",
+            )
+        )
+
+        self.assertEqual(artifact.metadata["adapter"], "test-custom")
+        self.assertEqual(artifact.candidates[0].kind, "vehicle_identity")
+
     def test_resource_detects_media_type_and_preserves_content_address(self):
         resource = SourceResource.from_bytes(
             source_uri="https://source.example/vehicle.json",
@@ -84,6 +121,28 @@ class SourceAdapterTests(unittest.TestCase):
 
         self.assertEqual(html.media_type, "text/html")
         self.assertEqual(pdf.media_type, "application/pdf")
+
+    def test_html_and_plain_documents_emit_reviewable_text_candidates(self):
+        html = SourceResource.from_bytes(
+            "https://source.example/tsb.html",
+            "v1",
+            b"<html><head><style>hidden</style></head><body>TSB <b>brake</b> procedure</body></html>",
+            "text/html",
+        )
+        plain = SourceResource.from_bytes(
+            "file://drop/notes.txt",
+            "v1",
+            "2019 brake inspection\nUse approved fluid.".encode(),
+            "text/plain",
+        )
+
+        html_artifact = adapt_source_resource(html)
+        plain_artifact = adapt_source_resource(plain)
+
+        self.assertEqual(html_artifact.candidates[0].kind, "document_text")
+        self.assertEqual(html_artifact.candidates[0].data["text"], "TSB brake procedure")
+        self.assertEqual(plain_artifact.candidates[0].kind, "document_text")
+        self.assertIn("approved fluid", plain_artifact.candidates[0].data["text"])
 
     def test_content_sniffing_takes_precedence_over_misleading_file_extensions(self):
         xml = b'\xef\xbb\xbf<?xml version="1.0"?><vehicle><make>Ford</make></vehicle>'
