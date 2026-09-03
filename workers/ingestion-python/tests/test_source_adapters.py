@@ -1,3 +1,5 @@
+import base64
+import json
 import sys
 import types
 import unittest
@@ -93,6 +95,82 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(candidates[0].data["make"], "Cadillac")
         self.assertEqual(candidates[0].data["model"], "Escalade ESV")
         self.assertEqual(candidates[0].data["trim"], "2WD")
+
+    def test_json_embedded_html_is_adapted_with_outer_provenance(self):
+        resource = SourceResource.from_bytes(
+            "file://drop/article.json",
+            "v1",
+            json.dumps(
+                {
+                    "header": {"status": "OK"},
+                    "body": {
+                        "documentId": "3950424",
+                        "html": "<h2>Brake procedure</h2><p>Inspect the caliper.</p>",
+                    },
+                }
+            ).encode(),
+            "application/json",
+        )
+
+        artifact = adapt_source_resource(resource)
+
+        self.assertEqual(artifact.kind, "structured")
+        self.assertEqual(artifact.metadata["candidate_count"], 2)
+        self.assertEqual(artifact.metadata["embedded_resources"][0]["media_type"], "text/html")
+        self.assertEqual(artifact.metadata["embedded_resources"][0]["locator"], "body.html:3950424")
+        text_candidates = [candidate for candidate in artifact.candidates if candidate.kind == "document_text"]
+        self.assertEqual(len(text_candidates), 1)
+        self.assertEqual(text_candidates[0].locator, "body.html:3950424")
+        self.assertEqual(text_candidates[0].data["text"], "Brake procedure Inspect the caliper.")
+        self.assertEqual(text_candidates[0].data["outer_content_sha256"], resource.content_sha256)
+
+    def test_json_embedded_base64_pdf_is_adapted_as_page_evidence(self):
+        class FakePage:
+            def __init__(self, text):
+                self._text = text
+
+            def extract_text(self):
+                return self._text
+
+        class FakeReader:
+            pages = [FakePage("Embedded service procedure")]
+
+            def __init__(self, stream):
+                self.stream = stream
+
+        embedded_pdf = base64.b64encode(b"%PDF-1.7 embedded bytes").decode()
+        resource = SourceResource.from_bytes(
+            "file://drop/P_8.json",
+            "v1",
+            json.dumps({"body": {"documentId": "P_8", "pdf": embedded_pdf}}).encode(),
+            "application/json",
+        )
+
+        with patch.dict(sys.modules, {"pypdf": types.SimpleNamespace(PdfReader=FakeReader)}):
+            artifact = adapt_source_resource(resource)
+
+        self.assertEqual(artifact.metadata["embedded_resources"][0]["media_type"], "application/pdf")
+        self.assertEqual(artifact.metadata["embedded_resources"][0]["locator"], "body.pdf:P_8")
+        text_candidates = [candidate for candidate in artifact.candidates if candidate.kind == "document_text"]
+        self.assertEqual(len(text_candidates), 1)
+        self.assertEqual(text_candidates[0].locator, "body.pdf:P_8:page:1")
+        self.assertEqual(text_candidates[0].data["text"], "Embedded service procedure")
+        self.assertEqual(text_candidates[0].data["outer_content_sha256"], resource.content_sha256)
+
+    def test_invalid_embedded_pdf_is_retained_for_review_without_dropping_json(self):
+        resource = SourceResource.from_bytes(
+            "file://drop/bad.json",
+            "v1",
+            json.dumps({"body": {"documentId": "bad", "pdf": "not-base64"}}).encode(),
+            "application/json",
+        )
+
+        artifact = adapt_source_resource(resource)
+
+        self.assertEqual(artifact.kind, "structured")
+        self.assertEqual(artifact.metadata["embedded_needs_review"], True)
+        self.assertEqual(artifact.metadata["embedded_resources"][0]["extraction_status"], "needs_review")
+        self.assertEqual(artifact.raw_payload, resource.payload)
 
     def test_media_types_are_classified_and_unknown_content_is_quarantined(self):
         expected = {
