@@ -23,6 +23,7 @@ class KubernetesManifestTests(unittest.TestCase):
             ("Deployment", "autodata-api"),
             ("Deployment", "autodata-ingestion-worker"),
             ("Deployment", "autodata-enrichment-worker"),
+            ("Deployment", "autodata-payment-reconciler"),
             ("Job", "autodata-migrations"),
             ("PodDisruptionBudget", "autodata-api"),
         }
@@ -40,7 +41,11 @@ class KubernetesManifestTests(unittest.TestCase):
         self.assertIn("                name: autodata-runtime-secrets", deployment)
 
     def test_workers_are_independently_scalable_and_migration_is_one_shot(self):
-        for name in ("autodata-ingestion-worker", "autodata-enrichment-worker"):
+        for name in (
+            "autodata-ingestion-worker",
+            "autodata-enrichment-worker",
+            "autodata-payment-reconciler",
+        ):
             deployment = self.by_key[("Deployment", name)]
             self.assertIn("  replicas: 1", deployment)
             self.assertIn("          resources:", deployment)

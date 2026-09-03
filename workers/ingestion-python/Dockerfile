@@ -7,5 +7,6 @@ COPY workers/ingestion-python/src ./src
 COPY packages/contracts/python ./contracts
 COPY scripts/dev/ingestion_smoke.py ./scripts/ingestion_smoke.py
 COPY scripts/dev/normalize_source_directory.py ./scripts/normalize_source_directory.py
+COPY scripts/dev/reconcile_payments.py ./scripts/reconcile_payments.py
 ENV PYTHONPATH=/app/src:/app/contracts
 CMD ["python", "-m", "autodata_ingestion.worker"]

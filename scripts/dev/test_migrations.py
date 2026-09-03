@@ -31,6 +31,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "009_feedback_evidence_link.sql",
                 "010_evidence_review_metadata.sql",
                 "011_feedback_review_metadata.sql",
+                "012_payment_fulfillment_reconciliation.sql",
             ],
         )
 

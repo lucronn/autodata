@@ -184,6 +184,8 @@ revoke_entitlement(entitlement_id, reason) -> Revocation
 
 Stripe is the reference production adapter. The local fake provider emits deterministic event IDs and signed fixtures. Webhook handling verifies the signature before parsing trusted fields, records the provider event exactly once, and reconciles delayed fulfillment from the outbox.
 
+Verified checkout events may carry `dataset_request_id` as the provider checkout metadata reference. Reconciliation records the event before fulfillment and tracks `fulfillment_status` (`pending`, `fulfilled`, or `failed`), `fulfillment_attempts`, `last_fulfillment_error`, and `fulfilled_at`. If the request is not present when the webhook arrives, the event remains pending; the payment reconciler retries it after the request is created. A successful retry creates or reuses one entitlement and one dataset projection, transitions a `purchased` request to `fast_lane_processing`, and is safe to repeat. A reused provider event with a different payload is rejected as a payment conflict. Revoked requests or entitlements are never reactivated by replay.
+
 ## Revision and evidence rules
 
 Every published fact must resolve to a source snapshot and, for extracted document content, an extraction run and evidence record. Evidence includes source document, page number, bounding box or region when available, extracted string, confidence, model version, reviewer state, and timestamps.
