@@ -1,0 +1,79 @@
+groups:
+  - name: autodata-platform
+    rules:
+      - alert: AutoDataFastLaneViewabilitySLO
+        expr: autodata_payment_to_viewable_seconds > 300
+        for: 10m
+        labels:
+          severity: page
+          area: fast-lane
+        annotations:
+          summary: AutoData fast-lane viewability is beyond the five-minute SLO
+          description: Payment confirmation to the first viewable revision is taking longer than the contracted threshold.
+          runbook_url: https://github.com/lucronn/autodata/blob/master/docs/agents/runbooks.md#failed-fast-lane
+
+      - alert: AutoDataQueueStale
+        expr: max by (queue, lane) (autodata_queue_oldest_age_seconds) > 900
+        for: 10m
+        labels:
+          severity: page
+          area: platform
+        annotations:
+          summary: AutoData durable work has been waiting for more than 15 minutes
+          description: A durable ingestion or publication queue has an old pending message and needs capacity or dependency investigation.
+          runbook_url: https://github.com/lucronn/autodata/blob/master/docs/agents/runbooks.md#failed-deep-section
+
+      - alert: AutoDataDeadLetterPresent
+        expr: sum by (queue) (autodata_dead_letter_count) > 0
+        for: 5m
+        labels:
+          severity: page
+          area: data-quality
+        annotations:
+          summary: AutoData has dead-lettered work
+          description: One or more durable jobs/events require targeted diagnosis and replay after the failure cause is corrected.
+          runbook_url: https://github.com/lucronn/autodata/blob/master/docs/architecture/infrastructure-and-dev.md#reliability-behavior
+
+      - alert: AutoDataHumanReviewStale
+        expr: max by (kind) (autodata_human_review_oldest_age_seconds) > 86400
+        for: 30m
+        labels:
+          severity: warn
+          area: data-quality
+        annotations:
+          summary: AutoData human-review work is older than one day
+          description: Pending evidence or feedback requires reviewer capacity before publication can proceed.
+          runbook_url: https://github.com/lucronn/autodata/blob/master/docs/agents/data-integrity-gates.md#review-independence
+
+      - alert: AutoDataFulfillmentStalled
+        expr: autodata_entitlement_fulfillment_pending > 0
+        for: 15m
+        labels:
+          severity: page
+          area: billing
+        annotations:
+          summary: AutoData payment fulfillment is stalled
+          description: Verified payment events remain pending and may require reconciliation or dataset-request recovery.
+          runbook_url: https://github.com/lucronn/autodata/blob/master/docs/architecture/dataset-lifecycle.md#payment-success-with-delayed-fulfillment
+
+      - alert: AutoDataSourceWatermarkStale
+        expr: autodata_source_watermark_age_seconds > 86400
+        for: 30m
+        labels:
+          severity: warn
+          area: source-ingestion
+        annotations:
+          summary: AutoData source snapshots are stale
+          description: The newest retrieved source snapshot is older than the freshness policy.
+          runbook_url: https://github.com/lucronn/autodata/blob/master/docs/agents/data-integrity-gates.md#source-and-provenance-checks
+
+      - alert: AutoDataAccessDeniedSpike
+        expr: sum(rate(autodata_api_access_denied_total[5m])) > 1
+        for: 10m
+        labels:
+          severity: warn
+          area: security
+        annotations:
+          summary: AutoData access-denied responses are spiking
+          description: Authentication, authorization, or entitlement failures may indicate a client integration problem or an attack pattern.
+          runbook_url: https://github.com/lucronn/autodata/blob/master/docs/architecture/contracts.md#authorization-and-error-behavior
