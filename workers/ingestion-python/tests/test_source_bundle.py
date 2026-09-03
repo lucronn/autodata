@@ -87,6 +87,30 @@ class SourceBundleTests(unittest.TestCase):
         self.assertEqual(bundle.parts[0]["price_minor"], None)
         self.assertEqual(bundle.parts[0]["price_status"], "needs_review")
 
+    def test_price_parser_accepts_grouped_currency_amounts(self):
+        resources = [
+            SourceResource.from_bytes(
+                "provider://vehicle/name",
+                "source-v1",
+                b'{"body":"2019 Cadillac Escalade ESV - 2WD"}',
+                "application/json",
+            ),
+            SourceResource.from_bytes(
+                "provider://vehicle/parts",
+                "source-v1",
+                b'{"body":[{"partNumber":"p1","partDescription":"Part","quantity":1,"price":"$1,021.96"}]}',
+                "application/json",
+            ),
+        ]
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource) for resource in resources], "US")
+
+        self.assertEqual(bundle.status, "ready")
+        self.assertEqual(bundle.parts[0]["price_minor"], 102196)
+        self.assertEqual(bundle.parts[0]["currency"], "USD")
+        self.assertEqual(bundle.parts[0]["price_status"], "normalized")
+        self.assertEqual(bundle.quarantined, ())
+
     def test_conflicting_vehicle_identities_are_explicit_and_evidence_linked(self):
         resources = [
             SourceResource.from_bytes(

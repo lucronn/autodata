@@ -11,7 +11,10 @@ from typing import Any, Iterable
 from .source_adapters import NormalizationCandidate, SourceArtifact
 
 
-_PRICE_RE = re.compile(r"^\s*(?P<symbol>[$€£])\s*(?P<whole>\d+)(?:\.(?P<fraction>\d{1,2}))?\s*$")
+_PRICE_RE = re.compile(
+    r"^\s*(?P<symbol>[$€£])\s*(?P<whole>\d{1,3}(?:,\d{3})+|\d+)"
+    r"(?:\.(?P<fraction>\d{1,2}))?\s*$"
+)
 _CURRENCY_BY_SYMBOL = {"$": "USD", "€": "EUR", "£": "GBP"}
 
 
@@ -250,7 +253,9 @@ def _parse_price(value: Any) -> tuple[int | None, str | None]:
     if not match:
         return None, None
     fraction = (match.group("fraction") or "").ljust(2, "0")
-    return int(match.group("whole")) * 100 + int(fraction or "0"), _CURRENCY_BY_SYMBOL[match.group("symbol")]
+    whole = match.group("whole").replace(",", "")
+    amount_minor = int(whole) * 100 + int(fraction or "0")
+    return amount_minor, _CURRENCY_BY_SYMBOL[match.group("symbol")]
 
 
 def _slug(value: str) -> str:
