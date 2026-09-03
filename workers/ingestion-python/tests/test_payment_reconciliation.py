@@ -9,6 +9,7 @@ from autodata_ingestion.payment_reconciliation import (  # noqa: E402
     PaymentIntent,
     canonical_payment_payload,
     revoke_entitlement,
+    _source_descriptor,
 )
 
 
@@ -44,6 +45,17 @@ class PaymentReconciliationTests(unittest.TestCase):
     def test_entitlement_revocation_requires_an_auditable_reason(self):
         with self.assertRaises(ValueError):
             revoke_entitlement(None, "entitlement-1", "")
+
+    def test_source_descriptor_is_provider_neutral_and_rejects_unknown_schemes(self):
+        self.assertEqual(
+            _source_descriptor("https://source.example/vehicle", "source-v1"),
+            {"kind": "http", "location": "https://source.example/vehicle", "version": "source-v1"},
+        )
+        self.assertEqual(
+            _source_descriptor("file:///tmp/autodata-drop", "drop-v1"),
+            {"kind": "directory", "location": "/tmp/autodata-drop", "version": "drop-v1"},
+        )
+        self.assertIsNone(_source_descriptor("s3://bucket/object", "object-v1"))
 
 
 if __name__ == "__main__":

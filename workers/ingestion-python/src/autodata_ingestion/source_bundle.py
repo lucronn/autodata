@@ -22,6 +22,7 @@ _CURRENCY_BY_SYMBOL = {"$": "USD", "€": "EUR", "£": "GBP"}
 class SourceBundle:
     status: str
     vehicle: dict[str, Any] | None
+    specifications: tuple[dict[str, Any], ...]
     models: tuple[dict[str, Any], ...]
     powertrains: tuple[dict[str, Any], ...]
     parts: tuple[dict[str, Any], ...]
@@ -44,6 +45,7 @@ def normalize_source_bundle(artifacts: Iterable[SourceArtifact], region: str) ->
     quarantined: list[dict[str, Any]] = []
     conflicts: list[dict[str, Any]] = []
     vehicle_candidates = []
+    specification_records: list[dict[str, Any]] = []
     model_records: list[dict[str, Any]] = []
     powertrain_records: list[dict[str, Any]] = []
     part_records: list[dict[str, Any]] = []
@@ -78,6 +80,15 @@ def normalize_source_bundle(artifacts: Iterable[SourceArtifact], region: str) ->
             record = {**candidate.data, "evidence_id": evidence_item["evidence_id"]}
             if candidate.kind == "vehicle_identity":
                 vehicle_candidates.append((artifact, candidate, record))
+            elif candidate.kind == "specification":
+                specification_records.append(
+                    {
+                        "name": str(candidate.data["name"]).strip(),
+                        "value": candidate.data.get("value"),
+                        "unit": candidate.data.get("unit"),
+                        "evidence_id": evidence_item["evidence_id"],
+                    }
+                )
             elif candidate.kind == "model":
                 model_id = str(candidate.data["id"])
                 model_records.append(
@@ -154,6 +165,7 @@ def normalize_source_bundle(artifacts: Iterable[SourceArtifact], region: str) ->
     return SourceBundle(
         status=status,
         vehicle=vehicle,
+        specifications=tuple(specification_records),
         models=tuple(model_records),
         powertrains=tuple(powertrain_records),
         parts=tuple(part_records),

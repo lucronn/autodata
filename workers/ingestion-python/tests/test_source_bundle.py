@@ -37,6 +37,12 @@ class SourceBundleTests(unittest.TestCase):
                 b'{"body":{"articleDetails":[{"id":"6158075","bucket":"Technical Service Bulletins","title":"Example"}]}}',
                 "application/json",
             ),
+            SourceResource.from_bytes(
+                "provider://vehicle/specifications",
+                "source-v1",
+                b'{"body":{"specifications":{"engine_displacement_l":{"value":6.2,"unit":"L"}}}}',
+                "application/json",
+            ),
         ]
 
         bundle = normalize_source_bundle([adapt_source_resource(resource) for resource in resources], "US")
@@ -48,6 +54,9 @@ class SourceBundleTests(unittest.TestCase):
         self.assertEqual(bundle.powertrains[0]["provider_powertrain_id"], "e1")
         self.assertEqual(bundle.parts[0]["price_minor"], 4699)
         self.assertEqual(bundle.articles[0]["article_id"], "6158075")
+        self.assertEqual(bundle.specifications[0]["name"], "engine_displacement_l")
+        self.assertEqual(bundle.specifications[0]["value"], 6.2)
+        self.assertEqual(bundle.specifications[0]["unit"], "L")
         self.assertGreaterEqual(len(bundle.evidence), 4)
         self.assertTrue(all(item["content_sha256"] for item in bundle.evidence))
 

@@ -68,7 +68,7 @@ def run_fast_event(serialized_event: str) -> dict[str, object]:
         max_bytes=int(os.getenv("AUTODATA_SOURCE_MAX_BYTES", str(50 * 1024 * 1024))),
     )
     return {
-        **_run_connector(connector),
+        **_run_connector(connector, publication=_publication_for_request(request)),
         "request_id": request.request_id,
         "projection_id": request.projection_id,
         "correlation_id": request.correlation_id,
@@ -92,17 +92,21 @@ def run_nats_once() -> dict[str, object]:
 
 
 def _handle_fast_request(request: object) -> dict[str, str | int | list[str]]:
-    from .fast_lane import FastLaneRequest, connector_for_request
+    from .fast_lane import FastLaneRequest, FastLaneRequestError, connector_for_request
 
     if not isinstance(request, FastLaneRequest):
         raise TypeError("fast-lane handler received an invalid request")
+    if os.getenv("AUTODATA_SOURCE_PERSIST") != "1":
+        raise FastLaneRequestError(
+            "durable fast-lane consumption requires AUTODATA_SOURCE_PERSIST=1"
+        )
     connector = connector_for_request(
         request,
         request_headers=_source_request_headers(),
         timeout_seconds=float(os.getenv("AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS", "30")),
         max_bytes=int(os.getenv("AUTODATA_SOURCE_MAX_BYTES", str(50 * 1024 * 1024))),
     )
-    return _run_connector(connector)
+    return _run_connector(connector, publication=_publication_for_request(request))
 
 
 def _source_request_headers() -> dict[str, str]:
@@ -118,25 +122,24 @@ def _source_request_headers() -> dict[str, str]:
     return {str(key): value for key, value in headers.items()}
 
 
-def _run_connector(connector: object) -> dict[str, str | int | list[str]]:
-    from .quality import evaluate_source_bundle
-    from .source_adapters import adapt_source_resource
-    from .source_bundle import normalize_source_bundle
-
-    resources = connector.fetch({})
-    artifacts = [adapt_source_resource(resource) for resource in resources]
-    bundle = normalize_source_bundle(
-        artifacts,
-        os.getenv("AUTODATA_SOURCE_REGION", "US"),
-    )
-    quality = evaluate_source_bundle(bundle)
+def _run_connector(
+    connector: object,
+    *,
+    publication: object | None = None,
+) -> dict[str, str | int | list[str] | dict[str, object]]:
+    artifacts, bundle, quality = _collect_connector(connector)
     persistence = None
     if os.getenv("AUTODATA_SOURCE_PERSIST") == "1":
         from .bundle_persistence import persist_source_bundle
 
-        persistence = persist_source_bundle(bundle, artifacts, adapter_name=connector.name)
+        persistence = persist_source_bundle(
+            bundle,
+            artifacts,
+            adapter_name=connector.name,
+            publication=publication,
+        )
 
-    result: dict[str, str | int | list[str]] = {
+    result: dict[str, str | int | list[str] | dict[str, object]] = {
         "worker": "ingestion",
         "lane": "fast",
         "status": bundle.status if quality.status == "pass" else quality.status,
@@ -152,7 +155,39 @@ def _run_connector(connector: object) -> dict[str, str | int | list[str]]:
         result["vehicle_key"] = bundle.vehicle["vehicle_key"]
     if persistence is not None:
         result["persistence_status"] = str(persistence.get("status", "unknown"))
+        if "publication" in persistence:
+            result["publication"] = persistence["publication"]
     return result
+
+
+def _collect_connector(connector: object):
+    from .quality import evaluate_source_bundle
+    from .source_adapters import adapt_source_resource
+    from .source_bundle import normalize_source_bundle
+
+    resources = connector.fetch({})
+    artifacts = [adapt_source_resource(resource) for resource in resources]
+    bundle = normalize_source_bundle(
+        artifacts,
+        os.getenv("AUTODATA_SOURCE_REGION", "US"),
+    )
+    quality = evaluate_source_bundle(bundle)
+    return artifacts, bundle, quality
+
+
+def _publication_for_request(request: object):
+    from .fast_lane import FastLaneRequest
+    from .fast_lane_persistence import FastLanePublication
+
+    if not isinstance(request, FastLaneRequest):
+        raise TypeError("publication requires a FastLaneRequest")
+    return FastLanePublication(
+        request_id=request.request_id,
+        projection_id=request.projection_id,
+        correlation_id=request.correlation_id,
+        idempotency_key=request.idempotency_key,
+        processing_version=request.processing_version,
+    )
 
 
 def main() -> None:

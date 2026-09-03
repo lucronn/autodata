@@ -134,6 +134,47 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual(result["bundle_status"], "ready")
         self.assertEqual(result["vehicle_key"], "cadillac-escalade-esv-2019-us")
 
+    def test_persistent_fast_event_passes_projection_identity_to_persistence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "vehicle.json").write_bytes(b'{"body":"2019 Cadillac Escalade ESV"}')
+            fast_event = {
+                "event_id": "event-2",
+                "event_type": "dataset.fast.requested",
+                "event_version": 1,
+                "occurred_at": "2026-09-03T12:00:00+00:00",
+                "producer": "payment-reconciler",
+                "request_id": "request-2",
+                "projection_id": "projection-2",
+                "correlation_id": "correlation-2",
+                "idempotency_key": "fast-request-2",
+                "payload": {
+                    "vehicle_key": "cadillac-escalade-esv-2019-us",
+                    "region": "US",
+                    "source": {"kind": "directory", "location": directory, "version": "drop-v2"},
+                },
+            }
+            with patch(
+                "autodata_ingestion.bundle_persistence.persist_source_bundle",
+                return_value={"status": "viewable", "publication": {"published": True}},
+            ) as persist:
+                with patch.dict(
+                    "os.environ",
+                    {
+                        "AUTODATA_SOURCE_DIRECTORY": "",
+                        "AUTODATA_SOURCE_URI": "",
+                        "AUTODATA_FAST_EVENT_JSON": json.dumps(fast_event),
+                        "AUTODATA_SOURCE_PERSIST": "1",
+                    },
+                    clear=False,
+                ):
+                    result = run_once()
+
+        self.assertEqual(result["persistence_status"], "viewable")
+        publication = persist.call_args.kwargs["publication"]
+        self.assertEqual(publication.request_id, "request-2")
+        self.assertEqual(publication.projection_id, "projection-2")
+        self.assertEqual(publication.idempotency_key, "fast-request-2")
+
     def test_nats_once_delegates_to_the_durable_consumer(self):
         with patch("autodata_ingestion.consumer.consume_once", new_callable=AsyncMock) as consume:
             consume.return_value = {"status": "idle", "received": 0}

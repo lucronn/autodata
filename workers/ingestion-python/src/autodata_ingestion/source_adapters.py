@@ -239,6 +239,35 @@ def classify_json_candidates(document: Any) -> list[NormalizationCandidate]:
     if not isinstance(body, (dict, list)):
         return candidates
 
+    if isinstance(body, dict):
+        vehicle_candidate = _candidate_from_record(body, "body")
+        if vehicle_candidate is not None and vehicle_candidate.kind == "vehicle_identity":
+            candidates.append(vehicle_candidate)
+        raw_specifications = body.get("specifications")
+        if isinstance(raw_specifications, dict):
+            for name, value in raw_specifications.items():
+                if str(name).strip():
+                    unit = None
+                    if isinstance(value, dict) and "value" in value:
+                        unit = _field(value, "unit", "units") or None
+                        value = value["value"]
+                    candidates.append(
+                        NormalizationCandidate(
+                            "specification",
+                            f"specification:{name}",
+                            {"name": str(name).strip(), "value": value, "unit": unit},
+                            "body.specifications." + str(name),
+                        )
+                    )
+        elif isinstance(raw_specifications, list):
+            for index, specification in enumerate(raw_specifications):
+                if isinstance(specification, dict):
+                    candidate = _candidate_from_specification(
+                        specification, f"body.specifications[{index}]"
+                    )
+                    if candidate is not None:
+                        candidates.append(candidate)
+
     articles = body.get("articleDetails") if isinstance(body, dict) else None
     if isinstance(articles, list):
         for index, article in enumerate(articles):
@@ -377,6 +406,9 @@ def _candidate_from_record(
             data["trim"] = trim
         return NormalizationCandidate("vehicle_identity", f"vehicle-identity:{locator}", data, locator)
 
+    if kind in {"specification", "spec", "fluid", "dimension"}:
+        return _candidate_from_specification(record, locator)
+
     part_number = _field(record, "part_number", "partNumber", "part_no", "partNo")
     if kind == "part" or part_number:
         if not part_number:
@@ -424,6 +456,27 @@ def _candidate_from_record(
             locator,
         )
     return None
+
+
+def _candidate_from_specification(
+    record: dict[str, Any], locator: str
+) -> NormalizationCandidate | None:
+    name = _field(record, "name", "specification_name", "specificationName", "key")
+    if not name:
+        return None
+    value = next(
+        (record[key] for key in ("value", "specification_value", "specificationValue") if key in record),
+        None,
+    )
+    if value is None:
+        return None
+    unit = _field(record, "unit", "units") or None
+    return NormalizationCandidate(
+        "specification",
+        f"specification:{name}:{locator}",
+        {"name": name, "value": value, "unit": unit},
+        locator,
+    )
 
 
 def _field(record: dict[str, Any], *names: str) -> str:
