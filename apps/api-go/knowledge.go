@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -45,12 +46,45 @@ func (s *Server) searchKnowledge(response http.ResponseWriter, request *http.Req
 		}
 		limit = parsed
 	}
+	fallback, err := parseKnowledgeFallback(request.URL.Query().Get("fallback"))
+	if err != nil {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", err.Error(), false)
+		return
+	}
 	revisionID := strings.TrimSpace(request.URL.Query().Get("revision_id"))
 	result, err := s.projections.SearchKnowledge(datasetID, query, kind, limit, revisionID, principal)
 	if !s.writeProjectionError(response, request, err) {
 		return
 	}
-	writeJSON(response, http.StatusOK, result)
+	if !fallback || len(result.Results) > 0 {
+		writeJSON(response, http.StatusOK, result)
+		return
+	}
+	event, err := newKnowledgeFallbackEvent(request, result, query, kind, limit)
+	if err != nil {
+		log.Printf("build knowledge fallback event %s: %v", requestIDFrom(request), err)
+		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "knowledge fallback request could not be created", true)
+		return
+	}
+	if err := s.knowledgeFallbackPublisher.Publish(request.Context(), event); err != nil {
+		log.Printf("publish knowledge fallback event %s: %v", requestIDFrom(request), err)
+		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "knowledge fallback request could not be published", true)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, result)
+}
+
+func parseKnowledgeFallback(raw string) (bool, error) {
+	switch strings.TrimSpace(raw) {
+	case "":
+		return false, nil
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf("fallback must be true or false")
+	}
 }
 
 type knowledgeCandidate struct {

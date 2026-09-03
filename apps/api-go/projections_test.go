@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -169,19 +170,19 @@ func TestKnowledgeSearchReturnsTypedArticleAndProcedureResultsFromSelectedRevisi
 	fixture := memoryDatasetFixture()
 	fixture.revisions[0].Data["articles"] = []any{
 		map[string]any{
-			"article_id":       "article-old",
-			"article_key":      "article:old",
-			"bucket":           "Service Bulletin",
-			"title":            "Older brake inspection article",
-			"bulletin_number":  "TSB-OLD",
-			"release_date":     "2026-09-02",
-			"body":             "Inspect the brake hose before replacement.",
-			"evidence_id":      "evidence-old",
-			"content_locator":  "body.articleDetails[0]",
-			"source_uri":       "provider://old/article",
-			"source_version":   "source-old",
-			"source_sha256":    "sha-old",
-			"content_sha256":   "sha-old",
+			"article_id":      "article-old",
+			"article_key":     "article:old",
+			"bucket":          "Service Bulletin",
+			"title":           "Older brake inspection article",
+			"bulletin_number": "TSB-OLD",
+			"release_date":    "2026-09-02",
+			"body":            "Inspect the brake hose before replacement.",
+			"evidence_id":     "evidence-old",
+			"content_locator": "body.articleDetails[0]",
+			"source_uri":      "provider://old/article",
+			"source_version":  "source-old",
+			"source_sha256":   "sha-old",
+			"content_sha256":  "sha-old",
 		},
 	}
 	fixture.revisions[0].Data["vehicle_identity"] = map[string]any{
@@ -209,7 +210,7 @@ func TestKnowledgeSearchReturnsTypedArticleAndProcedureResultsFromSelectedRevisi
 		},
 	}
 	fixture.revisions[1].Data["procedures"] = map[string]any{
-		"section":           "procedures",
+		"section":            "procedures",
 		"source_snapshot_id": "snapshot-2",
 		"records": []any{
 			map[string]any{
@@ -245,7 +246,8 @@ func TestKnowledgeSearchReturnsTypedArticleAndProcedureResultsFromSelectedRevisi
 		ReviewerState:     "approved",
 	}
 	store.put(fixture)
-	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}, newMemoryRequestStore(), store)
+	publisher := newMemoryKnowledgeFallbackPublisher()
+	server := NewServerWithDependenciesAndPublisher(staticReadiness{}, &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}, newMemoryRequestStore(), publisher, store)
 
 	response := performRequest(server, http.MethodGet, "/datasets/dataset-1/knowledge?q=brake+caliper&kind=all&limit=10")
 	if response.Code != http.StatusOK {
@@ -273,6 +275,9 @@ func TestKnowledgeSearchReturnsTypedArticleAndProcedureResultsFromSelectedRevisi
 	}
 	if body.Results[0].Score <= 0 || body.Results[1].Score <= 0 {
 		t.Fatalf("knowledge results must have positive scores: %#v", body.Results)
+	}
+	if events := publisher.Events(); len(events) != 0 {
+		t.Fatalf("warm knowledge read published %d events, want 0", len(events))
 	}
 }
 
@@ -303,6 +308,200 @@ func TestKnowledgeSearchIsRevisionScopedAndValidatesKind(t *testing.T) {
 		t.Fatalf("invalid kind status = %d, want %d", response.Code, http.StatusUnprocessableEntity)
 	}
 	assertErrorCode(t, response, "INVALID_REQUEST")
+}
+
+func TestKnowledgeFallbackCacheHitIsFetchedWithoutPublishing(t *testing.T) {
+	store := newMemoryProjectionStore()
+	fixture := memoryDatasetFixture()
+	fixture.revisions[1].Data["vehicle_identity"] = map[string]any{
+		"vehicle_key": "toyota-corolla-2024-us",
+		"region":      "US",
+	}
+	fixture.revisions[1].Data["articles"] = []any{map[string]any{
+		"article_id": "article-brakes",
+		"title":      "Brake caliper replacement",
+		"body":       "Replace the brake caliper.",
+	}}
+	store.put(fixture)
+	publisher := newMemoryKnowledgeFallbackPublisher()
+	server := NewServerWithDependenciesAndPublisher(
+		staticReadiness{},
+		&fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}},
+		newMemoryRequestStore(), publisher, store,
+	)
+
+	response := performRequest(server, http.MethodGet, "/datasets/dataset-1/knowledge?q=brake+caliper&fallback=true")
+	if response.Code != http.StatusOK {
+		t.Fatalf("fallback cache hit status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var body KnowledgeSearchResponse
+	decodeJSON(t, response, &body)
+	if events := publisher.Events(); len(events) != 0 {
+		t.Fatalf("cache hit published %d events, want 0", len(events))
+	}
+}
+
+func TestKnowledgeWarmCacheMissRemainsReadOnly(t *testing.T) {
+	store := newMemoryProjectionStore()
+	fixture := memoryDatasetFixture()
+	fixture.revisions[1].Data["vehicle_identity"] = map[string]any{
+		"vehicle_key": "toyota-corolla-2024-us",
+		"region":      "US",
+	}
+	store.put(fixture)
+	publisher := newMemoryKnowledgeFallbackPublisher()
+	server := NewServerWithDependenciesAndPublisher(
+		staticReadiness{},
+		&fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}},
+		newMemoryRequestStore(), publisher, store,
+	)
+
+	response := performRequest(server, http.MethodGet, "/datasets/dataset-1/knowledge?q=missing")
+	if response.Code != http.StatusOK {
+		t.Fatalf("warm cache miss status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if events := publisher.Events(); len(events) != 0 {
+		t.Fatalf("warm cache miss published %d events, want 0", len(events))
+	}
+}
+
+func TestKnowledgeFallbackCacheMissPublishesExactVersionedEnvelope(t *testing.T) {
+	store := newMemoryProjectionStore()
+	fixture := memoryDatasetFixture()
+	fixture.revisions[1].Data["vehicle_identity"] = map[string]any{
+		"vehicle_key": "toyota-corolla-2024-us",
+		"region":      "US",
+	}
+	store.put(fixture)
+	publisher := newMemoryKnowledgeFallbackPublisher()
+	server := NewServerWithDependenciesAndPublisher(
+		staticReadiness{},
+		&fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}},
+		newMemoryRequestStore(), publisher, store,
+	)
+
+	request := httptest.NewRequest(http.MethodGet, "/datasets/dataset-1/knowledge?q=brake+caliper&kind=article&limit=7&fallback=true", nil)
+	request.Header.Set("X-Request-ID", "fallback-request-1")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("fallback cache miss status = %d, want %d", response.Code, http.StatusAccepted)
+	}
+	events := publisher.Events()
+	if len(events) != 1 {
+		t.Fatalf("published events = %d, want 1", len(events))
+	}
+	event := events[0]
+	if event.EventType != "dataset.knowledge.fallback.requested" || event.EventVersion != 1 {
+		t.Fatalf("event identity = %q v%d, want dataset.knowledge.fallback.requested v1", event.EventType, event.EventVersion)
+	}
+	if event.Producer != "autodata-api" || event.RequestID != "fallback-request-1" || event.ProjectionID != "dataset-1" || !validUUID(event.CorrelationID) {
+		t.Fatalf("event routing fields = %#v", event)
+	}
+	if event.RevisionID == nil || *event.RevisionID != "revision-2" || event.EventID == "" || event.IdempotencyKey == "" {
+		t.Fatalf("event identity fields = %#v", event)
+	}
+	wantPayload := map[string]any{
+		"vehicle_key": "toyota-corolla-2024-us",
+		"region":      "US",
+		"query":       "brake caliper",
+		"keywords":    []string{"brake", "caliper"},
+		"kind":        "article",
+		"dataset_id":  "dataset-1",
+		"revision_id": "revision-2",
+	}
+	if !reflect.DeepEqual(event.Payload, wantPayload) {
+		t.Fatalf("event payload = %#v, want %#v", event.Payload, wantPayload)
+	}
+}
+
+func TestKnowledgeFallbackDuplicateRequestPublishesOnce(t *testing.T) {
+	store := newMemoryProjectionStore()
+	fixture := memoryDatasetFixture()
+	fixture.revisions[1].Data["vehicle_identity"] = map[string]any{
+		"vehicle_key": "toyota-corolla-2024-us",
+		"region":      "US",
+	}
+	store.put(fixture)
+	publisher := newMemoryKnowledgeFallbackPublisher()
+	server := NewServerWithDependenciesAndPublisher(
+		staticReadiness{},
+		&fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}},
+		newMemoryRequestStore(), publisher, store,
+	)
+
+	first := performRequest(server, http.MethodGet, "/datasets/dataset-1/knowledge?q=missing&fallback=true")
+	second := performRequest(server, http.MethodGet, "/datasets/dataset-1/knowledge?q=missing&fallback=true")
+	if first.Code != http.StatusAccepted || second.Code != http.StatusAccepted {
+		t.Fatalf("duplicate statuses = %d, %d, want %d, %d", first.Code, second.Code, http.StatusAccepted, http.StatusAccepted)
+	}
+	if events := publisher.Events(); len(events) != 1 {
+		t.Fatalf("duplicate published %d events, want 1", len(events))
+	}
+}
+
+func TestKnowledgeFallbackPreservesAuthenticationAndEntitlementBoundaries(t *testing.T) {
+	store := newMemoryProjectionStore()
+	store.put(memoryDatasetFixture())
+	publisher := newMemoryKnowledgeFallbackPublisher()
+
+	server := NewServerWithDependenciesAndPublisher(
+		staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore(), publisher, store,
+	)
+	response := performRequest(server, http.MethodGet, "/datasets/dataset-1/knowledge?q=missing&fallback=true")
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+	assertErrorCode(t, response, "UNAUTHENTICATED")
+
+	server = NewServerWithDependenciesAndPublisher(
+		staticReadiness{},
+		&fakeAuthenticator{principal: Principal{OrganizationID: "org-2", Roles: []string{"dataset_viewer"}}},
+		newMemoryRequestStore(), publisher, store,
+	)
+	response = performRequest(server, http.MethodGet, "/datasets/dataset-1/knowledge?q=missing&fallback=true")
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("wrong entitlement status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+	assertErrorCode(t, response, "ENTITLEMENT_REQUIRED")
+
+	fixture := memoryDatasetFixture()
+	fixture.entitlementStatus = "revoked"
+	store.put(fixture)
+	server = NewServerWithDependenciesAndPublisher(
+		staticReadiness{},
+		&fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}},
+		newMemoryRequestStore(), publisher, store,
+	)
+	response = performRequest(server, http.MethodGet, "/datasets/dataset-1/knowledge?q=missing&fallback=true")
+	if response.Code != http.StatusGone {
+		t.Fatalf("revoked entitlement status = %d, want %d", response.Code, http.StatusGone)
+	}
+	assertErrorCode(t, response, "ENTITLEMENT_REVOKED")
+	if events := publisher.Events(); len(events) != 0 {
+		t.Fatalf("unauthorized requests published %d events, want 0", len(events))
+	}
+}
+
+func TestKnowledgeFallbackRejectsInvalidFallbackInput(t *testing.T) {
+	store := newMemoryProjectionStore()
+	store.put(memoryDatasetFixture())
+	publisher := newMemoryKnowledgeFallbackPublisher()
+	server := NewServerWithDependenciesAndPublisher(
+		staticReadiness{},
+		&fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}},
+		newMemoryRequestStore(), publisher, store,
+	)
+
+	response := performRequest(server, http.MethodGet, "/datasets/dataset-1/knowledge?q=missing&fallback=maybe")
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid fallback status = %d, want %d", response.Code, http.StatusUnprocessableEntity)
+	}
+	assertErrorCode(t, response, "INVALID_REQUEST")
+	if events := publisher.Events(); len(events) != 0 {
+		t.Fatalf("invalid request published %d events, want 0", len(events))
+	}
 }
 
 func TestFeedbackSubmissionCreatesOpenReviewItemLinkedToRevision(t *testing.T) {

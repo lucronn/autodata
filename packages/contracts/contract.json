@@ -22,6 +22,7 @@
     "dataset.fast.requested",
     "dataset.viewable",
     "dataset.deep.requested",
+    "dataset.knowledge.fallback.requested",
     "dataset.section.published",
     "dataset.enrichment.failed",
     "dataset.review.requested",
