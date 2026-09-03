@@ -213,6 +213,48 @@ func TestFeedbackSubmissionRejectsUnapprovedEvidence(t *testing.T) {
 	assertErrorCode(t, response, "REVIEW_REQUIRED")
 }
 
+func TestReviewerCanApprovePendingEvidenceWithoutMutatingPublishedRevisions(t *testing.T) {
+	store := newMemoryProjectionStore()
+	fixture := memoryDatasetFixture()
+	store.put(fixture)
+	principal := Principal{OrganizationID: "org-1", Roles: []string{"data_reviewer", "dataset_viewer"}}
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{principal: principal}, newMemoryRequestStore(), store)
+	request := httptest.NewRequest(http.MethodPost, "/datasets/dataset-1/evidence/evidence-pending/review", strings.NewReader(`{"decision":"approve","reason":"Source locator and extracted text verified."}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("review status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var review EvidenceRecord
+	decodeJSON(t, response, &review)
+	if review.EvidenceID != "evidence-pending" || review.ReviewerState != "approved" {
+		t.Fatalf("unexpected review response: %#v", review)
+	}
+
+	response = performRequest(server, http.MethodGet, "/datasets/dataset-1/evidence/evidence-pending")
+	response = performRequest(server, http.MethodGet, "/datasets/dataset-1?revision_id=revision-1")
+	if response.Code != http.StatusOK {
+		t.Fatalf("published revision status = %d, want %d", response.Code, http.StatusOK)
+	}
+}
+
+func TestEvidenceReviewRequiresReviewerRole(t *testing.T) {
+	store := newMemoryProjectionStore()
+	store.put(memoryDatasetFixture())
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}, newMemoryRequestStore(), store)
+	request := httptest.NewRequest(http.MethodPost, "/datasets/dataset-1/evidence/evidence-pending/review", strings.NewReader(`{"decision":"approve","reason":"not authorized"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("reviewer role status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+	assertErrorCode(t, response, "FORBIDDEN")
+}
+
 func performRequest(server *Server, method, path string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, path, nil)
 	response := httptest.NewRecorder()

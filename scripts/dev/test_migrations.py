@@ -29,6 +29,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "007_link_evidence_to_revision.sql",
                 "008_publication_outbox_delivery.sql",
                 "009_feedback_evidence_link.sql",
+                "010_evidence_review_metadata.sql",
             ],
         )
 
