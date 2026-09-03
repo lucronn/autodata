@@ -1,3 +1,6 @@
+import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -74,6 +77,24 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual(result["quality_status"], "needs_review")
         self.assertEqual(result["vehicle_key"], "cadillac-escalade-esv-2019-us")
         self.assertEqual(result["source_artifacts"], 1)
+
+    def test_module_entrypoint_does_not_preload_itself(self):
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = str(Path(__file__).parents[1] / "src")
+        environment["AUTODATA_WORKER_ONCE"] = "1"
+        for variable in ("AUTODATA_SOURCE_DIRECTORY", "AUTODATA_SOURCE_URI"):
+            environment.pop(variable, None)
+
+        completed = subprocess.run(
+            [sys.executable, "-m", "autodata_ingestion.worker"],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        self.assertNotIn("RuntimeWarning", completed.stderr)
+        self.assertEqual(json.loads(completed.stdout), {"worker": "ingestion", "lane": "fast", "status": "idle"})
 
 
 if __name__ == "__main__":
