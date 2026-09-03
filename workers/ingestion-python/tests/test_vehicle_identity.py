@@ -25,8 +25,10 @@ class VehicleIdentityTests(unittest.TestCase):
                 "make": " Chevy ",
                 "model": " Silverado-1500 ",
                 "trim": " ltz ",
+                "body_style": " Crew-Cab ",
                 "drivetrain": "4x2",
                 "engine": "5.3LT",
+                "market": "US",
             }
         )
         base_identity = module.build_base_identity(observation)
@@ -36,17 +38,20 @@ class VehicleIdentityTests(unittest.TestCase):
         self.assertEqual(
             base_identity.to_dict(),
             {
-                "vehicle_key": "chevrolet-silverado-1500-2024",
+                "vehicle_key": "chevrolet-silverado-1500-2024-us-body-crew-cab-drivetrain-2wd",
                 "year": 2024,
                 "make": "Chevrolet",
                 "model": "Silverado 1500",
+                "region": "US",
+                "body_style": "Crew Cab",
+                "drivetrain": "2WD",
             },
         )
         self.assertEqual(
             configuration.to_dict(),
             {
-                "configuration_key": "chevrolet-silverado-1500-2024-ltz-2wd-5-3l",
-                "vehicle_key": "chevrolet-silverado-1500-2024",
+                "configuration_key": "chevrolet-silverado-1500-2024-us-body-crew-cab-drivetrain-2wd-trim-ltz-engine-5-3l",
+                "vehicle_key": "chevrolet-silverado-1500-2024-us-body-crew-cab-drivetrain-2wd",
                 "trim": "LTZ",
                 "drivetrain": "2WD",
                 "engine_displacement_l": 5.3,
@@ -74,6 +79,28 @@ class VehicleIdentityTests(unittest.TestCase):
         self.assertEqual(observation.trim, "LTZ")
         self.assertEqual(observation.drivetrain, "2WD")
         self.assertEqual(observation.engine_displacement_l, 5.3)
+
+    def test_text_input_supports_year_later_common_vehicle_form(self):
+        module = self._module()
+
+        observation = module.canonicalize_vehicle_observation(
+            "Chevy Silverado 1500 2024 LTZ 4x2 5.3L"
+        )
+
+        self.assertEqual(observation.year, 2024)
+        self.assertEqual(observation.make, "Chevrolet")
+        self.assertEqual(observation.model, "Silverado 1500")
+        self.assertEqual(observation.trim, "LTZ")
+        self.assertEqual(observation.drivetrain, "2WD")
+        self.assertEqual(observation.engine_displacement_l, 5.3)
+
+    def test_text_input_rejects_missing_or_multiple_years(self):
+        module = self._module()
+
+        with self.assertRaisesRegex(ValueError, "exactly one year"):
+            module.canonicalize_vehicle_observation("Chevy Silverado 1500 LTZ")
+        with self.assertRaisesRegex(ValueError, "exactly one year"):
+            module.canonicalize_vehicle_observation("2024 Chevy Silverado 1500 2025")
 
     def test_text_input_normalizes_spaced_engine_displacement(self):
         module = self._module()
@@ -125,13 +152,13 @@ class VehicleIdentityTests(unittest.TestCase):
         self.assertFalse(review.ambiguous)
         self.assertEqual(
             review.selected_candidate_key,
-            "chevrolet-silverado-1500-2024-ltz-2wd-5-3l",
+            "chevrolet-silverado-1500-2024-drivetrain-2wd-trim-ltz-engine-5-3l",
         )
         self.assertEqual(
             [candidate.candidate_key for candidate in review.candidates],
             [
-                "chevrolet-silverado-1500-2024-ltz-2wd-5-3l",
-                "chevrolet-silverado-1500-2024-lt-2wd-5-3l",
+                "chevrolet-silverado-1500-2024-drivetrain-2wd-trim-ltz-engine-5-3l",
+                "chevrolet-silverado-1500-2024-drivetrain-2wd-trim-lt-engine-5-3l",
             ],
         )
         self.assertGreater(review.candidates[0].score, review.candidates[1].score)
@@ -160,6 +187,35 @@ class VehicleIdentityTests(unittest.TestCase):
         self.assertIsNone(review.selected_candidate_key)
         self.assertEqual(review.reason, "multiple_top_candidates")
         self.assertEqual(review.candidates[0].score, review.candidates[1].score)
+
+    def test_candidate_review_rejects_different_base_identity_dimensions(self):
+        module = self._module()
+
+        observation = module.canonicalize_vehicle_observation(
+            {
+                "year": 2024,
+                "make": "Chevrolet",
+                "model": "Silverado 1500",
+                "body_style": "Crew Cab",
+                "drivetrain": "2WD",
+            }
+        )
+
+        review = module.review_vehicle_candidates(
+            observation,
+            [
+                {
+                    "year": 2024,
+                    "make": "Chevrolet",
+                    "model": "Silverado 1500",
+                    "body_style": "Regular Cab",
+                    "drivetrain": "4WD",
+                }
+            ],
+        )
+
+        self.assertEqual(review.status, "unmatched")
+        self.assertIsNone(review.selected_candidate_key)
 
 
 if __name__ == "__main__":

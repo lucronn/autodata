@@ -37,6 +37,8 @@ class CanonicalVehicleObservation:
     year: int
     make: str
     model: str
+    region: str | None
+    body_style: str | None
     trim: str | None
     drivetrain: str | None
     engine_displacement_l: float | None
@@ -54,6 +56,9 @@ class VehicleBaseIdentity:
     year: int
     make: str
     model: str
+    region: str | None
+    body_style: str | None
+    drivetrain: str | None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -106,10 +111,20 @@ def canonicalize_vehicle_observation(value: Mapping[str, Any] | str) -> Canonica
 
 def build_base_identity(observation: CanonicalVehicleObservation) -> VehicleBaseIdentity:
     return VehicleBaseIdentity(
-        vehicle_key=_vehicle_key(observation.make, observation.model, observation.year),
+        vehicle_key=_vehicle_key(
+            observation.make,
+            observation.model,
+            observation.year,
+            observation.region,
+            observation.body_style,
+            observation.drivetrain,
+        ),
         year=observation.year,
         make=observation.make,
         model=observation.model,
+        region=observation.region,
+        body_style=observation.body_style,
+        drivetrain=observation.drivetrain,
     )
 
 
@@ -119,7 +134,6 @@ def build_vehicle_configuration(observation: CanonicalVehicleObservation) -> Veh
         configuration_key=_configuration_key(
             base.vehicle_key,
             observation.trim,
-            observation.drivetrain,
             observation.engine_displacement_l,
         ),
         vehicle_key=base.vehicle_key,
@@ -165,10 +179,22 @@ def _canonicalize_mapping_observation(value: Mapping[str, Any]) -> CanonicalVehi
     year = _normalize_year(value.get("year"))
     make = _normalize_make(value.get("make"), aliases)
     model = _normalize_model(value.get("model"))
+    region = _normalize_region(value.get("region", value.get("market")))
+    body_style = _normalize_body_style(value.get("body_style"))
     trim = _normalize_trim(value.get("trim"))
     drivetrain = _normalize_drivetrain(value.get("drivetrain"), aliases)
     engine = _normalize_engine(value.get("engine"), aliases)
-    return CanonicalVehicleObservation(year, make, model, trim, drivetrain, engine, tuple(aliases))
+    return CanonicalVehicleObservation(
+        year,
+        make,
+        model,
+        region,
+        body_style,
+        trim,
+        drivetrain,
+        engine,
+        tuple(aliases),
+    )
 
 
 def _canonicalize_text_observation(value: str) -> CanonicalVehicleObservation:
@@ -178,16 +204,23 @@ def _canonicalize_text_observation(value: str) -> CanonicalVehicleObservation:
         value.casefold(),
     )
     tokens = re.findall(r"[a-z0-9.]+", normalized_text)
-    if len(tokens) < 3:
-        raise ValueError("vehicle text observation requires year, make, and model")
+    year_indexes = [
+        index for index, token in enumerate(tokens) if _is_valid_year_token(token)
+    ]
+    if len(year_indexes) != 1:
+        raise ValueError("vehicle text observation requires exactly one year")
+    year_index = year_indexes[0]
+    year = _normalize_year(tokens[year_index])
+    tokens.pop(year_index)
+    if len(tokens) < 2:
+        raise ValueError("vehicle text observation requires make and model")
     aliases: list[VehicleAlias] = []
-    year = _normalize_year(tokens[0])
-    make = _normalize_make(tokens[1], aliases)
+    make = _normalize_make(tokens[0], aliases)
     trim = None
     drivetrain = None
     engine = None
     model_tokens: list[str] = []
-    for token in tokens[2:]:
+    for token in tokens[1:]:
         if token in _KNOWN_TRIMS and trim is None:
             trim = token.upper()
             continue
@@ -207,7 +240,17 @@ def _canonicalize_text_observation(value: str) -> CanonicalVehicleObservation:
             continue
         model_tokens.append(token)
     model = _normalize_model(" ".join(model_tokens))
-    return CanonicalVehicleObservation(year, make, model, trim, drivetrain, engine, tuple(aliases))
+    return CanonicalVehicleObservation(
+        year,
+        make,
+        model,
+        None,
+        None,
+        trim,
+        drivetrain,
+        engine,
+        tuple(aliases),
+    )
 
 
 def _normalize_year(raw_year: Any) -> int:
@@ -220,6 +263,16 @@ def _normalize_year(raw_year: Any) -> int:
     if year < 1886 or year > 2100:
         raise ValueError("vehicle year is outside the supported range")
     return year
+
+
+def _is_valid_year_token(token: str) -> bool:
+    if not re.fullmatch(r"\d{2}|\d{4}", token):
+        return False
+    try:
+        _normalize_year(token)
+    except ValueError:
+        return False
+    return True
 
 
 def _normalize_make(raw_make: Any, aliases: list[VehicleAlias]) -> str:
@@ -240,6 +293,22 @@ def _normalize_model(raw_model: Any) -> str:
     if not normalized:
         raise ValueError("vehicle model is required")
     return _normalize_title_words(normalized)
+
+
+def _normalize_region(raw_region: Any) -> str | None:
+    if raw_region is None:
+        return None
+    normalized = _slug(str(raw_region))
+    return normalized.upper() or None
+
+
+def _normalize_body_style(raw_body_style: Any) -> str | None:
+    if raw_body_style is None:
+        return None
+    text = str(raw_body_style).strip()
+    if not text:
+        return None
+    return _normalize_model(text)
 
 
 def _normalize_trim(raw_trim: Any) -> str | None:
@@ -302,23 +371,34 @@ def _normalize_title_words(text: str) -> str:
     return " ".join(normalized_words)
 
 
-def _vehicle_key(make: str, model: str, year: int) -> str:
-    return "-".join((_slug(make), _slug(model), str(year)))
+def _vehicle_key(
+    make: str,
+    model: str,
+    year: int,
+    region: str | None,
+    body_style: str | None,
+    drivetrain: str | None,
+) -> str:
+    parts = [_slug(make), _slug(model), str(year)]
+    if region:
+        parts.append(_slug(region))
+    if body_style:
+        parts.extend(("body", _slug(body_style)))
+    if drivetrain:
+        parts.extend(("drivetrain", _slug(drivetrain)))
+    return "-".join(parts)
 
 
 def _configuration_key(
     vehicle_key: str,
     trim: str | None,
-    drivetrain: str | None,
     engine_displacement_l: float | None,
 ) -> str:
     parts = [vehicle_key]
     if trim:
-        parts.append(_slug(trim))
-    if drivetrain:
-        parts.append(_slug(drivetrain))
+        parts.extend(("trim", _slug(trim)))
     if engine_displacement_l is not None:
-        parts.append(_slug(_format_engine_displacement(engine_displacement_l)))
+        parts.extend(("engine", _slug(_format_engine_displacement(engine_displacement_l))))
     return "-".join(parts)
 
 
@@ -330,11 +410,7 @@ def _score_candidate(
     observation: CanonicalVehicleObservation,
     candidate: CanonicalVehicleObservation,
 ) -> float:
-    if observation.year != candidate.year:
-        return 0.0
-    if observation.make != candidate.make:
-        return 0.0
-    if observation.model != candidate.model:
+    if build_base_identity(observation).vehicle_key != build_base_identity(candidate).vehicle_key:
         return 0.0
     score = 100.0
     score += _optional_match_score(observation.trim, candidate.trim, 10.0)
