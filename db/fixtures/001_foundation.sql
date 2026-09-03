@@ -21,11 +21,13 @@ INSERT INTO source_snapshots (
 
 INSERT INTO payment_events (
     payment_event_id, provider_name, provider_event_id, event_type,
-    verified, payload, occurred_at
+    verified, payload, occurred_at, fulfillment_status, fulfillment_attempts,
+    fulfilled_at
 ) VALUES (
     '25000000-0000-0000-0000-000000000001',
     'fake', 'fake-payment-event-001', 'checkout.completed', true,
-    '{"fixture":true,"amount_minor":0}', '2026-09-02T00:00:00Z'
+    '{"fixture":true,"amount_minor":0}', '2026-09-02T00:00:00Z',
+    'fulfilled', 1, '2026-09-02T00:00:00Z'
 ) ON CONFLICT (payment_event_id) DO NOTHING;
 
 INSERT INTO dataset_requests (

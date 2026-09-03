@@ -76,6 +76,7 @@ class FakePaymentEvent:
     event_type: str
     product_id: str
     purchaser_id: str
+    dataset_request_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -96,7 +97,9 @@ class FakePaymentProvider:
         self.payment_events: dict[str, FakePaymentEvent] = {}
         self.entitlements: dict[str, FakeEntitlement] = {}
 
-    def create_checkout_session(self, product_id: str, purchaser_id: str) -> dict[str, str]:
+    def create_checkout_session(
+        self, product_id: str, purchaser_id: str, dataset_request_id: str | None = None
+    ) -> dict[str, str]:
         provider_event_id = _stable_uuid(f"payment:{product_id}:{purchaser_id}")
         payload = {
             "provider_event_id": provider_event_id,
@@ -104,6 +107,8 @@ class FakePaymentProvider:
             "product_id": product_id,
             "purchaser_id": purchaser_id,
         }
+        if dataset_request_id:
+            payload["dataset_request_id"] = dataset_request_id
         body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         signature = hmac.new(self._signing_secret, body.encode(), hashlib.sha256).hexdigest()
         return {
@@ -131,6 +136,7 @@ class FakePaymentProvider:
             event_type=event["event_type"],
             product_id=event["product_id"],
             purchaser_id=event["purchaser_id"],
+            dataset_request_id=event.get("dataset_request_id"),
         )
         self.payment_events[provider_event_id] = payment_event
         return payment_event

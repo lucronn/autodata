@@ -95,6 +95,24 @@ services:
     healthcheck:
       test: ["CMD", "python", "-c", "from autodata_ingestion.worker import run_once; assert run_once()['status'] == 'idle'"]
 
+  payment-reconciler:
+    build:
+      context: ../..
+      dockerfile: workers/ingestion-python/Dockerfile
+    environment:
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_POSTGRES_DB: ${AUTODATA_POSTGRES_DB:-autodata}
+      AUTODATA_POSTGRES_USER: ${AUTODATA_POSTGRES_USER:-autodata}
+      AUTODATA_POSTGRES_PASSWORD: ${AUTODATA_POSTGRES_PASSWORD:?set AUTODATA_POSTGRES_PASSWORD for local development}
+      AUTODATA_PAYMENT_RECONCILE_POLL_SECONDS: ${AUTODATA_PAYMENT_RECONCILE_POLL_SECONDS:-15}
+      AUTODATA_PAYMENT_RECONCILE_BATCH_SIZE: ${AUTODATA_PAYMENT_RECONCILE_BATCH_SIZE:-50}
+    command: ["python", "/app/scripts/reconcile_payments.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+
   enrichment-worker:
     build:
       context: ../..

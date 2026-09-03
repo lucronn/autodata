@@ -174,10 +174,18 @@ def persist_fast_lane(
                 """
                 INSERT INTO payment_events
                     (payment_event_id, provider_name, provider_event_id, event_type,
-                     verified, payload, occurred_at)
-                VALUES (%s, 'fake', %s, %s, true, %s, %s)
+                     verified, payload, occurred_at, fulfillment_status,
+                     fulfillment_attempts, fulfilled_at)
+                VALUES (%s, 'fake', %s, %s, true, %s, %s, 'fulfilled', 1, %s)
                 ON CONFLICT (provider_event_id)
-                DO UPDATE SET provider_event_id = EXCLUDED.provider_event_id
+                DO UPDATE SET provider_event_id = EXCLUDED.provider_event_id,
+                              fulfillment_status = CASE
+                                  WHEN payment_events.fulfillment_status = 'failed'
+                                  THEN payment_events.fulfillment_status
+                                  ELSE 'fulfilled'
+                              END,
+                              fulfillment_attempts = GREATEST(payment_events.fulfillment_attempts, 1),
+                              fulfilled_at = COALESCE(payment_events.fulfilled_at, EXCLUDED.fulfilled_at)
                 RETURNING payment_event_id
                 """,
                 (
@@ -185,6 +193,7 @@ def persist_fast_lane(
                     payment_event.provider_event_id,
                     payment_event.event_type,
                     Jsonb({"product_id": PRODUCT_KEY, "purchaser_id": organization_id}),
+                    now,
                     now,
                 ),
             )

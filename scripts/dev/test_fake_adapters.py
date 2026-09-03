@@ -68,6 +68,23 @@ class FakeAdapterTests(unittest.TestCase):
         self.assertEqual(replayed.status, "revoked")
         self.assertEqual(replayed.revoke_reason, "source_takedown")
 
+    def test_checkout_session_can_carry_a_delayed_fulfillment_reference(self):
+        provider = FakePaymentProvider(signing_secret="local-test-signing-secret")
+
+        session = provider.create_checkout_session(
+            "vehicle-core-fixture",
+            "org-1",
+            dataset_request_id="request-1",
+        )
+
+        event = provider.verify_webhook(session["headers"], session["body"])
+
+        self.assertEqual(event["dataset_request_id"], "request-1")
+        self.assertEqual(
+            provider.record_payment_event(event).dataset_request_id,
+            "request-1",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

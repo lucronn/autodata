@@ -41,6 +41,7 @@ Services:
 - Migration runner for applying schema changes from a clean database.
 - Deterministic fake source connector that can emit core data, document pages, diagrams, failures, and source drift.
 - Deterministic fake payment/webhook service for purchase, duplicate webhook, refund, and delayed fulfillment scenarios.
+- Payment reconciler that polls pending verified events and safely retries delayed entitlement fulfillment.
 - Optional Mailpit and OpenTelemetry-compatible services behind a development profile.
 
 ## Universal source intake
@@ -100,11 +101,12 @@ The first-success developer path is:
 2. Apply migrations.
 3. Load the deterministic source/product fixtures.
 4. Simulate a payment webhook.
-5. Poll the request until `viewable`.
-6. Read the dataset and section statuses.
-7. Wait for or trigger deep enrichment.
-8. Verify a new revision and evidence link.
-9. Inject a deep failure, confirm the core dataset remains viewable, replay the dead-letter job, and verify section recovery.
+5. If the dataset request is delayed, run the payment reconciler and verify the event moves from `pending` to `fulfilled` with exactly one entitlement and projection.
+6. Poll the request until `viewable`.
+7. Read the dataset and section statuses.
+8. Wait for or trigger deep enrichment.
+9. Verify a new revision and evidence link.
+10. Inject a deep failure, confirm the core dataset remains viewable, replay the dead-letter job, and verify section recovery.
 
 The implemented foundation smoke path can be run with the local fake values below:
 
@@ -194,7 +196,7 @@ The deployment design is provider-neutral and Kubernetes-compatible:
 
 The platform keeps cloud-specific adapters behind interfaces for ingress, secrets, object storage, managed PostgreSQL, and observability. Docker Compose remains the contract for local parity; Kubernetes manifests are the contract for deployable topology, not a requirement to operate Kubernetes during development.
 
-The initial deployable baseline is `infra/k8s/base.yaml`. It contains the API Service and two-replica rolling Deployment, independently scalable ingestion and enrichment Deployments, a one-shot migration Job, and an API PodDisruptionBudget. The manifest references the externally managed `autodata-runtime-secrets` Secret and deliberately does not define or embed secret values. The `autodata-config` endpoint values and image references are provider-neutral defaults that must be replaced by an environment overlay before a cluster apply. Migration images are built and published as release artifacts; the migration Job is run and verified before API rollout.
+The initial deployable baseline is `infra/k8s/base.yaml`. It contains the API Service and two-replica rolling Deployment, independently scalable ingestion, enrichment, and payment-reconciler Deployments, a one-shot migration Job, and an API PodDisruptionBudget. The manifest references the externally managed `autodata-runtime-secrets` Secret and deliberately does not define or embed secret values. The `autodata-config` endpoint values and image references are provider-neutral defaults that must be replaced by an environment overlay before a cluster apply. Migration images are built and published as release artifacts; the migration Job is run and verified before API rollout.
 
 Validate the manifest structure locally with `python scripts/dev/test_k8s_manifests.py`. A cluster-specific deployment pipeline may additionally run `kubectl apply --dry-run=server` against the target cluster and then apply the same reviewed manifest plus its environment overlay. The repository does not assume a Kubernetes context is available on a developer workstation.
 
