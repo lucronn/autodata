@@ -63,6 +63,11 @@ class FakeAdapterTests(unittest.TestCase):
         self.assertEqual(revoked.status, "revoked")
         self.assertEqual(provider.payment_events[payment_event.provider_event_id], payment_event)
 
+        replayed = provider.create_entitlement(payment_event)
+
+        self.assertEqual(replayed.status, "revoked")
+        self.assertEqual(replayed.revoke_reason, "source_takedown")
+
 
 if __name__ == "__main__":
     unittest.main()

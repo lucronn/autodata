@@ -217,8 +217,8 @@ def persist_fast_lane(
                      provider_event_id, status, granted_at)
                 VALUES (%s, %s, %s, %s, %s, 'active', %s)
                 ON CONFLICT (provider_event_id)
-                DO UPDATE SET status = 'active'
-                RETURNING entitlement_id
+                DO UPDATE SET provider_event_id = EXCLUDED.provider_event_id
+                RETURNING entitlement_id, status
                 """,
                 (
                     entitlement.entitlement_id,
@@ -229,7 +229,10 @@ def persist_fast_lane(
                     now,
                 ),
             )
-            entitlement_id = str(cursor.fetchone()[0])
+            entitlement_id, entitlement_status = cursor.fetchone()
+            entitlement_id = str(entitlement_id)
+            if entitlement_status == "revoked":
+                raise ValueError("entitlement is revoked; refusing fast-lane fulfillment")
             cursor.execute(
                 """
                 INSERT INTO dataset_projections
