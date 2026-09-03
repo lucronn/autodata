@@ -74,15 +74,17 @@ func (t *fakeRequestTx) Rollback(_ context.Context) error {
 }
 
 type fakeRequestDB struct {
-	tx   *fakeRequestTx
-	rows []fakeRequestRow
+	tx        *fakeRequestTx
+	rows      []fakeRequestRow
+	queryArgs [][]any
 }
 
 func (d *fakeRequestDB) Begin(_ context.Context) (requestTx, error) {
 	return d.tx, nil
 }
 
-func (d *fakeRequestDB) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
+func (d *fakeRequestDB) QueryRow(_ context.Context, _ string, args ...any) pgx.Row {
+	d.queryArgs = append(d.queryArgs, args)
 	if len(d.rows) == 0 {
 		return fakeRequestRow{err: errors.New("fake database has no scripted row")}
 	}
@@ -195,6 +197,11 @@ func TestPostgresRequestStoreReadsDurableSectionsAndOwnership(t *testing.T) {
 	}
 	if record.Status != "viewable" || len(record.Sections) != 1 || record.Sections[0].Status != "viewable" {
 		t.Fatalf("record = %#v", record)
+	}
+	if len(db.queryArgs) != 1 || len(db.queryArgs[0]) != 2 ||
+		db.queryArgs[0][0] != "30000000-0000-0000-0000-000000000099" ||
+		db.queryArgs[0][1] != "41000000-0000-0000-0000-000000000001" {
+		t.Fatalf("request read args = %#v, want request and organization IDs", db.queryArgs)
 	}
 }
 

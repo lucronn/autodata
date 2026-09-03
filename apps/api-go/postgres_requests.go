@@ -149,7 +149,7 @@ func (s *postgresRequestStore) Get(id string, principal Principal) (DatasetReque
 		return DatasetRequestRecord{}, ErrInvalidRequest
 	}
 	ctx := context.Background()
-	record, err := scanDatasetRequest(s.db.QueryRow(ctx, requestByIDQuery), id, principal.OrganizationID)
+	record, err := scanDatasetRequest(s.db.QueryRow(ctx, requestByIDQuery, id, principal.OrganizationID))
 	if err == nil {
 		return record, nil
 	}
@@ -213,7 +213,7 @@ const requestByIDQuery = `
 	WHERE dr.dataset_request_id = $1::uuid
 	  AND dr.organization_id = $2::uuid`
 
-func scanDatasetRequest(row pgx.Row, _ ...any) (DatasetRequestRecord, error) {
+func scanDatasetRequest(row pgx.Row) (DatasetRequestRecord, error) {
 	var record DatasetRequestRecord
 	var createdAt string
 	var minimumSections, sectionsJSON []byte
