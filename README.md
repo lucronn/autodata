@@ -62,6 +62,27 @@ repository. Do not stage or publish source payloads unless their redistribution
 terms have been explicitly approved. The Compose-mounted persistence form and
 its review semantics are documented in the infrastructure guide.
 
+The same pipeline can run through the ingestion worker boundary instead of the
+developer script:
+
+```sh
+AUTODATA_POSTGRES_PASSWORD=local-dev-only \
+AUTODATA_MINIO_ROOT_USER=localadmin \
+AUTODATA_MINIO_ROOT_PASSWORD=local-dev-password \
+docker compose -f infra/compose/compose.yaml run --rm --no-deps \
+  -v "$PWD/sample data:/sample-data:ro" \
+  -e AUTODATA_SOURCE_DIRECTORY=/sample-data \
+  -e AUTODATA_SOURCE_VERSION=local-sample-v1 \
+  -e AUTODATA_SOURCE_REGION=US \
+  -e AUTODATA_SOURCE_PERSIST=0 \
+  -e AUTODATA_WORKER_ONCE=1 \
+  ingestion-worker python -m autodata_ingestion.worker
+```
+
+Set `AUTODATA_SOURCE_PERSIST=1` only when the local PostgreSQL and MinIO
+connection variables are also provided. The worker reports bundle readiness and
+quality/review status separately.
+
 ## Run tests
 
 ```sh

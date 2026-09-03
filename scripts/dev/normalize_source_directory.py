@@ -11,7 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
 
-from autodata_ingestion.source_adapters import SourceResource, adapt_source_resource  # noqa: E402
+from autodata_ingestion.directory_connector import DirectorySourceConnector  # noqa: E402
+from autodata_ingestion.source_adapters import adapt_source_resource  # noqa: E402
 from autodata_ingestion.quality import evaluate_source_bundle  # noqa: E402
 from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E402
 
@@ -28,18 +29,12 @@ def main() -> None:
         raise SystemExit(f"source directory does not exist: {args.directory}")
 
     artifacts = []
-    for path in sorted(item for item in args.directory.rglob("*") if item.is_file()):
-        resource = SourceResource.from_bytes(
-            source_uri=f"file://{path.relative_to(args.directory)}",
-            source_version=args.source_version,
-            payload=path.read_bytes(),
-            media_type=None,
-            locator=str(path.relative_to(args.directory)),
-        )
+    connector = DirectorySourceConnector(args.directory, args.source_version)
+    for resource in connector.fetch({}):
         try:
             artifacts.append(adapt_source_resource(resource))
         except ValueError as error:
-            print(f"source adapter failed for {path}: {error}", file=sys.stderr)
+            print(f"source adapter failed for {resource.source_uri}: {error}", file=sys.stderr)
             raise SystemExit(1) from error
 
     bundle = normalize_source_bundle(artifacts, args.region)
