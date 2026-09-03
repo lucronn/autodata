@@ -1,5 +1,7 @@
 import sys
+import types
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -143,6 +145,35 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(html_artifact.candidates[0].data["text"], "TSB brake procedure")
         self.assertEqual(plain_artifact.candidates[0].kind, "document_text")
         self.assertIn("approved fluid", plain_artifact.candidates[0].data["text"])
+
+    def test_pdf_extraction_emits_page_level_reviewable_evidence(self):
+        class FakePage:
+            def __init__(self, text):
+                self._text = text
+
+            def extract_text(self):
+                return self._text
+
+        class FakeReader:
+            pages = [FakePage("Diagnostic steps"), FakePage("Safety warning")]
+
+            def __init__(self, stream):
+                self.stream = stream
+
+        pdf = SourceResource.from_bytes(
+            "file://drop/manual.pdf",
+            "v1",
+            b"%PDF-1.7 fake bytes",
+            "application/pdf",
+        )
+
+        with patch.dict(sys.modules, {"pypdf": types.SimpleNamespace(PdfReader=FakeReader)}):
+            artifact = adapt_source_resource(pdf)
+
+        self.assertEqual(artifact.kind, "document")
+        self.assertEqual(artifact.metadata["page_count"], 2)
+        self.assertEqual([candidate.locator for candidate in artifact.candidates], ["page:1", "page:2"])
+        self.assertEqual(artifact.candidates[1].data["text"], "Safety warning")
 
     def test_content_sniffing_takes_precedence_over_misleading_file_extensions(self):
         xml = b'\xef\xbb\xbf<?xml version="1.0"?><vehicle><make>Ford</make></vehicle>'
