@@ -281,3 +281,5 @@ The first dashboards and alerts must cover:
 - Revision publication rate and source watermark lag.
 - Entitlement fulfillment lag and reconciliation failures.
 - Source takedown, revision revocation, and access-denied counts.
+
+The checked-in baseline alert policy is [`infra/observability/prometheus-alerts.yaml`](../../infra/observability/prometheus-alerts.yaml). It uses only the provider-neutral metric names above, separates page-level availability/billing failures from warning-level freshness/review signals, and links each alert to a repository runbook. A deployment may translate these rules into its observability provider, but it must preserve the thresholds, severity intent, and runbook links or record an explicit reviewed policy change.
