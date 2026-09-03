@@ -13,6 +13,7 @@ from typing import Any
 from autodata_contracts.fakes import FakePaymentProvider, FakePrimarySource, SourceSnapshot
 
 from .normalization import NormalizedVehicle, normalize_source_snapshot
+from .object_storage import ensure_versioned_bucket
 from .source_adapters import SourceArtifact, SourceResource, adapt_source_resource
 
 
@@ -77,8 +78,7 @@ def store_source_object(snapshot: SourceSnapshot) -> SourceArtifact:
         secure=False,
     )
     bucket = os.getenv("AUTODATA_SOURCE_BUCKET", "autodata-sources")
-    if not client.bucket_exists(bucket):
-        client.make_bucket(bucket)
+    ensure_versioned_bucket(client, bucket)
     payload = _source_payload(snapshot)
     client.put_object(bucket, artifact.object_key, BytesIO(payload), len(payload), content_type="application/json")
     return artifact

@@ -9,6 +9,7 @@ from io import BytesIO
 from typing import Any, Iterable
 
 from .source_adapters import SourceArtifact
+from .object_storage import ensure_versioned_bucket
 from .source_bundle import SourceBundle
 
 
@@ -234,8 +235,7 @@ def store_source_artifacts(artifacts: Iterable[SourceArtifact]) -> None:
         secure=False,
     )
     bucket = os.getenv("AUTODATA_SOURCE_BUCKET", "autodata-sources")
-    if not client.bucket_exists(bucket):
-        client.make_bucket(bucket)
+    ensure_versioned_bucket(client, bucket)
     for artifact in artifacts:
         client.put_object(
             bucket,

@@ -185,6 +185,37 @@ docker compose -f infra/compose/compose.yaml run --rm --no-deps \
 
 `docker compose up` also starts `outbox-relay` as a continuously polling local service. Use `AUTODATA_OUTBOX_POLL_SECONDS` to change its interval. The command above sets `AUTODATA_OUTBOX_ONCE=1` for a bounded smoke run. Use `AUTODATA_OUTBOX_MAX_ATTEMPTS` to bound delivery retries. A failed event is retried on a later invocation until that limit is reached, then is marked `dead_letter` with its last error preserved. Outbox claiming and NATS publication are separate commits, so operational monitoring must treat duplicate delivery as normal and inspect `delivery_attempts`, `delivery_status`, and `delivered_at` when reconciling the database with JetStream.
 
+The asynchronous and object-storage probes are bounded operational commands. The NATS probe is read-only and reports the configured JetStream stream; the object-storage probe creates missing configured buckets and upgrades them to versioning, which is required before source artifacts are accepted:
+
+```sh
+AUTODATA_POSTGRES_PASSWORD=local-dev-only \
+AUTODATA_MINIO_ROOT_USER=localadmin \
+AUTODATA_MINIO_ROOT_PASSWORD=local-dev-password \
+docker compose -f infra/compose/compose.yaml run --rm --no-deps \
+  payment-reconciler python /app/scripts/nats_health.py
+
+AUTODATA_POSTGRES_PASSWORD=local-dev-only \
+AUTODATA_MINIO_ROOT_USER=localadmin \
+AUTODATA_MINIO_ROOT_PASSWORD=local-dev-password \
+docker compose -f infra/compose/compose.yaml run --rm --no-deps \
+  -e AUTODATA_S3_ENDPOINT=minio:9000 \
+  -e AUTODATA_S3_ACCESS_KEY=localadmin \
+  -e AUTODATA_S3_SECRET_KEY=local-dev-password \
+  payment-reconciler python /app/scripts/object_storage_health.py
+```
+
+Dead-letter replay is explicitly targeted and cannot accept both target types. After correcting the failure cause, replay one event or job; the command preserves the original idempotency key and nests the prior attempt/error metadata before returning it to `pending`:
+
+```sh
+AUTODATA_POSTGRES_PASSWORD=local-dev-only \
+AUTODATA_MINIO_ROOT_USER=localadmin \
+AUTODATA_MINIO_ROOT_PASSWORD=local-dev-password \
+docker compose -f infra/compose/compose.yaml run --rm --no-deps \
+  payment-reconciler python /app/scripts/replay_outbox.py --event-id <dead-letter-publication-event-id>
+```
+
+The replay command refuses a missing, non-dead-lettered, or already replayed target. It does not create a replacement event, rewrite a published revision, or bulk-reset a queue.
+
 ## Configuration contract
 
 Configuration is grouped by subsystem and supplied through environment variables or a secret manager:
