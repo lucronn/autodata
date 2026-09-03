@@ -10,6 +10,20 @@ from ingestion_smoke import summarize_source_object, summarize_viewable_event  #
 
 
 class IngestionSmokeContractTests(unittest.TestCase):
+    def test_protected_workflow_runs_live_fast_lane_smoke_with_cleanup(self):
+        workflow = (ROOT / ".github/workflows/autonomous-verification.yml").read_text()
+
+        self.assertIn("timeout-minutes: 20", workflow)
+        self.assertIn("Run live Compose fast-lane smoke", workflow)
+        self.assertIn("docker compose -f infra/compose/compose.yaml up -d --wait postgres nats minio", workflow)
+        self.assertIn("docker compose -f infra/compose/compose.yaml run migration-runner", workflow)
+        self.assertIn("docker compose -f infra/compose/compose.yaml run --rm ingest-fixture", workflow)
+        self.assertIn("docker compose -f infra/compose/compose.yaml run --rm --no-deps ingestion-smoke", workflow)
+        self.assertIn(
+            "trap 'docker compose -f infra/compose/compose.yaml down --volumes --remove-orphans' EXIT",
+            workflow,
+        )
+
     def test_source_object_summary_checks_content_hash_and_identity(self):
         payload = b'{"vehicle":{"make":"Toyota","model":"Corolla","year":2024,"region":"US"}}'
 
