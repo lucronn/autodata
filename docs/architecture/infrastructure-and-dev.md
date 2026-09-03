@@ -135,6 +135,28 @@ The command reports the normalized vehicle, typed candidate counts, evidence cou
 
 Persistence is opt-in and local-only. When database and object-storage variables are configured, append `--persist` to write content-addressed artifacts and normalized records to the Compose stack. A bundle with review items is still stored for audit, but it cannot be treated as fully publishable until its quarantine items are resolved.
 
+To persist a local directory through the same container image used by the ingestion worker, mount the directory read-only and provide only local development values:
+
+```sh
+AUTODATA_POSTGRES_PASSWORD=local-dev-only \
+AUTODATA_MINIO_ROOT_USER=localadmin \
+AUTODATA_MINIO_ROOT_PASSWORD=local-dev-password \
+docker compose -f infra/compose/compose.yaml run --rm --no-deps \
+  -v "$PWD/sample data:/sample-data:ro" \
+  -e AUTODATA_DB_ADDRESS=postgres:5432 \
+  -e AUTODATA_POSTGRES_DB=autodata \
+  -e AUTODATA_POSTGRES_USER=autodata \
+  -e AUTODATA_POSTGRES_PASSWORD=local-dev-only \
+  -e AUTODATA_S3_ENDPOINT=minio:9000 \
+  -e AUTODATA_S3_ACCESS_KEY=localadmin \
+  -e AUTODATA_S3_SECRET_KEY=local-dev-password \
+  -e AUTODATA_SOURCE_BUCKET=autodata-sources \
+  ingestion-worker python /app/scripts/normalize_source_directory.py \
+  /sample-data --region US --source-version local-sample-v1 --persist
+```
+
+This command is a local verification path only. It does not publish the source directory to GitHub or an external provider. Repeating it with the same source version is idempotent for normalized records; raw resources remain content-addressed and auditable.
+
 The deep-lane publisher can be exercised against a viewable fixture projection after the local environment variables are exported. Scheduling creates one pending job and one durable `dataset.deep.requested` outbox event per section; publishing a section requires approved evidence and creates a new immutable revision:
 
 ```sh
