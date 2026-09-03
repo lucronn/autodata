@@ -87,6 +87,33 @@ class SourceBundleTests(unittest.TestCase):
         self.assertEqual(bundle.parts[0]["price_minor"], None)
         self.assertEqual(bundle.parts[0]["price_status"], "needs_review")
 
+    def test_conflicting_vehicle_identities_are_explicit_and_evidence_linked(self):
+        resources = [
+            SourceResource.from_bytes(
+                "provider-a://vehicle/name",
+                "source-a-v1",
+                b'{"body":"2019 Cadillac Escalade ESV"}',
+                "application/json",
+            ),
+            SourceResource.from_bytes(
+                "provider-b://vehicle/name",
+                "source-b-v1",
+                b'{"body":"2020 Cadillac Escalade ESV"}',
+                "application/json",
+            ),
+        ]
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource) for resource in resources], "US")
+
+        self.assertEqual(bundle.status, "needs_review")
+        self.assertIsNone(bundle.vehicle)
+        self.assertEqual(len(bundle.conflicts), 1)
+        conflict = bundle.conflicts[0]
+        self.assertEqual(conflict["kind"], "vehicle_identity")
+        self.assertEqual(conflict["field"], "year/make/model")
+        self.assertEqual(len(conflict["candidates"]), 2)
+        self.assertEqual(len(conflict["evidence_ids"]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

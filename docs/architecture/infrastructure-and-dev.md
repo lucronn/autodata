@@ -66,6 +66,7 @@ The intake invariants are:
 - A recognized format does not imply trusted domain facts; canonical publication still requires normalization, provenance, evidence, confidence, and quality gates.
 - Unknown fields are preserved in the raw artifact and candidate payload rather than silently discarded.
 - Duplicate payloads deduplicate by content hash; distinct source versions remain separately auditable.
+- Conflicting candidates are emitted as evidence-linked conflict records and held for review; normalization never chooses a canonical value solely because it arrived first.
 - Unsupported or ambiguous resources become `needs_review`/quarantined work and cannot block publication of an already-viewable revision.
 - Source-specific adapters may understand a provider’s envelope or identifiers, but they must return the common resource/candidate contract before persistence.
 

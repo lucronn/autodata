@@ -27,6 +27,7 @@ class SourceBundle:
     diagrams: tuple[dict[str, Any], ...]
     evidence: tuple[dict[str, Any], ...]
     quarantined: tuple[dict[str, Any], ...]
+    conflicts: tuple[dict[str, Any], ...]
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -38,6 +39,7 @@ def normalize_source_bundle(artifacts: Iterable[SourceArtifact], region: str) ->
     artifact_list = list(artifacts)
     evidence: list[dict[str, Any]] = []
     quarantined: list[dict[str, Any]] = []
+    conflicts: list[dict[str, Any]] = []
     vehicle_candidates = []
     model_records: list[dict[str, Any]] = []
     powertrain_records: list[dict[str, Any]] = []
@@ -139,7 +141,7 @@ def normalize_source_bundle(artifacts: Iterable[SourceArtifact], region: str) ->
                     }
                 )
 
-    vehicle = _normalize_vehicle(vehicle_candidates, region, evidence, quarantined)
+    vehicle = _normalize_vehicle(vehicle_candidates, region, evidence, quarantined, conflicts)
     if not vehicle_candidates:
         quarantined.append({"reason": "vehicle_identity_not_found"})
     if not evidence:
@@ -157,6 +159,7 @@ def normalize_source_bundle(artifacts: Iterable[SourceArtifact], region: str) ->
         diagrams=tuple(diagram_records),
         evidence=tuple(evidence),
         quarantined=tuple(quarantined),
+        conflicts=tuple(conflicts),
     )
 
 
@@ -165,12 +168,35 @@ def _normalize_vehicle(
     region: str,
     evidence: list[dict[str, Any]],
     quarantined: list[dict[str, Any]],
+    conflicts: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
     parsed = [item for item in candidates if {"year", "make", "model"}.issubset(item[2])]
     if not parsed:
         return None
     identities = {(item[2]["year"], item[2]["make"], item[2]["model"]) for item in parsed}
     if len(identities) > 1:
+        conflict_candidates = [
+            {
+                "identity": {
+                    "year": item[2]["year"],
+                    "make": item[2]["make"],
+                    "model": item[2]["model"],
+                },
+                "source_uri": item[0].source_uri,
+                "source_version": item[0].source_version,
+                "evidence_id": item[2]["evidence_id"],
+            }
+            for item in parsed
+        ]
+        conflicts.append(
+            {
+                "kind": "vehicle_identity",
+                "field": "year/make/model",
+                "resolution": "needs_review",
+                "candidates": conflict_candidates,
+                "evidence_ids": [item["evidence_id"] for item in conflict_candidates],
+            }
+        )
         quarantined.append({"reason": "conflicting_vehicle_identity", "candidates": sorted(map(str, identities))})
         return None
     _, _, record = parsed[0]
