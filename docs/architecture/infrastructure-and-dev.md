@@ -151,6 +151,27 @@ docker compose -f infra/compose/compose.yaml run --rm --no-deps \
   enrichment-worker python /app/scripts/deep_lane_smoke.py
 ```
 
+The API also exposes a dependency-free `/metrics` endpoint for in-process access-denied counters. It is intended to be network-restricted to the observability plane in deployed environments. The operational metrics snapshot reads durable request, job, outbox, evidence, review, payment, revision, and source state and emits Prometheus-compatible text for a local scrape or a scheduled exporter:
+
+```sh
+curl http://127.0.0.1:8080/metrics
+
+AUTODATA_POSTGRES_PASSWORD=local-dev-only \
+AUTODATA_MINIO_ROOT_USER=localadmin \
+AUTODATA_MINIO_ROOT_PASSWORD=local-dev-password \
+docker compose -f infra/compose/compose.yaml run --rm --no-deps \
+  payment-reconciler python /app/scripts/operational_metrics.py
+```
+
+The required local recovery check creates only `autodata_restore_check_<process-id>`, restores a custom-format PostgreSQL backup into it, verifies the migration ledger, and drops that exact temporary database in a `finally` path. It does not reset the development database or delete published revisions:
+
+```sh
+AUTODATA_POSTGRES_PASSWORD=local-dev-only \
+AUTODATA_MINIO_ROOT_USER=localadmin \
+AUTODATA_MINIO_ROOT_PASSWORD=local-dev-password \
+python scripts/dev/backup_restore_smoke.py
+```
+
 The same section job is safe to replay. A failed section is recorded in `ingestion_jobs` and `dataset_section_status`, can be retried up to its configured limit, and moves to `dead_letter` without changing the last published revision for other sections. The placeholder projection ID and evidence above are future execution parameters, not committed credentials or source payloads.
 
 Publication events are delivered from PostgreSQL through the outbox relay. The relay is a bounded, one-shot developer command; it claims pending or retryable events, publishes the immutable envelope to NATS JetStream, and records delivery state. It is safe to rerun because the event idempotency key is used as the NATS message ID and consumers must deduplicate redelivery:
@@ -210,6 +231,10 @@ Validate the manifest structure locally with `python scripts/dev/test_k8s_manife
 - A viewable revision is retained while deep work is retried.
 - Payment events are reconciled when webhook acknowledgment and fulfillment scheduling are separated by a transient failure.
 - Backups are useful only after restore verification; the operational runbook must test restoration into an isolated environment.
+- PostgreSQL recovery uses `scripts/dev/backup_restore_smoke.py`; a failed restore blocks promotion and leaves the source database untouched.
+- NATS JetStream recovery starts from durable stream state and the PostgreSQL publication outbox: inspect consumer lag, stop duplicate consumers if needed, replay pending/dead-letter outbox events with their original idempotency keys, and verify downstream deduplication before resuming normal traffic.
+- MinIO recovery preserves content-addressed source objects and derived evidence artifacts; lifecycle rules may expire only artifacts past their documented retention watermark, never the source/evidence objects required by a published revision.
+- Dead-letter replay is bounded and targeted: replay only the selected job/event after its failure cause is corrected, preserve the original idempotency key, and confirm the affected section returns to `processing`/`complete` without changing an earlier published revision.
 
 ## Required operational metrics
 
