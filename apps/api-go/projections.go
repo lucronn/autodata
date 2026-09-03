@@ -55,6 +55,7 @@ type EvidenceRecord struct {
 	EvidenceID       string  `json:"evidence_id"`
 	SourceSnapshotID string  `json:"source_snapshot_id"`
 	ExtractionRunID  *string `json:"extraction_run_id"`
+	DatasetRevisionID *string `json:"dataset_revision_id,omitempty"`
 	Locator          string  `json:"locator"`
 	ArtifactKey      string  `json:"artifact_key,omitempty"`
 	ExtractedText    string  `json:"extracted_text,omitempty"`

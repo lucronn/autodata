@@ -124,11 +124,13 @@ func (s *postgresProjectionStore) GetEvidence(datasetID, evidenceID string, prin
 	}
 	var evidence EvidenceRecord
 	var extractionRunID *string
+	var datasetRevisionID *string
 	var confidence float64
 	var reviewerState string
 	err := s.pool.QueryRow(context.Background(), `
 		SELECT ee.extraction_evidence_id::text, ee.source_snapshot_id::text,
-		       ee.extraction_run_id::text, ee.locator, ee.artifact_key,
+		       ee.extraction_run_id::text, ee.dataset_revision_id::text,
+		       ee.locator, ee.artifact_key,
 		       ee.extracted_text, ee.confidence, ee.reviewer_state
 		FROM extraction_evidence ee
 		JOIN dataset_requests dr ON dr.source_snapshot_id = ee.source_snapshot_id
@@ -138,7 +140,7 @@ func (s *postgresProjectionStore) GetEvidence(datasetID, evidenceID string, prin
 		  AND ee.extraction_evidence_id = $2
 		  AND e.organization_id::text = $3`, datasetID, evidenceID, principal.OrganizationID).
 		Scan(&evidence.EvidenceID, &evidence.SourceSnapshotID, &extractionRunID,
-			&evidence.Locator, &evidence.ArtifactKey, &evidence.ExtractedText,
+			&datasetRevisionID, &evidence.Locator, &evidence.ArtifactKey, &evidence.ExtractedText,
 			&confidence, &reviewerState)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return EvidenceRecord{}, ErrInvalidEvidence
@@ -147,6 +149,7 @@ func (s *postgresProjectionStore) GetEvidence(datasetID, evidenceID string, prin
 		return EvidenceRecord{}, err
 	}
 	evidence.ExtractionRunID = extractionRunID
+	evidence.DatasetRevisionID = datasetRevisionID
 	evidence.Confidence = confidence
 	evidence.ReviewerState = reviewerState
 	if reviewerState != "approved" {
