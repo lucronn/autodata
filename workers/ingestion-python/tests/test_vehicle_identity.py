@@ -217,6 +217,101 @@ class VehicleIdentityTests(unittest.TestCase):
         self.assertEqual(review.status, "unmatched")
         self.assertIsNone(review.selected_candidate_key)
 
+    def test_candidate_review_matches_coarse_drivetrain_candidate_after_engine_arrives(self):
+        module = self._module()
+
+        observation = module.canonicalize_vehicle_observation(
+            {
+                "year": 2024,
+                "make": "Chevrolet",
+                "model": "Silverado 1500",
+                "drivetrain": "2WD",
+                "engine": "5.3L",
+            }
+        )
+
+        review = module.review_vehicle_candidates(
+            observation,
+            [
+                {
+                    "year": 2024,
+                    "make": "Chevrolet",
+                    "model": "Silverado 1500",
+                    "drivetrain": "2WD",
+                }
+            ],
+        )
+
+        self.assertEqual(review.status, "matched")
+        self.assertEqual(
+            review.selected_candidate_key,
+            "chevrolet-silverado-1500-2024-drivetrain-2wd",
+        )
+
+    def test_candidate_review_matches_omitted_drivetrain_as_wildcard(self):
+        module = self._module()
+
+        observation = module.canonicalize_vehicle_observation(
+            {
+                "year": 2024,
+                "make": "Chevrolet",
+                "model": "Silverado 1500",
+                "engine": "5.3L",
+            }
+        )
+
+        review = module.review_vehicle_candidates(
+            observation,
+            [
+                {
+                    "year": 2024,
+                    "make": "Chevrolet",
+                    "model": "Silverado 1500",
+                    "drivetrain": "2WD",
+                }
+            ],
+        )
+
+        self.assertEqual(review.status, "matched")
+        self.assertEqual(
+            review.selected_candidate_key,
+            "chevrolet-silverado-1500-2024-drivetrain-2wd",
+        )
+
+    def test_candidate_review_marks_multiple_wildcard_compatible_candidates_ambiguous(self):
+        module = self._module()
+
+        observation = module.canonicalize_vehicle_observation(
+            {
+                "year": 2024,
+                "make": "Chevrolet",
+                "model": "Silverado 1500",
+                "engine": "5.3L",
+            }
+        )
+
+        review = module.review_vehicle_candidates(
+            observation,
+            [
+                {
+                    "year": 2024,
+                    "make": "Chevrolet",
+                    "model": "Silverado 1500",
+                    "drivetrain": "2WD",
+                },
+                {
+                    "year": 2024,
+                    "make": "Chevrolet",
+                    "model": "Silverado 1500",
+                    "drivetrain": "4WD",
+                },
+            ],
+        )
+
+        self.assertEqual(review.status, "ambiguous")
+        self.assertTrue(review.ambiguous)
+        self.assertIsNone(review.selected_candidate_key)
+
 
 if __name__ == "__main__":
     unittest.main()

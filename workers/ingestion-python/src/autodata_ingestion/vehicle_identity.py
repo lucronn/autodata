@@ -410,7 +410,7 @@ def _score_candidate(
     observation: CanonicalVehicleObservation,
     candidate: CanonicalVehicleObservation,
 ) -> float:
-    if build_base_identity(observation).vehicle_key != build_base_identity(candidate).vehicle_key:
+    if not _observations_are_compatible(observation, candidate):
         return 0.0
     score = 100.0
     score += _optional_match_score(observation.trim, candidate.trim, 10.0)
@@ -421,6 +421,36 @@ def _score_candidate(
         5.0,
     )
     return score
+
+
+def _observations_are_compatible(
+    observation: CanonicalVehicleObservation,
+    candidate: CanonicalVehicleObservation,
+) -> bool:
+    if (observation.year, observation.make, observation.model) != (
+        candidate.year,
+        candidate.make,
+        candidate.model,
+    ):
+        return False
+    return (
+        _optional_values_are_compatible(observation.region, candidate.region)
+        and _optional_values_are_compatible(observation.body_style, candidate.body_style)
+        and _optional_values_are_compatible(observation.trim, candidate.trim)
+        and _optional_values_are_compatible(observation.drivetrain, candidate.drivetrain)
+        and _optional_engine_values_are_compatible(
+            observation.engine_displacement_l,
+            candidate.engine_displacement_l,
+        )
+    )
+
+
+def _optional_values_are_compatible(left: str | None, right: str | None) -> bool:
+    return left is None or right is None or left == right
+
+
+def _optional_engine_values_are_compatible(left: float | None, right: float | None) -> bool:
+    return left is None or right is None or abs(left - right) < 0.0001
 
 
 def _optional_match_score(expected: str | None, actual: str | None, weight: float) -> float:
