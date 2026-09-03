@@ -132,7 +132,12 @@ func (s *Server) createDatasetRequest(response http.ResponseWriter, request *htt
 		writeAPIError(response, request, http.StatusForbidden, "ENTITLEMENT_REQUIRED", err.Error(), false)
 		return
 	}
+	if errors.Is(err, ErrInvalidRequest) {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", err.Error(), false)
+		return
+	}
 	if err != nil {
+		log.Printf("create dataset request %s: %v", requestIDFrom(request), err)
 		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "request could not be created", true)
 		return
 	}
@@ -150,6 +155,10 @@ func (s *Server) getDatasetRequest(response http.ResponseWriter, request *http.R
 		return
 	}
 	record, err := s.requests.Get(id, principal)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", err.Error(), false)
+		return
+	}
 	if errors.Is(err, ErrRequestNotFound) {
 		writeAPIError(response, request, http.StatusNotFound, "REVISION_NOT_FOUND", "dataset request was not found", false)
 		return
@@ -159,6 +168,7 @@ func (s *Server) getDatasetRequest(response http.ResponseWriter, request *http.R
 		return
 	}
 	if err != nil {
+		log.Printf("read dataset request %s: %v", requestIDFrom(request), err)
 		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "request could not be read", true)
 		return
 	}
@@ -426,22 +436,33 @@ func configuredReadiness() ReadinessChecker {
 
 func main() {
 	address := envOrDefault("AUTODATA_API_ADDR", ":8080")
-	projectionStore := ProjectionStore(newMemoryProjectionStore())
-	if os.Getenv("AUTODATA_PROJECTION_STORE") == "postgres" {
-		store, err := newPostgresProjectionStore(context.Background())
-		if err != nil {
-			log.Fatal(fmt.Errorf("connect projection store: %w", err))
-		}
-		defer store.Close()
-		projectionStore = store
+	requestStore, projectionStore, cleanup, err := configuredStores(context.Background())
+	if err != nil {
+		log.Fatal(fmt.Errorf("configure API stores: %w", err))
 	}
+	defer cleanup()
 	server := &http.Server{
 		Addr:              address,
-		Handler:           NewServerWithDependencies(configuredReadiness(), HeaderAuthenticator{}, newMemoryRequestStore(), projectionStore).Handler(),
+		Handler:           NewServerWithDependencies(configuredReadiness(), HeaderAuthenticator{}, requestStore, projectionStore).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	log.Printf("autodata api listening on %s", address)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(fmt.Errorf("serve API: %w", err))
 	}
+}
+
+var configuredProjectionStoreOpener = newPostgresProjectionStore
+
+func configuredStores(ctx context.Context) (RequestStore, ProjectionStore, func(), error) {
+	requestStore := RequestStore(newMemoryRequestStore())
+	projectionStore := ProjectionStore(newMemoryProjectionStore())
+	if os.Getenv("AUTODATA_PROJECTION_STORE") != "postgres" {
+		return requestStore, projectionStore, func() {}, nil
+	}
+	store, err := configuredProjectionStoreOpener(ctx)
+	if err != nil {
+		return nil, nil, func() {}, err
+	}
+	return newPostgresRequestStore(store.pool), store, store.Close, nil
 }

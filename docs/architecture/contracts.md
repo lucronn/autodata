@@ -84,6 +84,18 @@ Dataset responses include:
 
 The response may include a `data` object for published sections and a `warnings` array for incomplete, low-confidence, stale, or review-gated content. A client must be able to render the dataset from status and revision metadata without guessing whether missing fields are unavailable, not applicable, or still processing.
 
+The request-status endpoint is durable whenever the API is configured with
+`AUTODATA_PROJECTION_STORE=postgres`. Request ownership is recorded on
+`dataset_requests` so a caller can poll a request while payment fulfillment or
+projection creation is delayed. The database unique constraint on
+`idempotency_key` is the source of truth for replay: the first insert returns
+`202`, a replay for the same organization returns the original request with
+`200`, and a replay from another organization returns `403`. Until a projection
+exists, the request response exposes the product's immutable minimum-section
+contract as `pending`; once a projection exists, it exposes the durable
+section statuses and revision pointers. API-only tests may use the explicit
+in-memory store, but the running PostgreSQL mode must not fall back to it.
+
 Feedback submission accepts `correction`, `missing`, `quality`, or `safety` categories and a bounded body, with optional `revision_id` and `evidence_id` references. The caller must hold the dataset entitlement. The API validates that a referenced revision belongs to the projection and that a referenced evidence record is approved, published, and linked to the same projection; otherwise it returns `REVISION_NOT_FOUND`, `INVALID_EVIDENCE`, or `REVIEW_REQUIRED` without creating a record. Valid feedback is inserted into `feedback_items` with status `open`. Reviewers resolve feedback by creating a new immutable revision when a correction is accepted; no published revision is mutated in place.
 
 Feedback review is restricted to the `data_reviewer` role. The request accepts `{ "decision": "resolve" | "reject", "reason": "...", "applied_revision_id": "uuid" }`. `resolve` requires an existing published replacement revision in the same projection; `reject` must not include an applied revision. The review stores the reviewer, timestamp, reason, and replacement revision on the feedback item. Repeating the same terminal decision is idempotent; attempting the opposite terminal decision returns a non-retryable conflict. Published revisions remain immutable and auditable through their changelog, source watermark, provenance, and evidence links.

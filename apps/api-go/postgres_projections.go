@@ -54,7 +54,9 @@ func newPostgresProjectionStore(ctx context.Context) (*postgresProjectionStore, 
 }
 
 func (s *postgresProjectionStore) Close() {
-	s.pool.Close()
+	if s.pool != nil {
+		s.pool.Close()
+	}
 }
 
 func (s *postgresProjectionStore) GetDataset(datasetID string, principal Principal, revisionID string) (DatasetReadRecord, error) {

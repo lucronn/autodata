@@ -50,8 +50,9 @@ class IngestionSmokeContractTests(unittest.TestCase):
         self.assertIn("docker compose -f infra/compose/compose.yaml run migration-runner", workflow)
         self.assertIn("docker compose -f infra/compose/compose.yaml run --rm ingest-fixture", workflow)
         self.assertIn("docker compose -f infra/compose/compose.yaml run --rm --no-deps ingestion-smoke", workflow)
+        self.assertIn("trap cleanup EXIT", workflow)
         self.assertIn(
-            "trap 'docker compose -f infra/compose/compose.yaml down --volumes --remove-orphans' EXIT",
+            "docker compose -f infra/compose/compose.yaml down --volumes --remove-orphans",
             workflow,
         )
 

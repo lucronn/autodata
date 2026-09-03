@@ -32,12 +32,14 @@ INSERT INTO payment_events (
 
 INSERT INTO dataset_requests (
     dataset_request_id, dataset_product_id, vehicle_key, region, status,
-    lane, source_snapshot_id, correlation_id, idempotency_key, processing_version
+    lane, source_snapshot_id, correlation_id, idempotency_key, processing_version,
+    organization_id
 ) VALUES (
     '30000000-0000-0000-0000-000000000001',
     '10000000-0000-0000-0000-000000000001', 'toyota-corolla-2024', 'US',
     'viewable', 'fast', '20000000-0000-0000-0000-000000000001',
-    '31000000-0000-0000-0000-000000000001', 'fixture-request-001', 'fixture-v1'
+    '31000000-0000-0000-0000-000000000001', 'fixture-request-001', 'fixture-v1',
+    '41000000-0000-0000-0000-000000000001'
 ) ON CONFLICT (dataset_request_id) DO NOTHING;
 
 INSERT INTO entitlements (
