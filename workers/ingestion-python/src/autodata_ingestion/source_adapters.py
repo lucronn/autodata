@@ -453,36 +453,29 @@ def _adapt_pdf_resource(
     resource: SourceResource,
     metadata: dict[str, Any],
 ) -> SourceArtifact:
-    """Extract text per page when the optional PDF extractor is available."""
+    """Extract native PDF text and OCR pages that contain no native text."""
+
+    from .ocr import build_ocr_candidates
+
+    pages: list[Any] = []
+    native_text_pages: set[int] = set()
+    candidates: list[NormalizationCandidate] = []
+    warnings: list[str] = []
+    text_extractor_status = "available"
 
     try:
         from pypdf import PdfReader
     except ImportError:
-        return _binary_artifact(
-            "document",
-            resource,
-            {
-                **metadata,
-                "extraction_status": "needs_review",
-                "extraction_error": "PDF text extractor is not installed",
-            },
-        )
+        text_extractor_status = "unavailable"
+        warnings.append("PDF text extractor is not installed")
+    else:
+        try:
+            reader = PdfReader(io.BytesIO(resource.payload))
+            pages = list(reader.pages)
+        except Exception as error:
+            text_extractor_status = "failed"
+            warnings.append(f"PDF text extraction could not read the document: {error}")
 
-    try:
-        reader = PdfReader(io.BytesIO(resource.payload))
-        pages = list(reader.pages)
-    except Exception as error:
-        return _binary_artifact(
-            "document",
-            resource,
-            {
-                **metadata,
-                "extraction_status": "needs_review",
-                "extraction_error": f"PDF could not be read: {error}",
-            },
-        )
-
-    candidates: list[NormalizationCandidate] = []
     page_errors: list[dict[str, str]] = []
     for index, page in enumerate(pages, start=1):
         try:
@@ -491,6 +484,7 @@ def _adapt_pdf_resource(
             page_errors.append({"locator": f"page:{index}", "error": str(error)})
             continue
         if text:
+            native_text_pages.add(index)
             candidates.append(
                 NormalizationCandidate(
                     "document_text",
@@ -500,14 +494,46 @@ def _adapt_pdf_resource(
                 )
             )
 
+    missing_pages = set(range(1, len(pages) + 1)) - native_text_pages if pages else set()
+    should_rasterize = bool(missing_pages) or not pages
+    rasterization_status = "not_needed"
+    extraction_mode = "text_pdf"
+    if should_rasterize:
+        try:
+            scanned_blocks = extract_scanned_pdf_text(
+                resource.content_sha256,
+                resource.payload,
+                native_text_pages,
+            )
+            ocr_candidates = list(build_ocr_candidates(resource.content_sha256, scanned_blocks))
+            candidates.extend(ocr_candidates)
+            rasterization_status = "complete"
+            extraction_mode = "mixed_pdf_ocr" if native_text_pages else "scanned_pdf_ocr"
+        except Exception as error:
+            rasterization_status = "unavailable"
+            warnings.append(str(error))
+            extraction_mode = "mixed_pdf_ocr" if native_text_pages else "unavailable"
+
     extraction_metadata: dict[str, Any] = {
         **metadata,
         "page_count": len(pages),
-        "extracted_page_count": len(candidates),
+        "text_extractor_status": text_extractor_status,
+        "extracted_page_count": len({
+            candidate.locator.split(":", 1)[1]
+            for candidate in candidates
+            if candidate.kind == "document_text" and candidate.locator.startswith("page:")
+        }),
+        "extracted_region_count": sum(candidate.kind == "image_text" for candidate in candidates),
+        "rasterized_page_count": len(missing_pages) if pages else None,
+        "rasterization_status": rasterization_status,
+        "extraction_mode": extraction_mode,
         "extraction_status": "candidate_ready" if candidates else "needs_review",
     }
     if page_errors:
         extraction_metadata["page_errors"] = page_errors
+    if warnings:
+        extraction_metadata["extraction_warnings"] = warnings
+        extraction_metadata["extraction_error"] = "; ".join(warnings)
     return SourceArtifact(
         kind="document",
         source_uri=resource.source_uri,
@@ -586,6 +612,18 @@ def extract_image_text(
     from .ocr import extract_image_text as extract
 
     return extract(content_sha256, payload, media_type)
+
+
+def extract_scanned_pdf_text(
+    content_sha256: str,
+    payload: bytes,
+    native_text_pages: Iterable[int] = (),
+) -> Iterable[Any]:
+    """Load the optional PDF rasterizer/OCR provider lazily for testable intake."""
+
+    from .pdf_ocr import extract_scanned_pdf_text as extract
+
+    return extract(content_sha256, payload, native_text_pages)
 
 
 def _adapt_image_resource(
