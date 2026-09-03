@@ -332,8 +332,9 @@ def persist_fast_lane(
                 """
                 INSERT INTO publication_events
                     (event_type, event_version, dataset_request_id, dataset_projection_id,
-                     dataset_revision_id, correlation_id, idempotency_key, payload, published_at)
-                VALUES ('dataset.viewable', 1, %s, %s, %s, %s, %s, %s, %s)
+                     dataset_revision_id, correlation_id, idempotency_key, payload, published_at,
+                     producer)
+                VALUES ('dataset.viewable', 1, %s, %s, %s, %s, %s, %s, %s, 'ingestion-worker')
                 ON CONFLICT (idempotency_key)
                 DO NOTHING
                 """,
@@ -392,6 +393,27 @@ async def publish_viewable_event(result: dict[str, str], normalized: NormalizedV
         await connection.flush()
     finally:
         await connection.close()
+
+    import psycopg
+
+    db_address = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432")
+    host, port_text = db_address.rsplit(":", 1)
+    with psycopg.connect(
+        host=host,
+        port=int(port_text),
+        dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
+        user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
+        password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+    ) as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE publication_events
+            SET delivery_status = 'published', delivered_at = now(), delivery_attempts = GREATEST(delivery_attempts, 1)
+            WHERE idempotency_key = %s
+            """,
+            (f"viewable:{result['dataset_request_id']}:1",),
+        )
+        connection.commit()
 
 
 def run_fixture() -> dict[str, Any]:

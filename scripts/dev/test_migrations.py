@@ -27,6 +27,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "005_preserve_duplicate_article_ids.sql",
                 "006_backfill_article_source_locators.sql",
                 "007_link_evidence_to_revision.sql",
+                "008_publication_outbox_delivery.sql",
             ],
         )
 

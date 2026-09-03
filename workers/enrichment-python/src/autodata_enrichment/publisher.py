@@ -94,9 +94,9 @@ def schedule_deep_sections(
                     INSERT INTO publication_events
                         (event_type, event_version, dataset_request_id,
                          dataset_projection_id, correlation_id, idempotency_key,
-                         payload, published_at)
+                         payload, published_at, producer)
                     SELECT 'dataset.deep.requested', 1, dr.dataset_request_id,
-                           %s, dr.correlation_id, %s, %s, %s
+                           %s, dr.correlation_id, %s, %s, %s, 'enrichment-worker'
                     FROM dataset_requests dr
                     WHERE dr.dataset_request_id = %s
                     ON CONFLICT (idempotency_key) DO NOTHING
@@ -325,9 +325,9 @@ def publish_deep_section(job: DeepSectionJob) -> dict[str, Any]:
                 INSERT INTO publication_events
                     (event_type, event_version, dataset_request_id,
                      dataset_projection_id, dataset_revision_id, correlation_id,
-                     idempotency_key, payload, published_at)
+                     idempotency_key, payload, published_at, producer)
                 SELECT 'dataset.section.published', 1, dr.dataset_request_id,
-                       %s, %s, dr.correlation_id, %s, %s, %s
+                       %s, %s, dr.correlation_id, %s, %s, %s, 'enrichment-worker'
                 FROM dataset_requests dr
                 WHERE dr.dataset_request_id = %s
                 ON CONFLICT (idempotency_key) DO NOTHING
@@ -442,9 +442,9 @@ def record_deep_failure(
                 INSERT INTO publication_events
                     (event_type, event_version, dataset_request_id,
                      dataset_projection_id, correlation_id, idempotency_key,
-                     payload, published_at)
+                     payload, published_at, producer)
                 SELECT 'dataset.enrichment.failed', 1, dr.dataset_request_id,
-                       %s, dr.correlation_id, %s, %s, %s
+                       %s, dr.correlation_id, %s, %s, %s, 'enrichment-worker'
                 FROM dataset_requests dr
                 WHERE dr.dataset_request_id = %s
                 ON CONFLICT (idempotency_key) DO NOTHING
