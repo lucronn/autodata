@@ -82,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /datasets/{id}/revisions", s.requireRole("dataset_viewer", s.getDatasetRevisions))
 	mux.Handle("GET /datasets/{id}/evidence/{evidence_id}", s.requireRole("dataset_viewer", s.getDatasetEvidence))
 	mux.Handle("GET /datasets/{id}/search", s.requireRole("dataset_viewer", s.searchEvidence))
+	mux.Handle("POST /datasets/{id}/feedback", s.requireRole("dataset_viewer", s.submitFeedback))
 	return mux
 }
 
@@ -241,6 +242,26 @@ func (s *Server) searchEvidence(response http.ResponseWriter, request *http.Requ
 	writeJSON(response, http.StatusOK, result)
 }
 
+func (s *Server) submitFeedback(response http.ResponseWriter, request *http.Request, principal Principal) {
+	datasetID, ok := datasetPathValue(request)
+	if !ok {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "dataset ID is required", false)
+		return
+	}
+	var input FeedbackInput
+	decoder := json.NewDecoder(io.LimitReader(request.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "feedback body is invalid", false)
+		return
+	}
+	record, err := s.projections.SubmitFeedback(datasetID, input, principal)
+	if !writeProjectionError(response, request, err) {
+		return
+	}
+	writeJSON(response, http.StatusCreated, record)
+}
+
 func datasetPathValue(request *http.Request) (string, bool) {
 	value := strings.TrimSpace(request.PathValue("id"))
 	return value, value != ""
@@ -261,6 +282,8 @@ func writeProjectionError(response http.ResponseWriter, request *http.Request, e
 		writeAPIError(response, request, http.StatusNotFound, "REVISION_NOT_FOUND", err.Error(), false)
 	case errors.Is(err, ErrInvalidEvidence):
 		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_EVIDENCE", err.Error(), false)
+	case errors.Is(err, ErrInvalidFeedback):
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", err.Error(), false)
 	case errors.Is(err, ErrReviewRequired):
 		writeAPIError(response, request, http.StatusConflict, "REVIEW_REQUIRED", err.Error(), true)
 	default:

@@ -80,6 +80,8 @@ Dataset responses include:
 
 The response may include a `data` object for published sections and a `warnings` array for incomplete, low-confidence, stale, or review-gated content. A client must be able to render the dataset from status and revision metadata without guessing whether missing fields are unavailable, not applicable, or still processing.
 
+Feedback submission accepts `correction`, `missing`, `quality`, or `safety` categories and a bounded body, with optional `revision_id` and `evidence_id` references. The caller must hold the dataset entitlement. The API validates that a referenced revision belongs to the projection and that a referenced evidence record is approved, published, and linked to the same projection; otherwise it returns `REVISION_NOT_FOUND`, `INVALID_EVIDENCE`, or `REVIEW_REQUIRED` without creating a record. Valid feedback is inserted into `feedback_items` with status `open`. Reviewers resolve feedback by creating a new immutable revision when a correction is accepted; no published revision is mutated in place.
+
 ## Authentication and authorization
 
 The initial organization has these roles:

@@ -3,7 +3,9 @@ package main
 import (
 	"errors"
 	"sort"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/lucronn/autodata/packages/contracts/go"
 )
@@ -15,6 +17,7 @@ var (
 	ErrRevisionNotFound   = errors.New("dataset revision not found")
 	ErrInvalidEvidence    = errors.New("evidence reference is invalid")
 	ErrReviewRequired     = errors.New("evidence is pending human review")
+	ErrInvalidFeedback    = errors.New("feedback category or body is invalid")
 )
 
 // ProjectionStore is the authorization-aware read boundary for purchaser-facing
@@ -25,6 +28,7 @@ type ProjectionStore interface {
 	ListRevisions(string, Principal) (DatasetRevisionList, error)
 	GetEvidence(string, string, Principal) (EvidenceRecord, error)
 	SearchEvidence(string, []float64, int, Principal) (EvidenceSearchResponse, error)
+	SubmitFeedback(string, FeedbackInput, Principal) (FeedbackRecord, error)
 }
 
 type DatasetReadRecord struct {
@@ -79,6 +83,24 @@ type EvidenceSearchHit struct {
 	Score         float64 `json:"score"`
 }
 
+type FeedbackInput struct {
+	Category   string `json:"category"`
+	Body       string `json:"body"`
+	RevisionID string `json:"revision_id,omitempty"`
+	EvidenceID string `json:"evidence_id,omitempty"`
+}
+
+type FeedbackRecord struct {
+	FeedbackID string `json:"feedback_id"`
+	DatasetID  string `json:"dataset_id"`
+	RevisionID string `json:"revision_id,omitempty"`
+	EvidenceID string `json:"evidence_id,omitempty"`
+	Category   string `json:"category"`
+	Body       string `json:"body"`
+	Status     string `json:"status"`
+	CreatedAt  string `json:"created_at"`
+}
+
 type memoryDataset struct {
 	datasetID         string
 	organizationID    string
@@ -87,6 +109,7 @@ type memoryDataset struct {
 	revisions         []DatasetRevisionRecord
 	sections          []contracts.DatasetSection
 	evidence          map[string]EvidenceRecord
+	feedback          []FeedbackRecord
 }
 
 type memoryProjectionStore struct {
@@ -212,6 +235,70 @@ func (s *memoryProjectionStore) SearchEvidence(datasetID string, query []float64
 		results = results[:limit]
 	}
 	return EvidenceSearchResponse{DatasetID: datasetID, Results: results}, nil
+}
+
+func (s *memoryProjectionStore) SubmitFeedback(datasetID string, input FeedbackInput, principal Principal) (FeedbackRecord, error) {
+	dataset, err := s.authorize(datasetID, principal)
+	if err != nil {
+		return FeedbackRecord{}, err
+	}
+	if err := validateFeedbackInput(input); err != nil {
+		return FeedbackRecord{}, err
+	}
+	revisionID := input.RevisionID
+	if revisionID != "" {
+		if _, err := selectRevision(dataset.revisions, revisionID); err != nil {
+			return FeedbackRecord{}, err
+		}
+	}
+	if input.EvidenceID != "" {
+		evidence, ok := dataset.evidence[input.EvidenceID]
+		if !ok {
+			return FeedbackRecord{}, ErrInvalidEvidence
+		}
+		if evidence.ReviewerState != "approved" {
+			return FeedbackRecord{}, ErrReviewRequired
+		}
+		if evidence.DatasetRevisionID != nil {
+			if revisionID != "" && *evidence.DatasetRevisionID != revisionID {
+				return FeedbackRecord{}, ErrInvalidFeedback
+			}
+			revisionID = *evidence.DatasetRevisionID
+		}
+	}
+	feedbackID, err := newRequestID()
+	if err != nil {
+		return FeedbackRecord{}, err
+	}
+	record := FeedbackRecord{
+		FeedbackID: feedbackID,
+		DatasetID:  datasetID,
+		RevisionID: revisionID,
+		EvidenceID: input.EvidenceID,
+		Category:   input.Category,
+		Body:       strings.TrimSpace(input.Body),
+		Status:     "open",
+		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.datasets[datasetID]
+	current.feedback = append(current.feedback, record)
+	s.datasets[datasetID] = current
+	return record, nil
+}
+
+func validateFeedbackInput(input FeedbackInput) error {
+	switch input.Category {
+	case "correction", "missing", "quality", "safety":
+	default:
+		return ErrInvalidFeedback
+	}
+	body := strings.TrimSpace(input.Body)
+	if body == "" || len(body) > 4000 {
+		return ErrInvalidFeedback
+	}
+	return nil
 }
 
 func selectRevision(revisions []DatasetRevisionRecord, revisionID string) (DatasetRevisionRecord, error) {

@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/lucronn/autodata/packages/contracts/go"
@@ -129,20 +130,20 @@ func TestEvidenceSearchReturnsOnlyApprovedRevisionScopedResults(t *testing.T) {
 	store := newMemoryProjectionStore()
 	fixture := memoryDatasetFixture()
 	fixture.evidence["evidence-approved"] = EvidenceRecord{
-		EvidenceID:       "evidence-approved",
-		SourceSnapshotID: "snapshot-1",
-		ExtractionRunID:  stringPtr("run-2"),
+		EvidenceID:        "evidence-approved",
+		SourceSnapshotID:  "snapshot-1",
+		ExtractionRunID:   stringPtr("run-2"),
 		DatasetRevisionID: stringPtr("revision-2"),
-		Locator:          "page=9",
-		ExtractedText:    "brake fluid DOT 4",
-		Confidence:       0.99,
-		ReviewerState:    "approved",
-		Embedding:        fixtureVector(1),
+		Locator:           "page=9",
+		ExtractedText:     "brake fluid DOT 4",
+		Confidence:        0.99,
+		ReviewerState:     "approved",
+		Embedding:         fixtureVector(1),
 	}
 	fixture.evidence["evidence-no-vector"] = EvidenceRecord{
 		EvidenceID:    "evidence-no-vector",
 		ExtractedText: "unindexed approved text",
-		Confidence:   0.99,
+		Confidence:    0.99,
 		ReviewerState: "approved",
 	}
 	store.put(fixture)
@@ -161,6 +162,55 @@ func TestEvidenceSearchReturnsOnlyApprovedRevisionScopedResults(t *testing.T) {
 	if body.Results[0].EvidenceID != "evidence-approved" || body.Results[0].RevisionID != "revision-2" {
 		t.Fatalf("search result is not revision-scoped evidence: %#v", body.Results[0])
 	}
+}
+
+func TestFeedbackSubmissionCreatesOpenReviewItemLinkedToRevision(t *testing.T) {
+	store := newMemoryProjectionStore()
+	fixture := memoryDatasetFixture()
+	fixture.evidence["evidence-approved"] = EvidenceRecord{
+		EvidenceID:        "evidence-approved",
+		DatasetRevisionID: stringPtr("revision-2"),
+		Locator:           "page=9",
+		ExtractedText:     "brake fluid DOT 4",
+		Confidence:        0.99,
+		ReviewerState:     "approved",
+		Embedding:         fixtureVector(1),
+	}
+	store.put(fixture)
+	auth := &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}
+	server := NewServerWithDependencies(staticReadiness{}, auth, newMemoryRequestStore(), store)
+	request := httptest.NewRequest(http.MethodPost, "/datasets/dataset-1/feedback", strings.NewReader(`{"category":"correction","body":"The procedure omits the ground connection.","revision_id":"revision-2","evidence_id":"evidence-approved"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("feedback status = %d, want %d", response.Code, http.StatusCreated)
+	}
+	var body FeedbackRecord
+	decodeJSON(t, response, &body)
+	if body.DatasetID != "dataset-1" || body.Status != "open" || body.RevisionID != "revision-2" || body.EvidenceID != "evidence-approved" {
+		t.Fatalf("unexpected feedback response: %#v", body)
+	}
+}
+
+func TestFeedbackSubmissionRejectsUnapprovedEvidence(t *testing.T) {
+	store := newMemoryProjectionStore()
+	fixture := memoryDatasetFixture()
+	pending := fixture.evidence["evidence-pending"]
+	pending.DatasetRevisionID = stringPtr("revision-2")
+	fixture.evidence["evidence-pending"] = pending
+	store.put(fixture)
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}, newMemoryRequestStore(), store)
+	request := httptest.NewRequest(http.MethodPost, "/datasets/dataset-1/feedback", strings.NewReader(`{"category":"quality","body":"Please review this fact.","revision_id":"revision-2","evidence_id":"evidence-pending"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusConflict {
+		t.Fatalf("pending evidence status = %d, want %d", response.Code, http.StatusConflict)
+	}
+	assertErrorCode(t, response, "REVIEW_REQUIRED")
 }
 
 func performRequest(server *Server, method, path string) *httptest.ResponseRecorder {
