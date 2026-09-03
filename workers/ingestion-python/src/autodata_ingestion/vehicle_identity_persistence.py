@@ -10,9 +10,7 @@ import uuid
 from .vehicle_identity import (
     CanonicalVehicleObservation,
     VehicleReviewState,
-    build_base_identity,
     build_vehicle_aliases,
-    build_vehicle_configuration,
     canonicalize_vehicle_observation,
 )
 
@@ -26,10 +24,12 @@ class VehicleIdentityPersistenceResult:
     vehicle_key: str
     vehicle_identity_base_id: str
     canonical_base_key: str
-    vehicle_configuration_id: str
-    configuration_key: str
+    vehicle_configuration_id: str | None
+    configuration_key: str | None
     vehicle_identity_observation_id: str
     observation_key: str
+    resolution_status: str = "matched"
+    resolution_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -95,7 +95,49 @@ def persist_vehicle_identity_resolution(
         ),
     )
 
-    base_identity = build_base_identity(observation)
+    canonical_base_key = vehicle_key
+    existing_base = _select_identity_base(cursor, canonical_base_key)
+    conflict_reason = _base_dimension_conflict(existing_base, observation)
+    if conflict_reason is not None:
+        observation_payload = observation.to_dict()
+        observation_key = _observation_key(
+            source_snapshot_id,
+            source_locator,
+            observation_payload,
+        )
+        observation_id = _persist_identity_observation(
+            cursor,
+            observation_key=observation_key,
+            vehicle_id=vehicle_id,
+            vehicle_identity_base_id=existing_base["vehicle_identity_base_id"],
+            vehicle_configuration_id=None,
+            source_snapshot_id=source_snapshot_id,
+            extraction_evidence_id=extraction_evidence_id,
+            source_locator=source_locator,
+            evidence_locator=evidence_locator,
+            evidence_confidence=evidence_confidence,
+            reviewer_state=reviewer_state,
+            raw_observation=raw_observation if raw_observation is not None else observation_payload,
+            canonical_observation=observation_payload,
+            resolution_status="needs_review",
+            resolution_reason=conflict_reason,
+            selected_candidate_key=None,
+            candidates=[],
+            jsonb=jsonb,
+        )
+        return VehicleIdentityPersistenceResult(
+            vehicle_id=vehicle_id,
+            vehicle_key=vehicle_key,
+            vehicle_identity_base_id=existing_base["vehicle_identity_base_id"],
+            canonical_base_key=canonical_base_key,
+            vehicle_configuration_id=None,
+            configuration_key=None,
+            vehicle_identity_observation_id=observation_id,
+            observation_key=observation_key,
+            resolution_status="needs_review",
+            resolution_reason=conflict_reason,
+        )
+
     base_id = _upsert_returning_id(
         cursor,
         """
@@ -106,25 +148,33 @@ def persist_vehicle_identity_resolution(
              evidence_confidence, reviewer_state)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (canonical_base_key)
-        DO UPDATE SET source_snapshot_id = EXCLUDED.source_snapshot_id,
+        DO UPDATE SET body_style = COALESCE(vehicle_identity_bases.body_style, EXCLUDED.body_style),
+                      drivetrain = COALESCE(vehicle_identity_bases.drivetrain, EXCLUDED.drivetrain),
+                      source_snapshot_id = EXCLUDED.source_snapshot_id,
                       extraction_evidence_id = EXCLUDED.extraction_evidence_id,
                       source_locator = EXCLUDED.source_locator,
                       evidence_locator = EXCLUDED.evidence_locator,
                       evidence_confidence = EXCLUDED.evidence_confidence,
                       reviewer_state = EXCLUDED.reviewer_state,
                       updated_at = now()
+        WHERE (vehicle_identity_bases.body_style IS NULL
+               OR EXCLUDED.body_style IS NULL
+               OR vehicle_identity_bases.body_style = EXCLUDED.body_style)
+          AND (vehicle_identity_bases.drivetrain IS NULL
+               OR EXCLUDED.drivetrain IS NULL
+               OR vehicle_identity_bases.drivetrain = EXCLUDED.drivetrain)
         RETURNING vehicle_identity_base_id
         """,
         (
-            _stable_uuid(f"vehicle-identity-base:{base_identity.vehicle_key}"),
-            base_identity.vehicle_key,
+            _stable_uuid(f"vehicle-identity-base:{canonical_base_key}"),
+            canonical_base_key,
             vehicle_id,
-            base_identity.make,
-            base_identity.model,
-            base_identity.year,
-            base_identity.region,
-            base_identity.body_style,
-            base_identity.drivetrain,
+            observation.make,
+            observation.model,
+            observation.year,
+            observation.region,
+            observation.body_style,
+            observation.drivetrain,
             source_snapshot_id,
             extraction_evidence_id,
             source_locator,
@@ -134,16 +184,20 @@ def persist_vehicle_identity_resolution(
         ),
     )
 
-    configuration = build_vehicle_configuration(observation)
+    configuration_key = _configuration_key(
+        vehicle_key,
+        observation.trim,
+        observation.engine_displacement_l,
+    )
     configuration_id = _upsert_returning_id(
         cursor,
         """
         INSERT INTO vehicle_configurations
             (vehicle_configuration_id, configuration_key, vehicle_identity_base_id,
-             vehicle_id, trim, drivetrain, engine_displacement_l, source_snapshot_id,
+             vehicle_id, trim, engine_displacement_l, source_snapshot_id,
              extraction_evidence_id, source_locator, evidence_locator,
              evidence_confidence, reviewer_state)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (configuration_key)
         DO UPDATE SET source_snapshot_id = EXCLUDED.source_snapshot_id,
                       extraction_evidence_id = EXCLUDED.extraction_evidence_id,
@@ -155,13 +209,12 @@ def persist_vehicle_identity_resolution(
         RETURNING vehicle_configuration_id
         """,
         (
-            _stable_uuid(f"vehicle-configuration:{configuration.configuration_key}"),
-            configuration.configuration_key,
+            _stable_uuid(f"vehicle-configuration:{configuration_key}"),
+            configuration_key,
             base_id,
             vehicle_id,
-            configuration.trim,
-            configuration.drivetrain,
-            configuration.engine_displacement_l,
+            observation.trim,
+            observation.engine_displacement_l,
             source_snapshot_id,
             extraction_evidence_id,
             source_locator,
@@ -213,7 +266,7 @@ def persist_vehicle_identity_resolution(
     selected_candidate_key = (
         resolution.selected_candidate_key
         if resolution is not None
-        else configuration.configuration_key
+        else configuration_key
     )
     candidates = (
         [candidate.to_dict() for candidate in resolution.candidates]
@@ -222,63 +275,38 @@ def persist_vehicle_identity_resolution(
     )
     observation_payload = observation.to_dict()
     observation_key = _observation_key(source_snapshot_id, source_locator, observation_payload)
-    observation_id = _upsert_returning_id(
+    observation_id = _persist_identity_observation(
         cursor,
-        """
-        INSERT INTO vehicle_identity_observations
-            (vehicle_identity_observation_id, observation_key, vehicle_id,
-             vehicle_identity_base_id, vehicle_configuration_id, source_snapshot_id,
-             extraction_evidence_id, source_locator, evidence_locator,
-             evidence_confidence, reviewer_state, raw_observation,
-             canonical_observation, resolution_status, resolution_reason,
-             selected_candidate_key, candidates)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (observation_key)
-        DO UPDATE SET vehicle_id = EXCLUDED.vehicle_id,
-                      vehicle_identity_base_id = EXCLUDED.vehicle_identity_base_id,
-                      vehicle_configuration_id = EXCLUDED.vehicle_configuration_id,
-                      extraction_evidence_id = EXCLUDED.extraction_evidence_id,
-                      evidence_locator = EXCLUDED.evidence_locator,
-                      evidence_confidence = EXCLUDED.evidence_confidence,
-                      reviewer_state = EXCLUDED.reviewer_state,
-                      canonical_observation = EXCLUDED.canonical_observation,
-                      resolution_status = EXCLUDED.resolution_status,
-                      resolution_reason = EXCLUDED.resolution_reason,
-                      selected_candidate_key = EXCLUDED.selected_candidate_key,
-                      candidates = EXCLUDED.candidates,
-                      updated_at = now()
-        RETURNING vehicle_identity_observation_id
-        """,
-        (
-            _stable_uuid(f"vehicle-identity-observation:{observation_key}"),
-            observation_key,
-            vehicle_id,
-            base_id,
-            configuration_id,
-            source_snapshot_id,
-            extraction_evidence_id,
-            source_locator,
-            evidence_locator,
-            evidence_confidence,
-            reviewer_state,
-            jsonb(raw_observation if raw_observation is not None else observation_payload),
-            jsonb(observation_payload),
-            resolution_status,
-            resolution_reason,
-            selected_candidate_key,
-            jsonb(candidates),
-        ),
+        observation_key=observation_key,
+        vehicle_id=vehicle_id,
+        vehicle_identity_base_id=base_id,
+        vehicle_configuration_id=configuration_id,
+        source_snapshot_id=source_snapshot_id,
+        extraction_evidence_id=extraction_evidence_id,
+        source_locator=source_locator,
+        evidence_locator=evidence_locator,
+        evidence_confidence=evidence_confidence,
+        reviewer_state=reviewer_state,
+        raw_observation=raw_observation if raw_observation is not None else observation_payload,
+        canonical_observation=observation_payload,
+        resolution_status=resolution_status,
+        resolution_reason=resolution_reason,
+        selected_candidate_key=selected_candidate_key,
+        candidates=candidates,
+        jsonb=jsonb,
     )
 
     return VehicleIdentityPersistenceResult(
         vehicle_id=vehicle_id,
         vehicle_key=vehicle_key,
         vehicle_identity_base_id=base_id,
-        canonical_base_key=base_identity.vehicle_key,
+        canonical_base_key=canonical_base_key,
         vehicle_configuration_id=configuration_id,
-        configuration_key=configuration.configuration_key,
+        configuration_key=configuration_key,
         vehicle_identity_observation_id=observation_id,
         observation_key=observation_key,
+        resolution_status=resolution_status,
+        resolution_reason=resolution_reason,
     )
 
 
@@ -310,48 +338,25 @@ def persist_unresolved_vehicle_identity_observation(
         source_locator,
         raw_observation,
     )
-    observation_id = _upsert_returning_id(
+    observation_id = _persist_identity_observation(
         cursor,
-        """
-        INSERT INTO vehicle_identity_observations
-            (vehicle_identity_observation_id, observation_key, vehicle_id,
-             vehicle_identity_base_id, vehicle_configuration_id, source_snapshot_id,
-             extraction_evidence_id, source_locator, evidence_locator,
-             evidence_confidence, reviewer_state, raw_observation,
-             canonical_observation, resolution_status, resolution_reason,
-             selected_candidate_key, candidates)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (observation_key)
-        DO UPDATE SET extraction_evidence_id = EXCLUDED.extraction_evidence_id,
-                      evidence_locator = EXCLUDED.evidence_locator,
-                      evidence_confidence = EXCLUDED.evidence_confidence,
-                      reviewer_state = EXCLUDED.reviewer_state,
-                      raw_observation = EXCLUDED.raw_observation,
-                      resolution_status = EXCLUDED.resolution_status,
-                      resolution_reason = EXCLUDED.resolution_reason,
-                      candidates = EXCLUDED.candidates,
-                      updated_at = now()
-        RETURNING vehicle_identity_observation_id
-        """,
-        (
-            _stable_uuid(f"vehicle-identity-observation:{observation_key}"),
-            observation_key,
-            None,
-            None,
-            None,
-            source_snapshot_id,
-            extraction_evidence_id,
-            source_locator,
-            evidence_locator,
-            evidence_confidence,
-            reviewer_state,
-            jsonb(raw_observation),
-            jsonb({}),
-            resolution_status,
-            resolution_reason,
-            None,
-            jsonb(candidates or []),
-        ),
+        observation_key=observation_key,
+        vehicle_id=None,
+        vehicle_identity_base_id=None,
+        vehicle_configuration_id=None,
+        source_snapshot_id=source_snapshot_id,
+        extraction_evidence_id=extraction_evidence_id,
+        source_locator=source_locator,
+        evidence_locator=evidence_locator,
+        evidence_confidence=evidence_confidence,
+        reviewer_state=reviewer_state,
+        raw_observation=raw_observation,
+        canonical_observation={},
+        resolution_status=resolution_status,
+        resolution_reason=resolution_reason,
+        selected_candidate_key=None,
+        candidates=candidates or [],
+        jsonb=jsonb,
     )
     return VehicleIdentityObservationPersistenceResult(
         vehicle_identity_observation_id=observation_id,
@@ -440,6 +445,41 @@ def _select_catalog_article_id(cursor: Any, identity: CatalogArticleReplayIdenti
     return str(row[0])
 
 
+def _select_identity_base(cursor: Any, canonical_base_key: str) -> dict[str, str | None] | None:
+    cursor.execute(
+        """
+        SELECT vehicle_identity_base_id, body_style, drivetrain
+        FROM vehicle_identity_bases
+        WHERE canonical_base_key = %s
+        """,
+        (canonical_base_key,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    return {
+        "vehicle_identity_base_id": str(row[0]),
+        "body_style": row[1],
+        "drivetrain": row[2],
+    }
+
+
+def _base_dimension_conflict(
+    existing_base: dict[str, str | None] | None,
+    observation: CanonicalVehicleObservation,
+) -> str | None:
+    if existing_base is None:
+        return None
+    for field_name, incoming in (
+        ("body_style", observation.body_style),
+        ("drivetrain", observation.drivetrain),
+    ):
+        existing = existing_base[field_name]
+        if existing is not None and incoming is not None and existing != incoming:
+            return "conflicting_base_dimension"
+    return None
+
+
 def _legacy_vehicle_key(observation: CanonicalVehicleObservation) -> str:
     return "-".join(
         (
@@ -477,6 +517,77 @@ def _observation_key(
     return "|".join(parts)
 
 
+def _persist_identity_observation(
+    cursor: Any,
+    *,
+    observation_key: str,
+    vehicle_id: str | None,
+    vehicle_identity_base_id: str | None,
+    vehicle_configuration_id: str | None,
+    source_snapshot_id: str,
+    extraction_evidence_id: str,
+    source_locator: str,
+    evidence_locator: str,
+    evidence_confidence: float,
+    reviewer_state: str,
+    raw_observation: Any,
+    canonical_observation: Any,
+    resolution_status: str,
+    resolution_reason: str | None,
+    selected_candidate_key: str | None,
+    candidates: list[dict[str, Any]],
+    jsonb: JsonAdapter,
+) -> str:
+    return _upsert_returning_id(
+        cursor,
+        """
+        INSERT INTO vehicle_identity_observations
+            (vehicle_identity_observation_id, observation_key, vehicle_id,
+             vehicle_identity_base_id, vehicle_configuration_id, source_snapshot_id,
+             extraction_evidence_id, source_locator, evidence_locator,
+             evidence_confidence, reviewer_state, raw_observation,
+             canonical_observation, resolution_status, resolution_reason,
+             selected_candidate_key, candidates)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (observation_key)
+        DO UPDATE SET vehicle_id = EXCLUDED.vehicle_id,
+                      vehicle_identity_base_id = EXCLUDED.vehicle_identity_base_id,
+                      vehicle_configuration_id = EXCLUDED.vehicle_configuration_id,
+                      extraction_evidence_id = EXCLUDED.extraction_evidence_id,
+                      evidence_locator = EXCLUDED.evidence_locator,
+                      evidence_confidence = EXCLUDED.evidence_confidence,
+                      reviewer_state = EXCLUDED.reviewer_state,
+                      raw_observation = EXCLUDED.raw_observation,
+                      canonical_observation = EXCLUDED.canonical_observation,
+                      resolution_status = EXCLUDED.resolution_status,
+                      resolution_reason = EXCLUDED.resolution_reason,
+                      selected_candidate_key = EXCLUDED.selected_candidate_key,
+                      candidates = EXCLUDED.candidates,
+                      updated_at = now()
+        RETURNING vehicle_identity_observation_id
+        """,
+        (
+            _stable_uuid(f"vehicle-identity-observation:{observation_key}"),
+            observation_key,
+            vehicle_id,
+            vehicle_identity_base_id,
+            vehicle_configuration_id,
+            source_snapshot_id,
+            extraction_evidence_id,
+            source_locator,
+            evidence_locator,
+            evidence_confidence,
+            reviewer_state,
+            jsonb(raw_observation),
+            jsonb(canonical_observation),
+            resolution_status,
+            resolution_reason,
+            selected_candidate_key,
+            jsonb(candidates),
+        ),
+    )
+
+
 def _unresolved_observation_key(
     source_snapshot_id: str,
     source_locator: str,
@@ -512,6 +623,19 @@ def _upsert_returning_id(cursor: Any, sql: str, params: tuple[Any, ...]) -> str:
 
 def _stable_uuid(value: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"autodata-vehicle-identity:{value}"))
+
+
+def _configuration_key(
+    vehicle_key: str,
+    trim: str | None,
+    engine_displacement_l: float | None,
+) -> str:
+    parts = [vehicle_key]
+    if trim:
+        parts.extend(("trim", _slug(trim)))
+    if engine_displacement_l is not None:
+        parts.extend(("engine", _slug(f"{engine_displacement_l:.1f}L")))
+    return "-".join(parts)
 
 
 def _slug(value: str) -> str:

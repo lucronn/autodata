@@ -24,7 +24,6 @@ CREATE TABLE IF NOT EXISTS vehicle_configurations (
     vehicle_identity_base_id uuid NOT NULL REFERENCES vehicle_identity_bases(vehicle_identity_base_id),
     vehicle_id uuid NOT NULL REFERENCES vehicles(vehicle_id),
     trim text,
-    drivetrain text,
     engine_displacement_l numeric(4, 1) CHECK (engine_displacement_l IS NULL OR engine_displacement_l > 0),
     source_snapshot_id uuid NOT NULL REFERENCES source_snapshots(source_snapshot_id),
     extraction_evidence_id uuid NOT NULL REFERENCES extraction_evidence(extraction_evidence_id),
