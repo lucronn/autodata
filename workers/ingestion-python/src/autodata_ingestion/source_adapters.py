@@ -855,6 +855,9 @@ class _ArticleHTMLParser(HTMLParser):
         self._json_ld_parts: list[str] | None = None
         self.json_ld: list[str] = []
         self.has_article_element = False
+        self._article_depth = 0
+        self._article_ignored_depth = 0
+        self._article_body_parts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attributes = {
@@ -865,6 +868,9 @@ class _ArticleHTMLParser(HTMLParser):
         normalized_tag = tag.casefold()
         if normalized_tag == "article":
             self.has_article_element = True
+            self._article_depth += 1
+        elif self._article_depth and normalized_tag in {"script", "style", "template"}:
+            self._article_ignored_depth += 1
         if normalized_tag == "meta":
             key = attributes.get("name") or attributes.get("property") or attributes.get("itemprop")
             content = attributes.get("content", "")
@@ -879,6 +885,14 @@ class _ArticleHTMLParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         normalized_tag = tag.casefold()
+        if normalized_tag == "article" and self._article_depth:
+            self._article_depth -= 1
+        elif (
+            self._article_depth
+            and normalized_tag in {"script", "style", "template"}
+            and self._article_ignored_depth
+        ):
+            self._article_ignored_depth -= 1
         if normalized_tag == "title" and self._title_parts is not None:
             self._title_value = _compact_text(" ".join(self._title_parts))
             self._title_parts = None
@@ -894,6 +908,8 @@ class _ArticleHTMLParser(HTMLParser):
             self._json_ld_parts = None
 
     def handle_data(self, data: str) -> None:
+        if self._article_depth and not self._article_ignored_depth:
+            self._article_body_parts.append(data)
         if self._title_parts is not None:
             self._title_parts.append(data)
         if self._heading_parts is not None:
@@ -904,6 +920,10 @@ class _ArticleHTMLParser(HTMLParser):
     @property
     def title(self) -> str:
         return self._title_value
+
+    @property
+    def article_body(self) -> str:
+        return _compact_text(" ".join(self._article_body_parts))
 
 
 def _html_article_candidates(resource: SourceResource) -> list[NormalizationCandidate]:
@@ -932,6 +952,8 @@ def _html_article_candidates(resource: SourceResource) -> list[NormalizationCand
         "bulletinNumber": _first_meta_value(
             parser.meta, "article:bulletin_number", "bulletin_number", "bulletin", "tsb"
         ),
+        "body": parser.article_body,
+        "steps": None,
     }
     for record in json_ld_records:
         record_types = _json_ld_types(record)
@@ -943,6 +965,8 @@ def _html_article_candidates(resource: SourceResource) -> list[NormalizationCand
                 "bucket": _json_ld_text(record, "articleSection", "section") or article_values["bucket"],
                 "releaseDate": _json_ld_text(record, "datePublished") or article_values["releaseDate"],
                 "bulletinNumber": _json_ld_text(record, "bulletinNumber") or article_values["bulletinNumber"],
+                "body": _json_ld_text(record, "articleBody") or article_values["body"],
+                "steps": _json_ld_steps(record) or article_values["steps"],
             }
         for field in ("vehicle", "about", "mainEntity"):
             value = record.get(field)
@@ -987,6 +1011,12 @@ def _html_article_candidates(resource: SourceResource) -> list[NormalizationCand
             "bulletinNumber": _compact_text(str(article_values.get("bulletinNumber") or "")) or None,
             "releaseDate": _compact_text(str(article_values.get("releaseDate") or "")) or None,
         }
+        body = _compact_text(str(article_values.get("body") or ""))
+        if body:
+            article_data["body"] = body
+        steps = article_values.get("steps")
+        if isinstance(steps, list) and all(isinstance(step, (str, dict)) for step in steps):
+            article_data["steps"] = steps
         candidates.append(
             NormalizationCandidate(
                 "article",
@@ -1050,6 +1080,13 @@ def _json_ld_text(record: dict[str, Any], *keys: str) -> str:
             if nested:
                 return str(nested).strip()
     return ""
+
+
+def _json_ld_steps(record: dict[str, Any]) -> list[Any] | None:
+    value = record.get("steps")
+    if isinstance(value, list) and value and all(isinstance(step, (str, dict)) for step in value):
+        return value
+    return None
 
 
 def _candidate_from_record(

@@ -10,7 +10,10 @@ from autodata_ingestion.article_intake import (  # noqa: E402
     ingest_vehicle_article,
 )
 from autodata_ingestion.source_adapters import SourceResource, adapt_source_resource  # noqa: E402
-from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E402
+from autodata_ingestion.source_bundle import (  # noqa: E402
+    ARTICLE_SIMILARITY_THRESHOLD,
+    normalize_source_bundle,
+)
 
 
 class _StaticConnector:
@@ -70,6 +73,8 @@ class VehicleArticleIntakeTests(unittest.TestCase):
         self.assertEqual(article["title"], "Brake connector service bulletin")
         self.assertEqual(article["bucket"], "Service Bulletins")
         self.assertEqual(article["release_date"], "2024-01-02")
+        self.assertIn("Inspect the brake connector.", article["body"])
+        self.assertEqual(article["content_locator"], "html:article")
         evidence = result.bundle.evidence
         self.assertTrue(any(item["source_uri"] == resource.source_uri for item in evidence))
         self.assertTrue(any(item["content_sha256"] == resource.content_sha256 for item in evidence))
@@ -103,6 +108,7 @@ class VehicleArticleIntakeTests(unittest.TestCase):
         {"@type":"TechArticle","headline":"Brake connector service bulletin",
          "identifier":"TSB-42","articleSection":"Service Bulletins",
          "datePublished":"2024-01-02",
+         "steps":["Verify connector","Replace terminal"],
          "about":{"@type":"Vehicle","name":"2019 Cadillac Escalade ESV"}}
         </script></head><body><article><p>Inspect the connector.</p></article></body></html>
         """
@@ -122,6 +128,10 @@ class VehicleArticleIntakeTests(unittest.TestCase):
         self.assertEqual(result.status, "ready")
         self.assertEqual(result.bundle.articles[0]["article_id"], "TSB-42")
         self.assertEqual(result.bundle.articles[0]["release_date"], "2024-01-02")
+        self.assertEqual(
+            result.bundle.articles[0]["steps"],
+            ["Verify connector", "Replace terminal"],
+        )
         self.assertEqual(result.bundle.vehicle["vehicle_key"], TARGET.vehicle_key)
 
     def test_same_article_id_is_merged_deterministically_without_duplicate_records(self):
@@ -152,7 +162,7 @@ class VehicleArticleIntakeTests(unittest.TestCase):
         self.assertEqual(len(bundle.articles[0]["evidence_ids"]), 2)
         self.assertEqual(bundle.quarantined, ())
 
-    def test_near_duplicate_titles_are_kept_out_of_canonical_articles_for_review(self):
+    def test_same_title_different_ids_at_or_above_095_are_quarantined_for_review(self):
         resources = [
             SourceResource.from_bytes(
                 "https://one.example/tsb-42",
@@ -163,7 +173,7 @@ class VehicleArticleIntakeTests(unittest.TestCase):
             SourceResource.from_bytes(
                 "https://two.example/tsb-43",
                 "v2",
-                _html("Brake connector service bulletin procedure", article_id="TSB-43"),
+                _html("Brake connector service bulletin", article_id="TSB-43"),
                 "text/html",
             ),
         ]
@@ -177,7 +187,10 @@ class VehicleArticleIntakeTests(unittest.TestCase):
         self.assertEqual(len(bundle.articles), 1)
         self.assertEqual(bundle.articles[0]["article_id"], "TSB-42")
         self.assertTrue(any(item["reason"] == "similar_article_requires_review" for item in bundle.quarantined))
-        self.assertTrue(any(item["kind"] == "article_similarity" for item in bundle.conflicts))
+        similarity_conflicts = [item for item in bundle.conflicts if item["kind"] == "article_similarity"]
+        self.assertEqual(len(similarity_conflicts), 1)
+        self.assertGreaterEqual(similarity_conflicts[0]["similarity"], ARTICLE_SIMILARITY_THRESHOLD)
+        self.assertEqual(ARTICLE_SIMILARITY_THRESHOLD, 0.95)
 
 
 if __name__ == "__main__":

@@ -16,6 +16,8 @@ _PRICE_RE = re.compile(
     r"(?:\.(?P<fraction>\d{1,2}))?\s*$"
 )
 _CURRENCY_BY_SYMBOL = {"$": "USD", "€": "EUR", "£": "GBP"}
+# A title overlap of 95% or more is too close to publish as a second article.
+ARTICLE_SIMILARITY_THRESHOLD = 0.95
 
 
 @dataclass(frozen=True)
@@ -137,21 +139,27 @@ def normalize_source_bundle(
             elif candidate.kind == "part":
                 part_records.append(_normalize_part(record, artifact, candidate, quarantined))
             elif candidate.kind == "article":
-                article_records.append(
-                    {
-                        "article_key": candidate.key,
-                        "article_id": str(candidate.data.get("id")),
-                        "bucket": candidate.data.get("bucket"),
-                        "title": candidate.data.get("title"),
-                        "bulletin_number": candidate.data.get("bulletinNumber"),
-                        "release_date": candidate.data.get("releaseDate"),
-                        "sort": candidate.data.get("sort"),
-                        "evidence_id": evidence_item["evidence_id"],
-                        "source_uri": artifact.source_uri,
-                        "source_version": artifact.source_version,
-                        "content_sha256": artifact.content_sha256,
-                    }
-                )
+                article_record = {
+                    "article_key": candidate.key,
+                    "article_id": str(candidate.data.get("id")),
+                    "bucket": candidate.data.get("bucket"),
+                    "title": candidate.data.get("title"),
+                    "bulletin_number": candidate.data.get("bulletinNumber"),
+                    "release_date": candidate.data.get("releaseDate"),
+                    "sort": candidate.data.get("sort"),
+                    "evidence_id": evidence_item["evidence_id"],
+                    "content_locator": evidence_item["locator"],
+                    "source_uri": artifact.source_uri,
+                    "source_version": artifact.source_version,
+                    "content_sha256": artifact.content_sha256,
+                }
+                body = _article_body(candidate.data)
+                if body is not None:
+                    article_record["body"] = body
+                steps = _article_steps(candidate.data)
+                if steps is not None:
+                    article_record["steps"] = steps
+                article_records.append(article_record)
             elif candidate.kind == "document":
                 document_records.append(
                     {
@@ -370,7 +378,7 @@ def _similar_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
     right_tokens = _article_tokens(right.get("title"))
     if len(left_tokens & right_tokens) < 3:
         return False
-    return _title_similarity(left.get("title"), right.get("title")) >= 0.8
+    return _title_similarity(left.get("title"), right.get("title")) >= ARTICLE_SIMILARITY_THRESHOLD
 
 
 def _title_similarity(left: Any, right: Any) -> float:
@@ -387,6 +395,21 @@ def _article_tokens(value: Any) -> set[str]:
 
 def _article_text(value: Any) -> str:
     return str(value or "").casefold().strip()
+
+
+def _article_body(data: dict[str, Any]) -> str | None:
+    for key in ("body", "articleBody", "content"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return re.sub(r"\s+", " ", value).strip()
+    return None
+
+
+def _article_steps(data: dict[str, Any]) -> list[Any] | None:
+    value = data.get("steps")
+    if isinstance(value, list) and value and all(isinstance(step, (str, dict)) for step in value):
+        return value
+    return None
 
 
 def _merge_article(target: dict[str, Any], duplicate: dict[str, Any]) -> None:
