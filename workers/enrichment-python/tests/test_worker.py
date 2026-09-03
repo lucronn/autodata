@@ -45,6 +45,43 @@ class EnrichmentWorkerTests(unittest.TestCase):
         self.assertEqual(handled["result"]["status"], "scheduled")
         self.assertEqual(result["status"], "completed")
 
+    def test_deep_consumer_dispatches_validated_requests(self):
+        from autodata_enrichment.deep_dispatch import DeepRequest
+
+        async def consume(handler, **_kwargs):
+            handled = handler(
+                DeepRequest(
+                    event_id="event-2",
+                    request_id="request-2",
+                    projection_id="projection-2",
+                    correlation_id="correlation-2",
+                    idempotency_key="deep-2",
+                    section_name="diagnostics",
+                    source_snapshot_id="snapshot-2",
+                    processing_version="deep-v1",
+                )
+            )
+            self.assertEqual(handled, {"status": "published"})
+            return {"status": "completed", "received": 1}
+
+        with patch.dict(
+            "os.environ",
+            {
+                "AUTODATA_VIEWABLE_CONSUMER_ENABLED": "0",
+                "AUTODATA_DEEP_CONSUMER_ENABLED": "1",
+            },
+            clear=False,
+        ):
+            with patch("autodata_enrichment.deep_consumer.consume_once", side_effect=consume):
+                with patch(
+                    "autodata_enrichment.deep_dispatch.dispatch_validated_deep_request",
+                    return_value={"status": "published"},
+                ) as dispatch:
+                    result = run_once()
+
+        dispatch.assert_called_once()
+        self.assertEqual(result["status"], "completed")
+
 
 if __name__ == "__main__":
     unittest.main()

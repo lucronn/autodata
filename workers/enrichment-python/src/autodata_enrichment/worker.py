@@ -12,8 +12,24 @@ from .publisher import DeepSectionJob, publish_deep_section
 def run_once() -> dict[str, str]:
     """Run one explicitly configured deep job or return the worker heartbeat."""
 
+    consumer_results = []
     if os.getenv("AUTODATA_VIEWABLE_CONSUMER_ENABLED") == "1":
-        return run_viewable_once()
+        consumer_results.append(("viewable", run_viewable_once()))
+    if os.getenv("AUTODATA_DEEP_CONSUMER_ENABLED") == "1":
+        consumer_results.append(("deep", run_deep_once()))
+    if consumer_results:
+        if len(consumer_results) == 1:
+            return consumer_results[0][1]
+        received = sum(int(result.get("received", "0")) for _, result in consumer_results)
+        statuses = [result.get("status") for _, result in consumer_results]
+        status = "completed" if "completed" in statuses else "retrying" if "retrying" in statuses else "idle"
+        return {
+            "worker": "enrichment",
+            "lane": "deep",
+            "status": status,
+            "received": str(received),
+            **{f"{name}_status": str(result.get("status", "unknown")) for name, result in consumer_results},
+        }
     projection_id = os.getenv("AUTODATA_DEEP_PROJECTION_ID")
     if not projection_id:
         return {"worker": "enrichment", "lane": "deep", "status": "idle"}
@@ -55,6 +71,24 @@ def run_viewable_once() -> dict[str, str]:
             handle,
             fetch_timeout=float(os.getenv("AUTODATA_VIEWABLE_CONSUMER_FETCH_TIMEOUT_SECONDS", "1")),
             max_deliveries=int(os.getenv("AUTODATA_VIEWABLE_CONSUMER_MAX_DELIVERIES", "3")),
+        )
+    )
+    return {"worker": "enrichment", "lane": "deep", **{key: str(value) for key, value in result.items()}}
+
+
+def run_deep_once() -> dict[str, str]:
+    """Consume one deep request and delegate to a registered section processor."""
+
+    import asyncio
+
+    from .deep_consumer import consume_once
+    from .deep_dispatch import dispatch_validated_deep_request
+
+    result = asyncio.run(
+        consume_once(
+            dispatch_validated_deep_request,
+            fetch_timeout=float(os.getenv("AUTODATA_DEEP_CONSUMER_FETCH_TIMEOUT_SECONDS", "1")),
+            max_deliveries=int(os.getenv("AUTODATA_DEEP_CONSUMER_MAX_DELIVERIES", "3")),
         )
     )
     return {"worker": "enrichment", "lane": "deep", **{key: str(value) for key, value in result.items()}}
