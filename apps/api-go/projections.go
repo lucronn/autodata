@@ -24,6 +24,7 @@ type ProjectionStore interface {
 	ListSections(string, Principal) (DatasetReadRecord, error)
 	ListRevisions(string, Principal) (DatasetRevisionList, error)
 	GetEvidence(string, string, Principal) (EvidenceRecord, error)
+	SearchEvidence(string, []float64, int, Principal) (EvidenceSearchResponse, error)
 }
 
 type DatasetReadRecord struct {
@@ -52,15 +53,30 @@ type DatasetRevisionList struct {
 }
 
 type EvidenceRecord struct {
-	EvidenceID       string  `json:"evidence_id"`
-	SourceSnapshotID string  `json:"source_snapshot_id"`
-	ExtractionRunID  *string `json:"extraction_run_id"`
-	DatasetRevisionID *string `json:"dataset_revision_id,omitempty"`
-	Locator          string  `json:"locator"`
-	ArtifactKey      string  `json:"artifact_key,omitempty"`
-	ExtractedText    string  `json:"extracted_text,omitempty"`
-	Confidence       float64 `json:"confidence"`
-	ReviewerState    string  `json:"reviewer_state,omitempty"`
+	EvidenceID        string    `json:"evidence_id"`
+	SourceSnapshotID  string    `json:"source_snapshot_id"`
+	ExtractionRunID   *string   `json:"extraction_run_id"`
+	DatasetRevisionID *string   `json:"dataset_revision_id,omitempty"`
+	Locator           string    `json:"locator"`
+	ArtifactKey       string    `json:"artifact_key,omitempty"`
+	ExtractedText     string    `json:"extracted_text,omitempty"`
+	Confidence        float64   `json:"confidence"`
+	ReviewerState     string    `json:"reviewer_state,omitempty"`
+	Embedding         []float64 `json:"-"`
+}
+
+type EvidenceSearchResponse struct {
+	DatasetID string              `json:"dataset_id"`
+	Results   []EvidenceSearchHit `json:"results"`
+}
+
+type EvidenceSearchHit struct {
+	EvidenceID    string  `json:"evidence_id"`
+	RevisionID    string  `json:"revision_id"`
+	Locator       string  `json:"locator"`
+	ExtractedText string  `json:"extracted_text"`
+	Confidence    float64 `json:"confidence"`
+	Score         float64 `json:"score"`
 }
 
 type memoryDataset struct {
@@ -158,6 +174,44 @@ func (s *memoryProjectionStore) GetEvidence(datasetID, evidenceID string, princi
 		return EvidenceRecord{}, ErrReviewRequired
 	}
 	return evidence, nil
+}
+
+func (s *memoryProjectionStore) SearchEvidence(datasetID string, query []float64, limit int, principal Principal) (EvidenceSearchResponse, error) {
+	dataset, err := s.authorize(datasetID, principal)
+	if err != nil {
+		return EvidenceSearchResponse{}, err
+	}
+	published := make(map[string]struct{}, len(dataset.revisions))
+	for _, revision := range dataset.revisions {
+		published[revision.RevisionID] = struct{}{}
+	}
+	results := make([]EvidenceSearchHit, 0)
+	for _, evidence := range dataset.evidence {
+		if evidence.ReviewerState != "approved" || len(evidence.Embedding) == 0 || evidence.DatasetRevisionID == nil {
+			continue
+		}
+		if _, ok := published[*evidence.DatasetRevisionID]; !ok {
+			continue
+		}
+		results = append(results, EvidenceSearchHit{
+			EvidenceID:    evidence.EvidenceID,
+			RevisionID:    *evidence.DatasetRevisionID,
+			Locator:       evidence.Locator,
+			ExtractedText: evidence.ExtractedText,
+			Confidence:    evidence.Confidence,
+			Score:         cosineSimilarity(query, evidence.Embedding),
+		})
+	}
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].Score == results[j].Score {
+			return results[i].EvidenceID < results[j].EvidenceID
+		}
+		return results[i].Score > results[j].Score
+	})
+	if limit < len(results) {
+		results = results[:limit]
+	}
+	return EvidenceSearchResponse{DatasetID: datasetID, Results: results}, nil
 }
 
 func selectRevision(revisions []DatasetRevisionRecord, revisionID string) (DatasetRevisionRecord, error) {

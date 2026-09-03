@@ -158,6 +158,44 @@ func (s *postgresProjectionStore) GetEvidence(datasetID, evidenceID string, prin
 	return evidence, nil
 }
 
+func (s *postgresProjectionStore) SearchEvidence(datasetID string, query []float64, limit int, principal Principal) (EvidenceSearchResponse, error) {
+	if err := s.authorize(datasetID, principal); err != nil {
+		return EvidenceSearchResponse{}, err
+	}
+	vector, err := formatPGVector(query)
+	if err != nil {
+		return EvidenceSearchResponse{}, err
+	}
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT ee.extraction_evidence_id::text, ee.dataset_revision_id::text,
+		       ee.locator, ee.extracted_text, ee.confidence,
+		       1 - (ee.embedding <=> $2::vector) AS score
+		FROM extraction_evidence ee
+		JOIN dataset_revisions dvr ON dvr.dataset_revision_id = ee.dataset_revision_id
+		WHERE dvr.dataset_projection_id = $1
+		  AND dvr.published_at IS NOT NULL
+		  AND ee.reviewer_state = 'approved'
+		  AND ee.embedding IS NOT NULL
+		ORDER BY ee.embedding <=> $2::vector, ee.extraction_evidence_id
+		LIMIT $3`, datasetID, vector, limit)
+	if err != nil {
+		return EvidenceSearchResponse{}, err
+	}
+	defer rows.Close()
+	result := EvidenceSearchResponse{DatasetID: datasetID, Results: []EvidenceSearchHit{}}
+	for rows.Next() {
+		var hit EvidenceSearchHit
+		if err := rows.Scan(&hit.EvidenceID, &hit.RevisionID, &hit.Locator, &hit.ExtractedText, &hit.Confidence, &hit.Score); err != nil {
+			return EvidenceSearchResponse{}, err
+		}
+		result.Results = append(result.Results, hit)
+	}
+	if err := rows.Err(); err != nil {
+		return EvidenceSearchResponse{}, err
+	}
+	return result, nil
+}
+
 func (s *postgresProjectionStore) authorize(datasetID string, principal Principal) error {
 	var entitlementStatus, requestStatus string
 	err := s.pool.QueryRow(context.Background(), `
