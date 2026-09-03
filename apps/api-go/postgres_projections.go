@@ -196,6 +196,90 @@ func (s *postgresProjectionStore) SearchEvidence(datasetID string, query []float
 	return result, nil
 }
 
+func (s *postgresProjectionStore) SubmitFeedback(datasetID string, input FeedbackInput, principal Principal) (FeedbackRecord, error) {
+	if err := s.authorize(datasetID, principal); err != nil {
+		return FeedbackRecord{}, err
+	}
+	if err := validateFeedbackInput(input); err != nil {
+		return FeedbackRecord{}, err
+	}
+	tx, err := s.pool.Begin(context.Background())
+	if err != nil {
+		return FeedbackRecord{}, err
+	}
+	defer tx.Rollback(context.Background())
+	revisionID := input.RevisionID
+	if revisionID != "" {
+		var exists bool
+		if err := tx.QueryRow(context.Background(), `
+			SELECT EXISTS (
+				SELECT 1 FROM dataset_revisions
+				WHERE dataset_revision_id::text = $1
+				  AND dataset_projection_id = $2
+				  AND published_at IS NOT NULL
+			)`, revisionID, datasetID).Scan(&exists); err != nil {
+			return FeedbackRecord{}, err
+		}
+		if !exists {
+			return FeedbackRecord{}, ErrRevisionNotFound
+		}
+	}
+	if input.EvidenceID != "" {
+		var reviewerState string
+		var evidenceRevisionID *string
+		err := tx.QueryRow(context.Background(), `
+			SELECT ee.reviewer_state, ee.dataset_revision_id::text
+			FROM extraction_evidence ee
+			JOIN dataset_revisions dvr ON dvr.dataset_revision_id = ee.dataset_revision_id
+			WHERE ee.extraction_evidence_id::text = $1
+			  AND dvr.dataset_projection_id = $2
+			  AND dvr.published_at IS NOT NULL`, input.EvidenceID, datasetID).
+			Scan(&reviewerState, &evidenceRevisionID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return FeedbackRecord{}, ErrInvalidEvidence
+		}
+		if err != nil {
+			return FeedbackRecord{}, err
+		}
+		if reviewerState != "approved" {
+			return FeedbackRecord{}, ErrReviewRequired
+		}
+		if evidenceRevisionID != nil {
+			if revisionID != "" && revisionID != *evidenceRevisionID {
+				return FeedbackRecord{}, ErrInvalidFeedback
+			}
+			revisionID = *evidenceRevisionID
+		}
+	}
+	var record FeedbackRecord
+	var recordRevisionID, recordEvidenceID *string
+	err = tx.QueryRow(context.Background(), `
+		INSERT INTO feedback_items
+			(organization_id, dataset_projection_id, dataset_revision_id,
+			 extraction_evidence_id, category, body, status)
+		VALUES ($1, $2, NULLIF($3, '')::uuid, NULLIF($4, '')::uuid, $5, $6, 'open')
+		RETURNING feedback_item_id::text, dataset_revision_id::text,
+		          extraction_evidence_id::text, category, body, status, created_at::text`,
+		principal.OrganizationID, datasetID, revisionID, input.EvidenceID,
+		input.Category, strings.TrimSpace(input.Body)).
+		Scan(&record.FeedbackID, &recordRevisionID, &recordEvidenceID,
+			&record.Category, &record.Body, &record.Status, &record.CreatedAt)
+	if err != nil {
+		return FeedbackRecord{}, err
+	}
+	record.DatasetID = datasetID
+	if recordRevisionID != nil {
+		record.RevisionID = *recordRevisionID
+	}
+	if recordEvidenceID != nil {
+		record.EvidenceID = *recordEvidenceID
+	}
+	if err := tx.Commit(context.Background()); err != nil {
+		return FeedbackRecord{}, err
+	}
+	return record, nil
+}
+
 func (s *postgresProjectionStore) authorize(datasetID string, principal Principal) error {
 	var entitlementStatus, requestStatus string
 	err := s.pool.QueryRow(context.Background(), `
