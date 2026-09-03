@@ -19,7 +19,7 @@
 | `ingestion_jobs` | Lane-specific work and retries | Lane, processing version, and stable idempotency key are explicit |
 | `extraction_runs` | OCR/LLM/embedding execution metadata | Model/provider/version and confidence are retained |
 | `extraction_evidence` | Fact-to-source/page/region traceability | Evidence references an immutable source artifact |
-| `publication_events` | Outbox and publication audit | Event identity is unique and replay-safe |
+| `publication_events` | Outbox and publication audit | Event identity is unique and replay-safe; delivery attempts are observable |
 | `feedback_items` | Human issue, review, and correction workflow | Approved changes link to a new revision |
 | `payment_events` | Verified provider webhook record | Provider event ID is unique; payload is not trusted before verification |
 
@@ -156,6 +156,8 @@ dataset.revision.revoked
 ```
 
 Consumers must tolerate redelivery, reject unsupported event versions explicitly, and record the envelope before applying a side effect. Publication events are written through an outbox so database state and emitted events can be reconciled.
+
+The publication outbox adds `producer`, `delivery_status`, `delivery_attempts`, `last_delivery_error`, and `delivered_at` to the audit row. A relay claims the oldest `pending` or retryable `failed` row with `FOR UPDATE SKIP LOCKED`, commits the claim, publishes the stored envelope to its allow-listed subject, and then records success. A crash between the database commit and NATS publish can produce a duplicate; this is intentional at-least-once delivery. The relay sends the event idempotency key as the NATS `Nats-Msg-Id`, and every consumer must deduplicate by `idempotency_key`. Delivery failures are retried up to the configured attempt limit and then remain auditable as `dead_letter` for operator replay or correction.
 
 ## Payment adapter
 

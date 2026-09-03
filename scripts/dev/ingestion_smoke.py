@@ -104,8 +104,11 @@ def _read_database() -> dict[str, Any]:
             JOIN dataset_revisions dvr ON dvr.dataset_projection_id = dp.dataset_projection_id
             JOIN source_snapshots ss ON ss.source_snapshot_id = dr.source_snapshot_id
             JOIN vehicles v ON v.vehicle_id = dr.vehicle_id
-            LEFT JOIN dataset_section_status dss ON dss.dataset_projection_id = dp.dataset_projection_id
+            LEFT JOIN dataset_section_status dss
+                ON dss.dataset_projection_id = dp.dataset_projection_id
+               AND dss.last_published_revision_id = dvr.dataset_revision_id
             WHERE dr.idempotency_key = %s
+              AND dvr.revision_number = 1
             GROUP BY dr.dataset_request_id, dr.status, e.status, dp.dataset_projection_id,
                      dvr.dataset_revision_id, dvr.availability, dvr.revision_number,
                      dvr.source_watermark, ss.object_key, ss.content_sha256, v.vehicle_key

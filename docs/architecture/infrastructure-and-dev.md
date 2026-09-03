@@ -37,6 +37,7 @@ Services:
 - Go API for authenticated reads, entitlement checks, dataset status, reviewer commands, and feedback.
 - Python ingestion worker for source adapters, fast-lane normalization, OCR, and extraction.
 - Python enrichment worker for deep sections, embeddings, cross-record validation, and publication.
+- Publication outbox relay for at-least-once delivery from PostgreSQL to NATS JetStream.
 - Migration runner for applying schema changes from a clean database.
 - Deterministic fake source connector that can emit core data, document pages, diagrams, failures, and source drift.
 - Deterministic fake payment/webhook service for purchase, duplicate webhook, refund, and delayed fulfillment scenarios.
@@ -84,6 +85,7 @@ dataset deep            Trigger deep enrichment fan-out
 dataset inspect         Show request, entitlement, section, and revision status
 evidence inspect        Resolve a fact to source/page/region evidence
 jobs replay             Replay a selected dead-letter job
+events relay            Deliver pending publication outbox events to NATS
 test unit               Run Go and Python unit suites
 test integration        Run service integration tests
 test smoke              Run purchase -> viewable -> deep enrichment flow
@@ -148,6 +150,17 @@ docker compose -f infra/compose/compose.yaml run --rm --no-deps \
 
 The same section job is safe to replay. A failed section is recorded in `ingestion_jobs` and `dataset_section_status`, can be retried up to its configured limit, and moves to `dead_letter` without changing the last published revision for other sections. The placeholder projection ID and evidence above are future execution parameters, not committed credentials or source payloads.
 
+Publication events are delivered from PostgreSQL through the outbox relay. The relay is a bounded, one-shot developer command; it claims pending or retryable events, publishes the immutable envelope to NATS JetStream, and records delivery state. It is safe to rerun because the event idempotency key is used as the NATS message ID and consumers must deduplicate redelivery:
+
+```sh
+docker compose -f infra/compose/compose.yaml run --rm --no-deps \
+  -e AUTODATA_OUTBOX_BATCH_SIZE=50 \
+  -e AUTODATA_OUTBOX_ONCE=1 \
+  enrichment-worker python /app/scripts/outbox_relay.py
+```
+
+`docker compose up` also starts `outbox-relay` as a continuously polling local service. Use `AUTODATA_OUTBOX_POLL_SECONDS` to change its interval. The command above sets `AUTODATA_OUTBOX_ONCE=1` for a bounded smoke run. Use `AUTODATA_OUTBOX_MAX_ATTEMPTS` to bound delivery retries. A failed event is retried on a later invocation until that limit is reached, then is marked `dead_letter` with its last error preserved. Outbox claiming and NATS publication are separate commits, so operational monitoring must treat duplicate delivery as normal and inspect `delivery_attempts`, `delivery_status`, and `delivered_at` when reconciling the database with JetStream.
+
 ## Configuration contract
 
 Configuration is grouped by subsystem and supplied through environment variables or a secret manager:
@@ -155,7 +168,7 @@ Configuration is grouped by subsystem and supplied through environment variables
 | Category | Examples | Secret? |
 | --- | --- | :---: |
 | Database | host, port, database, pool limits, migration mode | credentials are secret |
-| NATS | URL, stream names, consumer names, retry limits | usually no; auth may be secret |
+| NATS | URL, stream names, consumer names, retry limits, outbox batch/attempt limits | usually no; auth may be secret |
 | Object storage | endpoint, region, bucket names, path style | credentials are secret |
 | Source adapters | adapter name, fixture mode, request limits, source policy | tokens are secret |
 | Payments | adapter mode, webhook path, provider IDs | signing secret is secret |

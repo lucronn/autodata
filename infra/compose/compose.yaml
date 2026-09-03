@@ -115,6 +115,28 @@ services:
     healthcheck:
       test: ["CMD", "python", "-c", "from autodata_enrichment.worker import run_once; assert run_once()['status'] == 'idle'"]
 
+  outbox-relay:
+    build:
+      context: ../..
+      dockerfile: workers/enrichment-python/Dockerfile
+    environment:
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_POSTGRES_DB: ${AUTODATA_POSTGRES_DB:-autodata}
+      AUTODATA_POSTGRES_USER: ${AUTODATA_POSTGRES_USER:-autodata}
+      AUTODATA_POSTGRES_PASSWORD: ${AUTODATA_POSTGRES_PASSWORD:?set AUTODATA_POSTGRES_PASSWORD for local development}
+      AUTODATA_NATS_URL: "nats://nats:4222"
+      AUTODATA_OUTBOX_BATCH_SIZE: ${AUTODATA_OUTBOX_BATCH_SIZE:-50}
+      AUTODATA_OUTBOX_MAX_ATTEMPTS: ${AUTODATA_OUTBOX_MAX_ATTEMPTS:-3}
+      AUTODATA_OUTBOX_POLL_SECONDS: ${AUTODATA_OUTBOX_POLL_SECONDS:-5}
+    command: ["python", "/app/scripts/outbox_relay.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+
   fake-integrations:
     image: ${AUTODATA_PYTHON_IMAGE:-python:3.14-slim}
     working_dir: /workspace
