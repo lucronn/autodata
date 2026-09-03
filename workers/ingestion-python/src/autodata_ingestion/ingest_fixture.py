@@ -202,8 +202,9 @@ def persist_fast_lane(
                 """
                 INSERT INTO dataset_requests
                     (dataset_request_id, dataset_product_id, vehicle_key, region, status,
-                     lane, source_snapshot_id, correlation_id, idempotency_key, processing_version)
-                VALUES (%s, %s, %s, %s, 'fast_lane_processing', 'fast', %s, %s, %s, 'fixture-v1')
+                     lane, source_snapshot_id, correlation_id, idempotency_key,
+                     processing_version, organization_id)
+                VALUES (%s, %s, %s, %s, 'fast_lane_processing', 'fast', %s, %s, %s, 'fixture-v1', %s)
                 ON CONFLICT (idempotency_key)
                 DO UPDATE SET source_snapshot_id = EXCLUDED.source_snapshot_id
                 RETURNING dataset_request_id
@@ -216,6 +217,7 @@ def persist_fast_lane(
                     source_snapshot_id,
                     correlation_id,
                     request_key,
+                    organization_id,
                 ),
             )
             request_id = str(cursor.fetchone()[0])

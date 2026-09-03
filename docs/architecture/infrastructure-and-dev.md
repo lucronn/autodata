@@ -44,6 +44,18 @@ Services:
 - Payment reconciler that polls pending verified events and safely retries delayed entitlement fulfillment.
 - Optional Mailpit and OpenTelemetry-compatible services behind a development profile.
 
+The Go API uses the same PostgreSQL connection pool for purchaser-facing
+projection reads and dataset-request status when `AUTODATA_PROJECTION_STORE`
+is set to `postgres`. In that mode, request creation stores the product,
+vehicle, region, lifecycle status, processing lane, organization owner,
+correlation identity, processing version, and unique idempotency key in
+`dataset_requests`. A replay reads the existing row inside a transaction and
+cannot cross organization boundaries. Before a projection exists, request
+section readiness is derived from the product's immutable `minimum_sections`
+contract as `pending`; after projection materialization, the API reads the
+durable `dataset_section_status` rows. The default non-PostgreSQL mode keeps
+the in-memory stores for API-only tests and local handler development.
+
 ## Universal source intake
 
 Source connectors do not write directly to canonical tables. Every connector returns one or more immutable `SourceResource` envelopes containing the source URI, source version, connector media type when available, raw bytes, optional locator, attribution/terms metadata, and retrieval metadata. The intake boundary computes a SHA-256 content address before interpretation and stores the raw resource in object storage.

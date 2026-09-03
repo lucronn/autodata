@@ -16,6 +16,7 @@ var (
 	ErrUnauthenticated     = errors.New("authentication is required")
 	ErrEntitlementRequired = errors.New("active organization entitlement is required")
 	ErrRequestNotFound     = errors.New("dataset request not found")
+	ErrInvalidRequest      = errors.New("dataset request is invalid")
 )
 
 type Principal struct {

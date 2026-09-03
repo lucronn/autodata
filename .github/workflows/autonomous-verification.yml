@@ -138,4 +138,6 @@ jobs:
           docker compose -f infra/compose/compose.yaml up -d --wait postgres nats minio
           docker compose -f infra/compose/compose.yaml run migration-runner
           docker compose -f infra/compose/compose.yaml run --rm ingest-fixture
+          docker compose -f infra/compose/compose.yaml up -d --wait api
+          docker compose -f infra/compose/compose.yaml run --rm api-runtime-smoke
           docker compose -f infra/compose/compose.yaml run --rm --no-deps ingestion-smoke

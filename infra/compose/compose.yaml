@@ -230,6 +230,19 @@ services:
       ingest-fixture:
         condition: service_completed_successfully
 
+  api-runtime-smoke:
+    image: ${AUTODATA_PYTHON_IMAGE:-python:3.14-slim}
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace:ro
+    environment:
+      AUTODATA_API_URL: "http://api:8080"
+      AUTODATA_API_ORGANIZATION_ID: "41000000-0000-0000-0000-000000000001"
+    command: ["python", "scripts/dev/api_runtime_smoke.py"]
+    depends_on:
+      api:
+        condition: service_healthy
+
   migration-runner:
     image: ${AUTODATA_POSTGRES_CLIENT_IMAGE:-postgres:17-alpine}
     working_dir: /workspace

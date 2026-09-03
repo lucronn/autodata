@@ -32,7 +32,24 @@ class MigrationPlanTests(unittest.TestCase):
                 "010_evidence_review_metadata.sql",
                 "011_feedback_review_metadata.sql",
                 "012_payment_fulfillment_reconciliation.sql",
+                "013_dataset_request_ownership.sql",
             ],
+        )
+
+    def test_dataset_request_ownership_is_backfilled_without_overwriting_existing_values(self):
+        migration = (ROOT / "db/migrations/013_dataset_request_ownership.sql").read_text()
+
+        self.assertIn(
+            "ADD COLUMN IF NOT EXISTS organization_id uuid",
+            migration,
+        )
+        self.assertIn(
+            "request.organization_id IS NULL",
+            migration,
+        )
+        self.assertIn(
+            "dataset_requests_organization_idx",
+            migration,
         )
 
     def test_schema_migrations_cover_platform_spine_and_vector(self):
