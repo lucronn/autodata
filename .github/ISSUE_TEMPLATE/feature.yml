@@ -1,0 +1,53 @@
+name: Feature request
+description: Propose a measurable product or platform capability
+title: "[Feature] "
+labels: ["type:feature"]
+body:
+  - type: markdown
+    attributes:
+      value: Describe the outcome and keep technical design decisions in the canonical docs when accepted.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Product
+        - API
+        - Data Model
+        - Fast Lane
+        - Deep Lane
+        - Search
+        - Billing
+        - Dev Infra
+        - Platform
+        - Security
+    validations:
+      required: true
+  - type: textarea
+    id: user-impact
+    attributes:
+      label: User or operator impact
+      description: Who is affected and what measurable outcome should improve?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: State observable behavior, failure behavior, and boundaries.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Source or evidence reference
+      description: Link the relevant canonical document, source, fixture, or Project item. Do not paste private payloads.
+    validations:
+      required: true
+  - type: textarea
+    id: contract-impact
+    attributes:
+      label: Contract impact
+      description: Explain API, event, schema, entitlement, provenance, or retry implications; write none if not applicable.
+    validations:
+      required: true

@@ -1,0 +1,53 @@
+name: Data-quality defect
+description: Report an incorrect, incomplete, conflicting, or insufficiently evidenced dataset fact
+title: "[Data Quality] "
+labels: ["type:data-quality"]
+body:
+  - type: markdown
+    attributes:
+      value: Report the defect using safe identifiers, hashes, and locators. Do not paste restricted source contents.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Data Model
+        - Fast Lane
+        - Deep Lane
+        - Search
+        - Procedures
+        - Diagnostics
+        - Electrical
+        - Specifications
+        - Inventory
+        - Maintenance
+    validations:
+      required: true
+  - type: textarea
+    id: user-impact
+    attributes:
+      label: User or operator impact
+      description: Describe incorrect access, missing content, safety risk, or review burden.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Define the corrected fact, review state, confidence threshold, and regression case.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Source or evidence reference
+      description: Include evidence ID, source hash, locator, revision, or safe fixture reference; do not include raw restricted data.
+    validations:
+      required: true
+  - type: textarea
+    id: contract-impact
+    attributes:
+      label: Contract impact
+      description: Explain publication, revision, retrieval, provenance, or review-gate implications; write none if not applicable.
+    validations:
+      required: true
