@@ -42,6 +42,32 @@ Services:
 - Deterministic fake payment/webhook service for purchase, duplicate webhook, refund, and delayed fulfillment scenarios.
 - Optional Mailpit and OpenTelemetry-compatible services behind a development profile.
 
+## Universal source intake
+
+Source connectors do not write directly to canonical tables. Every connector returns one or more immutable `SourceResource` envelopes containing the source URI, source version, connector media type when available, raw bytes, optional locator, attribution/terms metadata, and retrieval metadata. The intake boundary computes a SHA-256 content address before interpretation and stores the raw resource in object storage.
+
+The format layer is provider-neutral:
+
+| Input | Intake result | Downstream capability |
+| --- | --- | --- |
+| JSON or JSON API envelope | Structured artifact with preserved headers and body | Typed record extractor and schema validation |
+| XML, CSV, or other structured text | Structured artifact retaining original bytes | Format-specific record extractor |
+| HTML or plain text | Document artifact | Text extraction, OCR fallback, and evidence locators |
+| PDF | Document artifact | Page extraction, OCR, and page/region evidence |
+| SVG or other diagram media | Diagram artifact | Diagram metadata, rendering, and diagram evidence |
+| Unknown or unsupported media | Quarantined artifact | Operator review or a newly registered capability |
+
+Extractors are selected by declared capabilities and observed content, not by a hard-coded filename convention. A source may emit multiple resource types in one request: for example, a vehicle identity response, a parts collection, an article index, an HTML procedure, a PDF, and an SVG diagram. Each resource receives its own content hash, object key, extraction run, and evidence path, while the request correlation ID joins them into one dataset projection.
+
+The intake invariants are:
+
+- Raw bytes are retained even when extraction fails or the shape is unfamiliar.
+- A recognized format does not imply trusted domain facts; canonical publication still requires normalization, provenance, evidence, confidence, and quality gates.
+- Unknown fields are preserved in the raw artifact and candidate payload rather than silently discarded.
+- Duplicate payloads deduplicate by content hash; distinct source versions remain separately auditable.
+- Unsupported or ambiguous resources become `needs_review`/quarantined work and cannot block publication of an already-viewable revision.
+- Source-specific adapters may understand a provider’s envelope or identifiers, but they must return the common resource/candidate contract before persistence.
+
 ## Developer workflows
 
 The eventual repository should expose a small task interface, whether through `make`, `just`, or an equivalent task runner. The canonical workflows are:

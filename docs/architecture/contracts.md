@@ -18,6 +18,27 @@
 | `feedback_items` | Human issue, review, and correction workflow | Approved changes link to a new revision |
 | `payment_events` | Verified provider webhook record | Provider event ID is unique; payload is not trusted before verification |
 
+## Universal source-resource contract
+
+The ingestion boundary is intentionally broader than any one provider or file schema. Connectors return a sequence of source resources with this logical contract:
+
+```json
+{
+  "source_uri": "provider://resource/identifier",
+  "source_version": "provider-version-or-retrieval-watermark",
+  "media_type": "application/json",
+  "payload": "raw bytes",
+  "locator": "provider/page/path/when-available",
+  "metadata": {
+    "attribution": "source-specific terms and attribution"
+  }
+}
+```
+
+The intake layer computes `content_sha256`, stores the raw resource before extraction, and classifies it as structured data, a document, a diagram, or quarantined unsupported media. JSON API headers and bodies are retained together; unknown fields remain in the raw payload. Extractors produce typed candidates with stable keys and locators, but a candidate is not canonical data until normalization, provenance, evidence, confidence, and quality gates pass. A valid but unrecognized shape is retained with `needs_review`; it is never silently dropped or guessed into a domain table.
+
+One dataset request may combine resources from different protocols and media types. The request correlation ID joins them, while each resource retains its own hash, source version, object key, extraction run, and evidence path. Duplicate payloads deduplicate by content hash, and distinct versions remain auditable.
+
 ## Public API
 
 The API is projection-oriented. Clients do not depend on table names or internal canonical joins.

@@ -13,6 +13,7 @@ from typing import Any
 from autodata_contracts.fakes import FakePaymentProvider, FakePrimarySource, SourceSnapshot
 
 from .normalization import NormalizedVehicle, normalize_source_snapshot
+from .source_adapters import SourceArtifact, SourceResource, adapt_source_resource
 
 
 ORGANIZATION_ID = "41000000-0000-0000-0000-000000000001"
@@ -53,13 +54,22 @@ def _source_payload(snapshot: SourceSnapshot) -> bytes:
     return json.dumps(snapshot.content, sort_keys=True, separators=(",", ":")).encode()
 
 
-def store_source_object(snapshot: SourceSnapshot) -> None:
+def store_source_object(snapshot: SourceSnapshot) -> SourceArtifact:
     """Store the raw deterministic source artifact in S3-compatible storage."""
 
     from io import BytesIO
 
     from minio import Minio
 
+    resource = SourceResource.from_bytes(
+        source_uri=snapshot.source_uri,
+        source_version=snapshot.source_version,
+        payload=_source_payload(snapshot),
+        media_type="application/json",
+        locator=snapshot.object_key,
+        metadata=snapshot.attribution,
+    )
+    artifact = adapt_source_resource(resource)
     client = Minio(
         os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
         access_key=os.environ["AUTODATA_S3_ACCESS_KEY"],
@@ -70,13 +80,15 @@ def store_source_object(snapshot: SourceSnapshot) -> None:
     if not client.bucket_exists(bucket):
         client.make_bucket(bucket)
     payload = _source_payload(snapshot)
-    client.put_object(bucket, snapshot.object_key, BytesIO(payload), len(payload), content_type="application/json")
+    client.put_object(bucket, artifact.object_key, BytesIO(payload), len(payload), content_type="application/json")
+    return artifact
 
 
 def persist_fast_lane(
     normalized: NormalizedVehicle,
     snapshot: SourceSnapshot,
     organization_id: str = ORGANIZATION_ID,
+    object_key: str | None = None,
 ) -> dict[str, str]:
     """Persist canonical records and one immutable viewable revision atomically."""
 
@@ -144,7 +156,7 @@ def persist_fast_lane(
                      content_sha256, object_key, license_metadata, retrieved_at)
                 VALUES (%s, 'fake-primary-source', %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (content_sha256)
-                DO UPDATE SET content_sha256 = EXCLUDED.content_sha256
+                DO UPDATE SET object_key = EXCLUDED.object_key
                 RETURNING source_snapshot_id
                 """,
                 (
@@ -152,7 +164,7 @@ def persist_fast_lane(
                     snapshot.source_uri,
                     snapshot.source_version,
                     snapshot.content_sha256,
-                    snapshot.object_key,
+                    object_key or snapshot.object_key,
                     Jsonb(snapshot.attribution),
                     now,
                 ),
@@ -391,8 +403,8 @@ def run_fixture() -> dict[str, Any]:
     normalized = normalize_source_snapshot(snapshot)
     if os.getenv("AUTODATA_INGEST_DRY_RUN") == "1":
         return {"normalized": normalized.to_dict(), "dry_run": True}
-    store_source_object(snapshot)
-    result = persist_fast_lane(normalized, snapshot)
+    artifact = store_source_object(snapshot)
+    result = persist_fast_lane(normalized, snapshot, object_key=artifact.object_key)
     asyncio.run(publish_viewable_event(result, normalized))
     return {"normalized": normalized.to_dict(), "published": result, "event_subject": "dataset.viewable"}
 
