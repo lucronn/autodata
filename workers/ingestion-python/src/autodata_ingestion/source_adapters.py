@@ -8,6 +8,7 @@ never silently dropped.
 
 from __future__ import annotations
 
+import base64
 import csv
 import hashlib
 from html.parser import HTMLParser
@@ -216,6 +217,16 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
                 "extraction_status": "candidate_ready" if candidates else "needs_review",
             }
         )
+        embedded_candidates, embedded_metadata = _adapt_embedded_json_resources(resource, document)
+        candidates.extend(embedded_candidates)
+        metadata.update(embedded_metadata)
+        metadata["candidate_count"] = len(candidates)
+        metadata["extraction_status"] = "candidate_ready" if candidates else "needs_review"
+        if embedded_metadata.get("embedded_needs_review"):
+            metadata["extraction_warnings"] = [
+                *metadata.get("extraction_warnings", []),
+                "one or more embedded resources need review",
+            ]
         return SourceArtifact(
             kind="structured",
             source_uri=resource.source_uri,
@@ -318,6 +329,138 @@ def classify_json_candidates(document: Any) -> list[NormalizationCandidate]:
         if "html" in body or "pdf" in body:
             candidates.append(NormalizationCandidate("document", f"document:{document_id}", body, "body"))
     return candidates
+
+
+def _adapt_embedded_json_resources(
+    resource: SourceResource,
+    document: Any,
+) -> tuple[list[NormalizationCandidate], dict[str, Any]]:
+    """Adapt explicitly declared HTML/PDF fields while retaining outer provenance."""
+
+    body = document.get("body") if isinstance(document, dict) and "body" in document else document
+    if not isinstance(body, dict):
+        return [], {}
+    document_id = _field(body, "document_id", "documentId", "id") or "embedded"
+    candidates: list[NormalizationCandidate] = []
+    resources: list[dict[str, Any]] = []
+    needs_review = False
+
+    html = body.get("html")
+    if isinstance(html, str) and html.strip():
+        embedded_resource = SourceResource.from_bytes(
+            f"{resource.source_uri}#embedded/{document_id}/html",
+            resource.source_version,
+            html.encode("utf-8"),
+            "text/html",
+            locator=f"body.html:{document_id}",
+            metadata={"embedded_in_content_sha256": resource.content_sha256},
+        )
+        embedded_artifact = _adapt_document_resource(embedded_resource, {
+            "embedded_in_content_sha256": resource.content_sha256,
+        })
+        mapped, record = _map_embedded_artifact(
+            resource,
+            embedded_resource,
+            embedded_artifact,
+            f"body.html:{document_id}",
+        )
+        candidates.extend(mapped)
+        resources.append(record)
+        needs_review = needs_review or record["extraction_status"] == "needs_review"
+
+    encoded_pdf = body.get("pdf")
+    if isinstance(encoded_pdf, str) and encoded_pdf.strip():
+        locator = f"body.pdf:{document_id}"
+        try:
+            pdf_payload = _decode_embedded_pdf(encoded_pdf)
+        except ValueError as error:
+            resources.append(
+                {
+                    "locator": locator,
+                    "media_type": "application/pdf",
+                    "extraction_status": "needs_review",
+                    "extraction_error": str(error),
+                }
+            )
+            needs_review = True
+        else:
+            embedded_resource = SourceResource.from_bytes(
+                f"{resource.source_uri}#embedded/{document_id}/pdf",
+                resource.source_version,
+                pdf_payload,
+                "application/pdf",
+                locator=locator,
+                metadata={"embedded_in_content_sha256": resource.content_sha256},
+            )
+            embedded_artifact = adapt_source_resource(embedded_resource)
+            mapped, record = _map_embedded_artifact(
+                resource,
+                embedded_resource,
+                embedded_artifact,
+                locator,
+            )
+            candidates.extend(mapped)
+            resources.append(record)
+            needs_review = needs_review or record["extraction_status"] == "needs_review"
+
+    if not resources:
+        return candidates, {}
+    return candidates, {
+        "embedded_resources": resources,
+        "embedded_needs_review": needs_review,
+    }
+
+
+def _decode_embedded_pdf(encoded_pdf: str) -> bytes:
+    value = encoded_pdf.strip()
+    if value.lower().startswith("data:application/pdf;base64,"):
+        value = value.split(",", 1)[1]
+    try:
+        payload = base64.b64decode(re.sub(r"\s+", "", value), validate=True)
+    except (ValueError, base64.binascii.Error) as error:
+        raise ValueError("embedded PDF is not valid base64") from error
+    if not payload.startswith(b"%PDF-"):
+        raise ValueError("embedded PDF does not contain a PDF signature")
+    return payload
+
+
+def _map_embedded_artifact(
+    outer_resource: SourceResource,
+    embedded_resource: SourceResource,
+    embedded_artifact: SourceArtifact,
+    locator_prefix: str,
+) -> tuple[list[NormalizationCandidate], dict[str, Any]]:
+    """Rebase embedded candidate locators and keys to the outer source path."""
+
+    mapped: list[NormalizationCandidate] = []
+    for candidate in embedded_artifact.candidates:
+        locator = (
+            candidate.locator
+            if candidate.locator == locator_prefix or candidate.locator.startswith(f"{locator_prefix}:")
+            else f"{locator_prefix}:{candidate.locator}"
+        )
+        mapped.append(
+            NormalizationCandidate(
+                candidate.kind,
+                f"embedded:{outer_resource.content_sha256}:{candidate.kind}:{locator}",
+                {
+                    **candidate.data,
+                    "outer_content_sha256": outer_resource.content_sha256,
+                    "embedded_content_sha256": embedded_resource.content_sha256,
+                    "embedded_media_type": embedded_resource.media_type,
+                },
+                locator,
+            )
+        )
+    return mapped, {
+        "locator": locator_prefix,
+        "media_type": embedded_resource.media_type,
+        "content_sha256": embedded_resource.content_sha256,
+        "candidate_count": len(mapped),
+        "extraction_status": embedded_artifact.metadata.get("extraction_status", "needs_review"),
+        **({"extraction_error": embedded_artifact.metadata["extraction_error"]}
+           if embedded_artifact.metadata.get("extraction_error") else {}),
+    }
 
 
 def _adapt_csv_resource(resource: SourceResource, metadata: dict[str, Any]) -> SourceArtifact:

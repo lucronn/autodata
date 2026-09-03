@@ -53,11 +53,15 @@ extracts literal HTML/plain text, page-level text from text-based PDFs, and
 literal SVG labels into reviewable evidence. Configured raster images can use
 the worker's Tesseract OCR boundary to emit confidence-aware region evidence.
 Mixed or scanned PDFs rasterize only pages without native text and send those
-pages through the same OCR/evidence boundary. Ambiguous or unknown material is
-routed to review. New source media types can register an adapter without
-changing the connector or event contract; if the optional PDF rasterizer or
-OCR runtime is unavailable, the original PDF remains a content-addressed raw
-artifact with `needs_review` status.
+pages through the same OCR/evidence boundary. JSON envelopes can also carry
+explicit embedded `html` or base64 `pdf` resources; these are adapted through
+the same document/PDF path with locators such as `body.html:{document_id}` and
+`body.pdf:{document_id}:page:{n}` while the outer JSON remains the source
+content address. Ambiguous or unknown material is routed to review. New source
+media types can register an adapter without changing the connector or event
+contract; if an optional embedded-resource, PDF rasterizer, or OCR capability
+is unavailable, the original outer payload remains content-addressed with
+review metadata.
 
 For a local-only source directory:
 
