@@ -93,7 +93,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /datasets/{id}/feedback", s.requireRole("dataset_viewer", s.submitFeedback))
 	mux.Handle("POST /datasets/{id}/feedback/{feedback_id}/review", s.requireRole("data_reviewer", s.reviewFeedback))
 	mux.Handle("POST /datasets/{id}/evidence/{evidence_id}/review", s.requireRole("data_reviewer", s.reviewEvidence))
-	return mux
+	return withRequestObservability(mux)
 }
 
 type authenticatedHandler func(http.ResponseWriter, *http.Request, Principal)
@@ -367,10 +367,7 @@ func (s *Server) writeProjectionError(response http.ResponseWriter, request *htt
 }
 
 func writeAPIError(response http.ResponseWriter, request *http.Request, status int, code, message string, retryable bool) {
-	requestID := request.Header.Get("X-Request-ID")
-	if requestID == "" {
-		requestID = "request-unassigned"
-	}
+	requestID := requestIDFrom(request)
 	writeJSON(response, status, map[string]any{
 		"error": map[string]any{
 			"code":       code,

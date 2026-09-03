@@ -32,6 +32,51 @@ func TestCreateDatasetRequestRequiresAuthentication(t *testing.T) {
 	assertErrorCode(t, response, "UNAUTHENTICATED")
 }
 
+func TestHandlerAssignsRequestIDToResponseAndError(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	request := httptest.NewRequest(http.MethodGet, "/datasets/dataset-1", nil)
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	requestID := response.Header().Get("X-Request-ID")
+	if requestID == "" || requestID == "request-unassigned" {
+		t.Fatalf("X-Request-ID = %q, want generated request ID", requestID)
+	}
+	var body map[string]any
+	decodeJSON(t, response, &body)
+	errorBody := body["error"].(map[string]any)
+	if errorBody["request_id"] != requestID {
+		t.Fatalf("error request_id = %#v, want %q", errorBody["request_id"], requestID)
+	}
+}
+
+func TestHandlerPreservesCallerRequestID(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	request := httptest.NewRequest(http.MethodGet, "/datasets/dataset-1", nil)
+	request.Header.Set("X-Request-ID", "client-request-42")
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	if got := response.Header().Get("X-Request-ID"); got != "client-request-42" {
+		t.Fatalf("X-Request-ID = %q, want caller value", got)
+	}
+}
+
+func TestHandlerForwardsValidTraceparentForCrossServiceCorrelation(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	request := httptest.NewRequest(http.MethodGet, "/datasets/dataset-1", nil)
+	request.Header.Set("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	if got := response.Header().Get("traceparent"); got != request.Header.Get("traceparent") {
+		t.Fatalf("traceparent = %q, want valid caller value", got)
+	}
+}
+
 func TestCreateDatasetRequestReturnsNotYetViewableStatus(t *testing.T) {
 	auth := &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}
 	server := NewServerWithDependencies(staticReadiness{}, auth, newMemoryRequestStore())
