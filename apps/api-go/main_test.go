@@ -46,3 +46,23 @@ func TestReadinessEndpointReportsDependencyFailure(t *testing.T) {
 		t.Fatalf("readiness body = %s, want database failure", body)
 	}
 }
+
+func TestMetricsEndpointReportsAccessDenied(t *testing.T) {
+	server := NewServer(fakeReadiness{ready: true})
+
+	denied := httptest.NewRecorder()
+	server.Handler().ServeHTTP(denied, httptest.NewRequest(http.MethodGet, "/datasets/demo", nil))
+	if denied.Code != http.StatusUnauthorized {
+		t.Fatalf("denied status = %d, want %d", denied.Code, http.StatusUnauthorized)
+	}
+
+	metrics := httptest.NewRecorder()
+	server.Handler().ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if metrics.Code != http.StatusOK {
+		t.Fatalf("metrics status = %d, want %d", metrics.Code, http.StatusOK)
+	}
+	body, _ := io.ReadAll(metrics.Result().Body)
+	if !strings.Contains(string(body), `autodata_api_access_denied_total{reason="unauthenticated"} 1`) {
+		t.Fatalf("metrics body = %s, want unauthenticated denial count", body)
+	}
+}

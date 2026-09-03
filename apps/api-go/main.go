@@ -57,6 +57,7 @@ type Server struct {
 	auth        Authenticator
 	requests    RequestStore
 	projections ProjectionStore
+	metrics     *apiMetrics
 }
 
 func NewServer(readiness ReadinessChecker) *Server {
@@ -68,13 +69,20 @@ func NewServerWithDependencies(readiness ReadinessChecker, auth Authenticator, r
 	if len(projections) > 0 && projections[0] != nil {
 		projectionStore = projections[0]
 	}
-	return &Server{readiness: readiness, auth: auth, requests: requests, projections: projectionStore}
+	return &Server{
+		readiness:   readiness,
+		auth:        auth,
+		requests:    requests,
+		projections: projectionStore,
+		metrics:     new(apiMetrics),
+	}
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
+	mux.HandleFunc("GET /metrics", s.metrics.handler)
 	mux.Handle("POST /dataset-requests", s.requireRole("dataset_viewer", s.createDatasetRequest))
 	mux.Handle("GET /dataset-requests/{id}", s.requireRole("dataset_viewer", s.getDatasetRequest))
 	mux.Handle("GET /datasets/{id}", s.requireRole("dataset_viewer", s.getDataset))
@@ -94,10 +102,12 @@ func (s *Server) requireRole(role string, next authenticatedHandler) http.Handle
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		principal, err := s.auth.Authenticate(request)
 		if err != nil {
+			s.metrics.recordUnauthenticated()
 			writeAPIError(response, request, http.StatusUnauthorized, "UNAUTHENTICATED", err.Error(), false)
 			return
 		}
 		if !principal.HasRole(role) {
+			s.metrics.recordForbidden()
 			writeAPIError(response, request, http.StatusForbidden, "FORBIDDEN", "the caller lacks the required role", false)
 			return
 		}
@@ -162,7 +172,7 @@ func (s *Server) getDataset(response http.ResponseWriter, request *http.Request,
 		return
 	}
 	record, err := s.projections.GetDataset(datasetID, principal, strings.TrimSpace(request.URL.Query().Get("revision_id")))
-	if !writeProjectionError(response, request, err) {
+	if !s.writeProjectionError(response, request, err) {
 		return
 	}
 	writeJSON(response, http.StatusOK, record)
@@ -175,7 +185,7 @@ func (s *Server) getDatasetSections(response http.ResponseWriter, request *http.
 		return
 	}
 	record, err := s.projections.ListSections(datasetID, principal)
-	if !writeProjectionError(response, request, err) {
+	if !s.writeProjectionError(response, request, err) {
 		return
 	}
 	writeJSON(response, http.StatusOK, record)
@@ -188,7 +198,7 @@ func (s *Server) getDatasetRevisions(response http.ResponseWriter, request *http
 		return
 	}
 	revisions, err := s.projections.ListRevisions(datasetID, principal)
-	if !writeProjectionError(response, request, err) {
+	if !s.writeProjectionError(response, request, err) {
 		return
 	}
 	writeJSON(response, http.StatusOK, revisions)
@@ -206,7 +216,7 @@ func (s *Server) getDatasetEvidence(response http.ResponseWriter, request *http.
 		return
 	}
 	evidence, err := s.projections.GetEvidence(datasetID, evidenceID, principal)
-	if !writeProjectionError(response, request, err) {
+	if !s.writeProjectionError(response, request, err) {
 		return
 	}
 	writeJSON(response, http.StatusOK, evidence)
@@ -238,7 +248,7 @@ func (s *Server) searchEvidence(response http.ResponseWriter, request *http.Requ
 		return
 	}
 	result, err := s.projections.SearchEvidence(datasetID, vector, limit, principal)
-	if !writeProjectionError(response, request, err) {
+	if !s.writeProjectionError(response, request, err) {
 		return
 	}
 	writeJSON(response, http.StatusOK, result)
@@ -258,7 +268,7 @@ func (s *Server) submitFeedback(response http.ResponseWriter, request *http.Requ
 		return
 	}
 	record, err := s.projections.SubmitFeedback(datasetID, input, principal)
-	if !writeProjectionError(response, request, err) {
+	if !s.writeProjectionError(response, request, err) {
 		return
 	}
 	writeJSON(response, http.StatusCreated, record)
@@ -283,7 +293,7 @@ func (s *Server) reviewEvidence(response http.ResponseWriter, request *http.Requ
 		return
 	}
 	evidence, err := s.projections.ReviewEvidence(datasetID, evidenceID, input, principal)
-	if !writeProjectionError(response, request, err) {
+	if !s.writeProjectionError(response, request, err) {
 		return
 	}
 	writeJSON(response, http.StatusOK, evidence)
@@ -308,7 +318,7 @@ func (s *Server) reviewFeedback(response http.ResponseWriter, request *http.Requ
 		return
 	}
 	record, err := s.projections.ReviewFeedback(datasetID, feedbackID, input, principal)
-	if !writeProjectionError(response, request, err) {
+	if !s.writeProjectionError(response, request, err) {
 		return
 	}
 	writeJSON(response, http.StatusOK, record)
@@ -319,14 +329,16 @@ func datasetPathValue(request *http.Request) (string, bool) {
 	return value, value != ""
 }
 
-func writeProjectionError(response http.ResponseWriter, request *http.Request, err error) bool {
+func (s *Server) writeProjectionError(response http.ResponseWriter, request *http.Request, err error) bool {
 	if err == nil {
 		return true
 	}
 	switch {
 	case errors.Is(err, ErrEntitlementRequired):
+		s.metrics.recordForbidden()
 		writeAPIError(response, request, http.StatusForbidden, "ENTITLEMENT_REQUIRED", err.Error(), false)
 	case errors.Is(err, ErrEntitlementRevoked):
+		s.metrics.recordForbidden()
 		writeAPIError(response, request, http.StatusGone, "ENTITLEMENT_REVOKED", err.Error(), false)
 	case errors.Is(err, ErrDatasetNotViewable):
 		writeAPIError(response, request, http.StatusConflict, "DATASET_NOT_VIEWABLE", err.Error(), true)
