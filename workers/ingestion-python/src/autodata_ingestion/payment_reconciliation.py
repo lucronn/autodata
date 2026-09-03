@@ -13,6 +13,10 @@ class PaymentEventConflict(ValueError):
     """The same provider event ID was received with different trusted data."""
 
 
+class EntitlementNotFound(ValueError):
+    """The entitlement cannot be located in the projection boundary."""
+
+
 @dataclass(frozen=True)
 class PaymentIntent:
     provider_name: str
@@ -52,6 +56,114 @@ def canonical_payment_payload(payload: dict[str, Any]) -> str:
     """Return a deterministic representation suitable for replay comparison."""
 
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def revoke_entitlement(connection: Any, entitlement_id: str, reason: str) -> dict[str, Any]:
+    """Revoke access and enqueue one auditable revision-revoked event."""
+
+    entitlement_id = str(entitlement_id).strip()
+    reason = str(reason).strip()
+    if not entitlement_id or not reason or len(reason) > 1000:
+        raise ValueError("entitlement ID and an auditable reason are required")
+    from psycopg.types.json import Jsonb
+
+    now = datetime.now(UTC)
+    idempotency_key = f"revocation:{entitlement_id}"
+    with connection.transaction():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT e.entitlement_id::text, e.status, e.revoke_reason,
+                       dr.dataset_request_id::text, dp.dataset_projection_id::text,
+                       dr.correlation_id::text
+                FROM entitlements e
+                JOIN dataset_requests dr ON dr.dataset_request_id = e.dataset_request_id
+                JOIN dataset_projections dp ON dp.entitlement_id = e.entitlement_id
+                WHERE e.entitlement_id::text = %s
+                FOR UPDATE
+                """,
+                (entitlement_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise EntitlementNotFound(f"entitlement {entitlement_id} was not found")
+            stored_entitlement_id, stored_status, stored_reason, request_id, projection_id, correlation_id = row
+            if stored_status != "revoked":
+                cursor.execute(
+                    """
+                    UPDATE entitlements
+                    SET status = 'revoked', revoked_at = now(), revoke_reason = %s
+                    WHERE entitlement_id = %s
+                    """,
+                    (reason, stored_entitlement_id),
+                )
+                cursor.execute(
+                    """
+                    UPDATE dataset_requests
+                    SET status = 'revoked', updated_at = now()
+                    WHERE dataset_request_id = %s AND status <> 'revoked'
+                    """,
+                    (request_id,),
+                )
+                stored_reason = reason
+
+            cursor.execute(
+                """
+                SELECT dataset_revision_id::text
+                FROM dataset_revisions
+                WHERE dataset_projection_id = %s
+                ORDER BY revision_number DESC
+                LIMIT 1
+                """,
+                (projection_id,),
+            )
+            revision_row = cursor.fetchone()
+            revision_id = revision_row[0] if revision_row is not None else None
+            payload = Jsonb(
+                {
+                    "entitlement_id": stored_entitlement_id,
+                    "reason": stored_reason or reason,
+                    "request_id": request_id,
+                    "projection_id": projection_id,
+                }
+            )
+            cursor.execute(
+                """
+                INSERT INTO publication_events
+                    (event_type, event_version, dataset_request_id,
+                     dataset_projection_id, dataset_revision_id, correlation_id,
+                     idempotency_key, payload, published_at, producer)
+                VALUES ('dataset.revision.revoked', 1, %s, %s, %s, %s, %s, %s, %s, 'payment-reconciler')
+                ON CONFLICT (idempotency_key) DO NOTHING
+                """,
+                (
+                    request_id,
+                    projection_id,
+                    revision_id,
+                    correlation_id,
+                    idempotency_key,
+                    payload,
+                    now,
+                ),
+            )
+            cursor.execute(
+                """
+                SELECT publication_event_id::text
+                FROM publication_events
+                WHERE idempotency_key = %s
+                """,
+                (idempotency_key,),
+            )
+            publication_event_id = cursor.fetchone()[0]
+            return {
+                "status": "revoked",
+                "entitlement_id": stored_entitlement_id,
+                "dataset_request_id": request_id,
+                "dataset_projection_id": projection_id,
+                "dataset_revision_id": revision_id,
+                "publication_event_id": publication_event_id,
+                "reason": stored_reason or reason,
+            }
 
 
 def reconcile_payment_event(connection: Any, event: dict[str, Any]) -> dict[str, Any]:
