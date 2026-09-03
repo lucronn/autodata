@@ -6,9 +6,28 @@ import json
 import os
 import time
 
+from .publisher import DeepSectionJob, publish_deep_section
+
 
 def run_once() -> dict[str, str]:
-    """Return the idle worker heartbeat until enrichment handlers are implemented."""
+    """Run one explicitly configured deep job or return the worker heartbeat."""
+
+    projection_id = os.getenv("AUTODATA_DEEP_PROJECTION_ID")
+    if not projection_id:
+        return {"worker": "enrichment", "lane": "deep", "status": "idle"}
+    section_name = os.getenv("AUTODATA_DEEP_SECTION", "diagnostics")
+    content = json.loads(os.getenv("AUTODATA_DEEP_CONTENT", '{"fixture": true}'))
+    evidence = tuple(json.loads(os.getenv("AUTODATA_DEEP_EVIDENCE", "[]")))
+    result = publish_deep_section(
+        DeepSectionJob(
+            projection_id=projection_id,
+            section_name=section_name,
+            content=content,
+            evidence=evidence,
+            processing_version=os.getenv("AUTODATA_DEEP_PROCESSING_VERSION", "deep-v1"),
+        )
+    )
+    return {"worker": "enrichment", "lane": "deep", **{key: str(value) for key, value in result.items()}}
 
     return {"worker": "enrichment", "lane": "deep", "status": "idle"}
 

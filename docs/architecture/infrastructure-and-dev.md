@@ -130,6 +130,24 @@ The command reports the normalized vehicle, typed candidate counts, evidence cou
 
 Persistence is opt-in and local-only. When database and object-storage variables are configured, append `--persist` to write content-addressed artifacts and normalized records to the Compose stack. A bundle with review items is still stored for audit, but it cannot be treated as fully publishable until its quarantine items are resolved.
 
+The deep-lane publisher can be exercised against a viewable fixture projection after the local environment variables are exported. Scheduling creates one pending job and one durable `dataset.deep.requested` outbox event per section; publishing a section requires approved evidence and creates a new immutable revision:
+
+```sh
+docker compose -f infra/compose/compose.yaml run --rm --no-deps \
+  -e AUTODATA_DEEP_PROJECTION_ID=<viewable-projection-id> \
+  -e AUTODATA_DEEP_SCHEDULE_SECTIONS=diagnostics,procedures,electrical,embeddings,quality \
+  enrichment-worker python /app/scripts/deep_lane_smoke.py
+
+docker compose -f infra/compose/compose.yaml run --rm --no-deps \
+  -e AUTODATA_DEEP_PROJECTION_ID=<viewable-projection-id> \
+  -e AUTODATA_DEEP_SECTION=diagnostics \
+  -e AUTODATA_DEEP_CONTENT='{"code":"P0300","description":"example"}' \
+  -e AUTODATA_DEEP_EVIDENCE='[{"evidence_id":"source-locator-1","locator":"page=4","extracted_text":"P0300","confidence":0.99,"reviewer_state":"approved"}]' \
+  enrichment-worker python /app/scripts/deep_lane_smoke.py
+```
+
+The same section job is safe to replay. A failed section is recorded in `ingestion_jobs` and `dataset_section_status`, can be retried up to its configured limit, and moves to `dead_letter` without changing the last published revision for other sections. The placeholder projection ID and evidence above are future execution parameters, not committed credentials or source payloads.
+
 ## Configuration contract
 
 Configuration is grouped by subsystem and supplied through environment variables or a secret manager:
