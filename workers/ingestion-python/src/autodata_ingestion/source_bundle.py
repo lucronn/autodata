@@ -278,7 +278,7 @@ def _evidence(artifact: SourceArtifact, candidate: NormalizationCandidate) -> di
     evidence_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"autodata-evidence:{artifact.content_sha256}:{candidate.locator}"))
     extracted_text = (
         str(candidate.data["text"])
-        if candidate.kind == "document_text" and candidate.data.get("text")
+        if candidate.kind in {"document_text", "diagram_text"} and candidate.data.get("text")
         else json.dumps(candidate.data, sort_keys=True, separators=(",", ":"))
     )
     return {
