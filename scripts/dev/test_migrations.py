@@ -33,6 +33,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "011_feedback_review_metadata.sql",
                 "012_payment_fulfillment_reconciliation.sql",
                 "013_dataset_request_ownership.sql",
+                "014_normalized_article_content.sql",
             ],
         )
 

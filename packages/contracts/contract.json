@@ -45,6 +45,65 @@
       "warnings": {"type": "array", "optional": true}
     }
   },
+  "knowledge_result_kind": ["article", "procedure"],
+  "knowledge_search_response": {
+    "required": ["dataset_id", "revision_id", "availability", "source_watermark", "sections", "results"],
+    "properties": {
+      "dataset_id": {"type": "uuid"},
+      "revision_id": {"type": "uuid"},
+      "availability": {"enum_ref": "dataset_availability"},
+      "source_watermark": {"type": "string"},
+      "sections": {"type": "array", "items": "dataset_section"},
+      "vehicle_identity": {"type": "object", "optional": true},
+      "results": {"type": "array", "items": "knowledge_result"}
+    }
+  },
+  "knowledge_result": {
+    "required": ["kind", "id", "score", "evidence"],
+    "properties": {
+      "kind": {"enum_ref": "knowledge_result_kind"},
+      "id": {"type": "string"},
+      "score": {"type": "number"},
+      "article": {"type": "object", "optional": true},
+      "procedure": {"type": "object", "optional": true},
+      "evidence": {"type": "array", "items": "knowledge_evidence"}
+    }
+  },
+  "knowledge_article": {
+    "required": ["article_id"],
+    "properties": {
+      "article_id": {"type": "string"},
+      "article_key": {"type": "string", "optional": true},
+      "bucket": {"type": "string", "optional": true},
+      "title": {"type": "string", "optional": true},
+      "bulletin_number": {"type": "string", "optional": true},
+      "release_date": {"type": "string", "optional": true},
+      "body": {"type": "string", "optional": true},
+      "steps": {"type": "array", "optional": true}
+    }
+  },
+  "knowledge_procedure": {
+    "required": ["procedure_id", "section", "excerpt"],
+    "properties": {
+      "procedure_id": {"type": "string"},
+      "section": {"type": "string"},
+      "excerpt": {"type": "string"},
+      "matched_terms": {"type": "array", "optional": true}
+    }
+  },
+  "knowledge_evidence": {
+    "required": ["evidence_id", "locator", "confidence"],
+    "properties": {
+      "evidence_id": {"type": "string"},
+      "locator": {"type": "string"},
+      "source_snapshot_id": {"type": "string", "optional": true},
+      "artifact_key": {"type": "string", "optional": true},
+      "source_uri": {"type": "string", "optional": true},
+      "source_version": {"type": "string", "optional": true},
+      "extracted_text": {"type": "string", "optional": true},
+      "confidence": {"type": "number"}
+    }
+  },
   "dataset_section": {
     "required": ["name", "status", "last_published_revision", "updated_at"],
     "properties": {

@@ -18,6 +18,11 @@ func TestGeneratedBindingsExposeSupportingContractTypes(t *testing.T) {
 	_ = Evidence{}
 	_ = Feedback{}
 	_ = Error{}
+	_ = KnowledgeSearchResponse{}
+	_ = KnowledgeResult{}
+	_ = KnowledgeArticle{}
+	_ = KnowledgeProcedure{}
+	_ = KnowledgeEvidence{}
 }
 
 func TestGeneratedBindingsExposeLifecycleAndEventSubjects(t *testing.T) {
@@ -29,6 +34,9 @@ func TestGeneratedBindingsExposeLifecycleAndEventSubjects(t *testing.T) {
 	}
 	if !contains(EventSubjects, "dataset.section.published") {
 		t.Fatal("event subjects must include section publication")
+	}
+	if !contains(KnowledgeResultKindValues, "article") || !contains(KnowledgeResultKindValues, "procedure") {
+		t.Fatal("knowledge result kinds must include article and procedure")
 	}
 	if !contains(EntitlementStatusValues, "active") {
 		t.Fatal("entitlement statuses must include active")

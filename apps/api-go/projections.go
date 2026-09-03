@@ -33,10 +33,13 @@ type ProjectionStore interface {
 	ListRevisions(string, Principal) (DatasetRevisionList, error)
 	GetEvidence(string, string, Principal) (EvidenceRecord, error)
 	SearchEvidence(string, []float64, int, Principal) (EvidenceSearchResponse, error)
+	SearchKnowledge(string, string, string, int, string, Principal) (KnowledgeSearchResponse, error)
 	SubmitFeedback(string, FeedbackInput, Principal) (FeedbackRecord, error)
 	ReviewEvidence(string, string, EvidenceReviewInput, Principal) (EvidenceRecord, error)
 	ReviewFeedback(string, string, FeedbackReviewInput, Principal) (FeedbackRecord, error)
 }
+
+type KnowledgeSearchResponse = contracts.KnowledgeSearchResponse
 
 type DatasetReadRecord struct {
 	DatasetID       string                     `json:"dataset_id"`
@@ -260,6 +263,18 @@ func (s *memoryProjectionStore) SearchEvidence(datasetID string, query []float64
 		results = results[:limit]
 	}
 	return EvidenceSearchResponse{DatasetID: datasetID, Results: results}, nil
+}
+
+func (s *memoryProjectionStore) SearchKnowledge(datasetID, query, kind string, limit int, revisionID string, principal Principal) (KnowledgeSearchResponse, error) {
+	dataset, err := s.authorize(datasetID, principal)
+	if err != nil {
+		return KnowledgeSearchResponse{}, err
+	}
+	revision, err := selectRevision(dataset.revisions, revisionID)
+	if err != nil {
+		return KnowledgeSearchResponse{}, err
+	}
+	return searchKnowledgeRevision(datasetID, revision, dataset.sections, dataset.evidence, query, kind, limit), nil
 }
 
 func (s *memoryProjectionStore) SubmitFeedback(datasetID string, input FeedbackInput, principal Principal) (FeedbackRecord, error) {

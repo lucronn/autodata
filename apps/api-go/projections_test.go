@@ -164,6 +164,147 @@ func TestEvidenceSearchReturnsOnlyApprovedRevisionScopedResults(t *testing.T) {
 	}
 }
 
+func TestKnowledgeSearchReturnsTypedArticleAndProcedureResultsFromSelectedRevision(t *testing.T) {
+	store := newMemoryProjectionStore()
+	fixture := memoryDatasetFixture()
+	fixture.revisions[0].Data["articles"] = []any{
+		map[string]any{
+			"article_id":       "article-old",
+			"article_key":      "article:old",
+			"bucket":           "Service Bulletin",
+			"title":            "Older brake inspection article",
+			"bulletin_number":  "TSB-OLD",
+			"release_date":     "2026-09-02",
+			"body":             "Inspect the brake hose before replacement.",
+			"evidence_id":      "evidence-old",
+			"content_locator":  "body.articleDetails[0]",
+			"source_uri":       "provider://old/article",
+			"source_version":   "source-old",
+			"source_sha256":    "sha-old",
+			"content_sha256":   "sha-old",
+		},
+	}
+	fixture.revisions[0].Data["vehicle_identity"] = map[string]any{
+		"vehicle_key": "toyota-corolla-2024-us",
+		"make":        "Toyota",
+		"model":       "Corolla",
+		"model_year":  float64(2024),
+		"region":      "US",
+	}
+	fixture.revisions[1].Data["articles"] = []any{
+		map[string]any{
+			"article_id":      "article-new",
+			"article_key":     "article:new",
+			"bucket":          "Service Bulletin",
+			"title":           "Brake caliper replacement bulletin",
+			"bulletin_number": "TSB-NEW",
+			"release_date":    "2026-09-03",
+			"body":            "Replace the brake caliper and torque the guide pins.",
+			"steps":           []any{"Remove the wheel.", "Torque the guide pins."},
+			"evidence_ids":    []any{"evidence-article"},
+			"content_locator": "body.articleDetails[1]",
+			"source_uri":      "provider://new/article",
+			"source_version":  "source-new",
+			"content_sha256":  "sha-new",
+		},
+	}
+	fixture.revisions[1].Data["procedures"] = map[string]any{
+		"section":           "procedures",
+		"source_snapshot_id": "snapshot-2",
+		"records": []any{
+			map[string]any{
+				"source_evidence_id": "evidence-procedure",
+				"locator":            "page:12",
+				"artifact_key":       "sources/brakes.pdf",
+				"text":               "Procedure: remove the caliper, install the replacement, and torque the bolts.",
+				"confidence":         0.97,
+				"matched_terms":      []any{"procedure", "install", "torque"},
+			},
+		},
+	}
+	fixture.evidence["evidence-article"] = EvidenceRecord{
+		EvidenceID:        "evidence-article",
+		SourceSnapshotID:  "snapshot-2",
+		ExtractionRunID:   stringPtr("run-article"),
+		DatasetRevisionID: stringPtr("revision-2"),
+		Locator:           "body.articleDetails[1]",
+		ArtifactKey:       "sources/article.json",
+		ExtractedText:     "Replace the brake caliper and torque the guide pins.",
+		Confidence:        0.94,
+		ReviewerState:     "approved",
+	}
+	fixture.evidence["evidence-procedure"] = EvidenceRecord{
+		EvidenceID:        "evidence-procedure",
+		SourceSnapshotID:  "snapshot-2",
+		ExtractionRunID:   stringPtr("run-procedure"),
+		DatasetRevisionID: stringPtr("revision-2"),
+		Locator:           "page:12",
+		ArtifactKey:       "sources/brakes.pdf",
+		ExtractedText:     "Procedure: remove the caliper, install the replacement, and torque the bolts.",
+		Confidence:        0.97,
+		ReviewerState:     "approved",
+	}
+	store.put(fixture)
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}, newMemoryRequestStore(), store)
+
+	response := performRequest(server, http.MethodGet, "/datasets/dataset-1/knowledge?q=brake+caliper&kind=all&limit=10")
+	if response.Code != http.StatusOK {
+		t.Fatalf("knowledge status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var body KnowledgeSearchResponse
+	decodeJSON(t, response, &body)
+	if body.DatasetID != "dataset-1" || body.RevisionID != "revision-2" || body.Availability != "viewable" {
+		t.Fatalf("unexpected knowledge envelope: %#v", body)
+	}
+	if body.VehicleIdentity["vehicle_key"] != "toyota-corolla-2024-us" || len(body.Sections) != 2 {
+		t.Fatalf("knowledge metadata missing: %#v", body)
+	}
+	if len(body.Results) != 2 || body.Results[0].Kind != "article" || body.Results[1].Kind != "procedure" {
+		t.Fatalf("unexpected typed knowledge results: %#v", body.Results)
+	}
+	if body.Results[0].Article == nil || body.Results[0].Article.Title != "Brake caliper replacement bulletin" || len(body.Results[0].Article.Steps) != 2 {
+		t.Fatalf("article metadata missing: %#v", body.Results[0])
+	}
+	if body.Results[1].Procedure == nil || !strings.Contains(body.Results[1].Procedure.Excerpt, "torque the bolts") {
+		t.Fatalf("procedure excerpt missing: %#v", body.Results[1])
+	}
+	if len(body.Results[0].Evidence) != 1 || body.Results[0].Evidence[0].EvidenceID != "evidence-article" || body.Results[0].Evidence[0].SourceURI != "provider://new/article" || len(body.Results[1].Evidence) != 1 || body.Results[1].Evidence[0].Locator != "page:12" || body.Results[1].Evidence[0].SourceSnapshotID != "snapshot-2" {
+		t.Fatalf("inline provenance missing: %#v", body.Results)
+	}
+	if body.Results[0].Score <= 0 || body.Results[1].Score <= 0 {
+		t.Fatalf("knowledge results must have positive scores: %#v", body.Results)
+	}
+}
+
+func TestKnowledgeSearchIsRevisionScopedAndValidatesKind(t *testing.T) {
+	store := newMemoryProjectionStore()
+	fixture := memoryDatasetFixture()
+	fixture.revisions[0].Data["articles"] = []any{map[string]any{
+		"article_id": "article-old", "title": "Old oil filter procedure", "body": "Old revision only",
+	}}
+	fixture.revisions[1].Data["articles"] = []any{map[string]any{
+		"article_id": "article-new", "title": "New brake article", "body": "New revision only",
+	}}
+	store.put(fixture)
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}, newMemoryRequestStore(), store)
+
+	response := performRequest(server, http.MethodGet, "/datasets/dataset-1/knowledge?q=oil&kind=article&revision_id=revision-1")
+	if response.Code != http.StatusOK {
+		t.Fatalf("stale knowledge status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var body KnowledgeSearchResponse
+	decodeJSON(t, response, &body)
+	if body.RevisionID != "revision-1" || len(body.Results) != 1 || body.Results[0].Article.ArticleID != "article-old" {
+		t.Fatalf("knowledge escaped selected revision: %#v", body)
+	}
+
+	response = performRequest(server, http.MethodGet, "/datasets/dataset-1/knowledge?q=oil&kind=unsupported")
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid kind status = %d, want %d", response.Code, http.StatusUnprocessableEntity)
+	}
+	assertErrorCode(t, response, "INVALID_REQUEST")
+}
+
 func TestFeedbackSubmissionCreatesOpenReviewItemLinkedToRevision(t *testing.T) {
 	store := newMemoryProjectionStore()
 	fixture := memoryDatasetFixture()

@@ -188,6 +188,21 @@ func (s *postgresProjectionStore) SearchEvidence(datasetID string, query []float
 	return result, nil
 }
 
+func (s *postgresProjectionStore) SearchKnowledge(datasetID, query, kind string, limit int, revisionID string, principal Principal) (KnowledgeSearchResponse, error) {
+	if err := s.authorize(datasetID, principal); err != nil {
+		return KnowledgeSearchResponse{}, err
+	}
+	revision, err := s.revision(datasetID, revisionID)
+	if err != nil {
+		return KnowledgeSearchResponse{}, err
+	}
+	sections, err := s.sections(datasetID)
+	if err != nil {
+		return KnowledgeSearchResponse{}, err
+	}
+	return searchKnowledgeRevision(datasetID, revision, sections, nil, query, kind, limit), nil
+}
+
 func (s *postgresProjectionStore) SubmitFeedback(datasetID string, input FeedbackInput, principal Principal) (FeedbackRecord, error) {
 	if err := s.authorize(datasetID, principal); err != nil {
 		return FeedbackRecord{}, err

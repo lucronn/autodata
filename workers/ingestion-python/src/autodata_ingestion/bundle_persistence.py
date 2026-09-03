@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any, Iterable
@@ -203,43 +206,14 @@ def persist_source_bundle(
                     ),
                 )
 
-            for article in bundle.articles:
-                article_evidence = evidence_by_id[article["evidence_id"]]
-                _upsert_returning_id(
-                    cursor,
-                    """
-                    INSERT INTO catalog_articles
-                        (catalog_article_id, vehicle_id, article_id, bucket, title,
-                         bulletin_number, release_date, sort_order, source_snapshot_id,
-                         source_locator, evidence_locator, evidence_confidence)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (vehicle_id, article_id, source_snapshot_id, source_locator)
-                    DO UPDATE SET bucket = EXCLUDED.bucket,
-                                  title = EXCLUDED.title,
-                                  bulletin_number = EXCLUDED.bulletin_number,
-                                  release_date = EXCLUDED.release_date,
-                                  sort_order = EXCLUDED.sort_order,
-                                  evidence_locator = EXCLUDED.evidence_locator,
-                                  evidence_confidence = EXCLUDED.evidence_confidence
-                    RETURNING catalog_article_id
-                    """,
-                    (
-                        _stable_uuid(
-                            f"article:{vehicle_id}:{article['article_key']}:{article_evidence['content_sha256']}"
-                        ),
-                        vehicle_id,
-                        article["article_id"],
-                        article.get("bucket"),
-                        article.get("title"),
-                        article.get("bulletin_number"),
-                        article.get("release_date"),
-                        article.get("sort"),
-                        snapshot_ids[article_evidence["content_sha256"]],
-                        article_evidence["locator"],
-                        article_evidence["locator"],
-                        article_evidence["confidence"],
-                    ),
-                )
+            _persist_catalog_articles(
+                cursor,
+                bundle.articles,
+                evidence_by_id,
+                snapshot_ids,
+                vehicle_id,
+                Jsonb,
+            )
             if publication is not None:
                 publication_result = publish_fast_lane_revision(
                     cursor,
@@ -291,6 +265,63 @@ def store_source_artifacts(artifacts: Iterable[SourceArtifact]) -> None:
             BytesIO(artifact.raw_payload),
             len(artifact.raw_payload),
             content_type=artifact.media_type,
+        )
+
+
+def _persist_catalog_articles(
+    cursor: Any,
+    articles: Iterable[Mapping[str, Any]],
+    evidence_by_id: Mapping[str, Mapping[str, Any]],
+    snapshot_ids: Mapping[str, str],
+    vehicle_id: str,
+    jsonb: Any,
+) -> None:
+    """Persist structured article content with source-scoped replay identity."""
+
+    for article in articles:
+        article_evidence = evidence_by_id[article["evidence_id"]]
+        steps = article.get("steps")
+        _upsert_returning_id(
+            cursor,
+            """
+            INSERT INTO catalog_articles
+                (catalog_article_id, vehicle_id, article_id, bucket, title,
+                 bulletin_number, release_date, sort_order, body, steps,
+                 normalized_fingerprint, source_snapshot_id, source_locator,
+                 evidence_locator, evidence_confidence)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (vehicle_id, article_id, source_snapshot_id, source_locator)
+            DO UPDATE SET bucket = EXCLUDED.bucket,
+                          title = EXCLUDED.title,
+                          bulletin_number = EXCLUDED.bulletin_number,
+                          release_date = EXCLUDED.release_date,
+                          sort_order = EXCLUDED.sort_order,
+                          body = EXCLUDED.body,
+                          steps = EXCLUDED.steps,
+                          normalized_fingerprint = EXCLUDED.normalized_fingerprint,
+                          evidence_locator = EXCLUDED.evidence_locator,
+                          evidence_confidence = EXCLUDED.evidence_confidence
+            RETURNING catalog_article_id
+            """,
+            (
+                _stable_uuid(
+                    f"article:{vehicle_id}:{article['article_key']}:{article_evidence['content_sha256']}"
+                ),
+                vehicle_id,
+                article["article_id"],
+                article.get("bucket"),
+                article.get("title"),
+                article.get("bulletin_number"),
+                article.get("release_date"),
+                article.get("sort"),
+                article.get("body"),
+                jsonb(steps) if steps is not None else None,
+                normalized_article_fingerprint(article),
+                snapshot_ids[article_evidence["content_sha256"]],
+                article_evidence["locator"],
+                article_evidence["locator"],
+                article_evidence["confidence"],
+            ),
         )
 
 
@@ -435,6 +466,39 @@ def _upsert_returning_id(cursor: Any, query: str, params: tuple[Any, ...]) -> st
 
 def _source_version(artifact: SourceArtifact) -> str:
     return artifact.source_version
+
+
+def normalized_article_fingerprint(article: Mapping[str, Any]) -> str:
+    """Return a stable exact-content identity for normalized article body/steps.
+
+    This fingerprint is intentionally an exact lookup/replay key. Semantic
+    near-duplicate handling remains a responsibility of source-bundle
+    normalization, where the relevant article context and evidence are
+    available.
+    """
+
+    canonical_content = {
+        "body": _canonical_article_value(article.get("body")),
+        "steps": _canonical_article_value(article.get("steps")),
+    }
+    encoded = json.dumps(
+        canonical_content,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _canonical_article_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return " ".join(value.split())
+    if isinstance(value, Mapping):
+        return {str(key): _canonical_article_value(value[key]) for key in value}
+    if isinstance(value, (list, tuple)):
+        return [_canonical_article_value(item) for item in value]
+    return value
 
 
 def _stable_uuid(value: str) -> str:

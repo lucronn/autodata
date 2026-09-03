@@ -59,6 +59,7 @@ The API is projection-oriented. Clients do not depend on table names or internal
 | `GET` | `/datasets/{id}/revisions` | List entitled immutable revisions and changelogs |
 | `GET` | `/datasets/{id}/evidence/{evidence_id}` | Resolve page/region evidence for a published fact |
 | `GET` | `/datasets/{id}/search?q={query}&limit={n}` | Search approved evidence within the entitled projection |
+| `GET` | `/datasets/{id}/knowledge?q={query}&kind=article\|procedure\|all&limit={n}&revision_id={id}` | Search normalized articles and procedure excerpts in one entitled published revision |
 | `POST` | `/datasets/{id}/feedback` | Submit a correction or quality issue |
 | `POST` | `/datasets/{id}/feedback/{feedback_id}/review` | Resolve or reject a feedback item as a reviewer |
 | `POST` | `/datasets/{id}/evidence/{evidence_id}/review` | Approve or reject pending evidence as a reviewer |
@@ -248,3 +249,5 @@ Evidence search is projection-scoped and returns only approved evidence linked t
 ```
 
 The initial local API uses the same deterministic embedding algorithm as the local enrichment adapter to turn `q` into a 1536-dimensional query vector. A production embedding service can replace that adapter without changing the projection or evidence contract. Empty or invalid limits return `422`; missing/revoked entitlements use the same authorization errors as dataset reads.
+
+Knowledge retrieval is a bounded, typed companion to evidence search. It selects the latest entitled published revision by default, or the explicitly requested entitled `revision_id`, and searches only that revision's structured `articles` content and `procedures.records` content. `kind` limits results to `article` or `procedure`; `all` returns both. Each result has an explicit kind, deterministic lexical score, structured article metadata or a procedure excerpt, and an inline evidence/provenance array when the selected content contains evidence identifiers or source locators. The response repeats the selected revision, availability, vehicle identity when present, source watermark, and current section readiness. It does not fetch sources synchronously or search across datasets.

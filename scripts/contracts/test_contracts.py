@@ -38,6 +38,10 @@ class ContractTests(unittest.TestCase):
         )
         self.assertEqual(contracts.EVENT_SUBJECTS, tuple(self.source["event_subjects"]))
         self.assertEqual(
+            contracts.KNOWLEDGE_RESULT_KIND_VALUES,
+            tuple(self.source["knowledge_result_kind"]),
+        )
+        self.assertEqual(
             contracts.ENTITLEMENT_STATUS_VALUES,
             tuple(self.source["entitlement"]["properties"]["status"]["enum"]),
         )
@@ -57,7 +61,18 @@ class ContractTests(unittest.TestCase):
         )
 
     def test_python_binding_exposes_request_access_evidence_feedback_and_error_types(self):
-        for type_name in ("DatasetRequest", "Entitlement", "Evidence", "Feedback", "Error"):
+        for type_name in (
+            "DatasetRequest",
+            "Entitlement",
+            "Evidence",
+            "Feedback",
+            "Error",
+            "KnowledgeSearchResponse",
+            "KnowledgeResult",
+            "KnowledgeArticle",
+            "KnowledgeProcedure",
+            "KnowledgeEvidence",
+        ):
             self.assertTrue(hasattr(contracts, type_name), type_name)
         self.assertEqual(
             render_python(self.source),
