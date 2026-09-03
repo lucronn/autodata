@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -51,17 +52,22 @@ func (staticReadiness) Check() map[string]string {
 }
 
 type Server struct {
-	readiness ReadinessChecker
-	auth      Authenticator
-	requests  RequestStore
+	readiness   ReadinessChecker
+	auth        Authenticator
+	requests    RequestStore
+	projections ProjectionStore
 }
 
 func NewServer(readiness ReadinessChecker) *Server {
 	return NewServerWithDependencies(readiness, HeaderAuthenticator{}, newMemoryRequestStore())
 }
 
-func NewServerWithDependencies(readiness ReadinessChecker, auth Authenticator, requests RequestStore) *Server {
-	return &Server{readiness: readiness, auth: auth, requests: requests}
+func NewServerWithDependencies(readiness ReadinessChecker, auth Authenticator, requests RequestStore, projections ...ProjectionStore) *Server {
+	projectionStore := ProjectionStore(newMemoryProjectionStore())
+	if len(projections) > 0 && projections[0] != nil {
+		projectionStore = projections[0]
+	}
+	return &Server{readiness: readiness, auth: auth, requests: requests, projections: projectionStore}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -70,6 +76,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.Handle("POST /dataset-requests", s.requireRole("dataset_viewer", s.createDatasetRequest))
 	mux.Handle("GET /dataset-requests/{id}", s.requireRole("dataset_viewer", s.getDatasetRequest))
+	mux.Handle("GET /datasets/{id}", s.requireRole("dataset_viewer", s.getDataset))
+	mux.Handle("GET /datasets/{id}/sections", s.requireRole("dataset_viewer", s.getDatasetSections))
+	mux.Handle("GET /datasets/{id}/revisions", s.requireRole("dataset_viewer", s.getDatasetRevisions))
+	mux.Handle("GET /datasets/{id}/evidence/{evidence_id}", s.requireRole("dataset_viewer", s.getDatasetEvidence))
 	return mux
 }
 
@@ -140,6 +150,91 @@ func (s *Server) getDatasetRequest(response http.ResponseWriter, request *http.R
 	writeJSON(response, http.StatusOK, record)
 }
 
+func (s *Server) getDataset(response http.ResponseWriter, request *http.Request, principal Principal) {
+	datasetID, ok := datasetPathValue(request)
+	if !ok {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "dataset ID is required", false)
+		return
+	}
+	record, err := s.projections.GetDataset(datasetID, principal, strings.TrimSpace(request.URL.Query().Get("revision_id")))
+	if !writeProjectionError(response, request, err) {
+		return
+	}
+	writeJSON(response, http.StatusOK, record)
+}
+
+func (s *Server) getDatasetSections(response http.ResponseWriter, request *http.Request, principal Principal) {
+	datasetID, ok := datasetPathValue(request)
+	if !ok {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "dataset ID is required", false)
+		return
+	}
+	record, err := s.projections.ListSections(datasetID, principal)
+	if !writeProjectionError(response, request, err) {
+		return
+	}
+	writeJSON(response, http.StatusOK, record)
+}
+
+func (s *Server) getDatasetRevisions(response http.ResponseWriter, request *http.Request, principal Principal) {
+	datasetID, ok := datasetPathValue(request)
+	if !ok {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "dataset ID is required", false)
+		return
+	}
+	revisions, err := s.projections.ListRevisions(datasetID, principal)
+	if !writeProjectionError(response, request, err) {
+		return
+	}
+	writeJSON(response, http.StatusOK, revisions)
+}
+
+func (s *Server) getDatasetEvidence(response http.ResponseWriter, request *http.Request, principal Principal) {
+	datasetID, ok := datasetPathValue(request)
+	if !ok {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "dataset ID is required", false)
+		return
+	}
+	evidenceID := strings.TrimSpace(request.PathValue("evidence_id"))
+	if evidenceID == "" {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "evidence ID is required", false)
+		return
+	}
+	evidence, err := s.projections.GetEvidence(datasetID, evidenceID, principal)
+	if !writeProjectionError(response, request, err) {
+		return
+	}
+	writeJSON(response, http.StatusOK, evidence)
+}
+
+func datasetPathValue(request *http.Request) (string, bool) {
+	value := strings.TrimSpace(request.PathValue("id"))
+	return value, value != ""
+}
+
+func writeProjectionError(response http.ResponseWriter, request *http.Request, err error) bool {
+	if err == nil {
+		return true
+	}
+	switch {
+	case errors.Is(err, ErrEntitlementRequired):
+		writeAPIError(response, request, http.StatusForbidden, "ENTITLEMENT_REQUIRED", err.Error(), false)
+	case errors.Is(err, ErrEntitlementRevoked):
+		writeAPIError(response, request, http.StatusGone, "ENTITLEMENT_REVOKED", err.Error(), false)
+	case errors.Is(err, ErrDatasetNotViewable):
+		writeAPIError(response, request, http.StatusConflict, "DATASET_NOT_VIEWABLE", err.Error(), true)
+	case errors.Is(err, ErrRevisionNotFound), errors.Is(err, ErrDatasetNotFound):
+		writeAPIError(response, request, http.StatusNotFound, "REVISION_NOT_FOUND", err.Error(), false)
+	case errors.Is(err, ErrInvalidEvidence):
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_EVIDENCE", err.Error(), false)
+	case errors.Is(err, ErrReviewRequired):
+		writeAPIError(response, request, http.StatusConflict, "REVIEW_REQUIRED", err.Error(), true)
+	default:
+		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "dataset could not be read", true)
+	}
+	return false
+}
+
 func writeAPIError(response http.ResponseWriter, request *http.Request, status int, code, message string, retryable bool) {
 	requestID := request.Header.Get("X-Request-ID")
 	if requestID == "" {
@@ -203,9 +298,18 @@ func configuredReadiness() ReadinessChecker {
 
 func main() {
 	address := envOrDefault("AUTODATA_API_ADDR", ":8080")
+	projectionStore := ProjectionStore(newMemoryProjectionStore())
+	if os.Getenv("AUTODATA_PROJECTION_STORE") == "postgres" {
+		store, err := newPostgresProjectionStore(context.Background())
+		if err != nil {
+			log.Fatal(fmt.Errorf("connect projection store: %w", err))
+		}
+		defer store.Close()
+		projectionStore = store
+	}
 	server := &http.Server{
 		Addr:              address,
-		Handler:           NewServer(configuredReadiness()).Handler(),
+		Handler:           NewServerWithDependencies(configuredReadiness(), HeaderAuthenticator{}, newMemoryRequestStore(), projectionStore).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	log.Printf("autodata api listening on %s", address)
