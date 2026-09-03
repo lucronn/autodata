@@ -3,18 +3,75 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import sys
 from pathlib import Path
+from typing import Any, Iterable
 
 
 ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
 
 from autodata_ingestion.directory_connector import DirectorySourceConnector  # noqa: E402
-from autodata_ingestion.source_adapters import adapt_source_resource  # noqa: E402
+from autodata_ingestion.source_adapters import SourceArtifact, adapt_source_resource  # noqa: E402
 from autodata_ingestion.quality import evaluate_source_bundle  # noqa: E402
 from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E402
+
+
+def summarize_source_artifacts(artifacts: Iterable[SourceArtifact]) -> list[dict[str, Any]]:
+    """Return deterministic, payload-free inspection records for source artifacts."""
+
+    report: list[dict[str, Any]] = []
+    for artifact in artifacts:
+        metadata = artifact.metadata
+        if artifact.kind == "quarantine":
+            extraction_status = "quarantined"
+        else:
+            extraction_status = str(
+                metadata.get(
+                    "extraction_status",
+                    "candidate_ready" if artifact.candidates else "needs_review",
+                )
+            )
+        reasons: set[str] = set()
+        if artifact.kind == "quarantine":
+            reasons.add(str(metadata.get("quarantine_reason", "unsupported_artifact")))
+        if extraction_status == "needs_review":
+            reasons.add("extraction_needs_review")
+        if metadata.get("embedded_needs_review"):
+            reasons.add("embedded_resource_needs_review")
+        if metadata.get("page_errors"):
+            reasons.add("page_extraction_error")
+        candidate_kinds = dict(sorted(Counter(candidate.kind for candidate in artifact.candidates).items()))
+        item: dict[str, Any] = {
+            "source_uri": artifact.source_uri,
+            "source_version": artifact.source_version,
+            "media_type": artifact.media_type,
+            "content_sha256": artifact.content_sha256,
+            "object_key": artifact.object_key,
+            "kind": artifact.kind,
+            "candidate_count": len(artifact.candidates),
+            "candidate_kinds": candidate_kinds,
+            "extraction_status": extraction_status,
+            "needs_review": bool(reasons),
+            "review_reasons": sorted(reasons),
+        }
+        for field in ("extraction_mode", "embedded_resources", "page_count", "rasterized_page_count"):
+            if field in metadata:
+                value = metadata[field]
+                if field == "embedded_resources":
+                    value = [
+                        {
+                            key: record[key]
+                            for key in ("locator", "media_type", "content_sha256", "candidate_count", "extraction_status")
+                            if key in record
+                        }
+                        for record in value
+                    ]
+                item[field] = value
+        report.append(item)
+    return sorted(report, key=lambda item: (item["source_uri"], item["content_sha256"]))
 
 
 def main() -> None:
@@ -64,6 +121,7 @@ def main() -> None:
                 "conflict_fields": sorted({item.get("field") for item in bundle.conflicts}),
                 "quality": quality.to_dict(),
                 "persistence": persistence,
+                "source_report": summarize_source_artifacts(artifacts),
             },
             sort_keys=True,
         )
