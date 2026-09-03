@@ -151,7 +151,7 @@ docker compose -f infra/compose/compose.yaml run --rm --no-deps \
   enrichment-worker python /app/scripts/deep_lane_smoke.py
 ```
 
-The API also exposes a dependency-free `/metrics` endpoint for in-process access-denied counters. It is intended to be network-restricted to the observability plane in deployed environments. The operational metrics snapshot reads durable request, job, outbox, evidence, review, payment, revision, and source state and emits Prometheus-compatible text for a local scrape or a scheduled exporter:
+The API also exposes a dependency-free `/metrics` endpoint for in-process access-denied counters. It is intended to be network-restricted to the observability plane in deployed environments. Every API response carries an `X-Request-ID`; the API preserves a valid W3C `traceparent` when one is supplied and generates a safe request ID when it is absent or malformed. This makes an ID available to logs, error bodies, and downstream event-envelope correlation without requiring an observability vendor SDK. The operational metrics snapshot reads durable request, job, outbox, evidence, review, payment, revision, and source state and emits Prometheus-compatible text for a local scrape or a scheduled exporter:
 
 ```sh
 curl http://127.0.0.1:8080/metrics
