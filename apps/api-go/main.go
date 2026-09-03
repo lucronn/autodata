@@ -83,6 +83,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /datasets/{id}/evidence/{evidence_id}", s.requireRole("dataset_viewer", s.getDatasetEvidence))
 	mux.Handle("GET /datasets/{id}/search", s.requireRole("dataset_viewer", s.searchEvidence))
 	mux.Handle("POST /datasets/{id}/feedback", s.requireRole("dataset_viewer", s.submitFeedback))
+	mux.Handle("POST /datasets/{id}/feedback/{feedback_id}/review", s.requireRole("data_reviewer", s.reviewFeedback))
 	mux.Handle("POST /datasets/{id}/evidence/{evidence_id}/review", s.requireRole("data_reviewer", s.reviewEvidence))
 	return mux
 }
@@ -288,6 +289,31 @@ func (s *Server) reviewEvidence(response http.ResponseWriter, request *http.Requ
 	writeJSON(response, http.StatusOK, evidence)
 }
 
+func (s *Server) reviewFeedback(response http.ResponseWriter, request *http.Request, principal Principal) {
+	datasetID, ok := datasetPathValue(request)
+	if !ok {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "dataset ID is required", false)
+		return
+	}
+	feedbackID := strings.TrimSpace(request.PathValue("feedback_id"))
+	if feedbackID == "" {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "feedback ID is required", false)
+		return
+	}
+	var input FeedbackReviewInput
+	decoder := json.NewDecoder(io.LimitReader(request.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "feedback review body is invalid", false)
+		return
+	}
+	record, err := s.projections.ReviewFeedback(datasetID, feedbackID, input, principal)
+	if !writeProjectionError(response, request, err) {
+		return
+	}
+	writeJSON(response, http.StatusOK, record)
+}
+
 func datasetPathValue(request *http.Request) (string, bool) {
 	value := strings.TrimSpace(request.PathValue("id"))
 	return value, value != ""
@@ -314,6 +340,12 @@ func writeProjectionError(response http.ResponseWriter, request *http.Request, e
 		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", err.Error(), false)
 	case errors.Is(err, ErrReviewConflict):
 		writeAPIError(response, request, http.StatusConflict, "REVIEW_REQUIRED", err.Error(), false)
+	case errors.Is(err, ErrInvalidFeedbackReview):
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", err.Error(), false)
+	case errors.Is(err, ErrFeedbackConflict):
+		writeAPIError(response, request, http.StatusConflict, "FEEDBACK_CONFLICT", err.Error(), false)
+	case errors.Is(err, ErrFeedbackNotFound):
+		writeAPIError(response, request, http.StatusNotFound, "FEEDBACK_NOT_FOUND", err.Error(), false)
 	case errors.Is(err, ErrReviewRequired):
 		writeAPIError(response, request, http.StatusConflict, "REVIEW_REQUIRED", err.Error(), true)
 	default:

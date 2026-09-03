@@ -255,6 +255,45 @@ func TestEvidenceReviewRequiresReviewerRole(t *testing.T) {
 	assertErrorCode(t, response, "FORBIDDEN")
 }
 
+func TestReviewerCanResolveFeedbackOnlyByLinkingPublishedRevision(t *testing.T) {
+	store := newMemoryProjectionStore()
+	fixture := memoryDatasetFixture()
+	store.put(fixture)
+	principal := Principal{OrganizationID: "org-1", Roles: []string{"data_reviewer", "dataset_viewer"}}
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{principal: principal}, newMemoryRequestStore(), store)
+	create := httptest.NewRequest(http.MethodPost, "/datasets/dataset-1/feedback", strings.NewReader(`{"category":"correction","body":"Correct the published procedure.","revision_id":"revision-1"}`))
+	create.Header.Set("Content-Type", "application/json")
+	createdResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(createdResponse, create)
+	if createdResponse.Code != http.StatusCreated {
+		t.Fatalf("feedback create status = %d, want %d", createdResponse.Code, http.StatusCreated)
+	}
+	var created FeedbackRecord
+	decodeJSON(t, createdResponse, &created)
+
+	review := httptest.NewRequest(http.MethodPost, "/datasets/dataset-1/feedback/"+created.FeedbackID+"/review", strings.NewReader(`{"decision":"resolve","reason":"Replacement revision was published.","applied_revision_id":"revision-2"}`))
+	review.Header.Set("Content-Type", "application/json")
+	reviewResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(reviewResponse, review)
+	if reviewResponse.Code != http.StatusOK {
+		t.Fatalf("feedback review status = %d, want %d", reviewResponse.Code, http.StatusOK)
+	}
+	var resolved FeedbackRecord
+	decodeJSON(t, reviewResponse, &resolved)
+	if resolved.DatasetID != "dataset-1" || resolved.Status != "resolved" || resolved.AppliedRevisionID != "revision-2" {
+		t.Fatalf("unexpected resolved feedback: %#v", resolved)
+	}
+
+	review = httptest.NewRequest(http.MethodPost, "/datasets/dataset-1/feedback/"+created.FeedbackID+"/review", strings.NewReader(`{"decision":"reject","reason":"conflicting second decision"}`))
+	review.Header.Set("Content-Type", "application/json")
+	reviewResponse = httptest.NewRecorder()
+	server.Handler().ServeHTTP(reviewResponse, review)
+	if reviewResponse.Code != http.StatusConflict {
+		t.Fatalf("second feedback review status = %d, want %d", reviewResponse.Code, http.StatusConflict)
+	}
+	assertErrorCode(t, reviewResponse, "FEEDBACK_CONFLICT")
+}
+
 func performRequest(server *Server, method, path string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, path, nil)
 	response := httptest.NewRecorder()

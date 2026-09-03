@@ -332,6 +332,94 @@ func (s *postgresProjectionStore) ReviewEvidence(datasetID, evidenceID string, i
 	return evidence, nil
 }
 
+func (s *postgresProjectionStore) ReviewFeedback(datasetID, feedbackID string, input FeedbackReviewInput, principal Principal) (FeedbackRecord, error) {
+	if err := s.authorize(datasetID, principal); err != nil {
+		return FeedbackRecord{}, err
+	}
+	if err := validateFeedbackReview(input); err != nil {
+		return FeedbackRecord{}, err
+	}
+	tx, err := s.pool.Begin(context.Background())
+	if err != nil {
+		return FeedbackRecord{}, err
+	}
+	defer tx.Rollback(context.Background())
+	feedback, err := scanFeedback(tx.QueryRow(context.Background(), `
+		SELECT feedback_item_id::text, dataset_revision_id::text,
+		       extraction_evidence_id::text, category, body, status,
+		       created_at::text, applied_revision_id::text,
+		       reviewer_id::text, reviewed_at::text, review_reason
+		FROM feedback_items
+		WHERE dataset_projection_id = $1
+		  AND feedback_item_id::text = $2
+		  AND organization_id::text = $3
+		FOR UPDATE`, datasetID, feedbackID, principal.OrganizationID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return FeedbackRecord{}, ErrFeedbackNotFound
+	}
+	if err != nil {
+		return FeedbackRecord{}, err
+	}
+	feedback.DatasetID = datasetID
+	wantStatus := "rejected"
+	if input.Decision == "resolve" {
+		wantStatus = "resolved"
+		if input.AppliedRevisionID == "" {
+			return FeedbackRecord{}, ErrInvalidFeedbackReview
+		}
+		var exists bool
+		if err := tx.QueryRow(context.Background(), `
+			SELECT EXISTS (
+				SELECT 1 FROM dataset_revisions
+				WHERE dataset_revision_id::text = $1
+				  AND dataset_projection_id = $2
+				  AND published_at IS NOT NULL
+			)`, input.AppliedRevisionID, datasetID).Scan(&exists); err != nil {
+			return FeedbackRecord{}, err
+		}
+		if !exists {
+			return FeedbackRecord{}, ErrRevisionNotFound
+		}
+	} else if input.AppliedRevisionID != "" {
+		return FeedbackRecord{}, ErrInvalidFeedbackReview
+	}
+	if feedback.Status != "open" && feedback.Status != "in_review" && feedback.Status != wantStatus {
+		return FeedbackRecord{}, ErrFeedbackConflict
+	}
+	if feedback.Status == wantStatus {
+		if input.Decision == "resolve" && feedback.AppliedRevisionID != input.AppliedRevisionID {
+			return FeedbackRecord{}, ErrFeedbackConflict
+		}
+		return feedback, nil
+	}
+	var appliedRevisionID, reviewerID, reviewedAt, reviewReason *string
+	if err := tx.QueryRow(context.Background(), `
+		UPDATE feedback_items
+		SET status = $1, applied_revision_id = NULLIF($2, '')::uuid,
+		    reviewer_id = NULLIF($3, '')::uuid, reviewed_at = now(),
+		    review_reason = $4
+		WHERE feedback_item_id::text = $5
+		RETURNING applied_revision_id::text, reviewer_id::text,
+		          reviewed_at::text, review_reason`, wantStatus,
+		input.AppliedRevisionID, principal.OrganizationID, strings.TrimSpace(input.Reason), feedbackID).
+		Scan(&appliedRevisionID, &reviewerID, &reviewedAt, &reviewReason); err != nil {
+		return FeedbackRecord{}, err
+	}
+	feedback.Status = wantStatus
+	if appliedRevisionID != nil {
+		feedback.AppliedRevisionID = *appliedRevisionID
+	}
+	feedback.ReviewerID = reviewerID
+	feedback.ReviewedAt = reviewedAt
+	if reviewReason != nil {
+		feedback.ReviewReason = *reviewReason
+	}
+	if err := tx.Commit(context.Background()); err != nil {
+		return FeedbackRecord{}, err
+	}
+	return feedback, nil
+}
+
 func scanEvidence(row rowScanner) (EvidenceRecord, error) {
 	var evidence EvidenceRecord
 	var reviewReason *string
@@ -347,6 +435,34 @@ func scanEvidence(row rowScanner) (EvidenceRecord, error) {
 		evidence.ReviewReason = *reviewReason
 	}
 	return evidence, nil
+}
+
+func scanFeedback(row rowScanner) (FeedbackRecord, error) {
+	var record FeedbackRecord
+	var revisionID, evidenceID, appliedRevisionID, reviewerID, reviewedAt, reviewReason *string
+	if err := row.Scan(
+		&record.FeedbackID, &revisionID, &evidenceID,
+		&record.Category, &record.Body, &record.Status, &record.CreatedAt,
+		&appliedRevisionID, &reviewerID, &reviewedAt,
+		&reviewReason,
+	); err != nil {
+		return FeedbackRecord{}, err
+	}
+	if revisionID != nil {
+		record.RevisionID = *revisionID
+	}
+	if evidenceID != nil {
+		record.EvidenceID = *evidenceID
+	}
+	if appliedRevisionID != nil {
+		record.AppliedRevisionID = *appliedRevisionID
+	}
+	record.ReviewerID = reviewerID
+	record.ReviewedAt = reviewedAt
+	if reviewReason != nil {
+		record.ReviewReason = *reviewReason
+	}
+	return record, nil
 }
 
 func stringPointer(value string) *string {
