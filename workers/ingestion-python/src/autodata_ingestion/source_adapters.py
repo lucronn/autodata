@@ -227,7 +227,7 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
             candidates=tuple(candidates),
         )
     if resource.media_type in _DIAGRAM_TYPES:
-        return _binary_artifact("diagram", resource, metadata)
+        return _adapt_svg_resource(resource, metadata)
     if resource.media_type in _DOCUMENT_TYPES:
         return _adapt_document_resource(resource, metadata)
     if resource.media_type == "text/csv":
@@ -507,6 +507,61 @@ def _adapt_pdf_resource(
         extraction_metadata["page_errors"] = page_errors
     return SourceArtifact(
         kind="document",
+        source_uri=resource.source_uri,
+        source_version=resource.source_version,
+        media_type=resource.media_type,
+        content_sha256=resource.content_sha256,
+        payload=resource.payload,
+        raw_payload=resource.payload,
+        metadata=extraction_metadata,
+        candidates=tuple(candidates),
+    )
+
+
+def _adapt_svg_resource(
+    resource: SourceResource,
+    metadata: dict[str, Any],
+) -> SourceArtifact:
+    """Extract literal SVG labels while leaving geometry as an opaque diagram."""
+
+    try:
+        lowered = resource.payload.lower()
+        if b"<!doctype" in lowered or b"<!entity" in lowered:
+            raise ValueError("SVG DTD and entity declarations are not supported")
+        root = ElementTree.fromstring(resource.payload)
+    except (ElementTree.ParseError, ValueError) as error:
+        return _binary_artifact(
+            "diagram",
+            resource,
+            {**metadata, "extraction_status": "needs_review", "extraction_error": str(error)},
+        )
+
+    candidates: list[NormalizationCandidate] = []
+    counts: dict[str, int] = {}
+    for element in root.iter():
+        tag = _local_name(str(element.tag)).casefold()
+        if tag not in {"title", "desc", "text"}:
+            continue
+        text = re.sub(r"\s+", " ", " ".join(element.itertext())).strip()
+        if not text:
+            continue
+        counts[tag] = counts.get(tag, 0) + 1
+        candidates.append(
+            NormalizationCandidate(
+                "diagram_text",
+                f"diagram-text:{resource.content_sha256}:{tag}:{counts[tag]}",
+                {"text": text},
+                f"svg:{tag}[{counts[tag]}]",
+            )
+        )
+
+    extraction_metadata: dict[str, Any] = {
+        **metadata,
+        "extracted_label_count": len(candidates),
+        "extraction_status": "candidate_ready" if candidates else "needs_review",
+    }
+    return SourceArtifact(
+        kind="diagram",
         source_uri=resource.source_uri,
         source_version=resource.source_version,
         media_type=resource.media_type,

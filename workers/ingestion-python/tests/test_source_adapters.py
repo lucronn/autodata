@@ -175,6 +175,28 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual([candidate.locator for candidate in artifact.candidates], ["page:1", "page:2"])
         self.assertEqual(artifact.candidates[1].data["text"], "Safety warning")
 
+    def test_svg_extracts_literal_labels_without_interpreting_geometry(self):
+        svg = SourceResource.from_bytes(
+            "file://drop/wiring.svg",
+            "v1",
+            (
+                b'<svg xmlns="http://www.w3.org/2000/svg">'
+                b"<title>ABS harness</title><desc>Connector view</desc>"
+                b'<path d="M0 0 L10 10"/><text x="1" y="2">C101</text></svg>'
+            ),
+            "image/svg+xml",
+        )
+
+        artifact = adapt_source_resource(svg)
+
+        self.assertEqual(artifact.kind, "diagram")
+        self.assertEqual(
+            [candidate.data["text"] for candidate in artifact.candidates],
+            ["ABS harness", "Connector view", "C101"],
+        )
+        self.assertTrue(all(candidate.kind == "diagram_text" for candidate in artifact.candidates))
+        self.assertEqual(artifact.metadata["extracted_label_count"], 3)
+
     def test_content_sniffing_takes_precedence_over_misleading_file_extensions(self):
         xml = b'\xef\xbb\xbf<?xml version="1.0"?><vehicle><make>Ford</make></vehicle>'
 
