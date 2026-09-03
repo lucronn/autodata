@@ -189,6 +189,8 @@ The publication outbox adds `producer`, `delivery_status`, `delivery_attempts`, 
 
 The `dataset.viewable` payload may include an optional `deep_sections` array of stable section tokens. When absent, the enrichment fan-out consumer uses the configured default deep catalog. Fan-out is a separate durable consumer boundary: it acknowledges only after all requested section jobs and `dataset.deep.requested` outbox events have been idempotently claimed. Re-delivery must not create duplicate jobs, and a failure in one section must not change the already-published viewable revision.
 
+The `dataset.deep.requested` consumer validates the section request before dispatching to a registered processor. Processor registration is keyed by section token and is deployment configuration; the event envelope remains provider-neutral. A missing processor is a terminal configuration error and is dead-lettered. A registered processor receives the validated request identity, reads source material through its secret-managed runtime interfaces, and must publish through the deep immutable-revision contract or return a retryable failure. No processor may mutate an earlier published revision.
+
 ## Payment adapter
 
 The internal payment boundary is provider-neutral:
