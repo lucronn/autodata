@@ -102,8 +102,10 @@ def register_builtin_processors() -> None:
     """Register processors shipped by this worker image."""
 
     from .deep_dispatch import register_section_processor
+    from .diagnostics_processor import process_diagnostics_request
     from .quality_processor import process_quality_request
 
+    register_section_processor("diagnostics", process_diagnostics_request)
     register_section_processor("search", process_search_request)
     register_section_processor("quality", process_quality_request)
 
