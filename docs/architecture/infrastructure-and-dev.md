@@ -174,7 +174,7 @@ Configuration is grouped by subsystem and supplied through environment variables
 | Payments | adapter mode, webhook path, provider IDs | signing secret is secret |
 | Authentication | issuer, audience, role claim, key-set URL | private keys are secret |
 | Observability | service name, exporter endpoint, sampling rate | tokens may be secret |
-| Workers | concurrency, timeout, batch size, model/provider version | provider keys are secret |
+| Workers | concurrency, timeout, batch size, model/provider version, embedding mode | provider keys are secret |
 
 Examples use names and local fake values only. No real token, API key, private key, webhook secret, or credential may appear in documentation, fixtures, logs, or committed configuration.
 
