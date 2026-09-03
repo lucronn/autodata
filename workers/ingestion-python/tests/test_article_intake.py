@@ -167,13 +167,13 @@ class VehicleArticleIntakeTests(unittest.TestCase):
             SourceResource.from_bytes(
                 "https://one.example/tsb-42",
                 "v1",
-                _html("Brake connector service bulletin", article_id="TSB-42"),
+                _html("Brake bulletin", article_id="TSB-42"),
                 "text/html",
             ),
             SourceResource.from_bytes(
                 "https://two.example/tsb-43",
                 "v2",
-                _html("Brake connector service bulletin", article_id="TSB-43"),
+                _html("Brake bulletin", article_id="TSB-43"),
                 "text/html",
             ),
         ]

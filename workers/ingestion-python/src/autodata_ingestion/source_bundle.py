@@ -374,6 +374,10 @@ def _same_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
 
 
 def _similar_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    left_title = _article_text(left.get("title"))
+    right_title = _article_text(right.get("title"))
+    if left_title and left_title == right_title:
+        return True
     left_tokens = _article_tokens(left.get("title"))
     right_tokens = _article_tokens(right.get("title"))
     if len(left_tokens & right_tokens) < 3:
