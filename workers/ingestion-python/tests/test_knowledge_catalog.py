@@ -67,6 +67,10 @@ class KnowledgeCatalogTests(unittest.TestCase):
                     0.98,
                     "https://source.example/tsb-42",
                     "source-v1",
+                    "evidence-1",
+                    "sources/tsb-42.html",
+                    "Inspect and replace the brake connector.",
+                    "pending",
                     "Chevrolet",
                     "Silverado 1500",
                     1999,
@@ -94,8 +98,12 @@ class KnowledgeCatalogTests(unittest.TestCase):
         self.assertEqual(result[0]["vehicle_key"], target.vehicle_key)
         self.assertEqual(result[0]["article"]["article_id"], "TSB-42")
         self.assertEqual(result[0]["vehicle_identity"]["engine_displacement_l"], 5.3)
+        self.assertEqual(result[0]["evidence"][0]["evidence_id"], "evidence-1")
+        self.assertEqual(result[0]["evidence"][0]["artifact_key"], "sources/tsb-42.html")
+        self.assertEqual(result[0]["evidence"][0]["reviewer_state"], "pending")
         self.assertEqual(result[1]["procedure"]["procedure_id"], "procedure:TSB-42")
         self.assertEqual(cursor.params, (target.vehicle_key,))
+        self.assertIn("JOIN extraction_evidence", cursor.query)
         self.assertIn("NOT EXISTS", cursor.query)
         self.assertIn("takedown_status = 'active'", cursor.query)
 
