@@ -23,6 +23,9 @@ def run_once() -> dict[str, object]:
     article_uri = os.getenv("AUTODATA_ARTICLE_URI", "").strip()
     if article_uri:
         return run_article_url(article_uri, os.getenv("AUTODATA_ARTICLE_VEHICLE_JSON", ""))
+    knowledge_request = os.getenv("AUTODATA_KNOWLEDGE_REQUEST_JSON", "").strip()
+    if knowledge_request:
+        return run_vehicle_knowledge(knowledge_request)
     vehicle_list = os.getenv("AUTODATA_VEHICLE_LIST_JSON", "").strip()
     if vehicle_list:
         return run_vehicle_selection(vehicle_list)
@@ -96,6 +99,68 @@ def run_article_url(source_uri: str, serialized_vehicle: str) -> dict[str, objec
         "quarantined": list(intake.bundle.quarantined),
         "conflicts": list(intake.bundle.conflicts),
     }
+
+
+def run_vehicle_knowledge(serialized_request: str) -> dict[str, object]:
+    """Resolve a vehicle-scoped query from the normalized catalog or HTTP source."""
+
+    try:
+        request = json.loads(serialized_request)
+    except json.JSONDecodeError as error:
+        raise ValueError("AUTODATA_KNOWLEDGE_REQUEST_JSON must be valid JSON") from error
+    if not isinstance(request, dict):
+        raise ValueError("AUTODATA_KNOWLEDGE_REQUEST_JSON must contain an object")
+
+    vehicle = request.get("vehicle")
+    if not isinstance(vehicle, dict):
+        raise ValueError("knowledge request vehicle must be an object")
+    year = vehicle.get("model_year", vehicle.get("year"))
+    required = {"make", "model", "region"}
+    if year is None or not required.issubset(vehicle):
+        raise ValueError("knowledge request vehicle must include make, model, year, and region")
+
+    from .article_intake import VehicleTarget
+    from .knowledge_fallback import HttpKnowledgeSourceResolver, query_vehicle_knowledge
+
+    target = VehicleTarget(
+        vehicle["make"],
+        vehicle["model"],
+        year,
+        vehicle["region"],
+        vehicle.get("trim"),
+    )
+    query = request.get("query", "")
+    keywords = request.get("keywords", ())
+    if isinstance(keywords, str) or not isinstance(keywords, (list, tuple)):
+        raise ValueError("knowledge request keywords must be an array of strings")
+    if any(not isinstance(keyword, str) for keyword in keywords):
+        raise ValueError("knowledge request keywords must be an array of strings")
+
+    catalog = request.get("catalog", [])
+    source_template = request.get("source_uri_template") or os.getenv(
+        "AUTODATA_KNOWLEDGE_SOURCE_URI_TEMPLATE", ""
+    ).strip()
+    source_uri = request.get("source_uri")
+    if source_uri is not None:
+        source_template = str(source_uri).strip()
+    source_version = request.get("source_version") or os.getenv("AUTODATA_SOURCE_VERSION") or None
+    resolver = HttpKnowledgeSourceResolver(
+        source_template,
+        source_version=source_version,
+        timeout_seconds=float(os.getenv("AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS", "30")),
+        max_bytes=int(os.getenv("AUTODATA_SOURCE_MAX_BYTES", str(50 * 1024 * 1024))),
+        request_headers=_source_request_headers(),
+    ) if source_template else lambda *_args: None
+
+    result = query_vehicle_knowledge(
+        target,
+        query,
+        catalog=catalog,
+        source_resolver=resolver,
+        keywords=keywords,
+        kind=request.get("kind", "all"),
+    )
+    return {"worker": "ingestion", "lane": "fast", **result.to_dict()}
 
 
 def run_source_directory(directory: str) -> dict[str, str | int | list[str]]:

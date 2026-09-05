@@ -137,6 +137,24 @@ PYTHONPATH=workers/ingestion-python/src \
 python3 -m autodata_ingestion.worker
 ```
 
+For vehicle-scoped keyword lookup, provide a normalized catalog in the
+request. A catalog hit is returned immediately without a source request:
+
+```sh
+AUTODATA_WORKER_ONCE=1 \
+AUTODATA_KNOWLEDGE_REQUEST_JSON='{"vehicle":{"year":1999,"make":"Chevy","model":"Silverado 1500","region":"US"},"query":"brake connector","catalog":[{"vehicle_key":"chevrolet-silverado-1500-1999-us","kind":"article","article":{"article_id":"TSB-42","title":"Brake connector bulletin"},"evidence":[]}]}' \
+PYTHONPATH=workers/ingestion-python/src \
+python3 -m autodata_ingestion.worker
+```
+
+On a catalog miss, set `source_uri_template` in the request or
+`AUTODATA_KNOWLEDGE_SOURCE_URI_TEMPLATE` in the environment. The HTTP source
+template may use `{vehicle_key}`, `{year}`, `{make}`, `{model}`, `{region}`,
+`{query}`, and `{keywords}`. The worker URL-escapes those values, fetches one
+bounded source resource, verifies the returned vehicle, and returns the
+normalized article with evidence. Source responses are never treated as a
+match unless the requested vehicle and query both pass the intake boundary.
+
 Mercury-2 is optional and advisory for ambiguous identity decisions. Enable
 it only through secret-managed environment variables; never place the API key
 in Compose files, source files, README examples, or Git history:

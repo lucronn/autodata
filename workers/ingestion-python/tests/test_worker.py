@@ -63,6 +63,69 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual(result["articles"][0]["article_id"], "TSB-42")
         self.assertTrue(result["evidence"])
 
+    def test_configured_knowledge_request_returns_catalog_hit_without_http_fetch(self):
+        from autodata_ingestion.worker import run_vehicle_knowledge
+
+        request = {
+            "vehicle": {"year": 1999, "make": "Chevy", "model": "Silverado 1500", "region": "US"},
+            "query": "brake connector",
+            "catalog": [
+                {
+                    "vehicle_key": "chevrolet-silverado-1500-1999-us",
+                    "kind": "article",
+                    "article": {"article_id": "TSB-42", "title": "Brake connector bulletin"},
+                    "evidence": [],
+                }
+            ],
+        }
+
+        with patch.dict(
+            "os.environ",
+            {
+                "AUTODATA_SOURCE_DIRECTORY": "",
+                "AUTODATA_SOURCE_URI": "",
+                "AUTODATA_FAST_EVENT_JSON": "",
+                "AUTODATA_ARTICLE_URI": "",
+                "AUTODATA_KNOWLEDGE_REQUEST_JSON": json.dumps(request),
+            },
+            clear=False,
+        ):
+            result = run_once()
+
+        self.assertEqual(result["status"], "cache_hit")
+        self.assertEqual(result["vehicle"]["make"], "Chevrolet")
+        self.assertEqual(result["results"][0]["article"]["article_id"], "TSB-42")
+
+    def test_configured_knowledge_request_fetches_on_catalog_miss(self):
+        from autodata_ingestion.worker import run_vehicle_knowledge
+
+        source_uri = "https://source.example/{vehicle_key}?q={query}"
+        resource = SourceResource.from_bytes(
+            "https://source.example/chevrolet-silverado-1500-1999-us?q=brake%20connector",
+            "source-v1",
+            b'<html><head><meta name="vehicle" content="1999 Chevrolet Silverado 1500"><meta name="article:id" content="TSB-42"><meta property="og:title" content="Brake connector bulletin"></head><body><article><p>Inspect the brake connector.</p></article></body></html>',
+            "text/html",
+        )
+        with patch("autodata_ingestion.http_connector.HttpSourceConnector") as connector_class:
+            connector_class.return_value.fetch.return_value = [resource]
+            result = run_vehicle_knowledge(
+                json.dumps(
+                    {
+                        "vehicle": {"year": 1999, "make": "Chevy", "model": "Silverado 1500", "region": "US"},
+                        "query": "brake connector",
+                        "source_uri_template": source_uri,
+                    }
+                )
+            )
+
+        self.assertEqual(result["status"], "fetched")
+        self.assertEqual(result["results"][0]["article"]["article_id"], "TSB-42")
+        connector_class.assert_called_once()
+        self.assertEqual(
+            connector_class.call_args.args[0],
+            "https://source.example/chevrolet-silverado-1500-1999-us?q=brake%20connector",
+        )
+
     def test_configured_source_directory_runs_the_normalization_pipeline(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from autodata_ingestion.article_intake import VehicleTarget  # noqa: E402
 from autodata_ingestion.knowledge_fallback import (  # noqa: E402
+    HttpKnowledgeSourceResolver,
     ResolvedSource,
     query_vehicle_knowledge,
 )
@@ -49,6 +50,21 @@ def _html(*, vehicle="2019 Cadillac Escalade ESV", article_id="TSB-42"):
 
 
 class KnowledgeFallbackTests(unittest.TestCase):
+    def test_http_resolver_uses_canonical_vehicle_identifier_and_escapes_query(self):
+        resolver = HttpKnowledgeSourceResolver(
+            "https://source.example/{region}/{vehicle_key}?q={query}&keywords={keywords}",
+            source_version="source-v1",
+        )
+
+        resolved = resolver.resolve(TARGET, "brake connector & wiring", ("connector", "service"))
+
+        self.assertEqual(
+            resolved.source_uri,
+            "https://source.example/US/cadillac-escalade-esv-2019-us?q=brake%20connector%20%26%20wiring&keywords=connector%2Cservice",
+        )
+        self.assertEqual(resolved.source_version, "source-v1")
+        self.assertEqual(resolved.connector.name, "http")
+
     def test_catalog_hit_returns_normalized_article_without_calling_resolver(self):
         resolver_calls = []
         catalog = [

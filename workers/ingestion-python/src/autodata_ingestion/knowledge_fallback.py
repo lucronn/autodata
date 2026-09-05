@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol
+from urllib.parse import quote
 
 from .article_intake import VehicleArticleIntake, VehicleTarget, ingest_vehicle_article
 
@@ -45,6 +46,66 @@ class ResolvedSource:
         )
         object.__setattr__(self, "source_uri", source_uri)
         object.__setattr__(self, "source_version", source_version or None)
+
+
+@dataclass(frozen=True)
+class HttpKnowledgeSourceResolver:
+    """Resolve a vehicle/query source through a bounded HTTP connector.
+
+    The template is provider configuration, not domain logic. Supported
+    placeholders are ``vehicle_key``, ``year``, ``make``, ``model``,
+    ``region``, ``query``, and ``keywords``. Values are URL-escaped before
+    substitution so a query cannot alter the configured request path.
+    """
+
+    uri_template: str
+    source_version: str | None = None
+    timeout_seconds: float = 30
+    max_bytes: int = 50 * 1024 * 1024
+    request_headers: Mapping[str, str] | None = None
+
+    def __post_init__(self) -> None:
+        template = str(self.uri_template).strip()
+        if not template:
+            raise ValueError("knowledge source URI template is required")
+        if not template.startswith(("http://", "https://")):
+            raise ValueError("knowledge source URI template must be HTTP(S)")
+        if self.timeout_seconds <= 0:
+            raise ValueError("knowledge source timeout must be positive")
+        if self.max_bytes < 1:
+            raise ValueError("knowledge source maximum size must be positive")
+        object.__setattr__(self, "uri_template", template)
+        object.__setattr__(self, "request_headers", dict(self.request_headers or {}))
+
+    def resolve(
+        self, target: VehicleTarget, query: str, keywords: tuple[str, ...]
+    ) -> ResolvedSource:
+        from .http_connector import HttpSourceConnector
+
+        values = {
+            "vehicle_key": target.vehicle_key,
+            "year": str(target.model_year),
+            "make": target.make,
+            "model": target.model,
+            "region": target.region,
+            "query": query,
+            "keywords": ",".join(keywords),
+        }
+        escaped_values = {
+            key: quote(value, safe="") for key, value in values.items()
+        }
+        try:
+            source_uri = self.uri_template.format_map(escaped_values)
+        except KeyError as error:
+            raise ValueError(f"unsupported knowledge source placeholder: {error.args[0]}") from error
+        connector = HttpSourceConnector(
+            source_uri,
+            self.source_version,
+            timeout_seconds=self.timeout_seconds,
+            max_bytes=self.max_bytes,
+            request_headers=dict(self.request_headers or {}),
+        )
+        return ResolvedSource(source_uri, connector, self.source_version)
 
 
 @dataclass(frozen=True)
