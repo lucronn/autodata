@@ -49,6 +49,12 @@ def _html(title, *, article_id="TSB-42", vehicle="2019 Cadillac Escalade ESV"):
 
 
 class VehicleArticleIntakeTests(unittest.TestCase):
+    def test_vehicle_target_canonicalizes_chevy_alias_for_stable_key(self):
+        target = VehicleTarget("Chevy", "Silverado 1500", 1999, "US")
+
+        self.assertEqual(target.make, "Chevrolet")
+        self.assertEqual(target.vehicle_key, "chevrolet-silverado-1500-1999-us")
+
     def test_http_article_extracts_facts_with_source_provenance_and_vehicle_association(self):
         resource = SourceResource.from_bytes(
             "https://source.example/articles/tsb-42",

@@ -22,6 +22,7 @@ class VehicleTarget:
 
     def __post_init__(self) -> None:
         make = str(self.make).strip()
+        make = {"chevy": "Chevrolet", "chevrolet": "Chevrolet"}.get(make.casefold(), make)
         model = str(self.model).strip()
         region = str(self.region).strip().upper()
         trim = str(self.trim).strip() if self.trim is not None else None
