@@ -307,6 +307,21 @@ def _coerce_resolved_source(value: Any) -> ResolvedSource | None:
 
 def _catalog_records(catalog: Iterable[Mapping[str, Any]] | Mapping[str, Any]) -> list[Mapping[str, Any]]:
     if isinstance(catalog, Mapping):
+        nested_data = catalog.get("data")
+        if isinstance(nested_data, Mapping):
+            projected = dict(nested_data)
+            for key in (
+                "dataset_id",
+                "revision_id",
+                "availability",
+                "source_watermark",
+                "sections",
+                "vehicle_identity",
+                "evidence",
+            ):
+                if key not in projected and key in catalog:
+                    projected[key] = catalog[key]
+            return _catalog_records(projected)
         shared_vehicle = {
             key: catalog[key]
             for key in ("vehicle_key", "vehicle", "vehicle_identity")
@@ -319,6 +334,8 @@ def _catalog_records(catalog: Iterable[Mapping[str, Any]] | Mapping[str, Any]) -
             entries = []
             for key in ("articles", "procedures"):
                 values = catalog.get(key, ())
+                if key == "procedures" and isinstance(values, Mapping):
+                    values = values.get("records", ())
                 if isinstance(values, Iterable) and not isinstance(values, (str, bytes, Mapping)):
                     entries.extend({**shared_vehicle, "kind": key[:-1], "evidence": shared_evidence, **entry} for entry in values if isinstance(entry, Mapping))
         if not entries:
@@ -422,6 +439,27 @@ def _fetched_records(intake: VehicleArticleIntake) -> list[dict[str, Any]]:
                 "evidence": [evidence_by_id[str(identifier)] for identifier in identifiers if str(identifier) in evidence_by_id],
             }
         )
+        bucket = str(article.get("bucket") or "").casefold()
+        if article.get("steps") or any(
+            signal in bucket for signal in ("procedure", "repair", "maintenance")
+        ):
+            records.append(
+                {
+                    "kind": "procedure",
+                    "vehicle_key": intake.target.vehicle_key,
+                    "procedure": {
+                        "procedure_id": f"procedure:{article['article_id']}",
+                        "section": "procedures",
+                        "excerpt": str(article.get("body") or "").strip(),
+                        "matched_terms": [],
+                    },
+                    "evidence": [
+                        evidence_by_id[str(identifier)]
+                        for identifier in identifiers
+                        if str(identifier) in evidence_by_id
+                    ],
+                }
+            )
     return records
 
 

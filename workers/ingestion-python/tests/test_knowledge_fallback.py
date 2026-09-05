@@ -50,6 +50,33 @@ def _html(*, vehicle="2019 Cadillac Escalade ESV", article_id="TSB-42"):
 
 
 class KnowledgeFallbackTests(unittest.TestCase):
+    def test_api_dataset_data_shape_is_searchable_as_a_catalog(self):
+        catalog = {
+            "dataset_id": "dataset-1",
+            "revision_id": "revision-1",
+            "data": {
+                "vehicle_identity": {"vehicle_key": TARGET.vehicle_key},
+                "articles": [
+                    {
+                        "article_id": "TSB-42",
+                        "title": "Brake connector bulletin",
+                    }
+                ],
+            },
+        }
+
+        result = query_vehicle_knowledge(
+            TARGET,
+            "brake connector",
+            catalog=catalog,
+            source_resolver=lambda *_args: (_ for _ in ()).throw(
+                AssertionError("the dataset data catalog should be a cache hit")
+            ),
+        )
+
+        self.assertEqual(result.status, "cache_hit")
+        self.assertEqual(result.results[0]["article"]["article_id"], "TSB-42")
+
     def test_http_resolver_uses_canonical_vehicle_identifier_and_escapes_query(self):
         resolver = HttpKnowledgeSourceResolver(
             "https://source.example/{region}/{vehicle_key}?q={query}&keywords={keywords}",
@@ -219,6 +246,28 @@ class KnowledgeFallbackTests(unittest.TestCase):
 
         self.assertEqual(result.status, "fetched")
         self.assertEqual(result.results, ())
+
+    def test_fetched_repair_article_can_return_a_procedure_result(self):
+        source_uri = "https://source.example/articles/procedure-42"
+        html = b'<html><head><meta name="vehicle" content="2019 Cadillac Escalade ESV"><meta name="article:id" content="PROC-42"><meta name="article:section" content="Repair Procedure"><meta property="og:title" content="Brake connector repair procedure"></head><body><article><p>Inspect the brake connector before replacement.</p></article></body></html>'
+        connector = _StaticConnector(
+            [SourceResource.from_bytes(source_uri, "procedure-v1", html, "text/html")]
+        )
+
+        result = query_vehicle_knowledge(
+            TARGET,
+            "brake connector",
+            catalog=[],
+            source_resolver=lambda target, query, keywords: ResolvedSource(
+                source_uri, connector
+            ),
+            kind="procedure",
+        )
+
+        self.assertEqual(result.status, "fetched")
+        self.assertEqual(result.results[0]["kind"], "procedure")
+        self.assertEqual(result.results[0]["procedure"]["procedure_id"], "procedure:PROC-42")
+        self.assertIn("brake connector", result.results[0]["procedure"]["excerpt"].casefold())
 
     def test_kind_filter_keeps_the_normalized_result_type_vehicle_scoped(self):
         catalog = [
