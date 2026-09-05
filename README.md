@@ -114,6 +114,29 @@ content-first classification and normalization path. Source authentication, if
 required, belongs in secret-managed `AUTODATA_SOURCE_REQUEST_HEADERS_JSON`; do
 not commit header values or credentials to the repository.
 
+Normalize a vehicle list into stable selection JSON without starting the
+container stack:
+
+```sh
+AUTODATA_WORKER_ONCE=1 \
+AUTODATA_VEHICLE_LIST_JSON='[{"model_year":"99","make":"Chevy","model":"Silverado 1500","region":"US","drivetrain":"2wd"},{"year":1999,"make":"Chevrolet","model":"Silverado 1500","region":"US","drivetrain":"2WD","engine_displacement_l":5.3}]' \
+PYTHONPATH=workers/ingestion-python/src \
+python3 -m autodata_ingestion.worker
+```
+
+For one target article, set `AUTODATA_ARTICLE_URI` and provide the target
+vehicle as JSON. The worker returns the normalized article records together
+with their source evidence; source credentials, if required, remain in the
+secret-managed request-header variable:
+
+```sh
+AUTODATA_WORKER_ONCE=1 \
+AUTODATA_ARTICLE_URI=https://example.test/article \
+AUTODATA_ARTICLE_VEHICLE_JSON='{"year":1999,"make":"Chevrolet","model":"Silverado 1500","region":"US","drivetrain":"2WD"}' \
+PYTHONPATH=workers/ingestion-python/src \
+python3 -m autodata_ingestion.worker
+```
+
 ## Run tests
 
 ```sh
