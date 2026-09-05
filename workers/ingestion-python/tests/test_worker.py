@@ -41,6 +41,35 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual(result["vehicles"][0]["vehicle_id_key"], "chevrolet-silverado-1500-1999-us")
         self.assertEqual(len(result["vehicles"][0]["configurations"]), 2)
 
+    def test_configured_vehicle_list_can_persist_identity_observations(self):
+        from autodata_ingestion import vehicle_selection_persistence
+
+        values = [
+            {"year": 1999, "make": "Chevy", "model": "Silverado 1500", "region": "US", "drivetrain": "2wd"},
+            {"year": 1999, "make": "Chevrolet", "model": "Silverado 1500", "region": "US", "drivetrain": "2WD", "engine_displacement_l": 5.3},
+        ]
+        with patch(
+            "autodata_ingestion.vehicle_selection_persistence.persist_vehicle_selection_list",
+            return_value={"status": "persisted", "observation_count": 2},
+        ) as persist:
+            with patch.dict(
+                "os.environ",
+                {
+                    "AUTODATA_SOURCE_DIRECTORY": "",
+                    "AUTODATA_SOURCE_URI": "",
+                    "AUTODATA_FAST_EVENT_JSON": "",
+                    "AUTODATA_VEHICLE_LIST_JSON": json.dumps(values),
+                    "AUTODATA_SOURCE_PERSIST": "1",
+                    "AUTODATA_SOURCE_REGION": "US",
+                },
+                clear=False,
+            ):
+                result = run_once()
+
+        self.assertEqual(result["persistence"]["status"], "persisted")
+        persist.assert_called_once()
+        self.assertEqual(persist.call_args.args[0], values)
+
     def test_configured_article_url_returns_normalized_article_and_evidence_json(self):
         from autodata_ingestion.worker import run_article_url
 

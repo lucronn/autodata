@@ -45,13 +45,27 @@ def run_vehicle_selection(serialized_vehicle_list: str) -> dict[str, object]:
     from .vehicle_selection import normalize_vehicle_list_json
 
     vehicles = normalize_vehicle_list_json(values)
-    return {
+    result: dict[str, object] = {
         "worker": "ingestion",
         "lane": "fast",
         "status": "ready",
         "vehicles": vehicles,
         "vehicle_count": len(vehicles),
     }
+    if os.getenv("AUTODATA_SOURCE_PERSIST") == "1":
+        from .vehicle_selection_persistence import persist_vehicle_selection_list
+
+        result["persistence"] = persist_vehicle_selection_list(
+            values,
+            source_uri=os.getenv(
+                "AUTODATA_VEHICLE_LIST_SOURCE_URI", "input://vehicle-list"
+            ),
+            source_version=os.getenv(
+                "AUTODATA_SOURCE_VERSION", "vehicle-list-v1"
+            ),
+            region=os.getenv("AUTODATA_SOURCE_REGION") or None,
+        )
+    return result
 
 
 def run_article_url(source_uri: str, serialized_vehicle: str) -> dict[str, object]:

@@ -124,6 +124,13 @@ PYTHONPATH=workers/ingestion-python/src \
 python3 -m autodata_ingestion.worker
 ```
 
+Set `AUTODATA_SOURCE_PERSIST=1` when the PostgreSQL and MinIO variables are
+available to persist the list as an immutable source snapshot. Each row is
+stored with evidence and an identity observation; richer rows add a
+configuration beneath the existing `vehicle_id` instead of creating another
+vehicle family. `AUTODATA_VEHICLE_LIST_SOURCE_URI` and
+`AUTODATA_SOURCE_VERSION` identify the list source for replay and audit.
+
 For one target article, set `AUTODATA_ARTICLE_URI` and provide the target
 vehicle as JSON. The worker returns the normalized article records together
 with their source evidence; source credentials, if required, remain in the
