@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Iterable
 
 from .source_adapters import NormalizationCandidate, SourceArtifact
+from .vehicle_identity import canonicalize_vehicle_observation
 
 
 _PRICE_RE = re.compile(
@@ -221,7 +222,28 @@ def _normalize_vehicle(
     *,
     expected_vehicle: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    parsed = [item for item in candidates if {"year", "make", "model"}.issubset(item[2])]
+    parsed: list[tuple[SourceArtifact, NormalizationCandidate, dict[str, Any]]] = []
+    for item in candidates:
+        if not {"year", "make", "model"}.issubset(item[2]):
+            continue
+        try:
+            canonical = canonicalize_vehicle_observation(
+                {
+                    **item[2],
+                    "region": item[2].get("region", region),
+                }
+            ).to_dict()
+        except (TypeError, ValueError):
+            quarantined.append(
+                {
+                    "source_uri": item[0].source_uri,
+                    "content_sha256": item[0].content_sha256,
+                    "reason": "invalid_vehicle_identity",
+                    "evidence_id": item[2].get("evidence_id"),
+                }
+            )
+            continue
+        parsed.append((item[0], item[1], {**canonical, "evidence_id": item[2]["evidence_id"]}))
     if not parsed:
         return None
     identities = {(item[2]["year"], item[2]["make"], item[2]["model"]) for item in parsed}
@@ -254,18 +276,24 @@ def _normalize_vehicle(
     make = str(record["make"]).strip()
     model = str(record["model"]).strip()
     year = int(record["year"])
-    normalized_region = region.strip().upper()
+    normalized_region = str(record.get("region", region)).strip().upper()
     if expected_vehicle is not None:
-        expected_make = str(expected_vehicle.get("make", "")).strip()
-        expected_model = str(expected_vehicle.get("model", "")).strip()
-        expected_region = str(expected_vehicle.get("region", normalized_region)).strip().upper()
+        try:
+            expected = canonicalize_vehicle_observation(
+                {**expected_vehicle, "region": expected_vehicle.get("region", normalized_region)}
+            )
+        except (TypeError, ValueError):
+            expected = None
+        expected_make = expected.make if expected is not None else str(expected_vehicle.get("make", "")).strip()
+        expected_model = expected.model if expected is not None else str(expected_vehicle.get("model", "")).strip()
+        expected_region = expected.region if expected is not None and expected.region else str(expected_vehicle.get("region", normalized_region)).strip().upper()
         source_region = str(record.get("region", normalized_region)).strip().upper()
         try:
             expected_year = int(expected_vehicle.get("year"))
         except (TypeError, ValueError):
             expected_year = None
-        expected_trim = str(expected_vehicle.get("trim", "")).strip() or None
-        source_trim = str(record.get("trim", "")).strip() or None
+        expected_trim = expected.trim if expected is not None else str(expected_vehicle.get("trim", "")).strip() or None
+        source_trim = record.get("trim")
         mismatch = (
             make.casefold() != expected_make.casefold()
             or model.casefold() != expected_model.casefold()
@@ -305,7 +333,10 @@ def _normalize_vehicle(
         "model": model,
         "model_year": year,
         "region": normalized_region,
+        "body_style": record.get("body_style"),
         "trim": record.get("trim"),
+        "drivetrain": record.get("drivetrain"),
+        "engine_displacement_l": record.get("engine_displacement_l"),
         "evidence_id": record["evidence_id"],
     }
 

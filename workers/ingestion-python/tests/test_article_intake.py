@@ -134,6 +134,24 @@ class VehicleArticleIntakeTests(unittest.TestCase):
         )
         self.assertEqual(result.bundle.vehicle["vehicle_key"], TARGET.vehicle_key)
 
+    def test_vehicle_aliases_are_canonicalized_before_target_association(self):
+        resource = SourceResource.from_bytes(
+            "https://source.example/articles/chevy",
+            "chevy-v1",
+            _html("Brake connector service bulletin", vehicle="2019 Chevy Escalade ESV"),
+            "text/html",
+        )
+
+        result = ingest_vehicle_article(
+            resource.source_uri,
+            VehicleTarget("Chevy", "Escalade ESV", 2019, "US"),
+            connector=_StaticConnector([resource]),
+        )
+
+        self.assertEqual(result.status, "ready")
+        self.assertEqual(result.bundle.vehicle["make"], "Chevrolet")
+        self.assertEqual(result.bundle.vehicle["vehicle_key"], "chevrolet-escalade-esv-2019-us")
+
     def test_same_article_id_is_merged_deterministically_without_duplicate_records(self):
         resources = [
             SourceResource.from_bytes(
