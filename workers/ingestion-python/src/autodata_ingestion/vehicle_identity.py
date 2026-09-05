@@ -180,15 +180,18 @@ def _canonicalize_mapping_observation(value: Mapping[str, Any]) -> CanonicalVehi
     make = _normalize_make(value.get("make"), aliases)
     model = _normalize_model(value.get("model"))
     region = _normalize_region(value.get("region", value.get("market")))
-    body_style = _normalize_body_style(value.get("body_style", value.get("bodyStyle")))
+    body_style = _normalize_body_style(
+        _first_non_empty(value.get("body_style"), value.get("bodyStyle"))
+    )
     trim = _normalize_trim(value.get("trim"))
     drivetrain = _normalize_drivetrain(
-        value.get("drivetrain", value.get("driveType")), aliases
+        _first_non_empty(value.get("drivetrain"), value.get("driveType")), aliases
     )
     engine = _normalize_engine(
-        value.get(
-            "engine",
-            value.get("engine_displacement_l", value.get("engineDisplacementL")),
+        _first_non_empty(
+            value.get("engine"),
+            value.get("engine_displacement_l"),
+            value.get("engineDisplacementL"),
         ),
         aliases,
     )
@@ -360,6 +363,13 @@ def _normalize_engine(raw_engine: Any, aliases: list[VehicleAlias]) -> float | N
     if text != canonical:
         aliases.append(VehicleAlias("engine_displacement", text, canonical))
     return value
+
+
+def _first_non_empty(*values: Any) -> Any:
+    for value in values:
+        if value is not None and (not isinstance(value, str) or value.strip()):
+            return value
+    return None
 
 
 def _extract_engine_displacement(text: str) -> float | None:

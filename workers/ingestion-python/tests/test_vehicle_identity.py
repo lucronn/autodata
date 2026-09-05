@@ -66,6 +66,25 @@ class VehicleIdentityTests(unittest.TestCase):
             ],
         )
 
+    def test_mapping_input_uses_populated_fallback_when_preferred_alias_is_empty(self):
+        module = self._module()
+
+        observation = module.canonicalize_vehicle_observation(
+            {
+                "year": 1999,
+                "make": "Chevy",
+                "model": "Silverado 1500",
+                "region": "US",
+                "drivetrain": "",
+                "driveType": "4x2",
+                "engine": "",
+                "engineDisplacementL": 5.3,
+            }
+        )
+
+        self.assertEqual(observation.drivetrain, "2WD")
+        self.assertEqual(observation.engine_displacement_l, 5.3)
+
     def test_text_input_supports_common_vehicle_form(self):
         module = self._module()
 
