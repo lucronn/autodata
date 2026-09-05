@@ -13,6 +13,30 @@ from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E4
 
 
 class SourceBundleTests(unittest.TestCase):
+    def test_coarse_identity_is_enriched_by_a_later_structured_identity_record(self):
+        resources = [
+            SourceResource.from_bytes(
+                "provider://vehicle/name",
+                "source-v1",
+                b'{"body":"99 Chevy Silverado 1500"}',
+                "application/json",
+            ),
+            SourceResource.from_bytes(
+                "provider://vehicle/fitment",
+                "source-v1",
+                b'{"year":1999,"make":"Chevrolet","model":"Silverado 1500",'
+                b'"region":"US","drivetrain":"2wd","engine":"5.3LT"}',
+                "application/json",
+            ),
+        ]
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource) for resource in resources], "US")
+
+        self.assertEqual(bundle.status, "ready")
+        self.assertEqual(bundle.vehicle["vehicle_key"], "chevrolet-silverado-1500-1999-us")
+        self.assertEqual(bundle.vehicle["drivetrain"], "2WD")
+        self.assertEqual(bundle.vehicle["engine_displacement_l"], 5.3)
+
     def test_structured_vehicle_dimensions_survive_normalization_and_aliasing(self):
         resource = SourceResource.from_bytes(
             "provider://vehicle/identity.json",

@@ -272,7 +272,57 @@ def _normalize_vehicle(
         )
         quarantined.append({"reason": "conflicting_vehicle_identity", "candidates": sorted(map(str, identities))})
         return None
-    _, _, record = parsed[0]
+    _, _, first_record = parsed[0]
+    record = dict(first_record)
+    for _, _, candidate_record in parsed[1:]:
+        for field_name in (
+            "body_style",
+            "trim",
+            "drivetrain",
+            "engine_displacement_l",
+        ):
+            existing_value = record.get(field_name)
+            incoming_value = candidate_record.get(field_name)
+            if existing_value is None and incoming_value is not None:
+                record[field_name] = incoming_value
+                continue
+            if (
+                existing_value is not None
+                and incoming_value is not None
+                and existing_value != incoming_value
+            ):
+                conflicts.append(
+                    {
+                        "kind": "vehicle_identity",
+                        "field": field_name,
+                        "resolution": "needs_review",
+                        "candidates": [
+                            {
+                                "value": existing_value,
+                                "evidence_id": record["evidence_id"],
+                            },
+                            {
+                                "value": incoming_value,
+                                "evidence_id": candidate_record["evidence_id"],
+                            },
+                        ],
+                        "evidence_ids": [
+                            record["evidence_id"],
+                            candidate_record["evidence_id"],
+                        ],
+                    }
+                )
+                quarantined.append(
+                    {
+                        "reason": "conflicting_vehicle_dimension",
+                        "field": field_name,
+                        "evidence_ids": [
+                            record["evidence_id"],
+                            candidate_record["evidence_id"],
+                        ],
+                    }
+                )
+                return None
     make = str(record["make"]).strip()
     model = str(record["model"]).strip()
     year = int(record["year"])
