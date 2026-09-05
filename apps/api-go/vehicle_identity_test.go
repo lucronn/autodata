@@ -79,6 +79,9 @@ func TestVehicleIdentityResolveMarksConflictingBaseDimensionsForReview(t *testin
 	if result.Vehicles[0].Status != "needs_review" {
 		t.Fatalf("status = %q, want needs_review", result.Vehicles[0].Status)
 	}
+	if len(result.Vehicles[0].Configurations) != 1 {
+		t.Fatalf("configurations = %d, want only the non-conflicting configuration", len(result.Vehicles[0].Configurations))
+	}
 }
 
 func TestVehicleIdentityIdempotencyKeyCannotCrossOrganizations(t *testing.T) {

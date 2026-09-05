@@ -152,16 +152,19 @@ func normalizeVehicleIdentityRows(rows []VehicleIdentityRow) ([]VehicleIdentityR
 		}
 		key := strings.Join(keyParts, "-")
 		current, ok := families[key]
+		rowConflict := false
 		if !ok {
 			current = &family{record: VehicleIdentityRecord{VehicleIDKey: key, Year: year, Make: makeName, Model: model, Region: region, Drivetrain: drivetrain}, configs: map[string]VehicleConfigurationRecord{}}
 			families[key] = current
 		} else if current.record.Drivetrain != "" && drivetrain != "" && current.record.Drivetrain != drivetrain {
 			current.record.Conflicts = append(current.record.Conflicts, map[string]string{"field": "drivetrain", "existing": current.record.Drivetrain, "incoming": drivetrain})
+			rowConflict = true
 		} else if current.record.Drivetrain == "" {
 			current.record.Drivetrain = drivetrain
 		}
 		if current.record.BodyStyle != "" && row.BodyStyle != "" && current.record.BodyStyle != titleVehicleWords(row.BodyStyle) {
 			current.record.Conflicts = append(current.record.Conflicts, map[string]string{"field": "body_style", "existing": current.record.BodyStyle, "incoming": titleVehicleWords(row.BodyStyle)})
+			rowConflict = true
 		} else if current.record.BodyStyle == "" {
 			current.record.BodyStyle = titleVehicleWords(row.BodyStyle)
 		}
@@ -172,8 +175,10 @@ func normalizeVehicleIdentityRows(rows []VehicleIdentityRow) ([]VehicleIdentityR
 		if row.EngineDisplacementL != nil {
 			configKey += "-engine-" + strings.ReplaceAll(strconv.FormatFloat(*row.EngineDisplacementL, 'f', 1, 64), ".", "-") + "l"
 		}
-		if _, exists := current.configs[configKey]; !exists {
-			current.configs[configKey] = VehicleConfigurationRecord{ConfigurationKey: configKey, Trim: strings.TrimSpace(row.Trim), EngineDisplacementL: row.EngineDisplacementL, Drivetrain: current.record.Drivetrain}
+		if !rowConflict {
+			if _, exists := current.configs[configKey]; !exists {
+				current.configs[configKey] = VehicleConfigurationRecord{ConfigurationKey: configKey, Trim: strings.TrimSpace(row.Trim), EngineDisplacementL: row.EngineDisplacementL, Drivetrain: current.record.Drivetrain}
+			}
 		}
 		canonicalRows = append(canonicalRows, VehicleIdentityRow{Year: year, Make: makeName, Model: model, Region: region, BodyStyle: current.record.BodyStyle, Trim: strings.TrimSpace(row.Trim), Drivetrain: drivetrain, EngineDisplacementL: row.EngineDisplacementL})
 	}
@@ -197,7 +202,6 @@ func normalizeVehicleIdentityRows(rows []VehicleIdentityRow) ([]VehicleIdentityR
 		}
 		if len(current.record.Conflicts) > 0 {
 			current.record.Status = "needs_review"
-			current.record.Configurations = append(current.record.Configurations, VehicleConfigurationRecord{})
 		} else {
 			current.record.Status = "resolved"
 		}
