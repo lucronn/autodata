@@ -48,7 +48,7 @@ def run_vehicle_selection(serialized_vehicle_list: str) -> dict[str, object]:
     result: dict[str, object] = {
         "worker": "ingestion",
         "lane": "fast",
-        "status": "ready",
+        "status": "needs_review" if _selection_needs_review(vehicles) else "ready",
         "vehicles": vehicles,
         "vehicle_count": len(vehicles),
     }
@@ -65,7 +65,29 @@ def run_vehicle_selection(serialized_vehicle_list: str) -> dict[str, object]:
             ),
             region=os.getenv("AUTODATA_SOURCE_REGION") or None,
         )
+        _attach_persistence_ids(vehicles, result["persistence"])
+        observations = result["persistence"].get("observations")
+        if isinstance(observations, list) and any(
+            isinstance(observation, dict)
+            and observation.get("resolution_status") == "needs_review"
+            for observation in observations
+        ):
+            result["status"] = "needs_review"
     return result
+
+
+def _selection_needs_review(vehicles: list[dict[str, object]]) -> bool:
+    for vehicle in vehicles:
+        configurations = vehicle.get("configurations", [])
+        if not isinstance(configurations, list):
+            continue
+        if any(
+            isinstance(configuration, dict)
+            and configuration.get("status") == "needs_review"
+            for configuration in configurations
+        ):
+            return True
+    return False
 
 
 def run_article_url(source_uri: str, serialized_vehicle: str) -> dict[str, object]:
@@ -211,6 +233,51 @@ def _vehicle_target_from_mapping(value: dict[str, object], year: object):
             value.get("engine", value.get("engineDisplacementL")),
         ),
     )
+
+
+def _attach_persistence_ids(
+    vehicles: list[dict[str, object]], persistence: object
+) -> None:
+    """Add durable IDs to selector rows without changing their stable keys."""
+
+    if not isinstance(persistence, dict):
+        return
+    observations = persistence.get("observations")
+    if not isinstance(observations, list):
+        return
+    by_configuration: dict[str, dict[str, object]] = {}
+    for observation in observations:
+        if not isinstance(observation, dict):
+            continue
+        key = observation.get("configuration_key")
+        if isinstance(key, str) and key:
+            by_configuration.setdefault(key, observation)
+    for vehicle in vehicles:
+        vehicle_observations = [
+            item
+            for item in observations
+            if isinstance(item, dict)
+            and item.get("vehicle_key") == vehicle.get("vehicle_id_key")
+        ]
+        if vehicle_observations:
+            vehicle_id = vehicle_observations[0].get("vehicle_id")
+            if vehicle_id:
+                vehicle["vehicle_id"] = vehicle_id
+        for configuration in vehicle.get("configurations", []):
+            if not isinstance(configuration, dict):
+                continue
+            key = configuration.get("configuration_key")
+            persisted = by_configuration.get(key) if isinstance(key, str) else None
+            if persisted is None:
+                continue
+            for field in (
+                "vehicle_id",
+                "vehicle_configuration_id",
+                "observation_id",
+                "resolution_status",
+            ):
+                if persisted.get(field) is not None:
+                    configuration[field] = persisted[field]
 
 
 def run_source_directory(directory: str) -> dict[str, str | int | list[str]]:

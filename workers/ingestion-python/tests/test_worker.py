@@ -41,6 +41,36 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual(result["vehicles"][0]["vehicle_id_key"], "chevrolet-silverado-1500-1999-us")
         self.assertEqual(len(result["vehicles"][0]["configurations"]), 2)
 
+    def test_configured_vehicle_list_surfaces_conflicting_dimensions_as_review(self):
+        from autodata_ingestion.worker import run_vehicle_selection
+
+        result = run_vehicle_selection(
+            json.dumps(
+                [
+                    {
+                        "year": 1999,
+                        "make": "Chevrolet",
+                        "model": "Silverado 1500",
+                        "region": "US",
+                        "drivetrain": "2WD",
+                    },
+                    {
+                        "year": 1999,
+                        "make": "Chevrolet",
+                        "model": "Silverado 1500",
+                        "region": "US",
+                        "drivetrain": "4WD",
+                    },
+                ]
+            )
+        )
+
+        self.assertEqual(result["status"], "needs_review")
+        self.assertEqual(
+            result["vehicles"][0]["configurations"][-1]["status"],
+            "needs_review",
+        )
+
     def test_configured_vehicle_list_can_persist_identity_observations(self):
         from autodata_ingestion import vehicle_selection_persistence
 
@@ -50,7 +80,28 @@ class IngestionWorkerTests(unittest.TestCase):
         ]
         with patch(
             "autodata_ingestion.vehicle_selection_persistence.persist_vehicle_selection_list",
-            return_value={"status": "persisted", "observation_count": 2},
+            return_value={
+                "status": "persisted",
+                "observation_count": 2,
+                "observations": [
+                    {
+                        "vehicle_id": "vehicle-1",
+                        "vehicle_key": "chevrolet-silverado-1500-1999-us",
+                        "vehicle_configuration_id": "configuration-1",
+                        "configuration_key": "chevrolet-silverado-1500-1999-us",
+                        "observation_id": "observation-1",
+                        "resolution_status": "matched",
+                    },
+                    {
+                        "vehicle_id": "vehicle-1",
+                        "vehicle_key": "chevrolet-silverado-1500-1999-us",
+                        "vehicle_configuration_id": "configuration-2",
+                        "configuration_key": "chevrolet-silverado-1500-1999-us-engine-5-3l",
+                        "observation_id": "observation-2",
+                        "resolution_status": "matched",
+                    },
+                ],
+            },
         ) as persist:
             with patch.dict(
                 "os.environ",
@@ -67,6 +118,11 @@ class IngestionWorkerTests(unittest.TestCase):
                 result = run_once()
 
         self.assertEqual(result["persistence"]["status"], "persisted")
+        self.assertEqual(result["vehicles"][0]["vehicle_id"], "vehicle-1")
+        self.assertEqual(
+            result["vehicles"][0]["configurations"][1]["vehicle_configuration_id"],
+            "configuration-2",
+        )
         persist.assert_called_once()
         self.assertEqual(persist.call_args.args[0], values)
 
