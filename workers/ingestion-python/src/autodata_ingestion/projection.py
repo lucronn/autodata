@@ -11,6 +11,8 @@ from .source_bundle import SourceBundle
 def build_viewable_content(
     bundle: SourceBundle,
     artifacts: Iterable[SourceArtifact],
+    *,
+    excluded_article_keys: Iterable[str] = (),
 ) -> dict[str, Any]:
     """Build projection content without dropping evidence or source identity."""
 
@@ -38,12 +40,20 @@ def build_viewable_content(
         content["specifications"] = list(bundle.specifications)
     for section_name in ("models", "powertrains", "parts", "articles", "documents", "diagrams"):
         records = list(getattr(bundle, section_name))
+        if section_name == "articles":
+            excluded = {str(key) for key in excluded_article_keys}
+            records = [record for record in records if record.get("article_key") not in excluded]
         if records:
             content[section_name] = records
     return content
 
 
-def viewable_sections(bundle: SourceBundle, artifacts: Iterable[SourceArtifact]) -> set[str]:
+def viewable_sections(
+    bundle: SourceBundle,
+    artifacts: Iterable[SourceArtifact],
+    *,
+    excluded_article_keys: Iterable[str] = (),
+) -> set[str]:
     """Return sections with enough normalized content to expose safely."""
 
     sections: set[str] = set()
@@ -54,7 +64,11 @@ def viewable_sections(bundle: SourceBundle, artifacts: Iterable[SourceArtifact])
     if bundle.specifications:
         sections.add("specifications")
     for section_name in ("models", "powertrains", "parts", "articles", "documents", "diagrams"):
-        if getattr(bundle, section_name):
+        records = getattr(bundle, section_name)
+        if section_name == "articles":
+            excluded = {str(key) for key in excluded_article_keys}
+            records = [record for record in records if record.get("article_key") not in excluded]
+        if records:
             sections.add(section_name)
     return sections
 

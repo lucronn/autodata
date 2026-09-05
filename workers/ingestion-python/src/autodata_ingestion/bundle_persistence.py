@@ -236,6 +236,7 @@ def persist_source_bundle(
                     ),
                 )
 
+            duplicate_article_keys: set[str] = set()
             duplicate_links = _persist_catalog_articles(
                 cursor,
                 bundle.articles,
@@ -243,6 +244,7 @@ def persist_source_bundle(
                 snapshot_ids,
                 vehicle_id,
                 Jsonb,
+                duplicate_article_keys=duplicate_article_keys,
             )
             if publication is not None:
                 publication_result = publish_fast_lane_revision(
@@ -255,6 +257,7 @@ def persist_source_bundle(
                     publication,
                     now,
                     Jsonb,
+                    excluded_article_keys=duplicate_article_keys,
                 )
             connection.commit()
     result = {
@@ -308,6 +311,8 @@ def _persist_catalog_articles(
     snapshot_ids: Mapping[str, str],
     vehicle_id: str,
     jsonb: Any,
+    *,
+    duplicate_article_keys: set[str] | None = None,
 ) -> int:
     """Persist structured article content with source-scoped replay identity."""
 
@@ -379,6 +384,8 @@ def _persist_catalog_articles(
                 evidence_confidence=article_evidence["confidence"],
                 reviewer_state=article_evidence.get("reviewer_state", "pending"),
             )
+            if duplicate_article_keys is not None:
+                duplicate_article_keys.add(str(article.get("article_key", "")))
             duplicate_links += 1
     return duplicate_links
 

@@ -36,6 +36,8 @@ def publish_fast_lane_revision(
     publication: FastLanePublication,
     now: datetime,
     jsonb: Any,
+    *,
+    excluded_article_keys: Iterable[str] = (),
 ) -> dict[str, Any]:
     """Persist one immutable viewable revision or a durable review outcome.
 
@@ -55,7 +57,12 @@ def publish_fast_lane_revision(
         return dict(job["result"])
 
     required = _json_list(request["minimum_sections"])
-    available = viewable_sections(bundle, artifact_list)
+    excluded_article_keys = tuple(excluded_article_keys)
+    available = viewable_sections(
+        bundle,
+        artifact_list,
+        excluded_article_keys=excluded_article_keys,
+    )
     missing = sorted(set(required) - available)
     review_evidence = sorted(
         evidence["evidence_id"]
@@ -91,7 +98,11 @@ def publish_fast_lane_revision(
         _complete_job(cursor, job["job_id"], result, now, jsonb)
         return result
 
-    content = build_viewable_content(bundle, artifact_list)
+    content = build_viewable_content(
+        bundle,
+        artifact_list,
+        excluded_article_keys=excluded_article_keys,
+    )
     source_snapshot_ids = sorted(set(snapshot_ids.values()))
     source_watermark = _source_watermark(artifact_list)
     revision_id = _stable_uuid(f"fast-revision:{publication.idempotency_key}")
