@@ -120,6 +120,10 @@ class BundlePersistenceTests(unittest.TestCase):
         self.assertIn("body = EXCLUDED.body", compact_query)
         self.assertIn("steps = EXCLUDED.steps", compact_query)
         self.assertIn("normalized_fingerprint = EXCLUDED.normalized_fingerprint", compact_query)
+        self.assertIn(
+            "vehicle_configuration_id = COALESCE( EXCLUDED.vehicle_configuration_id, catalog_articles.vehicle_configuration_id )",
+            compact_query,
+        )
         self.assertEqual(params[8], ARTICLE["body"])
         self.assertEqual(params[9], ARTICLE["steps"])
         self.assertEqual(params[10], normalized_article_fingerprint(ARTICLE))

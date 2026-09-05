@@ -351,7 +351,10 @@ def _persist_catalog_articles(
                           normalized_fingerprint = EXCLUDED.normalized_fingerprint,
                           evidence_locator = EXCLUDED.evidence_locator,
                           evidence_confidence = EXCLUDED.evidence_confidence,
-                          vehicle_configuration_id = EXCLUDED.vehicle_configuration_id
+                          vehicle_configuration_id = COALESCE(
+                              EXCLUDED.vehicle_configuration_id,
+                              catalog_articles.vehicle_configuration_id
+                          )
             RETURNING catalog_article_id
             """,
             (
