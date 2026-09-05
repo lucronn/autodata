@@ -244,6 +244,7 @@ def persist_source_bundle(
                 snapshot_ids,
                 vehicle_id,
                 Jsonb,
+                vehicle_configuration_id=identity_result.vehicle_configuration_id,
                 duplicate_article_keys=duplicate_article_keys,
             )
             if publication is not None:
@@ -312,6 +313,7 @@ def _persist_catalog_articles(
     vehicle_id: str,
     jsonb: Any,
     *,
+    vehicle_configuration_id: str | None = None,
     duplicate_article_keys: set[str] | None = None,
 ) -> int:
     """Persist structured article content with source-scoped replay identity."""
@@ -336,8 +338,8 @@ def _persist_catalog_articles(
                 (catalog_article_id, vehicle_id, article_id, bucket, title,
                  bulletin_number, release_date, sort_order, body, steps,
                  normalized_fingerprint, source_snapshot_id, source_locator,
-                 evidence_locator, evidence_confidence)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 evidence_locator, evidence_confidence, vehicle_configuration_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (vehicle_id, article_id, source_snapshot_id, source_locator)
             DO UPDATE SET bucket = EXCLUDED.bucket,
                           title = EXCLUDED.title,
@@ -348,7 +350,8 @@ def _persist_catalog_articles(
                           steps = EXCLUDED.steps,
                           normalized_fingerprint = EXCLUDED.normalized_fingerprint,
                           evidence_locator = EXCLUDED.evidence_locator,
-                          evidence_confidence = EXCLUDED.evidence_confidence
+                          evidence_confidence = EXCLUDED.evidence_confidence,
+                          vehicle_configuration_id = EXCLUDED.vehicle_configuration_id
             RETURNING catalog_article_id
             """,
             (
@@ -369,6 +372,7 @@ def _persist_catalog_articles(
                 article_evidence["locator"],
                 article_evidence["locator"],
                 article_evidence["confidence"],
+                vehicle_configuration_id,
             ),
         )
         canonical_article_id = exact_duplicate_id or near_duplicate_id

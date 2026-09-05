@@ -16,6 +16,10 @@
 | `powertrains` | Engine or powertrain variants for a model | Powertrain identity remains linked to its model and source |
 | `inventory_parts` | Normalized parts and price observations | Ambiguous prices remain `needs_review` rather than being guessed |
 | `catalog_articles` | Source article index for procedures, diagnostics, TSBs, and specifications | Article IDs, classification, source, and evidence are retained |
+| `vehicle_identity_bases` | Canonical make/model/year/market and coarse fitment identity | Coarse identity is merged only when known dimensions are compatible |
+| `vehicle_configurations` | Trim/engine configuration below a canonical vehicle base | The stable configuration key prevents richer observations from creating a second vehicle family |
+| `vehicle_identity_observations` | Raw and canonical vehicle-list observations with resolution outcome | Every observation retains source/evidence and ambiguous or conflicting matches remain reviewable |
+| `catalog_article_vehicle_links` | Canonical/duplicate article relationship | A duplicate article is hidden from new projections while both source rows remain auditable |
 | `ingestion_jobs` | Lane-specific work and retries | Lane, processing version, and stable idempotency key are explicit |
 | `extraction_runs` | OCR/LLM/embedding execution metadata | Model/provider/version and confidence are retained |
 | `extraction_evidence` | Fact-to-source/page/region traceability | Evidence references an immutable source artifact |
@@ -125,7 +129,12 @@ invalid fitments:
 is organization-scoped at the API boundary, canonicalizes aliases, and marks
 conflicting body-style or drivetrain dimensions as `needs_review`. It is a
 normalization/selection boundary; source-backed persistence still requires a
-source snapshot and extraction evidence from the ingestion path.
+source snapshot and extraction evidence from the ingestion path. The ingestion
+path also stores the resolved `vehicle_configuration_id` on each catalog
+article when the source proves trim or engine dimensions; coarse articles keep
+that link NULL rather than claiming unsupported specificity. Vehicle-target
+checks treat omitted optional source dimensions as unknown but reject any
+explicit drivetrain, body-style, trim, or engine conflict.
 
 The request-status endpoint is durable whenever the API is configured with
 `AUTODATA_PROJECTION_STORE=postgres`. Request ownership is recorded on

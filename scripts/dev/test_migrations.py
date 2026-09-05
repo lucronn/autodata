@@ -35,6 +35,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "013_dataset_request_ownership.sql",
                 "014_normalized_article_content.sql",
                 "015_vehicle_identity_resolution.sql",
+                "016_catalog_article_configuration.sql",
             ],
         )
 

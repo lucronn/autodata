@@ -150,7 +150,8 @@ python3 -m autodata_ingestion.worker
 On a catalog miss, set `source_uri_template` in the request or
 `AUTODATA_KNOWLEDGE_SOURCE_URI_TEMPLATE` in the environment. The HTTP source
 template may use `{vehicle_key}`, `{year}`, `{make}`, `{model}`, `{region}`,
-`{query}`, and `{keywords}`. The worker URL-escapes those values, fetches one
+`{body_style}`, `{trim}`, `{drivetrain}`, `{engine_displacement_l}`, `{query}`,
+and `{keywords}`. The worker URL-escapes those values, fetches one
 bounded source resource, verifies the returned vehicle, and returns the
 normalized article with evidence. Source responses are never treated as a
 match unless the requested vehicle and query both pass the intake boundary.

@@ -97,6 +97,7 @@ class BundlePersistenceTests(unittest.TestCase):
             {"a" * 64: "snapshot-1"},
             "vehicle-1",
             lambda value: value,
+            vehicle_configuration_id="configuration-1",
         )
 
         query, params = next(
@@ -112,6 +113,7 @@ class BundlePersistenceTests(unittest.TestCase):
             "source_snapshot_id",
             "source_locator",
             "evidence_locator",
+            "vehicle_configuration_id",
         ):
             self.assertIn(column, compact_query)
         self.assertIn("ON CONFLICT (vehicle_id, article_id, source_snapshot_id, source_locator)", compact_query)
@@ -125,6 +127,7 @@ class BundlePersistenceTests(unittest.TestCase):
         self.assertEqual(params[12], "json:article[0]")
         self.assertEqual(params[13], "json:article[0]")
         self.assertEqual(params[14], 0.97)
+        self.assertEqual(params[15], "configuration-1")
 
     def test_replaying_the_same_article_has_the_same_row_identity_and_values(self):
         first_cursor = RecordingCursor()

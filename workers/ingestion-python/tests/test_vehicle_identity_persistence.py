@@ -94,6 +94,12 @@ class VehicleIdentityPersistenceTests(unittest.TestCase):
         self.assertIn("engine_displacement_l numeric(4, 1)", configurations)
         self.assertNotIn("drivetrain text", configurations)
 
+    def test_article_configuration_migration_keeps_coarse_rows_valid(self):
+        migration = (ROOT / "db/migrations/016_catalog_article_configuration.sql").read_text()
+        self.assertIn("ADD COLUMN IF NOT EXISTS vehicle_configuration_id uuid", migration)
+        self.assertIn("REFERENCES vehicle_configurations(vehicle_configuration_id)", migration)
+        self.assertIn("WHERE vehicle_configuration_id IS NOT NULL", migration)
+
     def test_unresolved_observations_do_not_require_resolved_vehicle_foreign_keys(self):
         migration = (ROOT / "db/migrations/015_vehicle_identity_resolution.sql").read_text()
         observations = _table_definition(migration, "vehicle_identity_observations")
