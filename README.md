@@ -1,6 +1,6 @@
 
 
-![Repository Social Image](https://githubusercontent.com)
+![AutoData architecture preview](docs/assets/autodata-architecture-preview.jpeg)
 
 
 # AutoData
