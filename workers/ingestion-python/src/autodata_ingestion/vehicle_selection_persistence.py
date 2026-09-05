@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import UTC, datetime
+from dataclasses import replace
 from typing import Any, Iterable, Mapping
 
 from .bundle_persistence import (
@@ -70,6 +71,8 @@ def persist_vehicle_selection_list(
     for index, raw_value in enumerate(raw_values):
         canonical_input = _with_default_region(raw_value, source_region)
         observation = canonicalize_vehicle_observation(canonical_input)
+        if observation.region is None and source_region is not None:
+            observation = replace(observation, region=source_region)
         if observation.region is None:
             raise ValueError(
                 f"vehicle selection row {index} requires region or a default region"

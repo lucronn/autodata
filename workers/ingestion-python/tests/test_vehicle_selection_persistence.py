@@ -126,6 +126,37 @@ class VehicleSelectionPersistenceTests(unittest.TestCase):
             2,
         )
 
+    def test_string_rows_use_the_import_default_region(self):
+        cursor = RecordingCursor()
+        connection = RecordingConnection(cursor)
+        fake_json = types.ModuleType("psycopg.types.json")
+        fake_json.Jsonb = lambda value: value
+        fake_types = types.ModuleType("psycopg.types")
+        fake_types.json = fake_json
+        fake_psycopg = types.ModuleType("psycopg")
+        fake_psycopg.connect = lambda **_kwargs: connection
+
+        with patch("autodata_ingestion.vehicle_selection_persistence.store_source_artifacts"):
+            with patch.dict(
+                sys.modules,
+                {
+                    "psycopg": fake_psycopg,
+                    "psycopg.types": fake_types,
+                    "psycopg.types.json": fake_json,
+                },
+            ):
+                with patch.dict("os.environ", {"AUTODATA_POSTGRES_PASSWORD": "test-only"}):
+                    result = persist_vehicle_selection_list(
+                        ["99 Chevy Silverado 1500 2wd"],
+                        region="US",
+                    )
+
+        self.assertEqual(result["observations"][0]["vehicle_key"], "chevrolet-silverado-1500-1999-us")
+        self.assertEqual(
+            result["observations"][0]["configuration_key"],
+            "chevrolet-silverado-1500-1999-us",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
