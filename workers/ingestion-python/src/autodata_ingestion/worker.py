@@ -164,7 +164,12 @@ def run_vehicle_knowledge(serialized_request: str) -> dict[str, object]:
     if any(not isinstance(keyword, str) for keyword in keywords):
         raise ValueError("knowledge request keywords must be an array of strings")
 
-    catalog = request.get("catalog", [])
+    if "catalog" in request:
+        catalog = request["catalog"]
+    else:
+        from .knowledge_catalog import load_vehicle_knowledge_catalog
+
+        catalog = load_vehicle_knowledge_catalog(target)
     source_template = request.get("source_uri_template") or os.getenv(
         "AUTODATA_KNOWLEDGE_SOURCE_URI_TEMPLATE", ""
     ).strip()

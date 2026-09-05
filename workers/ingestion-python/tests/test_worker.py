@@ -259,6 +259,41 @@ class IngestionWorkerTests(unittest.TestCase):
         persist.assert_called_once()
         self.assertEqual(persist.call_args.kwargs["adapter_name"], "knowledge-fallback")
 
+    def test_configured_knowledge_request_reads_database_catalog_when_not_supplied(self):
+        from autodata_ingestion.worker import run_vehicle_knowledge
+
+        with patch(
+            "autodata_ingestion.knowledge_catalog.load_vehicle_knowledge_catalog",
+            return_value=[
+                {
+                    "vehicle_key": "chevrolet-silverado-1500-1999-us",
+                    "kind": "article",
+                    "article": {
+                        "article_id": "TSB-42",
+                        "title": "Brake connector bulletin",
+                    },
+                    "evidence": [],
+                }
+            ],
+        ) as load_catalog:
+            result = run_vehicle_knowledge(
+                json.dumps(
+                    {
+                        "vehicle": {
+                            "year": 1999,
+                            "make": "Chevy",
+                            "model": "Silverado 1500",
+                            "region": "US",
+                        },
+                        "query": "brake connector",
+                    }
+                )
+            )
+
+        self.assertEqual(result["status"], "cache_hit")
+        self.assertEqual(result["results"][0]["article"]["article_id"], "TSB-42")
+        load_catalog.assert_called_once()
+
     def test_configured_source_directory_runs_the_normalization_pipeline(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

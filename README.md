@@ -163,6 +163,13 @@ bounded source resource, verifies the returned vehicle, and returns the
 normalized article with evidence. Source responses are never treated as a
 match unless the requested vehicle and query both pass the intake boundary.
 
+When `catalog` is omitted from a knowledge request, the worker first performs
+an indexed PostgreSQL lookup by canonical `vehicle_key`, excludes linked
+duplicates and taken-down snapshots, and ranks the normalized records locally.
+Only when that database lookup has no matching result does it resolve and fetch
+the configured source. Supplying `catalog: []` deliberately bypasses the
+database lookup and is useful for controlled fallback tests.
+
 Mercury-2 is optional and advisory for ambiguous identity decisions. Enable
 it only through secret-managed environment variables; never place the API key
 in Compose files, source files, README examples, or Git history:
