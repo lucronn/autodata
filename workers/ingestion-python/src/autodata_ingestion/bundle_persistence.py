@@ -91,6 +91,35 @@ def persist_source_bundle(
                 ),
             )
 
+            from .vehicle_identity import canonicalize_vehicle_observation
+            from .vehicle_identity_persistence import persist_vehicle_identity_resolution
+
+            identity_observation = canonicalize_vehicle_observation(
+                {
+                    "year": vehicle["model_year"],
+                    "make": vehicle["make"],
+                    "model": vehicle["model"],
+                    "region": vehicle["region"],
+                    "body_style": vehicle.get("body_style"),
+                    "trim": vehicle.get("trim"),
+                    "drivetrain": vehicle.get("drivetrain"),
+                    "engine": vehicle.get("engine_displacement_l"),
+                }
+            )
+            identity_result = persist_vehicle_identity_resolution(
+                cursor,
+                identity_observation,
+                source_snapshot_id=vehicle_snapshot_id,
+                extraction_evidence_id=vehicle_evidence["evidence_id"],
+                source_locator=vehicle_evidence["locator"],
+                evidence_locator=vehicle_evidence["locator"],
+                evidence_confidence=vehicle_evidence["confidence"],
+                reviewer_state=vehicle_evidence.get("reviewer_state", "pending"),
+                source_watermark=_source_version(artifact_by_hash[vehicle_evidence["content_sha256"]]),
+                raw_observation=vehicle,
+                jsonb=Jsonb,
+            )
+
             for specification in bundle.specifications:
                 specification_evidence = evidence_by_id[specification["evidence_id"]]
                 cursor.execute(
@@ -231,6 +260,8 @@ def persist_source_bundle(
         "status": bundle.status,
         "vehicle_id": str(vehicle_id),
         "vehicle_key": vehicle["vehicle_key"],
+        "vehicle_identity_base_id": identity_result.vehicle_identity_base_id,
+        "vehicle_configuration_id": identity_result.vehicle_configuration_id,
         "specifications": len(bundle.specifications),
         "source_artifacts": len(artifact_list),
         "models": len(bundle.models),
