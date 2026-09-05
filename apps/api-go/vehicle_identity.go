@@ -98,7 +98,14 @@ func (s *memoryVehicleIdentityStore) Resolve(principal Principal, input VehicleI
 	if err != nil {
 		return VehicleIdentityResolveRecord{}, false, err
 	}
-	record := VehicleIdentityResolveRecord{Status: "resolved", Vehicles: records, UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
+	status := "resolved"
+	for _, vehicle := range records {
+		if vehicle.Status == "needs_review" {
+			status = "needs_review"
+			break
+		}
+	}
+	record := VehicleIdentityResolveRecord{Status: status, Vehicles: records, UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
 	s.byIdempotency[idempotencyKey] = vehicleIdentityCachedRequest{organizationID: principal.OrganizationID, record: record}
 	s.rows = append(s.rows, canonicalRows...)
 	return record, false, nil

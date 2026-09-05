@@ -76,6 +76,9 @@ func TestVehicleIdentityResolveMarksConflictingBaseDimensionsForReview(t *testin
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		t.Fatal(err)
 	}
+	if result.Status != "needs_review" {
+		t.Fatalf("overall status = %q, want needs_review", result.Status)
+	}
 	if result.Vehicles[0].Status != "needs_review" {
 		t.Fatalf("status = %q, want needs_review", result.Vehicles[0].Status)
 	}
