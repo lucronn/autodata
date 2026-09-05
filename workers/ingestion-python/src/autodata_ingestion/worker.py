@@ -20,6 +20,9 @@ def run_once() -> dict[str, object]:
     fast_event = os.getenv("AUTODATA_FAST_EVENT_JSON", "").strip()
     if fast_event:
         return run_fast_event(fast_event)
+    article_uri = os.getenv("AUTODATA_ARTICLE_URI", "").strip()
+    if article_uri:
+        return run_article_url(article_uri, os.getenv("AUTODATA_ARTICLE_VEHICLE_JSON", ""))
     vehicle_list = os.getenv("AUTODATA_VEHICLE_LIST_JSON", "").strip()
     if vehicle_list:
         return run_vehicle_selection(vehicle_list)
@@ -45,6 +48,53 @@ def run_vehicle_selection(serialized_vehicle_list: str) -> dict[str, object]:
         "status": "ready",
         "vehicles": vehicles,
         "vehicle_count": len(vehicles),
+    }
+
+
+def run_article_url(source_uri: str, serialized_vehicle: str) -> dict[str, object]:
+    """Fetch one URL for a target vehicle and return normalized article JSON."""
+
+    try:
+        target_value = json.loads(serialized_vehicle)
+    except json.JSONDecodeError as error:
+        raise ValueError("AUTODATA_ARTICLE_VEHICLE_JSON must be valid JSON") from error
+    if not isinstance(target_value, dict):
+        raise ValueError("AUTODATA_ARTICLE_VEHICLE_JSON must contain an object")
+    from .article_intake import VehicleTarget, ingest_vehicle_article
+    from .http_connector import HttpSourceConnector
+
+    required = {"make", "model", "region"}
+    if not required.issubset(target_value):
+        raise ValueError("article vehicle must include make, model, year, and region")
+    year = target_value.get("model_year", target_value.get("year"))
+    if year is None:
+        raise ValueError("article vehicle must include make, model, year, and region")
+    target = VehicleTarget(
+        target_value["make"],
+        target_value["model"],
+        year,
+        target_value["region"],
+        target_value.get("trim"),
+    )
+    connector = HttpSourceConnector(
+        source_uri,
+        os.getenv("AUTODATA_SOURCE_VERSION", "") or None,
+        timeout_seconds=float(os.getenv("AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS", "30")),
+        max_bytes=int(os.getenv("AUTODATA_SOURCE_MAX_BYTES", str(50 * 1024 * 1024))),
+        request_headers=_source_request_headers(),
+    )
+    intake = ingest_vehicle_article(source_uri, target, connector=connector)
+    return {
+        "worker": "ingestion",
+        "lane": "fast",
+        "status": intake.status,
+        "rejection_reason": intake.rejection_reason,
+        "source_uri": intake.source_uri,
+        "vehicle": intake.bundle.vehicle,
+        "articles": list(intake.bundle.articles),
+        "evidence": list(intake.bundle.evidence),
+        "quarantined": list(intake.bundle.quarantined),
+        "conflicts": list(intake.bundle.conflicts),
     }
 
 

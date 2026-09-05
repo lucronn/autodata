@@ -41,6 +41,28 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual(result["vehicles"][0]["vehicle_id_key"], "chevrolet-silverado-1500-1999-us")
         self.assertEqual(len(result["vehicles"][0]["configurations"]), 2)
 
+    def test_configured_article_url_returns_normalized_article_and_evidence_json(self):
+        from autodata_ingestion.worker import run_article_url
+
+        resource = SourceResource.from_bytes(
+            "https://source.example/tsb-42",
+            "v1",
+            b'<html><head><meta name="vehicle" content="2019 Cadillac Escalade ESV"><meta name="article:id" content="TSB-42"><meta property="og:title" content="Brake connector bulletin"></head><body><article><p>Inspect connector.</p></article></body></html>',
+            "text/html",
+        )
+        with patch("autodata_ingestion.http_connector.HttpSourceConnector") as connector_class:
+            connector_class.return_value.fetch.return_value = [resource]
+            with patch.dict("os.environ", {"AUTODATA_SOURCE_VERSION": "v1", "AUTODATA_SOURCE_REQUEST_HEADERS_JSON": ""}, clear=False):
+                result = run_article_url(
+                    resource.source_uri,
+                    json.dumps({"year": 2019, "make": "Cadillac", "model": "Escalade ESV", "region": "US"}),
+                )
+
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["vehicle"]["vehicle_key"], "cadillac-escalade-esv-2019-us")
+        self.assertEqual(result["articles"][0]["article_id"], "TSB-42")
+        self.assertTrue(result["evidence"])
+
     def test_configured_source_directory_runs_the_normalization_pipeline(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
