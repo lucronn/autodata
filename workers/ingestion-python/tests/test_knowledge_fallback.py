@@ -16,6 +16,9 @@ from autodata_ingestion.source_adapters import SourceResource  # noqa: E402
 
 
 TARGET = VehicleTarget("Cadillac", "Escalade ESV", 2019, "US")
+DETAILED_TARGET = VehicleTarget(
+    "Chevy", "Silverado 1500", "99", "US", drivetrain="2wd", engine_displacement_l=5.3
+)
 
 
 class _StaticConnector:
@@ -92,6 +95,19 @@ class KnowledgeFallbackTests(unittest.TestCase):
         self.assertEqual(resolved.source_version, "source-v1")
         self.assertEqual(resolved.connector.name, "http")
 
+    def test_http_resolver_can_include_configuration_dimensions(self):
+        resolver = HttpKnowledgeSourceResolver(
+            "https://source.example/{vehicle_key}/{drivetrain}/{engine_displacement_l}?q={query}",
+            source_version="source-v1",
+        )
+
+        resolved = resolver.resolve(DETAILED_TARGET, "brake connector", ())
+
+        self.assertEqual(
+            resolved.source_uri,
+            "https://source.example/chevrolet-silverado-1500-1999-us/2WD/5.3?q=brake%20connector",
+        )
+
     def test_catalog_hit_returns_normalized_article_without_calling_resolver(self):
         resolver_calls = []
         catalog = [
@@ -165,6 +181,38 @@ class KnowledgeFallbackTests(unittest.TestCase):
                 for evidence in result.results[0]["evidence"]
             )
         )
+
+    def test_catalog_configuration_conflict_does_not_match_coarse_vehicle_key(self):
+        resolver_calls = []
+        catalog = [
+            {
+                "vehicle_key": DETAILED_TARGET.vehicle_key,
+                "vehicle_identity": {
+                    "vehicle_key": DETAILED_TARGET.vehicle_key,
+                    "make": "Chevrolet",
+                    "model": "Silverado 1500",
+                    "year": 1999,
+                    "region": "US",
+                    "drivetrain": "4WD",
+                    "engine_displacement_l": 4.8,
+                },
+                "kind": "article",
+                "article": {"article_id": "wrong", "title": "Brake connector bulletin"},
+            }
+        ]
+
+        def resolver(*args):
+            resolver_calls.append(args)
+            return None
+
+        with self.assertRaises(LookupError):
+            query_vehicle_knowledge(
+                DETAILED_TARGET,
+                "brake connector",
+                catalog=catalog,
+                source_resolver=resolver,
+            )
+        self.assertEqual(len(resolver_calls), 1)
 
     def test_fetched_article_for_another_vehicle_is_rejected(self):
         source_uri = "https://source.example/articles/other"

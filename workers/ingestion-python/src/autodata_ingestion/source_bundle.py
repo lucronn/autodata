@@ -343,13 +343,22 @@ def _normalize_vehicle(
         except (TypeError, ValueError):
             expected_year = None
         expected_trim = expected.trim if expected is not None else str(expected_vehicle.get("trim", "")).strip() or None
+        expected_body_style = expected.body_style if expected is not None else None
+        expected_drivetrain = expected.drivetrain if expected is not None else None
+        expected_engine = expected.engine_displacement_l if expected is not None else None
         source_trim = record.get("trim")
+        source_body_style = record.get("body_style")
+        source_drivetrain = record.get("drivetrain")
+        source_engine = record.get("engine_displacement_l")
         mismatch = (
             make.casefold() != expected_make.casefold()
             or model.casefold() != expected_model.casefold()
             or year != expected_year
             or source_region != expected_region
-            or (expected_trim is not None and source_trim != expected_trim)
+            or (expected_trim is not None and source_trim is not None and source_trim != expected_trim)
+            or (expected_body_style is not None and source_body_style is not None and source_body_style != expected_body_style)
+            or (expected_drivetrain is not None and source_drivetrain is not None and source_drivetrain != expected_drivetrain)
+            or (expected_engine is not None and source_engine is not None and abs(source_engine - expected_engine) >= 0.0001)
         )
         if mismatch:
             conflicts.append(
@@ -364,6 +373,13 @@ def _normalize_vehicle(
                         "model": model,
                         "region": source_region,
                         **({"trim": source_trim} if source_trim else {}),
+                        **({"body_style": source_body_style} if source_body_style else {}),
+                        **({"drivetrain": source_drivetrain} if source_drivetrain else {}),
+                        **(
+                            {"engine_displacement_l": source_engine}
+                            if source_engine is not None
+                            else {}
+                        ),
                     },
                     "evidence_ids": [record["evidence_id"]],
                 }

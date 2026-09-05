@@ -8,6 +8,7 @@ from typing import Any
 from .http_connector import HttpSourceConnector
 from .source_adapters import SourceArtifact, adapt_source_resource
 from .source_bundle import SourceBundle, normalize_source_bundle
+from .vehicle_identity import canonicalize_vehicle_observation
 
 
 @dataclass(frozen=True)
@@ -19,26 +20,41 @@ class VehicleTarget:
     model_year: int
     region: str
     trim: str | None = None
+    body_style: str | None = None
+    drivetrain: str | None = None
+    engine_displacement_l: float | str | None = None
 
     def __post_init__(self) -> None:
-        make = str(self.make).strip()
-        make = {"chevy": "Chevrolet", "chevrolet": "Chevrolet"}.get(make.casefold(), make)
-        model = str(self.model).strip()
-        region = str(self.region).strip().upper()
-        trim = str(self.trim).strip() if self.trim is not None else None
-        if not make or not model or not region:
-            raise ValueError("vehicle target requires make, model, and region")
+        raw_engine = self.engine_displacement_l
+        if isinstance(raw_engine, (int, float)):
+            raw_engine = f"{raw_engine}L"
         try:
-            model_year = int(self.model_year)
+            canonical = canonicalize_vehicle_observation(
+                {
+                    "year": self.model_year,
+                    "make": self.make,
+                    "model": self.model,
+                    "region": self.region,
+                    "body_style": self.body_style,
+                    "trim": self.trim,
+                    "drivetrain": self.drivetrain,
+                    "engine": raw_engine,
+                }
+            )
         except (TypeError, ValueError) as error:
-            raise ValueError("vehicle target year must be an integer") from error
-        if model_year < 1886 or model_year > 2100:
-            raise ValueError("vehicle target year is outside the supported range")
-        object.__setattr__(self, "make", make)
-        object.__setattr__(self, "model", model)
-        object.__setattr__(self, "model_year", model_year)
-        object.__setattr__(self, "region", region)
-        object.__setattr__(self, "trim", trim or None)
+            raise ValueError(
+                "vehicle target requires valid make, model, year, and region"
+            ) from error
+        if canonical.region is None:
+            raise ValueError("vehicle target requires make, model, and region")
+        object.__setattr__(self, "make", canonical.make)
+        object.__setattr__(self, "model", canonical.model)
+        object.__setattr__(self, "model_year", canonical.year)
+        object.__setattr__(self, "region", canonical.region)
+        object.__setattr__(self, "trim", canonical.trim)
+        object.__setattr__(self, "body_style", canonical.body_style)
+        object.__setattr__(self, "drivetrain", canonical.drivetrain)
+        object.__setattr__(self, "engine_displacement_l", canonical.engine_displacement_l)
 
     @property
     def vehicle_key(self) -> str:
@@ -53,6 +69,12 @@ class VehicleTarget:
         }
         if self.trim:
             result["trim"] = self.trim
+        if self.body_style:
+            result["body_style"] = self.body_style
+        if self.drivetrain:
+            result["drivetrain"] = self.drivetrain
+        if self.engine_displacement_l is not None:
+            result["engine_displacement_l"] = self.engine_displacement_l
         return result
 
 

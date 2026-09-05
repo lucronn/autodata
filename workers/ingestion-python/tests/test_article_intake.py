@@ -108,6 +108,40 @@ class VehicleArticleIntakeTests(unittest.TestCase):
         self.assertEqual(result.bundle.articles, ())
         self.assertTrue(any(item["reason"] == "vehicle_identity_mismatch" for item in result.bundle.quarantined))
 
+    def test_article_for_a_different_configuration_is_rejected_before_publication(self):
+        target = VehicleTarget(
+            "Chevy",
+            "Silverado 1500",
+            1999,
+            "US",
+            drivetrain="2wd",
+            engine_displacement_l="5.3LT",
+        )
+        resource = SourceResource.from_bytes(
+            "https://source.example/articles/wrong-configuration",
+            "wrong-configuration-v1",
+            b'{"body":{"year":1999,"make":"Chevrolet","model":"Silverado 1500",'
+            b'"region":"US","drivetrain":"4WD","engine":"4.8L",'
+            b'"articleDetails":[{"id":"TSB-43","title":"Brake connector bulletin"}]}}',
+            "application/json",
+        )
+
+        result = ingest_vehicle_article(
+            resource.source_uri,
+            target,
+            connector=_StaticConnector([resource]),
+        )
+
+        self.assertEqual(result.status, "rejected")
+        self.assertEqual(result.rejection_reason, "vehicle_identity_mismatch")
+        self.assertIsNone(result.bundle.vehicle)
+        self.assertEqual(result.bundle.articles, ())
+        conflict = next(
+            item for item in result.bundle.conflicts
+            if item["field"] == "target_vehicle"
+        )
+        self.assertEqual(conflict["candidate"]["drivetrain"], "4WD")
+
     def test_json_ld_article_and_vehicle_facts_are_recognized_without_provider_specific_api_fields(self):
         payload = b"""
         <html><head><script type="application/ld+json">

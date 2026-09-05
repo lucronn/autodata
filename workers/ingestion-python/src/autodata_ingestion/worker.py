@@ -72,13 +72,7 @@ def run_article_url(source_uri: str, serialized_vehicle: str) -> dict[str, objec
     year = target_value.get("model_year", target_value.get("year"))
     if year is None:
         raise ValueError("article vehicle must include make, model, year, and region")
-    target = VehicleTarget(
-        target_value["make"],
-        target_value["model"],
-        year,
-        target_value["region"],
-        target_value.get("trim"),
-    )
+    target = _vehicle_target_from_mapping(target_value, year)
     connector = HttpSourceConnector(
         source_uri,
         os.getenv("AUTODATA_SOURCE_VERSION", "") or None,
@@ -126,13 +120,7 @@ def run_vehicle_knowledge(serialized_request: str) -> dict[str, object]:
     from .article_intake import VehicleTarget
     from .knowledge_fallback import HttpKnowledgeSourceResolver, query_vehicle_knowledge
 
-    target = VehicleTarget(
-        vehicle["make"],
-        vehicle["model"],
-        year,
-        vehicle["region"],
-        vehicle.get("trim"),
-    )
+    target = _vehicle_target_from_mapping(vehicle, year)
     query = request.get("query", "")
     keywords = request.get("keywords", ())
     if isinstance(keywords, str) or not isinstance(keywords, (list, tuple)):
@@ -190,6 +178,24 @@ def _persist_article_intake(intake: object, *, adapter_name: str) -> dict[str, o
         intake.bundle,
         intake.artifacts,
         adapter_name=adapter_name,
+    )
+
+
+def _vehicle_target_from_mapping(value: dict[str, object], year: object):
+    from .article_intake import VehicleTarget
+
+    return VehicleTarget(
+        value["make"],
+        value["model"],
+        year,
+        value["region"],
+        value.get("trim"),
+        value.get("body_style", value.get("bodyStyle")),
+        value.get("drivetrain", value.get("driveType")),
+        value.get(
+            "engine_displacement_l",
+            value.get("engine", value.get("engineDisplacementL")),
+        ),
     )
 
 

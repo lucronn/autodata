@@ -54,7 +54,8 @@ class HttpKnowledgeSourceResolver:
 
     The template is provider configuration, not domain logic. Supported
     placeholders are ``vehicle_key``, ``year``, ``make``, ``model``,
-    ``region``, ``query``, and ``keywords``. Values are URL-escaped before
+    ``region``, ``body_style``, ``trim``, ``drivetrain``,
+    ``engine_displacement_l``, ``query``, and ``keywords``. Values are URL-escaped before
     substitution so a query cannot alter the configured request path.
     """
 
@@ -88,6 +89,14 @@ class HttpKnowledgeSourceResolver:
             "make": target.make,
             "model": target.model,
             "region": target.region,
+            "body_style": target.body_style or "",
+            "trim": target.trim or "",
+            "drivetrain": target.drivetrain or "",
+            "engine_displacement_l": (
+                f"{target.engine_displacement_l:.1f}"
+                if target.engine_displacement_l is not None
+                else ""
+            ),
             "query": query,
             "keywords": ",".join(keywords),
         }
@@ -435,6 +444,7 @@ def _fetched_records(intake: VehicleArticleIntake) -> list[dict[str, Any]]:
             {
                 "kind": "article",
                 "vehicle_key": intake.target.vehicle_key,
+                "vehicle_identity": dict(intake.bundle.vehicle or intake.target.as_dict()),
                 "article": dict(article),
                 "evidence": [evidence_by_id[str(identifier)] for identifier in identifiers if str(identifier) in evidence_by_id],
             }
@@ -447,6 +457,7 @@ def _fetched_records(intake: VehicleArticleIntake) -> list[dict[str, Any]]:
                 {
                     "kind": "procedure",
                     "vehicle_key": intake.target.vehicle_key,
+                    "vehicle_identity": dict(intake.bundle.vehicle or intake.target.as_dict()),
                     "procedure": {
                         "procedure_id": f"procedure:{article['article_id']}",
                         "section": "procedures",
@@ -485,33 +496,77 @@ def _unique_evidence(evidence: Iterable[Mapping[str, Any]]) -> tuple[dict[str, A
 
 def _record_matches_target(record: Mapping[str, Any], target: VehicleTarget) -> bool:
     vehicle_key = record.get("vehicle_key")
+    vehicle = record.get("vehicle_identity", record.get("vehicle"))
     if vehicle_key is None:
-        vehicle = record.get("vehicle_identity", record.get("vehicle"))
         if isinstance(vehicle, Mapping):
             vehicle_key = vehicle.get("vehicle_key")
             if vehicle_key is None:
                 return _matches_target(vehicle, target)
-    return str(vehicle_key).casefold() == target.vehicle_key.casefold() if vehicle_key else False
+    if not vehicle_key or str(vehicle_key).casefold() != target.vehicle_key.casefold():
+        return False
+    return _matches_target_dimensions(vehicle, target)
 
 
 def _matches_target(vehicle: Any, target: VehicleTarget) -> bool:
     if not isinstance(vehicle, Mapping):
         return False
     if vehicle.get("vehicle_key"):
-        return str(vehicle["vehicle_key"]).casefold() == target.vehicle_key.casefold()
+        return (
+            str(vehicle["vehicle_key"]).casefold() == target.vehicle_key.casefold()
+            and _matches_target_dimensions(vehicle, target)
+        )
     try:
         return (
             str(vehicle.get("make", "")).strip().casefold() == target.make.casefold()
             and str(vehicle.get("model", "")).strip().casefold() == target.model.casefold()
             and int(vehicle.get("model_year", vehicle.get("year"))) == target.model_year
             and str(vehicle.get("region", "")).strip().upper() == target.region
-            and (
-                not target.trim
-                or str(vehicle.get("trim", "")).strip().casefold() == target.trim.casefold()
-            )
+            and _matches_target_dimensions(vehicle, target)
         )
     except (TypeError, ValueError):
         return False
+
+
+def _matches_target_dimensions(vehicle: Mapping[str, Any] | None, target: VehicleTarget) -> bool:
+    """Reject explicit source dimensions that conflict with the requested configuration."""
+
+    if not isinstance(vehicle, Mapping):
+        return True
+    if not any(
+        vehicle.get(name) is not None
+        for name in (
+            "body_style",
+            "bodyStyle",
+            "trim",
+            "drivetrain",
+            "driveType",
+            "engine",
+            "engine_displacement_l",
+            "engineDisplacementL",
+        )
+    ):
+        return True
+    try:
+        from .vehicle_identity import canonicalize_vehicle_observation
+
+        actual = canonicalize_vehicle_observation(vehicle)
+    except (TypeError, ValueError):
+        return False
+    pairs = (
+        (target.body_style, actual.body_style),
+        (target.trim, actual.trim),
+        (target.drivetrain, actual.drivetrain),
+        (target.engine_displacement_l, actual.engine_displacement_l),
+    )
+    for expected, actual_value in pairs:
+        if expected is None or actual_value is None:
+            continue
+        if isinstance(expected, float) or isinstance(actual_value, float):
+            if abs(float(expected) - float(actual_value)) >= 0.0001:
+                return False
+        elif expected != actual_value:
+            return False
+    return True
 
 
 def _normalize_query(query: str) -> str:

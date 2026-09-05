@@ -180,10 +180,18 @@ def _canonicalize_mapping_observation(value: Mapping[str, Any]) -> CanonicalVehi
     make = _normalize_make(value.get("make"), aliases)
     model = _normalize_model(value.get("model"))
     region = _normalize_region(value.get("region", value.get("market")))
-    body_style = _normalize_body_style(value.get("body_style"))
+    body_style = _normalize_body_style(value.get("body_style", value.get("bodyStyle")))
     trim = _normalize_trim(value.get("trim"))
-    drivetrain = _normalize_drivetrain(value.get("drivetrain"), aliases)
-    engine = _normalize_engine(value.get("engine"), aliases)
+    drivetrain = _normalize_drivetrain(
+        value.get("drivetrain", value.get("driveType")), aliases
+    )
+    engine = _normalize_engine(
+        value.get(
+            "engine",
+            value.get("engine_displacement_l", value.get("engineDisplacementL")),
+        ),
+        aliases,
+    )
     return CanonicalVehicleObservation(
         year,
         make,
@@ -337,6 +345,11 @@ def _normalize_drivetrain(raw_drivetrain: Any, aliases: list[VehicleAlias]) -> s
 def _normalize_engine(raw_engine: Any, aliases: list[VehicleAlias]) -> float | None:
     if raw_engine is None:
         return None
+    if isinstance(raw_engine, (int, float)) and not isinstance(raw_engine, bool):
+        value = float(raw_engine)
+        if value <= 0:
+            raise ValueError("engine displacement must be positive")
+        return value
     text = str(raw_engine).strip()
     if not text:
         return None

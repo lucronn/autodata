@@ -129,9 +129,9 @@ class IngestionWorkerTests(unittest.TestCase):
     def test_configured_knowledge_request_fetches_on_catalog_miss(self):
         from autodata_ingestion.worker import run_vehicle_knowledge
 
-        source_uri = "https://source.example/{vehicle_key}?q={query}"
+        source_uri = "https://source.example/{vehicle_key}/{drivetrain}/{engine_displacement_l}?q={query}"
         resource = SourceResource.from_bytes(
-            "https://source.example/chevrolet-silverado-1500-1999-us?q=brake%20connector",
+            "https://source.example/chevrolet-silverado-1500-1999-us/2WD/5.3?q=brake%20connector",
             "source-v1",
             b'<html><head><meta name="vehicle" content="1999 Chevrolet Silverado 1500"><meta name="article:id" content="TSB-42"><meta property="og:title" content="Brake connector bulletin"></head><body><article><p>Inspect the brake connector.</p></article></body></html>',
             "text/html",
@@ -150,7 +150,14 @@ class IngestionWorkerTests(unittest.TestCase):
                     result = run_vehicle_knowledge(
                         json.dumps(
                             {
-                                "vehicle": {"year": 1999, "make": "Chevy", "model": "Silverado 1500", "region": "US"},
+                                "vehicle": {
+                                    "year": 1999,
+                                    "make": "Chevy",
+                                    "model": "Silverado 1500",
+                                    "region": "US",
+                                    "drivetrain": "2wd",
+                                    "engine_displacement_l": 5.3,
+                                },
                                 "query": "brake connector",
                                 "source_uri_template": source_uri,
                             }
@@ -162,7 +169,7 @@ class IngestionWorkerTests(unittest.TestCase):
         connector_class.assert_called_once()
         self.assertEqual(
             connector_class.call_args.args[0],
-            "https://source.example/chevrolet-silverado-1500-1999-us?q=brake%20connector",
+            "https://source.example/chevrolet-silverado-1500-1999-us/2WD/5.3?q=brake%20connector",
         )
         persist.assert_called_once()
         self.assertEqual(persist.call_args.kwargs["adapter_name"], "knowledge-fallback")
