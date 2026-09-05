@@ -137,6 +137,15 @@ PYTHONPATH=workers/ingestion-python/src \
 python3 -m autodata_ingestion.worker
 ```
 
+Mercury-2 is optional and advisory for ambiguous identity decisions. Enable
+it only through secret-managed environment variables; never place the API key
+in Compose files, source files, README examples, or Git history:
+
+```sh
+export INCEPTION_API_KEY='<set-locally-or-through-a-secret-manager>'
+export INCEPTION_API_BASE_URL='<provider-endpoint>'
+```
+
 ## Run tests
 
 ```sh
