@@ -80,3 +80,21 @@ func TestVehicleIdentityResolveMarksConflictingBaseDimensionsForReview(t *testin
 		t.Fatalf("status = %q, want needs_review", result.Vehicles[0].Status)
 	}
 }
+
+func TestVehicleIdentityIdempotencyKeyCannotCrossOrganizations(t *testing.T) {
+	server := NewServer(staticReadiness{})
+	body := `{"vehicles":[{"year":1999,"make":"Chevrolet","model":"Silverado 1500"}]}`
+	first := httptest.NewRequest(http.MethodPost, "/vehicle-identities/resolve", strings.NewReader(body))
+	first.Header.Set("Authorization", "Bearer local:org-1:dataset_viewer")
+	first.Header.Set("Idempotency-Key", "vehicles-cross-org")
+	firstResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(firstResponse, first)
+	second := httptest.NewRequest(http.MethodPost, "/vehicle-identities/resolve", strings.NewReader(body))
+	second.Header.Set("Authorization", "Bearer local:org-2:dataset_viewer")
+	second.Header.Set("Idempotency-Key", "vehicles-cross-org")
+	secondResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(secondResponse, second)
+	if secondResponse.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", secondResponse.Code, http.StatusConflict)
+	}
+}

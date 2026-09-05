@@ -69,19 +69,27 @@ type VehicleIdentityStore interface {
 
 type memoryVehicleIdentityStore struct {
 	mu            sync.Mutex
-	byIdempotency map[string]VehicleIdentityResolveRecord
+	byIdempotency map[string]vehicleIdentityCachedRequest
 	rows          []VehicleIdentityRow
 }
 
-func newMemoryVehicleIdentityStore() *memoryVehicleIdentityStore {
-	return &memoryVehicleIdentityStore{byIdempotency: make(map[string]VehicleIdentityResolveRecord)}
+type vehicleIdentityCachedRequest struct {
+	organizationID string
+	record         VehicleIdentityResolveRecord
 }
 
-func (s *memoryVehicleIdentityStore) Resolve(_ Principal, input VehicleIdentityResolveInput, idempotencyKey string) (VehicleIdentityResolveRecord, bool, error) {
+func newMemoryVehicleIdentityStore() *memoryVehicleIdentityStore {
+	return &memoryVehicleIdentityStore{byIdempotency: make(map[string]vehicleIdentityCachedRequest)}
+}
+
+func (s *memoryVehicleIdentityStore) Resolve(principal Principal, input VehicleIdentityResolveInput, idempotencyKey string) (VehicleIdentityResolveRecord, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if existing, ok := s.byIdempotency[idempotencyKey]; ok {
-		return existing, true, nil
+		if existing.organizationID != principal.OrganizationID {
+			return VehicleIdentityResolveRecord{}, false, ErrVehicleIdentityConflict
+		}
+		return existing.record, true, nil
 	}
 	if len(input.Vehicles) == 0 {
 		return VehicleIdentityResolveRecord{}, false, ErrVehicleIdentityInvalid
@@ -91,7 +99,7 @@ func (s *memoryVehicleIdentityStore) Resolve(_ Principal, input VehicleIdentityR
 		return VehicleIdentityResolveRecord{}, false, err
 	}
 	record := VehicleIdentityResolveRecord{Status: "resolved", Vehicles: records, UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
-	s.byIdempotency[idempotencyKey] = record
+	s.byIdempotency[idempotencyKey] = vehicleIdentityCachedRequest{organizationID: principal.OrganizationID, record: record}
 	s.rows = append(s.rows, canonicalRows...)
 	return record, false, nil
 }

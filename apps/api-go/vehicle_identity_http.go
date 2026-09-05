@@ -25,6 +25,10 @@ func (s *Server) resolveVehicleIdentity(response http.ResponseWriter, request *h
 		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", err.Error(), false)
 		return
 	}
+	if errors.Is(err, ErrVehicleIdentityConflict) {
+		writeAPIError(response, request, http.StatusConflict, "DUPLICATE_REQUEST", err.Error(), false)
+		return
+	}
 	if err != nil {
 		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "vehicle identity could not be resolved", true)
 		return
