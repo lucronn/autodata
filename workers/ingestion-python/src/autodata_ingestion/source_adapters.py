@@ -276,6 +276,17 @@ def classify_json_candidates(document: Any) -> list[NormalizationCandidate]:
         vehicle_candidate = _candidate_from_record(body, "body")
         if vehicle_candidate is not None and vehicle_candidate.kind == "vehicle_identity":
             candidates.append(vehicle_candidate)
+        elif vehicle_candidate is None:
+            # Many APIs wrap the actual record under a vehicle-shaped key.
+            # Inspect only known identity wrappers so arbitrary nested JSON is
+            # not mistaken for canonical vehicle data.
+            for key in ("vehicle", "vehicleIdentity", "vehicle_identity"):
+                nested = body.get(key)
+                if isinstance(nested, dict):
+                    nested_candidate = _candidate_from_record(nested, f"body.{key}")
+                    if nested_candidate is not None and nested_candidate.kind == "vehicle_identity":
+                        candidates.append(nested_candidate)
+                        break
         raw_specifications = body.get("specifications")
         if isinstance(raw_specifications, dict):
             for name, value in raw_specifications.items():
@@ -1107,6 +1118,28 @@ def _candidate_from_record(
         trim = _field(record, "trim", "variant")
         if trim:
             data["trim"] = trim
+        body_style = _field(record, "body_style", "bodyStyle", "body_type", "bodyType")
+        if body_style:
+            data["body_style"] = body_style
+        drivetrain = _field(
+            record,
+            "drivetrain",
+            "drive_train",
+            "driveType",
+            "drive_type",
+        )
+        if drivetrain:
+            data["drivetrain"] = drivetrain
+        engine = _field(
+            record,
+            "engine",
+            "engine_displacement_l",
+            "engineDisplacementL",
+            "engine_size",
+            "engineSize",
+        )
+        if engine:
+            data["engine"] = engine
         return NormalizationCandidate("vehicle_identity", f"vehicle-identity:{locator}", data, locator)
 
     if kind in {"specification", "spec", "fluid", "dimension"}:

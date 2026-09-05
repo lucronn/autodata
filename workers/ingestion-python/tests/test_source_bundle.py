@@ -13,6 +13,32 @@ from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E4
 
 
 class SourceBundleTests(unittest.TestCase):
+    def test_structured_vehicle_dimensions_survive_normalization_and_aliasing(self):
+        resource = SourceResource.from_bytes(
+            "provider://vehicle/identity.json",
+            "source-v1",
+            (
+                b'{"vehicle":{"year":"99","manufacturer":"Chevy",'
+                b'"model":"Silverado-1500","market":"US",'
+                b'"bodyStyle":"Pickup","driveType":"4x2",'
+                b'"engineDisplacementL":"5.3LT"}}'
+            ),
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource)], "US")
+
+        self.assertEqual(bundle.status, "ready")
+        self.assertIsNotNone(bundle.vehicle)
+        self.assertEqual(bundle.vehicle["vehicle_key"], "chevrolet-silverado-1500-1999-us")
+        self.assertEqual(bundle.vehicle["make"], "Chevrolet")
+        self.assertEqual(bundle.vehicle["model"], "Silverado 1500")
+        self.assertEqual(bundle.vehicle["model_year"], 1999)
+        self.assertEqual(bundle.vehicle["body_style"], "Pickup")
+        self.assertEqual(bundle.vehicle["drivetrain"], "2WD")
+        self.assertEqual(bundle.vehicle["engine_displacement_l"], 5.3)
+        self.assertTrue(bundle.vehicle["evidence_id"])
+
     def test_normalizes_cross_resource_vehicle_bundle_with_evidence(self):
         resources = [
             SourceResource.from_bytes(
