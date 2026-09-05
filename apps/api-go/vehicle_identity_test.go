@@ -35,6 +35,37 @@ func TestVehicleIdentityResolveMergesCoarseAndRichRows(t *testing.T) {
 	}
 }
 
+func TestVehicleIdentitySelectorsIncludeEngineAndTrimValues(t *testing.T) {
+	server := NewServer(staticReadiness{})
+	body := `{"vehicles":[{"year":1999,"make":"Chevy","model":"Silverado 1500","region":"US","trim":"LT","engine_displacement_l":5.3}]}`
+	request := httptest.NewRequest(http.MethodPost, "/vehicle-identities/resolve", strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer local:org-1:dataset_viewer")
+	request.Header.Set("Idempotency-Key", "selectors-1")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("resolve status = %d, want %d", response.Code, http.StatusCreated)
+	}
+
+	selectorsRequest := httptest.NewRequest(http.MethodGet, "/vehicle-identities/selectors", nil)
+	selectorsRequest.Header.Set("Authorization", "Bearer local:org-1:dataset_viewer")
+	selectorsResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(selectorsResponse, selectorsRequest)
+	if selectorsResponse.Code != http.StatusOK {
+		t.Fatalf("selector status = %d, want %d", selectorsResponse.Code, http.StatusOK)
+	}
+	var selectors VehicleIdentitySelectors
+	if err := json.NewDecoder(selectorsResponse.Body).Decode(&selectors); err != nil {
+		t.Fatal(err)
+	}
+	if len(selectors.Trims) != 1 || selectors.Trims[0] != "LT" {
+		t.Fatalf("trims = %#v", selectors.Trims)
+	}
+	if len(selectors.EngineDisplacementsL) != 1 || selectors.EngineDisplacementsL[0] != 5.3 {
+		t.Fatalf("engines = %#v", selectors.EngineDisplacementsL)
+	}
+}
+
 func TestVehicleIdentityResolveIsIdempotent(t *testing.T) {
 	server := NewServer(staticReadiness{})
 	body := `{"vehicles":[{"year":1999,"make":"Chevrolet","model":"Silverado 1500","region":"US"}]}`

@@ -456,9 +456,13 @@ func main() {
 		log.Fatal(fmt.Errorf("configure API stores: %w", err))
 	}
 	defer cleanup()
+	application := NewServerWithDependencies(configuredReadiness(), HeaderAuthenticator{}, requestStore, projectionStore)
+	if durableProjections, ok := projectionStore.(*postgresProjectionStore); ok {
+		application.vehicleIdentity = newLayeredVehicleIdentityStore(durableProjections.pool)
+	}
 	server := &http.Server{
 		Addr:              address,
-		Handler:           NewServerWithDependencies(configuredReadiness(), HeaderAuthenticator{}, requestStore, projectionStore).Handler(),
+		Handler:           application.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	log.Printf("autodata api listening on %s", address)

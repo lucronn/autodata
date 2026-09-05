@@ -56,10 +56,12 @@ type VehicleIdentityResolveRecord struct {
 }
 
 type VehicleIdentitySelectors struct {
-	Makes       []string `json:"makes"`
-	Models      []string `json:"models"`
-	Years       []int    `json:"years"`
-	Drivetrains []string `json:"drivetrains"`
+	Makes                []string  `json:"makes"`
+	Models               []string  `json:"models"`
+	Years                []int     `json:"years"`
+	Drivetrains          []string  `json:"drivetrains"`
+	Trims                []string  `json:"trims"`
+	EngineDisplacementsL []float64 `json:"engine_displacements_l"`
 }
 
 type VehicleIdentityStore interface {
@@ -114,7 +116,8 @@ func (s *memoryVehicleIdentityStore) Resolve(principal Principal, input VehicleI
 func (s *memoryVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySelectors, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	makes, models, drivetrains := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	makes, models, drivetrains, trims := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
+	engines := map[float64]bool{}
 	years := map[int]bool{}
 	for _, row := range s.rows {
 		if row.Make != "" {
@@ -129,9 +132,22 @@ func (s *memoryVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySele
 		if row.Drivetrain == "" {
 			delete(drivetrains, "")
 		}
+		if strings.TrimSpace(row.Trim) != "" {
+			trims[strings.TrimSpace(row.Trim)] = true
+		}
+		if row.EngineDisplacementL != nil {
+			engines[*row.EngineDisplacementL] = true
+		}
 		years[normalizedVehicleYear(row.Year)] = true
 	}
-	return VehicleIdentitySelectors{Makes: sortedStrings(makes), Models: sortedStrings(models), Years: sortedInts(years), Drivetrains: sortedStrings(drivetrains)}, nil
+	return VehicleIdentitySelectors{
+		Makes:                sortedStrings(makes),
+		Models:               sortedStrings(models),
+		Years:                sortedInts(years),
+		Drivetrains:          sortedStrings(drivetrains),
+		Trims:                sortedStrings(trims),
+		EngineDisplacementsL: sortedFloats(engines),
+	}, nil
 }
 
 func normalizeVehicleIdentityRows(rows []VehicleIdentityRow) ([]VehicleIdentityRecord, []VehicleIdentityRow, error) {
@@ -298,5 +314,13 @@ func sortedInts(values map[int]bool) []int {
 		result = append(result, value)
 	}
 	sort.Ints(result)
+	return result
+}
+func sortedFloats(values map[float64]bool) []float64 {
+	result := make([]float64, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	sort.Float64s(result)
 	return result
 }
