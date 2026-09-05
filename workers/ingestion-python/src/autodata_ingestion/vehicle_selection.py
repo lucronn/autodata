@@ -158,7 +158,8 @@ def _configuration_key(vehicle_key: str, observation: CanonicalVehicleObservatio
     if observation.trim:
         parts.extend(("trim", _slug(observation.trim)))
     if observation.engine_displacement_l is not None:
-        parts.extend(("engine", f"{observation.engine_displacement_l:.1f}l"))
+        engine_key = f"{observation.engine_displacement_l:.1f}".replace(".", "-") + "l"
+        parts.extend(("engine", engine_key))
     return "-".join(parts)
 
 

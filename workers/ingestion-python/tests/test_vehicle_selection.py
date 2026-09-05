@@ -18,7 +18,7 @@ class VehicleSelectionTests(unittest.TestCase):
         self.assertEqual(family["drivetrain"], "2WD")
         self.assertEqual(
             [item["configuration_key"] for item in family["configurations"]],
-            ["chevrolet-silverado-1500-1999-us", "chevrolet-silverado-1500-1999-us-engine-5.3l"],
+            ["chevrolet-silverado-1500-1999-us", "chevrolet-silverado-1500-1999-us-engine-5-3l"],
         )
 
     def test_duplicate_rows_are_idempotent_and_conflicts_are_reviewable(self):
