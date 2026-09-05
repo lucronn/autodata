@@ -87,7 +87,7 @@ def run_article_url(source_uri: str, serialized_vehicle: str) -> dict[str, objec
         request_headers=_source_request_headers(),
     )
     intake = ingest_vehicle_article(source_uri, target, connector=connector)
-    return {
+    result: dict[str, object] = {
         "worker": "ingestion",
         "lane": "fast",
         "status": intake.status,
@@ -99,6 +99,10 @@ def run_article_url(source_uri: str, serialized_vehicle: str) -> dict[str, objec
         "quarantined": list(intake.bundle.quarantined),
         "conflicts": list(intake.bundle.conflicts),
     }
+    persistence = _persist_article_intake(intake, adapter_name=connector.name)
+    if persistence is not None:
+        result["persistence"] = persistence
+    return result
 
 
 def run_vehicle_knowledge(serialized_request: str) -> dict[str, object]:
@@ -152,6 +156,13 @@ def run_vehicle_knowledge(serialized_request: str) -> dict[str, object]:
         request_headers=_source_request_headers(),
     ) if source_template else lambda *_args: None
 
+    def ingest_and_persist(source_uri: str, target: object, **options: object):
+        from .article_intake import ingest_vehicle_article
+
+        intake = ingest_vehicle_article(source_uri, target, **options)
+        _persist_article_intake(intake, adapter_name="knowledge-fallback")
+        return intake
+
     result = query_vehicle_knowledge(
         target,
         query,
@@ -159,8 +170,27 @@ def run_vehicle_knowledge(serialized_request: str) -> dict[str, object]:
         source_resolver=resolver,
         keywords=keywords,
         kind=request.get("kind", "all"),
+        ingest=ingest_and_persist,
     )
     return {"worker": "ingestion", "lane": "fast", **result.to_dict()}
+
+
+def _persist_article_intake(intake: object, *, adapter_name: str) -> dict[str, object] | None:
+    """Persist a ready article intake only when explicitly enabled."""
+
+    if os.getenv("AUTODATA_SOURCE_PERSIST") != "1":
+        return None
+    from .article_intake import VehicleArticleIntake
+
+    if not isinstance(intake, VehicleArticleIntake) or intake.status != "ready":
+        return None
+    from .bundle_persistence import persist_source_bundle
+
+    return persist_source_bundle(
+        intake.bundle,
+        intake.artifacts,
+        adapter_name=adapter_name,
+    )
 
 
 def run_source_directory(directory: str) -> dict[str, str | int | list[str]]:

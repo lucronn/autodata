@@ -52,7 +52,7 @@ class IngestionWorkerTests(unittest.TestCase):
         )
         with patch("autodata_ingestion.http_connector.HttpSourceConnector") as connector_class:
             connector_class.return_value.fetch.return_value = [resource]
-            with patch.dict("os.environ", {"AUTODATA_SOURCE_VERSION": "v1", "AUTODATA_SOURCE_REQUEST_HEADERS_JSON": ""}, clear=False):
+            with patch.dict("os.environ", {"AUTODATA_SOURCE_VERSION": "v1", "AUTODATA_SOURCE_REQUEST_HEADERS_JSON": "", "AUTODATA_SOURCE_PERSIST": "0"}, clear=False):
                 result = run_article_url(
                     resource.source_uri,
                     json.dumps({"year": 2019, "make": "Cadillac", "model": "Escalade ESV", "region": "US"}),
@@ -62,6 +62,36 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual(result["vehicle"]["vehicle_key"], "cadillac-escalade-esv-2019-us")
         self.assertEqual(result["articles"][0]["article_id"], "TSB-42")
         self.assertTrue(result["evidence"])
+
+    def test_configured_article_url_persists_ready_intake_when_enabled(self):
+        from autodata_ingestion.worker import run_article_url
+
+        resource = SourceResource.from_bytes(
+            "https://source.example/tsb-42",
+            "v1",
+            b'<html><head><meta name="vehicle" content="2019 Cadillac Escalade ESV"><meta name="article:id" content="TSB-42"><meta property="og:title" content="Brake connector bulletin"></head><body><article><p>Inspect connector.</p></article></body></html>',
+            "text/html",
+        )
+        with patch("autodata_ingestion.http_connector.HttpSourceConnector") as connector_class:
+            connector_class.return_value.name = "http"
+            connector_class.return_value.fetch.return_value = [resource]
+            with patch(
+                "autodata_ingestion.bundle_persistence.persist_source_bundle",
+                return_value={"status": "ready", "vehicle_id": "vehicle-1"},
+            ) as persist:
+                with patch.dict(
+                    "os.environ",
+                    {"AUTODATA_SOURCE_PERSIST": "1", "AUTODATA_SOURCE_REQUEST_HEADERS_JSON": ""},
+                    clear=False,
+                ):
+                    result = run_article_url(
+                        resource.source_uri,
+                        json.dumps({"year": 2019, "make": "Cadillac", "model": "Escalade ESV", "region": "US"}),
+                    )
+
+        self.assertEqual(result["persistence"]["vehicle_id"], "vehicle-1")
+        persist.assert_called_once()
+        self.assertEqual(persist.call_args.kwargs["adapter_name"], "http")
 
     def test_configured_knowledge_request_returns_catalog_hit_without_http_fetch(self):
         from autodata_ingestion.worker import run_vehicle_knowledge
@@ -108,15 +138,24 @@ class IngestionWorkerTests(unittest.TestCase):
         )
         with patch("autodata_ingestion.http_connector.HttpSourceConnector") as connector_class:
             connector_class.return_value.fetch.return_value = [resource]
-            result = run_vehicle_knowledge(
-                json.dumps(
-                    {
-                        "vehicle": {"year": 1999, "make": "Chevy", "model": "Silverado 1500", "region": "US"},
-                        "query": "brake connector",
-                        "source_uri_template": source_uri,
-                    }
-                )
-            )
+            with patch(
+                "autodata_ingestion.bundle_persistence.persist_source_bundle",
+                return_value={"status": "ready", "vehicle_id": "vehicle-1"},
+            ) as persist:
+                with patch.dict(
+                    "os.environ",
+                    {"AUTODATA_SOURCE_PERSIST": "1", "AUTODATA_SOURCE_REQUEST_HEADERS_JSON": ""},
+                    clear=False,
+                ):
+                    result = run_vehicle_knowledge(
+                        json.dumps(
+                            {
+                                "vehicle": {"year": 1999, "make": "Chevy", "model": "Silverado 1500", "region": "US"},
+                                "query": "brake connector",
+                                "source_uri_template": source_uri,
+                            }
+                        )
+                    )
 
         self.assertEqual(result["status"], "fetched")
         self.assertEqual(result["results"][0]["article"]["article_id"], "TSB-42")
@@ -125,6 +164,8 @@ class IngestionWorkerTests(unittest.TestCase):
             connector_class.call_args.args[0],
             "https://source.example/chevrolet-silverado-1500-1999-us?q=brake%20connector",
         )
+        persist.assert_called_once()
+        self.assertEqual(persist.call_args.kwargs["adapter_name"], "knowledge-fallback")
 
     def test_configured_source_directory_runs_the_normalization_pipeline(self):
         with tempfile.TemporaryDirectory() as directory:
