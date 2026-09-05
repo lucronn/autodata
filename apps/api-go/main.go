@@ -53,11 +53,12 @@ func (staticReadiness) Check() map[string]string {
 }
 
 type Server struct {
-	readiness   ReadinessChecker
-	auth        Authenticator
-	requests    RequestStore
-	projections ProjectionStore
-	metrics     *apiMetrics
+	readiness       ReadinessChecker
+	auth            Authenticator
+	requests        RequestStore
+	projections     ProjectionStore
+	vehicleIdentity VehicleIdentityStore
+	metrics         *apiMetrics
 }
 
 func NewServer(readiness ReadinessChecker) *Server {
@@ -70,12 +71,23 @@ func NewServerWithDependencies(readiness ReadinessChecker, auth Authenticator, r
 		projectionStore = projections[0]
 	}
 	return &Server{
-		readiness:   readiness,
-		auth:        auth,
-		requests:    requests,
-		projections: projectionStore,
-		metrics:     new(apiMetrics),
+		readiness:       readiness,
+		auth:            auth,
+		requests:        requests,
+		projections:     projectionStore,
+		vehicleIdentity: newMemoryVehicleIdentityStore(),
+		metrics:         new(apiMetrics),
 	}
+}
+
+// NewServerWithVehicleIdentityStore injects the canonical identity persistence
+// boundary without coupling handlers to PostgreSQL or Python workers.
+func NewServerWithVehicleIdentityStore(readiness ReadinessChecker, auth Authenticator, requests RequestStore, identity VehicleIdentityStore, projections ...ProjectionStore) *Server {
+	server := NewServerWithDependencies(readiness, auth, requests, projections...)
+	if identity != nil {
+		server.vehicleIdentity = identity
+	}
+	return server
 }
 
 func (s *Server) Handler() http.Handler {
@@ -84,6 +96,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics.handler)
 	mux.Handle("POST /dataset-requests", s.requireRole("dataset_viewer", s.createDatasetRequest))
+	mux.Handle("POST /vehicle-identities/resolve", s.requireRole("dataset_viewer", s.resolveVehicleIdentity))
+	mux.Handle("GET /vehicle-identities/selectors", s.requireRole("dataset_viewer", s.listVehicleIdentitySelectors))
 	mux.Handle("GET /dataset-requests/{id}", s.requireRole("dataset_viewer", s.getDatasetRequest))
 	mux.Handle("GET /datasets/{id}", s.requireRole("dataset_viewer", s.getDataset))
 	mux.Handle("GET /datasets/{id}/sections", s.requireRole("dataset_viewer", s.getDatasetSections))
