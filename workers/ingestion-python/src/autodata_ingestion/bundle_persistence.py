@@ -12,6 +12,7 @@ from io import BytesIO
 from typing import Any, Iterable
 
 from .fast_lane_persistence import FastLanePublication, publish_fast_lane_revision
+from .article_identity import canonicalize_article_identity
 from .source_adapters import SourceArtifact
 from .object_storage import ensure_versioned_bucket
 from .source_bundle import SourceBundle
@@ -235,7 +236,7 @@ def persist_source_bundle(
                     ),
                 )
 
-            _persist_catalog_articles(
+            duplicate_links = _persist_catalog_articles(
                 cursor,
                 bundle.articles,
                 evidence_by_id,
@@ -272,6 +273,7 @@ def persist_source_bundle(
         "diagrams": len(bundle.diagrams),
         "evidence": len(bundle.evidence),
         "quarantined": len(bundle.quarantined),
+        "catalog_article_duplicate_links": duplicate_links,
     }
     if publication_result is not None:
         result["publication"] = publication_result
@@ -306,13 +308,23 @@ def _persist_catalog_articles(
     snapshot_ids: Mapping[str, str],
     vehicle_id: str,
     jsonb: Any,
-) -> None:
+) -> int:
     """Persist structured article content with source-scoped replay identity."""
 
+    duplicate_links = 0
     for article in articles:
         article_evidence = evidence_by_id[article["evidence_id"]]
         steps = article.get("steps")
-        _upsert_returning_id(
+        fingerprint = normalized_article_fingerprint(article)
+        exact_duplicate_id = _find_exact_article_duplicate(
+            cursor, vehicle_id, fingerprint
+        )
+        near_duplicate_id = None
+        if exact_duplicate_id is None:
+            near_duplicate_id = _find_near_duplicate_article(
+                cursor, vehicle_id, article
+            )
+        catalog_article_id = _upsert_returning_id(
             cursor,
             """
             INSERT INTO catalog_articles
@@ -347,13 +359,157 @@ def _persist_catalog_articles(
                 article.get("sort"),
                 article.get("body"),
                 jsonb(steps) if steps is not None else None,
-                normalized_article_fingerprint(article),
+                fingerprint,
                 snapshot_ids[article_evidence["content_sha256"]],
                 article_evidence["locator"],
                 article_evidence["locator"],
                 article_evidence["confidence"],
             ),
         )
+        canonical_article_id = exact_duplicate_id or near_duplicate_id
+        if canonical_article_id is not None and canonical_article_id != catalog_article_id:
+            _persist_article_duplicate_link(
+                cursor,
+                vehicle_id=vehicle_id,
+                canonical_article_id=canonical_article_id,
+                duplicate_article_id=catalog_article_id,
+                source_snapshot_id=snapshot_ids[article_evidence["content_sha256"]],
+                extraction_evidence_id=article_evidence["evidence_id"],
+                evidence_locator=article_evidence["locator"],
+                evidence_confidence=article_evidence["confidence"],
+                reviewer_state=article_evidence.get("reviewer_state", "pending"),
+            )
+            duplicate_links += 1
+    return duplicate_links
+
+
+def _find_exact_article_duplicate(
+    cursor: Any,
+    vehicle_id: str,
+    fingerprint: str,
+) -> str | None:
+    cursor.execute(
+        """
+        SELECT catalog_article_id
+        FROM catalog_articles
+        WHERE vehicle_id = %s
+          AND normalized_fingerprint = %s
+          AND NOT EXISTS (
+              SELECT 1
+              FROM catalog_article_vehicle_links links
+              WHERE links.duplicate_catalog_article_id = catalog_articles.catalog_article_id
+          )
+        ORDER BY catalog_article_id
+        LIMIT 1
+        """,
+        (vehicle_id, fingerprint),
+    )
+    row = cursor.fetchone()
+    return str(row[0]) if row is not None else None
+
+
+def _find_near_duplicate_article(
+    cursor: Any,
+    vehicle_id: str,
+    article: Mapping[str, Any],
+) -> str | None:
+    title = str(article.get("title") or "").strip()
+    body = str(article.get("body") or "").strip()
+    if not title or not body:
+        return None
+    cursor.execute(
+        """
+        SELECT ca.catalog_article_id::text, ca.title, ca.body, ss.source_uri
+        FROM catalog_articles ca
+        JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
+        WHERE ca.vehicle_id = %s
+          AND ca.normalized_fingerprint IS NOT NULL
+          AND ca.title IS NOT NULL
+          AND ca.body IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1
+              FROM catalog_article_vehicle_links links
+              WHERE links.duplicate_catalog_article_id = ca.catalog_article_id
+          )
+        ORDER BY ca.catalog_article_id
+        """,
+        (vehicle_id,),
+    )
+    rows = cursor.fetchall()
+    existing_records: list[dict[str, Any]] = []
+    record_ids: dict[str, str] = {}
+    for row in rows:
+        if len(row) < 4:
+            continue
+        record_id, existing_title, existing_body, source_uri = row[:4]
+        existing = {
+            "title": existing_title,
+            "body": existing_body,
+            "source_uri": source_uri,
+        }
+        try:
+            identity = canonicalize_article_identity(existing)
+        except ValueError:
+            continue
+        existing_records.append(existing)
+        record_ids[identity.article_key] = str(record_id)
+    if not existing_records:
+        return None
+    identity = canonicalize_article_identity(
+        article,
+        existing_articles=existing_records,
+    )
+    if not identity.is_near_duplicate:
+        return None
+    return record_ids.get(identity.near_duplicate_of or "")
+
+
+def _persist_article_duplicate_link(
+    cursor: Any,
+    *,
+    vehicle_id: str,
+    canonical_article_id: str,
+    duplicate_article_id: str,
+    source_snapshot_id: str,
+    extraction_evidence_id: str,
+    evidence_locator: str,
+    evidence_confidence: float,
+    reviewer_state: str,
+) -> None:
+    if canonical_article_id == duplicate_article_id:
+        raise ValueError("canonical and duplicate article rows must differ")
+    cursor.execute(
+        """
+        INSERT INTO catalog_article_vehicle_links
+            (catalog_article_vehicle_link_id, vehicle_id,
+             canonical_catalog_article_id, duplicate_catalog_article_id,
+             source_snapshot_id, extraction_evidence_id, evidence_locator,
+             evidence_confidence, reviewer_state, link_state)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'duplicate')
+        ON CONFLICT (duplicate_catalog_article_id)
+        DO UPDATE SET canonical_catalog_article_id = EXCLUDED.canonical_catalog_article_id,
+                      source_snapshot_id = EXCLUDED.source_snapshot_id,
+                      extraction_evidence_id = EXCLUDED.extraction_evidence_id,
+                      evidence_locator = EXCLUDED.evidence_locator,
+                      evidence_confidence = EXCLUDED.evidence_confidence,
+                      reviewer_state = EXCLUDED.reviewer_state,
+                      link_state = EXCLUDED.link_state,
+                      updated_at = now()
+        """,
+        (
+            _stable_uuid(
+                f"catalog-article-vehicle-link:{canonical_article_id}:{duplicate_article_id}"
+            ),
+            vehicle_id,
+            canonical_article_id,
+            duplicate_article_id,
+            source_snapshot_id,
+            extraction_evidence_id,
+            evidence_locator,
+            evidence_confidence,
+            reviewer_state,
+        ),
+    )
 
 
 def _persist_snapshots(cursor: Any, artifacts: list[SourceArtifact], adapter_name: str, now: datetime, jsonb: Any) -> dict[str, str]:
