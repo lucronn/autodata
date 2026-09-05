@@ -20,8 +20,32 @@ def run_once() -> dict[str, object]:
     fast_event = os.getenv("AUTODATA_FAST_EVENT_JSON", "").strip()
     if fast_event:
         return run_fast_event(fast_event)
+    vehicle_list = os.getenv("AUTODATA_VEHICLE_LIST_JSON", "").strip()
+    if vehicle_list:
+        return run_vehicle_selection(vehicle_list)
 
     return {"worker": "ingestion", "lane": "fast", "status": "idle"}
+
+
+def run_vehicle_selection(serialized_vehicle_list: str) -> dict[str, object]:
+    """Normalize a JSON vehicle list for selection and identity resolution."""
+
+    try:
+        values = json.loads(serialized_vehicle_list)
+    except json.JSONDecodeError as error:
+        raise ValueError("AUTODATA_VEHICLE_LIST_JSON must be valid JSON") from error
+    if not isinstance(values, list):
+        raise ValueError("AUTODATA_VEHICLE_LIST_JSON must contain an array")
+    from .vehicle_selection import normalize_vehicle_list_json
+
+    vehicles = normalize_vehicle_list_json(values)
+    return {
+        "worker": "ingestion",
+        "lane": "fast",
+        "status": "ready",
+        "vehicles": vehicles,
+        "vehicle_count": len(vehicles),
+    }
 
 
 def run_source_directory(directory: str) -> dict[str, str | int | list[str]]:

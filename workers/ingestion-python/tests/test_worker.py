@@ -20,6 +20,27 @@ class IngestionWorkerTests(unittest.TestCase):
 
         self.assertEqual(result, {"worker": "ingestion", "lane": "fast", "status": "idle"})
 
+    def test_configured_vehicle_list_returns_deterministic_structured_selection(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "AUTODATA_SOURCE_DIRECTORY": "",
+                "AUTODATA_SOURCE_URI": "",
+                "AUTODATA_FAST_EVENT_JSON": "",
+                "AUTODATA_VEHICLE_LIST_JSON": json.dumps([
+                    {"model_year": "99", "make": "Chevy", "model": "Silverado 1500", "region": "US", "drivetrain": "2wd"},
+                    {"year": 1999, "make": "Chevrolet", "model": "Silverado 1500", "region": "US", "drivetrain": "2WD", "engine_displacement_l": 5.3},
+                ]),
+            },
+            clear=False,
+        ):
+            result = run_once()
+
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["vehicle_count"], 1)
+        self.assertEqual(result["vehicles"][0]["vehicle_id_key"], "chevrolet-silverado-1500-1999-us")
+        self.assertEqual(len(result["vehicles"][0]["configurations"]), 2)
+
     def test_configured_source_directory_runs_the_normalization_pipeline(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
