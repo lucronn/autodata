@@ -56,12 +56,13 @@ type VehicleIdentityResolveRecord struct {
 }
 
 type VehicleIdentitySelectors struct {
-	Makes                []string  `json:"makes"`
-	Models               []string  `json:"models"`
-	Years                []int     `json:"years"`
-	Drivetrains          []string  `json:"drivetrains"`
-	Trims                []string  `json:"trims"`
-	EngineDisplacementsL []float64 `json:"engine_displacements_l"`
+	Makes                []string                `json:"makes"`
+	Models               []string                `json:"models"`
+	Years                []int                   `json:"years"`
+	Drivetrains          []string                `json:"drivetrains"`
+	Trims                []string                `json:"trims"`
+	EngineDisplacementsL []float64               `json:"engine_displacements_l"`
+	Vehicles             []VehicleIdentityRecord `json:"vehicles"`
 }
 
 type VehicleIdentityStore interface {
@@ -140,6 +141,10 @@ func (s *memoryVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySele
 		}
 		years[normalizedVehicleYear(row.Year)] = true
 	}
+	records, _, err := normalizeVehicleIdentityRows(s.rows)
+	if err != nil {
+		return VehicleIdentitySelectors{}, err
+	}
 	return VehicleIdentitySelectors{
 		Makes:                sortedStrings(makes),
 		Models:               sortedStrings(models),
@@ -147,6 +152,7 @@ func (s *memoryVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySele
 		Drivetrains:          sortedStrings(drivetrains),
 		Trims:                sortedStrings(trims),
 		EngineDisplacementsL: sortedFloats(engines),
+		Vehicles:             records,
 	}, nil
 }
 

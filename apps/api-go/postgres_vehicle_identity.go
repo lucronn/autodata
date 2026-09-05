@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sort"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -51,7 +52,7 @@ type postgresVehicleIdentityStore struct {
 func (s *postgresVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySelectors, error) {
 	rows, err := s.pool.Query(context.Background(), `
 		SELECT vib.make, vib.model, vib.model_year,
-		       COALESCE(vib.drivetrain, ''), COALESCE(vc.trim, ''),
+		       vib.region, COALESCE(vib.drivetrain, ''), COALESCE(vc.trim, ''),
 		       vc.engine_displacement_l
 		FROM vehicle_identity_bases vib
 		LEFT JOIN vehicle_configurations vc
@@ -70,13 +71,18 @@ func (s *postgresVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySe
 	drivetrains := map[string]bool{}
 	trims := map[string]bool{}
 	engines := map[float64]bool{}
+	identityRows := []VehicleIdentityRow{}
 	for rows.Next() {
-		var makeName, model, drivetrain, trim string
+		var makeName, model, region, drivetrain, trim string
 		var year int
 		var engine *float64
-		if err := rows.Scan(&makeName, &model, &year, &drivetrain, &trim, &engine); err != nil {
+		if err := rows.Scan(&makeName, &model, &year, &region, &drivetrain, &trim, &engine); err != nil {
 			return VehicleIdentitySelectors{}, err
 		}
+		identityRows = append(identityRows, VehicleIdentityRow{
+			Year: year, Make: makeName, Model: model, Region: region,
+			Drivetrain: drivetrain, Trim: trim, EngineDisplacementL: engine,
+		})
 		if makeName != "" {
 			makes[makeName] = true
 		}
@@ -99,6 +105,10 @@ func (s *postgresVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySe
 	if err := rows.Err(); err != nil {
 		return VehicleIdentitySelectors{}, err
 	}
+	records, _, err := normalizeVehicleIdentityRows(identityRows)
+	if err != nil {
+		return VehicleIdentitySelectors{}, err
+	}
 	return VehicleIdentitySelectors{
 		Makes:                sortedStrings(makes),
 		Models:               sortedStrings(models),
@@ -106,6 +116,7 @@ func (s *postgresVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySe
 		Drivetrains:          sortedStrings(drivetrains),
 		Trims:                sortedStrings(trims),
 		EngineDisplacementsL: sortedFloats(engines),
+		Vehicles:             records,
 	}, nil
 }
 
@@ -122,6 +133,38 @@ func mergeVehicleIdentitySelectors(left, right VehicleIdentitySelectors) Vehicle
 	for _, engine := range append(append([]float64{}, left.EngineDisplacementsL...), right.EngineDisplacementsL...) {
 		engines[engine] = true
 	}
+	vehicles := map[string]VehicleIdentityRecord{}
+	for _, record := range append(append([]VehicleIdentityRecord{}, left.Vehicles...), right.Vehicles...) {
+		existing, ok := vehicles[record.VehicleIDKey]
+		if !ok {
+			vehicles[record.VehicleIDKey] = record
+			continue
+		}
+		configurations := map[string]VehicleConfigurationRecord{}
+		for _, configuration := range append(existing.Configurations, record.Configurations...) {
+			configurations[configuration.ConfigurationKey] = configuration
+		}
+		existing.Configurations = existing.Configurations[:0]
+		for _, configuration := range configurations {
+			existing.Configurations = append(existing.Configurations, configuration)
+		}
+		sort.Slice(existing.Configurations, func(i, j int) bool {
+			return existing.Configurations[i].ConfigurationKey < existing.Configurations[j].ConfigurationKey
+		})
+		if existing.Status != "needs_review" && record.Status == "needs_review" {
+			existing.Status = "needs_review"
+		}
+		vehicles[record.VehicleIDKey] = existing
+	}
+	vehicleKeys := make([]string, 0, len(vehicles))
+	for key := range vehicles {
+		vehicleKeys = append(vehicleKeys, key)
+	}
+	sort.Strings(vehicleKeys)
+	mergedVehicles := make([]VehicleIdentityRecord, 0, len(vehicleKeys))
+	for _, key := range vehicleKeys {
+		mergedVehicles = append(mergedVehicles, vehicles[key])
+	}
 	return VehicleIdentitySelectors{
 		Makes:                sortedStrings(makes),
 		Models:               sortedStrings(models),
@@ -129,6 +172,7 @@ func mergeVehicleIdentitySelectors(left, right VehicleIdentitySelectors) Vehicle
 		Drivetrains:          sortedStrings(drivetrains),
 		Trims:                sortedStrings(trims),
 		EngineDisplacementsL: sortedFloats(engines),
+		Vehicles:             mergedVehicles,
 	}
 }
 

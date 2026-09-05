@@ -60,6 +60,8 @@ The API is projection-oriented. Clients do not depend on table names or internal
 | `GET` | `/datasets/{id}/evidence/{evidence_id}` | Resolve page/region evidence for a published fact |
 | `GET` | `/datasets/{id}/search?q={query}&limit={n}` | Search approved evidence within the entitled projection |
 | `GET` | `/datasets/{id}/knowledge?q={query}&kind=article\|procedure\|all&limit={n}&revision_id={id}` | Search normalized articles and procedure excerpts in one entitled published revision |
+| `POST` | `/vehicle-identities/resolve` | Normalize a vehicle list into stable vehicle families and configuration records |
+| `GET` | `/vehicle-identities/selectors` | Read the selector option lists and valid vehicle/configuration combinations |
 | `POST` | `/datasets/{id}/feedback` | Submit a correction or quality issue |
 | `POST` | `/datasets/{id}/feedback/{feedback_id}/review` | Resolve or reject a feedback item as a reviewer |
 | `POST` | `/datasets/{id}/evidence/{evidence_id}/review` | Approve or reject pending evidence as a reviewer |
@@ -84,6 +86,46 @@ Dataset responses include:
 ```
 
 The response may include a `data` object for published sections and a `warnings` array for incomplete, low-confidence, stale, or review-gated content. A client must be able to render the dataset from status and revision metadata without guessing whether missing fields are unavailable, not applicable, or still processing.
+
+Vehicle selector responses contain both convenience option lists and the
+structured combinations that a cascading selector must use to avoid inventing
+invalid fitments:
+
+```json
+{
+  "makes": ["Chevrolet"],
+  "models": ["Silverado 1500"],
+  "years": [1999],
+  "drivetrains": ["2WD"],
+  "trims": ["LT"],
+  "engine_displacements_l": [5.3],
+  "vehicles": [
+    {
+      "status": "resolved",
+      "vehicle_id_key": "chevrolet-silverado-1500-1999-us",
+      "year": 1999,
+      "make": "Chevrolet",
+      "model": "Silverado 1500",
+      "region": "US",
+      "drivetrain": "2WD",
+      "configurations": [
+        {
+          "configuration_key": "chevrolet-silverado-1500-1999-us-trim-lt-engine-5-3l",
+          "trim": "LT",
+          "engine_displacement_l": 5.3,
+          "drivetrain": "2WD"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`POST /vehicle-identities/resolve` requires an `Idempotency-Key`. The request
+is organization-scoped at the API boundary, canonicalizes aliases, and marks
+conflicting body-style or drivetrain dimensions as `needs_review`. It is a
+normalization/selection boundary; source-backed persistence still requires a
+source snapshot and extraction evidence from the ingestion path.
 
 The request-status endpoint is durable whenever the API is configured with
 `AUTODATA_PROJECTION_STORE=postgres`. Request ownership is recorded on

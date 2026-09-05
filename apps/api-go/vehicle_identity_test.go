@@ -64,6 +64,12 @@ func TestVehicleIdentitySelectorsIncludeEngineAndTrimValues(t *testing.T) {
 	if len(selectors.EngineDisplacementsL) != 1 || selectors.EngineDisplacementsL[0] != 5.3 {
 		t.Fatalf("engines = %#v", selectors.EngineDisplacementsL)
 	}
+	if len(selectors.Vehicles) != 1 || len(selectors.Vehicles[0].Configurations) != 1 {
+		t.Fatalf("structured vehicles = %#v", selectors.Vehicles)
+	}
+	if selectors.Vehicles[0].Configurations[0].ConfigurationKey != "chevrolet-silverado-1500-1999-us-trim-lt-engine-5-3l" {
+		t.Fatalf("configuration = %#v", selectors.Vehicles[0].Configurations)
+	}
 }
 
 func TestVehicleIdentityResolveIsIdempotent(t *testing.T) {
