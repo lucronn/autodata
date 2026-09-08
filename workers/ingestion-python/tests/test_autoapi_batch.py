@@ -10,6 +10,7 @@ from autodata_ingestion.autoapi_batch import (
     collect_autoapi_selection_rows,
     derive_autoapi_vehicle_rows,
     execute_autoapi_batch,
+    load_selector_rows,
 )
 
 
@@ -153,6 +154,84 @@ class AutoAPIBatchTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "pending_source")
         self.assertIsNone(result["results"][0]["source_directory"])
+
+    def test_selector_only_export_is_plannable_before_article_bundles_arrive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "vehicles.json").write_text(
+                json.dumps(
+                    {
+                        "body": [
+                            {
+                                "modelYear": 1999,
+                                "makeName": "Chevy",
+                                "modelName": "Silverado 1500",
+                                "region": "US",
+                                "drivetrain": "2WD",
+                                "engines": [
+                                    {"engineName": "5.3L V8"},
+                                    {"engineName": "4.8L V8"},
+                                ],
+                            }
+                        ]
+                    }
+                )
+            )
+            selector_rows = load_selector_rows(root / "vehicles.json")
+            plan = build_autoapi_batch_plan(
+                root,
+                selector_rows=selector_rows,
+                default_region="US",
+            )
+
+        self.assertEqual(len(selector_rows), 2)
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0].vehicle_key, "chevrolet-silverado-1500-1999-us")
+        self.assertIsNone(plan[0].source_directory)
+        self.assertEqual(
+            sorted(item["engine_displacement_l"] for item in plan[0].configurations),
+            [4.8, 5.3],
+        )
+
+    def test_matching_selector_rows_are_merged_with_bundle_configurations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "name.json").write_text(
+                json.dumps({"header": {"status": "OK"}, "body": "2019 Cadillac Escalade ESV - 2WD"})
+            )
+            (root / "motorvehicles.json").write_text(
+                json.dumps(
+                    {
+                        "header": {"status": "OK"},
+                        "body": [
+                            {
+                                "model": "Escalade ESV Base",
+                                "id": "168702",
+                                "engines": [{"id": "1", "name": "6.2L V8 GAS"}],
+                            }
+                        ],
+                    }
+                )
+            )
+            plan = build_autoapi_batch_plan(
+                root,
+                selector_rows=[
+                    {
+                        "year": 2019,
+                        "make": "Cadillac",
+                        "model": "Escalade ESV",
+                        "region": "US",
+                    }
+                ],
+                default_region="US",
+            )
+
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(len(plan[0].configurations), 2)
+        self.assertEqual(
+            {item["engine_displacement_l"] for item in plan[0].configurations},
+            {None, 6.2},
+        )
 
 
 if __name__ == "__main__":

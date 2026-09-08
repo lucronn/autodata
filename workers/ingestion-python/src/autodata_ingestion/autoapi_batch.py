@@ -116,14 +116,14 @@ def build_autoapi_batch_plan(
     """Build deterministic per-vehicle batches, merging duplicate selector rows."""
 
     directories = discover_autoapi_source_directories(source_root)
-    if not directories:
-        raise ValueError(f"no AutoAPI bundle directories found under {source_root}")
 
     supplied = (
         normalize_vehicle_list(list(selector_rows), default_region=default_region)
         if selector_rows is not None
         else ()
     )
+    if not directories and not supplied:
+        raise ValueError(f"no AutoAPI bundles or selector rows found under {source_root}")
     batches: list[AutoAPIBatch] = []
     matched_vehicle_keys: set[str] = set()
     for directory in directories:
@@ -136,10 +136,23 @@ def build_autoapi_batch_plan(
         if len(derived_selection) != 1:
             raise ValueError(f"AutoAPI bundle must resolve to one vehicle family: {directory}")
         derived = derived_selection[0]
-        selected = next(
-            (item for item in supplied if item.vehicle_key == derived.vehicle_key),
-            derived,
-        )
+        matching_supplied = [
+            item for item in supplied if item.vehicle_key == derived.vehicle_key
+        ]
+        # A selector export may be coarser than the bundle's motorvehicles
+        # response. Merge both observations so an identity refresh cannot
+        # discard trim/engine configurations already proven by AutoAPI.
+        selected = normalize_vehicle_list(
+            [
+                *derived_rows,
+                *(
+                    row
+                    for item in matching_supplied
+                    for row in _selection_record_rows(item)
+                ),
+            ],
+            default_region=default_region,
+        )[0]
         vehicle = {
             "year": selected.year,
             "make": selected.make,
@@ -330,12 +343,66 @@ def load_selector_rows(path: str | Path) -> list[Mapping[str, Any] | str]:
 
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if isinstance(payload, list):
-        return payload
+        return _expand_selector_rows(payload)
     if isinstance(payload, dict) and isinstance(payload.get("body"), list):
-        return payload["body"]
+        return _expand_selector_rows(payload["body"])
     if isinstance(payload, dict) and isinstance(payload.get("vehicles"), list):
-        return payload["vehicles"]
+        return _expand_selector_rows(payload["vehicles"])
     raise ValueError("selector JSON must contain an array, body array, or vehicles array")
+
+
+def _expand_selector_rows(values: list[Any]) -> list[Mapping[str, Any] | str]:
+    """Flatten common AutoAPI selector nesting into one row per configuration."""
+
+    expanded: list[Mapping[str, Any] | str] = []
+    for value in values:
+        if isinstance(value, str):
+            expanded.append(value)
+            continue
+        if not isinstance(value, Mapping):
+            raise TypeError("selector JSON rows must be mappings or strings")
+        base = dict(value)
+        models = base.pop("models", None)
+        if isinstance(models, list):
+            for model in models:
+                if not isinstance(model, Mapping):
+                    raise TypeError("selector model rows must be mappings")
+                expanded.extend(_expand_selector_rows([{**base, **dict(model)}]))
+            continue
+        engines = base.pop("engines", None)
+        if isinstance(engines, list) and engines:
+            for engine in engines:
+                if not isinstance(engine, Mapping):
+                    raise TypeError("selector engine rows must be mappings")
+                expanded.append({**base, **dict(engine)})
+            continue
+        expanded.append(base)
+    return expanded
+
+
+def _selection_record_rows(record: Any) -> list[dict[str, Any]]:
+    """Convert a normalized selector family back into mergeable observations."""
+
+    rows: list[dict[str, Any]] = []
+    for configuration in record.configurations:
+        if configuration.get("status") == "needs_review":
+            continue
+        row: dict[str, Any] = {
+            "year": record.year,
+            "make": record.make,
+            "model": record.model,
+            "region": record.region,
+        }
+        for field in ("body_style", "drivetrain"):
+            value = getattr(record, field)
+            if value is not None:
+                row[field] = value
+        for field in ("trim", "engine_displacement_l"):
+            value = configuration.get(field)
+            if value is not None:
+                row[field] = value
+        rows.append(row)
+    return rows
 
 
 __all__ = [

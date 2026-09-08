@@ -182,9 +182,14 @@ def review_vehicle_candidates(
 
 def _canonicalize_mapping_observation(value: Mapping[str, Any]) -> CanonicalVehicleObservation:
     aliases: list[VehicleAlias] = []
-    year = _normalize_year(value.get("year"))
-    make = _normalize_make(value.get("make"), aliases)
-    model = _normalize_model(value.get("model"))
+    year = _normalize_year(_first_non_empty(value.get("year"), value.get("model_year"), value.get("modelYear")))
+    make = _normalize_make(
+        _first_non_empty(value.get("make"), value.get("makeName"), value.get("vehicleMake")),
+        aliases,
+    )
+    model = _normalize_model(
+        _first_non_empty(value.get("model"), value.get("modelName"), value.get("vehicleModel"))
+    )
     region = _normalize_region(value.get("region", value.get("market")))
     body_style = _normalize_body_style(
         _first_non_empty(value.get("body_style"), value.get("bodyStyle"))
@@ -198,6 +203,7 @@ def _canonicalize_mapping_observation(value: Mapping[str, Any]) -> CanonicalVehi
             value.get("engine"),
             value.get("engine_displacement_l"),
             value.get("engineDisplacementL"),
+            value.get("engineName"),
         ),
         aliases,
     )
@@ -385,7 +391,7 @@ def _first_non_empty(*values: Any) -> Any:
 
 
 def _extract_engine_displacement(text: str) -> float | None:
-    match = re.search(r"(\d+(?:\.\d+)?)\s*l(?:t)?$", text.casefold())
+    match = re.search(r"(?<!\d)(\d+(?:\.\d+)?)\s*l(?:t)?\b", text.casefold())
     if match is None:
         return None
     return float(match.group(1))

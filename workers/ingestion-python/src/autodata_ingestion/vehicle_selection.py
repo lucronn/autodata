@@ -87,9 +87,20 @@ def _adapt_row(raw: Mapping[str, Any] | str) -> Mapping[str, Any] | str:
     aliases = dict(raw)
     if "year" not in aliases and "model_year" in aliases:
         aliases["year"] = aliases["model_year"]
+    if "year" not in aliases and "modelYear" in aliases:
+        aliases["year"] = aliases["modelYear"]
+    if "make" not in aliases:
+        aliases["make"] = aliases.get("makeName", aliases.get("vehicleMake"))
+    if "model" not in aliases:
+        aliases["model"] = aliases.get("modelName", aliases.get("vehicleModel"))
     if "engine" not in aliases and "engine_displacement_l" in aliases:
         raw_engine = aliases["engine_displacement_l"]
         aliases["engine"] = f"{raw_engine}L" if isinstance(raw_engine, (int, float)) else raw_engine
+    if "engine" not in aliases and "engineDisplacementL" in aliases:
+        raw_engine = aliases["engineDisplacementL"]
+        aliases["engine"] = f"{raw_engine}L" if isinstance(raw_engine, (int, float)) else raw_engine
+    if "engine" not in aliases and "engineName" in aliases:
+        aliases["engine"] = aliases["engineName"]
     if "market" not in aliases and "region" in aliases:
         aliases["market"] = aliases["region"]
     return aliases

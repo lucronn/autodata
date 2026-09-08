@@ -139,8 +139,11 @@ configurations from the split `name.json` and `motorvehicles.json` responses,
 and processes every other file in that directory through the universal source
 adapter. A source root containing `name.json` is treated as one vehicle; a
 catalog root containing child bundles is processed one vehicle at a time. A
-selector vehicle without a matching source bundle remains visible as
-`pending_source` instead of being silently skipped:
+selector export may also arrive first, without article bundles. Pass it with
+`--selector-json`; nested `models` and `engines` are flattened into
+configuration observations, and every selector vehicle is retained as
+`pending_source` until its article bundle arrives. A selector vehicle without
+a matching source bundle is never silently skipped:
 
 ```sh
 PYTHONPATH=workers/ingestion-python/src \
@@ -148,6 +151,25 @@ python3 scripts/dev/ingest_autoapi_batch.py "sample data" \
   --region US \
   --source-version autoapi-local-v1
 ```
+
+Selector-only catalog import (identity/configuration stage):
+
+```sh
+PYTHONPATH=workers/ingestion-python/src \
+python3 scripts/dev/ingest_autoapi_batch.py "autoapi-export" \
+  --selector-json "autoapi-export/vehicles.json" \
+  --region US \
+  --source-version autoapi-selector-v1
+```
+
+When the corresponding per-vehicle directories are added beneath the same
+source root, rerunning the command merges the selector observations with the
+bundle-derived trims and engines, then normalizes and persists each available
+article independently. Replays use the stable vehicle, source, article, and
+locator identities; near-duplicate articles remain linked to their canonical
+record for review rather than being published twice. The batch result is
+`completed` only when every planned vehicle was processed; `pending_source`,
+`needs_review`, and `failed` remain explicit per-vehicle outcomes.
 
 Add `--persist` only when PostgreSQL and MinIO are available through the local
 environment. This persists the derived selector rows and each vehicle's
