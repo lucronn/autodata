@@ -5,9 +5,11 @@ from pathlib import Path
 
 
 from autodata_ingestion.autoapi_batch import (
+    AutoAPIBatch,
     build_autoapi_batch_plan,
     collect_autoapi_selection_rows,
     derive_autoapi_vehicle_rows,
+    execute_autoapi_batch,
 )
 
 
@@ -130,6 +132,27 @@ class AutoAPIBatchTests(unittest.TestCase):
             ["cadillac-escalade-esv-2019-us", "ford-f-150-2020-us"],
         )
         self.assertIsNone(plan[1].source_directory)
+
+    def test_execution_reports_missing_source_without_stringifying_null_path(self):
+        result = execute_autoapi_batch(
+            [
+                AutoAPIBatch(
+                    vehicle_key="ford-f-150-2020-us",
+                    vehicle={
+                        "year": 2020,
+                        "make": "Ford",
+                        "model": "F-150",
+                        "region": "US",
+                    },
+                    source_directory=None,
+                    configurations=(),
+                )
+            ],
+            source_version="autoapi-batch-test-v1",
+        )
+
+        self.assertEqual(result["status"], "pending_source")
+        self.assertIsNone(result["results"][0]["source_directory"])
 
 
 if __name__ == "__main__":
