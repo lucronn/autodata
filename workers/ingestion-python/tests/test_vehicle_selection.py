@@ -21,6 +21,22 @@ class VehicleSelectionTests(unittest.TestCase):
             ["chevrolet-silverado-1500-1999-us", "chevrolet-silverado-1500-1999-us-engine-5-3l"],
         )
 
+    def test_model_first_shorthand_uses_configured_default_region(self):
+        result = normalize_vehicle_list_json(
+            ["99 Silverado 1500 2wd", "99 Silverado 1500 2wd 5.3lt"],
+            default_region="US",
+        )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["vehicle_id_key"], "chevrolet-silverado-1500-1999-us")
+        self.assertEqual(
+            [item["configuration_key"] for item in result[0]["configurations"]],
+            [
+                "chevrolet-silverado-1500-1999-us",
+                "chevrolet-silverado-1500-1999-us-engine-5-3l",
+            ],
+        )
+
     def test_duplicate_rows_are_idempotent_and_conflicts_are_reviewable(self):
         result = normalize_vehicle_list_json(
             [

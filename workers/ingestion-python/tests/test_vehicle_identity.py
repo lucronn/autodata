@@ -99,6 +99,17 @@ class VehicleIdentityTests(unittest.TestCase):
         self.assertEqual(observation.drivetrain, "2WD")
         self.assertEqual(observation.engine_displacement_l, 5.3)
 
+    def test_text_input_supports_model_first_silverado_shorthand(self):
+        module = self._module()
+
+        observation = module.canonicalize_vehicle_observation("99 Silverado 1500 2wd 5.3lt")
+
+        self.assertEqual(observation.year, 1999)
+        self.assertEqual(observation.make, "Chevrolet")
+        self.assertEqual(observation.model, "Silverado 1500")
+        self.assertEqual(observation.drivetrain, "2WD")
+        self.assertEqual(observation.engine_displacement_l, 5.3)
+
     def test_text_input_supports_year_later_common_vehicle_form(self):
         module = self._module()
 

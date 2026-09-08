@@ -45,7 +45,10 @@ def run_vehicle_selection(serialized_vehicle_list: str) -> dict[str, object]:
         raise ValueError("AUTODATA_VEHICLE_LIST_JSON must contain an array")
     from .vehicle_selection import normalize_vehicle_list_json
 
-    vehicles = normalize_vehicle_list_json(values)
+    vehicles = normalize_vehicle_list_json(
+        values,
+        default_region=os.getenv("AUTODATA_SOURCE_REGION") or None,
+    )
     result: dict[str, object] = {
         "worker": "ingestion",
         "lane": "fast",

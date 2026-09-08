@@ -11,6 +11,12 @@ _MAKE_ALIASES = {
     "chevy": "Chevrolet",
     "chevrolet": "Chevrolet",
 }
+# Some source lists omit the make because the model is a recognizable branded
+# name. Keep this deliberately small and high-confidence; unknown model-first
+# strings must still provide a make or remain reviewable.
+_MODEL_FIRST_MAKE_ALIASES = {
+    "silverado": "Chevrolet",
+}
 _DRIVETRAIN_ALIASES = {
     "2wd": "2WD",
     "4x2": "2WD",
@@ -226,12 +232,18 @@ def _canonicalize_text_observation(value: str) -> CanonicalVehicleObservation:
     if len(tokens) < 2:
         raise ValueError("vehicle text observation requires make and model")
     aliases: list[VehicleAlias] = []
-    make = _normalize_make(tokens[0], aliases)
+    model_tokens: list[str] = []
+    model_first_make = _MODEL_FIRST_MAKE_ALIASES.get(tokens[0])
+    if model_first_make is not None:
+        make = model_first_make
+        model_tokens.append(tokens.pop(0))
+        aliases.append(VehicleAlias("make", f"model:{model_tokens[0]}", make))
+    else:
+        make = _normalize_make(tokens.pop(0), aliases)
     trim = None
     drivetrain = None
     engine = None
-    model_tokens: list[str] = []
-    for token in tokens[1:]:
+    for token in tokens:
         if token in _KNOWN_TRIMS and trim is None:
             trim = token.upper()
             continue

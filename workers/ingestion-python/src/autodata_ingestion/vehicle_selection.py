@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping
 
 from .vehicle_identity import (
@@ -42,6 +42,8 @@ class VehicleSelectionRecord:
 
 def normalize_vehicle_list(
     values: list[Mapping[str, Any] | str] | tuple[Mapping[str, Any] | str, ...],
+    *,
+    default_region: str | None = None,
 ) -> tuple[VehicleSelectionRecord, ...]:
     """Normalize and merge vehicle rows without creating duplicate families.
 
@@ -51,8 +53,11 @@ def normalize_vehicle_list(
     """
 
     families: dict[str, dict[str, Any]] = {}
+    normalized_default_region = _normalize_default_region(default_region)
     for raw in values:
         observation = canonicalize_vehicle_observation(_adapt_row(raw))
+        if observation.region is None and normalized_default_region is not None:
+            observation = replace(observation, region=normalized_default_region)
         vehicle_key = _stable_vehicle_key(observation)
         family = families.setdefault(vehicle_key, _new_family(observation, vehicle_key))
         _merge_family(family, observation)
@@ -61,10 +66,17 @@ def normalize_vehicle_list(
     )
 
 
-def normalize_vehicle_list_json(values: list[Mapping[str, Any] | str]) -> list[dict[str, Any]]:
+def normalize_vehicle_list_json(
+    values: list[Mapping[str, Any] | str],
+    *,
+    default_region: str | None = None,
+) -> list[dict[str, Any]]:
     """Return the normalized selection payload as JSON-compatible dictionaries."""
 
-    return [record.to_dict() for record in normalize_vehicle_list(values)]
+    return [
+        record.to_dict()
+        for record in normalize_vehicle_list(values, default_region=default_region)
+    ]
 
 
 def _adapt_row(raw: Mapping[str, Any] | str) -> Mapping[str, Any] | str:
@@ -167,6 +179,13 @@ def _slug(value: str) -> str:
     import re
 
     return re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
+
+
+def _normalize_default_region(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = _slug(str(value)).upper()
+    return normalized or None
 
 
 __all__ = ["VehicleSelectionRecord", "normalize_vehicle_list", "normalize_vehicle_list_json"]
