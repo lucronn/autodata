@@ -40,6 +40,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "018_source_review_items.sql",
                 "019_article_content_provenance.sql",
                 "020_autoapi_article_fetch_jobs.sql",
+                "021_autoapi_article_fetch_job_retries.sql",
             ],
         )
 

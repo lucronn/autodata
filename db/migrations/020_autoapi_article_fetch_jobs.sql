@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS autoapi_article_fetch_jobs (
     source_version text NOT NULL,
     adapter_name text NOT NULL,
     idempotency_key text NOT NULL UNIQUE,
-    status text NOT NULL CHECK (status IN ('pending', 'processing', 'completed', 'needs_review', 'failed')),
+    status text NOT NULL CHECK (status IN ('pending', 'processing', 'completed', 'needs_review', 'failed', 'dead_letter')),
     attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
     checkpoint jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(checkpoint) = 'object'),
     last_error jsonb,

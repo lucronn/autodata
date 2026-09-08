@@ -9,7 +9,9 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from autodata_ingestion.autoapi_batch import AutoAPIBatch  # noqa: E402
 from autodata_ingestion.autoapi_job_persistence import (  # noqa: E402
+    claim_autoapi_article_fetch_job,
     persist_autoapi_article_fetch_jobs,
+    record_autoapi_article_fetch_failure,
 )
 
 
@@ -25,6 +27,15 @@ class RecordingCursor:
 
     def __exit__(self, *_args):
         return False
+
+
+class SequencedCursor(RecordingCursor):
+    def __init__(self, rows):
+        super().__init__()
+        self.rows = list(rows)
+
+    def fetchone(self):
+        return self.rows.pop(0) if self.rows else None
 
 
 class RecordingConnection:
@@ -126,6 +137,40 @@ class AutoAPIJobPersistenceTests(unittest.TestCase):
         self.assertEqual(insert_calls[0][1][1], "vehicle-ford")
         self.assertEqual(insert_calls[0][1][6], "autoapi-selector-v1")
         self.assertTrue(connection.committed)
+
+    def test_claim_increments_attempt_and_exhausted_failure_dead_letters(self):
+        claim_cursor = SequencedCursor([("job-1", "pending", 0, {}, None)])
+        claim_connection = RecordingConnection(claim_cursor)
+        failure_cursor = SequencedCursor([("job-1", "processing", 3, {}, None)])
+        failure_connection = RecordingConnection(failure_cursor)
+        connections = iter([claim_connection, failure_connection])
+        fake_json = types.ModuleType("psycopg.types.json")
+        fake_json.Jsonb = lambda value: value
+        fake_types = types.ModuleType("psycopg.types")
+        fake_types.json = fake_json
+        fake_psycopg = types.ModuleType("psycopg")
+        fake_psycopg.connect = lambda **_kwargs: next(connections)
+        with patch.dict(
+            sys.modules,
+            {
+                "psycopg": fake_psycopg,
+                "psycopg.types": fake_types,
+                "psycopg.types.json": fake_json,
+            },
+        ):
+            with patch.dict("os.environ", {"AUTODATA_POSTGRES_PASSWORD": "test-only"}):
+                claimed = claim_autoapi_article_fetch_job("autoapi-job-1", max_attempts=3)
+                dead_lettered = record_autoapi_article_fetch_failure(
+                    "autoapi-job-1", "source unavailable", max_attempts=3
+                )
+
+        self.assertEqual(claimed["status"], "processing")
+        self.assertEqual(claimed["attempt_count"], 1)
+        self.assertEqual(dead_lettered["status"], "dead_letter")
+        self.assertTrue(claim_connection.committed)
+        self.assertTrue(failure_connection.committed)
+        self.assertTrue(any("status = 'processing'" in query for query, _ in claim_cursor.calls))
+        self.assertTrue(any("status = %s" in query for query, _ in failure_cursor.calls))
 
 
 if __name__ == "__main__":
