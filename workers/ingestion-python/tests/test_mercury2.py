@@ -61,6 +61,36 @@ class Mercury2Tests(unittest.TestCase):
         self.assertEqual(candidates[0].data["id"], "TSB-42")
         self.assertIn("provider://source/unknown.json", client.prompt)
 
+    def test_source_extractor_rejects_non_object_model_output(self):
+        class FakeClient:
+            def complete_json(self, prompt):
+                return []
+
+        resource = SourceResource.from_bytes(
+            "provider://source/unknown.json",
+            "source-v1",
+            b"{}",
+            "application/json",
+        )
+
+        with self.assertRaisesRegex(ValueError, "response must be a JSON object"):
+            Mercury2SourceExtractor(FakeClient()).extract(resource)
+
+    def test_source_extractor_rejects_non_string_candidate_kind(self):
+        class FakeClient:
+            def complete_json(self, prompt):
+                return {"candidates": [{"kind": ["article"], "locator": "body", "data": {}}]}
+
+        resource = SourceResource.from_bytes(
+            "provider://source/unknown.json",
+            "source-v1",
+            b"{}",
+            "application/json",
+        )
+
+        with self.assertRaisesRegex(ValueError, "unsupported kind"):
+            Mercury2SourceExtractor(FakeClient()).extract(resource)
+
     def test_client_reads_key_only_from_environment_and_parses_json(self):
         seen = {}
 

@@ -147,6 +147,8 @@ class Mercury2SourceExtractor:
         except (UnicodeDecodeError, json.JSONDecodeError):
             document = resource.payload.decode("utf-8", errors="replace")
         response = self._client.complete_json(_build_source_extraction_prompt(resource, document))
+        if not isinstance(response, Mapping):
+            raise ValueError("Mercury-2 extraction response must be a JSON object")
         raw_candidates = response.get("candidates")
         if not isinstance(raw_candidates, list):
             raise ValueError("Mercury-2 extraction response candidates must be an array")
@@ -159,7 +161,7 @@ class Mercury2SourceExtractor:
             kind = raw_candidate.get("kind")
             locator = raw_candidate.get("locator")
             data = raw_candidate.get("data")
-            if kind not in _SOURCE_CANDIDATE_KINDS:
+            if not isinstance(kind, str) or kind not in _SOURCE_CANDIDATE_KINDS:
                 raise ValueError(f"Mercury-2 candidate {index} has an unsupported kind")
             if not isinstance(locator, str) or not locator.strip():
                 raise ValueError(f"Mercury-2 candidate {index} requires a locator")
