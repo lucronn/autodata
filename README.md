@@ -168,8 +168,9 @@ bundle-derived trims and engines, then normalizes and persists each available
 article independently. Replays use the stable vehicle, source, article, and
 locator identities; near-duplicate articles remain linked to their canonical
 record for review rather than being published twice. The batch result is
-`completed` only when every planned vehicle was processed; `pending_source`,
-`needs_review`, and `failed` remain explicit per-vehicle outcomes.
+`completed` only when every planned vehicle was processed without a review or
+failure condition; `pending_source`, `needs_review`, and `failed` remain
+explicit per-vehicle and aggregate outcomes.
 
 Add `--persist` only when PostgreSQL and MinIO are available through the local
 environment. This persists the derived selector rows and each vehicle's

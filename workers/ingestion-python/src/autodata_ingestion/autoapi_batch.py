@@ -291,6 +291,12 @@ def execute_autoapi_batch(
             if any(item["status"] == "failed" for item in results)
             else "pending_source"
             if any(item["status"] == "pending_source" for item in results)
+            else "needs_review"
+            if any(
+                item["status"] == "needs_review"
+                or item.get("quality_status") == "failed"
+                for item in results
+            )
             else "completed"
         ),
         "vehicle_count": len(results),
