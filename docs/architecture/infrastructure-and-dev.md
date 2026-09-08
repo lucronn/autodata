@@ -9,6 +9,11 @@ The local environment is deterministic and containerized. Docker Compose provide
                     |      Go API        |
                     +---------+---------+
                               |
+                    +---------v---------+
+                    | Internal ingestion |
+                    | HTTP gateway       |
+                    +---------+---------+
+                              |
         +---------------------+---------------------+
         |                     |                     |
  +------v------+       +------v------+       +------v------+
@@ -35,6 +40,7 @@ Services:
 - NATS JetStream for durable jobs, event delivery, retries, and dead-letter streams.
 - MinIO for raw sources, documents, page images, OCR output, diagrams, meshes, and evidence artifacts.
 - Go API for authenticated reads, entitlement checks, dataset status, reviewer commands, and feedback.
+- Internal ingestion HTTP gateway for bounded API-to-worker requests. It is reachable only through the cluster/private Compose network and forwards URL article intake and cache-first knowledge queries to the Python ingestion boundary.
 - Python ingestion worker for source adapters, fast-lane normalization, OCR, and extraction.
 - Python enrichment worker for deep sections, embeddings, cross-record validation, and publication.
 - Publication outbox relay for at-least-once delivery from PostgreSQL to NATS JetStream.
@@ -170,6 +176,24 @@ Knowledge requests use a cache-first path. If the request omits `catalog`, the w
 
 To capture one HTTP(S) source resource through the same worker, replace the directory variables with `AUTODATA_SOURCE_URI=https://source.example/resource`. If authentication is required, inject `AUTODATA_SOURCE_REQUEST_HEADERS_JSON` from the deployment secret interface; keep its value out of shell history, documentation, and logs. The HTTP connector enforces `AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS` and `AUTODATA_SOURCE_MAX_BYTES` limits, defaulting to 30 seconds and 50 MiB.
 
+The running Compose stack also exposes the supported application path through the Go API. `POST /article-intakes` requires the `ingestion_operator` role and accepts a JSON object containing `source_uri` and a vehicle mapping; it forwards the request to the private `ingestion-http` service. `POST /knowledge-queries` requires `dataset_viewer` and performs the indexed cache lookup before invoking the configured source resolver. Both requests require a caller-supplied `Idempotency-Key`, and the API returns the worker's structured JSON response without exposing the internal service to the host network:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8080/knowledge-queries \
+  -H 'Content-Type: application/json' \
+  -H 'X-Roles: dataset_viewer' \
+  -H 'Idempotency-Key: local-knowledge-query-001' \
+  -d '{"vehicle":{"year":1999,"make":"Chevrolet","model":"Silverado 1500","drive_type":"2WD","engine":"5.3L"},"query":"brake procedure"}'
+
+curl -sS -X POST http://127.0.0.1:8080/article-intakes \
+  -H 'Content-Type: application/json' \
+  -H 'X-Roles: ingestion_operator' \
+  -H 'Idempotency-Key: local-article-intake-001' \
+  -d '{"source_uri":"https://source.example/article","vehicle":{"year":1999,"make":"Chevrolet","model":"Silverado 1500","drive_type":"2WD","engine":"5.3L"}}'
+```
+
+These are future-execution examples: use a permitted source URI and the deployment's real authentication middleware when the API is exposed outside local development. The internal gateway accepts only HTTP(S) source URIs, applies the same source size/time limits as the worker, and returns `422` for invalid request shapes or `502`/`503` for unavailable downstream processing. Its optional `AUTODATA_INGESTION_INTERNAL_TOKEN` is supplied through a secret interface; it is blank only for the isolated local Compose network.
+
 The ingestion worker also contains a durable pull-consumer boundary for version-one `dataset.fast.requested` events. The consumer is wired to the transactional fast-lane projection publisher but remains disabled by default as a deployment safety gate. Enable it only with `AUTODATA_FAST_CONSUMER_ENABLED=1` and `AUTODATA_SOURCE_PERSIST=1`, after database and object-storage credentials are available through the environment or secret interface. Use `AUTODATA_FAST_CONSUMER_DURABLE` for the stable consumer name and `AUTODATA_FAST_CONSUMER_MAX_DELIVERIES` for the bounded delivery limit. The consumer acknowledges only successful handler completion, applies exponential `nak` delays to retryable failures, immediately dead-letters malformed or incorrectly configured requests, and publishes exhausted work to `dataset.fast.dead_letter` with a stable NATS message ID. It never receives source credentials from an event.
 
 The enrichment worker has a separate durable `dataset.viewable` consumer for deep-lane fan-out. Enable it with `AUTODATA_VIEWABLE_CONSUMER_ENABLED=1` after the fast-lane consumer is enabled. It validates the event, selects the default independent sections (`diagnostics`, `procedures`, `electrical`, `inventory`, `maintenance`, `search`, and `quality`) unless the event supplies an explicit list, and calls the idempotent deep scheduler. A duplicate viewable event reuses the existing job and event idempotency keys. Invalid events are dead-lettered immediately; transient scheduling failures use bounded exponential retry. Deep section execution remains independent, so a failed section does not withdraw a viewable revision.
@@ -291,6 +315,7 @@ Configuration is grouped by subsystem and supplied through environment variables
 | NATS | URL, stream names, consumer names, retry limits, outbox batch/attempt limits | usually no; auth may be secret |
 | Object storage | endpoint, region, bucket names, path style | credentials are secret |
 | Source adapters | adapter name, fixture mode, request limits, source policy | tokens are secret |
+| Internal ingestion gateway | `AUTODATA_INGESTION_URL`, `AUTODATA_INGESTION_HTTP_ADDR`, request timeout | internal token is secret |
 | Payments | adapter mode, webhook path, provider IDs, Stripe price-ID mapping, checkout return URLs | signing secret and provider API key are secret |
 | Authentication | issuer, audience, role claim, key-set URL | private keys are secret |
 | Observability | service name, exporter endpoint, sampling rate | tokens may be secret |
@@ -313,7 +338,7 @@ The deployment design is provider-neutral and Kubernetes-compatible:
 
 The platform keeps cloud-specific adapters behind interfaces for ingress, secrets, object storage, managed PostgreSQL, and observability. Docker Compose remains the contract for local parity; Kubernetes manifests are the contract for deployable topology, not a requirement to operate Kubernetes during development.
 
-The initial deployable baseline is `infra/k8s/base.yaml`. It contains the API Service and two-replica rolling Deployment, independently scalable ingestion, enrichment, and payment-reconciler Deployments, a one-shot migration Job, and an API PodDisruptionBudget. The manifest references the externally managed `autodata-runtime-secrets` Secret and deliberately does not define or embed secret values. The `autodata-config` endpoint values and image references are provider-neutral defaults that must be replaced by an environment overlay before a cluster apply. Migration images are built and published as release artifacts; the migration Job is run and verified before API rollout.
+The initial deployable baseline is `infra/k8s/base.yaml`. It contains the API Service and two-replica rolling Deployment, a private `autodata-ingestion-http` Service and independently scalable gateway Deployment, independently scalable ingestion, enrichment, and payment-reconciler Deployments, a one-shot migration Job, and an API PodDisruptionBudget. The manifest references the externally managed `autodata-runtime-secrets` Secret and deliberately does not define or embed secret values. The `autodata-config` endpoint values and image references are provider-neutral defaults that must be replaced by an environment overlay before a cluster apply. Migration images are built and published as release artifacts; the migration Job is run and verified before API rollout. The API communicates with the gateway through the cluster DNS name `http://autodata-ingestion-http:8081`; no gateway port is exposed through a load balancer or ingress.
 
 Validate the manifest structure locally with `python scripts/dev/test_k8s_manifests.py`. A cluster-specific deployment pipeline may additionally run `kubectl apply --dry-run=server` against the target cluster and then apply the same reviewed manifest plus its environment overlay. The repository does not assume a Kubernetes context is available on a developer workstation.
 

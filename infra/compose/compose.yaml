@@ -61,6 +61,8 @@ services:
       AUTODATA_PROJECTION_STORE: "postgres"
       AUTODATA_NATS_ADDRESS: "nats:4222"
       AUTODATA_S3_ADDRESS: "minio:9000"
+      AUTODATA_INGESTION_URL: "http://ingestion-http:8081"
+      AUTODATA_INGESTION_INTERNAL_TOKEN: ${AUTODATA_INGESTION_INTERNAL_TOKEN-}
     ports:
       - "${AUTODATA_API_PORT:-8080}:8080"
     depends_on:
@@ -69,6 +71,8 @@ services:
       nats:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      ingestion-http:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/healthz >/dev/null"]
@@ -113,6 +117,51 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "from autodata_ingestion.worker import run_once; assert run_once()['status'] == 'idle'"]
+
+  ingestion-http:
+    build:
+      context: ../..
+      dockerfile: workers/ingestion-python/Dockerfile
+    environment:
+      AUTODATA_INGESTION_HTTP_ADDR: ":8081"
+      AUTODATA_INGESTION_INTERNAL_TOKEN: ${AUTODATA_INGESTION_INTERNAL_TOKEN-}
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_POSTGRES_DB: ${AUTODATA_POSTGRES_DB:-autodata}
+      AUTODATA_POSTGRES_USER: ${AUTODATA_POSTGRES_USER:-autodata}
+      AUTODATA_POSTGRES_PASSWORD: ${AUTODATA_POSTGRES_PASSWORD:?set AUTODATA_POSTGRES_PASSWORD for local development}
+      AUTODATA_S3_ADDRESS: "minio:9000"
+      AUTODATA_S3_ENDPOINT: "minio:9000"
+      AUTODATA_S3_ACCESS_KEY: ${AUTODATA_MINIO_ROOT_USER:?set AUTODATA_MINIO_ROOT_USER for local development}
+      AUTODATA_S3_SECRET_KEY: ${AUTODATA_MINIO_ROOT_PASSWORD:?set AUTODATA_MINIO_ROOT_PASSWORD for local development}
+      AUTODATA_SOURCE_BUCKET: "autodata-sources"
+      AUTODATA_SOURCE_PERSIST: ${AUTODATA_SOURCE_PERSIST:-1}
+      AUTODATA_SOURCE_REGION: ${AUTODATA_SOURCE_REGION:-US}
+      AUTODATA_SOURCE_VERSION: ${AUTODATA_SOURCE_VERSION:-local-http-v1}
+      AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS: ${AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS:-30}
+      AUTODATA_SOURCE_MAX_BYTES: ${AUTODATA_SOURCE_MAX_BYTES:-52428800}
+      AUTODATA_SOURCE_REQUEST_HEADERS_JSON: ${AUTODATA_SOURCE_REQUEST_HEADERS_JSON-}
+      AUTODATA_KNOWLEDGE_SOURCE_URI_TEMPLATE: ${AUTODATA_KNOWLEDGE_SOURCE_URI_TEMPLATE-}
+      AUTODATA_KNOWLEDGE_CACHE_MAX_RECORDS: ${AUTODATA_KNOWLEDGE_CACHE_MAX_RECORDS:-200}
+      INCEPTION_API_KEY: ${INCEPTION_API_KEY-}
+      INCEPTION_API_BASE_URL: ${INCEPTION_API_BASE_URL-}
+      INCEPTION_MODEL: ${INCEPTION_MODEL:-mercury-2}
+      INCEPTION_API_TIMEOUT_SECONDS: ${INCEPTION_API_TIMEOUT_SECONDS:-20}
+      AUTODATA_MERCURY2_EXTRACTION_ENABLED: ${AUTODATA_MERCURY2_EXTRACTION_ENABLED:-0}
+      AUTODATA_MERCURY2_EXTRACTION_MAX_INPUT_BYTES: ${AUTODATA_MERCURY2_EXTRACTION_MAX_INPUT_BYTES:-200000}
+      AUTODATA_MERCURY2_EXTRACTION_MAX_CANDIDATES: ${AUTODATA_MERCURY2_EXTRACTION_MAX_CANDIDATES:-500}
+    command: ["python", "-m", "autodata_ingestion.http_service"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   payment-reconciler:
     build:

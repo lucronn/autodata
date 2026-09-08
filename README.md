@@ -148,6 +148,19 @@ PYTHONPATH=workers/ingestion-python/src \
 python3 -m autodata_ingestion.worker
 ```
 
+The same worker boundary is available through the local Go API when the
+Compose stack is running. `POST /article-intakes` accepts
+`{"source_uri":"https://...","vehicle":{...}}` with an `Idempotency-Key`
+and returns the normalized article, vehicle association, and evidence JSON.
+It requires the `ingestion_operator` role. `POST /knowledge-queries` accepts
+the vehicle/query request shape below with an `Idempotency-Key`; it requires
+the `dataset_viewer` role and returns `cache_hit` when the indexed catalog
+matches, or `fetched` after one bounded source fallback and normal intake.
+The API service forwards these calls only to the internal `ingestion-http`
+service. Set `AUTODATA_INGESTION_INTERNAL_TOKEN` through the environment or a
+secret manager when the internal network is not otherwise trusted; never put
+that token, source headers, or provider keys in the repository.
+
 For vehicle-scoped keyword lookup, provide a normalized catalog in the
 request. A catalog hit is returned immediately without a source request:
 

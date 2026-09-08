@@ -67,6 +67,8 @@ The API is projection-oriented. Clients do not depend on table names or internal
 | `GET` | `/datasets/{id}/knowledge?q={query}&kind=article\|procedure\|all&limit={n}&revision_id={id}` | Search normalized articles and procedure excerpts in one entitled published revision |
 | `POST` | `/vehicle-identities/resolve` | Normalize a vehicle list into stable vehicle families and configuration records |
 | `GET` | `/vehicle-identities/selectors` | Read the selector option lists and valid vehicle/configuration combinations |
+| `POST` | `/article-intakes` | Ingest one HTTP(S) article for a normalized vehicle and return structured article/evidence JSON |
+| `POST` | `/knowledge-queries` | Resolve a vehicle-scoped query from the indexed catalog or fetch and normalize one source on a cache miss |
 | `GET` | `/source-review-items?status=pending&limit={n}` | List normalized source conflicts and quarantine items for data reviewers |
 | `POST` | `/source-review-items/{id}/review` | Approve or reject one source review item with an auditable reason |
 | `POST` | `/datasets/{id}/feedback` | Submit a correction or quality issue |

@@ -58,6 +58,7 @@ type Server struct {
 	requests        RequestStore
 	projections     ProjectionStore
 	sourceReviews   SourceReviewStore
+	ingestionClient IngestionClient
 	vehicleIdentity VehicleIdentityStore
 	metrics         *apiMetrics
 }
@@ -102,6 +103,14 @@ func NewServerWithSourceReviewStore(readiness ReadinessChecker, auth Authenticat
 	return server
 }
 
+// NewServerWithIngestionClient injects the internal worker boundary for API
+// tests and local adapters without coupling handlers to a transport.
+func NewServerWithIngestionClient(readiness ReadinessChecker, auth Authenticator, requests RequestStore, client IngestionClient, projections ...ProjectionStore) *Server {
+	server := NewServerWithDependencies(readiness, auth, requests, projections...)
+	server.ingestionClient = client
+	return server
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
@@ -112,6 +121,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /vehicle-identities/selectors", s.requireRole("dataset_viewer", s.listVehicleIdentitySelectors))
 	mux.Handle("GET /source-review-items", s.requireRole("data_reviewer", s.listSourceReviewItems))
 	mux.Handle("POST /source-review-items/{id}/review", s.requireRole("data_reviewer", s.reviewSourceItem))
+	mux.Handle("POST /article-intakes", s.requireRole("ingestion_operator", s.createArticleIntake))
+	mux.Handle("POST /knowledge-queries", s.requireRole("dataset_viewer", s.createKnowledgeQuery))
 	mux.Handle("GET /dataset-requests/{id}", s.requireRole("dataset_viewer", s.getDatasetRequest))
 	mux.Handle("GET /datasets/{id}", s.requireRole("dataset_viewer", s.getDataset))
 	mux.Handle("GET /datasets/{id}/sections", s.requireRole("dataset_viewer", s.getDatasetSections))
@@ -474,6 +485,17 @@ func main() {
 	if durableProjections, ok := projectionStore.(*postgresProjectionStore); ok {
 		application.vehicleIdentity = newLayeredVehicleIdentityStore(durableProjections.pool)
 		application.sourceReviews = newPostgresSourceReviewStore(durableProjections.pool)
+	}
+	if endpoint := strings.TrimSpace(os.Getenv("AUTODATA_INGESTION_URL")); endpoint != "" {
+		client, err := NewHTTPIngestionClient(
+			endpoint,
+			os.Getenv("AUTODATA_INGESTION_INTERNAL_TOKEN"),
+			envDurationSeconds("AUTODATA_INGESTION_TIMEOUT_SECONDS", 30),
+		)
+		if err != nil {
+			log.Fatal(fmt.Errorf("configure ingestion client: %w", err))
+		}
+		application.ingestionClient = client
 	}
 	server := &http.Server{
 		Addr:              address,

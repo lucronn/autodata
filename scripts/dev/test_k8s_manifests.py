@@ -20,7 +20,9 @@ class KubernetesManifestTests(unittest.TestCase):
         expected = {
             ("ConfigMap", "autodata-config"),
             ("Service", "autodata-api"),
+            ("Service", "autodata-ingestion-http"),
             ("Deployment", "autodata-api"),
+            ("Deployment", "autodata-ingestion-http"),
             ("Deployment", "autodata-ingestion-worker"),
             ("Deployment", "autodata-enrichment-worker"),
             ("Deployment", "autodata-payment-reconciler"),
@@ -39,6 +41,26 @@ class KubernetesManifestTests(unittest.TestCase):
         self.assertIn("            requests:", deployment)
         self.assertIn("            limits:", deployment)
         self.assertIn("                name: autodata-runtime-secrets", deployment)
+
+    def test_ingestion_http_is_internal_and_has_health_checks(self):
+        service = self.by_key[("Service", "autodata-ingestion-http")]
+        self.assertIn("  type: ClusterIP", service)
+        self.assertIn("    app.kubernetes.io/name: autodata-ingestion-http", service)
+        self.assertIn("      port: 8081", service)
+
+        deployment = self.by_key[("Deployment", "autodata-ingestion-http")]
+        self.assertIn("  replicas: 1", deployment)
+        self.assertIn("    type: RollingUpdate", deployment)
+        self.assertIn('command: ["python", "-m", "autodata_ingestion.http_service"]', deployment)
+        self.assertIn("              path: /healthz", deployment)
+        self.assertIn("            requests:", deployment)
+        self.assertIn("            limits:", deployment)
+        self.assertIn("                name: autodata-runtime-secrets", deployment)
+
+    def test_api_points_to_internal_ingestion_service(self):
+        deployment = self.by_key[("Deployment", "autodata-api")]
+        self.assertIn("AUTODATA_INGESTION_URL", deployment)
+        self.assertIn("AUTODATA_INGESTION_INTERNAL_TOKEN", deployment)
 
     def test_workers_are_independently_scalable_and_migration_is_one_shot(self):
         for name in (

@@ -167,6 +167,7 @@
         "REVIEW_REQUIRED",
         "SOURCE_REVIEW_NOT_FOUND",
         "SOURCE_REVIEW_CONFLICT",
+        "INGESTION_UNAVAILABLE",
         "INVALID_REQUEST"
       ]},
       "message": {"type": "string"},
