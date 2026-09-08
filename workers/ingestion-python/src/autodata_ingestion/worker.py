@@ -478,37 +478,9 @@ def _collect_connector(connector: object):
 def _configured_mercury2_extractor():
     """Return the opt-in advisory extractor or a review-safe configuration error."""
 
-    if os.getenv("AUTODATA_MERCURY2_EXTRACTION_ENABLED") != "1":
-        return None, None
-    try:
-        from .mercury2 import Mercury2Client, Mercury2SourceExtractor
+    from .mercury2 import configured_source_extractor
 
-        client = Mercury2Client.from_environment()
-        return (
-            Mercury2SourceExtractor(
-                client,
-                max_input_bytes=_positive_int_env(
-                    "AUTODATA_MERCURY2_EXTRACTION_MAX_INPUT_BYTES", 200_000
-                ),
-                max_candidates=_positive_int_env(
-                    "AUTODATA_MERCURY2_EXTRACTION_MAX_CANDIDATES", 500
-                ),
-            ),
-            None,
-        )
-    except (TypeError, ValueError) as error:
-        return None, str(error)
-
-
-def _positive_int_env(name: str, default: int) -> int:
-    value = os.getenv(name, str(default))
-    try:
-        parsed = int(value)
-    except ValueError as error:
-        raise ValueError(f"{name} must be a positive integer") from error
-    if parsed < 1:
-        raise ValueError(f"{name} must be a positive integer")
-    return parsed
+    return configured_source_extractor()
 
 
 def _publication_for_request(request: object):

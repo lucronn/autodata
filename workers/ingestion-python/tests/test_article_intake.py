@@ -9,7 +9,11 @@ from autodata_ingestion.article_intake import (  # noqa: E402
     VehicleTarget,
     ingest_vehicle_article,
 )
-from autodata_ingestion.source_adapters import SourceResource, adapt_source_resource  # noqa: E402
+from autodata_ingestion.source_adapters import (  # noqa: E402
+    NormalizationCandidate,
+    SourceResource,
+    adapt_source_resource,
+)
 from autodata_ingestion.source_bundle import (  # noqa: E402
     ARTICLE_SIMILARITY_THRESHOLD,
     normalize_source_bundle,
@@ -49,6 +53,50 @@ def _html(title, *, article_id="TSB-42", vehicle="2019 Cadillac Escalade ESV"):
 
 
 class VehicleArticleIntakeTests(unittest.TestCase):
+    def test_unknown_json_article_uses_opt_in_mercury_extraction(self):
+        from autodata_ingestion.mercury2 import Mercury2SourceExtractor
+        from unittest.mock import patch
+
+        resource = SourceResource.from_bytes(
+            "https://source.example/unknown.json",
+            "source-v1",
+            b'{"providerPayload":{"headline":"Brake connector bulletin"}}',
+            "application/json",
+        )
+        candidates = (
+            NormalizationCandidate(
+                "vehicle_identity",
+                "mercury2:vehicle_identity:stable",
+                {"year": 1999, "make": "Chevrolet", "model": "Silverado 1500"},
+                "providerPayload.vehicle",
+            ),
+            NormalizationCandidate(
+                "article",
+                "mercury2:article:stable",
+                {
+                    "id": "TSB-42",
+                    "title": "Brake connector bulletin",
+                    "body": "Inspect the brake connector.",
+                },
+                "providerPayload.article",
+            ),
+        )
+        with patch.dict("os.environ", {"AUTODATA_MERCURY2_EXTRACTION_ENABLED": "1"}, clear=False):
+            with patch(
+                "autodata_ingestion.mercury2.Mercury2Client.from_environment",
+                return_value=object(),
+            ):
+                with patch.object(Mercury2SourceExtractor, "extract", return_value=candidates):
+                    result = ingest_vehicle_article(
+                        resource.source_uri,
+                        VehicleTarget("Chevy", "Silverado 1500", 1999, "US"),
+                        connector=_StaticConnector([resource]),
+                    )
+
+        self.assertEqual(result.status, "ready")
+        self.assertEqual(result.bundle.articles[0]["article_id"], "TSB-42")
+        self.assertEqual(result.artifacts[0].metadata["extraction_mode"], "mercury-2")
+
     def test_vehicle_target_canonicalizes_chevy_alias_for_stable_key(self):
         target = VehicleTarget("Chevy", "Silverado 1500", 1999, "US")
 

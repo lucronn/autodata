@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from .http_connector import HttpSourceConnector
@@ -119,7 +119,10 @@ def ingest_vehicle_article(
         raise ValueError("article source returned no resources")
     if len(resources) != 1:
         raise ValueError("article intake expects exactly one HTTP resource")
-    artifacts = tuple(adapt_source_resource(resource) for resource in resources)
+    artifacts = tuple(
+        _augment_unrecognized_resource(resource, adapt_source_resource(resource))
+        for resource in resources
+    )
     bundle = normalize_source_bundle(
         artifacts,
         target.region,
@@ -139,6 +142,50 @@ def ingest_vehicle_article(
             "rejected", source_uri, target, artifacts, bundle, "article_not_recognized"
         )
     return VehicleArticleIntake("ready", source_uri, target, artifacts, bundle)
+
+
+def _augment_unrecognized_resource(resource: Any, artifact: SourceArtifact) -> SourceArtifact:
+    """Optionally ask Mercury-2 for typed candidates from an unknown JSON shape."""
+
+    if artifact.kind != "structured" or artifact.candidates:
+        return artifact
+    from .mercury2 import configured_source_extractor
+
+    extractor, extractor_error = configured_source_extractor()
+    if extractor is None and extractor_error is None:
+        return artifact
+    if extractor_error is not None:
+        return replace(
+            artifact,
+            metadata={
+                **artifact.metadata,
+                "extraction_mode": "mercury-2",
+                "extraction_status": "needs_review",
+                "extraction_error": extractor_error,
+            },
+        )
+    try:
+        candidates = tuple(extractor.extract(resource))
+    except Exception as error:  # noqa: BLE001 - source review must survive advisory failures
+        return replace(
+            artifact,
+            metadata={
+                **artifact.metadata,
+                "extraction_mode": "mercury-2",
+                "extraction_status": "needs_review",
+                "extraction_error": str(error),
+            },
+        )
+    return replace(
+        artifact,
+        candidates=candidates,
+        metadata={
+            **artifact.metadata,
+            "extraction_mode": "mercury-2",
+            "candidate_count": len(candidates),
+            "extraction_status": "candidate_ready" if candidates else "needs_review",
+        },
+    )
 
 
 def _slug(value: str) -> str:

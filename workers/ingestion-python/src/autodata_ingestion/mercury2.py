@@ -185,6 +185,29 @@ class Mercury2SourceExtractor:
         return tuple(candidates)
 
 
+def configured_source_extractor() -> tuple[Mercury2SourceExtractor | None, str | None]:
+    """Build the opt-in source extractor from secret-managed environment state."""
+
+    if os.getenv("AUTODATA_MERCURY2_EXTRACTION_ENABLED") != "1":
+        return None, None
+    try:
+        client = Mercury2Client.from_environment()
+        return (
+            Mercury2SourceExtractor(
+                client,
+                max_input_bytes=_positive_int_env(
+                    "AUTODATA_MERCURY2_EXTRACTION_MAX_INPUT_BYTES", 200_000
+                ),
+                max_candidates=_positive_int_env(
+                    "AUTODATA_MERCURY2_EXTRACTION_MAX_CANDIDATES", 500
+                ),
+            ),
+            None,
+        )
+    except (TypeError, ValueError) as error:
+        return None, str(error)
+
+
 class Mercury2VehicleAdjudicator:
     """Use Mercury-2 only to resolve deterministic ambiguity."""
 
@@ -233,6 +256,17 @@ def _build_prompt(observation: CanonicalVehicleObservation, candidates: tuple[Ve
     )
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    value = os.getenv(name, str(default))
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be a positive integer") from error
+    if parsed < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return parsed
+
+
 def _build_source_extraction_prompt(resource: SourceResource, document: Any) -> str:
     return json.dumps(
         {
@@ -278,4 +312,9 @@ def _response_content(payload: Any) -> Any:
     return payload
 
 
-__all__ = ["Mercury2Client", "Mercury2SourceExtractor", "Mercury2VehicleAdjudicator"]
+__all__ = [
+    "Mercury2Client",
+    "Mercury2SourceExtractor",
+    "Mercury2VehicleAdjudicator",
+    "configured_source_extractor",
+]
