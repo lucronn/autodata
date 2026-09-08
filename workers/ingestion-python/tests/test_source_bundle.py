@@ -13,6 +13,127 @@ from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E4
 
 
 class SourceBundleTests(unittest.TestCase):
+    def test_exact_article_id_replay_merges_later_content_after_other_articles(self):
+        resource = SourceResource.from_bytes(
+            "provider://vehicle/articles.json",
+            "source-v1",
+            (
+                b'{"body":{"articleDetails":['
+                b'{"id":"TSB-1","title":"Alpha bulletin"},'
+                b'{"id":"TSB-2","title":"Beta bulletin","body":"Inspect the battery."},'
+                b'{"id":"TSB-1","title":"Zeta bulletin",'
+                b'"body":"Inspect the connector before service."}'
+                b']}}'
+            ),
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource)], "US")
+
+        self.assertEqual(len(bundle.articles), 2)
+        first = next(article for article in bundle.articles if article["article_id"] == "TSB-1")
+        self.assertEqual(first["body"], "Inspect the connector before service.")
+        self.assertEqual(first["duplicate_count"], 2)
+
+    def test_near_duplicate_article_bodies_are_quarantined_even_when_titles_differ(self):
+        resource = SourceResource.from_bytes(
+            "provider://vehicle/articles.json",
+            "source-v1",
+            (
+                b'{"body":{"articleDetails":['
+                b'{"id":"TSB-1","title":"Brake connector service bulletin",'
+                b'"body":"Inspect the brake connector before service. Remove the retaining clip and replace the terminal if damaged."},'
+                b'{"id":"TSB-2","title":"Brake connector replacement bulletin",'
+                b'"body":"Inspect the brake connector before service. Remove the retaining clip and replace the terminal if damaged."}'
+                b']}}'
+            ),
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource)], "US")
+
+        self.assertEqual(len(bundle.articles), 1)
+        self.assertIn(bundle.articles[0]["article_id"], {"TSB-1", "TSB-2"})
+        self.assertTrue(
+            any(item.get("reason") == "similar_article_requires_review" for item in bundle.quarantined)
+        )
+
+    def test_generic_json_article_record_preserves_body_and_steps(self):
+        resource = SourceResource.from_bytes(
+            "provider://vehicle/article.json",
+            "source-v1",
+            (
+                b'{"body":{"type":"article","article_id":"TSB-99",'
+                b'"title":"Brake connector procedure",'
+                b'"body":"Inspect the connector before service.",'
+                b'"steps":["Inspect connector","Replace terminal"]}}'
+            ),
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource)], "US")
+
+        self.assertEqual(len(bundle.articles), 1)
+        self.assertEqual(bundle.articles[0]["article_id"], "TSB-99")
+        self.assertEqual(
+            bundle.articles[0]["body"],
+            "Inspect the connector before service.",
+        )
+        self.assertEqual(
+            bundle.articles[0]["steps"],
+            ["Inspect connector", "Replace terminal"],
+        )
+
+    def test_coarse_identity_is_enriched_by_a_later_structured_identity_record(self):
+        resources = [
+            SourceResource.from_bytes(
+                "provider://vehicle/name",
+                "source-v1",
+                b'{"body":"99 Chevy Silverado 1500"}',
+                "application/json",
+            ),
+            SourceResource.from_bytes(
+                "provider://vehicle/fitment",
+                "source-v1",
+                b'{"year":1999,"make":"Chevrolet","model":"Silverado 1500",'
+                b'"region":"US","drivetrain":"2wd","engine":"5.3LT"}',
+                "application/json",
+            ),
+        ]
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource) for resource in resources], "US")
+
+        self.assertEqual(bundle.status, "ready")
+        self.assertEqual(bundle.vehicle["vehicle_key"], "chevrolet-silverado-1500-1999-us")
+        self.assertEqual(bundle.vehicle["drivetrain"], "2WD")
+        self.assertEqual(bundle.vehicle["engine_displacement_l"], 5.3)
+
+    def test_structured_vehicle_dimensions_survive_normalization_and_aliasing(self):
+        resource = SourceResource.from_bytes(
+            "provider://vehicle/identity.json",
+            "source-v1",
+            (
+                b'{"vehicle":{"year":"99","manufacturer":"Chevy",'
+                b'"model":"Silverado-1500","market":"US",'
+                b'"bodyStyle":"Pickup","driveType":"4x2",'
+                b'"engineDisplacementL":"5.3LT"}}'
+            ),
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource)], "US")
+
+        self.assertEqual(bundle.status, "ready")
+        self.assertIsNotNone(bundle.vehicle)
+        self.assertEqual(bundle.vehicle["vehicle_key"], "chevrolet-silverado-1500-1999-us")
+        self.assertEqual(bundle.vehicle["make"], "Chevrolet")
+        self.assertEqual(bundle.vehicle["model"], "Silverado 1500")
+        self.assertEqual(bundle.vehicle["model_year"], 1999)
+        self.assertEqual(bundle.vehicle["body_style"], "Pickup")
+        self.assertEqual(bundle.vehicle["drivetrain"], "2WD")
+        self.assertEqual(bundle.vehicle["engine_displacement_l"], 5.3)
+        self.assertTrue(bundle.vehicle["evidence_id"])
+
     def test_normalizes_cross_resource_vehicle_bundle_with_evidence(self):
         resources = [
             SourceResource.from_bytes(

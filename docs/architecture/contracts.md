@@ -16,6 +16,11 @@
 | `powertrains` | Engine or powertrain variants for a model | Powertrain identity remains linked to its model and source |
 | `inventory_parts` | Normalized parts and price observations | Ambiguous prices remain `needs_review` rather than being guessed |
 | `catalog_articles` | Source article index for procedures, diagnostics, TSBs, and specifications | Article IDs, classification, source, and evidence are retained |
+| `vehicle_identity_bases` | Canonical make/model/year/market and coarse fitment identity | Coarse identity is merged only when known dimensions are compatible |
+| `vehicle_configurations` | Trim/engine configuration below a canonical vehicle base | The stable configuration key prevents richer observations from creating a second vehicle family |
+| `vehicle_identity_observations` | Raw and canonical vehicle-list observations with resolution outcome | Every observation retains source/evidence and ambiguous or conflicting matches remain reviewable |
+| `catalog_article_vehicle_links` | Canonical/duplicate article relationship | A duplicate article is hidden from new projections while both source rows remain auditable |
+| `source_review_items` | Durable review queue for conflicts and quarantine decisions | Queue records contain reason codes and provenance UUIDs, never copied raw source payloads |
 | `ingestion_jobs` | Lane-specific work and retries | Lane, processing version, and stable idempotency key are explicit |
 | `extraction_runs` | OCR/LLM/embedding execution metadata | Model/provider/version and confidence are retained |
 | `extraction_evidence` | Fact-to-source/page/region traceability | Evidence references an immutable source artifact |
@@ -44,7 +49,7 @@ The intake layer computes `content_sha256`, stores the raw resource before extra
 
 One dataset request may combine resources from different protocols and media types. The request correlation ID joins them, while each resource retains its own hash, source version, object key, extraction run, and evidence path. Duplicate payloads deduplicate by content hash, and distinct versions remain auditable.
 
-When two or more source resources provide incompatible candidates for the same canonical field, normalization emits a conflict record containing the field, every candidate value, source URI/version, and evidence IDs. The affected fact is not selected by arrival order or filename; it remains unresolved until a reviewer records a decision. Conflict records are part of the normalized bundle and quality report, so a later implementation can persist and resolve them without changing the universal resource contract.
+When two or more source resources provide incompatible candidates for the same canonical field, normalization emits a conflict record containing the field, every candidate value, source URI/version, and evidence IDs. The affected fact is not selected by arrival order or filename; it remains unresolved until a reviewer records a decision. Conflict records are part of the normalized bundle and quality report, and the persistence boundary stores them as `source_review_items` with a stable `item_key`, `pending` review state, reason code, source snapshot UUIDs, and extraction-evidence UUIDs. Similar-article quarantine entries are coalesced with their corresponding article-similarity conflict so one ambiguity creates one actionable queue item. Replaying a source updates the same queue item rather than creating another task. The queue contains only normalized review metadata; raw source bytes remain in content-addressed object storage.
 
 ## Public API
 
@@ -60,6 +65,12 @@ The API is projection-oriented. Clients do not depend on table names or internal
 | `GET` | `/datasets/{id}/evidence/{evidence_id}` | Resolve page/region evidence for a published fact |
 | `GET` | `/datasets/{id}/search?q={query}&limit={n}` | Search approved evidence within the entitled projection |
 | `GET` | `/datasets/{id}/knowledge?q={query}&kind=article\|procedure\|all&limit={n}&revision_id={id}` | Search normalized articles and procedure excerpts in one entitled published revision |
+| `POST` | `/vehicle-identities/resolve` | Normalize a vehicle list into stable vehicle families and configuration records |
+| `GET` | `/vehicle-identities/selectors` | Read the selector option lists and valid vehicle/configuration combinations |
+| `POST` | `/article-intakes` | Ingest one HTTP(S) article for a normalized vehicle and return structured article/evidence JSON |
+| `POST` | `/knowledge-queries` | Resolve a vehicle-scoped query from the indexed catalog or fetch and normalize one source on a cache miss |
+| `GET` | `/source-review-items?status=pending&limit={n}` | List normalized source conflicts and quarantine items for data reviewers |
+| `POST` | `/source-review-items/{id}/review` | Approve or reject one source review item with an auditable reason |
 | `POST` | `/datasets/{id}/feedback` | Submit a correction or quality issue |
 | `POST` | `/datasets/{id}/feedback/{feedback_id}/review` | Resolve or reject a feedback item as a reviewer |
 | `POST` | `/datasets/{id}/evidence/{evidence_id}/review` | Approve or reject pending evidence as a reviewer |
@@ -94,6 +105,58 @@ the selected revision, and a later request against the newly published
 revision returns the normalized article and its evidence references.
 
 The response may include a `data` object for published sections and a `warnings` array for incomplete, low-confidence, stale, or review-gated content. A client must be able to render the dataset from status and revision metadata without guessing whether missing fields are unavailable, not applicable, or still processing.
+
+Vehicle selector responses contain both convenience option lists and the
+structured combinations that a cascading selector must use to avoid inventing
+invalid fitments:
+
+```json
+{
+  "makes": ["Chevrolet"],
+  "models": ["Silverado 1500"],
+  "years": [1999],
+  "drivetrains": ["2WD"],
+  "trims": ["LT"],
+  "engine_displacements_l": [5.3],
+  "vehicles": [
+    {
+      "status": "resolved",
+      "vehicle_id_key": "chevrolet-silverado-1500-1999-us",
+      "year": 1999,
+      "make": "Chevrolet",
+      "model": "Silverado 1500",
+      "region": "US",
+      "drivetrain": "2WD",
+      "configurations": [
+        {
+          "configuration_key": "chevrolet-silverado-1500-1999-us-trim-lt-engine-5-3l",
+          "trim": "LT",
+          "engine_displacement_l": 5.3,
+          "drivetrain": "2WD"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`POST /vehicle-identities/resolve` requires an `Idempotency-Key`. The request
+is organization-scoped at the API boundary, canonicalizes aliases, and marks
+conflicting body-style or drivetrain dimensions as `needs_review`. It is a
+normalization/selection boundary; source-backed persistence still requires a
+source snapshot and extraction evidence from the ingestion path. The ingestion
+path also stores the resolved `vehicle_configuration_id` on each catalog
+article when the source proves trim or engine dimensions; coarse articles keep
+that link NULL rather than claiming unsupported specificity. Vehicle-target
+checks treat omitted optional source dimensions as unknown but reject any
+explicit drivetrain, body-style, trim, or engine conflict.
+
+`GET /vehicle-identities/selectors` is the client-facing selection catalog. In
+PostgreSQL mode each vehicle record includes the durable `vehicle_id` and each
+configuration includes its durable `vehicle_configuration_id`, alongside the
+stable human-readable keys. Those UUIDs are read-only server output; clients
+cannot supply or override them on the resolve request. The in-memory API mode
+omits the UUIDs because it is an explicitly non-durable test boundary.
 
 The request-status endpoint is durable whenever the API is configured with
 `AUTODATA_PROJECTION_STORE=postgres`. Request ownership is recorded on
@@ -272,3 +335,7 @@ Evidence search is projection-scoped and returns only approved evidence linked t
 The initial local API uses the same deterministic embedding algorithm as the local enrichment adapter to turn `q` into a 1536-dimensional query vector. A production embedding service can replace that adapter without changing the projection or evidence contract. Empty or invalid limits return `422`; missing/revoked entitlements use the same authorization errors as dataset reads.
 
 Knowledge retrieval is a bounded, typed companion to evidence search. It selects the latest entitled published revision by default, or the explicitly requested entitled `revision_id`, and searches only that revision's structured `articles` content and `procedures.records` content. `kind` limits results to `article` or `procedure`; `all` returns both. Each result has an explicit kind, deterministic lexical score, structured article metadata or a procedure excerpt, and an inline evidence/provenance array when the selected content contains evidence identifiers or source locators. The response repeats the selected revision, availability, vehicle identity when present, source watermark, and current section readiness. It does not fetch sources synchronously or search across datasets.
+
+The ingestion worker's pre-projection fallback path is separate from the entitled API read: when no catalog is supplied, it reads active normalized catalog articles for the canonical vehicle key, filters duplicate and taken-down rows, and invokes a configured source resolver only on a query miss. A fetched article is persisted through the normal source/evidence boundary before it becomes eligible for a later projection revision.
+
+The source review queue is restricted to `data_reviewer` or `platform_admin`. `GET /source-review-items` defaults to `status=pending` and accepts a bounded limit from 1 through 200. `POST /source-review-items/{id}/review` accepts `{"decision":"approve"|"reject","reason":"..."}`; the short aliases `approved` and `rejected` are also accepted for replay-safe operator tooling. A repeated terminal decision is idempotent, while attempting the opposite terminal decision returns a conflict. Queue payloads contain normalized conflict or quarantine metadata and provenance UUIDs only; reviewers follow those UUIDs to source snapshots and extraction evidence rather than receiving copied raw source content.

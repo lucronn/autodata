@@ -8,7 +8,9 @@ import uuid
 from dataclasses import asdict, dataclass
 from typing import Any, Iterable
 
+from .article_identity import canonicalize_article_identity
 from .source_adapters import NormalizationCandidate, SourceArtifact
+from .vehicle_identity import canonicalize_vehicle_observation
 
 
 _PRICE_RE = re.compile(
@@ -221,7 +223,28 @@ def _normalize_vehicle(
     *,
     expected_vehicle: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    parsed = [item for item in candidates if {"year", "make", "model"}.issubset(item[2])]
+    parsed: list[tuple[SourceArtifact, NormalizationCandidate, dict[str, Any]]] = []
+    for item in candidates:
+        if not {"year", "make", "model"}.issubset(item[2]):
+            continue
+        try:
+            canonical = canonicalize_vehicle_observation(
+                {
+                    **item[2],
+                    "region": item[2].get("region", region),
+                }
+            ).to_dict()
+        except (TypeError, ValueError):
+            quarantined.append(
+                {
+                    "source_uri": item[0].source_uri,
+                    "content_sha256": item[0].content_sha256,
+                    "reason": "invalid_vehicle_identity",
+                    "evidence_id": item[2].get("evidence_id"),
+                }
+            )
+            continue
+        parsed.append((item[0], item[1], {**canonical, "evidence_id": item[2]["evidence_id"]}))
     if not parsed:
         return None
     identities = {(item[2]["year"], item[2]["make"], item[2]["model"]) for item in parsed}
@@ -250,28 +273,93 @@ def _normalize_vehicle(
         )
         quarantined.append({"reason": "conflicting_vehicle_identity", "candidates": sorted(map(str, identities))})
         return None
-    _, _, record = parsed[0]
+    _, _, first_record = parsed[0]
+    record = dict(first_record)
+    for _, _, candidate_record in parsed[1:]:
+        for field_name in (
+            "body_style",
+            "trim",
+            "drivetrain",
+            "engine_displacement_l",
+        ):
+            existing_value = record.get(field_name)
+            incoming_value = candidate_record.get(field_name)
+            if existing_value is None and incoming_value is not None:
+                record[field_name] = incoming_value
+                continue
+            if (
+                existing_value is not None
+                and incoming_value is not None
+                and existing_value != incoming_value
+            ):
+                conflicts.append(
+                    {
+                        "kind": "vehicle_identity",
+                        "field": field_name,
+                        "resolution": "needs_review",
+                        "candidates": [
+                            {
+                                "value": existing_value,
+                                "evidence_id": record["evidence_id"],
+                            },
+                            {
+                                "value": incoming_value,
+                                "evidence_id": candidate_record["evidence_id"],
+                            },
+                        ],
+                        "evidence_ids": [
+                            record["evidence_id"],
+                            candidate_record["evidence_id"],
+                        ],
+                    }
+                )
+                quarantined.append(
+                    {
+                        "reason": "conflicting_vehicle_dimension",
+                        "field": field_name,
+                        "evidence_ids": [
+                            record["evidence_id"],
+                            candidate_record["evidence_id"],
+                        ],
+                    }
+                )
+                return None
     make = str(record["make"]).strip()
     model = str(record["model"]).strip()
     year = int(record["year"])
-    normalized_region = region.strip().upper()
+    normalized_region = str(record.get("region", region)).strip().upper()
     if expected_vehicle is not None:
-        expected_make = str(expected_vehicle.get("make", "")).strip()
-        expected_model = str(expected_vehicle.get("model", "")).strip()
-        expected_region = str(expected_vehicle.get("region", normalized_region)).strip().upper()
+        try:
+            expected = canonicalize_vehicle_observation(
+                {**expected_vehicle, "region": expected_vehicle.get("region", normalized_region)}
+            )
+        except (TypeError, ValueError):
+            expected = None
+        expected_make = expected.make if expected is not None else str(expected_vehicle.get("make", "")).strip()
+        expected_model = expected.model if expected is not None else str(expected_vehicle.get("model", "")).strip()
+        expected_region = expected.region if expected is not None and expected.region else str(expected_vehicle.get("region", normalized_region)).strip().upper()
         source_region = str(record.get("region", normalized_region)).strip().upper()
         try:
             expected_year = int(expected_vehicle.get("year"))
         except (TypeError, ValueError):
             expected_year = None
-        expected_trim = str(expected_vehicle.get("trim", "")).strip() or None
-        source_trim = str(record.get("trim", "")).strip() or None
+        expected_trim = expected.trim if expected is not None else str(expected_vehicle.get("trim", "")).strip() or None
+        expected_body_style = expected.body_style if expected is not None else None
+        expected_drivetrain = expected.drivetrain if expected is not None else None
+        expected_engine = expected.engine_displacement_l if expected is not None else None
+        source_trim = record.get("trim")
+        source_body_style = record.get("body_style")
+        source_drivetrain = record.get("drivetrain")
+        source_engine = record.get("engine_displacement_l")
         mismatch = (
             make.casefold() != expected_make.casefold()
             or model.casefold() != expected_model.casefold()
             or year != expected_year
             or source_region != expected_region
-            or (expected_trim is not None and source_trim != expected_trim)
+            or (expected_trim is not None and source_trim is not None and source_trim != expected_trim)
+            or (expected_body_style is not None and source_body_style is not None and source_body_style != expected_body_style)
+            or (expected_drivetrain is not None and source_drivetrain is not None and source_drivetrain != expected_drivetrain)
+            or (expected_engine is not None and source_engine is not None and abs(source_engine - expected_engine) >= 0.0001)
         )
         if mismatch:
             conflicts.append(
@@ -286,6 +374,13 @@ def _normalize_vehicle(
                         "model": model,
                         "region": source_region,
                         **({"trim": source_trim} if source_trim else {}),
+                        **({"body_style": source_body_style} if source_body_style else {}),
+                        **({"drivetrain": source_drivetrain} if source_drivetrain else {}),
+                        **(
+                            {"engine_displacement_l": source_engine}
+                            if source_engine is not None
+                            else {}
+                        ),
                     },
                     "evidence_ids": [record["evidence_id"]],
                 }
@@ -305,7 +400,10 @@ def _normalize_vehicle(
         "model": model,
         "model_year": year,
         "region": normalized_region,
+        "body_style": record.get("body_style"),
         "trim": record.get("trim"),
+        "drivetrain": record.get("drivetrain"),
+        "engine_displacement_l": record.get("engine_displacement_l"),
         "evidence_id": record["evidence_id"],
     }
 
@@ -321,12 +419,39 @@ def _resolve_article_collisions(
     evidence_by_id = {item["evidence_id"]: item for item in evidence}
     ordered = sorted(records, key=_article_order)
     accepted: list[dict[str, Any]] = []
+    accepted_by_id: dict[str, dict[str, Any]] = {}
+    accepted_by_title: dict[str, dict[str, Any]] = {}
+    accepted_by_token: dict[str, set[int]] = {}
+    accepted_positions: dict[int, int] = {}
     for record in ordered:
-        exact = next((item for item in accepted if _same_article(item, record)), None)
+        article_id = _article_text(record.get("article_id"))
+        exact = accepted_by_id.get(article_id) if article_id else None
         if exact is not None:
             _merge_article(exact, record)
+            _index_article_tokens(
+                exact,
+                accepted_positions[id(exact)],
+                accepted_by_token,
+            )
             continue
-        similar = next((item for item in accepted if _similar_article(item, record)), None)
+        title = _article_text(record.get("title"))
+        similar = accepted_by_title.get(title) if title else None
+        if similar is None:
+            candidate_indices = sorted(
+                {
+                    index
+                    for token in _article_search_tokens(record)
+                    for index in accepted_by_token.get(token, ())
+                }
+            )
+            similar = next(
+                (
+                    accepted[index]
+                    for index in candidate_indices
+                    if _similar_article(accepted[index], record)
+                ),
+                None,
+            )
         if similar is not None:
             item_evidence = evidence_by_id.get(record["evidence_id"], {})
             quarantined.append(
@@ -344,7 +469,7 @@ def _resolve_article_collisions(
                     "resolution": "needs_review",
                     "article_keys": [similar["article_key"], record["article_key"]],
                     "evidence_ids": [similar["evidence_id"], record["evidence_id"]],
-                    "similarity": round(_title_similarity(similar.get("title"), record.get("title")), 6),
+                    "similarity": round(_article_similarity(similar, record), 6),
                 }
             )
             continue
@@ -352,8 +477,35 @@ def _resolve_article_collisions(
         record["duplicate_count"] = 1
         record["source_uris"] = [record["source_uri"]]
         record["source_versions"] = [record["source_version"]]
+        accepted_index = len(accepted)
         accepted.append(record)
+        accepted_positions[id(record)] = accepted_index
+        if article_id:
+            accepted_by_id[article_id] = record
+        if title:
+            accepted_by_title.setdefault(title, record)
+        _index_article_tokens(record, accepted_index, accepted_by_token)
     return accepted
+
+
+def _index_article_tokens(
+    record: dict[str, Any],
+    accepted_index: int,
+    accepted_by_token: dict[str, set[int]],
+) -> None:
+    for token in _article_search_tokens(record):
+        accepted_by_token.setdefault(token, set()).add(accepted_index)
+
+
+def _article_search_tokens(record: dict[str, Any]) -> set[str]:
+    return _article_tokens(
+        " ".join(
+            (
+                _article_text(record.get("title")),
+                _article_text(record.get("body")),
+            )
+        )
+    )
 
 
 def _article_order(record: dict[str, Any]) -> tuple[str, str, str]:
@@ -364,25 +516,35 @@ def _article_order(record: dict[str, Any]) -> tuple[str, str, str]:
     )
 
 
-def _same_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
-    left_id = _article_text(left.get("article_id"))
-    right_id = _article_text(right.get("article_id"))
-    return bool(left_id and right_id and left_id == right_id) or (
-        bool(left.get("content_sha256"))
-        and left.get("content_sha256") == right.get("content_sha256")
-    )
-
-
 def _similar_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
     left_title = _article_text(left.get("title"))
     right_title = _article_text(right.get("title"))
     if left_title and left_title == right_title:
+        return True
+    if _article_similarity(left, right) >= ARTICLE_SIMILARITY_THRESHOLD:
         return True
     left_tokens = _article_tokens(left.get("title"))
     right_tokens = _article_tokens(right.get("title"))
     if len(left_tokens & right_tokens) < 3:
         return False
     return _title_similarity(left.get("title"), right.get("title")) >= ARTICLE_SIMILARITY_THRESHOLD
+
+
+def _article_similarity(left: dict[str, Any], right: dict[str, Any]) -> float:
+    """Compare complete article content when both records contain bodies."""
+
+    if left.get("body") and right.get("body"):
+        try:
+            identity = canonicalize_article_identity(
+                right,
+                existing_articles=(left,),
+                near_duplicate_gate=ARTICLE_SIMILARITY_THRESHOLD,
+            )
+        except ValueError:
+            pass
+        else:
+            return identity.near_duplicate_score
+    return _title_similarity(left.get("title"), right.get("title"))
 
 
 def _title_similarity(left: Any, right: Any) -> float:
@@ -418,6 +580,9 @@ def _article_steps(data: dict[str, Any]) -> list[Any] | None:
 
 def _merge_article(target: dict[str, Any], duplicate: dict[str, Any]) -> None:
     for field in ("bucket", "title", "bulletin_number", "release_date"):
+        if not target.get(field) and duplicate.get(field):
+            target[field] = duplicate[field]
+    for field in ("body", "steps"):
         if not target.get(field) and duplicate.get(field):
             target[field] = duplicate[field]
     evidence_ids = set(target.get("evidence_ids", [target["evidence_id"]]))

@@ -58,6 +58,9 @@ type Server struct {
 	requests                   RequestStore
 	projections                ProjectionStore
 	knowledgeFallbackPublisher KnowledgeFallbackPublisher
+	sourceReviews              SourceReviewStore
+	ingestionClient            IngestionClient
+	vehicleIdentity            VehicleIdentityStore
 	metrics                    *apiMetrics
 }
 
@@ -83,8 +86,38 @@ func NewServerWithDependenciesAndPublisher(readiness ReadinessChecker, auth Auth
 		requests:                   requests,
 		projections:                projectionStore,
 		knowledgeFallbackPublisher: publisher,
+		sourceReviews:              newMemorySourceReviewStore(),
+		vehicleIdentity:            newMemoryVehicleIdentityStore(),
 		metrics:                    new(apiMetrics),
 	}
+}
+
+// NewServerWithVehicleIdentityStore injects the canonical identity persistence
+// boundary without coupling handlers to PostgreSQL or Python workers.
+func NewServerWithVehicleIdentityStore(readiness ReadinessChecker, auth Authenticator, requests RequestStore, identity VehicleIdentityStore, projections ...ProjectionStore) *Server {
+	server := NewServerWithDependencies(readiness, auth, requests, projections...)
+	if identity != nil {
+		server.vehicleIdentity = identity
+	}
+	return server
+}
+
+// NewServerWithSourceReviewStore injects the operator review queue without
+// coupling handlers to PostgreSQL or a particular review UI.
+func NewServerWithSourceReviewStore(readiness ReadinessChecker, auth Authenticator, requests RequestStore, reviews SourceReviewStore, projections ...ProjectionStore) *Server {
+	server := NewServerWithDependencies(readiness, auth, requests, projections...)
+	if reviews != nil {
+		server.sourceReviews = reviews
+	}
+	return server
+}
+
+// NewServerWithIngestionClient injects the internal worker boundary for API
+// tests and local adapters without coupling handlers to a transport.
+func NewServerWithIngestionClient(readiness ReadinessChecker, auth Authenticator, requests RequestStore, client IngestionClient, projections ...ProjectionStore) *Server {
+	server := NewServerWithDependencies(readiness, auth, requests, projections...)
+	server.ingestionClient = client
+	return server
 }
 
 func (s *Server) Handler() http.Handler {
@@ -93,6 +126,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics.handler)
 	mux.Handle("POST /dataset-requests", s.requireRole("dataset_viewer", s.createDatasetRequest))
+	mux.Handle("POST /vehicle-identities/resolve", s.requireRole("dataset_viewer", s.resolveVehicleIdentity))
+	mux.Handle("GET /vehicle-identities/selectors", s.requireRole("dataset_viewer", s.listVehicleIdentitySelectors))
+	mux.Handle("GET /source-review-items", s.requireRole("data_reviewer", s.listSourceReviewItems))
+	mux.Handle("POST /source-review-items/{id}/review", s.requireRole("data_reviewer", s.reviewSourceItem))
+	mux.Handle("POST /article-intakes", s.requireRole("ingestion_operator", s.createArticleIntake))
+	mux.Handle("POST /knowledge-queries", s.requireRole("dataset_viewer", s.createKnowledgeQuery))
 	mux.Handle("GET /dataset-requests/{id}", s.requireRole("dataset_viewer", s.getDatasetRequest))
 	mux.Handle("GET /datasets/{id}", s.requireRole("dataset_viewer", s.getDataset))
 	mux.Handle("GET /datasets/{id}/sections", s.requireRole("dataset_viewer", s.getDatasetSections))
@@ -455,9 +494,25 @@ func main() {
 	if err != nil {
 		log.Fatal(fmt.Errorf("configure knowledge fallback publisher: %w", err))
 	}
+	application := NewServerWithDependenciesAndPublisher(configuredReadiness(), HeaderAuthenticator{}, requestStore, publisher, projectionStore)
+	if durableProjections, ok := projectionStore.(*postgresProjectionStore); ok {
+		application.vehicleIdentity = newLayeredVehicleIdentityStore(durableProjections.pool)
+		application.sourceReviews = newPostgresSourceReviewStore(durableProjections.pool)
+	}
+	if endpoint := strings.TrimSpace(os.Getenv("AUTODATA_INGESTION_URL")); endpoint != "" {
+		client, err := NewHTTPIngestionClient(
+			endpoint,
+			os.Getenv("AUTODATA_INGESTION_INTERNAL_TOKEN"),
+			envDurationSeconds("AUTODATA_INGESTION_TIMEOUT_SECONDS", 30),
+		)
+		if err != nil {
+			log.Fatal(fmt.Errorf("configure ingestion client: %w", err))
+		}
+		application.ingestionClient = client
+	}
 	server := &http.Server{
 		Addr:              address,
-		Handler:           NewServerWithDependenciesAndPublisher(configuredReadiness(), HeaderAuthenticator{}, requestStore, publisher, projectionStore).Handler(),
+		Handler:           application.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	log.Printf("autodata api listening on %s", address)

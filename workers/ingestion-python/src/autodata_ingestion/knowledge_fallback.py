@@ -16,6 +16,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol
+from urllib.parse import quote
 
 from .article_intake import VehicleArticleIntake, VehicleTarget, ingest_vehicle_article
 
@@ -46,6 +47,75 @@ class ResolvedSource:
         )
         object.__setattr__(self, "source_uri", source_uri)
         object.__setattr__(self, "source_version", source_version or None)
+
+
+@dataclass(frozen=True)
+class HttpKnowledgeSourceResolver:
+    """Resolve a vehicle/query source through a bounded HTTP connector.
+
+    The template is provider configuration, not domain logic. Supported
+    placeholders are ``vehicle_key``, ``year``, ``make``, ``model``,
+    ``region``, ``body_style``, ``trim``, ``drivetrain``,
+    ``engine_displacement_l``, ``query``, and ``keywords``. Values are URL-escaped before
+    substitution so a query cannot alter the configured request path.
+    """
+
+    uri_template: str
+    source_version: str | None = None
+    timeout_seconds: float = 30
+    max_bytes: int = 50 * 1024 * 1024
+    request_headers: Mapping[str, str] | None = None
+
+    def __post_init__(self) -> None:
+        template = str(self.uri_template).strip()
+        if not template:
+            raise ValueError("knowledge source URI template is required")
+        if not template.startswith(("http://", "https://")):
+            raise ValueError("knowledge source URI template must be HTTP(S)")
+        if self.timeout_seconds <= 0:
+            raise ValueError("knowledge source timeout must be positive")
+        if self.max_bytes < 1:
+            raise ValueError("knowledge source maximum size must be positive")
+        object.__setattr__(self, "uri_template", template)
+        object.__setattr__(self, "request_headers", dict(self.request_headers or {}))
+
+    def resolve(
+        self, target: VehicleTarget, query: str, keywords: tuple[str, ...]
+    ) -> ResolvedSource:
+        from .http_connector import HttpSourceConnector
+
+        values = {
+            "vehicle_key": target.vehicle_key,
+            "year": str(target.model_year),
+            "make": target.make,
+            "model": target.model,
+            "region": target.region,
+            "body_style": target.body_style or "",
+            "trim": target.trim or "",
+            "drivetrain": target.drivetrain or "",
+            "engine_displacement_l": (
+                f"{target.engine_displacement_l:.1f}"
+                if target.engine_displacement_l is not None
+                else ""
+            ),
+            "query": query,
+            "keywords": ",".join(keywords),
+        }
+        escaped_values = {
+            key: quote(value, safe="") for key, value in values.items()
+        }
+        try:
+            source_uri = self.uri_template.format_map(escaped_values)
+        except KeyError as error:
+            raise ValueError(f"unsupported knowledge source placeholder: {error.args[0]}") from error
+        connector = HttpSourceConnector(
+            source_uri,
+            self.source_version,
+            timeout_seconds=self.timeout_seconds,
+            max_bytes=self.max_bytes,
+            request_headers=dict(self.request_headers or {}),
+        )
+        return ResolvedSource(source_uri, connector, self.source_version)
 
 
 @dataclass(frozen=True)
@@ -536,6 +606,21 @@ def _coerce_resolved_source(value: Any) -> ResolvedSource | None:
 
 def _catalog_records(catalog: Iterable[Mapping[str, Any]] | Mapping[str, Any]) -> list[Mapping[str, Any]]:
     if isinstance(catalog, Mapping):
+        nested_data = catalog.get("data")
+        if isinstance(nested_data, Mapping):
+            projected = dict(nested_data)
+            for key in (
+                "dataset_id",
+                "revision_id",
+                "availability",
+                "source_watermark",
+                "sections",
+                "vehicle_identity",
+                "evidence",
+            ):
+                if key not in projected and key in catalog:
+                    projected[key] = catalog[key]
+            return _catalog_records(projected)
         shared_vehicle = {
             key: catalog[key]
             for key in ("vehicle_key", "vehicle", "vehicle_identity")
@@ -548,6 +633,8 @@ def _catalog_records(catalog: Iterable[Mapping[str, Any]] | Mapping[str, Any]) -
             entries = []
             for key in ("articles", "procedures"):
                 values = catalog.get(key, ())
+                if key == "procedures" and isinstance(values, Mapping):
+                    values = values.get("records", ())
                 if isinstance(values, Iterable) and not isinstance(values, (str, bytes, Mapping)):
                     entries.extend({**shared_vehicle, "kind": key[:-1], "evidence": shared_evidence, **entry} for entry in values if isinstance(entry, Mapping))
         if not entries:
@@ -647,10 +734,33 @@ def _fetched_records(intake: VehicleArticleIntake) -> list[dict[str, Any]]:
             {
                 "kind": "article",
                 "vehicle_key": intake.target.vehicle_key,
+                "vehicle_identity": dict(intake.bundle.vehicle or intake.target.as_dict()),
                 "article": dict(article),
                 "evidence": [evidence_by_id[str(identifier)] for identifier in identifiers if str(identifier) in evidence_by_id],
             }
         )
+        bucket = str(article.get("bucket") or "").casefold()
+        if article.get("steps") or any(
+            signal in bucket for signal in ("procedure", "repair", "maintenance")
+        ):
+            records.append(
+                {
+                    "kind": "procedure",
+                    "vehicle_key": intake.target.vehicle_key,
+                    "vehicle_identity": dict(intake.bundle.vehicle or intake.target.as_dict()),
+                    "procedure": {
+                        "procedure_id": f"procedure:{article['article_id']}",
+                        "section": "procedures",
+                        "excerpt": str(article.get("body") or "").strip(),
+                        "matched_terms": [],
+                    },
+                    "evidence": [
+                        evidence_by_id[str(identifier)]
+                        for identifier in identifiers
+                        if str(identifier) in evidence_by_id
+                    ],
+                }
+            )
     return records
 
 
@@ -676,33 +786,77 @@ def _unique_evidence(evidence: Iterable[Mapping[str, Any]]) -> tuple[dict[str, A
 
 def _record_matches_target(record: Mapping[str, Any], target: VehicleTarget) -> bool:
     vehicle_key = record.get("vehicle_key")
+    vehicle = record.get("vehicle_identity", record.get("vehicle"))
     if vehicle_key is None:
-        vehicle = record.get("vehicle_identity", record.get("vehicle"))
         if isinstance(vehicle, Mapping):
             vehicle_key = vehicle.get("vehicle_key")
             if vehicle_key is None:
                 return _matches_target(vehicle, target)
-    return str(vehicle_key).casefold() == target.vehicle_key.casefold() if vehicle_key else False
+    if not vehicle_key or str(vehicle_key).casefold() != target.vehicle_key.casefold():
+        return False
+    return _matches_target_dimensions(vehicle, target)
 
 
 def _matches_target(vehicle: Any, target: VehicleTarget) -> bool:
     if not isinstance(vehicle, Mapping):
         return False
     if vehicle.get("vehicle_key"):
-        return str(vehicle["vehicle_key"]).casefold() == target.vehicle_key.casefold()
+        return (
+            str(vehicle["vehicle_key"]).casefold() == target.vehicle_key.casefold()
+            and _matches_target_dimensions(vehicle, target)
+        )
     try:
         return (
             str(vehicle.get("make", "")).strip().casefold() == target.make.casefold()
             and str(vehicle.get("model", "")).strip().casefold() == target.model.casefold()
             and int(vehicle.get("model_year", vehicle.get("year"))) == target.model_year
             and str(vehicle.get("region", "")).strip().upper() == target.region
-            and (
-                not target.trim
-                or str(vehicle.get("trim", "")).strip().casefold() == target.trim.casefold()
-            )
+            and _matches_target_dimensions(vehicle, target)
         )
     except (TypeError, ValueError):
         return False
+
+
+def _matches_target_dimensions(vehicle: Mapping[str, Any] | None, target: VehicleTarget) -> bool:
+    """Reject explicit source dimensions that conflict with the requested configuration."""
+
+    if not isinstance(vehicle, Mapping):
+        return True
+    if not any(
+        vehicle.get(name) is not None
+        for name in (
+            "body_style",
+            "bodyStyle",
+            "trim",
+            "drivetrain",
+            "driveType",
+            "engine",
+            "engine_displacement_l",
+            "engineDisplacementL",
+        )
+    ):
+        return True
+    try:
+        from .vehicle_identity import canonicalize_vehicle_observation
+
+        actual = canonicalize_vehicle_observation(vehicle)
+    except (TypeError, ValueError):
+        return False
+    pairs = (
+        (target.body_style, actual.body_style),
+        (target.trim, actual.trim),
+        (target.drivetrain, actual.drivetrain),
+        (target.engine_displacement_l, actual.engine_displacement_l),
+    )
+    for expected, actual_value in pairs:
+        if expected is None or actual_value is None:
+            continue
+        if isinstance(expected, float) or isinstance(actual_value, float):
+            if abs(float(expected) - float(actual_value)) >= 0.0001:
+                return False
+        elif expected != actual_value:
+            return False
+    return True
 
 
 def _normalize_query(query: str) -> str:

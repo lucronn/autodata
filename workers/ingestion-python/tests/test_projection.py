@@ -34,6 +34,23 @@ def bundle_with_parts():
 
 
 class ProjectionTests(unittest.TestCase):
+    def test_duplicate_article_keys_are_excluded_from_purchaser_content_and_readiness(self):
+        resource = SourceResource.from_bytes(
+            "provider://vehicle/article",
+            "source-v1",
+            b'{"body":{"make":"Cadillac","model":"Escalade ESV","year":2019,"articleDetails":[{"id":"TSB-42","title":"Brake bulletin"}]}}',
+            "application/json",
+        )
+        artifact = adapt_source_resource(resource)
+        bundle = normalize_source_bundle([artifact], "US")
+        article_key = bundle.articles[0]["article_key"]
+
+        content = build_viewable_content(bundle, [artifact], excluded_article_keys=(article_key,))
+        sections = viewable_sections(bundle, [artifact], excluded_article_keys=(article_key,))
+
+        self.assertNotIn("articles", content)
+        self.assertNotIn("articles", sections)
+
     def test_viewable_content_is_deterministic_and_evidence_linked(self):
         bundle, artifacts = bundle_with_parts()
 

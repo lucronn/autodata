@@ -1,3 +1,4 @@
+![AutoData architecture preview](docs/assets/autodata-architecture-preview.jpeg)
 # AutoData
 
 AutoData is a cloud-neutral, containerized automotive data platform. It turns
@@ -80,8 +81,12 @@ its review semantics are documented in the infrastructure guide.
 The normalizer also emits a `source_report` array with one payload-free record
 per resource. It includes the source URI/version, media type, content hash,
 artifact kind, candidate counts and kinds, extraction status, and stable review
-reasons. Embedded-resource summaries include their locator and content hash but
-never copy raw source contents or credentials.
+reasons. When persistence is enabled, conflicts and quarantine reasons are also
+written as idempotent `source_review_items` records linked to source snapshots
+and extraction evidence. Similar-article quarantine entries are coalesced with
+their article-similarity conflict so the review queue does not duplicate one
+ambiguity. Embedded-resource summaries include their locator and content hash
+but never copy raw source contents or credentials.
 
 The same pipeline can run through the ingestion worker boundary instead of the
 developer script:
@@ -110,6 +115,96 @@ non-secret response headers, redirect target, and raw bytes before the same
 content-first classification and normalization path. Source authentication, if
 required, belongs in secret-managed `AUTODATA_SOURCE_REQUEST_HEADERS_JSON`; do
 not commit header values or credentials to the repository.
+
+Normalize a vehicle list into stable selection JSON without starting the
+container stack:
+
+```sh
+AUTODATA_WORKER_ONCE=1 \
+AUTODATA_VEHICLE_LIST_JSON='[{"model_year":"99","make":"Chevy","model":"Silverado 1500","region":"US","drivetrain":"2wd"},{"year":1999,"make":"Chevrolet","model":"Silverado 1500","region":"US","drivetrain":"2WD","engine_displacement_l":5.3}]' \
+PYTHONPATH=workers/ingestion-python/src \
+python3 -m autodata_ingestion.worker
+```
+
+Set `AUTODATA_SOURCE_PERSIST=1` when the PostgreSQL and MinIO variables are
+available to persist the list as an immutable source snapshot. Each row is
+stored with evidence and an identity observation; richer rows add a
+configuration beneath the existing `vehicle_id` instead of creating another
+vehicle family. `AUTODATA_VEHICLE_LIST_SOURCE_URI` and
+`AUTODATA_SOURCE_VERSION` identify the list source for replay and audit.
+
+For one target article, set `AUTODATA_ARTICLE_URI` and provide the target
+vehicle as JSON. The worker returns the normalized article records together
+with their source evidence; source credentials, if required, remain in the
+secret-managed request-header variable:
+
+```sh
+AUTODATA_WORKER_ONCE=1 \
+AUTODATA_ARTICLE_URI=https://example.test/article \
+AUTODATA_ARTICLE_VEHICLE_JSON='{"year":1999,"make":"Chevrolet","model":"Silverado 1500","region":"US","drivetrain":"2WD"}' \
+PYTHONPATH=workers/ingestion-python/src \
+python3 -m autodata_ingestion.worker
+```
+
+The same worker boundary is available through the local Go API when the
+Compose stack is running. `POST /article-intakes` accepts
+`{"source_uri":"https://...","vehicle":{...}}` with an `Idempotency-Key`
+and returns the normalized article, vehicle association, and evidence JSON.
+It requires the `ingestion_operator` role. `POST /knowledge-queries` accepts
+the vehicle/query request shape below with an `Idempotency-Key`; it requires
+the `dataset_viewer` role and returns `cache_hit` when the indexed catalog
+matches, or `fetched` after one bounded source fallback and normal intake.
+The API service forwards these calls only to the internal `ingestion-http`
+service. Set `AUTODATA_INGESTION_INTERNAL_TOKEN` through the environment or a
+secret manager when the internal network is not otherwise trusted; never put
+that token, source headers, or provider keys in the repository.
+
+For vehicle-scoped keyword lookup, provide a normalized catalog in the
+request. A catalog hit is returned immediately without a source request:
+
+```sh
+AUTODATA_WORKER_ONCE=1 \
+AUTODATA_KNOWLEDGE_REQUEST_JSON='{"vehicle":{"year":1999,"make":"Chevy","model":"Silverado 1500","region":"US"},"query":"brake connector","catalog":[{"vehicle_key":"chevrolet-silverado-1500-1999-us","kind":"article","article":{"article_id":"TSB-42","title":"Brake connector bulletin"},"evidence":[]}]}' \
+PYTHONPATH=workers/ingestion-python/src \
+python3 -m autodata_ingestion.worker
+```
+
+On a catalog miss, set `source_uri_template` in the request or
+`AUTODATA_KNOWLEDGE_SOURCE_URI_TEMPLATE` in the environment. The HTTP source
+template may use `{vehicle_key}`, `{year}`, `{make}`, `{model}`, `{region}`,
+`{body_style}`, `{trim}`, `{drivetrain}`, `{engine_displacement_l}`, `{query}`,
+and `{keywords}`. The worker URL-escapes those values, fetches one
+bounded source resource, verifies the returned vehicle, and returns the
+normalized article with evidence. Source responses are never treated as a
+match unless the requested vehicle and query both pass the intake boundary.
+
+When `catalog` is omitted from a knowledge request, the worker first performs
+an indexed PostgreSQL lookup by canonical `vehicle_key`, excludes linked
+duplicates and taken-down snapshots, and ranks the normalized records locally.
+Only when that database lookup has no matching result does it resolve and fetch
+the configured source. Supplying `catalog: []` deliberately bypasses the
+database lookup and is useful for controlled fallback tests.
+
+Mercury-2 is optional and advisory. It can adjudicate ambiguous vehicle
+identity matches and, when explicitly enabled, extract typed candidates from
+otherwise-unrecognized structured source shapes. Deterministic normalization,
+provenance, evidence, and review gates remain authoritative; the model cannot
+publish directly to canonical tables. Enable it only through secret-managed
+environment variables; never place the API key in Compose files, source files,
+README examples, or Git history:
+
+```sh
+export INCEPTION_API_KEY='<set-locally-or-through-a-secret-manager>'
+export INCEPTION_API_BASE_URL='<provider-endpoint>'
+export AUTODATA_MERCURY2_EXTRACTION_ENABLED=1
+```
+
+The source extractor is called only for structured artifacts that have no
+deterministic typed candidates. It is bounded by
+`AUTODATA_MERCURY2_EXTRACTION_MAX_INPUT_BYTES` and
+`AUTODATA_MERCURY2_EXTRACTION_MAX_CANDIDATES`; a missing configuration,
+timeout, invalid response, or empty proposal leaves the raw source and marks
+the artifact `needs_review` for replay.
 
 ## Run tests
 

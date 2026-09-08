@@ -301,12 +301,19 @@ def _project_fixture_procedure(result: KnowledgeFallbackResult) -> KnowledgeFall
     excerpt = str(article.get("body", "")).strip()
     if not article_id or not excerpt:
         return result
+    procedure_id = f"procedure:{article_id}"
+    if any(
+        item.get("kind") == "procedure" and item.get("id") == procedure_id
+        for item in result.results
+        if isinstance(item, Mapping)
+    ):
+        return result
     procedure = {
         "kind": "procedure",
-        "id": f"procedure:{article_id}",
+        "id": procedure_id,
         "score": article_result["score"],
         "procedure": {
-            "procedure_id": f"procedure:{article_id}",
+            "procedure_id": procedure_id,
             "section": "procedures",
             "excerpt": excerpt,
             "matched_terms": ["brake", "caliper"],
