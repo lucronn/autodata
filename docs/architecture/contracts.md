@@ -20,6 +20,7 @@
 | `vehicle_configurations` | Trim/engine configuration below a canonical vehicle base | The stable configuration key prevents richer observations from creating a second vehicle family |
 | `vehicle_identity_observations` | Raw and canonical vehicle-list observations with resolution outcome | Every observation retains source/evidence and ambiguous or conflicting matches remain reviewable |
 | `catalog_article_vehicle_links` | Canonical/duplicate article relationship | A duplicate article is hidden from new projections while both source rows remain auditable |
+| `source_review_items` | Durable review queue for conflicts and quarantine decisions | Queue records contain reason codes and provenance UUIDs, never copied raw source payloads |
 | `ingestion_jobs` | Lane-specific work and retries | Lane, processing version, and stable idempotency key are explicit |
 | `extraction_runs` | OCR/LLM/embedding execution metadata | Model/provider/version and confidence are retained |
 | `extraction_evidence` | Fact-to-source/page/region traceability | Evidence references an immutable source artifact |
@@ -48,7 +49,7 @@ The intake layer computes `content_sha256`, stores the raw resource before extra
 
 One dataset request may combine resources from different protocols and media types. The request correlation ID joins them, while each resource retains its own hash, source version, object key, extraction run, and evidence path. Duplicate payloads deduplicate by content hash, and distinct versions remain auditable.
 
-When two or more source resources provide incompatible candidates for the same canonical field, normalization emits a conflict record containing the field, every candidate value, source URI/version, and evidence IDs. The affected fact is not selected by arrival order or filename; it remains unresolved until a reviewer records a decision. Conflict records are part of the normalized bundle and quality report, so a later implementation can persist and resolve them without changing the universal resource contract.
+When two or more source resources provide incompatible candidates for the same canonical field, normalization emits a conflict record containing the field, every candidate value, source URI/version, and evidence IDs. The affected fact is not selected by arrival order or filename; it remains unresolved until a reviewer records a decision. Conflict records are part of the normalized bundle and quality report, and the persistence boundary stores them as `source_review_items` with a stable `item_key`, `pending` review state, reason code, source snapshot UUIDs, and extraction-evidence UUIDs. Similar-article quarantine entries are coalesced with their corresponding article-similarity conflict so one ambiguity creates one actionable queue item. Replaying a source updates the same queue item rather than creating another task. The queue contains only normalized review metadata; raw source bytes remain in content-addressed object storage.
 
 ## Public API
 

@@ -58,6 +58,9 @@ def persist_source_bundle(
             _persist_extraction_evidence(
                 cursor, artifact_list, snapshot_ids, evidence_by_id, bundle.status, now
             )
+            persist_source_review_items(
+                cursor, bundle, snapshot_ids, evidence_by_id, Jsonb
+            )
             if bundle.vehicle is None:
                 if publication is not None:
                     raise ValueError("cannot publish a fast-lane projection without vehicle identity")
@@ -282,6 +285,103 @@ def persist_source_bundle(
     if publication_result is not None:
         result["publication"] = publication_result
     return result
+
+
+def persist_source_review_items(
+    cursor: Any,
+    bundle: SourceBundle,
+    snapshot_ids: Mapping[str, str],
+    evidence_by_id: Mapping[str, Mapping[str, Any]],
+    jsonb: Any,
+) -> int:
+    """Persist reviewable conflicts and quarantine reasons without raw payloads.
+
+    Review items are content-addressed by their normalized metadata. A later
+    replay updates the same queue item instead of creating another task. The
+    source snapshot and evidence UUIDs are retained separately so reviewers
+    can navigate back to provenance without copying source contents into the
+    queue.
+    """
+
+    conflicts = [
+        item for item in bundle.conflicts if isinstance(item, Mapping)
+    ]
+    items: list[tuple[str, Mapping[str, Any]]] = [("conflict", item) for item in conflicts]
+    has_similarity_conflict = any(
+        str(item.get("kind", "")).strip() == "article_similarity"
+        for item in conflicts
+    )
+    for item in bundle.quarantined:
+        if not isinstance(item, Mapping):
+            continue
+        if (
+            has_similarity_conflict
+            and str(item.get("reason", "")).strip()
+            == "similar_article_requires_review"
+        ):
+            continue
+        items.append(("quarantine", item))
+
+    for item_kind, item in items:
+        evidence_ids = _review_evidence_ids(item)
+        source_snapshot_values: list[str] = []
+        content_sha256 = str(item.get("content_sha256", "")).strip()
+        if content_sha256 and content_sha256 in snapshot_ids:
+            source_snapshot_values.append(str(snapshot_ids[content_sha256]))
+        for evidence_id in evidence_ids:
+            evidence = evidence_by_id.get(evidence_id, {})
+            evidence_hash = str(evidence.get("content_sha256", "")).strip()
+            if evidence_hash and evidence_hash in snapshot_ids:
+                source_snapshot_values.append(str(snapshot_ids[evidence_hash]))
+        source_snapshot_values = list(dict.fromkeys(source_snapshot_values))
+        reason_code = str(
+            item.get("kind") if item_kind == "conflict" else item.get("reason", "source_review")
+        ).strip() or "source_review"
+        payload = dict(item)
+        item_key = "source-review:" + hashlib.sha256(
+            json.dumps(
+                {"item_kind": item_kind, "payload": payload},
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        cursor.execute(
+            """
+            INSERT INTO source_review_items
+                (source_review_item_id, item_key, item_kind, reason_code, status,
+                 source_snapshot_ids, extraction_evidence_ids, payload)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (item_key)
+            DO UPDATE SET source_snapshot_ids = EXCLUDED.source_snapshot_ids,
+                          extraction_evidence_ids = EXCLUDED.extraction_evidence_ids,
+                          payload = EXCLUDED.payload,
+                          updated_at = now()
+            """,
+            (
+                _stable_uuid(item_key),
+                item_key,
+                item_kind,
+                reason_code,
+                "pending",
+                jsonb(source_snapshot_values),
+                jsonb(evidence_ids),
+                jsonb(payload),
+            ),
+        )
+    return len(items)
+
+
+def _review_evidence_ids(item: Mapping[str, Any]) -> list[str]:
+    values = item.get("evidence_ids", ())
+    if isinstance(values, str):
+        values = (values,)
+    if not isinstance(values, Iterable):
+        values = ()
+    result = [str(value).strip() for value in values if str(value).strip()]
+    if item.get("evidence_id") and str(item["evidence_id"]).strip():
+        result.append(str(item["evidence_id"]).strip())
+    return list(dict.fromkeys(result))
 
 
 def store_source_artifacts(artifacts: Iterable[SourceArtifact]) -> None:
