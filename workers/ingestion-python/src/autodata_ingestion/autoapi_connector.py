@@ -219,10 +219,19 @@ class AutoAPIConnector:
         )
         resources.append(articles_resource)
 
+        article_items = _article_items(articles_payload)
+        reported_article_count = _reported_article_count(articles_payload)
+        if reported_article_count is not None and len(article_items) < reported_article_count:
+            raise ValueError(
+                "AutoAPI returned an incomplete article index: "
+                f"expected at least {reported_article_count}, received {len(article_items)}"
+            )
+        if reported_article_count and not article_items:
+            raise ValueError("AutoAPI reported articles but returned no article records")
         article_ids = tuple(
             dict.fromkeys(
                 article_id
-                for article in _article_items(articles_payload)
+                for article in article_items
                 if (article_id := _first_text(article, "id", "articleId", "article_id"))
             )
         )
@@ -382,6 +391,36 @@ def _article_items(envelope: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     if isinstance(body, Mapping) and isinstance(body.get("articleDetails"), list):
         return [item for item in body["articleDetails"] if isinstance(item, Mapping)]
     return [item for item in _items(envelope) if isinstance(item, Mapping)]
+
+
+def _reported_article_count(envelope: Mapping[str, Any]) -> int | None:
+    """Return AutoAPI's authoritative all-articles count when present."""
+
+    body = envelope.get("body")
+    if not isinstance(body, Mapping):
+        return None
+    filter_tabs = body.get("filterTabs")
+    if isinstance(filter_tabs, list):
+        for tab in filter_tabs:
+            if not isinstance(tab, Mapping):
+                continue
+            if str(tab.get("name", "")).casefold() == "all":
+                count = _nonnegative_int(tab.get("articlesCount"))
+                if count is not None:
+                    return count
+    for key in ("articlesCount", "articleCount", "totalCount"):
+        count = _nonnegative_int(body.get(key))
+        if count is not None:
+            return count
+    return None
+
+
+def _nonnegative_int(value: Any) -> int | None:
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        return None
+    return result if result >= 0 else None
 
 
 def _vehicle_ids_from_model(model: Any) -> list[str]:

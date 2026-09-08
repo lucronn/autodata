@@ -75,6 +75,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
             "/v1/api/source/GeneralMotors/vehicle/v1/articles/v2": {
                 "header": {},
                 "body": {
+                    "filterTabs": [{"name": "All", "articlesCount": 2}],
                     "articleDetails": [
                         {"id": "a1", "title": "Brake procedure"},
                         {"id": "a2", "title": "Engine procedure"},
@@ -140,6 +141,34 @@ class AutoAPIConnectorTests(unittest.TestCase):
                 "http://127.0.0.1:3000/v1/api/source/GeneralMotors/vehicle/v1/article/a2",
             ],
         )
+
+    def test_rejects_truncated_article_index(self):
+        responses = {
+            "/v1/api/source/GeneralMotors/v1/name": {
+                "header": {},
+                "body": "1999 Chevrolet Silverado 1500 - 2WD",
+            },
+            "/v1/api/source/GeneralMotors/v1/motorvehicles": {
+                "header": {},
+                "body": [],
+            },
+            "/v1/api/source/GeneralMotors/vehicle/v1/articles/v2": {
+                "header": {},
+                "body": {
+                    "filterTabs": [{"name": "All", "articlesCount": 2}],
+                    "articleDetails": [{"id": "a1", "title": "Only one record returned"}],
+                },
+            },
+        }
+
+        def opener(request, timeout):
+            del timeout
+            return FakeResponse(responses[urlsplit(request.full_url).path])
+
+        connector = AutoAPIConnector("http://127.0.0.1:3000", opener=opener)
+
+        with self.assertRaisesRegex(ValueError, "incomplete article index"):
+            connector.fetch_vehicle_bundle({"vehicle_id": "v1"})
 
     def test_catalog_retains_successful_years_and_reports_failed_traversal_scopes(self):
         responses = {
