@@ -135,6 +135,8 @@ type KnowledgeSearchResponse struct {
 	SourceWatermark string                 `json:"source_watermark"`
 	Sections        []DatasetSection       `json:"sections"`
 	VehicleIdentity map[string]any         `json:"vehicle_identity,omitempty"`
+	FallbackStatus   string                 `json:"fallback_status,omitempty"`
+	FallbackRequestID string                `json:"fallback_request_id,omitempty"`
 	Results         []KnowledgeResult      `json:"results"`
 }
 
@@ -317,6 +319,8 @@ class KnowledgeSearchResponse:
     sections: list[DatasetSection]
     results: list["KnowledgeResult"]
     vehicle_identity: dict[str, Any] | None = None
+    fallback_status: str | None = None
+    fallback_request_id: str | None = None
 
 
 @dataclass(frozen=True)

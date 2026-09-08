@@ -1,13 +1,11 @@
-
-
 ![AutoData architecture preview](docs/assets/autodata-architecture-preview.jpeg)
-
-
 # AutoData
 
 AutoData is a cloud-neutral, containerized automotive data platform. It turns
 heterogeneous source resources into evidence-backed, vehicle-specific dataset
 projections that can be published quickly and enriched incrementally.
+
+[![AutoData architecture and development platform](https://repository-images.githubusercontent.com/1354240578/bc662088-d074-4e35-872e-a0a3b12c3612)](https://github.com/lucronn/autodata)
 
 The repository is a modular monorepo:
 

@@ -17,6 +17,7 @@ EVENT_SUBJECTS = {
     "dataset.enrichment.failed",
     "dataset.review.requested",
     "dataset.revision.revoked",
+    "dataset.knowledge.fallback.requested",
 }
 
 

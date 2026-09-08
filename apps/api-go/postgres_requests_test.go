@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type fakeRequestRow struct {
@@ -239,5 +240,17 @@ func TestConfiguredStoresUseOnePostgresBoundary(t *testing.T) {
 	}
 	if _, ok := projections.(*postgresProjectionStore); !ok {
 		t.Fatalf("projection store type = %T, want *postgresProjectionStore", projections)
+	}
+}
+
+func TestConfiguredKnowledgeFallbackPublisherUsesPostgresOutboxInPostgresMode(t *testing.T) {
+	t.Setenv("AUTODATA_PROJECTION_STORE", "postgres")
+
+	publisher, err := configuredKnowledgeFallbackPublisher(&postgresProjectionStore{pool: &pgxpool.Pool{}})
+	if err != nil {
+		t.Fatalf("configuredKnowledgeFallbackPublisher() error = %v", err)
+	}
+	if _, ok := publisher.(*postgresKnowledgeFallbackPublisher); !ok {
+		t.Fatalf("publisher type = %T, want *postgresKnowledgeFallbackPublisher", publisher)
 	}
 }
