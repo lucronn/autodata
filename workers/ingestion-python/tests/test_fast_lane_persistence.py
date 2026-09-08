@@ -73,6 +73,45 @@ def request_row(minimum_sections=("vehicle_identity", "source_metadata"), status
 
 
 class FastLanePersistenceTests(unittest.TestCase):
+    def test_linked_duplicate_article_is_not_written_to_purchaser_revision(self):
+        resource = SourceResource.from_bytes(
+            "provider://vehicle/article",
+            "source-v1",
+            b'{"body":{"make":"Cadillac","model":"Escalade ESV","year":2019,"articleDetails":[{"id":"TSB-42","title":"Brake bulletin"}]}}',
+            "application/json",
+        )
+        artifact = adapt_source_resource(resource)
+        bundle = normalize_source_bundle([artifact], "US")
+        bundle = dataclasses.replace(
+            bundle,
+            evidence=tuple(
+                {**evidence, "reviewer_state": "approved"}
+                for evidence in bundle.evidence
+            ),
+        )
+        article_key = bundle.articles[0]["article_key"]
+        cursor = RecordingCursor(request_row())
+
+        result = publish_fast_lane_revision(
+            cursor,
+            bundle,
+            [artifact],
+            {artifact.content_sha256: "snapshot-1"},
+            "vehicle-1",
+            "snapshot-1",
+            publication(),
+            datetime(2026, 9, 3, tzinfo=UTC),
+            lambda value: value,
+            excluded_article_keys=(article_key,),
+        )
+
+        self.assertEqual(result["status"], "viewable")
+        revision_params = next(
+            params for query, params in cursor.statements
+            if "INSERT INTO dataset_revisions" in query
+        )
+        self.assertNotIn("articles", revision_params[3])
+
     def test_approved_bundle_publishes_revision_and_all_available_sections(self):
         bundle, artifacts = source_bundle()
         approved_evidence = tuple(

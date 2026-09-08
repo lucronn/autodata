@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from autodata_ingestion.article_intake import VehicleTarget  # noqa: E402
 from autodata_ingestion.knowledge_fallback import (  # noqa: E402
+    HttpKnowledgeSourceResolver,
     ResolvedSource,
     query_vehicle_knowledge,
 )
@@ -15,6 +16,9 @@ from autodata_ingestion.source_adapters import SourceResource  # noqa: E402
 
 
 TARGET = VehicleTarget("Cadillac", "Escalade ESV", 2019, "US")
+DETAILED_TARGET = VehicleTarget(
+    "Chevy", "Silverado 1500", "99", "US", drivetrain="2wd", engine_displacement_l=5.3
+)
 
 
 class _StaticConnector:
@@ -49,6 +53,61 @@ def _html(*, vehicle="2019 Cadillac Escalade ESV", article_id="TSB-42"):
 
 
 class KnowledgeFallbackTests(unittest.TestCase):
+    def test_api_dataset_data_shape_is_searchable_as_a_catalog(self):
+        catalog = {
+            "dataset_id": "dataset-1",
+            "revision_id": "revision-1",
+            "data": {
+                "vehicle_identity": {"vehicle_key": TARGET.vehicle_key},
+                "articles": [
+                    {
+                        "article_id": "TSB-42",
+                        "title": "Brake connector bulletin",
+                    }
+                ],
+            },
+        }
+
+        result = query_vehicle_knowledge(
+            TARGET,
+            "brake connector",
+            catalog=catalog,
+            source_resolver=lambda *_args: (_ for _ in ()).throw(
+                AssertionError("the dataset data catalog should be a cache hit")
+            ),
+        )
+
+        self.assertEqual(result.status, "cache_hit")
+        self.assertEqual(result.results[0]["article"]["article_id"], "TSB-42")
+
+    def test_http_resolver_uses_canonical_vehicle_identifier_and_escapes_query(self):
+        resolver = HttpKnowledgeSourceResolver(
+            "https://source.example/{region}/{vehicle_key}?q={query}&keywords={keywords}",
+            source_version="source-v1",
+        )
+
+        resolved = resolver.resolve(TARGET, "brake connector & wiring", ("connector", "service"))
+
+        self.assertEqual(
+            resolved.source_uri,
+            "https://source.example/US/cadillac-escalade-esv-2019-us?q=brake%20connector%20%26%20wiring&keywords=connector%2Cservice",
+        )
+        self.assertEqual(resolved.source_version, "source-v1")
+        self.assertEqual(resolved.connector.name, "http")
+
+    def test_http_resolver_can_include_configuration_dimensions(self):
+        resolver = HttpKnowledgeSourceResolver(
+            "https://source.example/{vehicle_key}/{drivetrain}/{engine_displacement_l}?q={query}",
+            source_version="source-v1",
+        )
+
+        resolved = resolver.resolve(DETAILED_TARGET, "brake connector", ())
+
+        self.assertEqual(
+            resolved.source_uri,
+            "https://source.example/chevrolet-silverado-1500-1999-us/2WD/5.3?q=brake%20connector",
+        )
+
     def test_catalog_hit_returns_normalized_article_without_calling_resolver(self):
         resolver_calls = []
         catalog = [
@@ -122,6 +181,38 @@ class KnowledgeFallbackTests(unittest.TestCase):
                 for evidence in result.results[0]["evidence"]
             )
         )
+
+    def test_catalog_configuration_conflict_does_not_match_coarse_vehicle_key(self):
+        resolver_calls = []
+        catalog = [
+            {
+                "vehicle_key": DETAILED_TARGET.vehicle_key,
+                "vehicle_identity": {
+                    "vehicle_key": DETAILED_TARGET.vehicle_key,
+                    "make": "Chevrolet",
+                    "model": "Silverado 1500",
+                    "year": 1999,
+                    "region": "US",
+                    "drivetrain": "4WD",
+                    "engine_displacement_l": 4.8,
+                },
+                "kind": "article",
+                "article": {"article_id": "wrong", "title": "Brake connector bulletin"},
+            }
+        ]
+
+        def resolver(*args):
+            resolver_calls.append(args)
+            return None
+
+        with self.assertRaises(LookupError):
+            query_vehicle_knowledge(
+                DETAILED_TARGET,
+                "brake connector",
+                catalog=catalog,
+                source_resolver=resolver,
+            )
+        self.assertEqual(len(resolver_calls), 1)
 
     def test_fetched_article_for_another_vehicle_is_rejected(self):
         source_uri = "https://source.example/articles/other"
@@ -203,6 +294,28 @@ class KnowledgeFallbackTests(unittest.TestCase):
 
         self.assertEqual(result.status, "fetched")
         self.assertEqual(result.results, ())
+
+    def test_fetched_repair_article_can_return_a_procedure_result(self):
+        source_uri = "https://source.example/articles/procedure-42"
+        html = b'<html><head><meta name="vehicle" content="2019 Cadillac Escalade ESV"><meta name="article:id" content="PROC-42"><meta name="article:section" content="Repair Procedure"><meta property="og:title" content="Brake connector repair procedure"></head><body><article><p>Inspect the brake connector before replacement.</p></article></body></html>'
+        connector = _StaticConnector(
+            [SourceResource.from_bytes(source_uri, "procedure-v1", html, "text/html")]
+        )
+
+        result = query_vehicle_knowledge(
+            TARGET,
+            "brake connector",
+            catalog=[],
+            source_resolver=lambda target, query, keywords: ResolvedSource(
+                source_uri, connector
+            ),
+            kind="procedure",
+        )
+
+        self.assertEqual(result.status, "fetched")
+        self.assertEqual(result.results[0]["kind"], "procedure")
+        self.assertEqual(result.results[0]["procedure"]["procedure_id"], "procedure:PROC-42")
+        self.assertIn("brake connector", result.results[0]["procedure"]["excerpt"].casefold())
 
     def test_kind_filter_keeps_the_normalized_result_type_vehicle_scoped(self):
         catalog = [

@@ -9,7 +9,7 @@ var EventSubjects = []string{"dataset.fast.requested", "dataset.viewable", "data
 var KnowledgeResultKindValues = []string{"article", "procedure"}
 var EntitlementStatusValues = []string{"active", "revoked"}
 var FeedbackCategoryValues = []string{"correction", "missing", "quality", "safety"}
-var ErrorCodeValues = []string{"UNAUTHENTICATED", "ENTITLEMENT_REQUIRED", "FORBIDDEN", "ENTITLEMENT_REVOKED", "DATASET_NOT_VIEWABLE", "SECTION_FAILED", "REVISION_NOT_FOUND", "DUPLICATE_REQUEST", "INVALID_EVIDENCE", "REVIEW_REQUIRED", "INVALID_REQUEST"}
+var ErrorCodeValues = []string{"UNAUTHENTICATED", "ENTITLEMENT_REQUIRED", "FORBIDDEN", "ENTITLEMENT_REVOKED", "DATASET_NOT_VIEWABLE", "SECTION_FAILED", "REVISION_NOT_FOUND", "DUPLICATE_REQUEST", "INVALID_EVIDENCE", "REVIEW_REQUIRED", "SOURCE_REVIEW_NOT_FOUND", "SOURCE_REVIEW_CONFLICT", "INGESTION_UNAVAILABLE", "INVALID_REQUEST"}
 
 var DatasetReadRequiredFields = []string{"dataset_id", "revision_id", "availability", "source_watermark", "sections"}
 var KnowledgeSearchResponseRequiredFields = []string{"dataset_id", "revision_id", "availability", "source_watermark", "sections", "results"}

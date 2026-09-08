@@ -101,7 +101,8 @@
       "source_uri": {"type": "string", "optional": true},
       "source_version": {"type": "string", "optional": true},
       "extracted_text": {"type": "string", "optional": true},
-      "confidence": {"type": "number"}
+      "confidence": {"type": "number"},
+      "reviewer_state": {"enum": ["pending", "approved", "rejected"], "optional": true}
     }
   },
   "dataset_section": {
@@ -164,6 +165,9 @@
         "DUPLICATE_REQUEST",
         "INVALID_EVIDENCE",
         "REVIEW_REQUIRED",
+        "SOURCE_REVIEW_NOT_FOUND",
+        "SOURCE_REVIEW_CONFLICT",
+        "INGESTION_UNAVAILABLE",
         "INVALID_REQUEST"
       ]},
       "message": {"type": "string"},

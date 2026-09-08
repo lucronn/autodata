@@ -14,16 +14,27 @@ from autodata_ingestion.bundle_persistence import (  # noqa: E402
 
 
 class RecordingCursor:
-    def __init__(self):
+    def __init__(self, select_rows=()):
         self.calls = []
         self._returned_id = None
+        self._select_rows = list(select_rows)
+        self._last_was_select = False
 
     def execute(self, query, params):
         self.calls.append((query, params))
-        self._returned_id = params[0]
+        self._last_was_select = " ".join(query.split()).lower().startswith("select ")
+        if not self._last_was_select:
+            self._returned_id = params[0]
 
     def fetchone(self):
+        if self._last_was_select:
+            return None
         return (self._returned_id,)
+
+    def fetchall(self):
+        if not self._last_was_select:
+            raise AssertionError("fetchall is only valid after a SELECT")
+        return list(self._select_rows)
 
 
 ARTICLE = {
@@ -86,10 +97,14 @@ class BundlePersistenceTests(unittest.TestCase):
             {"a" * 64: "snapshot-1"},
             "vehicle-1",
             lambda value: value,
+            vehicle_configuration_id="configuration-1",
         )
 
-        self.assertEqual(len(cursor.calls), 1)
-        query, params = cursor.calls[0]
+        query, params = next(
+            (query, params)
+            for query, params in cursor.calls
+            if "INSERT INTO catalog_articles" in query
+        )
         compact_query = " ".join(query.split())
         for column in (
             "body",
@@ -98,15 +113,17 @@ class BundlePersistenceTests(unittest.TestCase):
             "source_snapshot_id",
             "source_locator",
             "evidence_locator",
+            "vehicle_configuration_id",
         ):
             self.assertIn(column, compact_query)
-        self.assertIn(
-            "ON CONFLICT (vehicle_id, article_id, source_snapshot_id, source_locator)",
-            compact_query,
-        )
+        self.assertIn("ON CONFLICT (vehicle_id, article_id, source_snapshot_id, source_locator)", compact_query)
         self.assertIn("body = EXCLUDED.body", compact_query)
         self.assertIn("steps = EXCLUDED.steps", compact_query)
         self.assertIn("normalized_fingerprint = EXCLUDED.normalized_fingerprint", compact_query)
+        self.assertIn(
+            "vehicle_configuration_id = COALESCE( EXCLUDED.vehicle_configuration_id, catalog_articles.vehicle_configuration_id )",
+            compact_query,
+        )
         self.assertEqual(params[8], ARTICLE["body"])
         self.assertEqual(params[9], ARTICLE["steps"])
         self.assertEqual(params[10], normalized_article_fingerprint(ARTICLE))
@@ -114,6 +131,7 @@ class BundlePersistenceTests(unittest.TestCase):
         self.assertEqual(params[12], "json:article[0]")
         self.assertEqual(params[13], "json:article[0]")
         self.assertEqual(params[14], 0.97)
+        self.assertEqual(params[15], "configuration-1")
 
     def test_replaying_the_same_article_has_the_same_row_identity_and_values(self):
         first_cursor = RecordingCursor()
@@ -131,10 +149,57 @@ class BundlePersistenceTests(unittest.TestCase):
 
         self.assertEqual(first_cursor.calls[0][1], second_cursor.calls[0][1])
         self.assertEqual(first_cursor.fetchone(), second_cursor.fetchone())
+        insert_query = next(
+            query for query, _params in first_cursor.calls
+            if "INSERT INTO catalog_articles" in query
+        )
         self.assertIn(
             "ON CONFLICT (vehicle_id, article_id, source_snapshot_id, source_locator)",
-            " ".join(first_cursor.calls[0][0].split()),
+            " ".join(insert_query.split()),
         )
+
+    def test_later_source_snapshot_links_a_near_duplicate_to_existing_canonical_row(self):
+        existing = (
+            "canonical-article",
+            ARTICLE["title"],
+            ARTICLE["body"],
+            "https://source.example/original",
+        )
+        incoming = {
+            **ARTICLE,
+            "article_id": "TSB-42-NEW-SOURCE",
+            "article_key": "article:TSB-42-NEW-SOURCE:html",
+            "title": "Brake caliper replacement",
+            "body": "Remove the wheel; Replace the caliper.",
+            "evidence_id": "evidence-2",
+        }
+        evidence = {
+            "evidence-2": {
+                "evidence_id": "evidence-2",
+                "content_sha256": "b" * 64,
+                "locator": "html:article",
+                "confidence": 0.96,
+                "reviewer_state": "pending",
+            }
+        }
+        cursor = RecordingCursor(select_rows=[existing])
+
+        links = _persist_catalog_articles(
+            cursor,
+            (incoming,),
+            evidence,
+            {"b" * 64: "snapshot-2"},
+            "vehicle-1",
+            lambda value: value,
+        )
+
+        self.assertEqual(links, 1)
+        link_query, link_params = cursor.calls[-1]
+        self.assertIn("INSERT INTO catalog_article_vehicle_links", " ".join(link_query.split()))
+        self.assertEqual(link_params[1], "vehicle-1")
+        self.assertEqual(link_params[2], "canonical-article")
+        self.assertNotEqual(link_params[2], link_params[3])
+        self.assertEqual(link_params[4:7], ("snapshot-2", "evidence-2", "html:article"))
 
     def test_migration_adds_compatible_exact_fingerprint_columns_without_similarity_index(self):
         migration_path = ROOT / "db/migrations/014_normalized_article_content.sql"

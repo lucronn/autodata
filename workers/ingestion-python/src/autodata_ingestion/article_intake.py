@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from .http_connector import HttpSourceConnector
 from .source_adapters import SourceArtifact, adapt_source_resource
 from .source_bundle import SourceBundle, normalize_source_bundle
+from .vehicle_identity import canonicalize_vehicle_observation
 
 
 @dataclass(frozen=True)
@@ -19,25 +20,41 @@ class VehicleTarget:
     model_year: int
     region: str
     trim: str | None = None
+    body_style: str | None = None
+    drivetrain: str | None = None
+    engine_displacement_l: float | str | None = None
 
     def __post_init__(self) -> None:
-        make = str(self.make).strip()
-        model = str(self.model).strip()
-        region = str(self.region).strip().upper()
-        trim = str(self.trim).strip() if self.trim is not None else None
-        if not make or not model or not region:
-            raise ValueError("vehicle target requires make, model, and region")
+        raw_engine = self.engine_displacement_l
+        if isinstance(raw_engine, (int, float)):
+            raw_engine = f"{raw_engine}L"
         try:
-            model_year = int(self.model_year)
+            canonical = canonicalize_vehicle_observation(
+                {
+                    "year": self.model_year,
+                    "make": self.make,
+                    "model": self.model,
+                    "region": self.region,
+                    "body_style": self.body_style,
+                    "trim": self.trim,
+                    "drivetrain": self.drivetrain,
+                    "engine": raw_engine,
+                }
+            )
         except (TypeError, ValueError) as error:
-            raise ValueError("vehicle target year must be an integer") from error
-        if model_year < 1886 or model_year > 2100:
-            raise ValueError("vehicle target year is outside the supported range")
-        object.__setattr__(self, "make", make)
-        object.__setattr__(self, "model", model)
-        object.__setattr__(self, "model_year", model_year)
-        object.__setattr__(self, "region", region)
-        object.__setattr__(self, "trim", trim or None)
+            raise ValueError(
+                "vehicle target requires valid make, model, year, and region"
+            ) from error
+        if canonical.region is None:
+            raise ValueError("vehicle target requires make, model, and region")
+        object.__setattr__(self, "make", canonical.make)
+        object.__setattr__(self, "model", canonical.model)
+        object.__setattr__(self, "model_year", canonical.year)
+        object.__setattr__(self, "region", canonical.region)
+        object.__setattr__(self, "trim", canonical.trim)
+        object.__setattr__(self, "body_style", canonical.body_style)
+        object.__setattr__(self, "drivetrain", canonical.drivetrain)
+        object.__setattr__(self, "engine_displacement_l", canonical.engine_displacement_l)
 
     @property
     def vehicle_key(self) -> str:
@@ -52,6 +69,12 @@ class VehicleTarget:
         }
         if self.trim:
             result["trim"] = self.trim
+        if self.body_style:
+            result["body_style"] = self.body_style
+        if self.drivetrain:
+            result["drivetrain"] = self.drivetrain
+        if self.engine_displacement_l is not None:
+            result["engine_displacement_l"] = self.engine_displacement_l
         return result
 
 
@@ -96,7 +119,10 @@ def ingest_vehicle_article(
         raise ValueError("article source returned no resources")
     if len(resources) != 1:
         raise ValueError("article intake expects exactly one HTTP resource")
-    artifacts = tuple(adapt_source_resource(resource) for resource in resources)
+    artifacts = tuple(
+        _augment_unrecognized_resource(resource, adapt_source_resource(resource))
+        for resource in resources
+    )
     bundle = normalize_source_bundle(
         artifacts,
         target.region,
@@ -116,6 +142,50 @@ def ingest_vehicle_article(
             "rejected", source_uri, target, artifacts, bundle, "article_not_recognized"
         )
     return VehicleArticleIntake("ready", source_uri, target, artifacts, bundle)
+
+
+def _augment_unrecognized_resource(resource: Any, artifact: SourceArtifact) -> SourceArtifact:
+    """Optionally ask Mercury-2 for typed candidates from an unknown JSON shape."""
+
+    if artifact.kind != "structured" or artifact.candidates:
+        return artifact
+    from .mercury2 import configured_source_extractor
+
+    extractor, extractor_error = configured_source_extractor()
+    if extractor is None and extractor_error is None:
+        return artifact
+    if extractor_error is not None:
+        return replace(
+            artifact,
+            metadata={
+                **artifact.metadata,
+                "extraction_mode": "mercury-2",
+                "extraction_status": "needs_review",
+                "extraction_error": extractor_error,
+            },
+        )
+    try:
+        candidates = tuple(extractor.extract(resource))
+    except Exception as error:  # noqa: BLE001 - source review must survive advisory failures
+        return replace(
+            artifact,
+            metadata={
+                **artifact.metadata,
+                "extraction_mode": "mercury-2",
+                "extraction_status": "needs_review",
+                "extraction_error": str(error),
+            },
+        )
+    return replace(
+        artifact,
+        candidates=candidates,
+        metadata={
+            **artifact.metadata,
+            "extraction_mode": "mercury-2",
+            "candidate_count": len(candidates),
+            "extraction_status": "candidate_ready" if candidates else "needs_review",
+        },
+    )
 
 
 def _slug(value: str) -> str:

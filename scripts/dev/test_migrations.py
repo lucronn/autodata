@@ -34,6 +34,10 @@ class MigrationPlanTests(unittest.TestCase):
                 "012_payment_fulfillment_reconciliation.sql",
                 "013_dataset_request_ownership.sql",
                 "014_normalized_article_content.sql",
+                "015_vehicle_identity_resolution.sql",
+                "016_catalog_article_configuration.sql",
+                "017_knowledge_catalog_evidence_index.sql",
+                "018_source_review_items.sql",
             ],
         )
 
