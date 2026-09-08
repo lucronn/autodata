@@ -188,7 +188,7 @@ provides the verified read-only `/v1/api` connector surface. When that local
 service is running, the service-backed catalog runner traverses every exposed
 year, make, model, and vehicle ID, fetches each vehicle's name and engine
 metadata, fetches the complete article index, then fetches every article detail
-with bounded concurrency before passing all responses through the same
+with bounded vehicle-level and article-level concurrency before passing all responses through the same
 normalizer and persistence path:
 
 ```sh
@@ -196,7 +196,9 @@ PYTHONPATH=workers/ingestion-python/src \
 python3 scripts/dev/ingest_autoapi_service.py \
   --base-url http://127.0.0.1:3000 \
   --content-source GeneralMotors \
-  --source-version autoapi-http-v1
+  --source-version autoapi-http-v1 \
+  --vehicle-concurrency 4 \
+  --max-concurrency 8
 ```
 
 Add `--persist` only with the local PostgreSQL and MinIO environment configured.
@@ -205,6 +207,9 @@ detail fetch is incomplete; its JSON report includes the years traversed,
 vehicle/article counts, and every failed article ID. The AutoAPI service's own
 runtime credentials remain in its secret-managed environment and are never
 copied into AutoData or logged by this runner.
+Vehicle bundles default to four concurrent fetches and article details default
+to eight concurrent fetches per vehicle; lower either limit when the upstream
+session or local network needs a gentler request rate.
 
 Each processed result includes `article_coverage`: raw candidate count, raw
 unique article IDs, normalized unique IDs, review/quarantine IDs, and an

@@ -23,6 +23,7 @@ from .vehicle_selection import normalize_vehicle_list
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
 DEFAULT_MAX_CONCURRENCY = 8
+DEFAULT_VEHICLE_MAX_CONCURRENCY = 4
 DEFAULT_VEHICLE_ID_BATCH_SIZE = 100
 
 
@@ -81,6 +82,7 @@ class AutoAPIConnector:
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
         max_bytes: int = DEFAULT_MAX_BYTES,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+        vehicle_max_concurrency: int = DEFAULT_VEHICLE_MAX_CONCURRENCY,
         vehicle_id_batch_size: int = DEFAULT_VEHICLE_ID_BATCH_SIZE,
         request_headers: Mapping[str, str] | None = None,
         opener: Callable[..., Any] = urlopen,
@@ -98,6 +100,7 @@ class AutoAPIConnector:
             timeout_seconds <= 0
             or max_bytes <= 0
             or max_concurrency < 1
+            or vehicle_max_concurrency < 1
             or vehicle_id_batch_size < 1
         ):
             raise ValueError("AutoAPI limits must be positive")
@@ -110,6 +113,7 @@ class AutoAPIConnector:
         self._timeout_seconds = timeout_seconds
         self._max_bytes = max_bytes
         self._max_concurrency = max_concurrency
+        self._vehicle_max_concurrency = vehicle_max_concurrency
         self._vehicle_id_batch_size = vehicle_id_batch_size
         self._request_headers = _request_headers(request_headers)
         self._opener = opener
@@ -184,18 +188,27 @@ class AutoAPIConnector:
                             }
                         )
 
-        bundles_list: list[AutoAPIVehicleBundle] = []
-        for target in _dedupe_vehicle_targets(vehicle_targets):
-            try:
-                bundles_list.append(self.fetch_vehicle_bundle(target))
-            except Exception as error:  # noqa: BLE001 - retain other vehicles
-                errors.append(
-                    {
-                        "scope": f"vehicle:{target['vehicle_id']}",
-                        "error": _safe_error(error),
-                    }
-                )
-        bundles = tuple(bundles_list)
+        targets = _dedupe_vehicle_targets(vehicle_targets)
+        bundles_by_vehicle: dict[str, AutoAPIVehicleBundle] = {}
+        with ThreadPoolExecutor(max_workers=self._vehicle_max_concurrency) as executor:
+            futures = {
+                executor.submit(self.fetch_vehicle_bundle, target): target
+                for target in targets
+            }
+            for future in as_completed(futures):
+                target = futures[future]
+                try:
+                    bundle = future.result()
+                except Exception as error:  # noqa: BLE001 - retain other vehicles
+                    errors.append(
+                        {
+                            "scope": f"vehicle:{target['vehicle_id']}",
+                            "error": _safe_error(error),
+                        }
+                    )
+                else:
+                    bundles_by_vehicle[bundle.vehicle_id] = bundle
+        bundles = tuple(bundles_by_vehicle[key] for key in sorted(bundles_by_vehicle))
         selection_rows = tuple(
             row
             for bundle in bundles

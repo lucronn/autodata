@@ -34,6 +34,11 @@ def main() -> None:
     parser.add_argument("--region", default=os.getenv("AUTODATA_SOURCE_REGION", "US"))
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
     parser.add_argument("--max-concurrency", type=int, default=8)
+    parser.add_argument(
+        "--vehicle-concurrency",
+        type=int,
+        default=int(os.getenv("AUTODATA_AUTOAPI_VEHICLE_CONCURRENCY", "4")),
+    )
     parser.add_argument("--persist", action="store_true")
     args = parser.parse_args()
 
@@ -44,6 +49,7 @@ def main() -> None:
         source_version=args.source_version,
         timeout_seconds=args.timeout_seconds,
         max_concurrency=args.max_concurrency,
+        vehicle_max_concurrency=args.vehicle_concurrency,
     )
     catalog = connector.fetch_catalog()
     plan = catalog.to_batches()
