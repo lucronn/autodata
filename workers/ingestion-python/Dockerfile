@@ -10,6 +10,7 @@ COPY workers/ingestion-python/src ./src
 COPY packages/contracts/python ./contracts
 COPY scripts/dev/ingestion_smoke.py ./scripts/ingestion_smoke.py
 COPY scripts/dev/normalize_source_directory.py ./scripts/normalize_source_directory.py
+COPY scripts/dev/ingest_autoapi_batch.py ./scripts/ingest_autoapi_batch.py
 COPY scripts/dev/reconcile_payments.py ./scripts/reconcile_payments.py
 COPY scripts/dev/operational_metrics.py ./scripts/operational_metrics.py
 COPY scripts/dev/nats_health.py ./scripts/nats_health.py

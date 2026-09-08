@@ -133,6 +133,30 @@ configuration beneath the existing `vehicle_id` instead of creating another
 vehicle family. `AUTODATA_VEHICLE_LIST_SOURCE_URI` and
 `AUTODATA_SOURCE_VERSION` identify the list source for replay and audit.
 
+For a complete local AutoAPI export, use the batch runner. It discovers a
+vehicle bundle from each directory containing `name.json`, derives selector
+configurations from the split `name.json` and `motorvehicles.json` responses,
+and processes every other file in that directory through the universal source
+adapter. A source root containing `name.json` is treated as one vehicle; a
+catalog root containing child bundles is processed one vehicle at a time. A
+selector vehicle without a matching source bundle remains visible as
+`pending_source` instead of being silently skipped:
+
+```sh
+PYTHONPATH=workers/ingestion-python/src \
+python3 scripts/dev/ingest_autoapi_batch.py "sample data" \
+  --region US \
+  --source-version autoapi-local-v1
+```
+
+Add `--persist` only when PostgreSQL and MinIO are available through the local
+environment. This persists the derived selector rows and each vehicle's
+source snapshots, evidence, normalized articles, duplicate links, and review
+items. The command continues across vehicle bundles and reports per-vehicle
+failure or review status. A remote AutoAPI connector must provide the same
+immutable bundle shape; this local runner does not guess undocumented remote
+endpoint paths.
+
 For one target article, set `AUTODATA_ARTICLE_URI` and provide the target
 vehicle as JSON. The worker returns the normalized article records together
 with their source evidence; source credentials, if required, remain in the
