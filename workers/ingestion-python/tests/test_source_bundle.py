@@ -13,6 +13,28 @@ from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E4
 
 
 class SourceBundleTests(unittest.TestCase):
+    def test_exact_article_id_replay_merges_later_content_after_other_articles(self):
+        resource = SourceResource.from_bytes(
+            "provider://vehicle/articles.json",
+            "source-v1",
+            (
+                b'{"body":{"articleDetails":['
+                b'{"id":"TSB-1","title":"Alpha bulletin"},'
+                b'{"id":"TSB-2","title":"Beta bulletin","body":"Inspect the battery."},'
+                b'{"id":"TSB-1","title":"Zeta bulletin",'
+                b'"body":"Inspect the connector before service."}'
+                b']}}'
+            ),
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource)], "US")
+
+        self.assertEqual(len(bundle.articles), 2)
+        first = next(article for article in bundle.articles if article["article_id"] == "TSB-1")
+        self.assertEqual(first["body"], "Inspect the connector before service.")
+        self.assertEqual(first["duplicate_count"], 2)
+
     def test_near_duplicate_article_bodies_are_quarantined_even_when_titles_differ(self):
         resource = SourceResource.from_bytes(
             "provider://vehicle/articles.json",

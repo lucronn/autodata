@@ -419,12 +419,39 @@ def _resolve_article_collisions(
     evidence_by_id = {item["evidence_id"]: item for item in evidence}
     ordered = sorted(records, key=_article_order)
     accepted: list[dict[str, Any]] = []
+    accepted_by_id: dict[str, dict[str, Any]] = {}
+    accepted_by_title: dict[str, dict[str, Any]] = {}
+    accepted_by_token: dict[str, set[int]] = {}
+    accepted_positions: dict[int, int] = {}
     for record in ordered:
-        exact = next((item for item in accepted if _same_article(item, record)), None)
+        article_id = _article_text(record.get("article_id"))
+        exact = accepted_by_id.get(article_id) if article_id else None
         if exact is not None:
             _merge_article(exact, record)
+            _index_article_tokens(
+                exact,
+                accepted_positions[id(exact)],
+                accepted_by_token,
+            )
             continue
-        similar = next((item for item in accepted if _similar_article(item, record)), None)
+        title = _article_text(record.get("title"))
+        similar = accepted_by_title.get(title) if title else None
+        if similar is None:
+            candidate_indices = sorted(
+                {
+                    index
+                    for token in _article_search_tokens(record)
+                    for index in accepted_by_token.get(token, ())
+                }
+            )
+            similar = next(
+                (
+                    accepted[index]
+                    for index in candidate_indices
+                    if _similar_article(accepted[index], record)
+                ),
+                None,
+            )
         if similar is not None:
             item_evidence = evidence_by_id.get(record["evidence_id"], {})
             quarantined.append(
@@ -450,8 +477,35 @@ def _resolve_article_collisions(
         record["duplicate_count"] = 1
         record["source_uris"] = [record["source_uri"]]
         record["source_versions"] = [record["source_version"]]
+        accepted_index = len(accepted)
         accepted.append(record)
+        accepted_positions[id(record)] = accepted_index
+        if article_id:
+            accepted_by_id[article_id] = record
+        if title:
+            accepted_by_title.setdefault(title, record)
+        _index_article_tokens(record, accepted_index, accepted_by_token)
     return accepted
+
+
+def _index_article_tokens(
+    record: dict[str, Any],
+    accepted_index: int,
+    accepted_by_token: dict[str, set[int]],
+) -> None:
+    for token in _article_search_tokens(record):
+        accepted_by_token.setdefault(token, set()).add(accepted_index)
+
+
+def _article_search_tokens(record: dict[str, Any]) -> set[str]:
+    return _article_tokens(
+        " ".join(
+            (
+                _article_text(record.get("title")),
+                _article_text(record.get("body")),
+            )
+        )
+    )
 
 
 def _article_order(record: dict[str, Any]) -> tuple[str, str, str]:
@@ -460,15 +514,6 @@ def _article_order(record: dict[str, Any]) -> tuple[str, str, str]:
         _article_text(record.get("article_id")),
         str(record.get("evidence_id", "")),
     )
-
-
-def _same_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
-    left_id = _article_text(left.get("article_id"))
-    right_id = _article_text(right.get("article_id"))
-    # ``content_sha256`` identifies the enclosing source resource, not an
-    # individual record. A response containing an article list therefore
-    # legitimately gives every article the same resource hash.
-    return bool(left_id and right_id and left_id == right_id)
 
 
 def _similar_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
@@ -535,6 +580,9 @@ def _article_steps(data: dict[str, Any]) -> list[Any] | None:
 
 def _merge_article(target: dict[str, Any], duplicate: dict[str, Any]) -> None:
     for field in ("bucket", "title", "bulletin_number", "release_date"):
+        if not target.get(field) and duplicate.get(field):
+            target[field] = duplicate[field]
+    for field in ("body", "steps"):
         if not target.get(field) and duplicate.get(field):
             target[field] = duplicate[field]
     evidence_ids = set(target.get("evidence_ids", [target["evidence_id"]]))
