@@ -102,10 +102,21 @@ class KnowledgeCatalogTests(unittest.TestCase):
         self.assertEqual(result[0]["evidence"][0]["artifact_key"], "sources/tsb-42.html")
         self.assertEqual(result[0]["evidence"][0]["reviewer_state"], "pending")
         self.assertEqual(result[1]["procedure"]["procedure_id"], "procedure:TSB-42")
-        self.assertEqual(cursor.params, (target.vehicle_key,))
+        self.assertEqual(cursor.params, (target.vehicle_key, 200))
         self.assertIn("JOIN extraction_evidence", cursor.query)
         self.assertIn("NOT EXISTS", cursor.query)
         self.assertIn("takedown_status = 'active'", cursor.query)
+        self.assertIn("LIMIT %s", cursor.query)
+
+    def test_cache_limit_is_configurable_but_bounded(self):
+        from autodata_ingestion.knowledge_catalog import _knowledge_cache_limit
+
+        with patch.dict("os.environ", {"AUTODATA_KNOWLEDGE_CACHE_MAX_RECORDS": "37"}):
+            self.assertEqual(_knowledge_cache_limit(), 37)
+        with patch.dict("os.environ", {"AUTODATA_KNOWLEDGE_CACHE_MAX_RECORDS": "not-a-number"}):
+            self.assertEqual(_knowledge_cache_limit(), 200)
+        with patch.dict("os.environ", {"AUTODATA_KNOWLEDGE_CACHE_MAX_RECORDS": "50000"}):
+            self.assertEqual(_knowledge_cache_limit(), 1000)
 
 
 if __name__ == "__main__":

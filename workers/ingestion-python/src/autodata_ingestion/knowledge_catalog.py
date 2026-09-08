@@ -8,6 +8,10 @@ from typing import Any
 from .article_intake import VehicleTarget
 
 
+DEFAULT_KNOWLEDGE_CACHE_LIMIT = 200
+MAX_KNOWLEDGE_CACHE_LIMIT = 1000
+
+
 def load_vehicle_knowledge_catalog(target: VehicleTarget) -> list[dict[str, Any]]:
     """Load non-duplicate normalized articles for one canonical vehicle key.
 
@@ -63,12 +67,25 @@ def load_vehicle_knowledge_catalog(target: VehicleTarget) -> list[dict[str, Any]
           )
           AND ss.takedown_status = 'active'
         ORDER BY ca.title NULLS LAST, ca.article_id, ca.catalog_article_id
+        LIMIT %s
     """
+    limit = _knowledge_cache_limit()
     with psycopg.connect(**conninfo) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(query, (target.vehicle_key,))
+            cursor.execute(query, (target.vehicle_key, limit))
             rows = cursor.fetchall()
     return _rows_to_catalog(rows, target)
+
+
+def _knowledge_cache_limit() -> int:
+    raw_limit = os.getenv("AUTODATA_KNOWLEDGE_CACHE_MAX_RECORDS", "")
+    if not raw_limit.strip():
+        return DEFAULT_KNOWLEDGE_CACHE_LIMIT
+    try:
+        parsed = int(raw_limit)
+    except ValueError:
+        return DEFAULT_KNOWLEDGE_CACHE_LIMIT
+    return max(1, min(parsed, MAX_KNOWLEDGE_CACHE_LIMIT))
 
 
 def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list[dict[str, Any]]:
