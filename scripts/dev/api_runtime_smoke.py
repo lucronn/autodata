@@ -23,10 +23,10 @@ PRODUCT_ID = os.getenv(
 VEHICLE_KEY = "toyota-corolla-2024-us"
 
 
-def call_api(method: str, path: str, *, organization_id: str, body: dict | None = None, idempotency_key: str | None = None) -> tuple[int, dict]:
+def call_api(method: str, path: str, *, organization_id: str, roles: str = "dataset_viewer", body: dict | None = None, idempotency_key: str | None = None) -> tuple[int, dict]:
     headers = {
         "Accept": "application/json",
-        "Authorization": f"Bearer local:{organization_id}:dataset_viewer",
+        "Authorization": f"Bearer local:{organization_id}:{roles}",
     }
     payload = None
     if body is not None:
@@ -55,7 +55,7 @@ def main() -> None:
         "vehicle_key": VEHICLE_KEY,
         "region": "US",
     }
-    idempotency_key = "api-runtime-smoke-v1"
+    idempotency_key = f"api-runtime-smoke-v1-{uuid.uuid4().hex}"
     first_status, first = call_api(
         "POST",
         "/dataset-requests",
@@ -106,6 +106,17 @@ def main() -> None:
     require(invalid_status == 422, f"invalid product status = {invalid_status}, want 422")
     require(invalid.get("error", {}).get("code") == "INVALID_REQUEST", "wrong invalid product error")
 
+    review_status, review_queue = call_api(
+        "GET",
+        "/source-review-items?status=pending&limit=10",
+        organization_id=ORGANIZATION_ID,
+        roles="data_reviewer",
+    )
+    require(review_status == 200, f"source review queue status = {review_status}, want 200")
+    review_items = review_queue.get("items")
+    require(isinstance(review_items, list), "source review queue omitted items")
+    require(review_queue.get("status") == "pending", "source review queue status was not pending")
+
     print(json.dumps({
         "status": "ready",
         "dataset_request_id": request_id,
@@ -115,6 +126,8 @@ def main() -> None:
         "section_count": len(sections),
         "cross_organization_status": denied_status,
         "invalid_product_status": invalid_status,
+        "source_review_queue_status": review_status,
+        "source_review_item_count": len(review_items),
     }, sort_keys=True))
 
 

@@ -57,6 +57,7 @@ type Server struct {
 	auth            Authenticator
 	requests        RequestStore
 	projections     ProjectionStore
+	sourceReviews   SourceReviewStore
 	vehicleIdentity VehicleIdentityStore
 	metrics         *apiMetrics
 }
@@ -75,6 +76,7 @@ func NewServerWithDependencies(readiness ReadinessChecker, auth Authenticator, r
 		auth:            auth,
 		requests:        requests,
 		projections:     projectionStore,
+		sourceReviews:   newMemorySourceReviewStore(),
 		vehicleIdentity: newMemoryVehicleIdentityStore(),
 		metrics:         new(apiMetrics),
 	}
@@ -90,6 +92,16 @@ func NewServerWithVehicleIdentityStore(readiness ReadinessChecker, auth Authenti
 	return server
 }
 
+// NewServerWithSourceReviewStore injects the operator review queue without
+// coupling handlers to PostgreSQL or a particular review UI.
+func NewServerWithSourceReviewStore(readiness ReadinessChecker, auth Authenticator, requests RequestStore, reviews SourceReviewStore, projections ...ProjectionStore) *Server {
+	server := NewServerWithDependencies(readiness, auth, requests, projections...)
+	if reviews != nil {
+		server.sourceReviews = reviews
+	}
+	return server
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
@@ -98,6 +110,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /dataset-requests", s.requireRole("dataset_viewer", s.createDatasetRequest))
 	mux.Handle("POST /vehicle-identities/resolve", s.requireRole("dataset_viewer", s.resolveVehicleIdentity))
 	mux.Handle("GET /vehicle-identities/selectors", s.requireRole("dataset_viewer", s.listVehicleIdentitySelectors))
+	mux.Handle("GET /source-review-items", s.requireRole("data_reviewer", s.listSourceReviewItems))
+	mux.Handle("POST /source-review-items/{id}/review", s.requireRole("data_reviewer", s.reviewSourceItem))
 	mux.Handle("GET /dataset-requests/{id}", s.requireRole("dataset_viewer", s.getDatasetRequest))
 	mux.Handle("GET /datasets/{id}", s.requireRole("dataset_viewer", s.getDataset))
 	mux.Handle("GET /datasets/{id}/sections", s.requireRole("dataset_viewer", s.getDatasetSections))
@@ -459,6 +473,7 @@ func main() {
 	application := NewServerWithDependencies(configuredReadiness(), HeaderAuthenticator{}, requestStore, projectionStore)
 	if durableProjections, ok := projectionStore.(*postgresProjectionStore); ok {
 		application.vehicleIdentity = newLayeredVehicleIdentityStore(durableProjections.pool)
+		application.sourceReviews = newPostgresSourceReviewStore(durableProjections.pool)
 	}
 	server := &http.Server{
 		Addr:              address,

@@ -165,6 +165,8 @@
         "DUPLICATE_REQUEST",
         "INVALID_EVIDENCE",
         "REVIEW_REQUIRED",
+        "SOURCE_REVIEW_NOT_FOUND",
+        "SOURCE_REVIEW_CONFLICT",
         "INVALID_REQUEST"
       ]},
       "message": {"type": "string"},
