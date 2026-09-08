@@ -83,6 +83,13 @@ Typed junction tables or explicit link tables are preferred over an unconstraine
 
 `technician_feedback` or its normalized successor `feedback_items` stores user, target record, issue type, notes, status, timestamps, reviewer, and applied revision. Feedback never silently mutates a published revision. An approved correction produces a new canonical/projection revision and links the feedback item to that change.
 
+`source_review_items` is the durable ingestion review queue. It stores normalized
+conflict or quarantine metadata, a stable replay key, reason code, review state,
+reviewer decision, and arrays of source-snapshot and extraction-evidence UUIDs.
+It is mutable workflow state, not canonical domain truth. Similar-article
+quarantine records are coalesced with their article-similarity conflict, while
+the raw source and all evidence remain immutable and separately addressable.
+
 ## Platform spine
 
 The platform tables in [contracts.md](contracts.md) connect these contexts to fulfillment:
@@ -98,7 +105,7 @@ dataset_projections       ingestion_jobs/extraction_runs
       |
 dataset_revisions ---- dataset_section_status
       |
-publication_events ---- feedback_items / audit records
+publication_events ---- feedback_items / source_review_items / audit records
 ```
 
 `dataset_products` declares the vehicle selector and minimum viewable sections. `dataset_requests` records the requested selector, source snapshot, lane state, and correlation IDs. `dataset_projections` scopes canonical content to one request/product. `dataset_revisions` is immutable and records the source watermark, schema version, readiness summary, and changelog. `dataset_section_status` tracks independent readiness. `entitlements` controls access to the projection and permitted revisions.
