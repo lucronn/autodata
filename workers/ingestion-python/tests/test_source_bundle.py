@@ -1,4 +1,6 @@
+import base64
 import sys
+import types
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -209,6 +211,56 @@ class SourceBundleTests(unittest.TestCase):
         self.assertEqual(article["content_locator"], "body.html:3950424")
         self.assertIn(article["content_evidence_id"], {item["evidence_id"] for item in bundle.evidence})
         self.assertNotEqual(article["content_evidence_id"], article["evidence_id"])
+
+    def test_autoapi_pdf_pages_are_joined_with_aggregate_content_evidence(self):
+        class FakePage:
+            def __init__(self, text):
+                self._text = text
+
+            def extract_text(self):
+                return self._text
+
+        class FakeReader:
+            def __init__(self, _stream):
+                self.pages = [FakePage("Page one"), FakePage("Page two")]
+
+        index_resource = SourceResource.from_bytes(
+            "file://v2.json",
+            "autoapi-v1",
+            b'{"body":{"articleDetails":[{"id":"8:pdf-1","title":"PDF procedure"}]}}',
+            "application/json",
+        )
+        encoded_pdf = base64.b64encode(b"%PDF-1.7 test").decode()
+        document_resource = SourceResource.from_bytes(
+            "file://P_8.json",
+            "autoapi-v1",
+            (
+                '{"body":{"documentId":"8","pdf":"'
+                + encoded_pdf
+                + '"}}'
+            ).encode(),
+            "application/json",
+        )
+
+        with patch.dict(sys.modules, {"pypdf": types.SimpleNamespace(PdfReader=FakeReader)}):
+            bundle = normalize_source_bundle(
+                [adapt_source_resource(index_resource), adapt_source_resource(document_resource)],
+                "US",
+            )
+
+        article = bundle.articles[0]
+        self.assertEqual(article["article_id"], "8:pdf-1")
+        self.assertEqual(article["body"], "Page one\n\nPage two")
+        self.assertEqual(
+            article["content_locator"],
+            "body.pdf:8:page:1..body.pdf:8:page:2",
+        )
+        aggregate = next(
+            item
+            for item in bundle.evidence
+            if item["evidence_id"] == article["content_evidence_id"]
+        )
+        self.assertEqual(aggregate["extracted_text"], "Page one\n\nPage two")
 
     def test_unrecognized_resource_is_retained_and_blocks_ready_status(self):
         resource = SourceResource.from_bytes(

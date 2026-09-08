@@ -185,7 +185,10 @@ def normalize_source_bundle(
                     }
                 )
 
-    article_records = _attach_document_content(article_records, document_text_records)
+    article_records, document_content_evidence = _attach_document_content(
+        article_records, document_text_records
+    )
+    evidence.extend(document_content_evidence)
     article_records = _resolve_article_collisions(article_records, evidence, quarantined, conflicts)
     vehicle = _normalize_vehicle(
         vehicle_candidates,
@@ -504,7 +507,7 @@ def _resolve_article_collisions(
 def _attach_document_content(
     articles: list[dict[str, Any]],
     document_text_records: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Join AutoAPI document responses to their article index records.
 
     AutoAPI exposes article metadata in ``v2.json`` and document bodies in
@@ -512,28 +515,81 @@ def _attach_document_content(
     while the article ID is commonly ``<document-id>:<content-id>``.
     """
 
-    by_document_id: dict[str, dict[str, Any]] = {}
-    for record in sorted(document_text_records, key=lambda item: str(item.get("evidence_id", ""))):
+    by_document_id: dict[str, list[dict[str, Any]]] = {}
+    for record in sorted(document_text_records, key=_document_content_order):
         locator = str(record.get("locator", ""))
-        if not locator.startswith("body.html:"):
+        if not locator.startswith(("body.html:", "body.pdf:")):
             continue
-        document_id = locator.removeprefix("body.html:").split(":", 1)[0].strip()
+        prefix = "body.html:" if locator.startswith("body.html:") else "body.pdf:"
+        document_id = locator.removeprefix(prefix).split(":", 1)[0].strip()
         if document_id and record.get("text"):
-            by_document_id.setdefault(document_id, record)
+            by_document_id.setdefault(document_id, []).append(record)
 
+    aggregate_evidence: list[dict[str, Any]] = []
     for article in articles:
         article_id = str(article.get("article_id") or "")
         document_id = article_id.split(":", 1)[0].strip()
-        content = by_document_id.get(document_id)
-        if content is None:
+        content_records = by_document_id.get(document_id, [])
+        if not content_records:
             continue
+        html_records = [
+            record
+            for record in content_records
+            if str(record.get("locator", "")).startswith("body.html:")
+        ]
+        selected_records = html_records or content_records
+        content = _document_content_record(selected_records, aggregate_evidence)
         article.setdefault("body", content["text"])
         article["content_evidence_id"] = content["evidence_id"]
         article["content_locator"] = content["locator"]
         article["content_source_uri"] = content["source_uri"]
         article["content_source_version"] = content["source_version"]
         article["content_sha256"] = content["content_sha256"]
-    return articles
+    return articles, aggregate_evidence
+
+
+def _document_content_record(
+    records: list[dict[str, Any]],
+    aggregate_evidence: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if len(records) == 1:
+        return records[0]
+    first = records[0]
+    last = records[-1]
+    locators = [str(record["locator"]) for record in records]
+    locator = f"{locators[0]}..{locators[-1]}"
+    evidence_id = str(
+        uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            "autodata-document-content:" + "|".join(
+                str(record["evidence_id"]) for record in records
+            ),
+        )
+    )
+    aggregate = {
+        "evidence_id": evidence_id,
+        "source_uri": first["source_uri"],
+        "content_sha256": first["content_sha256"],
+        "locator": locator,
+        "candidate_key": f"document-content:{evidence_id}",
+        "extracted_text": "\n\n".join(str(record["text"]) for record in records),
+        "confidence": min(float(record.get("confidence", 1.0)) for record in records),
+        "reviewer_state": "pending",
+    }
+    aggregate_evidence.append(aggregate)
+    return {
+        **first,
+        "text": aggregate["extracted_text"],
+        "evidence_id": evidence_id,
+        "locator": locator,
+    }
+
+
+def _document_content_order(record: dict[str, Any]) -> tuple[str, int, str]:
+    locator = str(record.get("locator", ""))
+    page_match = re.search(r":page:(\d+)$", locator)
+    page = int(page_match.group(1)) if page_match else 0
+    return (locator.split(":page:", 1)[0], page, str(record.get("evidence_id", "")))
 
 
 def _index_article_tokens(
