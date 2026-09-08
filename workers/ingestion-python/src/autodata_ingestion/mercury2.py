@@ -8,15 +8,33 @@ is schema-checked before it can affect a review state.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from typing import Any, Callable, Mapping, Protocol
 from urllib.request import Request, urlopen
 
+from .source_adapters import NormalizationCandidate, SourceResource
 from .vehicle_identity import (
     CanonicalVehicleObservation,
     VehicleMatchCandidate,
     VehicleReviewState,
     review_vehicle_candidates,
+)
+
+
+_SOURCE_CANDIDATE_KINDS = frozenset(
+    {
+        "vehicle_identity",
+        "specification",
+        "model",
+        "powertrain",
+        "part",
+        "article",
+        "document",
+        "document_text",
+        "diagram_text",
+        "image_text",
+    }
 )
 
 
@@ -97,6 +115,74 @@ class Mercury2Client:
         return result
 
 
+class Mercury2SourceExtractor:
+    """Advisory extractor for typed candidates from an unrecognized resource.
+
+    Mercury-2 proposes candidates only. The shared source-bundle normalizer
+    still validates their fields, attaches source evidence, and decides
+    whether anything is publishable. Candidate keys are derived locally so a
+    model's arbitrary key choice cannot break replay idempotency.
+    """
+
+    def __init__(
+        self,
+        client: Mercury2Client,
+        *,
+        max_input_bytes: int = 200_000,
+        max_candidates: int = 500,
+    ) -> None:
+        if max_input_bytes < 1:
+            raise ValueError("Mercury-2 extraction input limit must be positive")
+        if max_candidates < 1:
+            raise ValueError("Mercury-2 extraction candidate limit must be positive")
+        self._client = client
+        self._max_input_bytes = max_input_bytes
+        self._max_candidates = max_candidates
+
+    def extract(self, resource: SourceResource) -> tuple[NormalizationCandidate, ...]:
+        if len(resource.payload) > self._max_input_bytes:
+            raise ValueError("Mercury-2 extraction input exceeds the configured limit")
+        try:
+            document: Any = json.loads(resource.payload)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            document = resource.payload.decode("utf-8", errors="replace")
+        response = self._client.complete_json(_build_source_extraction_prompt(resource, document))
+        raw_candidates = response.get("candidates")
+        if not isinstance(raw_candidates, list):
+            raise ValueError("Mercury-2 extraction response candidates must be an array")
+        if len(raw_candidates) > self._max_candidates:
+            raise ValueError("Mercury-2 extraction returned too many candidates")
+        candidates: list[NormalizationCandidate] = []
+        for index, raw_candidate in enumerate(raw_candidates):
+            if not isinstance(raw_candidate, Mapping):
+                raise ValueError(f"Mercury-2 candidate {index} must be an object")
+            kind = raw_candidate.get("kind")
+            locator = raw_candidate.get("locator")
+            data = raw_candidate.get("data")
+            if kind not in _SOURCE_CANDIDATE_KINDS:
+                raise ValueError(f"Mercury-2 candidate {index} has an unsupported kind")
+            if not isinstance(locator, str) or not locator.strip():
+                raise ValueError(f"Mercury-2 candidate {index} requires a locator")
+            if not isinstance(data, dict):
+                raise ValueError(f"Mercury-2 candidate {index} data must be an object")
+            canonical = json.dumps(
+                {"data": data, "kind": kind, "locator": locator.strip()},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            stable_key = hashlib.sha256(canonical).hexdigest()[:24]
+            candidates.append(
+                NormalizationCandidate(
+                    str(kind),
+                    f"mercury2:{kind}:{stable_key}",
+                    dict(data),
+                    locator.strip(),
+                )
+            )
+        return tuple(candidates)
+
+
 class Mercury2VehicleAdjudicator:
     """Use Mercury-2 only to resolve deterministic ambiguity."""
 
@@ -145,6 +231,29 @@ def _build_prompt(observation: CanonicalVehicleObservation, candidates: tuple[Ve
     )
 
 
+def _build_source_extraction_prompt(resource: SourceResource, document: Any) -> str:
+    return json.dumps(
+        {
+            "task": "Extract only explicit, source-supported typed candidates. Do not infer missing facts.",
+            "source": {
+                "source_uri": resource.source_uri,
+                "media_type": resource.media_type,
+                "document": document,
+            },
+            "allowed_candidate_kinds": sorted(_SOURCE_CANDIDATE_KINDS),
+            "candidate_schema": {
+                "kind": "one allowed kind",
+                "locator": "JSON path or source locator",
+                "data": "object containing only explicit source fields",
+            },
+            "output": {"candidates": []},
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
 def _needs_review(state: VehicleReviewState, reason: str) -> VehicleReviewState:
     return VehicleReviewState(
         status="needs_review",
@@ -167,4 +276,4 @@ def _response_content(payload: Any) -> Any:
     return payload
 
 
-__all__ = ["Mercury2Client", "Mercury2VehicleAdjudicator"]
+__all__ = ["Mercury2Client", "Mercury2SourceExtractor", "Mercury2VehicleAdjudicator"]

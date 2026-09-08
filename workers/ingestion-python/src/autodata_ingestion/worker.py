@@ -6,6 +6,7 @@ import json
 import asyncio
 import os
 import time
+from dataclasses import replace
 
 
 def run_once() -> dict[str, object]:
@@ -427,13 +428,87 @@ def _collect_connector(connector: object):
     from .source_bundle import normalize_source_bundle
 
     resources = connector.fetch({})
-    artifacts = [adapt_source_resource(resource) for resource in resources]
+    extractor, extractor_error = _configured_mercury2_extractor()
+    artifacts = []
+    for resource in resources:
+        artifact = adapt_source_resource(resource)
+        if extractor is not None and artifact.kind == "structured" and not artifact.candidates:
+            try:
+                candidates = tuple(extractor.extract(resource))
+            except Exception as error:  # noqa: BLE001 - source review must survive advisory failures
+                artifact = replace(
+                    artifact,
+                    metadata={
+                        **artifact.metadata,
+                        "extraction_mode": "mercury-2",
+                        "extraction_status": "needs_review",
+                        "extraction_error": str(error),
+                    },
+                )
+            else:
+                artifact = replace(
+                    artifact,
+                    candidates=candidates,
+                    metadata={
+                        **artifact.metadata,
+                        "extraction_mode": "mercury-2",
+                        "candidate_count": len(candidates),
+                        "extraction_status": "candidate_ready" if candidates else "needs_review",
+                    },
+                )
+        elif extractor_error is not None and artifact.kind == "structured" and not artifact.candidates:
+            artifact = replace(
+                artifact,
+                metadata={
+                    **artifact.metadata,
+                    "extraction_mode": "mercury-2",
+                    "extraction_status": "needs_review",
+                    "extraction_error": extractor_error,
+                },
+            )
+        artifacts.append(artifact)
     bundle = normalize_source_bundle(
         artifacts,
         os.getenv("AUTODATA_SOURCE_REGION", "US"),
     )
     quality = evaluate_source_bundle(bundle)
     return artifacts, bundle, quality
+
+
+def _configured_mercury2_extractor():
+    """Return the opt-in advisory extractor or a review-safe configuration error."""
+
+    if os.getenv("AUTODATA_MERCURY2_EXTRACTION_ENABLED") != "1":
+        return None, None
+    try:
+        from .mercury2 import Mercury2Client, Mercury2SourceExtractor
+
+        client = Mercury2Client.from_environment()
+        return (
+            Mercury2SourceExtractor(
+                client,
+                max_input_bytes=_positive_int_env(
+                    "AUTODATA_MERCURY2_EXTRACTION_MAX_INPUT_BYTES", 200_000
+                ),
+                max_candidates=_positive_int_env(
+                    "AUTODATA_MERCURY2_EXTRACTION_MAX_CANDIDATES", 500
+                ),
+            ),
+            None,
+        )
+    except (TypeError, ValueError) as error:
+        return None, str(error)
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    value = os.getenv(name, str(default))
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be a positive integer") from error
+    if parsed < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return parsed
 
 
 def _publication_for_request(request: object):

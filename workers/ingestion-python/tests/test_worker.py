@@ -15,6 +15,60 @@ from autodata_ingestion.source_adapters import SourceResource  # noqa: E402
 
 
 class IngestionWorkerTests(unittest.TestCase):
+    def test_unknown_structured_source_can_use_opt_in_mercury_extractor(self):
+        from autodata_ingestion.source_adapters import NormalizationCandidate
+        from autodata_ingestion.worker import _collect_connector
+
+        resource = SourceResource.from_bytes(
+            "provider://vehicle/unknown.json",
+            "source-v1",
+            b'{"providerPayload":{"headline":"Brake connector bulletin"}}',
+            "application/json",
+        )
+
+        class FakeConnector:
+            def fetch(self, request):
+                self.request = request
+                return [resource]
+
+        candidate = NormalizationCandidate(
+            "article",
+            "mercury2:article:stable",
+            {
+                "id": "TSB-42",
+                "title": "Brake connector bulletin",
+                "body": "Inspect the brake connector.",
+            },
+            "providerPayload.article",
+        )
+        identity = NormalizationCandidate(
+            "vehicle_identity",
+            "mercury2:vehicle_identity:stable",
+            {"year": 2019, "make": "Cadillac", "model": "Escalade ESV"},
+            "providerPayload.vehicle",
+        )
+        with patch.dict(
+            "os.environ",
+            {"AUTODATA_MERCURY2_EXTRACTION_ENABLED": "1"},
+            clear=False,
+        ):
+            with patch(
+                "autodata_ingestion.mercury2.Mercury2Client.from_environment",
+                return_value=object(),
+            ) as client_factory:
+                with patch(
+                    "autodata_ingestion.mercury2.Mercury2SourceExtractor.extract",
+                    return_value=(identity, candidate),
+                ) as extract:
+                    artifacts, bundle, quality = _collect_connector(FakeConnector())
+
+        self.assertEqual(artifacts[0].metadata["extraction_mode"], "mercury-2")
+        self.assertEqual(artifacts[0].metadata["candidate_count"], 2)
+        self.assertEqual(bundle.articles[0]["article_id"], "TSB-42")
+        self.assertEqual(quality.status, "needs_review")
+        client_factory.assert_called_once_with()
+        extract.assert_called_once()
+
     def test_idle_run_reports_fast_lane_identity(self):
         result = run_once()
 

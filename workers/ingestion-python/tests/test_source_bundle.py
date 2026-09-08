@@ -13,6 +13,55 @@ from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E4
 
 
 class SourceBundleTests(unittest.TestCase):
+    def test_near_duplicate_article_bodies_are_quarantined_even_when_titles_differ(self):
+        resource = SourceResource.from_bytes(
+            "provider://vehicle/articles.json",
+            "source-v1",
+            (
+                b'{"body":{"articleDetails":['
+                b'{"id":"TSB-1","title":"Brake connector service bulletin",'
+                b'"body":"Inspect the brake connector before service. Remove the retaining clip and replace the terminal if damaged."},'
+                b'{"id":"TSB-2","title":"Brake connector replacement bulletin",'
+                b'"body":"Inspect the brake connector before service. Remove the retaining clip and replace the terminal if damaged."}'
+                b']}}'
+            ),
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource)], "US")
+
+        self.assertEqual(len(bundle.articles), 1)
+        self.assertIn(bundle.articles[0]["article_id"], {"TSB-1", "TSB-2"})
+        self.assertTrue(
+            any(item.get("reason") == "similar_article_requires_review" for item in bundle.quarantined)
+        )
+
+    def test_generic_json_article_record_preserves_body_and_steps(self):
+        resource = SourceResource.from_bytes(
+            "provider://vehicle/article.json",
+            "source-v1",
+            (
+                b'{"body":{"type":"article","article_id":"TSB-99",'
+                b'"title":"Brake connector procedure",'
+                b'"body":"Inspect the connector before service.",'
+                b'"steps":["Inspect connector","Replace terminal"]}}'
+            ),
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource)], "US")
+
+        self.assertEqual(len(bundle.articles), 1)
+        self.assertEqual(bundle.articles[0]["article_id"], "TSB-99")
+        self.assertEqual(
+            bundle.articles[0]["body"],
+            "Inspect the connector before service.",
+        )
+        self.assertEqual(
+            bundle.articles[0]["steps"],
+            ["Inspect connector", "Replace terminal"],
+        )
+
     def test_coarse_identity_is_enriched_by_a_later_structured_identity_record(self):
         resources = [
             SourceResource.from_bytes(

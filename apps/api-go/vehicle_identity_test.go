@@ -157,6 +157,23 @@ func TestVehicleIdentityResolveRejectsClientSuppliedDurableIDs(t *testing.T) {
 	}
 }
 
+func TestVehicleIdentityNormalizationKeepsConflictsWhenDurableIDArrivesLater(t *testing.T) {
+	rows := []VehicleIdentityRow{
+		{Year: 1999, Make: "Chevrolet", Model: "Silverado 1500", Region: "US", Drivetrain: "2WD"},
+		{Year: 1999, Make: "Chevrolet", Model: "Silverado 1500", Region: "US", Drivetrain: "4WD", vehicleID: "vehicle-1"},
+	}
+	records, _, err := normalizeVehicleIdentityRows(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if records[0].Status != "needs_review" {
+		t.Fatalf("status = %q, want needs_review", records[0].Status)
+	}
+	if len(records[0].Conflicts) != 1 {
+		t.Fatalf("conflicts = %#v, want one conflict", records[0].Conflicts)
+	}
+}
+
 func TestVehicleIdentityResolveMarksConflictingBaseDimensionsForReview(t *testing.T) {
 	server := NewServer(staticReadiness{})
 	body := `{"vehicles":[{"year":1999,"make":"Chevrolet","model":"Silverado 1500","region":"US","drivetrain":"2WD"},{"year":1999,"make":"Chevrolet","model":"Silverado 1500","region":"US","drivetrain":"4WD"}]}`

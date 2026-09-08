@@ -170,14 +170,26 @@ Only when that database lookup has no matching result does it resolve and fetch
 the configured source. Supplying `catalog: []` deliberately bypasses the
 database lookup and is useful for controlled fallback tests.
 
-Mercury-2 is optional and advisory for ambiguous identity decisions. Enable
-it only through secret-managed environment variables; never place the API key
-in Compose files, source files, README examples, or Git history:
+Mercury-2 is optional and advisory. It can adjudicate ambiguous vehicle
+identity matches and, when explicitly enabled, extract typed candidates from
+otherwise-unrecognized structured source shapes. Deterministic normalization,
+provenance, evidence, and review gates remain authoritative; the model cannot
+publish directly to canonical tables. Enable it only through secret-managed
+environment variables; never place the API key in Compose files, source files,
+README examples, or Git history:
 
 ```sh
 export INCEPTION_API_KEY='<set-locally-or-through-a-secret-manager>'
 export INCEPTION_API_BASE_URL='<provider-endpoint>'
+export AUTODATA_MERCURY2_EXTRACTION_ENABLED=1
 ```
+
+The source extractor is called only for structured artifacts that have no
+deterministic typed candidates. It is bounded by
+`AUTODATA_MERCURY2_EXTRACTION_MAX_INPUT_BYTES` and
+`AUTODATA_MERCURY2_EXTRACTION_MAX_CANDIDATES`; a missing configuration,
+timeout, invalid response, or empty proposal leaves the raw source and marks
+the artifact `needs_review` for replay.
 
 ## Run tests
 

@@ -274,9 +274,9 @@ def classify_json_candidates(document: Any) -> list[NormalizationCandidate]:
 
     if isinstance(body, dict):
         vehicle_candidate = _candidate_from_record(body, "body")
-        if vehicle_candidate is not None and vehicle_candidate.kind == "vehicle_identity":
+        if vehicle_candidate is not None:
             candidates.append(vehicle_candidate)
-        elif vehicle_candidate is None:
+        else:
             # Many APIs wrap the actual record under a vehicle-shaped key.
             # Inspect only known identity wrappers so arbitrary nested JSON is
             # not mistaken for canonical vehicle data.
@@ -1179,16 +1179,23 @@ def _candidate_from_record(
     if kind == "article" or (article_id and title):
         if not article_id or not title:
             return None
+        data = {
+            "id": article_id,
+            "title": title,
+            "bucket": _field(record, "bucket", "category"),
+            "bulletinNumber": _field(record, "bulletin_number", "bulletinNumber"),
+            "releaseDate": _field(record, "release_date", "releaseDate"),
+        }
+        body = _field(record, "body", "article_body", "articleBody", "content")
+        if body:
+            data["body"] = body
+        steps = record.get("steps")
+        if isinstance(steps, list) and all(isinstance(step, (str, dict)) for step in steps):
+            data["steps"] = steps
         return NormalizationCandidate(
             "article",
             f"article:{article_id}:{locator}",
-            {
-                "id": article_id,
-                "title": title,
-                "bucket": _field(record, "bucket", "category"),
-                "bulletinNumber": _field(record, "bulletin_number", "bulletinNumber"),
-                "releaseDate": _field(record, "release_date", "releaseDate"),
-            },
+            data,
             locator,
         )
     return None

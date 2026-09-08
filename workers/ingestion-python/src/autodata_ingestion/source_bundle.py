@@ -8,6 +8,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from typing import Any, Iterable
 
+from .article_identity import canonicalize_article_identity
 from .source_adapters import NormalizationCandidate, SourceArtifact
 from .vehicle_identity import canonicalize_vehicle_observation
 
@@ -441,7 +442,7 @@ def _resolve_article_collisions(
                     "resolution": "needs_review",
                     "article_keys": [similar["article_key"], record["article_key"]],
                     "evidence_ids": [similar["evidence_id"], record["evidence_id"]],
-                    "similarity": round(_title_similarity(similar.get("title"), record.get("title")), 6),
+                    "similarity": round(_article_similarity(similar, record), 6),
                 }
             )
             continue
@@ -464,10 +465,10 @@ def _article_order(record: dict[str, Any]) -> tuple[str, str, str]:
 def _same_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
     left_id = _article_text(left.get("article_id"))
     right_id = _article_text(right.get("article_id"))
-    return bool(left_id and right_id and left_id == right_id) or (
-        bool(left.get("content_sha256"))
-        and left.get("content_sha256") == right.get("content_sha256")
-    )
+    # ``content_sha256`` identifies the enclosing source resource, not an
+    # individual record. A response containing an article list therefore
+    # legitimately gives every article the same resource hash.
+    return bool(left_id and right_id and left_id == right_id)
 
 
 def _similar_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
@@ -475,11 +476,30 @@ def _similar_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
     right_title = _article_text(right.get("title"))
     if left_title and left_title == right_title:
         return True
+    if _article_similarity(left, right) >= ARTICLE_SIMILARITY_THRESHOLD:
+        return True
     left_tokens = _article_tokens(left.get("title"))
     right_tokens = _article_tokens(right.get("title"))
     if len(left_tokens & right_tokens) < 3:
         return False
     return _title_similarity(left.get("title"), right.get("title")) >= ARTICLE_SIMILARITY_THRESHOLD
+
+
+def _article_similarity(left: dict[str, Any], right: dict[str, Any]) -> float:
+    """Compare complete article content when both records contain bodies."""
+
+    if left.get("body") and right.get("body"):
+        try:
+            identity = canonicalize_article_identity(
+                right,
+                existing_articles=(left,),
+                near_duplicate_gate=ARTICLE_SIMILARITY_THRESHOLD,
+            )
+        except ValueError:
+            pass
+        else:
+            return identity.near_duplicate_score
+    return _title_similarity(left.get("title"), right.get("title"))
 
 
 def _title_similarity(left: Any, right: Any) -> float:

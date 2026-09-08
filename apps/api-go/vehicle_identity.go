@@ -189,13 +189,16 @@ func normalizeVehicleIdentityRows(rows []VehicleIdentityRow) ([]VehicleIdentityR
 		if !ok {
 			current = &family{record: VehicleIdentityRecord{VehicleID: row.vehicleID, VehicleIDKey: key, Year: year, Make: makeName, Model: model, Region: region, Drivetrain: drivetrain}, configs: map[string]VehicleConfigurationRecord{}}
 			families[key] = current
-		} else if current.record.VehicleID == "" && row.vehicleID != "" {
-			current.record.VehicleID = row.vehicleID
-		} else if current.record.Drivetrain != "" && drivetrain != "" && current.record.Drivetrain != drivetrain {
-			current.record.Conflicts = append(current.record.Conflicts, map[string]string{"field": "drivetrain", "existing": current.record.Drivetrain, "incoming": drivetrain})
-			rowConflict = true
-		} else if current.record.Drivetrain == "" {
-			current.record.Drivetrain = drivetrain
+		} else {
+			if current.record.VehicleID == "" && row.vehicleID != "" {
+				current.record.VehicleID = row.vehicleID
+			}
+			if current.record.Drivetrain != "" && drivetrain != "" && current.record.Drivetrain != drivetrain {
+				current.record.Conflicts = append(current.record.Conflicts, map[string]string{"field": "drivetrain", "existing": current.record.Drivetrain, "incoming": drivetrain})
+				rowConflict = true
+			} else if current.record.Drivetrain == "" {
+				current.record.Drivetrain = drivetrain
+			}
 		}
 		if current.record.BodyStyle != "" && row.BodyStyle != "" && current.record.BodyStyle != titleVehicleWords(row.BodyStyle) {
 			current.record.Conflicts = append(current.record.Conflicts, map[string]string{"field": "body_style", "existing": current.record.BodyStyle, "incoming": titleVehicleWords(row.BodyStyle)})

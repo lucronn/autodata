@@ -3,7 +3,12 @@ import os
 import unittest
 from unittest.mock import patch
 
-from autodata_ingestion.mercury2 import Mercury2Client, Mercury2VehicleAdjudicator
+from autodata_ingestion.mercury2 import (
+    Mercury2Client,
+    Mercury2SourceExtractor,
+    Mercury2VehicleAdjudicator,
+)
+from autodata_ingestion.source_adapters import SourceResource
 from autodata_ingestion.vehicle_identity import canonicalize_vehicle_observation
 
 
@@ -22,6 +27,40 @@ class FakeResponse:
 
 
 class Mercury2Tests(unittest.TestCase):
+    def test_source_extractor_returns_validated_typed_candidates(self):
+        class FakeClient:
+            def complete_json(self, prompt):
+                self.prompt = prompt
+                return {
+                    "candidates": [
+                        {
+                            "kind": "article",
+                            "key": "article:TSB-42:llm",
+                            "locator": "body.records[0]",
+                            "data": {
+                                "id": "TSB-42",
+                                "title": "Brake connector bulletin",
+                                "body": "Inspect the brake connector.",
+                            },
+                        }
+                    ]
+                }
+
+        resource = SourceResource.from_bytes(
+            "provider://source/unknown.json",
+            "source-v1",
+            b'{"body":{"providerSpecificArticle":{"headline":"Brake connector bulletin"}}}',
+            "application/json",
+        )
+        client = FakeClient()
+
+        candidates = Mercury2SourceExtractor(client).extract(resource)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].kind, "article")
+        self.assertEqual(candidates[0].data["id"], "TSB-42")
+        self.assertIn("provider://source/unknown.json", client.prompt)
+
     def test_client_reads_key_only_from_environment_and_parses_json(self):
         seen = {}
 
