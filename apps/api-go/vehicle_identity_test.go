@@ -4,9 +4,49 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestPostgresSelectorsSelectDurableVehicleAndConfigurationIDs(t *testing.T) {
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	querySource, err := os.ReadFile(filepath.Join(root, "postgres_vehicle_identity.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := string(querySource)
+	for _, selectedID := range []string{
+		"vib.vehicle_id::text",
+		"vc.vehicle_configuration_id::text",
+	} {
+		if !strings.Contains(query, selectedID) {
+			t.Fatalf("durable selector query does not select %s", selectedID)
+		}
+	}
+
+	engine := 5.3
+	records, _, err := normalizeVehicleIdentityRows([]VehicleIdentityRow{
+		{
+			Year: 1999, Make: "Chevrolet", Model: "Silverado 1500", Region: "US",
+			Drivetrain: "2WD", EngineDisplacementL: &engine,
+			vehicleID: "vehicle-1", vehicleConfigurationID: "configuration-1",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if records[0].VehicleID != "vehicle-1" {
+		t.Fatalf("vehicle ID = %q, want vehicle-1", records[0].VehicleID)
+	}
+	if records[0].Configurations[0].VehicleConfigurationID != "configuration-1" {
+		t.Fatalf("configuration ID = %q, want configuration-1", records[0].Configurations[0].VehicleConfigurationID)
+	}
+}
 
 func TestVehicleIdentityResolveMergesCoarseAndRichRows(t *testing.T) {
 	auth := &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}
@@ -94,6 +134,22 @@ func TestVehicleIdentityResolveRequiresIdempotencyKey(t *testing.T) {
 	server := NewServer(staticReadiness{})
 	request := httptest.NewRequest(http.MethodPost, "/vehicle-identities/resolve", strings.NewReader(`{"vehicles":[{"year":1999,"make":"Chevrolet","model":"Silverado 1500"}]}`))
 	request.Header.Set("Authorization", "Bearer local:org-1:dataset_viewer")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnprocessableEntity)
+	}
+}
+
+func TestVehicleIdentityResolveRejectsClientSuppliedDurableIDs(t *testing.T) {
+	server := NewServer(staticReadiness{})
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/vehicle-identities/resolve",
+		strings.NewReader(`{"vehicles":[{"year":1999,"make":"Chevrolet","model":"Silverado 1500","region":"US","vehicle_id":"forged"}]}`),
+	)
+	request.Header.Set("Authorization", "Bearer local:org-1:dataset_viewer")
+	request.Header.Set("Idempotency-Key", "reject-forged-id")
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusUnprocessableEntity {

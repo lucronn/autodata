@@ -15,14 +15,16 @@ var (
 )
 
 type VehicleIdentityRow struct {
-	Year                any      `json:"year"`
-	Make                string   `json:"make"`
-	Model               string   `json:"model"`
-	Region              string   `json:"region,omitempty"`
-	BodyStyle           string   `json:"body_style,omitempty"`
-	Trim                string   `json:"trim,omitempty"`
-	Drivetrain          string   `json:"drivetrain,omitempty"`
-	EngineDisplacementL *float64 `json:"engine_displacement_l,omitempty"`
+	Year                   any      `json:"year"`
+	Make                   string   `json:"make"`
+	Model                  string   `json:"model"`
+	Region                 string   `json:"region,omitempty"`
+	BodyStyle              string   `json:"body_style,omitempty"`
+	Trim                   string   `json:"trim,omitempty"`
+	Drivetrain             string   `json:"drivetrain,omitempty"`
+	EngineDisplacementL    *float64 `json:"engine_displacement_l,omitempty"`
+	vehicleID              string
+	vehicleConfigurationID string
 }
 
 type VehicleIdentityResolveInput struct {
@@ -30,14 +32,16 @@ type VehicleIdentityResolveInput struct {
 }
 
 type VehicleConfigurationRecord struct {
-	ConfigurationKey    string   `json:"configuration_key"`
-	Trim                string   `json:"trim,omitempty"`
-	EngineDisplacementL *float64 `json:"engine_displacement_l,omitempty"`
-	Drivetrain          string   `json:"drivetrain,omitempty"`
+	ConfigurationKey       string   `json:"configuration_key"`
+	VehicleConfigurationID string   `json:"vehicle_configuration_id,omitempty"`
+	Trim                   string   `json:"trim,omitempty"`
+	EngineDisplacementL    *float64 `json:"engine_displacement_l,omitempty"`
+	Drivetrain             string   `json:"drivetrain,omitempty"`
 }
 
 type VehicleIdentityRecord struct {
 	Status         string                       `json:"status"`
+	VehicleID      string                       `json:"vehicle_id,omitempty"`
 	VehicleIDKey   string                       `json:"vehicle_id_key"`
 	Year           int                          `json:"year"`
 	Make           string                       `json:"make"`
@@ -183,8 +187,10 @@ func normalizeVehicleIdentityRows(rows []VehicleIdentityRow) ([]VehicleIdentityR
 		current, ok := families[key]
 		rowConflict := false
 		if !ok {
-			current = &family{record: VehicleIdentityRecord{VehicleIDKey: key, Year: year, Make: makeName, Model: model, Region: region, Drivetrain: drivetrain}, configs: map[string]VehicleConfigurationRecord{}}
+			current = &family{record: VehicleIdentityRecord{VehicleID: row.vehicleID, VehicleIDKey: key, Year: year, Make: makeName, Model: model, Region: region, Drivetrain: drivetrain}, configs: map[string]VehicleConfigurationRecord{}}
 			families[key] = current
+		} else if current.record.VehicleID == "" && row.vehicleID != "" {
+			current.record.VehicleID = row.vehicleID
 		} else if current.record.Drivetrain != "" && drivetrain != "" && current.record.Drivetrain != drivetrain {
 			current.record.Conflicts = append(current.record.Conflicts, map[string]string{"field": "drivetrain", "existing": current.record.Drivetrain, "incoming": drivetrain})
 			rowConflict = true
@@ -206,10 +212,10 @@ func normalizeVehicleIdentityRows(rows []VehicleIdentityRow) ([]VehicleIdentityR
 		}
 		if !rowConflict {
 			if _, exists := current.configs[configKey]; !exists {
-				current.configs[configKey] = VehicleConfigurationRecord{ConfigurationKey: configKey, Trim: strings.TrimSpace(row.Trim), EngineDisplacementL: row.EngineDisplacementL, Drivetrain: current.record.Drivetrain}
+				current.configs[configKey] = VehicleConfigurationRecord{ConfigurationKey: configKey, VehicleConfigurationID: row.vehicleConfigurationID, Trim: strings.TrimSpace(row.Trim), EngineDisplacementL: row.EngineDisplacementL, Drivetrain: current.record.Drivetrain}
 			}
 		}
-		canonicalRows = append(canonicalRows, VehicleIdentityRow{Year: year, Make: makeName, Model: model, Region: region, BodyStyle: current.record.BodyStyle, Trim: strings.TrimSpace(row.Trim), Drivetrain: drivetrain, EngineDisplacementL: row.EngineDisplacementL})
+		canonicalRows = append(canonicalRows, VehicleIdentityRow{Year: year, Make: makeName, Model: model, Region: region, BodyStyle: current.record.BodyStyle, Trim: strings.TrimSpace(row.Trim), Drivetrain: drivetrain, EngineDisplacementL: row.EngineDisplacementL, vehicleID: row.vehicleID, vehicleConfigurationID: row.vehicleConfigurationID})
 	}
 	keys := make([]string, 0, len(families))
 	for key := range families {

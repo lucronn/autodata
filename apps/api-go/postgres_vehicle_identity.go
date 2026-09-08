@@ -49,11 +49,18 @@ type postgresVehicleIdentityStore struct {
 	pool *pgxpool.Pool
 }
 
+func stringPointerValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
 func (s *postgresVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySelectors, error) {
 	rows, err := s.pool.Query(context.Background(), `
-		SELECT vib.make, vib.model, vib.model_year,
+		SELECT vib.vehicle_id::text, vib.make, vib.model, vib.model_year,
 		       vib.region, COALESCE(vib.drivetrain, ''), COALESCE(vc.trim, ''),
-		       vc.engine_displacement_l
+		       vc.engine_displacement_l, vc.vehicle_configuration_id::text
 		FROM vehicle_identity_bases vib
 		LEFT JOIN vehicle_configurations vc
 		  ON vc.vehicle_identity_base_id = vib.vehicle_identity_base_id
@@ -73,15 +80,17 @@ func (s *postgresVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySe
 	engines := map[float64]bool{}
 	identityRows := []VehicleIdentityRow{}
 	for rows.Next() {
-		var makeName, model, region, drivetrain, trim string
+		var vehicleID, makeName, model, region, drivetrain, trim string
 		var year int
 		var engine *float64
-		if err := rows.Scan(&makeName, &model, &year, &region, &drivetrain, &trim, &engine); err != nil {
+		var configurationID *string
+		if err := rows.Scan(&vehicleID, &makeName, &model, &year, &region, &drivetrain, &trim, &engine, &configurationID); err != nil {
 			return VehicleIdentitySelectors{}, err
 		}
 		identityRows = append(identityRows, VehicleIdentityRow{
 			Year: year, Make: makeName, Model: model, Region: region,
 			Drivetrain: drivetrain, Trim: trim, EngineDisplacementL: engine,
+			vehicleID: vehicleID, vehicleConfigurationID: stringPointerValue(configurationID),
 		})
 		if makeName != "" {
 			makes[makeName] = true

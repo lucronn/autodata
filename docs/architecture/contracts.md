@@ -136,6 +136,13 @@ that link NULL rather than claiming unsupported specificity. Vehicle-target
 checks treat omitted optional source dimensions as unknown but reject any
 explicit drivetrain, body-style, trim, or engine conflict.
 
+`GET /vehicle-identities/selectors` is the client-facing selection catalog. In
+PostgreSQL mode each vehicle record includes the durable `vehicle_id` and each
+configuration includes its durable `vehicle_configuration_id`, alongside the
+stable human-readable keys. Those UUIDs are read-only server output; clients
+cannot supply or override them on the resolve request. The in-memory API mode
+omits the UUIDs because it is an explicitly non-durable test boundary.
+
 The request-status endpoint is durable whenever the API is configured with
 `AUTODATA_PROJECTION_STORE=postgres`. Request ownership is recorded on
 `dataset_requests` so a caller can poll a request while payment fulfillment or
