@@ -135,9 +135,8 @@ def build_autoapi_batch_plan(
         derived_selection = normalize_vehicle_list(derived_rows, default_region=default_region)
         if len(derived_selection) != 1:
             raise ValueError(f"AutoAPI bundle must resolve to one vehicle family: {directory}")
-        derived = derived_selection[0]
         matching_supplied = [
-            item for item in supplied if item.vehicle_key == derived.vehicle_key
+            item for item in supplied if item.vehicle_key == derived_selection[0].vehicle_key
         ]
         # A selector export may be coarser than the bundle's motorvehicles
         # response. Merge both observations so an identity refresh cannot
