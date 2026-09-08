@@ -52,6 +52,9 @@ def main() -> None:
         {
             "vehicle_key": batch.vehicle_key,
             "source_directory": str(batch.source_directory) if batch.source_directory is not None else None,
+            "source_directories": [
+                str(directory) for directory in batch.article_source_directories()
+            ],
             "configuration_count": len(batch.configurations),
         }
         for batch in plan

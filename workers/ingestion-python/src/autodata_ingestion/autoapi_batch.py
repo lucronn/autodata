@@ -18,12 +18,22 @@ from .vehicle_selection import normalize_vehicle_list, normalize_vehicle_list_js
 
 @dataclass(frozen=True)
 class AutoAPIBatch:
-    """One vehicle family and the source directory that owns its articles."""
+    """One vehicle family and all source directories that own its articles."""
 
     vehicle_key: str
     vehicle: dict[str, Any]
     source_directory: Path | None
     configurations: tuple[dict[str, Any], ...]
+    source_directories: tuple[Path, ...] = ()
+
+    def article_source_directories(self) -> tuple[Path, ...]:
+        """Return every source drop included in this vehicle batch."""
+
+        if self.source_directories:
+            return self.source_directories
+        if self.source_directory is None:
+            return ()
+        return (self.source_directory,)
 
 
 def discover_autoapi_source_directories(source_root: str | Path) -> tuple[Path, ...]:
@@ -124,8 +134,7 @@ def build_autoapi_batch_plan(
     )
     if not directories and not supplied:
         raise ValueError(f"no AutoAPI bundles or selector rows found under {source_root}")
-    batches: list[AutoAPIBatch] = []
-    matched_vehicle_keys: set[str] = set()
+    derived_by_vehicle: dict[str, list[tuple[Path, list[dict[str, Any]]]]] = {}
     for directory in directories:
         derived_rows = derive_autoapi_vehicle_rows(
             directory,
@@ -135,8 +144,22 @@ def build_autoapi_batch_plan(
         derived_selection = normalize_vehicle_list(derived_rows, default_region=default_region)
         if len(derived_selection) != 1:
             raise ValueError(f"AutoAPI bundle must resolve to one vehicle family: {directory}")
+        derived_by_vehicle.setdefault(derived_selection[0].vehicle_key, []).append(
+            (directory, derived_rows)
+        )
+
+    batches: list[AutoAPIBatch] = []
+    matched_vehicle_keys: set[str] = set()
+    for vehicle_key in sorted(derived_by_vehicle):
+        source_entries = derived_by_vehicle[vehicle_key]
+        source_directories = tuple(entry[0] for entry in source_entries)
+        derived_rows = [
+            row
+            for _directory, rows in source_entries
+            for row in rows
+        ]
         matching_supplied = [
-            item for item in supplied if item.vehicle_key == derived_selection[0].vehicle_key
+            item for item in supplied if item.vehicle_key == vehicle_key
         ]
         # A selector export may be coarser than the bundle's motorvehicles
         # response. Merge both observations so an identity refresh cannot
@@ -165,8 +188,9 @@ def build_autoapi_batch_plan(
             AutoAPIBatch(
                 vehicle_key=selected.vehicle_key,
                 vehicle=vehicle,
-                source_directory=directory,
+                source_directory=source_directories[0],
                 configurations=tuple(selected.configurations),
+                source_directories=source_directories,
             )
         )
         matched_vehicle_keys.add(selected.vehicle_key)
@@ -222,7 +246,7 @@ def execute_autoapi_batch(
     selector_rows: Iterable[Mapping[str, Any] | str] | None = None,
     selector_source_uri: str = "autoapi://local/selector-list",
 ) -> dict[str, Any]:
-    """Normalize each vehicle bundle independently and continue after failures."""
+    """Normalize each planned vehicle's merged source drops and continue after failures."""
 
     batches = tuple(plan)
     results: list[dict[str, Any]] = []
@@ -247,7 +271,11 @@ def execute_autoapi_batch(
             )
             continue
         try:
-            artifacts = _read_artifacts(batch.source_directory, source_version)
+            artifacts = [
+                artifact
+                for source_directory in batch.article_source_directories()
+                for artifact in _read_artifacts(source_directory, source_version)
+            ]
             bundle = normalize_source_bundle(
                 artifacts,
                 str(batch.vehicle["region"]),
@@ -266,6 +294,9 @@ def execute_autoapi_batch(
             result: dict[str, Any] = {
                 "vehicle_key": batch.vehicle_key,
                 "source_directory": str(batch.source_directory),
+                "source_directories": [
+                    str(directory) for directory in batch.article_source_directories()
+                ],
                 "status": bundle.status,
                 "quality_status": quality.status,
                 "source_artifacts": len(artifacts),

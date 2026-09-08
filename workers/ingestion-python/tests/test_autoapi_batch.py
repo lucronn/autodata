@@ -270,6 +270,46 @@ class AutoAPIBatchTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_selector_rows(path)
 
+    def test_duplicate_vehicle_bundles_are_one_batch_with_all_source_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "first"
+            second = root / "second"
+            first.mkdir()
+            second.mkdir()
+            for bundle in (first, second):
+                (bundle / "name.json").write_text(
+                    json.dumps(
+                        {
+                            "header": {"status": "OK"},
+                            "body": "2019 Cadillac Escalade ESV - 2WD",
+                        }
+                    )
+                )
+                (bundle / "motorvehicles.json").write_text(
+                    json.dumps(
+                        {
+                            "header": {"status": "OK"},
+                            "body": [
+                                {
+                                    "model": "Escalade ESV Base",
+                                    "id": "168702",
+                                    "engines": [
+                                        {"id": "1", "name": "6.2L V8 GAS"}
+                                    ],
+                                }
+                            ],
+                        }
+                    )
+                )
+
+            plan = build_autoapi_batch_plan(root, default_region="US")
+
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0].vehicle_key, "cadillac-escalade-esv-2019-us")
+        self.assertEqual(plan[0].source_directory, first)
+        self.assertEqual(plan[0].source_directories, (first, second))
+
 
 if __name__ == "__main__":
     unittest.main()

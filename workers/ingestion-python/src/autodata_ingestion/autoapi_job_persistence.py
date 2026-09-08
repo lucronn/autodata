@@ -59,11 +59,8 @@ def persist_autoapi_article_fetch_jobs(
                     raise ValueError(f"selector persistence has no vehicle ID for {vehicle_key}")
                 result = result_by_vehicle.get(vehicle_key, {"status": "failed", "error": "missing batch result"})
                 status = _job_status(result.get("status"))
-                source_location = (
-                    str(Path(batch.source_directory))
-                    if batch.source_directory is not None
-                    else None
-                )
+                source_locations = _source_locations(batch)
+                source_location = "|".join(source_locations) or None
                 source_snapshot_id = _source_snapshot_id(result) or selector_snapshot_id
                 idempotency_key = _idempotency_key(
                     adapter_name,
@@ -74,6 +71,7 @@ def persist_autoapi_article_fetch_jobs(
                 checkpoint = {
                     "vehicle_key": vehicle_key,
                     "source_location": source_location,
+                    "source_locations": source_locations,
                     "result": dict(result),
                 }
                 last_error = (
@@ -272,6 +270,20 @@ def _vehicle_ids(selector_persistence: Mapping[str, Any] | None) -> dict[str, st
         for item in selector_persistence.get("observations", [])
         if item.get("vehicle_key") and item.get("vehicle_id")
     }
+
+
+def _source_locations(batch: Any) -> list[str]:
+    """Return a sorted, de-duplicated source-location set for a batch."""
+
+    directories = ()
+    article_source_directories = getattr(batch, "article_source_directories", None)
+    if callable(article_source_directories):
+        directories = article_source_directories()
+    if not directories:
+        source_directory = getattr(batch, "source_directory", None)
+        if source_directory is not None:
+            directories = (source_directory,)
+    return sorted({str(Path(directory)) for directory in directories})
 
 
 def _connection() -> Any:

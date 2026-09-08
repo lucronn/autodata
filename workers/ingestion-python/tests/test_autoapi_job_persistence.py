@@ -172,6 +172,67 @@ class AutoAPIJobPersistenceTests(unittest.TestCase):
         self.assertTrue(any("status = 'processing'" in query for query, _ in claim_cursor.calls))
         self.assertTrue(any("status = %s" in query for query, _ in failure_cursor.calls))
 
+    def test_merged_vehicle_job_identity_includes_every_source_directory(self):
+        cursor = RecordingCursor()
+        connection = RecordingConnection(cursor)
+        batches = [
+            AutoAPIBatch(
+                vehicle_key="cadillac-escalade-esv-2019-us",
+                vehicle={
+                    "year": 2019,
+                    "make": "Cadillac",
+                    "model": "Escalade ESV",
+                    "region": "US",
+                },
+                source_directory=Path("catalog/first"),
+                source_directories=(Path("catalog/first"), Path("catalog/second")),
+                configurations=(),
+            )
+        ]
+        selector_persistence = {
+            "source_snapshot_id": "selector-snapshot-1",
+            "observations": [
+                {
+                    "vehicle_key": "cadillac-escalade-esv-2019-us",
+                    "vehicle_id": "vehicle-cadillac",
+                }
+            ],
+        }
+
+        fake_json = types.ModuleType("psycopg.types.json")
+        fake_json.Jsonb = lambda value: value
+        fake_types = types.ModuleType("psycopg.types")
+        fake_types.json = fake_json
+        fake_psycopg = types.ModuleType("psycopg")
+        fake_psycopg.connect = lambda **_kwargs: connection
+        with patch.dict(
+            sys.modules,
+            {
+                "psycopg": fake_psycopg,
+                "psycopg.types": fake_types,
+                "psycopg.types.json": fake_json,
+            },
+        ):
+            with patch.dict("os.environ", {"AUTODATA_POSTGRES_PASSWORD": "test-only"}):
+                persist_autoapi_article_fetch_jobs(
+                    batches,
+                    [
+                        {
+                            "vehicle_key": "cadillac-escalade-esv-2019-us",
+                            "status": "completed",
+                        }
+                    ],
+                    selector_persistence=selector_persistence,
+                    source_version="autoapi-v1",
+                )
+
+        insert_calls = [
+            (query, params)
+            for query, params in cursor.calls
+            if "INSERT INTO autoapi_article_fetch_jobs" in query
+        ]
+        self.assertEqual(insert_calls[0][1][5], "catalog/first|catalog/second")
+
 
 if __name__ == "__main__":
     unittest.main()

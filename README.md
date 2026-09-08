@@ -138,8 +138,11 @@ vehicle bundle from each directory containing `name.json`, derives selector
 configurations from the split `name.json` and `motorvehicles.json` responses,
 and processes every other file in that directory through the universal source
 adapter. A source root containing `name.json` is treated as one vehicle; a
-catalog root containing child bundles is processed one vehicle at a time. A
-selector export may also arrive first, without article bundles. Pass it with
+catalog root containing child bundles is processed one vehicle at a time. If
+multiple discovered bundles normalize to the same vehicle family, they are
+merged into one batch and all source directories are normalized together, so
+article deduplication and provenance cover the complete drop set. A selector
+export may also arrive first, without article bundles. Pass it with
 `--selector-json`; nested `models` and `engines` are flattened into
 configuration observations, and every selector vehicle is retained as
 `pending_source` until its article bundle arrives. A selector vehicle without
