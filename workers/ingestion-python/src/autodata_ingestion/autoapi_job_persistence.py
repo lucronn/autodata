@@ -275,14 +275,13 @@ def _vehicle_ids(selector_persistence: Mapping[str, Any] | None) -> dict[str, st
 def _source_locations(batch: Any) -> list[str]:
     """Return a sorted, de-duplicated source-location set for a batch."""
 
+    source_locations = getattr(batch, "article_source_locations", None)
+    if callable(source_locations):
+        return sorted({str(location) for location in source_locations()})
     directories = ()
-    article_source_directories = getattr(batch, "article_source_directories", None)
-    if callable(article_source_directories):
-        directories = article_source_directories()
-    if not directories:
-        source_directory = getattr(batch, "source_directory", None)
-        if source_directory is not None:
-            directories = (source_directory,)
+    source_directory = getattr(batch, "source_directory", None)
+    if source_directory is not None:
+        directories = (source_directory,)
     return sorted({str(Path(directory)) for directory in directories})
 
 

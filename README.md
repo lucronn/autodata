@@ -183,6 +183,29 @@ failure or review status. A remote AutoAPI connector must provide the same
 immutable bundle shape; this local runner does not guess undocumented remote
 endpoint paths.
 
+The companion AutoAPI repository in `/Users/dull/Documents/ChatGPT/autoapi`
+provides the verified read-only `/v1/api` connector surface. When that local
+service is running, the service-backed catalog runner traverses every exposed
+year, make, model, and vehicle ID, fetches each vehicle's name and engine
+metadata, fetches the complete article index, then fetches every article detail
+with bounded concurrency before passing all responses through the same
+normalizer and persistence path:
+
+```sh
+PYTHONPATH=workers/ingestion-python/src \
+python3 scripts/dev/ingest_autoapi_service.py \
+  --base-url http://127.0.0.1:3000 \
+  --content-source GeneralMotors \
+  --source-version autoapi-http-v1
+```
+
+Add `--persist` only with the local PostgreSQL and MinIO environment configured.
+The command exits nonzero when the AutoAPI catalog traversal or any article
+detail fetch is incomplete; its JSON report includes the years traversed,
+vehicle/article counts, and every failed article ID. The AutoAPI service's own
+runtime credentials remain in its secret-managed environment and are never
+copied into AutoData or logged by this runner.
+
 Each processed result includes `article_coverage`: raw candidate count, raw
 unique article IDs, normalized unique IDs, review/quarantine IDs, and an
 `unaccounted_unique_ids` list. A valid complete bundle has an empty

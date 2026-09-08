@@ -10,7 +10,7 @@ from typing import Any, Iterable, Mapping
 
 from .directory_connector import DirectorySourceConnector
 from .quality import evaluate_source_bundle
-from .source_adapters import SourceArtifact, adapt_source_resource
+from .source_adapters import SourceArtifact, SourceResource, adapt_source_resource
 from .source_bundle import normalize_source_bundle
 from .vehicle_identity import canonicalize_vehicle_observation
 from .vehicle_selection import normalize_vehicle_list, normalize_vehicle_list_json
@@ -25,6 +25,8 @@ class AutoAPIBatch:
     source_directory: Path | None
     configurations: tuple[dict[str, Any], ...]
     source_directories: tuple[Path, ...] = ()
+    source_resources: tuple[SourceResource, ...] = ()
+    article_errors: tuple[dict[str, str], ...] = ()
 
     def article_source_directories(self) -> tuple[Path, ...]:
         """Return every source drop included in this vehicle batch."""
@@ -34,6 +36,18 @@ class AutoAPIBatch:
         if self.source_directory is None:
             return ()
         return (self.source_directory,)
+
+    def article_source_resources(self) -> tuple[SourceResource, ...]:
+        """Return resources fetched directly from a provider connector."""
+
+        return self.source_resources
+
+    def article_source_locations(self) -> tuple[str, ...]:
+        """Return stable source URIs for audit and job idempotency."""
+
+        if self.source_resources:
+            return tuple(sorted({resource.source_uri for resource in self.source_resources}))
+        return tuple(str(directory) for directory in self.article_source_directories())
 
 
 def discover_autoapi_source_directories(source_root: str | Path) -> tuple[Path, ...]:
@@ -260,7 +274,7 @@ def execute_autoapi_batch(
             source_version=source_version,
         )
     for batch in batches:
-        if batch.source_directory is None:
+        if not batch.article_source_directories() and not batch.article_source_resources():
             results.append(
                 {
                     "vehicle_key": batch.vehicle_key,
@@ -271,17 +285,24 @@ def execute_autoapi_batch(
             )
             continue
         try:
-            artifacts = [
-                artifact
-                for source_directory in batch.article_source_directories()
-                for artifact in _read_artifacts(source_directory, source_version)
-            ]
+            if batch.article_source_resources():
+                artifacts = [
+                    adapt_source_resource(resource)
+                    for resource in batch.article_source_resources()
+                ]
+            else:
+                artifacts = [
+                    artifact
+                    for source_directory in batch.article_source_directories()
+                    for artifact in _read_artifacts(source_directory, source_version)
+                ]
             bundle = normalize_source_bundle(
                 artifacts,
                 str(batch.vehicle["region"]),
                 expected_vehicle=batch.vehicle,
             )
             quality = evaluate_source_bundle(bundle)
+            status = "needs_review" if batch.article_errors else bundle.status
             persistence = None
             if persist:
                 from .bundle_persistence import persist_source_bundle
@@ -297,7 +318,7 @@ def execute_autoapi_batch(
                 "source_directories": [
                     str(directory) for directory in batch.article_source_directories()
                 ],
-                "status": bundle.status,
+                "status": status,
                 "quality_status": quality.status,
                 "source_artifacts": len(artifacts),
                 "articles": len(bundle.articles),
@@ -306,6 +327,8 @@ def execute_autoapi_batch(
                 "conflicts": len(bundle.conflicts),
                 "article_coverage": _article_coverage(artifacts, bundle),
             }
+            if batch.article_errors:
+                result["article_errors"] = [dict(error) for error in batch.article_errors]
             if persistence is not None:
                 result["persistence"] = persistence
         except Exception as error:  # noqa: BLE001 - one bad vehicle cannot stop the catalog batch
