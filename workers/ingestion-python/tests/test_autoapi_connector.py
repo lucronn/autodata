@@ -45,7 +45,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
                     {
                         "modelId": "m1",
                         "modelName": "Silverado 1500",
-                        "id": "v1",
+                        "vehicles": [{"vehicleId": "v1"}],
                     }
                 ],
             },

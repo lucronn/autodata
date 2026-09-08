@@ -23,6 +23,7 @@ from .vehicle_selection import normalize_vehicle_list
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
 DEFAULT_MAX_CONCURRENCY = 8
+DEFAULT_VEHICLE_ID_BATCH_SIZE = 100
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,7 @@ class AutoAPIConnector:
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
         max_bytes: int = DEFAULT_MAX_BYTES,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+        vehicle_id_batch_size: int = DEFAULT_VEHICLE_ID_BATCH_SIZE,
         request_headers: Mapping[str, str] | None = None,
         opener: Callable[..., Any] = urlopen,
     ):
@@ -92,7 +94,12 @@ class AutoAPIConnector:
             raise ValueError("AutoAPI content source is required")
         if not str(default_region).strip():
             raise ValueError("AutoAPI default region is required")
-        if timeout_seconds <= 0 or max_bytes <= 0 or max_concurrency < 1:
+        if (
+            timeout_seconds <= 0
+            or max_bytes <= 0
+            or max_concurrency < 1
+            or vehicle_id_batch_size < 1
+        ):
             raise ValueError("AutoAPI limits must be positive")
         self._base_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
         self._content_source = str(content_source).strip()
@@ -103,6 +110,7 @@ class AutoAPIConnector:
         self._timeout_seconds = timeout_seconds
         self._max_bytes = max_bytes
         self._max_concurrency = max_concurrency
+        self._vehicle_id_batch_size = vehicle_id_batch_size
         self._request_headers = _request_headers(request_headers)
         self._opener = opener
 
@@ -145,30 +153,36 @@ class AutoAPIConnector:
                 ]
                 if not model_vehicle_ids:
                     continue
-                vehicles_scope = f"vehicles:{year}:{make_route_value}"
-                try:
-                    vehicles_payload, _ = self._get_json(
-                        f"/v1/api/source/{quote(self._content_source, safe='')}/vehicles",
-                        query={"vehicleIds": ",".join(dict.fromkeys(model_vehicle_ids))},
+                for batch_index, model_id_batch in enumerate(
+                    _chunks(
+                        list(dict.fromkeys(model_vehicle_ids)),
+                        self._vehicle_id_batch_size,
                     )
-                except Exception as error:  # noqa: BLE001 - retain other makes
-                    errors.append({"scope": vehicles_scope, "error": _safe_error(error)})
-                    continue
-                for vehicle in _items(vehicles_payload):
-                    vehicle_id = _first_text(vehicle, "vehicleId", "id", "vehicle_id")
-                    if not vehicle_id:
+                ):
+                    vehicles_scope = f"vehicles:{year}:{make_route_value}:{batch_index}"
+                    try:
+                        vehicles_payload, _ = self._get_json(
+                            f"/v1/api/source/{quote(self._content_source, safe='')}/vehicles",
+                            query={"vehicleIds": ",".join(model_id_batch)},
+                        )
+                    except Exception as error:  # noqa: BLE001 - retain other makes
+                        errors.append({"scope": vehicles_scope, "error": _safe_error(error)})
                         continue
-                    vehicle_targets.append(
-                        {
-                            "year": year,
-                            "make": make_name,
-                            "model": _first_text(vehicle, "modelName", "model", "name") or "Unknown",
-                            "vehicle_id": vehicle_id,
-                            "display_name": _first_text(
-                                vehicle, "vehicleName", "displayName", "name"
-                            ),
-                        }
-                    )
+                    for vehicle in _items(vehicles_payload):
+                        vehicle_id = _first_text(vehicle, "vehicleId", "id", "vehicle_id")
+                        if not vehicle_id:
+                            continue
+                        vehicle_targets.append(
+                            {
+                                "year": year,
+                                "make": make_name,
+                                "model": _first_text(vehicle, "modelName", "model", "name") or "Unknown",
+                                "vehicle_id": vehicle_id,
+                                "display_name": _first_text(
+                                    vehicle, "vehicleName", "displayName", "name"
+                                ),
+                            }
+                        )
 
         bundles_list: list[AutoAPIVehicleBundle] = []
         for target in _dedupe_vehicle_targets(vehicle_targets):
@@ -376,6 +390,13 @@ def _vehicle_ids_from_model(model: Any) -> list[str]:
     values = model.get("vehicleIds", model.get("vehicle_ids"))
     if isinstance(values, list):
         return [str(value).strip() for value in values if str(value).strip()]
+    nested = model.get("vehicles")
+    if isinstance(nested, list):
+        return [
+            vehicle_id
+            for vehicle in nested
+            for vehicle_id in _vehicle_ids_from_model(vehicle)
+        ]
     for key in ("vehicleId", "vehicle_id"):
         if model.get(key) is not None:
             return [str(model[key]).strip()]
@@ -383,6 +404,10 @@ def _vehicle_ids_from_model(model: Any) -> list[str]:
         if model.get(key) is not None:
             return [str(model[key]).strip()]
     return []
+
+
+def _chunks(values: list[str], size: int) -> tuple[list[str], ...]:
+    return tuple(values[index : index + size] for index in range(0, len(values), size))
 
 
 def _dedupe_vehicle_targets(values: list[dict[str, Any]]) -> tuple[dict[str, Any], ...]:
