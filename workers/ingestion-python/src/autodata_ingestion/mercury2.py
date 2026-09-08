@@ -18,6 +18,7 @@ from .vehicle_identity import (
     CanonicalVehicleObservation,
     VehicleMatchCandidate,
     VehicleReviewState,
+    canonicalize_vehicle_observation,
     review_vehicle_candidates,
 )
 
@@ -27,7 +28,6 @@ _SOURCE_CANDIDATE_KINDS = frozenset(
         "vehicle_identity",
         "specification",
         "model",
-        "powertrain",
         "part",
         "article",
         "document",
@@ -167,6 +167,18 @@ class Mercury2SourceExtractor:
                 raise ValueError(f"Mercury-2 candidate {index} requires a locator")
             if not isinstance(data, dict):
                 raise ValueError(f"Mercury-2 candidate {index} data must be an object")
+            missing = _missing_required_fields(str(kind), data)
+            if missing:
+                raise ValueError(
+                    f"Mercury-2 candidate {index} {kind} requires {', '.join(missing)}"
+                )
+            if kind == "vehicle_identity":
+                try:
+                    canonicalize_vehicle_observation(data)
+                except (TypeError, ValueError) as error:
+                    raise ValueError(
+                        f"Mercury-2 candidate {index} has an invalid vehicle identity"
+                    ) from error
             canonical = json.dumps(
                 {"data": data, "kind": kind, "locator": locator.strip()},
                 ensure_ascii=False,
@@ -265,6 +277,25 @@ def _positive_int_env(name: str, default: int) -> int:
     if parsed < 1:
         raise ValueError(f"{name} must be a positive integer")
     return parsed
+
+
+def _missing_required_fields(kind: str, data: Mapping[str, Any]) -> tuple[str, ...]:
+    required_by_kind = {
+        "vehicle_identity": ("year", "make", "model"),
+        "specification": ("name",),
+        "model": ("id", "model"),
+        "part": ("partNumber", "partDescription"),
+        "article": ("id", "title"),
+        "document": ("documentId",),
+        "document_text": ("text",),
+        "diagram_text": ("text",),
+        "image_text": ("text",),
+    }
+    return tuple(
+        field
+        for field in required_by_kind.get(kind, ())
+        if field not in data or data[field] in (None, "")
+    )
 
 
 def _build_source_extraction_prompt(resource: SourceResource, document: Any) -> str:

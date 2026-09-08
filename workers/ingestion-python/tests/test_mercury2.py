@@ -91,6 +91,44 @@ class Mercury2Tests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsupported kind"):
             Mercury2SourceExtractor(FakeClient()).extract(resource)
 
+    def test_source_extractor_rejects_missing_kind_specific_fields(self):
+        class FakeClient:
+            def complete_json(self, prompt):
+                return {"candidates": [{"kind": "document", "locator": "body", "data": {}}]}
+
+        resource = SourceResource.from_bytes(
+            "provider://source/unknown.json",
+            "source-v1",
+            b"{}",
+            "application/json",
+        )
+
+        with self.assertRaisesRegex(ValueError, "document requires documentId"):
+            Mercury2SourceExtractor(FakeClient()).extract(resource)
+
+    def test_source_extractor_rejects_invalid_vehicle_identity_values(self):
+        class FakeClient:
+            def complete_json(self, prompt):
+                return {
+                    "candidates": [
+                        {
+                            "kind": "vehicle_identity",
+                            "locator": "body.vehicle",
+                            "data": {"year": "unknown", "make": "Chevrolet", "model": "Silverado 1500"},
+                        }
+                    ]
+                }
+
+        resource = SourceResource.from_bytes(
+            "provider://source/unknown.json",
+            "source-v1",
+            b"{}",
+            "application/json",
+        )
+
+        with self.assertRaisesRegex(ValueError, "invalid vehicle identity"):
+            Mercury2SourceExtractor(FakeClient()).extract(resource)
+
     def test_client_reads_key_only_from_environment_and_parses_json(self):
         seen = {}
 
