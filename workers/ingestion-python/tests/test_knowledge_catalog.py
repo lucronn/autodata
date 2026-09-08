@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from autodata_ingestion.article_intake import VehicleTarget  # noqa: E402
 from autodata_ingestion.knowledge_catalog import (  # noqa: E402
+    _rows_to_catalog,
     load_vehicle_knowledge_catalog,
 )
 
@@ -117,6 +118,55 @@ class KnowledgeCatalogTests(unittest.TestCase):
             self.assertEqual(_knowledge_cache_limit(), 200)
         with patch.dict("os.environ", {"AUTODATA_KNOWLEDGE_CACHE_MAX_RECORDS": "50000"}):
             self.assertEqual(_knowledge_cache_limit(), 1000)
+
+    def test_catalog_read_exposes_separate_document_content_evidence(self):
+        row = (
+            "catalog-1",
+            "3950424:12924016",
+            "Other Diagnostics",
+            "A/C System Performance Test",
+            None,
+            None,
+            1,
+            "Check compressor operation.",
+            None,
+            "index-snapshot",
+            "body.articleDetails[4848]",
+            "body.articleDetails[4848]",
+            1.0,
+            "file://v2.json",
+            "autoapi-v1",
+            "index-evidence",
+            "sources/v2.json",
+            "{metadata}",
+            "pending",
+            "Cadillac",
+            "Escalade ESV",
+            2019,
+            "US",
+            None,
+            "2WD",
+            "BASE",
+            6.2,
+            "document-snapshot",
+            "body.html:3950424",
+            "document-evidence",
+            "file://3950424_12924016.json",
+            "autoapi-v1",
+            "sources/document.json",
+            "Check compressor operation.",
+            0.91,
+            "pending",
+        )
+
+        result = _rows_to_catalog([row], VehicleTarget("Cadillac", "Escalade ESV", 2019, "US"))
+
+        self.assertEqual(result[0]["article"]["body"], "Check compressor operation.")
+        self.assertEqual(result[0]["article"]["content_locator"], "body.html:3950424")
+        self.assertEqual(
+            {item["evidence_id"] for item in result[0]["evidence"]},
+            {"index-evidence", "document-evidence"},
+        )
 
 
 if __name__ == "__main__":

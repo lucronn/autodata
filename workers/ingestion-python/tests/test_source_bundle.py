@@ -183,6 +183,33 @@ class SourceBundleTests(unittest.TestCase):
         self.assertGreaterEqual(len(bundle.evidence), 4)
         self.assertTrue(all(item["content_sha256"] for item in bundle.evidence))
 
+    def test_autoapi_document_body_is_linked_to_the_matching_article_index_record(self):
+        index_resource = SourceResource.from_bytes(
+            "file://v2.json",
+            "autoapi-v1",
+            b'{"header":{"status":"OK"},"body":{"articleDetails":[{"id":"3950424:12924016","bucket":"Other Diagnostics","title":"A/C System Performance Test"}]}}',
+            "application/json",
+        )
+        document_resource = SourceResource.from_bytes(
+            "file://3950424_12924016.json",
+            "autoapi-v1",
+            b'{"header":{"status":"OK"},"body":{"documentId":"3950424","html":"<html><body><p>Check compressor operation.</p></body></html>"}}',
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle(
+            [adapt_source_resource(index_resource), adapt_source_resource(document_resource)],
+            "US",
+        )
+
+        self.assertEqual(len(bundle.articles), 1)
+        article = bundle.articles[0]
+        self.assertEqual(article["article_id"], "3950424:12924016")
+        self.assertIn("Check compressor operation.", article["body"])
+        self.assertEqual(article["content_locator"], "body.html:3950424")
+        self.assertIn(article["content_evidence_id"], {item["evidence_id"] for item in bundle.evidence})
+        self.assertNotEqual(article["content_evidence_id"], article["evidence_id"])
+
     def test_unrecognized_resource_is_retained_and_blocks_ready_status(self):
         resource = SourceResource.from_bytes(
             "provider://vehicle/new-shape",

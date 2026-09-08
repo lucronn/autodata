@@ -47,7 +47,16 @@ def load_vehicle_knowledge_catalog(target: VehicleTarget) -> list[dict[str, Any]
                ee.extracted_text, ee.reviewer_state,
                v.make, v.model, v.model_year, v.region,
                vib.body_style, vib.drivetrain, vc.trim,
-               vc.engine_displacement_l
+               vc.engine_displacement_l,
+               ca.content_source_snapshot_id::text,
+               ca.content_source_locator,
+               ca.content_extraction_evidence_id::text,
+               css.source_uri,
+               css.source_version,
+               cee.artifact_key,
+               cee.extracted_text,
+               cee.confidence,
+               cee.reviewer_state
         FROM catalog_articles ca
         JOIN vehicles v ON v.vehicle_id = ca.vehicle_id
         JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
@@ -59,6 +68,10 @@ def load_vehicle_knowledge_catalog(target: VehicleTarget) -> list[dict[str, Any]
         LEFT JOIN vehicle_identity_bases vib
           ON vib.vehicle_identity_base_id = vc.vehicle_identity_base_id
           OR (ca.vehicle_configuration_id IS NULL AND vib.vehicle_id = ca.vehicle_id)
+        LEFT JOIN source_snapshots css
+          ON css.source_snapshot_id = ca.content_source_snapshot_id
+        LEFT JOIN extraction_evidence cee
+          ON cee.extraction_evidence_id = ca.content_extraction_evidence_id
         WHERE v.vehicle_key = %s
           AND NOT EXISTS (
               SELECT 1
@@ -122,6 +135,21 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
             trim,
             engine_displacement_l,
         ) = row[:27]
+        content_values = list(row[27:]) + [None] * 9
+        (
+            content_source_snapshot_id,
+            content_source_locator,
+            content_extraction_evidence_id,
+            content_source_uri,
+            content_source_version,
+            content_artifact_key,
+            content_extracted_text,
+            content_confidence,
+            content_reviewer_state,
+        ) = content_values[:9]
+        content_locator = content_source_locator or source_locator or evidence_locator or "catalog"
+        content_uri = content_source_uri or source_uri
+        content_version = content_source_version or source_version
         article = {
             "article_id": str(article_id),
             "article_key": f"catalog:{catalog_article_id}",
@@ -134,7 +162,7 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
             "steps": steps,
             "source_uri": source_uri,
             "source_version": source_version,
-            "content_locator": source_locator or evidence_locator,
+            "content_locator": content_locator,
         }
         article = {key: value for key, value in article.items() if value is not None}
         evidence_id = str(extraction_evidence_id)
@@ -149,6 +177,22 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
             "confidence": float(evidence_confidence or 0),
             "reviewer_state": reviewer_state,
         }
+        content_evidence = None
+        if content_extraction_evidence_id and str(content_extraction_evidence_id) != evidence_id:
+            content_evidence = {
+                "evidence_id": str(content_extraction_evidence_id),
+                "source_snapshot_id": str(content_source_snapshot_id),
+                "locator": content_locator,
+                "artifact_key": content_artifact_key,
+                "source_uri": content_uri,
+                "source_version": content_version,
+                "extracted_text": content_extracted_text,
+                "confidence": float(content_confidence or 0),
+                "reviewer_state": content_reviewer_state,
+            }
+        evidence_items = [evidence]
+        if content_evidence is not None:
+            evidence_items.append(content_evidence)
         vehicle_identity = {
             "vehicle_key": target.vehicle_key,
             "make": make,
@@ -169,7 +213,7 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
                 "vehicle_identity": vehicle_identity,
                 "kind": "article",
                 "article": article,
-                "evidence": [evidence],
+                "evidence": evidence_items,
             }
         )
         bucket_text = str(bucket or "").casefold()
@@ -185,7 +229,7 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
                         "excerpt": str(body or "").strip(),
                         "matched_terms": [],
                     },
-                    "evidence": [evidence],
+                    "evidence": evidence_items,
                 }
             )
     return catalog

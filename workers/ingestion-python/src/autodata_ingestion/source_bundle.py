@@ -59,6 +59,7 @@ def normalize_source_bundle(
     powertrain_records: list[dict[str, Any]] = []
     part_records: list[dict[str, Any]] = []
     article_records: list[dict[str, Any]] = []
+    document_text_records: list[dict[str, Any]] = []
     document_records: list[dict[str, Any]] = []
     diagram_records: list[dict[str, Any]] = []
 
@@ -162,6 +163,17 @@ def normalize_source_bundle(
                 if steps is not None:
                     article_record["steps"] = steps
                 article_records.append(article_record)
+            elif candidate.kind == "document_text":
+                document_text_records.append(
+                    {
+                        "text": candidate.data.get("text"),
+                        "evidence_id": evidence_item["evidence_id"],
+                        "locator": evidence_item["locator"],
+                        "source_uri": artifact.source_uri,
+                        "source_version": artifact.source_version,
+                        "content_sha256": artifact.content_sha256,
+                    }
+                )
             elif candidate.kind == "document":
                 document_records.append(
                     {
@@ -173,6 +185,7 @@ def normalize_source_bundle(
                     }
                 )
 
+    article_records = _attach_document_content(article_records, document_text_records)
     article_records = _resolve_article_collisions(article_records, evidence, quarantined, conflicts)
     vehicle = _normalize_vehicle(
         vehicle_candidates,
@@ -486,6 +499,41 @@ def _resolve_article_collisions(
             accepted_by_title.setdefault(title, record)
         _index_article_tokens(record, accepted_index, accepted_by_token)
     return accepted
+
+
+def _attach_document_content(
+    articles: list[dict[str, Any]],
+    document_text_records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Join AutoAPI document responses to their article index records.
+
+    AutoAPI exposes article metadata in ``v2.json`` and document bodies in
+    separate responses. The document locator carries the numeric document ID,
+    while the article ID is commonly ``<document-id>:<content-id>``.
+    """
+
+    by_document_id: dict[str, dict[str, Any]] = {}
+    for record in sorted(document_text_records, key=lambda item: str(item.get("evidence_id", ""))):
+        locator = str(record.get("locator", ""))
+        if not locator.startswith("body.html:"):
+            continue
+        document_id = locator.removeprefix("body.html:").split(":", 1)[0].strip()
+        if document_id and record.get("text"):
+            by_document_id.setdefault(document_id, record)
+
+    for article in articles:
+        article_id = str(article.get("article_id") or "")
+        document_id = article_id.split(":", 1)[0].strip()
+        content = by_document_id.get(document_id)
+        if content is None:
+            continue
+        article.setdefault("body", content["text"])
+        article["content_evidence_id"] = content["evidence_id"]
+        article["content_locator"] = content["locator"]
+        article["content_source_uri"] = content["source_uri"]
+        article["content_source_version"] = content["source_version"]
+        article["content_sha256"] = content["content_sha256"]
+    return articles
 
 
 def _index_article_tokens(

@@ -61,6 +61,15 @@ EVIDENCE = {
     }
 }
 
+CONTENT_EVIDENCE = {
+    "content-evidence-1": {
+        "evidence_id": "content-evidence-1",
+        "content_sha256": "b" * 64,
+        "locator": "body.html:3950424",
+        "confidence": 0.91,
+    }
+}
+
 
 class BundlePersistenceTests(unittest.TestCase):
     def test_fingerprint_is_canonical_for_normalized_article_content(self):
@@ -132,6 +141,39 @@ class BundlePersistenceTests(unittest.TestCase):
         self.assertEqual(params[13], "json:article[0]")
         self.assertEqual(params[14], 0.97)
         self.assertEqual(params[15], "configuration-1")
+
+    def test_article_upsert_persists_separate_document_content_provenance(self):
+        article = {
+            **ARTICLE,
+            "content_evidence_id": "content-evidence-1",
+            "content_locator": "body.html:3950424",
+        }
+        cursor = RecordingCursor()
+
+        _persist_catalog_articles(
+            cursor,
+            (article,),
+            {**EVIDENCE, **CONTENT_EVIDENCE},
+            {"a" * 64: "snapshot-index", "b" * 64: "snapshot-document"},
+            "vehicle-1",
+            lambda value: value,
+        )
+
+        query, params = next(
+            (query, params)
+            for query, params in cursor.calls
+            if "INSERT INTO catalog_articles" in query
+        )
+        compact_query = " ".join(query.split())
+        for column in (
+            "content_source_snapshot_id",
+            "content_source_locator",
+            "content_extraction_evidence_id",
+        ):
+            self.assertIn(column, compact_query)
+        self.assertEqual(params[16], "snapshot-document")
+        self.assertEqual(params[17], "body.html:3950424")
+        self.assertEqual(params[18], "content-evidence-1")
 
     def test_replaying_the_same_article_has_the_same_row_identity_and_values(self):
         first_cursor = RecordingCursor()

@@ -421,6 +421,13 @@ def _persist_catalog_articles(
     duplicate_links = 0
     for article in articles:
         article_evidence = evidence_by_id[article["evidence_id"]]
+        content_evidence = evidence_by_id.get(
+            str(article.get("content_evidence_id") or article["evidence_id"]),
+            article_evidence,
+        )
+        content_evidence_id = str(
+            article.get("content_evidence_id") or article["evidence_id"]
+        )
         steps = article.get("steps")
         fingerprint = normalized_article_fingerprint(article)
         exact_duplicate_id = _find_exact_article_duplicate(
@@ -438,8 +445,10 @@ def _persist_catalog_articles(
                 (catalog_article_id, vehicle_id, article_id, bucket, title,
                  bulletin_number, release_date, sort_order, body, steps,
                  normalized_fingerprint, source_snapshot_id, source_locator,
-                 evidence_locator, evidence_confidence, vehicle_configuration_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 evidence_locator, evidence_confidence, vehicle_configuration_id,
+                 content_source_snapshot_id, content_source_locator,
+                 content_extraction_evidence_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (vehicle_id, article_id, source_snapshot_id, source_locator)
             DO UPDATE SET bucket = EXCLUDED.bucket,
                           title = EXCLUDED.title,
@@ -451,6 +460,9 @@ def _persist_catalog_articles(
                           normalized_fingerprint = EXCLUDED.normalized_fingerprint,
                           evidence_locator = EXCLUDED.evidence_locator,
                           evidence_confidence = EXCLUDED.evidence_confidence,
+                          content_source_snapshot_id = EXCLUDED.content_source_snapshot_id,
+                          content_source_locator = EXCLUDED.content_source_locator,
+                          content_extraction_evidence_id = EXCLUDED.content_extraction_evidence_id,
                           vehicle_configuration_id = COALESCE(
                               EXCLUDED.vehicle_configuration_id,
                               catalog_articles.vehicle_configuration_id
@@ -476,6 +488,9 @@ def _persist_catalog_articles(
                 article_evidence["locator"],
                 article_evidence["confidence"],
                 vehicle_configuration_id,
+                snapshot_ids[content_evidence["content_sha256"]],
+                article.get("content_locator") or content_evidence["locator"],
+                content_evidence_id,
             ),
         )
         canonical_article_id = exact_duplicate_id or near_duplicate_id
