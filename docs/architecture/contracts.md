@@ -22,6 +22,7 @@
 | `catalog_article_vehicle_links` | Canonical/duplicate article relationship | A duplicate article is hidden from new projections while both source rows remain auditable |
 | `source_review_items` | Durable review queue for conflicts and quarantine decisions | Queue records contain reason codes and provenance UUIDs, never copied raw source payloads |
 | `ingestion_jobs` | Lane-specific work and retries | Lane, processing version, and stable idempotency key are explicit |
+| `autoapi_article_fetch_jobs` | One all-articles fan-out job per AutoAPI vehicle bundle | Selector provenance, source location, status, checkpoint, and replay key are retained; missing bundles remain `pending` |
 | `extraction_runs` | OCR/LLM/embedding execution metadata | Model/provider/version and confidence are retained |
 | `extraction_evidence` | Fact-to-source/page/region traceability | Evidence references an immutable source artifact |
 | `publication_events` | Outbox and publication audit | Event identity is unique and replay-safe; delivery attempts are observable |

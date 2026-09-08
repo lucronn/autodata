@@ -39,6 +39,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "017_knowledge_catalog_evidence_index.sql",
                 "018_source_review_items.sql",
                 "019_article_content_provenance.sql",
+                "020_autoapi_article_fetch_jobs.sql",
             ],
         )
 

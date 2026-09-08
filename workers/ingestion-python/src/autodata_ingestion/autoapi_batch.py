@@ -298,6 +298,15 @@ def execute_autoapi_batch(
     }
     if selection_persistence is not None:
         output["selection_persistence"] = selection_persistence
+        from .autoapi_job_persistence import persist_autoapi_article_fetch_jobs
+
+        output["article_fetch_jobs"] = persist_autoapi_article_fetch_jobs(
+            batches,
+            results,
+            selector_persistence=selection_persistence,
+            source_version=source_version,
+            adapter_name=adapter_name,
+        )
     return output
 
 
