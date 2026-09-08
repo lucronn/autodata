@@ -273,6 +273,7 @@ def execute_autoapi_batch(
                 "evidence": len(bundle.evidence),
                 "quarantined": len(bundle.quarantined),
                 "conflicts": len(bundle.conflicts),
+                "article_coverage": _article_coverage(artifacts, bundle),
             }
             if persistence is not None:
                 result["persistence"] = persistence
@@ -307,6 +308,40 @@ def execute_autoapi_batch(
             adapter_name=adapter_name,
         )
     return output
+
+
+def _article_coverage(artifacts: Iterable[SourceArtifact], bundle: Any) -> dict[str, Any]:
+    """Report whether every raw AutoAPI article ID reached a final state."""
+
+    raw_ids = {
+        str(candidate.data.get("id"))
+        for artifact in artifacts
+        for candidate in artifact.candidates
+        if candidate.kind == "article" and candidate.data.get("id") is not None
+    }
+    normalized_ids = {
+        str(article.get("article_id"))
+        for article in bundle.articles
+        if article.get("article_id") is not None
+    }
+    review_ids = {
+        str(item.get("article_id"))
+        for item in bundle.quarantined
+        if item.get("article_id") is not None
+    }
+    covered_ids = normalized_ids | review_ids
+    return {
+        "raw_candidates": sum(
+            1
+            for artifact in artifacts
+            for candidate in artifact.candidates
+            if candidate.kind == "article"
+        ),
+        "raw_unique_ids": len(raw_ids),
+        "normalized_unique_ids": len(normalized_ids),
+        "review_unique_ids": len(review_ids),
+        "unaccounted_unique_ids": sorted(raw_ids - covered_ids),
+    }
 
 
 def _read_artifacts(directory: Path, source_version: str) -> list[SourceArtifact]:

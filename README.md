@@ -179,6 +179,12 @@ failure or review status. A remote AutoAPI connector must provide the same
 immutable bundle shape; this local runner does not guess undocumented remote
 endpoint paths.
 
+Each processed result includes `article_coverage`: raw candidate count, raw
+unique article IDs, normalized unique IDs, review/quarantine IDs, and an
+`unaccounted_unique_ids` list. A valid complete bundle has an empty
+`unaccounted_unique_ids` list; near-duplicate records are accounted for in the
+review set rather than silently dropped.
+
 For one target article, set `AUTODATA_ARTICLE_URI` and provide the target
 vehicle as JSON. The worker returns the normalized article records together
 with their source evidence; source credentials, if required, remain in the
