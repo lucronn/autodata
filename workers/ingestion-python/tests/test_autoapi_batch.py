@@ -233,6 +233,43 @@ class AutoAPIBatchTests(unittest.TestCase):
             {None, 6.2},
         )
 
+    def test_selector_loader_accepts_nested_vehicle_envelope_without_reading_article_index(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "vehicles.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "body": {
+                            "vehicles": [
+                                {
+                                    "modelYear": 1999,
+                                    "makeName": "Chevy",
+                                    "modelName": "Silverado 1500",
+                                    "region": "US",
+                                    "engines": [{"engineName": "5.3L V8"}],
+                                }
+                            ]
+                        }
+                    }
+                )
+            )
+            rows = load_selector_rows(path)
+            plan = build_autoapi_batch_plan(
+                root, selector_rows=rows, default_region="US"
+            )
+
+        self.assertEqual(rows[0]["makeName"], "Chevy")
+        self.assertEqual(rows[0]["engineName"], "5.3L V8")
+        self.assertEqual(plan[0].vehicle_key, "chevrolet-silverado-1500-1999-us")
+
+    def test_article_index_envelope_is_not_accepted_as_a_selector_export(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "v2.json"
+            path.write_text(json.dumps({"body": {"articleDetails": [{"id": "a-1"}]}}))
+            with self.assertRaises(ValueError):
+                load_selector_rows(path)
+
 
 if __name__ == "__main__":
     unittest.main()

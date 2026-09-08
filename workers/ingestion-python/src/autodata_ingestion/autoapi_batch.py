@@ -385,13 +385,30 @@ def load_selector_rows(path: str | Path) -> list[Mapping[str, Any] | str]:
     """Load an array or an AutoAPI-style ``body`` array from JSON."""
 
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    if isinstance(payload, list):
-        return _expand_selector_rows(payload)
-    if isinstance(payload, dict) and isinstance(payload.get("body"), list):
-        return _expand_selector_rows(payload["body"])
-    if isinstance(payload, dict) and isinstance(payload.get("vehicles"), list):
-        return _expand_selector_rows(payload["vehicles"])
+    rows = _selector_array(payload)
+    if rows is not None:
+        return _expand_selector_rows(rows)
     raise ValueError("selector JSON must contain an array, body array, or vehicles array")
+
+
+def _selector_array(payload: Any) -> list[Any] | None:
+    if isinstance(payload, list):
+        return payload
+    if not isinstance(payload, Mapping):
+        return None
+    for key in ("vehicles", "data", "results", "items", "records"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return value
+    body = payload.get("body")
+    if isinstance(body, list):
+        return body
+    if isinstance(body, Mapping):
+        for key in ("vehicles", "data", "results", "items", "records", "rows"):
+            value = body.get(key)
+            if isinstance(value, list):
+                return value
+    return None
 
 
 def _expand_selector_rows(values: list[Any]) -> list[Mapping[str, Any] | str]:
