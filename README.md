@@ -187,9 +187,8 @@ The companion AutoAPI repository in `/Users/dull/Documents/ChatGPT/autoapi`
 provides the verified read-only `/v1/api` connector surface. When that local
 service is running, the service-backed catalog runner traverses every exposed
 year, make, model, and vehicle ID, fetches each vehicle's name and engine
-metadata, fetches the complete article index, then fetches every article detail
-with bounded vehicle-level and article-level concurrency before passing all responses through the same
-normalizer and persistence path:
+metadata, fetches the complete article list, and passes the list response through
+the same normalizer and persistence path with bounded vehicle-level concurrency:
 
 ```sh
 PYTHONPATH=workers/ingestion-python/src \
@@ -198,20 +197,20 @@ python3 scripts/dev/ingest_autoapi_service.py \
   --content-source GeneralMotors \
   --source-version autoapi-http-v1 \
   --vehicle-concurrency 4 \
-  --max-concurrency 8 \
   --retry-attempts 3 \
   --retry-backoff-seconds 0.25
 ```
 
 Add `--persist` only with the local PostgreSQL and MinIO environment configured.
 The command exits nonzero when the AutoAPI catalog traversal or any article
-detail fetch is incomplete; its JSON report includes the years traversed,
-vehicle/article counts, and every failed article ID. The AutoAPI service's own
+list fetch is incomplete; its JSON report includes the years traversed and
+vehicle/article-list counts. The AutoAPI service's own
 runtime credentials remain in its secret-managed environment and are never
 copied into AutoData or logged by this runner.
-Vehicle bundles default to four concurrent fetches and article details default
-to eight concurrent fetches per vehicle; lower either limit when the upstream
-session or local network needs a gentler request rate. Idempotent GETs retry
+Vehicle bundles default to four concurrent fetches; lower that limit when the
+upstream session or local network needs a gentler request rate. The runner
+fetches the AutoAPI article list for each vehicle but intentionally does not
+request individual article-detail endpoints. Idempotent GETs retry
 transient 408, 425, 429, 500, 502, 503, and 504 responses with bounded
 exponential backoff; persistent authentication failures remain visible and
 fail the run.

@@ -108,7 +108,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
             "http://127.0.0.1:3000",
             content_source="GeneralMotors",
             opener=opener,
-            max_concurrency=2,
+            vehicle_max_concurrency=2,
         )
 
         catalog = connector.fetch_catalog()
@@ -119,12 +119,11 @@ class AutoAPIConnectorTests(unittest.TestCase):
         self.assertEqual(vehicle.vehicle_id, "v1")
         self.assertEqual(vehicle.vehicle["vehicle_key"], "chevrolet-silverado-1500-1999-us")
         self.assertEqual(len(vehicle.article_ids), 2)
-        self.assertEqual(len(vehicle.resources), 5)
-        self.assertEqual(vehicle.article_errors, ())
+        self.assertEqual(len(vehicle.resources), 3)
         batches = catalog.to_batches()
         self.assertEqual(len(batches), 1)
         self.assertEqual(batches[0].vehicle_key, "chevrolet-silverado-1500-1999-us")
-        self.assertEqual(len(batches[0].source_resources), 5)
+        self.assertEqual(len(batches[0].source_resources), 3)
         execution = execute_autoapi_batch(
             batches,
             source_version="autoapi-http-test-v1",
@@ -134,13 +133,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
         self.assertEqual(execution["vehicle_count"], 1)
         self.assertEqual(execution["results"][0]["articles"], 2)
         self.assertEqual(execution["results"][0]["article_coverage"]["unaccounted_unique_ids"], [])
-        self.assertEqual(
-            sorted(url for _method, url, _timeout in requests if "/article/" in url),
-            [
-                "http://127.0.0.1:3000/v1/api/source/GeneralMotors/vehicle/v1/article/a1",
-                "http://127.0.0.1:3000/v1/api/source/GeneralMotors/vehicle/v1/article/a2",
-            ],
-        )
+        self.assertFalse(any("/article/" in url for _method, url, _timeout in requests))
 
     def test_rejects_truncated_article_index(self):
         responses = {

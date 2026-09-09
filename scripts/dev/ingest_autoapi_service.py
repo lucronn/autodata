@@ -33,7 +33,6 @@ def main() -> None:
     )
     parser.add_argument("--region", default=os.getenv("AUTODATA_SOURCE_REGION", "US"))
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
-    parser.add_argument("--max-concurrency", type=int, default=8)
     parser.add_argument(
         "--vehicle-concurrency",
         type=int,
@@ -58,7 +57,6 @@ def main() -> None:
         default_region=args.region,
         source_version=args.source_version,
         timeout_seconds=args.timeout_seconds,
-        max_concurrency=args.max_concurrency,
         vehicle_max_concurrency=args.vehicle_concurrency,
         retry_attempts=args.retry_attempts,
         retry_backoff_seconds=args.retry_backoff_seconds,
@@ -80,15 +78,7 @@ def main() -> None:
         "selector_row_count": len(catalog.selection_rows),
         "traversal_error_count": len(catalog.errors),
         "traversal_errors": [dict(error) for error in catalog.errors],
-        "article_id_count": sum(len(vehicle.article_ids) for vehicle in catalog.vehicles),
-        "article_fetch_error_count": sum(
-            len(vehicle.article_errors) for vehicle in catalog.vehicles
-        ),
-        "article_fetch_errors": [
-            {"vehicle_id": vehicle.vehicle_id, **error}
-            for vehicle in catalog.vehicles
-            for error in vehicle.article_errors
-        ],
+        "article_list_count": sum(len(vehicle.article_ids) for vehicle in catalog.vehicles),
     }
     if catalog.errors:
         output["status"] = "failed"
@@ -99,7 +89,6 @@ def main() -> None:
     if (
         output["status"] == "failed"
         or output["catalog"]["traversal_error_count"]
-        or output["catalog"]["article_fetch_error_count"]
         or output["catalog"].get("empty_catalog", False)
     ):
         raise SystemExit(1)

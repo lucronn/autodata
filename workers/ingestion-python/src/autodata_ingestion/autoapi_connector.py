@@ -24,7 +24,6 @@ from .vehicle_selection import normalize_vehicle_list
 
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
-DEFAULT_MAX_CONCURRENCY = 8
 DEFAULT_VEHICLE_MAX_CONCURRENCY = 4
 DEFAULT_VEHICLE_ID_BATCH_SIZE = 100
 DEFAULT_RETRY_ATTEMPTS = 3
@@ -41,7 +40,6 @@ class AutoAPIVehicleBundle:
     configurations: tuple[dict[str, Any], ...]
     resources: tuple[SourceResource, ...]
     article_ids: tuple[str, ...]
-    article_errors: tuple[dict[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -65,14 +63,13 @@ class AutoAPICatalog:
                 source_directory=None,
                 configurations=bundle.configurations,
                 source_resources=bundle.resources,
-                article_errors=bundle.article_errors,
             )
             for bundle in self.vehicles
         )
 
 
 class AutoAPIConnector:
-    """Traverse the local AutoAPI catalog and fetch every available article."""
+    """Traverse the local AutoAPI catalog and fetch each vehicle's article list."""
 
     name = "autoapi"
 
@@ -85,7 +82,6 @@ class AutoAPIConnector:
         source_version: str = "autoapi-http-v1",
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
         max_bytes: int = DEFAULT_MAX_BYTES,
-        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         vehicle_max_concurrency: int = DEFAULT_VEHICLE_MAX_CONCURRENCY,
         vehicle_id_batch_size: int = DEFAULT_VEHICLE_ID_BATCH_SIZE,
         retry_attempts: int = DEFAULT_RETRY_ATTEMPTS,
@@ -105,7 +101,6 @@ class AutoAPIConnector:
         if (
             timeout_seconds <= 0
             or max_bytes <= 0
-            or max_concurrency < 1
             or vehicle_max_concurrency < 1
             or vehicle_id_batch_size < 1
             or retry_attempts < 1
@@ -120,7 +115,6 @@ class AutoAPIConnector:
             raise ValueError("AutoAPI source version is required")
         self._timeout_seconds = timeout_seconds
         self._max_bytes = max_bytes
-        self._max_concurrency = max_concurrency
         self._vehicle_max_concurrency = vehicle_max_concurrency
         self._vehicle_id_batch_size = vehicle_id_batch_size
         self._retry_attempts = retry_attempts
@@ -258,26 +252,6 @@ class AutoAPIConnector:
                 if (article_id := _first_text(article, "id", "articleId", "article_id"))
             )
         )
-        article_errors: list[dict[str, str]] = []
-        details_path = f"/v1/api/source/{quote(self._content_source, safe='')}/vehicle/{quote(vehicle_id, safe='')}/article"
-        with ThreadPoolExecutor(max_workers=self._max_concurrency) as executor:
-            futures = {
-                executor.submit(
-                    self._get_json,
-                    f"{details_path}/{quote(article_id, safe='')}",
-                ): article_id
-                for article_id in article_ids
-            }
-            for future in as_completed(futures):
-                article_id = futures[future]
-                try:
-                    _payload, resource = future.result()
-                except Exception as error:  # noqa: BLE001 - retain partial catalog progress
-                    article_errors.append(
-                        {"article_id": article_id, "error": _safe_error(error)}
-                    )
-                else:
-                    resources.append(resource)
 
         resources.sort(key=lambda item: (item.source_uri, item.content_sha256))
         rows = _selector_rows(
@@ -304,7 +278,6 @@ class AutoAPIConnector:
             configurations=tuple(selected.configurations),
             resources=tuple(resources),
             article_ids=article_ids,
-            article_errors=tuple(sorted(article_errors, key=lambda item: item["article_id"])),
         )
 
     def _get_json(
