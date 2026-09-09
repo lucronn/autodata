@@ -39,6 +39,16 @@ def main() -> None:
         type=int,
         default=int(os.getenv("AUTODATA_AUTOAPI_VEHICLE_CONCURRENCY", "4")),
     )
+    parser.add_argument(
+        "--retry-attempts",
+        type=int,
+        default=int(os.getenv("AUTODATA_AUTOAPI_RETRY_ATTEMPTS", "3")),
+    )
+    parser.add_argument(
+        "--retry-backoff-seconds",
+        type=float,
+        default=float(os.getenv("AUTODATA_AUTOAPI_RETRY_BACKOFF_SECONDS", "0.25")),
+    )
     parser.add_argument("--persist", action="store_true")
     args = parser.parse_args()
 
@@ -50,6 +60,8 @@ def main() -> None:
         timeout_seconds=args.timeout_seconds,
         max_concurrency=args.max_concurrency,
         vehicle_max_concurrency=args.vehicle_concurrency,
+        retry_attempts=args.retry_attempts,
+        retry_backoff_seconds=args.retry_backoff_seconds,
     )
     catalog = connector.fetch_catalog()
     plan = catalog.to_batches()

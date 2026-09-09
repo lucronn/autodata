@@ -170,6 +170,28 @@ class AutoAPIConnectorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "incomplete article index"):
             connector.fetch_vehicle_bundle({"vehicle_id": "v1"})
 
+    def test_retries_transient_http_status_without_sleeping_in_test_mode(self):
+        attempts = []
+
+        def opener(request, timeout):
+            del request, timeout
+            attempts.append(True)
+            if len(attempts) == 1:
+                return FakeResponse({"header": {}, "body": "temporarily unavailable"}, status=502)
+            return FakeResponse({"header": {}, "body": [1999]})
+
+        connector = AutoAPIConnector(
+            "http://127.0.0.1:3000",
+            opener=opener,
+            retry_attempts=2,
+            retry_backoff_seconds=0,
+        )
+
+        payload, _resource = connector._get_json("/v1/api/years")
+
+        self.assertEqual(payload["body"], [1999])
+        self.assertEqual(len(attempts), 2)
+
     def test_catalog_retains_successful_years_and_reports_failed_traversal_scopes(self):
         responses = {
             "/v1/api/years": {"header": {}, "body": [1999, 2000]},

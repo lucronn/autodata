@@ -11,8 +11,10 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 from dataclasses import dataclass
+import time
 from typing import Any, Callable, Mapping
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .source_adapters import SourceResource
@@ -25,6 +27,8 @@ DEFAULT_MAX_BYTES = 50 * 1024 * 1024
 DEFAULT_MAX_CONCURRENCY = 8
 DEFAULT_VEHICLE_MAX_CONCURRENCY = 4
 DEFAULT_VEHICLE_ID_BATCH_SIZE = 100
+DEFAULT_RETRY_ATTEMPTS = 3
+DEFAULT_RETRY_BACKOFF_SECONDS = 0.25
 
 
 @dataclass(frozen=True)
@@ -84,6 +88,8 @@ class AutoAPIConnector:
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         vehicle_max_concurrency: int = DEFAULT_VEHICLE_MAX_CONCURRENCY,
         vehicle_id_batch_size: int = DEFAULT_VEHICLE_ID_BATCH_SIZE,
+        retry_attempts: int = DEFAULT_RETRY_ATTEMPTS,
+        retry_backoff_seconds: float = DEFAULT_RETRY_BACKOFF_SECONDS,
         request_headers: Mapping[str, str] | None = None,
         opener: Callable[..., Any] = urlopen,
     ):
@@ -102,6 +108,8 @@ class AutoAPIConnector:
             or max_concurrency < 1
             or vehicle_max_concurrency < 1
             or vehicle_id_batch_size < 1
+            or retry_attempts < 1
+            or retry_backoff_seconds < 0
         ):
             raise ValueError("AutoAPI limits must be positive")
         self._base_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
@@ -115,6 +123,8 @@ class AutoAPIConnector:
         self._max_concurrency = max_concurrency
         self._vehicle_max_concurrency = vehicle_max_concurrency
         self._vehicle_id_batch_size = vehicle_id_batch_size
+        self._retry_attempts = retry_attempts
+        self._retry_backoff_seconds = retry_backoff_seconds
         self._request_headers = _request_headers(request_headers)
         self._opener = opener
 
@@ -298,6 +308,23 @@ class AutoAPIConnector:
         )
 
     def _get_json(
+        self,
+        path: str,
+        *,
+        query: Mapping[str, str] | None = None,
+    ) -> tuple[Any, SourceResource]:
+        for attempt in range(self._retry_attempts):
+            try:
+                return self._get_json_once(path, query=query)
+            except Exception as error:  # noqa: BLE001 - retry only safe transient GET failures
+                if attempt + 1 >= self._retry_attempts or not _is_retryable(error):
+                    raise
+                delay = self._retry_backoff_seconds * (2**attempt)
+                if delay:
+                    time.sleep(delay)
+        raise AssertionError("AutoAPI retry loop must return or raise")
+
+    def _get_json_once(
         self,
         path: str,
         *,
@@ -547,6 +574,15 @@ def _request_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
 
 def _safe_error(error: Exception) -> str:
     return str(error).strip() or error.__class__.__name__
+
+
+def _is_retryable(error: Exception) -> bool:
+    if isinstance(error, (TimeoutError, URLError)):
+        return True
+    if isinstance(error, HTTPError):
+        return error.code in {408, 425, 429, 500, 502, 503, 504}
+    message = str(error)
+    return any(f"AutoAPI returned HTTP status {status}" in message for status in (408, 425, 429, 500, 502, 503, 504))
 
 
 __all__ = ["AutoAPICatalog", "AutoAPIConnector", "AutoAPIVehicleBundle"]

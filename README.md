@@ -198,7 +198,9 @@ python3 scripts/dev/ingest_autoapi_service.py \
   --content-source GeneralMotors \
   --source-version autoapi-http-v1 \
   --vehicle-concurrency 4 \
-  --max-concurrency 8
+  --max-concurrency 8 \
+  --retry-attempts 3 \
+  --retry-backoff-seconds 0.25
 ```
 
 Add `--persist` only with the local PostgreSQL and MinIO environment configured.
@@ -209,7 +211,10 @@ runtime credentials remain in its secret-managed environment and are never
 copied into AutoData or logged by this runner.
 Vehicle bundles default to four concurrent fetches and article details default
 to eight concurrent fetches per vehicle; lower either limit when the upstream
-session or local network needs a gentler request rate.
+session or local network needs a gentler request rate. Idempotent GETs retry
+transient 408, 425, 429, 500, 502, 503, and 504 responses with bounded
+exponential backoff; persistent authentication failures remain visible and
+fail the run.
 
 Each processed result includes `article_coverage`: raw candidate count, raw
 unique article IDs, normalized unique IDs, review/quarantine IDs, and an
