@@ -4,7 +4,7 @@
 
 **Goal:** Add a vehicle-scoped natural-language job planner that selects normalized single-component articles, calculates combined one-technician labor hours with shared-operation overlap counted once, and returns an evidence-backed LLM-composed procedure.
 
-**Architecture:** Keep the Go API as the authenticated boundary and make the Python ingestion/enrichment side responsible for intent resolution, article acquisition, operation extraction, deterministic labor calculation, and constrained procedure composition. The LLM is advisory and schema-constrained. PostgreSQL stores durable job requests/results and operation graphs; existing source snapshots and extraction evidence remain the provenance authority; NATS JetStream carries retryable asynchronous work; the warm path serves a previously validated plan at the same source/model watermark without invoking the LLM.
+**Architecture:** Keep the Go API as the authenticated boundary and make the Python ingestion/enrichment side responsible for intent resolution, article acquisition, operation extraction, deterministic labor calculation, and constrained procedure composition. Every source resource successfully accessed for a request is read-through materialized into the existing source snapshot/normalization/evidence pipeline. The LLM is advisory and schema-constrained. PostgreSQL stores durable job requests/results, operation graphs, and composed derived articles; existing source snapshots and extraction evidence remain the provenance authority; NATS JetStream carries retryable asynchronous work; the warm path serves a previously validated plan at the same source/model watermark without invoking the LLM or refetching the source.
 
 **Tech Stack:** Existing Go HTTP API, Python workers, PostgreSQL/pgvector, NATS JetStream, MinIO/S3-compatible evidence storage, generated bindings from `packages/contracts/contract.json`, pytest/unittest, Go tests, Docker Compose integration fixtures, Mercury-2 through the existing environment-only `Mercury2Client` boundary.
 
@@ -20,6 +20,10 @@
 - Every factual operation and procedure step must retain an evidence path to a source snapshot and locator, or be marked as derived and subject to the validation policy.
 - A missing, ambiguous, conflicting, or low-confidence input must yield `needs_review` with structured reasons; it must not be silently converted to a confident result.
 - Existing cache-first knowledge search and source fallback behavior remains backward compatible.
+- Any successfully accessed AutoAPI or other connector resource is persisted and indexed for future lookups; source access is never intentionally discarded after producing a response.
+- Article lists and article bodies are separate ingestion units with shared lineage. Fetching a list does not require fetching every article body, but every body that is later accessed is normalized and persisted.
+- A validated multi-component procedure is persisted as a new `catalog_articles` derived record with a deterministic ID/fingerprint and lineage to all contributing articles and evidence.
+- Derived articles never mutate source articles. A changed source watermark, source selection, labor graph, or composition contract creates a new derived revision.
 - Published data and job-plan results are immutable. Corrections create a new revision/result and preserve the prior audit trail.
 - Every asynchronous handler must define an idempotency key, retry classification, maximum retry behavior, and dead-letter subject.
 - Each completed task below is committed separately with a focused commit message after its tests pass. Never use `git add -A`; stage only the paths listed in that task.
@@ -72,6 +76,7 @@ The first run is expected to fail with the missing test/module error; the tests 
 - Add `job_plan_procedure` with required `title`, `steps`, `warnings`, and `requires_review`.
 - Add `job_plan_step` with required `sequence`, `action`, `components`, `source_article_ids`, `evidence_ids`, `origin`, and `requires_review`.
 - Add `job_plan_provenance` with required `article_ids`, `evidence_ids`, `model`, and `contract_version`.
+- Add `job_plan_derived_article` with required `article_id`, `revision_id`, `title`, `status`, and `fingerprint`; allow normalized body and steps in the job-plan response.
 - Add error codes `JOB_PLAN_NOT_FOUND`, `JOB_PLAN_REVIEW_REQUIRED`, `JOB_PLAN_UNSUPPORTED`, and `JOB_PLAN_CONFLICT`.
 
 **Steps:**
@@ -142,6 +147,7 @@ The first run is expected to fail with the missing test/module error; the tests 
 **Files:**
 
 - Create `workers/ingestion-python/src/autodata_ingestion/job_article_selector.py`.
+- Create `workers/ingestion-python/src/autodata_ingestion/source_access_materializer.py`.
 - Modify `workers/ingestion-python/src/autodata_ingestion/vehicle_article_query.py` only to expose reusable vehicle-key normalization and ranking primitives without changing existing response behavior.
 - Modify `workers/enrichment-python/src/autodata_enrichment/search_processor.py` only where needed to index component aliases and operation metadata while preserving current article/procedure search.
 - Create `workers/ingestion-python/tests/test_job_article_selector.py`.
@@ -153,15 +159,19 @@ The first run is expected to fail with the missing test/module error; the tests 
 - Rank by exact component identity, vehicle configuration specificity, operation kind, article quality/reviewer state, lexical/embedding score, and evidence completeness.
 - Require one selected article per requested component for a `ready` result. If several articles are materially similar, select one canonical article and retain the alternatives in the audit record.
 - Reuse the existing cache-first fallback path. A cache miss may request the source article list/content for the canonical vehicle; source connectors must not enumerate every individual article when the source list is sufficient for selection.
+- Every successfully accessed source resource becomes a materialization record before the lookup is considered fulfilled. Article-list metadata and article bodies are independently captured; the materializer calls the existing source snapshot, artifact, normalization, evidence, and persistence boundaries and is idempotent by source URI, source version, content hash, and locator.
+- A source response containing multiple recognized records materializes every record present in that response, not only the record selected for the current query, subject to source terms, size limits, and review/quarantine policy. This is the cache-warming rule for future lookups.
+- Exact duplicate content collapses to one normalized record. Near-duplicate content retains every source occurrence as lineage and goes through the existing similarity/review policy; no provenance occurrence is discarded.
 - Define an explicit `article_selection_fingerprint` from canonical vehicle ID, normalized component keys, query intent, source watermark, and selector version.
 - Return selection reasons and rejected candidates for diagnostics, but do not expose hidden source material to a purchaser without entitlement.
 
 **Steps:**
 
 - [ ] Add failing tests for exact vehicle matches, engine/configuration disambiguation, similar-article deduplication, missing component, stale article, and evidence-less article rejection.
-- [ ] Run the focused selector/index tests and observe the expected missing selector behavior.
-- [ ] Implement selection, ranking, and cache-miss delegation.
-- [ ] Re-run the focused tests and commit with `feat: select vehicle job articles`.
+- [ ] Add failing materializer tests for article-list capture, individual article capture, multi-record response materialization, exact replay idempotency, content-hash deduplication, near-duplicate review, and source-term quarantine.
+- [ ] Run the focused selector/materializer/index tests and observe the expected missing selector/materializer behavior.
+- [ ] Implement selection, ranking, cache-miss delegation, and universal source read-through materialization.
+- [ ] Re-run the focused tests and commit with `feat: select and materialize vehicle job articles`.
 
 ## Task 6: Implement the deterministic overlap-aware labor calculator
 
@@ -217,7 +227,10 @@ The first run is expected to fail with the missing test/module error; the tests 
 - Require each generated step to contain a sequence, action, component keys, source article IDs, evidence IDs, origin, and review flag.
 - Run the deterministic validator after the LLM response. A step referring to an article/evidence not present in the input is invalid. A step that adds an unsupported torque, fluid, tool, hazard, or vehicle fact is rejected or marked for review.
 - Use deterministic fallback composition when Mercury-2 is unavailable: merge source steps by operation dependency and deduplicate shared steps, returning `needs_review` if natural-language consolidation is required.
-- Never replace or mutate source article text. Store the composed procedure as a derived result with a model/prompt contract fingerprint.
+- Never replace or mutate source article text. Store the composed procedure as a new durable derived article with a deterministic article ID and content fingerprint, a model/prompt contract fingerprint, and lineage to every contributing article and evidence record.
+- Use `article_kind = composed` and `origin = derived_job_plan`. The LLM never chooses the article ID. The ID is derived from canonical vehicle/configuration, normalized component set, source article fingerprints, labor-calculation version, procedure-contract version, and source watermark.
+- Make a composed article searchable after its result revision is persisted. A later identical request reuses the composed article; any source, labor, or contract change creates a new immutable derived revision linked to the previous revision.
+- Do not publish a composed article as `ready` when its labor plan or procedure is `needs_review`; retain the structured draft and review reasons for operators.
 
 **Steps:**
 
@@ -241,15 +254,21 @@ The first run is expected to fail with the missing test/module error; the tests 
 - `job_plan_articles`: job plan ID, article ID, component key, selection score/reason, source snapshot ID, revision ID, selected/rejected marker.
 - `job_plan_operations`: job plan ID, stable operation ID, normalized semantic key, action, duration, components JSONB, dependencies JSONB, resource group, origin, evidence IDs JSONB, confidence, review state.
 - `job_plan_results`: job plan ID, immutable result revision, labor JSONB, procedure JSONB, provenance JSONB, validation status, published timestamp, and result fingerprint.
+- `source_access_records`: job plan ID, source snapshot ID, resource kind (`article_list`, `article`, `procedure`, `evidence`, or `other`), source URI/locator, normalization status, normalization version, and idempotency key. This is the durable audit that every successfully accessed source resource was processed by the ingestion boundary.
+- `derived_articles`: a durable composed-article identity, generated article ID, canonical vehicle/configuration, title, current status, current fingerprint, and the creating job plan. It is separate from `catalog_articles` so a derived article never masquerades as an externally sourced article.
+- `derived_article_revisions`: derived article ID, revision number, normalized body/steps, labor plan, procedure, source watermark, model/prompt/validator versions, immutable fingerprint, publication status, and published timestamp.
+- `derived_article_lineage`: derived article revision ID, contributing catalog article ID, source snapshot ID, extraction evidence ID, lineage role, and source locator. Every composed article must be able to navigate back to all individual articles and evidence used to make it.
 - Unique constraints prevent duplicate job plans for the same organization/idempotency key and duplicate result revisions for the same calculation fingerprint.
-- Foreign keys link articles and evidence to existing catalog/source/extraction records wherever existing identifiers are available. JSONB is used only for the structured derived plan, not to replace canonical article/provenance tables.
+- Unique constraints prevent duplicate source-access records for the same plan, source snapshot, and locator, and duplicate derived revisions for the same derived article/fingerprint.
+- Foreign keys link source-access, lineage, articles, and evidence to existing source/extraction records wherever identifiers are available. JSONB is used for structured derived content and plan snapshots, not to replace canonical article/provenance tables.
 
 **Steps:**
 
 - [ ] Add failing migration tests for table presence, enum/check constraints, unique idempotency key, result immutability, evidence linkage, and cascade behavior that preserves audit history.
+- [ ] Add migration tests proving a source list and later article body are separately auditable, an exact replay does not create another normalized article, and a composed article has a new ID plus lineage to each source article/evidence record.
 - [ ] Run the migration tests and observe the expected missing migration failure.
 - [ ] Implement the migration with forward-only, idempotent statements matching repository migration conventions.
-- [ ] Implement insert/read/replay persistence methods with transaction boundaries around plan creation and result publication.
+- [ ] Implement insert/read/replay persistence methods with transaction boundaries around source materialization, plan creation, derived-article revision creation, and result publication.
 - [ ] Re-run migration and persistence tests; commit with `feat: persist multi-component job plans`.
 
 ## Task 9: Add the internal worker job-plan request path
@@ -267,7 +286,9 @@ The first run is expected to fail with the missing test/module error; the tests 
 - `POST /v1/job-plans` requires an internal idempotency key and a vehicle selector or query that contains sufficient vehicle identity. It returns an existing result on an idempotency hit.
 - The internal request handler accepts only bounded JSON and rejects unknown top-level fields, oversized input, unsupported technician count, and missing query.
 - The runtime first checks the warm path using the plan fingerprint and source/model watermark. It invokes Mercury-2 only on a cold or invalidated path.
-- Cache miss behavior reuses existing source fallback and article intake persistence; it must not create duplicate source snapshots or duplicate normalized articles.
+- Cache miss behavior reuses existing source fallback and article intake persistence, then materializes every source resource returned by the connector before selecting the component articles. It must not create duplicate source snapshots or duplicate normalized articles.
+- When a component article body is accessed, persist that body even if another article is ultimately selected. When the source returns an article list, persist all list records in that response so future component searches are warm.
+- After labor and procedure validation, persist the combined result as a new derived article/revision and add it to the searchable normalized index in the same publication transaction.
 - Retryable network/provider errors raise a retryable worker error. Invalid user input, invalid model output after one bounded repair attempt, identity ambiguity, and evidence mismatch are permanent review outcomes.
 - Publish result and status transition atomically with the outbox/event record. A duplicate delivery must be safe.
 
@@ -363,8 +384,9 @@ The response is `202` for processing, `200` for a warm ready/review result, and 
 **Performance contract:**
 
 - A warm request with the same canonical vehicle, normalized component set, source watermark, selector version, and model/prompt contract version must not call Mercury-2, refetch source content, or recalculate embeddings.
-- The warm path may deterministically revalidate the persisted result and must return the stored result revision and evidence IDs unchanged.
+- The warm path may deterministically revalidate the persisted result and must return the stored result revision, derived article ID, and evidence IDs unchanged.
 - A new source watermark invalidates only the affected selection/result fingerprint and creates a new result revision; prior revisions remain readable internally.
+- The benchmark must count materialization writes, source-resource cache hits, derived-article cache hits, and duplicate-suppression decisions in addition to request, LLM, source-fetch, result-hit, and error counts.
 - Measure p50/p95 from API request to structured JSON for warm and cold paths separately. The benchmark must report request count, LLM call count, source fetch count, result cache hit count, and error count.
 - Use a deterministic fake Mercury-2 client and fake source connector in tests; live provider tests remain opt-in and require environment configuration.
 
@@ -392,10 +414,12 @@ The response is `202` for processing, `200` for a warm ready/review result, and 
 3. Select the alternator and starter articles without selecting duplicates.
 4. Calculate 4.5 standalone hours, 0.75 overlap hours, and 3.75 total labor hours.
 5. Compose a structured procedure whose shared battery step appears once and whose component-specific steps retain article/evidence links.
-6. Repeat the same request and assert a warm result with no fake LLM/source calls.
-7. Inject a source timeout, retry it, then force the max delivery count and verify a secret-free dead-letter event.
-8. Change one source watermark and verify a new immutable result revision while the prior result remains auditable.
-9. Revoke entitlement and verify access is denied without deleting the internal job-plan/audit record.
+6. Assert that the article list and both accessed article bodies have durable source-access/materialization records, normalized article records, and evidence links.
+7. Assert that the combined procedure has a new derived article ID, a searchable revision, and lineage to both source articles and all procedure evidence.
+8. Repeat the same request and assert a warm result with no fake LLM/source calls and no duplicate normalized or derived article.
+9. Inject a source timeout, retry it, then force the max delivery count and verify a secret-free dead-letter event.
+10. Change one source watermark and verify a new immutable result revision and derived article revision while the prior result remains auditable.
+11. Revoke entitlement and verify access is denied without deleting the internal job-plan/audit record.
 
 **Steps:**
 

@@ -12,7 +12,7 @@ Accept a natural-language request such as:
 
 Resolve the request to one canonical vehicle, locate the best normalized single-component articles for every requested component, calculate a combined labor estimate that counts shared work once, and return a structured procedure assembled from those articles.
 
-The result must be useful when the data is already indexed and must remain safe and auditable when the system needs to fetch, normalize, or ask for review.
+The result must be useful when the data is already indexed and must remain safe and auditable when the system needs to fetch, normalize, or ask for review. Any source data successfully accessed while satisfying this request is also a cache-warming ingestion opportunity: it is captured, normalized, deduplicated, vehicle-linked, provenance-linked, and indexed for future lookups.
 
 ## Product behavior
 
@@ -21,12 +21,44 @@ The request is processed in this order:
 1. Parse the vehicle and requested components from the query, or combine the query with an explicit vehicle selector.
 2. Resolve the vehicle against the canonical vehicle identity graph. A deterministic matcher is authoritative; Mercury-2 may adjudicate only among supplied candidates and only above the configured confidence threshold.
 3. Search the vehicle-scoped normalized article index for one or more articles per requested component.
-4. If a required component article is not present, invoke the existing source fallback boundary using the canonical vehicle identifier, then normalize, deduplicate, attach provenance, and index the returned article list/content.
+4. If a required component article is not present, invoke the existing source fallback boundary using the canonical vehicle identifier. Persist the accessed article list/index and any individual article resources needed for the request as source snapshots, then normalize, deduplicate, attach provenance, vehicle-link, and index every successfully accessed resource.
 5. Extract or validate a component operation graph from each selected single-component article. Every operation has a duration when known, dependencies, component coverage, and an evidence reference.
 6. Calculate combined labor deterministically from the union of operations. Shared access, setup, isolation, removal, inspection, and teardown operations count once. Dependency order and the initial single-technician labor-hour basis are explicit.
 7. Compose a procedure from the selected source articles and the calculated operation plan. The LLM can consolidate, reorder, and explain sourced steps; it cannot create unsupported vehicle facts, labor values, safety instructions, torque values, or tool requirements.
 8. Validate the composed result. Unsupported claims, conflicting instructions, missing evidence, ambiguous vehicle identity, missing required articles, or unknown overlap move the result to `needs_review` instead of being silently hidden.
-9. Persist the request, selected articles, labor calculation, procedure result, source watermark, model/version metadata, evidence links, and validation outcome. A later identical request at the same source/model watermark is served from the warm path without another LLM call.
+9. Persist the request, selected articles, labor calculation, procedure result, source watermark, model/version metadata, evidence links, and validation outcome. A later identical request at the same source/model watermark is served from the warm path without another source fetch or LLM call.
+
+## Access-triggered ingestion and materialization
+
+The platform uses read-through materialization for source-backed knowledge. “Accessed” means a source resource was successfully retrieved or supplied to the normalization boundary while fulfilling a user query. The policy applies to AutoAPI and every future source connector, not only to a named provider.
+
+Each accessed resource is handled as follows:
+
+1. Capture the raw bytes or structured response as an immutable `source_snapshot` and `source_artifact`, including URI, adapter, source version, retrieval time, content hash, license/terms metadata, and takedown metadata.
+2. Normalize recognized vehicle identities, article-list entries, article content, procedures, labor operations, and evidence into canonical tables or derived records.
+3. Associate records to the canonical vehicle/configuration only when the deterministic identity policy authorizes the association. Ambiguous candidates are retained as review material, not silently attached.
+4. Deduplicate exact content by content hash and canonical fingerprint. Detect near duplicates using the existing similarity/review policy; retain lineage to all source occurrences while selecting one canonical record for search.
+5. Store source snapshot, extraction run, evidence locator, normalized record, and review state together so a future lookup can use the normalized record without refetching the source.
+6. Index the normalized result for vehicle-scoped retrieval immediately after successful persistence. A later source watermark or correction creates a new record/revision and does not mutate the prior audit trail.
+
+An article list is itself a persisted ingestion unit. The list can create searchable article metadata and source lineage without forcing the system to fetch every article body. When an individual article body is later accessed, that body is independently captured, normalized, deduplicated, vehicle-linked, evidence-linked, and indexed. The list entry and article body share lineage but are not treated as the same content.
+
+## Composed procedures as durable derived articles
+
+When the labor calculator and procedure validator produce a combined procedure for multiple components, the result is persisted as a first-class derived article with a new stable `article_id` and human-readable title, for example `combined:1999-chevrolet-silverado-1500:alternator+starter:v1`. The ID is derived from the canonical vehicle/configuration, normalized component set, source article fingerprints, labor-calculation version, procedure-contract version, and source watermark; it is not chosen by the LLM.
+
+The derived article records:
+
+- its own normalized content fingerprint and immutable result revision;
+- `article_kind = composed` and `origin = derived_job_plan`;
+- the canonical vehicle/configuration;
+- the selected source article IDs and source snapshot watermarks;
+- the labor operation graph and overlap calculation;
+- every source evidence ID used by the procedure;
+- model, prompt-contract, validator, and processing versions;
+- warnings, conflicts, review state, and the request that created it.
+
+The derived article is searchable and reusable on future lookups. A matching fingerprint returns the existing composed article; a changed source watermark, selected article, labor graph, or composition contract creates a new immutable derived revision linked to the prior one. The derived article never replaces or mutates the individual source articles, and it is not publishable as `ready` when the underlying procedure is `needs_review`.
 
 ## Initial labor model
 
@@ -143,6 +175,13 @@ The underlying dataset and section states remain the existing platform states. A
     "warnings": [],
     "requires_review": false
   },
+  "derived_article": {
+    "article_id": "combined:1999-chevrolet-silverado-1500:alternator+starter:v1",
+    "revision_id": "uuid",
+    "title": "Replace alternator and starter",
+    "status": "ready",
+    "fingerprint": "sha256"
+  },
   "provenance": {
     "article_ids": ["alternator-article", "starter-article"],
     "evidence_ids": ["uuid"],
@@ -160,4 +199,6 @@ The underlying dataset and section states remain the existing platform states. A
 - Replacing the canonical vehicle graph or existing article-ingestion pipeline.
 - Allowing arbitrary LLM prose to become a publishable procedure.
 - Introducing a separate search engine or multi-technician scheduling model.
+- Treating source access as a transient read that is intentionally discarded.
+- Treating a composed procedure as an ephemeral response only; valid composed procedures are durable derived articles.
 - Storing API keys in source code, fixtures, documentation, or generated artifacts.
