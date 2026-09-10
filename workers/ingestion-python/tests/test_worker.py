@@ -15,6 +15,32 @@ from autodata_ingestion.source_adapters import SourceResource  # noqa: E402
 
 
 class IngestionWorkerTests(unittest.TestCase):
+    def test_autoapi_content_source_defaults_from_vehicle_make(self):
+        from autodata_ingestion.worker import _autoapi_content_source
+
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(
+                _autoapi_content_source({"make": "Toyota"}),
+                "Toyota",
+            )
+            self.assertEqual(
+                _autoapi_content_source({"make": "Chevrolet"}),
+                "GeneralMotors",
+            )
+
+    def test_explicit_autoapi_content_source_wins_over_make_default(self):
+        from autodata_ingestion.worker import _autoapi_content_source
+
+        with patch.dict(
+            "os.environ",
+            {"AUTODATA_AUTOAPI_CONTENT_SOURCE": "Motor"},
+            clear=True,
+        ):
+            self.assertEqual(
+                _autoapi_content_source({"make": "Toyota"}),
+                "Motor",
+            )
+
     def test_job_plan_falls_back_when_catalog_has_rows_but_not_requested_article_content(self):
         from autodata_ingestion.worker import run_job_plan
 

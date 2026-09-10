@@ -389,9 +389,10 @@ def _load_autoapi_job_catalog(
     from .source_bundle import normalize_source_bundle
     from .job_plan import plan_job
 
+    content_source = _autoapi_content_source(vehicle)
     connector = AutoAPIConnector(
         base_url,
-        content_source=os.getenv("AUTODATA_AUTOAPI_CONTENT_SOURCE", "GeneralMotors"),
+        content_source=content_source,
         default_region=str(vehicle.get("region") or os.getenv("AUTODATA_SOURCE_REGION", "US")),
         source_version=os.getenv("AUTODATA_AUTOAPI_SOURCE_VERSION", "autoapi-http-v1"),
         vehicle_max_concurrency=int(os.getenv("AUTODATA_AUTOAPI_VEHICLE_CONCURRENCY", "4")),
@@ -478,12 +479,46 @@ def _load_autoapi_job_catalog(
             })
     return records, {
         "mode": "autoapi_fallback",
+        "content_source": content_source,
         "traversal": traversal,
         "vehicle_count": len(bundles),
         "materialized_records": len(records),
         "targeted_article_fetch_count": targeted_article_count,
         "targeted_labor_fetch_count": targeted_labor_count,
     }
+
+
+_AUTOAPI_SOURCE_BY_MAKE = {
+    "buick": "GeneralMotors",
+    "cadillac": "GeneralMotors",
+    "chevrolet": "GeneralMotors",
+    "gmc": "GeneralMotors",
+    "oldsmobile": "GeneralMotors",
+    "pontiac": "GeneralMotors",
+    "lexus": "Toyota",
+    "scion": "Toyota",
+    "toyota": "Toyota",
+}
+
+
+def _autoapi_content_source(vehicle: dict[str, object]) -> str:
+    """Choose the provider content source for one vehicle request.
+
+    A request can carry an explicit provider source, or deployment can set a
+    single source for a dedicated connector. Otherwise use the source family
+    implied by the make. ``Motor`` is the provider-neutral fallback; it keeps
+    an unrecognized make from being sent to the General Motors source.
+    """
+
+    for key in ("autoapi_content_source", "content_source"):
+        value = str(vehicle.get(key) or "").strip()
+        if value:
+            return value
+    configured = os.getenv("AUTODATA_AUTOAPI_CONTENT_SOURCE", "").strip()
+    if configured:
+        return configured
+    make = str(vehicle.get("make") or "").strip().casefold()
+    return _AUTOAPI_SOURCE_BY_MAKE.get(make, "Motor")
 
 
 def _same_vehicle_family(left: dict[str, object], right: dict[str, object]) -> bool:
