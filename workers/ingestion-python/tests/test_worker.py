@@ -15,6 +15,74 @@ from autodata_ingestion.source_adapters import SourceResource  # noqa: E402
 
 
 class IngestionWorkerTests(unittest.TestCase):
+    def test_autoapi_query_fallback_hydrates_only_selected_articles_and_labor(self):
+        from autodata_ingestion.autoapi_connector import AutoAPIVehicleBundle
+        from autodata_ingestion.worker import _load_autoapi_job_catalog
+
+        def resource(uri, payload):
+            return SourceResource.from_bytes(uri, "autoapi-test-v1", json.dumps(payload).encode(), "application/json")
+
+        vehicle = {
+            "vehicle_id": "v1",
+            "autoapi_vehicle_id": "v1",
+            "vehicle_key": "chevrolet-silverado-1500-1999-us",
+            "year": 1999,
+            "make": "Chevrolet",
+            "model": "Silverado 1500",
+            "region": "US",
+        }
+        bundle = AutoAPIVehicleBundle(
+            vehicle_id="v1",
+            content_source="GeneralMotors",
+            vehicle=vehicle,
+            configurations=(),
+            resources=(
+                resource("http://source/name", {"body": "1999 Chevrolet Silverado 1500"}),
+                resource("http://source/motorvehicles", {"body": [{"id": "m1", "model": "Silverado 1500", "engines": []}]}),
+                resource(
+                    "http://source/articles/v2",
+                    {"body": {"articleDetails": [
+                        {"id": "alt-1", "title": "Alternator replacement"},
+                        {"id": "starter-1", "title": "Starter replacement"},
+                        {"id": "brake-1", "title": "Brake replacement"},
+                    ]}},
+                ),
+            ),
+            article_ids=("alt-1", "starter-1", "brake-1"),
+        )
+        details = {
+            "alt-1": (
+                resource("http://source/article/alt-1", {"body": {"documentId": "alt-1", "html": "Replace the alternator."}}),
+                resource("http://source/labor/alt-1", {"body": {"operations": [{"operationId": "shared-belt", "name": "Remove belt", "hours": 0.25}, {"operationId": "alternator", "name": "Replace alternator", "hours": 1.5}]}}),
+            ),
+            "starter-1": (
+                resource("http://source/article/starter-1", {"body": {"documentId": "starter-1", "html": "Replace the starter."}}),
+                resource("http://source/labor/starter-1", {"body": {"operations": [{"operationId": "shared-belt", "name": "Remove belt", "hours": 0.25}, {"operationId": "starter", "name": "Replace starter", "hours": 2.0}]}}),
+            ),
+        }
+        with patch("autodata_ingestion.autoapi_connector.AutoAPIConnector") as connector_class:
+            connector = connector_class.return_value
+            connector.fetch_vehicle_bundle.return_value = bundle
+            connector.fetch_article_resources.side_effect = lambda _vehicle_id, article_id: details[article_id]
+            with patch.dict(
+                "os.environ",
+                {
+                    "AUTODATA_AUTOAPI_BASE_URL": "http://127.0.0.1:3000",
+                    "AUTODATA_SOURCE_PERSIST": "0",
+                },
+                clear=False,
+            ):
+                records, source_info = _load_autoapi_job_catalog(
+                    vehicle, object(), query="replace alternator and starter"
+                )
+
+        self.assertEqual(source_info["targeted_article_fetch_count"], 2)
+        self.assertEqual(connector.fetch_article_resources.call_count, 2)
+        by_id = {record["article"]["article_id"]: record["article"] for record in records}
+        self.assertEqual(by_id["alt-1"]["operations"][1]["duration_hours"], 1.5)
+        self.assertEqual(by_id["starter-1"]["operations"][0]["operation_id"], "shared-belt")
+        self.assertNotIn("brake-1", [call.args[1] for call in connector.fetch_article_resources.call_args_list])
+
     def test_unknown_structured_source_can_use_opt_in_mercury_extractor(self):
         from autodata_ingestion.source_adapters import NormalizationCandidate
         from autodata_ingestion.worker import _collect_connector

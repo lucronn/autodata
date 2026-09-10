@@ -237,7 +237,7 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
         target = _vehicle_target_from_mapping(vehicle, year)
         catalog = load_vehicle_knowledge_catalog(target)
         if not catalog:
-            catalog, source_info = _load_autoapi_job_catalog(vehicle, target)
+            catalog, source_info = _load_autoapi_job_catalog(vehicle, target, query=query)
     if not isinstance(catalog, (list, tuple)):
         raise ValueError("job plan catalog must be an array")
 
@@ -328,7 +328,9 @@ def _cached_derived_job_plan(
     return None
 
 
-def _load_autoapi_job_catalog(vehicle: dict[str, object], target: object) -> tuple[list[dict[str, object]], dict[str, object]]:
+def _load_autoapi_job_catalog(
+    vehicle: dict[str, object], target: object, *, query: str = ""
+) -> tuple[list[dict[str, object]], dict[str, object]]:
     """Hydrate the requested vehicle from AutoAPI only after a local miss.
 
     A configured provider vehicle ID performs one vehicle bundle fetch. Without
@@ -342,6 +344,7 @@ def _load_autoapi_job_catalog(vehicle: dict[str, object], target: object) -> tup
     from .autoapi_connector import AutoAPIConnector
     from .source_adapters import adapt_source_resource
     from .source_bundle import normalize_source_bundle
+    from .job_plan import plan_job
 
     connector = AutoAPIConnector(
         base_url,
@@ -373,8 +376,41 @@ def _load_autoapi_job_catalog(vehicle: dict[str, object], target: object) -> tup
                 selector_source_uri=f"{base_url.rstrip('/')}/v1/api/years",
             )
     records: list[dict[str, object]] = []
+    targeted_article_count = 0
+    targeted_labor_count = 0
     for bundle in bundles:
         artifacts = [adapt_source_resource(resource) for resource in bundle.resources]
+        list_normalized = normalize_source_bundle(
+            artifacts,
+            str(vehicle.get("region") or "US"),
+            expected_vehicle=dict(bundle.vehicle),
+        )
+        list_records = [
+            {
+                "kind": "article",
+                "vehicle_key": bundle.vehicle.get("vehicle_key"),
+                "vehicle_identity": dict(bundle.vehicle),
+                "article": dict(article),
+                "evidence": [],
+            }
+            for article in list_normalized.articles
+        ]
+        # The catalog endpoint is list-only. On a query miss, select only the
+        # requested component articles, then hydrate those article bodies and
+        # labor endpoints so future local reads have the complete normalized
+        # article instead of repeatedly calling the source.
+        if query and list_records:
+            provisional = plan_job(query, vehicle, catalog=list_records)
+            selected_ids = set(str(value) for value in provisional.get("selected_articles", []))
+            for article_id in sorted(selected_ids):
+                detail_resource, labor_resource = connector.fetch_article_resources(
+                    bundle.vehicle_id, article_id
+                )
+                artifacts.extend(
+                    [adapt_source_resource(detail_resource), adapt_source_resource(labor_resource)]
+                )
+                targeted_article_count += 1
+                targeted_labor_count += 1
         normalized = normalize_source_bundle(
             artifacts,
             str(vehicle.get("region") or "US"),
@@ -397,7 +433,14 @@ def _load_autoapi_job_catalog(vehicle: dict[str, object], target: object) -> tup
                     else []
                 ),
             })
-    return records, {"mode": "autoapi_fallback", "traversal": traversal, "vehicle_count": len(bundles), "materialized_records": len(records)}
+    return records, {
+        "mode": "autoapi_fallback",
+        "traversal": traversal,
+        "vehicle_count": len(bundles),
+        "materialized_records": len(records),
+        "targeted_article_fetch_count": targeted_article_count,
+        "targeted_labor_fetch_count": targeted_labor_count,
+    }
 
 
 def _same_vehicle_family(left: dict[str, object], right: dict[str, object]) -> bool:

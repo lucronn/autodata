@@ -75,7 +75,13 @@ curl -sS -X POST http://127.0.0.1:8080/job-plans \
 
 Omit the request's `catalog` after a successful persisted request to exercise
 the warm derived-article path. A cache miss uses
-`AUTODATA_AUTOAPI_BASE_URL` only after the indexed local lookup is empty. The
+`AUTODATA_AUTOAPI_BASE_URL` only after the indexed local lookup is empty.
+The fallback first reads the vehicle's article list, selects only the articles
+relevant to the natural-language request, then fetches those articles' detail
+and labor resources. It persists the normalized article body, source images,
+labor operations, and evidence, so the next lookup uses PostgreSQL instead of
+repeating provider calls. The full catalog warm-up remains list-only; it does
+not fetch every individual article detail. The
 AutoAPI traversal command hydrates the complete available year/make/model/
 vehicle configuration and article-list catalog when the connector session is
 authorized:

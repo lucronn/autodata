@@ -59,6 +59,7 @@ def normalize_source_bundle(
     powertrain_records: list[dict[str, Any]] = []
     part_records: list[dict[str, Any]] = []
     article_records: list[dict[str, Any]] = []
+    article_operations: dict[str, list[dict[str, Any]]] = {}
     document_text_records: list[dict[str, Any]] = []
     document_records: list[dict[str, Any]] = []
     diagram_records: list[dict[str, Any]] = []
@@ -166,6 +167,13 @@ def normalize_source_bundle(
                 if images:
                     article_record["images"] = images
                 article_records.append(article_record)
+            elif candidate.kind == "article_operations":
+                article_id = str(candidate.data.get("article_id") or "").strip()
+                operations = _article_operations(
+                    candidate.data.get("operations"), evidence_item["evidence_id"]
+                )
+                if article_id and operations:
+                    article_operations.setdefault(article_id, []).extend(operations)
             elif candidate.kind == "document_text":
                 document_text_records.append(
                     {
@@ -192,6 +200,10 @@ def normalize_source_bundle(
     article_records, document_content_evidence = _attach_document_content(
         article_records, document_text_records, diagram_records, evidence
     )
+    for article in article_records:
+        operations = article_operations.get(str(article.get("article_id")), [])
+        if operations:
+            article["operations"] = operations
     evidence.extend(document_content_evidence)
     article_records = _resolve_article_collisions(article_records, evidence, quarantined, conflicts)
     vehicle = _normalize_vehicle(
@@ -739,6 +751,51 @@ def _article_steps(data: dict[str, Any]) -> list[Any] | None:
     return None
 
 
+def _article_operations(value: Any, evidence_id: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    operations: list[dict[str, Any]] = []
+    for index, raw in enumerate(value):
+        if not isinstance(raw, dict):
+            continue
+        operation_id = str(
+            raw.get("operation_id")
+            or raw.get("operationId")
+            or raw.get("key")
+            or raw.get("code")
+            or raw.get("id")
+            or f"operation-{index + 1}"
+        ).strip()
+        action = str(
+            raw.get("action")
+            or raw.get("name")
+            or raw.get("description")
+            or raw.get("operation")
+            or operation_id
+        ).strip()
+        duration = next(
+            (
+                raw[key]
+                for key in (
+                    "duration_hours", "durationHours", "hours",
+                    "labor_hours", "laborHours", "time",
+                )
+                if raw.get(key) is not None
+            ),
+            None,
+        )
+        if operation_id and action:
+            operations.append(
+                {
+                    "operation_id": operation_id,
+                    "action": action,
+                    "duration_hours": duration,
+                    "evidence_ids": [evidence_id],
+                }
+            )
+    return operations
+
+
 def _article_images(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Keep only safe, displayable source-media references on an article."""
 
@@ -777,7 +834,7 @@ def _merge_article(target: dict[str, Any], duplicate: dict[str, Any]) -> None:
     for field in ("bucket", "title", "bulletin_number", "release_date"):
         if not target.get(field) and duplicate.get(field):
             target[field] = duplicate[field]
-    for field in ("body", "steps"):
+    for field in ("body", "steps", "operations"):
         if not target.get(field) and duplicate.get(field):
             target[field] = duplicate[field]
     if duplicate.get("images"):

@@ -280,6 +280,29 @@ class AutoAPIConnector:
             article_ids=article_ids,
         )
 
+    def fetch_article_resources(
+        self,
+        vehicle_id: str,
+        article_id: str,
+    ) -> tuple[SourceResource, ...]:
+        """Fetch one requested article body and its labor resource.
+
+        Article indexes remain the default discovery path. This method is
+        intentionally query-time and caller-scoped so a cache miss does not
+        fan out to every article in a vehicle catalog.
+        """
+
+        source = quote(self._content_source, safe="")
+        vehicle = quote(str(vehicle_id), safe="")
+        article = quote(str(article_id), safe="")
+        _detail_payload, detail_resource = self._get_json(
+            f"/v1/api/source/{source}/vehicle/{vehicle}/article/{article}"
+        )
+        _labor_payload, labor_resource = self._get_json(
+            f"/v1/api/source/{source}/vehicle/{vehicle}/labor/{article}"
+        )
+        return detail_resource, labor_resource
+
     def _get_json(
         self,
         path: str,

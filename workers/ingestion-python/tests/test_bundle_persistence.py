@@ -119,6 +119,7 @@ class BundlePersistenceTests(unittest.TestCase):
             "body",
             "steps",
             "images",
+            "operations",
             "normalized_fingerprint",
             "source_snapshot_id",
             "source_locator",
@@ -143,6 +144,7 @@ class BundlePersistenceTests(unittest.TestCase):
         self.assertEqual(params[14], "json:article[0]")
         self.assertEqual(params[15], 0.97)
         self.assertEqual(params[16], "configuration-1")
+        self.assertEqual(params[20], [])
 
     def test_article_upsert_persists_separate_document_content_provenance(self):
         article = {

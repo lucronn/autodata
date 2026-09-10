@@ -43,6 +43,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "021_autoapi_article_fetch_job_retries.sql",
                 "022_job_plan_derived_articles.sql",
                 "023_catalog_article_images.sql",
+                "024_catalog_article_operations.sql",
             ],
         )
 

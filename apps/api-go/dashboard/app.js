@@ -95,9 +95,18 @@ function addMessage(kind, text) {
 }
 
 function summarize(payload) {
-  const results = Array.isArray(payload.results) ? payload.results : [];
   if (payload.error?.message) return payload.error.message;
   if (payload.fallback_status === "pending") return "This vehicle lookup was not warm. The source-backed ingestion request is queued; retry after the article materializes.";
+  if (payload.procedure || payload.labor) {
+    const title = payload.procedure?.title || "Combined vehicle procedure";
+    const hours = payload.labor?.total_labor_hours;
+    const labor = hours == null ? "labor estimate needs review" : `${hours} labor hours`;
+    const steps = Array.isArray(payload.procedure?.steps)
+      ? payload.procedure.steps.slice(0, 4).map((step, index) => `${index + 1}. ${step.action}`).join("\n")
+      : "Structured procedure available in the JSON panel.";
+    return `${title}\n${labor}\n${steps}`;
+  }
+  const results = Array.isArray(payload.results) ? payload.results : [];
   if (!results.length) return "No matching normalized article or procedure was found for this vehicle yet.";
   return results.map((result, index) => {
     const item = result.article || result.procedure || {};

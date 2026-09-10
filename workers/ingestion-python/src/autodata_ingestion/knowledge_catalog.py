@@ -57,7 +57,7 @@ def load_vehicle_knowledge_catalog(target: VehicleTarget) -> list[dict[str, Any]
                cee.extracted_text,
                cee.confidence,
                cee.reviewer_state,
-               ca.images
+               ca.images, ca.operations
         FROM catalog_articles ca
         JOIN vehicles v ON v.vehicle_id = ca.vehicle_id
         JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
@@ -176,6 +176,7 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
         # Keep compatibility with compact test/fallback rows that omit the
         # optional content-provenance join columns.
         images = row[36] if len(row) > 36 else row[27] if len(row) == 28 else []
+        operations = row[37] if len(row) > 37 else row[28] if len(row) == 29 else []
         content_locator = content_source_locator or source_locator or evidence_locator or "catalog"
         content_uri = content_source_uri or source_uri
         content_version = content_source_version or source_version
@@ -195,6 +196,8 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
         }
         if images:
             article["images"] = images
+        if operations:
+            article["operations"] = operations
         article = {key: value for key, value in article.items() if value is not None}
         evidence_id = str(extraction_evidence_id)
         evidence = {

@@ -32,6 +32,33 @@ class FakeResponse:
 
 
 class AutoAPIConnectorTests(unittest.TestCase):
+    def test_fetches_only_one_requested_article_body_and_labor_resource(self):
+        responses = {
+            "/v1/api/source/GeneralMotors/vehicle/v1/article/a1": {
+                "header": {}, "body": {"documentId": "a1", "html": "<h2>Alternator</h2>"}
+            },
+            "/v1/api/source/GeneralMotors/vehicle/v1/labor/a1": {
+                "header": {}, "body": {"operations": [{"operationId": "remove", "hours": 1.5}]}
+            },
+        }
+        requests = []
+
+        def opener(request, timeout):
+            del timeout
+            path = urlsplit(request.full_url).path
+            requests.append(path)
+            return FakeResponse(responses[path])
+
+        connector = AutoAPIConnector("http://127.0.0.1:3000", opener=opener)
+
+        resources = connector.fetch_article_resources("v1", "a1")
+
+        self.assertEqual(len(resources), 2)
+        self.assertEqual(requests, [
+            "/v1/api/source/GeneralMotors/vehicle/v1/article/a1",
+            "/v1/api/source/GeneralMotors/vehicle/v1/labor/a1",
+        ])
+
     def test_discovers_catalog_and_fetches_every_article_as_source_resources(self):
         responses = {
             "/v1/api/years": {"header": {}, "body": [1999]},

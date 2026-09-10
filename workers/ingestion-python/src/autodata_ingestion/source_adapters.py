@@ -19,7 +19,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse, urlsplit
 from xml.etree import ElementTree
 
 
@@ -210,7 +210,7 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
                     "response_messages": header.get("messages", []),
                 }
             )
-        candidates = classify_json_candidates(document)
+        candidates = classify_json_candidates(document, source_uri=resource.source_uri)
         metadata.update(
             {
                 "candidate_count": len(candidates),
@@ -251,7 +251,9 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
     return _binary_artifact("quarantine", resource, {**metadata, "quarantine_reason": "unsupported_media_type"})
 
 
-def classify_json_candidates(document: Any) -> list[NormalizationCandidate]:
+def classify_json_candidates(
+    document: Any, *, source_uri: str = ""
+) -> list[NormalizationCandidate]:
     """Recognize common source records while keeping unknown JSON shapes intact."""
 
     body = document.get("body") if isinstance(document, dict) and "body" in document else document
@@ -318,6 +320,21 @@ def classify_json_candidates(document: Any) -> list[NormalizationCandidate]:
             if isinstance(article, dict):
                 article_id = str(article.get("id") or f"index-{index}")
                 candidates.append(NormalizationCandidate("article", f"article:{article_id}:{index}", article, f"body.articleDetails[{index}]"))
+
+    # AutoAPI exposes labor as a separate JSON resource. Keep it typed so the
+    # source bundle can join it to the article while preserving its evidence.
+    if "/labor/" in source_uri.casefold():
+        article_id = unquote(urlsplit(source_uri).path.rsplit("/", 1)[-1]).strip()
+        operations = body.get("operations") if isinstance(body, dict) else body
+        if article_id and isinstance(operations, list):
+            candidates.append(
+                NormalizationCandidate(
+                    "article_operations",
+                    f"article-operations:{article_id}",
+                    {"article_id": article_id, "operations": operations},
+                    "body.operations",
+                )
+            )
 
     parts = body.get("parts") if isinstance(body, dict) else body if isinstance(body, list) else None
     if isinstance(parts, list):

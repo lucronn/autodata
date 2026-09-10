@@ -110,6 +110,39 @@ class SourceBundleTests(unittest.TestCase):
             }],
         )
 
+    def test_labor_resource_is_joined_to_article_with_evidence(self):
+        article = SourceResource.from_bytes(
+            "https://source.test/article/a1",
+            "source-v1",
+            b'{"body":{"articleDetails":[{"id":"a1","title":"Alternator replacement"}]}}',
+            "application/json",
+        )
+        labor = SourceResource.from_bytes(
+            "https://source.test/vehicle/v1/labor/a1",
+            "source-v1",
+            b'{"body":{"operations":[{"operationId":"remove-belt","name":"Remove belt","hours":1.25}]}}',
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle(
+            [adapt_source_resource(article), adapt_source_resource(labor)], "US"
+        )
+
+        self.assertEqual(
+            bundle.articles[0]["operations"],
+            [{
+                "operation_id": "remove-belt",
+                "action": "Remove belt",
+                "duration_hours": 1.25,
+                "evidence_ids": [bundle.articles[0]["operations"][0]["evidence_ids"][0]],
+            }],
+        )
+        labor_evidence_id = bundle.articles[0]["operations"][0]["evidence_ids"][0]
+        self.assertEqual(
+            next(item for item in bundle.evidence if item["evidence_id"] == labor_evidence_id)["source_uri"],
+            labor.source_uri,
+        )
+
     def test_html_article_images_are_normalized_with_resolved_source_urls(self):
         resource = SourceResource.from_bytes(
             "https://source.test/guides/alternator.html",

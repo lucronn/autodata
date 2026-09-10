@@ -447,8 +447,8 @@ def _persist_catalog_articles(
                  images, normalized_fingerprint, source_snapshot_id, source_locator,
                  evidence_locator, evidence_confidence, vehicle_configuration_id,
                  content_source_snapshot_id, content_source_locator,
-                 content_extraction_evidence_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 content_extraction_evidence_id, operations)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (vehicle_id, article_id, source_snapshot_id, source_locator)
             DO UPDATE SET bucket = EXCLUDED.bucket,
                           title = EXCLUDED.title,
@@ -458,6 +458,7 @@ def _persist_catalog_articles(
                           body = EXCLUDED.body,
                           steps = EXCLUDED.steps,
                           images = EXCLUDED.images,
+                          operations = EXCLUDED.operations,
                           normalized_fingerprint = EXCLUDED.normalized_fingerprint,
                           evidence_locator = EXCLUDED.evidence_locator,
                           evidence_confidence = EXCLUDED.evidence_confidence,
@@ -493,6 +494,7 @@ def _persist_catalog_articles(
                 snapshot_ids[content_evidence["content_sha256"]],
                 article.get("content_locator") or content_evidence["locator"],
                 content_evidence_id,
+                jsonb(article.get("operations", [])),
             ),
         )
         canonical_article_id = exact_duplicate_id or near_duplicate_id
