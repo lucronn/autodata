@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -14,6 +16,12 @@ import (
 	"strings"
 	"time"
 )
+
+// dashboardFiles contains the small local developer dashboard. It is served
+// by the API so the browser uses the same origin and authentication boundary.
+//
+//go:embed dashboard/*
+var dashboardFiles embed.FS
 
 const dependencyTimeout = 250 * time.Millisecond
 
@@ -122,6 +130,27 @@ func NewServerWithIngestionClient(readiness ReadinessChecker, auth Authenticator
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /dashboard", func(response http.ResponseWriter, request *http.Request) {
+		http.Redirect(response, request, "/dashboard/", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /dashboard/", func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/dashboard/" {
+			body, err := dashboardFiles.ReadFile("dashboard/index.html")
+			if err != nil {
+				http.Error(response, "dashboard unavailable", http.StatusInternalServerError)
+				return
+			}
+			response.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = response.Write(body)
+			return
+		}
+		assets, err := fs.Sub(dashboardFiles, "dashboard")
+		if err != nil {
+			http.Error(response, "dashboard unavailable", http.StatusInternalServerError)
+			return
+		}
+		http.StripPrefix("/dashboard/", http.FileServer(http.FS(assets))).ServeHTTP(response, request)
+	})
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics.handler)
@@ -132,6 +161,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /source-review-items/{id}/review", s.requireRole("data_reviewer", s.reviewSourceItem))
 	mux.Handle("POST /article-intakes", s.requireRole("ingestion_operator", s.createArticleIntake))
 	mux.Handle("POST /knowledge-queries", s.requireRole("dataset_viewer", s.createKnowledgeQuery))
+	mux.Handle("POST /job-plans", s.requireRole("dataset_viewer", s.createJobPlan))
 	mux.Handle("GET /dataset-requests/{id}", s.requireRole("dataset_viewer", s.getDatasetRequest))
 	mux.Handle("GET /datasets/{id}", s.requireRole("dataset_viewer", s.getDataset))
 	mux.Handle("GET /datasets/{id}/sections", s.requireRole("dataset_viewer", s.getDatasetSections))

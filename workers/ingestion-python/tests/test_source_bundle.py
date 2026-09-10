@@ -86,6 +86,52 @@ class SourceBundleTests(unittest.TestCase):
             ["Inspect connector", "Replace terminal"],
         )
 
+    def test_normalized_article_preserves_source_images_for_downstream_persistence(self):
+        resource = SourceResource.from_bytes(
+            "provider://vehicle/article-with-images.json",
+            "source-v1",
+            (
+                b'{"body":{"type":"article","article_id":"TSB-IMAGE-1",'
+                b'"title":"Alternator replacement",'
+                b'"body":"Disconnect the battery before service.",'
+                b'"images":[{"url":"https://source.test/alternator.png",'
+                b'"alt":"Alternator connector diagram"}]}}'
+            ),
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource)], "US")
+
+        self.assertEqual(
+            bundle.articles[0]["images"],
+            [{
+                "url": "https://source.test/alternator.png",
+                "alt": "Alternator connector diagram",
+            }],
+        )
+
+    def test_html_article_images_are_normalized_with_resolved_source_urls(self):
+        resource = SourceResource.from_bytes(
+            "https://source.test/guides/alternator.html",
+            "source-v1",
+            (
+                b"<html><head><meta property='og:title' content='Alternator replacement'></head>"
+                b"<body><article><p>Disconnect the battery.</p>"
+                b"<img src='../media/alternator.png' alt='Connector diagram'></article></body></html>"
+            ),
+            "text/html",
+        )
+
+        bundle = normalize_source_bundle([adapt_source_resource(resource)], "US")
+
+        self.assertEqual(
+            bundle.articles[0]["images"],
+            [{
+                "url": "https://source.test/media/alternator.png",
+                "alt": "Connector diagram",
+            }],
+        )
+
     def test_coarse_identity_is_enriched_by_a_later_structured_identity_record(self):
         resources = [
             SourceResource.from_bytes(

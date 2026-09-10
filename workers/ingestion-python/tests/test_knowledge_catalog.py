@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from autodata_ingestion.article_intake import VehicleTarget  # noqa: E402
 from autodata_ingestion.knowledge_catalog import (  # noqa: E402
+    _derived_rows_to_catalog,
     _rows_to_catalog,
     load_vehicle_knowledge_catalog,
 )
@@ -80,6 +81,7 @@ class KnowledgeCatalogTests(unittest.TestCase):
                     "2WD",
                     None,
                     5.3,
+                    [{"url": "https://source.example/connector.png", "alt": "Connector diagram"}],
                 )
             ]
         )
@@ -98,6 +100,10 @@ class KnowledgeCatalogTests(unittest.TestCase):
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]["vehicle_key"], target.vehicle_key)
         self.assertEqual(result[0]["article"]["article_id"], "TSB-42")
+        self.assertEqual(
+            result[0]["article"]["images"],
+            [{"url": "https://source.example/connector.png", "alt": "Connector diagram"}],
+        )
         self.assertEqual(result[0]["vehicle_identity"]["engine_displacement_l"], 5.3)
         self.assertEqual(result[0]["evidence"][0]["evidence_id"], "evidence-1")
         self.assertEqual(result[0]["evidence"][0]["artifact_key"], "sources/tsb-42.html")
@@ -167,6 +173,30 @@ class KnowledgeCatalogTests(unittest.TestCase):
             {item["evidence_id"] for item in result[0]["evidence"]},
             {"index-evidence", "document-evidence"},
         )
+
+    def test_derived_catalog_read_preserves_components_labor_and_procedure(self):
+        result = _derived_rows_to_catalog(
+            [(
+                "combined:vehicle:alternator+starter:v1",
+                "Alternator and starter service",
+                "Disconnect battery. Replace both components.",
+                [{"sequence": 1, "action": "Disconnect battery"}],
+                "source-v1",
+                "ready",
+                "revision-2",
+                {"article_ids": ["alt-1", "start-1"], "evidence_ids": ["ev-1"], "requested_components": ["alternator", "starter"]},
+                [{"url": "https://source.test/combined.png"}],
+                {"total_labor_hours": 4.25, "overlap_hours": 0.25},
+                "a" * 64,
+            )],
+            VehicleTarget("Chevrolet", "Silverado 1500", 1999, "US"),
+        )
+
+        article = result[0]["article"]
+        self.assertEqual(article["derived_components"], ["alternator", "starter"])
+        self.assertEqual(article["source_article_ids"], ["alt-1", "start-1"])
+        self.assertEqual(article["labor"]["total_labor_hours"], 4.25)
+        self.assertEqual(article["procedure"]["steps"][0]["action"], "Disconnect battery")
 
 
 if __name__ == "__main__":

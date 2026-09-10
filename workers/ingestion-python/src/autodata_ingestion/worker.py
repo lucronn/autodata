@@ -27,6 +27,9 @@ def run_once() -> dict[str, object]:
     knowledge_request = os.getenv("AUTODATA_KNOWLEDGE_REQUEST_JSON", "").strip()
     if knowledge_request:
         return run_vehicle_knowledge(knowledge_request)
+    job_plan_request = os.getenv("AUTODATA_JOB_PLAN_REQUEST_JSON", "").strip()
+    if job_plan_request:
+        return run_job_plan(job_plan_request)
     vehicle_list = os.getenv("AUTODATA_VEHICLE_LIST_JSON", "").strip()
     if vehicle_list:
         return run_vehicle_selection(vehicle_list)
@@ -206,6 +209,199 @@ def run_vehicle_knowledge(serialized_request: str) -> dict[str, object]:
         ingest=ingest_and_persist,
     )
     return {"worker": "ingestion", "lane": "fast", **result.to_dict()}
+
+
+def run_job_plan(serialized_request: str) -> dict[str, object]:
+    """Calculate a multi-component labor plan from normalized vehicle articles."""
+
+    try:
+        request = json.loads(serialized_request)
+    except json.JSONDecodeError as error:
+        raise ValueError("job plan request must be valid JSON") from error
+    if not isinstance(request, dict):
+        raise ValueError("job plan request must contain an object")
+    query = str(request.get("query", "")).strip()
+    vehicle = request.get("vehicle")
+    if not query or not isinstance(vehicle, dict):
+        raise ValueError("job plan request requires query and vehicle")
+
+    source_info: dict[str, object] = {"mode": "normalized_cache"}
+    catalog = request.get("catalog")
+    if catalog is None:
+        from .article_intake import VehicleTarget
+        from .knowledge_catalog import load_vehicle_knowledge_catalog
+
+        year = vehicle.get("model_year", vehicle.get("year"))
+        if year is None:
+            raise ValueError("job plan vehicle requires year")
+        target = _vehicle_target_from_mapping(vehicle, year)
+        catalog = load_vehicle_knowledge_catalog(target)
+        if not catalog:
+            catalog, source_info = _load_autoapi_job_catalog(vehicle, target)
+    if not isinstance(catalog, (list, tuple)):
+        raise ValueError("job plan catalog must be an array")
+
+    from .job_plan import _components_from_query, compose_procedure_with_llm, plan_job
+
+    cached_derived = _cached_derived_job_plan(query, vehicle, catalog)
+    if cached_derived is not None:
+        return {"worker": "ingestion", "lane": "fast", **cached_derived}
+
+    result = plan_job(query, vehicle, catalog=catalog, source_info=source_info)
+    if os.getenv("AUTODATA_MERCURY2_JOB_PLANS_ENABLED") == "1" and result.get("selected_articles"):
+        selected_ids = set(str(value) for value in result["selected_articles"])
+        selected_articles = [
+            record.get("article", record)
+            for record in catalog
+            if isinstance(record, dict)
+            and isinstance(record.get("article", record), dict)
+            and str(record.get("article", record).get("article_id", "")) in selected_ids
+        ]
+        try:
+            from .mercury2 import Mercury2Client
+
+            client = Mercury2Client.from_environment()
+            result["procedure"] = compose_procedure_with_llm(
+                client,
+                query,
+                vehicle,
+                selected_articles,
+                result["labor"],
+                result["procedure"],
+            )
+            result["llm_status"] = "generated"
+        except Exception as error:  # noqa: BLE001 - retain safe deterministic draft
+            result["llm_status"] = "unavailable"
+            result["llm_error"] = str(error)
+            result["procedure"]["generation"] = "deterministic_fallback"
+    if os.getenv("AUTODATA_SOURCE_PERSIST") == "1" and result.get("selected_articles"):
+        from .derived_article_persistence import persist_derived_article
+
+        result["derived_article_persistence"] = persist_derived_article(result, vehicle=vehicle)
+    return {"worker": "ingestion", "lane": "fast", **result}
+
+
+def _cached_derived_job_plan(
+    query: str,
+    vehicle: dict[str, object],
+    catalog: list[dict[str, object]] | tuple[dict[str, object], ...],
+) -> dict[str, object] | None:
+    """Return a persisted composition without re-running planning or the LLM."""
+
+    from .job_plan import _components_from_query
+
+    requested = _components_from_query(query)
+    if not requested:
+        return None
+    requested_set = set(requested)
+    for record in catalog:
+        if not isinstance(record, dict):
+            continue
+        article = record.get("article", record)
+        if not isinstance(article, dict):
+            continue
+        components = article.get("derived_components")
+        if not isinstance(components, list) or set(str(value) for value in components) != requested_set:
+            continue
+        status = str(article.get("status") or "needs_review")
+        return {
+            "status": status,
+            "vehicle": dict(vehicle),
+            "requested_components": requested,
+            "selected_articles": [str(value) for value in article.get("source_article_ids", [])],
+            "review_reasons": [] if status == "ready" else ["persisted_derived_article_requires_review"],
+            "labor": article.get("labor", {}),
+            "procedure": article.get("procedure", {}),
+            "images": article.get("images", []),
+            "source": {"mode": "derived_article_cache", "source_watermark": article.get("source_version")},
+            "derived_article": {
+                "article_id": article.get("article_id"),
+                "revision_id": article.get("derived_revision_id"),
+                "title": article.get("title"),
+                "status": status,
+                "fingerprint": article.get("fingerprint"),
+                "source_article_ids": [str(value) for value in article.get("source_article_ids", [])],
+                "evidence_ids": [str(value) for value in article.get("evidence_ids", [])],
+            },
+            "cache_hit": True,
+        }
+    return None
+
+
+def _load_autoapi_job_catalog(vehicle: dict[str, object], target: object) -> tuple[list[dict[str, object]], dict[str, object]]:
+    """Hydrate the requested vehicle from AutoAPI only after a local miss.
+
+    A configured provider vehicle ID performs one vehicle bundle fetch. Without
+    that ID, the connector performs its complete year/make/model traversal so
+    the same miss warms the complete selector/article-list cache.
+    """
+
+    base_url = os.getenv("AUTODATA_AUTOAPI_BASE_URL", "").strip()
+    if not base_url:
+        return [], {"mode": "source_unavailable", "reason": "autoapi_not_configured"}
+    from .autoapi_connector import AutoAPIConnector
+    from .source_adapters import adapt_source_resource
+    from .source_bundle import normalize_source_bundle
+
+    connector = AutoAPIConnector(
+        base_url,
+        content_source=os.getenv("AUTODATA_AUTOAPI_CONTENT_SOURCE", "GeneralMotors"),
+        default_region=str(vehicle.get("region") or os.getenv("AUTODATA_SOURCE_REGION", "US")),
+        source_version=os.getenv("AUTODATA_AUTOAPI_SOURCE_VERSION", "autoapi-http-v1"),
+        vehicle_max_concurrency=int(os.getenv("AUTODATA_AUTOAPI_VEHICLE_CONCURRENCY", "4")),
+        retry_attempts=int(os.getenv("AUTODATA_AUTOAPI_RETRY_ATTEMPTS", "3")),
+        retry_backoff_seconds=float(os.getenv("AUTODATA_AUTOAPI_RETRY_BACKOFF_SECONDS", "0.25")),
+    )
+    provider_vehicle_id = str(vehicle.get("autoapi_vehicle_id") or vehicle.get("provider_vehicle_id") or "").strip()
+    if provider_vehicle_id:
+        bundle = connector.fetch_vehicle_bundle({"vehicle_id": provider_vehicle_id, **vehicle})
+        bundles = (bundle,)
+        traversal = "vehicle_bundle"
+    else:
+        catalog = connector.fetch_catalog()
+        bundles = tuple(item for item in catalog.vehicles if _same_vehicle_family(item.vehicle, vehicle))
+        traversal = "full_catalog"
+        if os.getenv("AUTODATA_SOURCE_PERSIST") == "1" and catalog.vehicles:
+            from .autoapi_batch import execute_autoapi_batch
+
+            execute_autoapi_batch(
+                catalog.to_batches(),
+                source_version=connector.source_version,
+                persist=True,
+                adapter_name=connector.name,
+                selector_rows=catalog.selection_rows,
+                selector_source_uri=f"{base_url.rstrip('/')}/v1/api/years",
+            )
+    records: list[dict[str, object]] = []
+    for bundle in bundles:
+        artifacts = [adapt_source_resource(resource) for resource in bundle.resources]
+        normalized = normalize_source_bundle(
+            artifacts,
+            str(vehicle.get("region") or "US"),
+            expected_vehicle=dict(bundle.vehicle),
+        )
+        if os.getenv("AUTODATA_SOURCE_PERSIST") == "1":
+            from .bundle_persistence import persist_source_bundle
+
+            persist_source_bundle(normalized, artifacts, adapter_name=connector.name)
+        evidence_by_id = {str(item["evidence_id"]): item for item in normalized.evidence if item.get("evidence_id")}
+        for article in normalized.articles:
+            records.append({
+                "kind": "article",
+                "vehicle_key": bundle.vehicle.get("vehicle_key"),
+                "vehicle_identity": dict(bundle.vehicle),
+                "article": dict(article),
+                "evidence": (
+                    [evidence_by_id[str(article["evidence_id"])] ]
+                    if article.get("evidence_id") and str(article["evidence_id"]) in evidence_by_id
+                    else []
+                ),
+            })
+    return records, {"mode": "autoapi_fallback", "traversal": traversal, "vehicle_count": len(bundles), "materialized_records": len(records)}
+
+
+def _same_vehicle_family(left: dict[str, object], right: dict[str, object]) -> bool:
+    return all(str(left.get(key, "")).casefold() == str(right.get(key, "")).casefold() for key in ("year", "make", "model"))
 
 
 def _persist_article_intake(intake: object, *, adapter_name: str) -> dict[str, object] | None:

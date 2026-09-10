@@ -118,6 +118,7 @@ class BundlePersistenceTests(unittest.TestCase):
         for column in (
             "body",
             "steps",
+            "images",
             "normalized_fingerprint",
             "source_snapshot_id",
             "source_locator",
@@ -135,12 +136,13 @@ class BundlePersistenceTests(unittest.TestCase):
         )
         self.assertEqual(params[8], ARTICLE["body"])
         self.assertEqual(params[9], ARTICLE["steps"])
-        self.assertEqual(params[10], normalized_article_fingerprint(ARTICLE))
-        self.assertEqual(params[11], "snapshot-1")
-        self.assertEqual(params[12], "json:article[0]")
+        self.assertEqual(params[10], [])
+        self.assertEqual(params[11], normalized_article_fingerprint(ARTICLE))
+        self.assertEqual(params[12], "snapshot-1")
         self.assertEqual(params[13], "json:article[0]")
-        self.assertEqual(params[14], 0.97)
-        self.assertEqual(params[15], "configuration-1")
+        self.assertEqual(params[14], "json:article[0]")
+        self.assertEqual(params[15], 0.97)
+        self.assertEqual(params[16], "configuration-1")
 
     def test_article_upsert_persists_separate_document_content_provenance(self):
         article = {
@@ -171,9 +173,9 @@ class BundlePersistenceTests(unittest.TestCase):
             "content_extraction_evidence_id",
         ):
             self.assertIn(column, compact_query)
-        self.assertEqual(params[16], "snapshot-document")
-        self.assertEqual(params[17], "body.html:3950424")
-        self.assertEqual(params[18], "content-evidence-1")
+        self.assertEqual(params[17], "snapshot-document")
+        self.assertEqual(params[18], "body.html:3950424")
+        self.assertEqual(params[19], "content-evidence-1")
 
     def test_replaying_the_same_article_has_the_same_row_identity_and_values(self):
         first_cursor = RecordingCursor()

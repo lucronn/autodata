@@ -1,0 +1,173 @@
+const state = { vehicles: [], loading: false };
+
+const $ = (id) => document.getElementById(id);
+
+function authHeaders() {
+  const token = window.localStorage.getItem("autodata-auth-token") || "local:demo:dataset_viewer";
+  return { Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}` };
+}
+
+function setSystemStatus(label, stateName) {
+  const element = $("system-status");
+  element.textContent = label;
+  element.dataset.state = stateName;
+}
+
+function vehicleLabel(vehicle) {
+  const engine = vehicle.configurations?.find((item) => item.engine_displacement_l)?.engine_displacement_l;
+  const details = [vehicle.drivetrain, engine ? `${engine}L` : ""].filter(Boolean).join(" ");
+  return [vehicle.year, vehicle.make, vehicle.model, details].filter(Boolean).join(" ");
+}
+
+function setVehicleFields(vehicle) {
+  if (!vehicle) return;
+  $("year").value = vehicle.year || "";
+  $("region").value = vehicle.region || "US";
+  $("make").value = vehicle.make || "";
+  $("model").value = vehicle.model || "";
+  $("drivetrain").value = vehicle.drivetrain || "";
+  const engine = vehicle.configurations?.find((item) => item.engine_displacement_l)?.engine_displacement_l;
+  $("engine").value = engine || "";
+}
+
+function renderVehicles() {
+  const select = $("vehicle-select");
+  select.replaceChildren();
+  if (!state.vehicles.length) {
+    select.add(new Option("No cached vehicles — enter one below", ""));
+    $("cache-note").textContent = "The catalog cache is empty. A source-backed request can hydrate it when configured.";
+    setSystemStatus("Cache needs hydration", "error");
+    return;
+  }
+  select.add(new Option("Choose a cached vehicle…", ""));
+  for (const [index, vehicle] of state.vehicles.entries()) {
+    select.add(new Option(vehicleLabel(vehicle), String(index)));
+  }
+  $("cache-note").textContent = `${state.vehicles.length} normalized vehicle families available locally.`;
+  setSystemStatus("Cache ready", "ready");
+}
+
+async function loadVehicles() {
+  setSystemStatus("Checking cache", "idle");
+  try {
+    const response = await fetch("/vehicle-identities/selectors", { headers: authHeaders() });
+    if (!response.ok) throw new Error(`selector request returned ${response.status}`);
+    const payload = await response.json();
+    state.vehicles = Array.isArray(payload.vehicles) ? payload.vehicles : [];
+    renderVehicles();
+  } catch (error) {
+    state.vehicles = [];
+    renderVehicles();
+    $("cache-note").textContent = `Selector cache unavailable: ${error.message}`;
+    setSystemStatus("Cache unavailable", "error");
+  }
+}
+
+function currentVehicle() {
+  const selected = $("vehicle-select").value;
+  const cached = selected === "" ? null : state.vehicles[Number(selected)];
+  const vehicle = cached ? { ...cached } : {};
+  const engine = $("engine").value.trim();
+  Object.assign(vehicle, {
+    year: $("year").value.trim(),
+    region: $("region").value.trim() || "US",
+    make: $("make").value.trim(),
+    model: $("model").value.trim(),
+    drivetrain: $("drivetrain").value.trim(),
+  });
+  if (engine) vehicle.engine_displacement_l = Number(engine);
+  delete vehicle.configurations;
+  delete vehicle.aliases;
+  return vehicle;
+}
+
+function addMessage(kind, text) {
+  const wrapper = document.createElement("div");
+  wrapper.className = `message ${kind}-message`;
+  const label = document.createElement("span");
+  label.className = "message-label";
+  label.textContent = kind === "user" ? "You" : "AutoData";
+  const paragraph = document.createElement("p");
+  paragraph.textContent = text;
+  wrapper.append(label, paragraph);
+  $("chat-log").append(wrapper);
+  wrapper.scrollIntoView({ block: "nearest" });
+}
+
+function summarize(payload) {
+  const results = Array.isArray(payload.results) ? payload.results : [];
+  if (payload.error?.message) return payload.error.message;
+  if (payload.fallback_status === "pending") return "This vehicle lookup was not warm. The source-backed ingestion request is queued; retry after the article materializes.";
+  if (!results.length) return "No matching normalized article or procedure was found for this vehicle yet.";
+  return results.map((result, index) => {
+    const item = result.article || result.procedure || {};
+    const title = item.title || item.section || item.procedure_id || item.article_id || `Result ${index + 1}`;
+    const excerpt = item.body || item.excerpt || "Structured result available in the JSON panel.";
+    return `${index + 1}. ${title}\n${excerpt}`;
+  }).join("\n\n");
+}
+
+function renderImages(payload) {
+  const target = $("source-images");
+  target.replaceChildren();
+  const images = Array.isArray(payload.images) ? payload.images : [];
+  for (const image of images) {
+    if (!image.url || !/^https?:\/\//i.test(image.url)) continue;
+    const figure = document.createElement("figure");
+    figure.className = "source-image";
+    const element = document.createElement("img");
+    element.src = image.url;
+    element.alt = image.alt || "Original source image";
+    element.loading = "lazy";
+    const caption = document.createElement("figcaption");
+    caption.textContent = image.alt || image.url;
+    figure.append(element, caption);
+    target.append(figure);
+  }
+}
+
+async function submitQuery(event) {
+  event.preventDefault();
+  if (state.loading) return;
+  const query = $("query").value.trim();
+  const vehicle = currentVehicle();
+  if (!query || !vehicle.year || !vehicle.make || !vehicle.model) {
+    $("result-status").textContent = "Vehicle and question required";
+    $("result-summary").textContent = "Choose a cached vehicle or provide year, make, and model before asking.";
+    $("result-summary").classList.remove("empty-state");
+    return;
+  }
+  state.loading = true;
+  $("query-form").querySelector("button").disabled = true;
+  addMessage("user", query);
+  $("result-status").textContent = "Looking up normalized data…";
+  try {
+    const response = await fetch("/job-plans", {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ vehicle, query, kind: "all", fallback: true }),
+    });
+    const payload = await response.json();
+    $("json-output").textContent = JSON.stringify(payload, null, 2);
+    renderImages(payload);
+    $("result-status").textContent = response.ok || response.status === 202 ? `HTTP ${response.status}` : "Request failed";
+    $("result-status").dataset.state = response.ok || response.status === 202 ? "ready" : "error";
+    $("result-summary").textContent = summarize(payload);
+    $("result-summary").classList.remove("empty-state");
+    addMessage("assistant", summarize(payload));
+  } catch (error) {
+    $("result-status").textContent = "Request failed";
+    $("result-status").dataset.state = "error";
+    $("result-summary").textContent = error.message;
+    $("result-summary").classList.remove("empty-state");
+    addMessage("assistant", `The local API could not answer: ${error.message}`);
+  } finally {
+    state.loading = false;
+    $("query-form").querySelector("button").disabled = false;
+  }
+}
+
+$("vehicle-select").addEventListener("change", (event) => setVehicleFields(state.vehicles[Number(event.target.value)]));
+$("refresh-vehicles").addEventListener("click", loadVehicles);
+$("query-form").addEventListener("submit", submitQuery);
+loadVehicles();

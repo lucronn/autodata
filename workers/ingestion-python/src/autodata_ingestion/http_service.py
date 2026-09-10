@@ -18,6 +18,7 @@ def dispatch_request(
     *,
     article_runner: Callable[[str, str], dict[str, object]] | None = None,
     knowledge_runner: Callable[[str], dict[str, object]] | None = None,
+    job_runner: Callable[[str], dict[str, object]] | None = None,
 ) -> dict[str, object]:
     """Dispatch the two internal request shapes without exposing worker internals."""
 
@@ -50,6 +51,18 @@ def dispatch_request(
 
             knowledge_runner = run_vehicle_knowledge
         return knowledge_runner(json.dumps(dict(payload), ensure_ascii=False, sort_keys=True))
+    if path == "/v1/job-plans":
+        vehicle = payload.get("vehicle")
+        query = str(payload.get("query", "")).strip()
+        if not isinstance(vehicle, Mapping):
+            raise ValueError("job plan vehicle must be an object")
+        if not query:
+            raise ValueError("job plan query is required")
+        if job_runner is None:
+            from .worker import run_job_plan
+
+            job_runner = run_job_plan
+        return job_runner(json.dumps(dict(payload), ensure_ascii=False, sort_keys=True))
     raise ValueError("unknown ingestion service route")
 
 

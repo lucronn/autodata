@@ -19,7 +19,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from xml.etree import ElementTree
 
 
@@ -869,6 +869,7 @@ class _ArticleHTMLParser(HTMLParser):
         self._article_depth = 0
         self._article_ignored_depth = 0
         self._article_body_parts: list[str] = []
+        self.images: list[dict[str, str]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attributes = {
@@ -893,6 +894,11 @@ class _ArticleHTMLParser(HTMLParser):
             self._heading_parts = []
         elif normalized_tag == "script" and attributes.get("type", "").casefold() == "application/ld+json":
             self._json_ld_parts = []
+        elif self._article_depth and normalized_tag == "img" and attributes.get("src"):
+            image = {"url": attributes["src"]}
+            if attributes.get("alt"):
+                image["alt"] = attributes["alt"]
+            self.images.append(image)
 
     def handle_endtag(self, tag: str) -> None:
         normalized_tag = tag.casefold()
@@ -965,6 +971,7 @@ def _html_article_candidates(resource: SourceResource) -> list[NormalizationCand
         ),
         "body": parser.article_body,
         "steps": None,
+        "images": parser.images,
     }
     for record in json_ld_records:
         record_types = _json_ld_types(record)
@@ -1028,6 +1035,16 @@ def _html_article_candidates(resource: SourceResource) -> list[NormalizationCand
         steps = article_values.get("steps")
         if isinstance(steps, list) and all(isinstance(step, (str, dict)) for step in steps):
             article_data["steps"] = steps
+        images = article_values.get("images")
+        if isinstance(images, list):
+            article_data["images"] = [
+                {
+                    **image,
+                    "url": urljoin(resource.source_uri, str(image["url"])),
+                }
+                for image in images
+                if isinstance(image, dict) and str(image.get("url") or "").strip()
+            ]
         candidates.append(
             NormalizationCandidate(
                 "article",
@@ -1192,6 +1209,10 @@ def _candidate_from_record(
         steps = record.get("steps")
         if isinstance(steps, list) and all(isinstance(step, (str, dict)) for step in steps):
             data["steps"] = steps
+        for source_name in ("images", "imageUrls", "image_urls", "diagrams", "media"):
+            value = record.get(source_name)
+            if value:
+                data[source_name] = value
         return NormalizationCandidate(
             "article",
             f"article:{article_id}:{locator}",

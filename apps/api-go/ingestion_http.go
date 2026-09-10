@@ -82,6 +82,10 @@ func (s *Server) createKnowledgeQuery(response http.ResponseWriter, request *htt
 	s.proxyIngestionRequest(response, request, "/v1/knowledge-queries")
 }
 
+func (s *Server) createJobPlan(response http.ResponseWriter, request *http.Request, _ Principal) {
+	s.proxyIngestionRequest(response, request, "/v1/job-plans")
+}
+
 func (s *Server) proxyIngestionRequest(response http.ResponseWriter, request *http.Request, path string) {
 	if strings.TrimSpace(request.Header.Get("Idempotency-Key")) == "" {
 		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "Idempotency-Key is required", false)

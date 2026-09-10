@@ -444,11 +444,11 @@ def _persist_catalog_articles(
             INSERT INTO catalog_articles
                 (catalog_article_id, vehicle_id, article_id, bucket, title,
                  bulletin_number, release_date, sort_order, body, steps,
-                 normalized_fingerprint, source_snapshot_id, source_locator,
+                 images, normalized_fingerprint, source_snapshot_id, source_locator,
                  evidence_locator, evidence_confidence, vehicle_configuration_id,
                  content_source_snapshot_id, content_source_locator,
                  content_extraction_evidence_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (vehicle_id, article_id, source_snapshot_id, source_locator)
             DO UPDATE SET bucket = EXCLUDED.bucket,
                           title = EXCLUDED.title,
@@ -457,6 +457,7 @@ def _persist_catalog_articles(
                           sort_order = EXCLUDED.sort_order,
                           body = EXCLUDED.body,
                           steps = EXCLUDED.steps,
+                          images = EXCLUDED.images,
                           normalized_fingerprint = EXCLUDED.normalized_fingerprint,
                           evidence_locator = EXCLUDED.evidence_locator,
                           evidence_confidence = EXCLUDED.evidence_confidence,
@@ -482,6 +483,7 @@ def _persist_catalog_articles(
                 article.get("sort"),
                 article.get("body"),
                 jsonb(steps) if steps is not None else None,
+                jsonb(article.get("images", [])),
                 fingerprint,
                 snapshot_ids[article_evidence["content_sha256"]],
                 article_evidence["locator"],

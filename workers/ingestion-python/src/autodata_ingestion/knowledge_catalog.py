@@ -56,7 +56,8 @@ def load_vehicle_knowledge_catalog(target: VehicleTarget) -> list[dict[str, Any]
                cee.artifact_key,
                cee.extracted_text,
                cee.confidence,
-               cee.reviewer_state
+               cee.reviewer_state,
+               ca.images
         FROM catalog_articles ca
         JOIN vehicles v ON v.vehicle_id = ca.vehicle_id
         JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
@@ -87,7 +88,32 @@ def load_vehicle_knowledge_catalog(target: VehicleTarget) -> list[dict[str, Any]
         with connection.cursor() as cursor:
             cursor.execute(query, (target.vehicle_key, limit))
             rows = cursor.fetchall()
-    return _rows_to_catalog(rows, target)
+            catalog = _rows_to_catalog(rows, target)
+            if os.getenv("AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED", "0") == "1":
+                try:
+                    cursor.execute(
+                        """
+                        SELECT da.article_id, da.title, dar.body, dar.steps,
+                               dar.source_watermark, dar.status,
+                               dar.derived_article_revision_id::text,
+                               dar.provenance, dar.images, dar.labor,
+                               dar.normalized_fingerprint
+                        FROM derived_articles da
+                        JOIN derived_article_revisions dar
+                          ON dar.derived_article_id = da.derived_article_id
+                         AND dar.revision_number = da.current_revision_number
+                        JOIN vehicles v ON v.vehicle_id = da.vehicle_id
+                        WHERE v.vehicle_key = %s
+                          AND dar.status IN ('ready', 'needs_review')
+                        ORDER BY dar.published_at DESC NULLS LAST, da.article_id
+                        LIMIT %s
+                        """,
+                        (target.vehicle_key, limit),
+                    )
+                    catalog.extend(_derived_rows_to_catalog(cursor.fetchall(), target))
+                except Exception:  # noqa: BLE001 - older databases lack the optional derived cache
+                    pass
+    return catalog
 
 
 def _knowledge_cache_limit() -> int:
@@ -147,6 +173,9 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
             content_confidence,
             content_reviewer_state,
         ) = content_values[:9]
+        # Keep compatibility with compact test/fallback rows that omit the
+        # optional content-provenance join columns.
+        images = row[36] if len(row) > 36 else row[27] if len(row) == 28 else []
         content_locator = content_source_locator or source_locator or evidence_locator or "catalog"
         content_uri = content_source_uri or source_uri
         content_version = content_source_version or source_version
@@ -164,6 +193,8 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
             "source_version": source_version,
             "content_locator": content_locator,
         }
+        if images:
+            article["images"] = images
         article = {key: value for key, value in article.items() if value is not None}
         evidence_id = str(extraction_evidence_id)
         evidence = {
@@ -232,6 +263,69 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
                     "evidence": evidence_items,
                 }
             )
+    return catalog
+
+
+def _derived_rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list[dict[str, Any]]:
+    """Expose persisted combined procedures through the same search catalog."""
+
+    catalog: list[dict[str, Any]] = []
+    for row in rows:
+        if len(row) < 9:
+            continue
+        article_id, title, body, steps, source_watermark, status, revision_id, provenance, images = row[:9]
+        labor = row[9] if len(row) > 9 and isinstance(row[9], dict) else {}
+        fingerprint = str(row[10]) if len(row) > 10 and row[10] else ""
+        evidence_ids = []
+        source_article_ids = []
+        requested_components = []
+        if isinstance(provenance, dict):
+            evidence_ids = [str(value) for value in provenance.get("evidence_ids", [])]
+            source_article_ids = [str(value) for value in provenance.get("article_ids", [])]
+            requested_components = [str(value) for value in provenance.get("requested_components", [])]
+        article = {
+            "article_id": str(article_id),
+            "article_key": f"derived:{revision_id}",
+            "bucket": "composed procedure",
+            "title": title,
+            "body": body,
+            "steps": steps or [],
+            "images": images or [],
+            "source_version": source_watermark,
+            "status": status,
+            "derived_revision_id": str(revision_id),
+            "derived_components": requested_components,
+            "source_article_ids": source_article_ids,
+            "evidence_ids": evidence_ids,
+            "labor": labor,
+            "fingerprint": fingerprint,
+            "procedure": {
+                "title": title,
+                "steps": steps or [],
+                "warnings": [],
+                "requires_review": status != "ready",
+                "generation": "persisted_derived_article",
+            },
+        }
+        evidence = [
+            {
+                "evidence_id": evidence_id,
+                "locator": "derived-article-lineage",
+                "source_version": source_watermark,
+                "confidence": 1.0,
+                "reviewer_state": status,
+            }
+            for evidence_id in evidence_ids
+        ]
+        catalog.append(
+            {
+                "vehicle_key": target.vehicle_key,
+                "vehicle_identity": target.as_dict(),
+                "kind": "article",
+                "article": article,
+                "evidence": evidence,
+            }
+        )
     return catalog
 
 

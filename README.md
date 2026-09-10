@@ -47,6 +47,55 @@ revision, PostgreSQL records, MinIO source object, and `dataset.viewable`
 JetStream event. The full developer workflows and recovery checks are in
 [`docs/architecture/infrastructure-and-dev.md`](docs/architecture/infrastructure-and-dev.md).
 
+Open the local chatbot dashboard at [http://127.0.0.1:8080/dashboard/](http://127.0.0.1:8080/dashboard/)
+after the API container is running. It loads normalized vehicle selectors,
+accepts a plain-language question, and submits it to `POST /job-plans`. The
+response includes structured labor, a combined procedure, source status,
+evidence, and original image URLs present in the ingested article. On a local
+cache miss, the ingestion service uses the configured source connector and
+materializes the returned source data for future lookups.
+
+The dashboard uses the local development identity format
+`Bearer local:demo:dataset_viewer` by default. A production identity adapter
+must replace that local header boundary; provider credentials do not belong in
+the browser bundle.
+
+For a direct smoke test of the chatbot endpoint, provide a deterministic
+vehicle-scoped catalog in the request. This exercises combined labor,
+procedure composition, image propagation, and derived-article persistence
+without making provider calls:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8080/job-plans \
+  -H 'Authorization: Bearer local:demo:dataset_viewer' \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: local-job-plan-001' \
+  -d '{"vehicle":{"year":1999,"make":"Chevrolet","model":"Silverado 1500","region":"US","drivetrain":"2WD","engine_displacement_l":5.3},"query":"replace the alternator and starter"}'
+```
+
+Omit the request's `catalog` after a successful persisted request to exercise
+the warm derived-article path. A cache miss uses
+`AUTODATA_AUTOAPI_BASE_URL` only after the indexed local lookup is empty. The
+AutoAPI traversal command hydrates the complete available year/make/model/
+vehicle configuration and article-list catalog when the connector session is
+authorized:
+
+```sh
+AUTODATA_POSTGRES_PASSWORD=local-dev-only \
+AUTODATA_MINIO_ROOT_USER=localadmin \
+AUTODATA_MINIO_ROOT_PASSWORD=local-dev-password \
+PYTHONPATH=workers/ingestion-python/src \
+python3 scripts/dev/ingest_autoapi_service.py \
+  --base-url http://127.0.0.1:3000 --persist
+```
+
+Mercury-2 is an advisory wording layer for selected, evidence-backed source
+steps. Set `INCEPTION_API_KEY` and `INCEPTION_API_BASE_URL` through the local
+environment or a deployment secret interface; the repository and browser
+bundle never contain those values. If the adapter is unavailable, the API
+returns the validated deterministic procedure and marks the LLM layer as
+unavailable rather than fabricating content.
+
 ## Validate a heterogeneous source drop
 
 The source normalizer accepts mixed JSON/API envelopes, XML, CSV, HTML, plain

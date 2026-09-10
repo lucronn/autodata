@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AutoData cockpit</title>
+    <link rel="stylesheet" href="/dashboard/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="masthead">
+        <div>
+          <p class="kicker">AUTODATA / LOCAL COCKPIT</p>
+          <h1>Ask about a vehicle.</h1>
+          <p class="lede">Choose a vehicle, describe the work in plain language, and get the structured answer already in the cache—or watch the source-backed intake begin.</p>
+        </div>
+        <div class="status-pill" id="system-status" data-state="idle">Checking cache</div>
+      </header>
+
+      <section class="workspace" aria-label="Vehicle knowledge assistant">
+        <aside class="panel vehicle-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Vehicle</p>
+              <h2>Set the scope</h2>
+            </div>
+            <button class="quiet-button" id="refresh-vehicles" type="button">Refresh</button>
+          </div>
+          <p class="panel-copy">Cached selectors keep identity matching fast and prevent the same catalog calls on every question.</p>
+          <label for="vehicle-select">Cached vehicle</label>
+          <select id="vehicle-select">
+            <option value="">Loading cached vehicles…</option>
+          </select>
+          <div class="manual-grid">
+            <label>Year<input id="year" inputmode="numeric" placeholder="1999" /></label>
+            <label>Region<input id="region" value="US" /></label>
+            <label>Make<input id="make" placeholder="Chevrolet" /></label>
+            <label>Model<input id="model" placeholder="Silverado 1500" /></label>
+            <label>Drive<input id="drivetrain" placeholder="2WD" /></label>
+            <label>Engine L<input id="engine" inputmode="decimal" placeholder="5.3" /></label>
+          </div>
+          <div class="cache-note" id="cache-note">No selector data loaded yet.</div>
+        </aside>
+
+        <section class="panel chat-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Conversation</p>
+              <h2>What do you need?</h2>
+            </div>
+            <span class="route-label">POST /job-plans</span>
+          </div>
+          <div class="chat-log" id="chat-log" aria-live="polite">
+            <div class="message assistant-message">
+              <span class="message-label">AutoData</span>
+              <p>Ask for an article, procedure, diagnostic, specification, or multi-component job.</p>
+            </div>
+          </div>
+          <form id="query-form" class="query-form">
+            <label class="sr-only" for="query">Natural-language request</label>
+            <textarea id="query" rows="3" placeholder="Example: replace the alternator and starter, and give me the combined labor estimate"></textarea>
+            <div class="form-footer">
+              <span class="hint">Answers stay vehicle-scoped and evidence-linked.</span>
+              <button class="primary-button" type="submit">Ask AutoData</button>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section class="panel output-panel" aria-label="Structured output">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Result</p>
+            <h2>Structured output</h2>
+          </div>
+          <span id="result-status" class="result-status">Waiting for a question</span>
+        </div>
+        <div id="result-summary" class="result-summary empty-state">Your normalized article or procedure will appear here.</div>
+        <div id="source-images" class="source-images" aria-label="Original source images"></div>
+        <details class="raw-output">
+          <summary>View JSON response</summary>
+          <pre id="json-output">{}</pre>
+        </details>
+      </section>
+    </main>
+    <script src="/dashboard/app.js" defer></script>
+  </body>
+</html>

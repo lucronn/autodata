@@ -1,0 +1,61 @@
+package main
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestDashboardRouteServesChatbotShell(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	request := httptest.NewRequest(http.MethodGet, "/dashboard/", nil)
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	body := response.Body.String()
+	for _, marker := range []string{
+		"AutoData cockpit",
+		"Ask about a vehicle",
+		"job-plans",
+		"/dashboard/app.js",
+	} {
+		if !strings.Contains(body, marker) {
+			t.Fatalf("dashboard body does not contain %q", marker)
+		}
+	}
+}
+
+func TestDashboardRouteRedirectsMissingTrailingSlash(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	request := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusMovedPermanently {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusMovedPermanently)
+	}
+	if location := response.Header().Get("Location"); location != "/dashboard/" {
+		t.Fatalf("location = %q, want /dashboard/", location)
+	}
+}
+
+func TestDashboardRouteServesJavaScriptAsset(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	request := httptest.NewRequest(http.MethodGet, "/dashboard/app.js", nil)
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if !strings.Contains(response.Body.String(), "job-plans") {
+		t.Fatal("dashboard JavaScript does not contain the job-plan request path")
+	}
+}

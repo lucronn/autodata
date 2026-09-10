@@ -162,6 +162,9 @@ def normalize_source_bundle(
                 steps = _article_steps(candidate.data)
                 if steps is not None:
                     article_record["steps"] = steps
+                images = _article_images(candidate.data)
+                if images:
+                    article_record["images"] = images
                 article_records.append(article_record)
             elif candidate.kind == "document_text":
                 document_text_records.append(
@@ -682,6 +685,40 @@ def _article_steps(data: dict[str, Any]) -> list[Any] | None:
     return None
 
 
+def _article_images(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Keep only safe, displayable source-media references on an article."""
+
+    values: list[Any] = []
+    for key in ("images", "imageUrls", "image_urls", "diagrams", "media"):
+        value = data.get(key)
+        if isinstance(value, list):
+            values.extend(value)
+        elif value:
+            values.append(value)
+    images: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for value in values:
+        if isinstance(value, str):
+            url = value.strip()
+            image = {"url": url} if url else None
+        elif isinstance(value, dict):
+            url = str(value.get("url") or value.get("src") or value.get("href") or "").strip()
+            image = {"url": url} if url else None
+            if image is not None:
+                for key in ("alt", "title", "evidence_id", "source_uri"):
+                    if value.get(key):
+                        image[key] = str(value[key]).strip()
+        else:
+            image = None
+        if image is None:
+            continue
+        identity = (image["url"], image.get("alt", image.get("title", "")))
+        if identity not in seen:
+            seen.add(identity)
+            images.append(image)
+    return images
+
+
 def _merge_article(target: dict[str, Any], duplicate: dict[str, Any]) -> None:
     for field in ("bucket", "title", "bulletin_number", "release_date"):
         if not target.get(field) and duplicate.get(field):
@@ -689,6 +726,14 @@ def _merge_article(target: dict[str, Any], duplicate: dict[str, Any]) -> None:
     for field in ("body", "steps"):
         if not target.get(field) and duplicate.get(field):
             target[field] = duplicate[field]
+    if duplicate.get("images"):
+        merged = target.setdefault("images", [])
+        existing = {(item.get("url"), item.get("alt", item.get("title", ""))) for item in merged}
+        for image in duplicate["images"]:
+            identity = (image.get("url"), image.get("alt", image.get("title", "")))
+            if identity not in existing:
+                merged.append(image)
+                existing.add(identity)
     evidence_ids = set(target.get("evidence_ids", [target["evidence_id"]]))
     evidence_ids.add(duplicate["evidence_id"])
     target["evidence_ids"] = sorted(evidence_ids)
