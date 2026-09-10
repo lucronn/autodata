@@ -103,7 +103,7 @@
           </div>
 
           <div class="path-switcher" role="group" aria-label="Choose a build path">
-            <button class="path-tab is-active" type="button" data-path="a" aria-pressed="true">
+            <button class="path-tab" type="button" data-path="a" aria-pressed="false">
               <span class="path-letter">A</span>
               <span><strong>I can vibe code this myself</strong><small>Get a rough answer on the screen</small></span>
               <span class="path-chevron">↗</span>
@@ -114,8 +114,12 @@
               <span class="path-chevron">↗</span>
             </button>
           </div>
+          <div class="selection-gate" id="selection-gate" aria-live="polite">
+            <span class="gate-icon">?</span>
+            <div><strong>Choose A or B to continue</strong><p>The comparison stays closed until you choose the path you want to inspect.</p></div>
+          </div>
 
-          <div class="path-panel" data-panel="a">
+          <div class="path-panel" data-panel="a" hidden>
             <div class="panel-heading">
               <div>
                 <span class="eyebrow warning">PATH A / THE QUICK WIN</span>
@@ -123,8 +127,16 @@
               </div>
               <span class="status-chip warning-chip">prototype energy</span>
             </div>
-            <div class="path-content two-column">
-              <div>
+            <div class="stepper" data-stepper="a" data-current-step="1">
+              <div class="stepper-topline">
+                <span class="step-count">STEP <strong data-step-count="a">1</strong> OF 3</span>
+                <div class="stepper-track" role="tablist" aria-label="Vibe code path steps">
+                  <button type="button" class="step-button is-active" data-step-button="a-1" role="tab" aria-selected="true"><span>01</span> Start</button>
+                  <button type="button" class="step-button" data-step-button="a-2" role="tab" aria-selected="false"><span>02</span> Output</button>
+                  <button type="button" class="step-button" data-step-button="a-3" role="tab" aria-selected="false"><span>03</span> Tradeoff</button>
+                </div>
+              </div>
+              <div class="path-step" data-path-step="a-1" role="tabpanel">
                 <p class="panel-lede">A generic prompt can get a demo moving quickly. It cannot decide what “the same vehicle” means, guarantee a complete source, or make a failed enrichment safe.</p>
                 <div class="prompt-card">
                   <div class="code-bar"><span class="window-dots"><i></i><i></i><i></i></span><span>generic_build_prompt.txt</span><button type="button" class="copy-button" data-copy="prompt">Copy</button></div>
@@ -136,29 +148,37 @@ Keep it simple and make the interface look good.</code></pre>
                   <div class="prompt-result"><span class="result-icon">!</span><span>It runs — until the first source changes shape.</span></div>
                 </div>
               </div>
-              <div class="generic-diagram-wrap">
-                <div class="diagram-label">WHAT THE PROMPT SEES</div>
-                <div class="mermaid diagram generic-diagram">flowchart LR
-  S[URL] --> LLM[LLM]
-  V[Vehicle] --> LLM
-  LLM --> J[JSON]
-  J --> U[UI]</div>
-                <details class="source-details">
-                  <summary>Show diagram source</summary>
-                  <pre><code>flowchart LR
-  S[URL] --&gt; LLM[LLM]
-  V[Vehicle] --&gt; LLM
-  LLM --&gt; J[JSON]
-  J --&gt; U[UI]</code></pre>
-                </details>
+              <div class="path-step" data-path-step="a-2" role="tabpanel" hidden>
+                <div class="generic-diagram-wrap">
+                  <div class="diagram-label">WHAT THE PROMPT SEES</div>
+                  <div class="mermaid diagram generic-diagram">flowchart LR
+    S[URL] --> LLM[LLM]
+    V[Vehicle] --> LLM
+    LLM --> J[JSON]
+    J --> U[UI]</div>
+                  <details class="source-details">
+                    <summary>Show diagram source</summary>
+                    <pre><code>flowchart LR
+    S[URL] --&gt; LLM[LLM]
+    V[Vehicle] --&gt; LLM
+    LLM --&gt; J[JSON]
+    J --&gt; U[UI]</code></pre>
+                  </details>
+                </div>
               </div>
-            </div>
-            <div class="path-verdict quick-verdict">
-              <div class="verdict-title">The honest summary</div>
-              <div class="verdict-grid">
-                <span class="plus">+</span><p><strong>Quick and cheap.</strong> Great for validating an idea or opening a door.</p>
-                <span class="minus">−</span><p><strong>Full of gaps.</strong> Duplicate vehicles, silent omissions, and opaque decisions arrive with the demo.</p>
-                <span class="minus">−</span><p><strong>A dead-end is expensive.</strong> SWEs eventually have to untangle the codebase before they can improve it.</p>
+              <div class="path-step" data-path-step="a-3" role="tabpanel" hidden>
+                <div class="path-verdict quick-verdict">
+                  <div class="verdict-title">The honest summary</div>
+                  <div class="verdict-grid">
+                    <span class="plus">+</span><p><strong>Quick and cheap.</strong> Great for validating an idea or opening a door.</p>
+                    <span class="minus">−</span><p><strong>Full of gaps.</strong> Duplicate vehicles, silent omissions, and opaque decisions arrive with the demo.</p>
+                    <span class="minus">−</span><p><strong>A dead-end is expensive.</strong> SWEs eventually have to untangle the codebase before they can improve it.</p>
+                  </div>
+                </div>
+              </div>
+              <div class="stepper-nav">
+                <button type="button" class="step-nav-button" data-step-prev="a" disabled>← Back</button>
+                <button type="button" class="step-nav-button next" data-step-next="a">Next <span>→</span></button>
               </div>
             </div>
           </div>
@@ -171,31 +191,51 @@ Keep it simple and make the interface look good.</code></pre>
               </div>
               <span class="status-chip success-chip">production-minded</span>
             </div>
-            <div class="path-content professional-content">
-              <div class="professional-intro">
-                <p class="panel-lede">This is where my work lives: the visible feature is only the top layer. Under it are identity resolution, source contracts, immutable snapshots, deduplication, evidence, retries, projections, and a read path that gets faster as the system learns.</p>
-                <div class="architecture-claim"><span class="claim-mark">✦</span><span>Three zoom levels. One coherent system.</span></div>
+            <div class="stepper" data-stepper="b" data-current-step="1">
+              <div class="stepper-topline">
+                <span class="step-count">STEP <strong data-step-count="b">1</strong> OF 3</span>
+                <div class="stepper-track" role="tablist" aria-label="Professional engineering path steps">
+                  <button type="button" class="step-button is-active" data-step-button="b-1" role="tab" aria-selected="true"><span>01</span> Think</button>
+                  <button type="button" class="step-button" data-step-button="b-2" role="tab" aria-selected="false"><span>02</span> Design</button>
+                  <button type="button" class="step-button" data-step-button="b-3" role="tab" aria-selected="false"><span>03</span> Result</button>
+                </div>
               </div>
-              <div class="diagram-controls" role="group" aria-label="Architecture depth">
-                <button type="button" class="level-button is-active" data-level="basic" aria-pressed="true"><span>01</span> Basic</button>
-                <button type="button" class="level-button" data-level="mid" aria-pressed="false"><span>02</span> Mid-level</button>
-                <button type="button" class="level-button" data-level="detailed" aria-pressed="false"><span>03</span> Detailed</button>
+              <div class="path-step" data-path-step="b-1" role="tabpanel">
+                <div class="professional-intro">
+                  <div>
+                    <p class="panel-lede">A professional build starts by clarifying what must stay true when the happy path ends: the right vehicle, a trustworthy source, a useful answer now, and a way to recover when something fails.</p>
+                    <div class="architecture-claim"><span class="claim-mark">✦</span><span>Three zoom levels. One coherent system.</span></div>
+                  </div>
+                </div>
               </div>
-              <div class="professional-diagram-card">
-                <div class="diagram-card-header"><span class="diagram-label">ARCHITECTURE ZOOM / <span id="level-label">BASIC</span></span><span class="diagram-hint">Select a level to inspect the thinking</span></div>
-                <div class="mermaid diagram professional-diagram" id="professional-diagram"></div>
-                <details class="source-details">
-                  <summary>Show diagram source</summary>
-                  <pre><code id="professional-source"></code></pre>
-                </details>
+              <div class="path-step" data-path-step="b-2" role="tabpanel" hidden>
+                <div class="diagram-controls" role="group" aria-label="Architecture depth">
+                  <button type="button" class="level-button is-active" data-level="basic" aria-pressed="true"><span>01</span> Basic</button>
+                  <button type="button" class="level-button" data-level="mid" aria-pressed="false"><span>02</span> Mid-level</button>
+                  <button type="button" class="level-button" data-level="detailed" aria-pressed="false"><span>03</span> Detailed</button>
+                </div>
+                <div class="professional-diagram-card">
+                  <div class="diagram-card-header"><span class="diagram-label">ARCHITECTURE ZOOM / <span id="level-label">BASIC</span></span><span class="diagram-hint">Select a level to inspect the thinking</span></div>
+                  <div class="mermaid diagram professional-diagram" id="professional-diagram"></div>
+                  <details class="source-details">
+                    <summary>Show diagram source</summary>
+                    <pre><code id="professional-source"></code></pre>
+                  </details>
+                </div>
               </div>
-            </div>
-            <div class="path-verdict pro-verdict">
-              <div class="verdict-title">What the engineering buys you</div>
-              <div class="verdict-grid">
-                <span class="plus">+</span><p><strong>Stable identity.</strong> New source spellings enrich the right vehicle instead of creating a new one.</p>
-                <span class="plus">+</span><p><strong>Fast now, deeper later.</strong> A viewable revision ships before optional enrichment finishes.</p>
-                <span class="plus">+</span><p><strong>Recoverable failure.</strong> Retries, dead letters, evidence, and section-level status make the system operable.</p>
+              <div class="path-step" data-path-step="b-3" role="tabpanel" hidden>
+                <div class="path-verdict pro-verdict">
+                  <div class="verdict-title">What the engineering buys you</div>
+                  <div class="verdict-grid">
+                    <span class="plus">+</span><p><strong>Stable identity.</strong> New source spellings enrich the right vehicle instead of creating a new one.</p>
+                    <span class="plus">+</span><p><strong>Fast now, deeper later.</strong> A viewable revision ships before optional enrichment finishes.</p>
+                    <span class="plus">+</span><p><strong>Recoverable failure.</strong> Retries, dead letters, evidence, and section-level status make the system operable.</p>
+                  </div>
+                </div>
+              </div>
+              <div class="stepper-nav">
+                <button type="button" class="step-nav-button" data-step-prev="b" disabled>← Back</button>
+                <button type="button" class="step-nav-button next" data-step-next="b">Next <span>→</span></button>
               </div>
             </div>
           </div>

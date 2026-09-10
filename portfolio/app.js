@@ -120,11 +120,47 @@ function setActivePath(path) {
   document.querySelectorAll('[data-panel]').forEach((panel) => {
     panel.hidden = panel.dataset.panel !== path;
   });
-  if (path === 'b') renderProfessional('basic');
+  const gate = document.querySelector('#selection-gate');
+  if (gate) gate.hidden = Boolean(path);
+  if (!path) return;
+  const stepper = document.querySelector(`[data-stepper="${path}"]`);
+  if (stepper) setActiveStep(stepper, 1);
+}
+
+function setActiveStep(stepper, requestedStep) {
+  const path = stepper.dataset.stepper;
+  const step = Math.max(1, Math.min(3, Number(requestedStep)));
+  stepper.dataset.currentStep = String(step);
+
+  stepper.querySelectorAll('[data-path-step]').forEach((panel) => {
+    panel.hidden = panel.dataset.pathStep !== `${path}-${step}`;
+  });
+  stepper.querySelectorAll('[data-step-button]').forEach((button) => {
+    const active = button.dataset.stepButton === `${path}-${step}`;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+
+  const count = stepper.querySelector(`[data-step-count="${path}"]`);
+  if (count) count.textContent = String(step);
+  const previous = stepper.querySelector(`[data-step-prev="${path}"]`);
+  const next = stepper.querySelector(`[data-step-next="${path}"]`);
+  if (previous) previous.disabled = step === 1;
+  if (next) {
+    next.disabled = step === 3;
+    next.innerHTML = step === 3 ? 'Complete' : 'Next <span>→</span>';
+  }
+
+  if (path === 'a' && step === 2) {
+    const generic = stepper.querySelector('.generic-diagram');
+    if (generic) renderMermaid(generic, generic.textContent);
+  }
+  if (path === 'b' && step === 2) renderProfessional('basic');
 }
 
 async function renderMermaid(element, source) {
-  element.innerHTML = source;
+  if (!element) return;
+  element.textContent = source;
   element.removeAttribute('data-processed');
   if (!window.mermaid) return;
   try {
@@ -171,10 +207,27 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-path]').forEach((button) => {
     button.addEventListener('click', () => setActivePath(button.dataset.path));
   });
+  document.querySelectorAll('[data-step-button]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const stepper = button.closest('[data-stepper]');
+      setActiveStep(stepper, button.dataset.stepButton.split('-')[1]);
+    });
+  });
+  document.querySelectorAll('[data-step-next]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const stepper = document.querySelector(`[data-stepper="${button.dataset.stepNext}"]`);
+      setActiveStep(stepper, Number(stepper.dataset.currentStep) + 1);
+    });
+  });
+  document.querySelectorAll('[data-step-prev]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const stepper = document.querySelector(`[data-stepper="${button.dataset.stepPrev}"]`);
+      setActiveStep(stepper, Number(stepper.dataset.currentStep) - 1);
+    });
+  });
   document.querySelectorAll('[data-level]').forEach((button) => {
     button.addEventListener('click', () => renderProfessional(button.dataset.level));
   });
   setupCopy();
-  renderMermaid(document.querySelector('.generic-diagram'), document.querySelector('.generic-diagram').textContent);
-  renderProfessional('basic');
+  setActivePath(null);
 });
