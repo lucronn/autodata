@@ -92,6 +92,12 @@ const diagrams = {
   PR --> JSON`,
 };
 
+const genericDiagram = `flowchart LR
+  S[URL] --> LLM[LLM]
+  V[Vehicle] --> LLM
+  LLM --> J[JSON]
+  J --> U[UI]`;
+
 const mermaidConfig = {
   startOnLoad: false,
   securityLevel: 'loose',
@@ -176,7 +182,7 @@ function setActiveStep(stepper, requestedStep) {
 
   if (path === 'a' && step === 2) {
     const generic = stepper.querySelector('.generic-diagram');
-    if (generic) renderMermaid(generic, generic.textContent);
+    if (generic) renderMermaid(generic, genericDiagram);
   }
   if (path === 'b' && step === 2) renderProfessional('basic');
 }
