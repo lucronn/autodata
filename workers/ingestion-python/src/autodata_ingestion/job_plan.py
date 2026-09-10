@@ -28,8 +28,10 @@ _ALIASES = {
     "pads": "brake_pads",
     "pad": "brake_pads",
     "waterpump": "water_pump",
-    "water-pump": "water_pump",
-    "water_pump": "water_pump",
+    "water pump": "water_pump",
+    "oil pump": "oil_pump",
+    "timing belt": "timing_belt",
+    "power steering pump": "power_steering_pump",
 }
 
 
@@ -108,13 +110,7 @@ def plan_job(
 
 
 def _components_from_query(query: str) -> list[str]:
-    normalized = re.sub(r"[^a-z0-9_ -]", " ", query.casefold())
-    found: list[str] = []
-    for token in re.findall(r"[a-z0-9_-]+", normalized):
-        component = _ALIASES.get(token)
-        if component and component not in found:
-            found.append(component)
-    return found
+    return _component_matches(query)
 
 
 def _flatten_articles(catalog: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -136,7 +132,26 @@ def _flatten_articles(catalog: Iterable[Mapping[str, Any]]) -> list[dict[str, An
 def _article_components(article: Mapping[str, Any]) -> set[str]:
     values: list[Any] = [article.get("component"), article.get("component_key"), article.get("components"), article.get("title"), article.get("bucket")]
     text = " ".join(str(value) for value in values if value is not None).casefold()
-    return {canonical for token, canonical in _ALIASES.items() if re.search(rf"(?<![a-z0-9]){re.escape(token)}(?![a-z0-9])", text)}
+    return set(_component_matches(text))
+
+
+def _component_matches(value: Any) -> list[str]:
+    """Match natural component phrases after punctuation/spacing normalization."""
+
+    normalized = re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
+    matches: list[tuple[int, str]] = []
+    for alias, canonical in _ALIASES.items():
+        phrase = re.sub(r"[^a-z0-9]+", " ", alias.casefold()).strip()
+        if not phrase:
+            continue
+        match = re.search(rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])", normalized)
+        if match is not None:
+            matches.append((match.start(), canonical))
+    found: list[str] = []
+    for _, canonical in sorted(matches):
+        if canonical not in found:
+            found.append(canonical)
+    return found
 
 
 def _article_score(article: Mapping[str, Any], component: str) -> int:
@@ -288,7 +303,62 @@ def _fingerprint(vehicle: Mapping[str, Any], components: list[str], source_ids: 
     return hashlib.sha256(payload).hexdigest()
 
 
-__all__ = ["plan_job"]
+__all__ = ["plan_job", "translate_job_query_with_llm"]
+
+
+def translate_job_query_with_llm(
+    client: Any,
+    query: str,
+    vehicle: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Translate natural language into safe component intents, not URLs.
+
+    Mercury-2 may identify source terminology, but the connector remains the
+    only code that constructs AutoAPI paths. This keeps model output bounded
+    to an allowlisted component vocabulary and search terms.
+    """
+
+    allowed_components = sorted(set(_ALIASES.values()))
+    prompt = (
+        "Translate this vehicle repair request into JSON for a fixed AutoData connector. "
+        "Return only components from the allowlist and source article search terms. "
+        "Never return URLs, HTTP methods, credentials, or provider route paths. "
+        f"Allowlist: {json.dumps(allowed_components)}\n"
+        + json.dumps({"query": query, "vehicle": dict(vehicle)}, sort_keys=True)
+    )
+    response = client.complete_json(prompt)
+    if not isinstance(response, Mapping):
+        raise ValueError("Mercury-2 query translation response must be an object")
+    raw_components = response.get("components")
+    if not isinstance(raw_components, list):
+        raise ValueError("Mercury-2 query translation components must be an array")
+    components: list[str] = []
+    for value in raw_components:
+        component = str(value).strip()
+        if component not in allowed_components:
+            raise ValueError(f"Mercury-2 returned unsupported component: {component}")
+        if component not in components:
+            components.append(component)
+    raw_queries = response.get("source_queries", [])
+    if not isinstance(raw_queries, list):
+        raise ValueError("Mercury-2 query translation source_queries must be an array")
+    source_queries: list[dict[str, Any]] = []
+    for index, raw in enumerate(raw_queries):
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"Mercury-2 source query {index} must be an object")
+        component = str(raw.get("component", "")).strip()
+        terms = raw.get("article_terms", [])
+        if component not in components or not isinstance(terms, list):
+            raise ValueError(f"Mercury-2 source query {index} is invalid")
+        clean_terms = [str(term).strip() for term in terms if str(term).strip()]
+        if not clean_terms:
+            raise ValueError(f"Mercury-2 source query {index} requires article_terms")
+        source_queries.append({"component": component, "article_terms": clean_terms[:8]})
+    return {
+        "components": components,
+        "source_queries": source_queries,
+        "generation": "mercury-2",
+    }
 
 
 def compose_procedure_with_llm(

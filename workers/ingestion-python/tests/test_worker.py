@@ -15,6 +15,41 @@ from autodata_ingestion.source_adapters import SourceResource  # noqa: E402
 
 
 class IngestionWorkerTests(unittest.TestCase):
+    def test_job_plan_falls_back_when_catalog_has_rows_but_not_requested_article_content(self):
+        from autodata_ingestion.worker import run_job_plan
+
+        vehicle = {"year": 1999, "make": "Chevrolet", "model": "Silverado 1500", "region": "US"}
+        cached_catalog = [{
+            "kind": "article",
+            "article": {"article_id": "brake-1", "title": "Brake replacement"},
+        }]
+        hydrated_catalog = [{
+            "kind": "article",
+            "article": {
+                "article_id": "oil-1",
+                "title": "Oil pump replacement",
+                "operations": [{"operation_id": "oil", "action": "Replace oil pump", "duration_hours": 2.0}],
+                "evidence": [{"evidence_id": "oil-evidence"}],
+            },
+        }]
+        with patch(
+            "autodata_ingestion.knowledge_catalog.load_vehicle_knowledge_catalog",
+            return_value=cached_catalog,
+        ), patch(
+            "autodata_ingestion.worker._load_autoapi_job_catalog",
+            return_value=(hydrated_catalog, {"mode": "autoapi_fallback", "targeted_article_fetch_count": 1}),
+        ) as fallback:
+            with patch.dict(
+                "os.environ",
+                {"AUTODATA_MERCURY2_JOB_PLANS_ENABLED": "0", "AUTODATA_SOURCE_PERSIST": "0"},
+                clear=False,
+            ):
+                result = run_job_plan(json.dumps({"vehicle": vehicle, "query": "oil pump replacement"}))
+
+        fallback.assert_called_once()
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["selected_articles"], ["oil-1"])
+
     def test_autoapi_query_fallback_hydrates_only_selected_articles_and_labor(self):
         from autodata_ingestion.autoapi_connector import AutoAPIVehicleBundle
         from autodata_ingestion.worker import _load_autoapi_job_catalog

@@ -226,6 +226,31 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
         raise ValueError("job plan request requires query and vehicle")
 
     source_info: dict[str, object] = {"mode": "normalized_cache"}
+    from .job_plan import (
+        _components_from_query,
+        compose_procedure_with_llm,
+        plan_job,
+        translate_job_query_with_llm,
+    )
+
+    detected_components = _components_from_query(query)
+    if not detected_components and os.getenv("AUTODATA_MERCURY2_JOB_PLANS_ENABLED") == "1":
+        try:
+            from .mercury2 import Mercury2Client
+
+            translation = translate_job_query_with_llm(
+                Mercury2Client.from_environment(), query, vehicle
+            )
+            translated_components = translation.get("components", [])
+            if translated_components:
+                query = " ".join(str(component) for component in translated_components)
+                source_info["query_translation"] = translation
+        except Exception as error:  # noqa: BLE001 - deterministic parsing remains the safe fallback
+            source_info["query_translation"] = {
+                "generation": "deterministic_fallback",
+                "status": "unavailable",
+                "error": str(error),
+            }
     catalog = request.get("catalog")
     if catalog is None:
         from .article_intake import VehicleTarget
@@ -236,12 +261,14 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
             raise ValueError("job plan vehicle requires year")
         target = _vehicle_target_from_mapping(vehicle, year)
         catalog = load_vehicle_knowledge_catalog(target)
-        if not catalog:
-            catalog, source_info = _load_autoapi_job_catalog(vehicle, target, query=query)
+        if not catalog or _catalog_needs_job_plan_hydration(query, catalog):
+            fallback_catalog, fallback_info = _load_autoapi_job_catalog(
+                vehicle, target, query=query
+            )
+            catalog = fallback_catalog
+            source_info.update(fallback_info)
     if not isinstance(catalog, (list, tuple)):
         raise ValueError("job plan catalog must be an array")
-
-    from .job_plan import _components_from_query, compose_procedure_with_llm, plan_job
 
     cached_derived = _cached_derived_job_plan(query, vehicle, catalog)
     if cached_derived is not None:
@@ -279,6 +306,22 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
 
         result["derived_article_persistence"] = persist_derived_article(result, vehicle=vehicle)
     return {"worker": "ingestion", "lane": "fast", **result}
+
+
+def _catalog_needs_job_plan_hydration(
+    query: str, catalog: list[dict[str, object]] | tuple[dict[str, object], ...]
+) -> bool:
+    """Return true when local rows cannot fulfill the requested job plan."""
+
+    from .job_plan import _components_from_query, plan_job
+
+    if not _components_from_query(query):
+        return False
+    preview = plan_job(query, {"make": "catalog", "model": "catalog"}, catalog=catalog)
+    return any(
+        str(reason).startswith(("missing_article:", "unknown_duration:"))
+        for reason in preview.get("review_reasons", [])
+    )
 
 
 def _cached_derived_job_plan(

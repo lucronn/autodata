@@ -6,7 +6,7 @@ import pytest
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from autodata_ingestion.job_plan import plan_job  # noqa: E402
+from autodata_ingestion.job_plan import plan_job, translate_job_query_with_llm  # noqa: E402
 from autodata_ingestion.worker import _cached_derived_job_plan  # noqa: E402
 
 
@@ -109,6 +109,62 @@ def test_returns_review_state_when_a_requested_component_is_missing():
 
     assert result["status"] == "needs_review"
     assert "missing_article:starter" in result["review_reasons"]
+
+
+def test_recognizes_multiword_pump_and_belt_components_from_natural_language():
+    catalog = [
+        article("oil-pump-article", "oil_pump", [{"action": "Replace oil pump", "duration_hours": 2.0}]),
+        article("water-pump-article", "water_pump", [{"action": "Replace water pump", "duration_hours": 2.5}]),
+        article("timing-belt-article", "timing_belt", [{"action": "Replace timing belt", "duration_hours": 3.0}]),
+        article("power-steering-pump-article", "power_steering_pump", [{"action": "Replace power steering pump", "duration_hours": 1.5}]),
+    ]
+
+    result = plan_job(
+        "oil pump, water pump, timing belt, and power steering pump replacement",
+        VEHICLE,
+        catalog=catalog,
+    )
+
+    assert result["requested_components"] == [
+        "oil_pump",
+        "water_pump",
+        "timing_belt",
+        "power_steering_pump",
+    ]
+    assert result["status"] == "ready"
+    assert result["selected_articles"] == [
+        "oil-pump-article",
+        "water-pump-article",
+        "timing-belt-article",
+        "power-steering-pump-article",
+    ]
+
+
+def test_mercury_translation_returns_only_allowlisted_autodata_component_intents():
+    class FakeMercury:
+        def complete_json(self, _prompt):
+            return {
+                "components": ["oil_pump", "water_pump"],
+                "source_queries": [
+                    {"component": "oil_pump", "article_terms": ["oil pump replacement"]},
+                    {"component": "water_pump", "article_terms": ["coolant pump service"]},
+                ],
+            }
+
+    result = translate_job_query_with_llm(
+        FakeMercury(),
+        "the coolant pump and oil pump are both leaking; what is the job?",
+        VEHICLE,
+    )
+
+    assert result == {
+        "components": ["oil_pump", "water_pump"],
+        "source_queries": [
+            {"component": "oil_pump", "article_terms": ["oil pump replacement"]},
+            {"component": "water_pump", "article_terms": ["coolant pump service"]},
+        ],
+        "generation": "mercury-2",
+    }
 
 
 def test_returns_review_state_without_fabricating_unknown_labor():
