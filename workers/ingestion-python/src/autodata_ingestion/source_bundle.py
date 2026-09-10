@@ -170,6 +170,7 @@ def normalize_source_bundle(
                 document_text_records.append(
                     {
                         "text": candidate.data.get("text"),
+                        "images": candidate.data.get("images", []),
                         "evidence_id": evidence_item["evidence_id"],
                         "locator": evidence_item["locator"],
                         "source_uri": artifact.source_uri,
@@ -189,7 +190,7 @@ def normalize_source_bundle(
                 )
 
     article_records, document_content_evidence = _attach_document_content(
-        article_records, document_text_records
+        article_records, document_text_records, diagram_records, evidence
     )
     evidence.extend(document_content_evidence)
     article_records = _resolve_article_collisions(article_records, evidence, quarantined, conflicts)
@@ -510,6 +511,8 @@ def _resolve_article_collisions(
 def _attach_document_content(
     articles: list[dict[str, Any]],
     document_text_records: list[dict[str, Any]],
+    media_artifacts: list[dict[str, Any]],
+    evidence: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Join AutoAPI document responses to their article index records.
 
@@ -548,7 +551,58 @@ def _attach_document_content(
         article["content_source_uri"] = content["source_uri"]
         article["content_source_version"] = content["source_version"]
         article["content_sha256"] = content["content_sha256"]
+        images = _resolve_document_images(selected_records, media_artifacts, evidence)
+        if images:
+            article["images"] = images
     return articles, aggregate_evidence
+
+
+def _resolve_document_images(
+    records: list[dict[str, Any]],
+    media_artifacts: list[dict[str, Any]],
+    evidence: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Resolve guide image IDs to the original persisted media artifact."""
+
+    media_by_id: dict[str, dict[str, Any]] = {}
+    for artifact in media_artifacts:
+        source_uri = str(artifact.get("source_uri") or "")
+        filename = source_uri.rsplit("/", 1)[-1].split("?", 1)[0]
+        image_id = filename.rsplit(".", 1)[0]
+        if image_id:
+            media_by_id[image_id] = artifact
+    evidence_by_uri: dict[str, str] = {}
+    for item in evidence:
+        source_uri = str(item.get("source_uri") or "")
+        if source_uri and item.get("evidence_id"):
+            evidence_by_uri.setdefault(source_uri, str(item["evidence_id"]))
+    images: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for record in records:
+        raw_images = record.get("images", [])
+        if not isinstance(raw_images, list):
+            continue
+        for raw in raw_images:
+            if not isinstance(raw, dict):
+                continue
+            image = dict(raw)
+            image_id = str(image.get("image_id") or "").strip()
+            artifact = media_by_id.get(image_id) if image_id else None
+            if artifact is not None:
+                image["url"] = str(artifact.get("source_uri") or "")
+                image["artifact_key"] = str(artifact.get("object_key") or "")
+                evidence_id = evidence_by_uri.get(str(artifact.get("source_uri") or ""))
+                if evidence_id:
+                    image["evidence_id"] = evidence_id
+            url = str(image.get("url") or "").strip()
+            if not url or url in seen:
+                continue
+            image["url"] = url
+            image.pop("image_id", None)
+            image.setdefault("alt", "Source diagram")
+            seen.add(url)
+            images.append({key: value for key, value in image.items() if value})
+    return images
 
 
 def _document_content_record(

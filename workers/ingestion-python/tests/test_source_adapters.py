@@ -225,6 +225,22 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(plain_artifact.candidates[0].kind, "document_text")
         self.assertIn("approved fluid", plain_artifact.candidates[0].data["text"])
 
+    def test_html_document_candidate_retains_original_image_references(self):
+        html = SourceResource.from_bytes(
+            "https://source.example/guide.html",
+            "v1",
+            b"<h2>Connector guide</h2><mtr-image id='4937423' alt='Wiring diagram'></mtr-image>",
+            "text/html",
+        )
+
+        artifact = adapt_source_resource(html)
+
+        text_candidate = next(item for item in artifact.candidates if item.kind == "document_text")
+        self.assertEqual(
+            text_candidate.data["images"],
+            [{"image_id": "4937423", "alt": "Wiring diagram"}],
+        )
+
     def test_pdf_extraction_emits_page_level_reviewable_evidence(self):
         class FakePage:
             def __init__(self, text):

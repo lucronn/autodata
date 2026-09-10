@@ -587,7 +587,10 @@ def _adapt_document_resource(
     candidates = [NormalizationCandidate(
         "document_text",
         f"document-text:{resource.content_sha256}",
-        {"text": text},
+        {
+            "text": text,
+            "images": _html_media_references(resource) if resource.media_type == "text/html" else [],
+        },
         locator,
     )]
     if resource.media_type == "text/html":
@@ -853,6 +856,13 @@ def _html_text(payload: bytes) -> str:
     return re.sub(r"\s+", " ", " ".join(parser.parts)).strip()
 
 
+def _html_media_references(resource: SourceResource) -> list[dict[str, str]]:
+    parser = _ArticleHTMLParser()
+    parser.feed(resource.payload.decode("utf-8-sig"))
+    parser.close()
+    return [dict(image) for image in parser.images]
+
+
 class _ArticleHTMLParser(HTMLParser):
     """Collect low-risk HTML metadata without interpreting arbitrary markup."""
 
@@ -894,8 +904,13 @@ class _ArticleHTMLParser(HTMLParser):
             self._heading_parts = []
         elif normalized_tag == "script" and attributes.get("type", "").casefold() == "application/ld+json":
             self._json_ld_parts = []
-        elif self._article_depth and normalized_tag == "img" and attributes.get("src"):
+        elif normalized_tag == "img" and attributes.get("src"):
             image = {"url": attributes["src"]}
+            if attributes.get("alt"):
+                image["alt"] = attributes["alt"]
+            self.images.append(image)
+        elif normalized_tag == "mtr-image" and attributes.get("id"):
+            image = {"image_id": attributes["id"]}
             if attributes.get("alt"):
                 image["alt"] = attributes["alt"]
             self.images.append(image)

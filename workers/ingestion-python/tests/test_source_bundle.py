@@ -308,6 +308,46 @@ class SourceBundleTests(unittest.TestCase):
         )
         self.assertEqual(aggregate["extracted_text"], "Page one\n\nPage two")
 
+    def test_embedded_guide_links_mtr_image_to_the_original_diagram_artifact(self):
+        index_resource = SourceResource.from_bytes(
+            "file://v2.json",
+            "autoapi-v1",
+            b'{"body":{"articleDetails":[{"id":"4942414:guide-1",'
+            b'"bucket":"Wiring Diagrams","title":"Adaptive Cruise Module"}]}}',
+            "application/json",
+        )
+        guide_resource = SourceResource.from_bytes(
+            "file://4942414.json",
+            "autoapi-v1",
+            b'{"body":{"documentId":"4942414","html":"<h2>Adaptive Cruise Module</h2>'
+            b'<mtr-image id=\'4937423\' alt=\'Module diagram\'></mtr-image>"}}',
+            "application/json",
+        )
+        diagram_resource = SourceResource.from_bytes(
+            "file://4937423.svg",
+            "autoapi-v1",
+            b"<svg xmlns='http://www.w3.org/2000/svg'><title>Module diagram</title></svg>",
+            "image/svg+xml",
+        )
+
+        diagram_artifact = adapt_source_resource(diagram_resource)
+        bundle = normalize_source_bundle(
+            [
+                adapt_source_resource(index_resource),
+                adapt_source_resource(guide_resource),
+                diagram_artifact,
+            ],
+            "US",
+        )
+
+        article = next(item for item in bundle.articles if item["article_id"] == "4942414:guide-1")
+        assert article["images"][0]["url"] == "file://4937423.svg"
+        assert article["images"][0]["alt"] == "Module diagram"
+        assert article["images"][0]["artifact_key"] == diagram_artifact.object_key
+        assert article["images"][0]["evidence_id"] in {
+            item["evidence_id"] for item in bundle.evidence
+        }
+
     def test_unrecognized_resource_is_retained_and_blocks_ready_status(self):
         resource = SourceResource.from_bytes(
             "provider://vehicle/new-shape",
