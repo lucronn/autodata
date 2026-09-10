@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from autodata_ingestion.autoapi_batch import execute_autoapi_batch  # noqa: E402
-from autodata_ingestion.autoapi_connector import AutoAPIConnector  # noqa: E402
+from autodata_ingestion.autoapi_connector import AutoAPIConnector, _selector_rows  # noqa: E402
 
 
 class FakeResponse:
@@ -32,6 +32,66 @@ class FakeResponse:
 
 
 class AutoAPIConnectorTests(unittest.TestCase):
+    def test_selector_identity_uses_requested_base_model_not_provider_engine_name(self):
+        rows = _selector_rows(
+            {"header": {}, "body": "1997 Toyota RAV4 Base 2.0L L4 (P) 3S-FE GAS Electronic"},
+            {"header": {}, "body": [{"model": "RAV4 Base", "id": "17075", "engines": [{"id": "17075:996", "name": "2.0L L4 3S-FE"}]}]},
+            {"year": 1997, "make": "Toyota", "model": "RAV4", "requested_model": "RAV4"},
+            default_region="US",
+        )
+
+        self.assertEqual(rows[0]["model"], "Rav4")
+
+    def test_resolves_one_year_make_model_family_without_full_catalog_traversal(self):
+        responses = {
+            "/v1/api/year/1997/makes": {
+                "header": {},
+                "body": [{"makeId": "toyota", "makeName": "Toyota"}],
+            },
+            "/v1/api/year/1997/make/Toyota/models": {
+                "header": {},
+                "body": [
+                    {
+                        "modelId": "rav4",
+                        "modelName": "RAV4",
+                        "vehicles": [{"vehicleId": "rav4-4wd"}, {"vehicleId": "rav4-2wd"}],
+                    },
+                    {"modelId": "camry", "modelName": "Camry", "vehicles": [{"vehicleId": "camry-1"}]},
+                ],
+            },
+            "/v1/api/source/Toyota/vehicles?vehicleIds=rav4-4wd%2Crav4-2wd": {
+                "header": {},
+                "body": [
+                    {"vehicleId": "rav4-4wd", "vehicleName": "1997 Toyota RAV4 4WD"},
+                    {"vehicleId": "rav4-2wd", "vehicleName": "1997 Toyota RAV4 2WD"},
+                ],
+            },
+        }
+        requests = []
+
+        def opener(request, timeout):
+            del timeout
+            parsed = urlsplit(request.full_url)
+            key = parsed.path
+            if parsed.query:
+                key += "?" + parsed.query
+            requests.append(key)
+            return FakeResponse(responses[key])
+
+        connector = AutoAPIConnector(
+            "http://127.0.0.1:3000",
+            content_source="Toyota",
+            opener=opener,
+        )
+
+        targets = connector.find_vehicle_targets(1997, "Toyota", "RAV4")
+
+        self.assertEqual(
+            [target["vehicle_id"] for target in targets],
+            ["rav4-2wd", "rav4-4wd"],
+        )
+        self.assertNotIn("/v1/api/years", requests)
+
     def test_fetches_only_one_requested_article_body_and_labor_resource(self):
         responses = {
             "/v1/api/source/GeneralMotors/vehicle/v1/article/a1": {
@@ -59,6 +119,33 @@ class AutoAPIConnectorTests(unittest.TestCase):
             "/v1/api/source/GeneralMotors/vehicle/v1/labor/a1",
         ])
 
+    def test_fetches_labor_by_separate_provider_id_and_targets_procedure(self):
+        responses = {
+            "/v1/api/source/Motor/vehicle/v1/article/P%3A1": {
+                "header": {}, "body": {"documentId": "P:1", "html": "<h2>Water pump</h2>"}
+            },
+            "/v1/api/source/Motor/vehicle/v1/labor/L%3A2": {
+                "header": {}, "body": {"operations": [{"operationId": "pump", "hours": 2.0}]}
+            },
+        }
+        requests = []
+
+        def opener(request, timeout):
+            del timeout
+            path = urlsplit(request.full_url).path
+            requests.append(path)
+            return FakeResponse(responses[path])
+
+        connector = AutoAPIConnector("http://127.0.0.1:3000", content_source="Motor", opener=opener)
+
+        resources = connector.fetch_article_resources("v1", "P:1", labor_article_id="L:2")
+
+        self.assertEqual(requests, [
+            "/v1/api/source/Motor/vehicle/v1/article/P%3A1",
+            "/v1/api/source/Motor/vehicle/v1/labor/L%3A2",
+        ])
+        self.assertEqual(resources[1].metadata["target_article_id"], "P:1")
+
     def test_discovers_catalog_and_fetches_every_article_as_source_resources(self):
         responses = {
             "/v1/api/years": {"header": {}, "body": [1999]},
@@ -66,7 +153,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
                 "header": {},
                 "body": [{"makeId": 46, "makeName": "Chevrolet"}],
             },
-            "/v1/api/year/1999/make/46/models": {
+            "/v1/api/year/1999/make/Chevrolet/models": {
                 "header": {},
                 "body": [
                     {
@@ -223,7 +310,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
                 "header": {},
                 "body": [{"makeId": 52, "makeName": "Ford"}],
             },
-            "/v1/api/year/1999/make/46/models": {
+            "/v1/api/year/1999/make/Chevrolet/models": {
                 "header": {},
                 "body": [{"id": "v1", "modelName": "Silverado 1500"}],
             },
@@ -248,7 +335,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
         self.assertEqual(catalog.years, (1999, 2000))
         self.assertEqual(catalog.vehicles, ())
         self.assertEqual(len(catalog.errors), 1)
-        self.assertEqual(catalog.errors[0]["scope"], "models:2000:52")
+        self.assertEqual(catalog.errors[0]["scope"], "models:2000:Ford")
 
 
 if __name__ == "__main__":

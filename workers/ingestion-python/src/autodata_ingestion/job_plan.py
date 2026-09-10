@@ -164,6 +164,12 @@ def _article_score(article: Mapping[str, Any], component: str) -> int:
         score += 10
     if _article_evidence_ids(article):
         score += 5
+    article_id = str(article.get("article_id", "")).casefold()
+    bucket = str(article.get("bucket", "")).casefold()
+    if article_id.startswith("p:"):
+        score += 20
+    if article_id.startswith("l:") or bucket == "labor":
+        score -= 40
     return score
 
 

@@ -143,6 +143,29 @@ class SourceBundleTests(unittest.TestCase):
             labor.source_uri,
         )
 
+    def test_autoapi_labor_shape_normalizes_main_and_included_operations(self):
+        article = SourceResource.from_bytes(
+            "https://source.test/article/P:1",
+            "source-v1",
+            b'{"body":{"articleDetails":[{"id":"P:1","title":"Water Pump R&R"}]}}',
+            "application/json",
+        )
+        labor = SourceResource.from_bytes(
+            "https://source.test/vehicle/v1/labor/L:2",
+            "source-v1",
+            b'{"body":{"mainOperation":{"id":2,"title":"Water Pump R&R","laborTime":3.9},"includedOperations":[{"id":3,"title":"Remove belt","operationType":"Included Operation"}],"optionalOperations":[]}}',
+            "application/json",
+            metadata={"target_article_id": "P:1"},
+        )
+
+        bundle = normalize_source_bundle(
+            [adapt_source_resource(article), adapt_source_resource(labor)], "US"
+        )
+
+        operations = bundle.articles[0]["operations"]
+        self.assertEqual(operations[0]["duration_hours"], 3.9)
+        self.assertEqual(operations[1]["duration_hours"], 0.0)
+
     def test_html_article_images_are_normalized_with_resolved_source_urls(self):
         resource = SourceResource.from_bytes(
             "https://source.test/guides/alternator.html",
@@ -521,6 +544,29 @@ class SourceBundleTests(unittest.TestCase):
         self.assertEqual(conflict["field"], "year/make/model")
         self.assertEqual(len(conflict["candidates"]), 2)
         self.assertEqual(len(conflict["evidence_ids"]), 2)
+
+    def test_provider_engine_suffix_is_compatible_with_selected_base_model(self):
+        resource = SourceResource.from_bytes(
+            "http://source.test/v1/api/source/Motor/17075%3A996/name",
+            "source-v1",
+            b'{"body":"1997 Toyota RAV4 Base 2.0L L4 (P) 3S-FE GAS Electronic"}',
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle(
+            [adapt_source_resource(resource)],
+            "US",
+            expected_vehicle={
+                "year": 1997,
+                "make": "Toyota",
+                "model": "RAV4",
+                "region": "US",
+            },
+        )
+
+        self.assertIsNotNone(bundle.vehicle)
+        self.assertEqual(bundle.vehicle["vehicle_key"], "toyota-rav4-1997-us")
+        self.assertEqual(bundle.vehicle["model"], "Rav4")
 
 
 if __name__ == "__main__":

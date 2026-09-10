@@ -385,7 +385,7 @@ def _normalize_vehicle(
         source_engine = record.get("engine_displacement_l")
         mismatch = (
             make.casefold() != expected_make.casefold()
-            or model.casefold() != expected_model.casefold()
+            or not _compatible_vehicle_model(model, expected_model)
             or year != expected_year
             or source_region != expected_region
             or (expected_trim is not None and source_trim is not None and source_trim != expected_trim)
@@ -426,18 +426,38 @@ def _normalize_vehicle(
                 }
             )
             return None
+    # The selector supplied by the caller is the canonical identity. The
+    # provider display name may contain trim, engine, fuel, and marketing
+    # suffixes; those remain in source evidence/configuration records rather
+    # than creating a second vehicle family in the local database.
+    canonical_make = expected_make if expected_vehicle is not None and expected_make else make
+    canonical_model = expected_model if expected_vehicle is not None and expected_model else model
+    canonical_year = expected_year if expected_vehicle is not None and expected_year is not None else year
+    canonical_region = expected_region if expected_vehicle is not None and expected_region else normalized_region
     return {
-        "vehicle_key": f"{_slug(make)}-{_slug(model)}-{year}-{_slug(normalized_region)}",
-        "make": make,
-        "model": model,
-        "model_year": year,
-        "region": normalized_region,
-        "body_style": record.get("body_style"),
-        "trim": record.get("trim"),
-        "drivetrain": record.get("drivetrain"),
-        "engine_displacement_l": record.get("engine_displacement_l"),
+        "vehicle_key": f"{_slug(canonical_make)}-{_slug(canonical_model)}-{canonical_year}-{_slug(canonical_region)}",
+        "make": canonical_make,
+        "model": canonical_model,
+        "model_year": canonical_year,
+        "region": canonical_region,
+        "body_style": expected_body_style if expected_vehicle is not None and expected_body_style is not None else record.get("body_style"),
+        "trim": expected_trim if expected_vehicle is not None and expected_trim is not None else record.get("trim"),
+        "drivetrain": expected_drivetrain if expected_vehicle is not None and expected_drivetrain is not None else record.get("drivetrain"),
+        "engine_displacement_l": expected_engine if expected_vehicle is not None and expected_engine is not None else record.get("engine_displacement_l"),
         "evidence_id": record["evidence_id"],
     }
+
+
+def _compatible_vehicle_model(source_model: object, expected_model: object) -> bool:
+    """Accept provider trim/engine suffixes for a selected base model."""
+
+    source = " ".join(str(source_model or "").split()).casefold()
+    expected = " ".join(str(expected_model or "").split()).casefold()
+    return (
+        source == expected
+        or source.startswith(expected + " ")
+        or expected.startswith(source + " ")
+    )
 
 
 def _resolve_article_collisions(
@@ -468,6 +488,8 @@ def _resolve_article_collisions(
             continue
         title = _article_text(record.get("title"))
         similar = accepted_by_title.get(title) if title else None
+        if similar is not None and _article_roles_differ(similar, record):
+            similar = None
         if similar is None:
             candidate_indices = sorted(
                 {
@@ -480,7 +502,8 @@ def _resolve_article_collisions(
                 (
                     accepted[index]
                     for index in candidate_indices
-                    if _similar_article(accepted[index], record)
+                    if not _article_roles_differ(accepted[index], record)
+                    and _similar_article(accepted[index], record)
                 ),
                 None,
             )
@@ -689,6 +712,21 @@ def _article_order(record: dict[str, Any]) -> tuple[str, str, str]:
     )
 
 
+def _article_roles_differ(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    """Keep a provider procedure and its labor row as distinct source records."""
+
+    def role(record: dict[str, Any]) -> str:
+        article_id = str(record.get("article_id") or "").casefold()
+        bucket = str(record.get("bucket") or "").casefold()
+        if article_id.startswith("p:"):
+            return "procedure"
+        if article_id.startswith("l:") or bucket == "labor":
+            return "labor"
+        return "article"
+
+    return role(left) != role(right)
+
+
 def _similar_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
     left_title = _article_text(left.get("title"))
     right_title = _article_text(right.get("title"))
@@ -752,12 +790,26 @@ def _article_steps(data: dict[str, Any]) -> list[Any] | None:
 
 
 def _article_operations(value: Any, evidence_id: str) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        # AutoAPI labor responses expose one priced main operation and zero or
+        # more operations included in that price. Optional operations are not
+        # part of the requested replacement unless explicitly selected later.
+        operation_values: list[Any] = []
+        main_operation = value.get("mainOperation")
+        if isinstance(main_operation, dict):
+            operation_values.append(main_operation)
+        included_operations = value.get("includedOperations")
+        if isinstance(included_operations, list):
+            operation_values.extend(included_operations)
+        value = operation_values
     if not isinstance(value, list):
         return []
     operations: list[dict[str, Any]] = []
     for index, raw in enumerate(value):
         if not isinstance(raw, dict):
             continue
+        operation_type = str(raw.get("operationType") or "").casefold()
+        title = str(raw.get("title") or "").strip()
         operation_id = str(
             raw.get("operation_id")
             or raw.get("operationId")
@@ -766,11 +818,18 @@ def _article_operations(value: Any, evidence_id: str) -> list[dict[str, Any]]:
             or raw.get("id")
             or f"operation-{index + 1}"
         ).strip()
+        if operation_type == "included operation" and title:
+            # Provider IDs for equivalent included work can differ between
+            # labor articles. A normalized title gives the overlap calculator
+            # a stable cross-article key while the evidence retains the source
+            # operation ID in the action metadata below.
+            operation_id = f"included:{_slug(title)}"
         action = str(
             raw.get("action")
             or raw.get("name")
             or raw.get("description")
             or raw.get("operation")
+            or raw.get("title")
             or operation_id
         ).strip()
         duration = next(
@@ -778,12 +837,16 @@ def _article_operations(value: Any, evidence_id: str) -> list[dict[str, Any]]:
                 raw[key]
                 for key in (
                     "duration_hours", "durationHours", "hours",
-                    "labor_hours", "laborHours", "time",
+                    "labor_hours", "laborHours", "laborTime", "time",
                 )
                 if raw.get(key) is not None
             ),
             None,
         )
+        if duration is None and str(raw.get("operationType") or "").casefold() == "included operation":
+            # Included work is already priced in the main operation. Retain it
+            # for procedure composition without adding labor twice.
+            duration = 0.0
         if operation_id and action:
             operations.append(
                 {

@@ -261,6 +261,9 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
             raise ValueError("job plan vehicle requires year")
         target = _vehicle_target_from_mapping(vehicle, year)
         catalog = load_vehicle_knowledge_catalog(target)
+        cached_derived = _cached_derived_job_plan(query, vehicle, catalog)
+        if cached_derived is not None:
+            return {"worker": "ingestion", "lane": "fast", **cached_derived}
         if not catalog or _catalog_needs_job_plan_hydration(query, catalog):
             fallback_catalog, fallback_info = _load_autoapi_job_catalog(
                 vehicle, target, query=query
@@ -405,20 +408,16 @@ def _load_autoapi_job_catalog(
         bundles = (bundle,)
         traversal = "vehicle_bundle"
     else:
-        catalog = connector.fetch_catalog()
-        bundles = tuple(item for item in catalog.vehicles if _same_vehicle_family(item.vehicle, vehicle))
-        traversal = "full_catalog"
-        if os.getenv("AUTODATA_SOURCE_PERSIST") == "1" and catalog.vehicles:
-            from .autoapi_batch import execute_autoapi_batch
-
-            execute_autoapi_batch(
-                catalog.to_batches(),
-                source_version=connector.source_version,
-                persist=True,
-                adapter_name=connector.name,
-                selector_rows=catalog.selection_rows,
-                selector_source_uri=f"{base_url.rstrip('/')}/v1/api/years",
-            )
+        target_candidates = connector.find_vehicle_targets(
+            int(vehicle["model_year"] if "model_year" in vehicle else vehicle["year"]),
+            str(vehicle["make"]),
+            str(vehicle["model"]),
+        )
+        candidate_bundles = tuple(
+            connector.fetch_vehicle_bundle(candidate) for candidate in target_candidates
+        )
+        bundles = _filter_vehicle_bundles(candidate_bundles, vehicle)
+        traversal = "targeted_vehicle_family"
     records: list[dict[str, object]] = []
     targeted_article_count = 0
     targeted_labor_count = 0
@@ -446,10 +445,25 @@ def _load_autoapi_job_catalog(
         if query and list_records:
             provisional = plan_job(query, vehicle, catalog=list_records)
             selected_ids = set(str(value) for value in provisional.get("selected_articles", []))
+            labor_ids_by_title = {
+                _article_lookup_title(record["article"]): str(record["article"].get("article_id"))
+                for record in list_records
+                if _is_labor_article(record["article"])
+            }
             for article_id in sorted(selected_ids):
-                detail_resource, labor_resource = connector.fetch_article_resources(
-                    bundle.vehicle_id, article_id
+                selected_article = next(
+                    (record["article"] for record in list_records if str(record["article"].get("article_id")) == article_id),
+                    {},
                 )
+                labor_article_id = labor_ids_by_title.get(_article_lookup_title(selected_article))
+                if labor_article_id and labor_article_id != article_id:
+                    detail_resource, labor_resource = connector.fetch_article_resources(
+                        bundle.vehicle_id, article_id, labor_article_id=labor_article_id
+                    )
+                else:
+                    detail_resource, labor_resource = connector.fetch_article_resources(
+                        bundle.vehicle_id, article_id
+                    )
                 artifacts.extend(
                     [adapt_source_resource(detail_resource), adapt_source_resource(labor_resource)]
                 )
@@ -488,6 +502,14 @@ def _load_autoapi_job_catalog(
     }
 
 
+def _article_lookup_title(article: Mapping[str, object]) -> str:
+    return " ".join(str(article.get("title") or "").casefold().split())
+
+
+def _is_labor_article(article: Mapping[str, object]) -> bool:
+    return str(article.get("article_id") or "").casefold().startswith("l:") or str(article.get("bucket") or "").casefold() == "labor"
+
+
 _AUTOAPI_SOURCE_BY_MAKE = {
     "buick": "GeneralMotors",
     "cadillac": "GeneralMotors",
@@ -495,9 +517,9 @@ _AUTOAPI_SOURCE_BY_MAKE = {
     "gmc": "GeneralMotors",
     "oldsmobile": "GeneralMotors",
     "pontiac": "GeneralMotors",
-    "lexus": "Toyota",
-    "scion": "Toyota",
-    "toyota": "Toyota",
+    "lexus": "Motor",
+    "scion": "Motor",
+    "toyota": "Motor",
 }
 
 
@@ -522,7 +544,55 @@ def _autoapi_content_source(vehicle: dict[str, object]) -> str:
 
 
 def _same_vehicle_family(left: dict[str, object], right: dict[str, object]) -> bool:
-    return all(str(left.get(key, "")).casefold() == str(right.get(key, "")).casefold() for key in ("year", "make", "model"))
+    return (
+        all(
+            str(left.get(key, "")).casefold() == str(right.get(key, "")).casefold()
+            for key in ("year", "make")
+        )
+        and _same_model_family(left.get("model"), right.get("model"))
+    )
+
+
+def _same_model_family(left: object, right: object) -> bool:
+    """Match provider trim-suffixed names to a selected base model."""
+
+    left_model = " ".join(str(left or "").split()).casefold()
+    right_model = " ".join(str(right or "").split()).casefold()
+    return (
+        left_model == right_model
+        or left_model.startswith(right_model + " ")
+        or right_model.startswith(left_model + " ")
+    )
+
+
+def _filter_vehicle_bundles(
+    bundles: tuple[object, ...], vehicle: dict[str, object]
+) -> tuple[object, ...]:
+    """Keep only provider bundles matching requested drivetrain dimensions."""
+
+    family = tuple(
+        bundle
+        for bundle in bundles
+        if hasattr(bundle, "vehicle")
+        and isinstance(bundle.vehicle, dict)
+        and _same_vehicle_family(bundle.vehicle, vehicle)
+    )
+    requested_drive = str(
+        vehicle.get("drivetrain", vehicle.get("drive_type", ""))
+    ).strip()
+    if not requested_drive:
+        return family
+    matching = tuple(
+        bundle
+        for bundle in family
+        if _normalize_vehicle_dimension(bundle.vehicle.get("drivetrain"))
+        == _normalize_vehicle_dimension(requested_drive)
+    )
+    return matching or family
+
+
+def _normalize_vehicle_dimension(value: object) -> str:
+    return "".join(character for character in str(value or "").casefold() if character.isalnum())
 
 
 def _persist_article_intake(intake: object, *, adapter_name: str) -> dict[str, object] | None:

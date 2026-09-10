@@ -140,6 +140,27 @@ def test_recognizes_multiword_pump_and_belt_components_from_natural_language():
     ]
 
 
+def test_prefers_procedure_article_over_same_named_labor_row():
+    catalog = [
+        {
+            "article_id": "L:oil-pump",
+            "title": "Engine Oil Pump R&R",
+            "bucket": "Labor",
+            "operations": [{"action": "Oil pump labor", "duration_hours": 2.0}],
+        },
+        {
+            "article_id": "P:oil-pump",
+            "title": "Engine Oil Pump R&R",
+            "bucket": "Engine Service",
+            "operations": [{"action": "Replace oil pump", "duration_hours": 2.0}],
+        },
+    ]
+
+    result = plan_job("oil pump replacement", VEHICLE, catalog=catalog)
+
+    assert result["selected_articles"] == ["P:oil-pump"]
+
+
 def test_mercury_translation_returns_only_allowlisted_autodata_component_intents():
     class FakeMercury:
         def complete_json(self, _prompt):

@@ -164,7 +164,9 @@ def persist_source_bundle(
                     RETURNING vehicle_model_id
                     """,
                     (
-                        _stable_uuid(f"vehicle-model:{vehicle_id}:{model['model_key']}"),
+                        _stable_uuid(
+                            f"vehicle-model:{vehicle_id}:{model['model_key']}:{model_evidence['content_sha256']}"
+                        ),
                         vehicle_id,
                         model["provider_model_id"],
                         model["name"],
@@ -194,7 +196,9 @@ def persist_source_bundle(
                     RETURNING powertrain_id
                     """,
                     (
-                        _stable_uuid(f"powertrain:{model_id}:{powertrain['powertrain_key']}"),
+                        _stable_uuid(
+                            f"powertrain:{model_id}:{powertrain['powertrain_key']}:{powertrain_evidence['content_sha256']}"
+                        ),
                         model_id,
                         powertrain["provider_powertrain_id"],
                         powertrain["name"],

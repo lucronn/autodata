@@ -210,7 +210,11 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
                     "response_messages": header.get("messages", []),
                 }
             )
-        candidates = classify_json_candidates(document, source_uri=resource.source_uri)
+        candidates = classify_json_candidates(
+            document,
+            source_uri=resource.source_uri,
+            target_article_id=resource.metadata.get("target_article_id"),
+        )
         metadata.update(
             {
                 "candidate_count": len(candidates),
@@ -252,7 +256,10 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
 
 
 def classify_json_candidates(
-    document: Any, *, source_uri: str = ""
+    document: Any,
+    *,
+    source_uri: str = "",
+    target_article_id: Any = None,
 ) -> list[NormalizationCandidate]:
     """Recognize common source records while keeping unknown JSON shapes intact."""
 
@@ -324,15 +331,22 @@ def classify_json_candidates(
     # AutoAPI exposes labor as a separate JSON resource. Keep it typed so the
     # source bundle can join it to the article while preserving its evidence.
     if "/labor/" in source_uri.casefold():
-        article_id = unquote(urlsplit(source_uri).path.rsplit("/", 1)[-1]).strip()
+        article_id = str(target_article_id or "").strip()
+        if not article_id:
+            article_id = unquote(urlsplit(source_uri).path.rsplit("/", 1)[-1]).strip()
         operations = body.get("operations") if isinstance(body, dict) else body
-        if article_id and isinstance(operations, list):
+        if operations is None and isinstance(body, dict) and (
+            isinstance(body.get("mainOperation"), dict)
+            or isinstance(body.get("includedOperations"), list)
+        ):
+            operations = body
+        if article_id and isinstance(operations, (dict, list)):
             candidates.append(
                 NormalizationCandidate(
                     "article_operations",
                     f"article-operations:{article_id}",
                     {"article_id": article_id, "operations": operations},
-                    "body.operations",
+                    "body.operations" if isinstance(body, dict) and "operations" in body else "body",
                 )
             )
 

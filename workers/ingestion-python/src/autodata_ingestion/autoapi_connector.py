@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import time
 from typing import Any, Callable, Mapping
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
@@ -142,7 +142,9 @@ class AutoAPIConnector:
                 make_name = _first_text(make, "makeName", "name", "make")
                 if not make_name:
                     continue
-                make_route_value = _first_text(make, "makeId", "id") or make_name
+                # MOTOR's models route accepts the displayed make name. The
+                # numeric make ID is only metadata from the makes response.
+                make_route_value = make_name
                 models_scope = f"models:{year}:{make_route_value}"
                 try:
                     models_payload, _ = self._get_json(
@@ -159,6 +161,12 @@ class AutoAPIConnector:
                     for model in models
                     for vehicle_id in _vehicle_ids_from_model(model)
                 ]
+                model_name_by_vehicle_id = {
+                    vehicle_id: _first_text(model, "modelName", "model", "name")
+                    for model in models
+                    for vehicle_id in _vehicle_ids_from_model(model)
+                    if _first_text(model, "modelName", "model", "name")
+                }
                 if not model_vehicle_ids:
                     continue
                 for batch_index, model_id_batch in enumerate(
@@ -184,7 +192,11 @@ class AutoAPIConnector:
                             {
                                 "year": year,
                                 "make": make_name,
-                                "model": _first_text(vehicle, "modelName", "model", "name") or "Unknown",
+                                "model": (
+                                    _first_text(vehicle, "modelName", "model", "name")
+                                    or model_name_by_vehicle_id.get(vehicle_id)
+                                    or "Unknown"
+                                ),
                                 "vehicle_id": vehicle_id,
                                 "display_name": _first_text(
                                     vehicle, "vehicleName", "displayName", "name"
@@ -219,6 +231,71 @@ class AutoAPIConnector:
             for row in _rows_for_bundle(bundle)
         )
         return AutoAPICatalog(years, selection_rows, bundles, tuple(errors))
+
+    def find_vehicle_targets(
+        self, year: int, make: str, model: str
+    ) -> tuple[dict[str, Any], ...]:
+        """Resolve one YMM family through the provider's narrow selector path.
+
+        This is the cold-request path used by a user-selected vehicle. It
+        avoids the complete all-years catalog traversal and returns provider
+        vehicle IDs that can be passed to :meth:`fetch_vehicle_bundle`.
+        """
+
+        makes_payload, _ = self._get_json(
+            f"/v1/api/year/{quote(str(year), safe='')}/makes"
+        )
+        requested_make = " ".join(str(make).split()).casefold()
+        make_record = next(
+            (
+                item
+                for item in _items(makes_payload)
+                if (_first_text(item, "makeName", "name", "make") or "").casefold()
+                == requested_make
+            ),
+            None,
+        )
+        if make_record is None:
+            return ()
+        make_name = _first_text(make_record, "makeName", "name", "make") or str(make)
+        make_route_value = make_name
+        models_payload, _ = self._get_json(
+            "/v1/api/year/{}/make/{}/models".format(
+                quote(str(year), safe=""), quote(make_route_value, safe="")
+            )
+        )
+        requested_model = " ".join(str(model).split()).casefold()
+        model_vehicle_ids = [
+            vehicle_id
+            for model_record in _items(models_payload)
+            if _model_matches(model_record, requested_model)
+            for vehicle_id in _vehicle_ids_from_model(model_record)
+        ]
+        model_vehicle_ids = list(dict.fromkeys(model_vehicle_ids))
+        if not model_vehicle_ids:
+            return ()
+        vehicles_payload, _ = self._get_json(
+            f"/v1/api/source/{quote(self._content_source, safe='')}/vehicles",
+            query={"vehicleIds": ",".join(model_vehicle_ids)},
+        )
+        targets = []
+        for vehicle in _items(vehicles_payload):
+            vehicle_id = _first_text(vehicle, "vehicleId", "id", "vehicle_id")
+            if not vehicle_id:
+                continue
+            targets.append(
+                {
+                    "year": year,
+                    "make": make_name,
+                    "model": _first_text(vehicle, "modelName", "model", "name") or model,
+                    "requested_model": model,
+                    "vehicle_id": vehicle_id,
+                    "display_name": _first_text(
+                        vehicle, "vehicleName", "displayName", "name"
+                    ),
+                }
+            )
+        return _dedupe_vehicle_targets(targets)
 
     def fetch_vehicle_bundle(self, target: Mapping[str, Any]) -> AutoAPIVehicleBundle:
         """Fetch vehicle identity, engine configurations, article index, and details."""
@@ -284,6 +361,8 @@ class AutoAPIConnector:
         self,
         vehicle_id: str,
         article_id: str,
+        *,
+        labor_article_id: str | None = None,
     ) -> tuple[SourceResource, ...]:
         """Fetch one requested article body and its labor resource.
 
@@ -295,12 +374,22 @@ class AutoAPIConnector:
         source = quote(self._content_source, safe="")
         vehicle = quote(str(vehicle_id), safe="")
         article = quote(str(article_id), safe="")
+        labor_article = quote(str(labor_article_id or article_id), safe="")
         _detail_payload, detail_resource = self._get_json(
             f"/v1/api/source/{source}/vehicle/{vehicle}/article/{article}"
         )
         _labor_payload, labor_resource = self._get_json(
-            f"/v1/api/source/{source}/vehicle/{vehicle}/labor/{article}"
+            f"/v1/api/source/{source}/vehicle/{vehicle}/labor/{labor_article}"
         )
+        if labor_article_id and str(labor_article_id) != str(article_id):
+            labor_resource = replace(
+                labor_resource,
+                metadata={
+                    **labor_resource.metadata,
+                    "target_article_id": str(article_id),
+                    "labor_article_id": str(labor_article_id),
+                },
+            )
         return detail_resource, labor_resource
 
     def _get_json(
@@ -360,7 +449,17 @@ def _selector_rows(
     name = _name_value(name_payload) or _first_text(target, "display_name")
     if not name:
         name = "{year} {make} {model}".format(**target)
-    identity = canonicalize_vehicle_observation(name)
+    # The provider name includes trim/engine text (for example, ``RAV4 Base
+    # 2.0L ...``). Preserve the user-selected base model as the canonical
+    # identity while retaining provider engine data as configurations below.
+    identity_input = dict(target)
+    requested_model = _first_text(target, "requested_model")
+    if requested_model:
+        identity_input["model"] = requested_model
+    try:
+        identity = canonicalize_vehicle_observation(identity_input)
+    except (TypeError, ValueError):
+        identity = canonicalize_vehicle_observation(name)
     rows: list[dict[str, Any]] = [identity.to_dict()]
     for model in _items(motor_payload):
         model_name = _first_text(model, "modelName", "model", "name")
@@ -472,6 +571,15 @@ def _vehicle_ids_from_model(model: Any) -> list[str]:
             for vehicle in nested
             for vehicle_id in _vehicle_ids_from_model(vehicle)
         ]
+    engines = model.get("engines")
+    if isinstance(engines, list):
+        engine_ids = [
+            str(engine.get("id")).strip()
+            for engine in engines
+            if isinstance(engine, Mapping) and engine.get("id") is not None
+        ]
+        if engine_ids:
+            return list(dict.fromkeys(value for value in engine_ids if value))
     for key in ("vehicleId", "vehicle_id"):
         if model.get(key) is not None:
             return [str(model[key]).strip()]
@@ -479,6 +587,15 @@ def _vehicle_ids_from_model(model: Any) -> list[str]:
         if model.get(key) is not None:
             return [str(model[key]).strip()]
     return []
+
+
+def _model_matches(model: Any, requested_model: str) -> bool:
+    candidate = _first_text(model, "modelName", "model", "name", "vehicleModel")
+    if not candidate:
+        return False
+    normalized = " ".join(candidate.split()).casefold()
+    requested = " ".join(str(requested_model).split()).casefold()
+    return normalized == requested or normalized.startswith(requested + " ")
 
 
 def _chunks(values: list[str], size: int) -> tuple[list[str], ...]:
