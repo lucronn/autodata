@@ -153,21 +153,43 @@ Keep it simple and make the interface look good.</code></pre>
                 </div>
               </div>
               <div class="path-step" data-path-step="a-2" role="tabpanel" hidden>
-                <div class="generic-diagram-wrap">
-                  <div class="diagram-label">WHAT THE LLM RECEIVES</div>
+                <div class="output-tabs" role="tablist" aria-label="Vibe-coded app output">
+                  <button type="button" class="output-tab is-active" data-view-button="a-architecture" role="tab" aria-selected="true">App architecture</button>
+                  <button type="button" class="output-tab" data-view-button="a-sample" role="tab" aria-selected="false">Sample output</button>
+                </div>
+                <div class="output-view" data-view-panel="a-architecture" role="tabpanel">
+                  <div class="diagram-label">WHAT THE LLM GENERATES</div>
                   <div class="mermaid diagram generic-diagram">flowchart LR
-    S[URL] --> LLM[LLM]
-    V[Vehicle] --> LLM
-    LLM --> J[JSON]
-    J --> U[UI]</div>
+    U[Browser UI] --> R[Single API route]
+    R --> P[Prompt + parser]
+    P --> J[JSON response]
+    R --> S[Ad hoc source fetch]</div>
                   <details class="source-details">
                     <summary>Show diagram source</summary>
                     <pre><code>flowchart LR
-    S[URL] --&gt; LLM[LLM]
-    V[Vehicle] --&gt; LLM
-    LLM --&gt; J[JSON]
-    J --&gt; U[UI]</code></pre>
+    U[Browser UI] --&gt; R[Single API route]
+    R --&gt; P[Prompt + parser]
+    P --&gt; J[JSON response]
+    R --&gt; S[Ad hoc source fetch]</code></pre>
                   </details>
+                </div>
+                <div class="output-view" data-view-panel="a-sample" role="tabpanel" hidden>
+                  <div class="sample-output-heading"><div class="diagram-label">SAMPLE VIBE-CODED OUTPUT</div><span class="status-chip warning-chip">plausible, not proven</span></div>
+                  <div class="sample-output-card">
+                    <pre><code>{
+  "vehicle": "1999 Chevy Silverado 1500 2WD 5.3L",
+  "title": "Brake pad replacement",
+  "summary": "Remove the wheel, replace the pads, and torque the fasteners.",
+  "steps": [
+    "Raise and support the vehicle safely.",
+    "Remove the wheel and caliper.",
+    "Install the replacement pads."
+  ],
+  "source": "https://example.com/article",
+  "confidence": null
+}</code></pre>
+                    <div class="sample-output-note"><span class="result-icon">!</span><span>It looks useful, but it does not prove the match, expose a revision, or show which source passage supports each claim.</span></div>
+                  </div>
                 </div>
               </div>
               <div class="path-step" data-path-step="a-3" role="tabpanel" hidden>
@@ -213,18 +235,51 @@ Keep it simple and make the interface look good.</code></pre>
                 </div>
               </div>
               <div class="path-step" data-path-step="b-2" role="tabpanel" hidden>
-                <div class="diagram-controls" role="group" aria-label="Architecture depth">
-                  <button type="button" class="level-button is-active" data-level="basic" aria-pressed="true"><span>01</span> Basic</button>
-                  <button type="button" class="level-button" data-level="mid" aria-pressed="false"><span>02</span> Mid-level</button>
-                  <button type="button" class="level-button" data-level="detailed" aria-pressed="false"><span>03</span> Detailed</button>
+                <div class="output-tabs" role="tablist" aria-label="Professional app output">
+                  <button type="button" class="output-tab is-active" data-view-button="b-architecture" role="tab" aria-selected="true">App architecture</button>
+                  <button type="button" class="output-tab" data-view-button="b-sample" role="tab" aria-selected="false">Sample output</button>
                 </div>
-                <div class="professional-diagram-card">
-                  <div class="diagram-card-header"><span class="diagram-label">ARCHITECTURE ZOOM / <span id="level-label">BASIC</span></span><span class="diagram-hint">Select a level to inspect the thinking</span></div>
-                  <div class="mermaid diagram professional-diagram" id="professional-diagram"></div>
-                  <details class="source-details">
-                    <summary>Show diagram source</summary>
-                    <pre><code id="professional-source"></code></pre>
-                  </details>
+                <div class="output-view" data-view-panel="b-architecture" role="tabpanel">
+                  <div class="diagram-controls" role="group" aria-label="Architecture depth">
+                    <button type="button" class="level-button is-active" data-level="basic" aria-pressed="true"><span>01</span> Basic</button>
+                    <button type="button" class="level-button" data-level="mid" aria-pressed="false"><span>02</span> Mid-level</button>
+                    <button type="button" class="level-button" data-level="detailed" aria-pressed="false"><span>03</span> Detailed</button>
+                  </div>
+                  <div class="professional-diagram-card">
+                    <div class="diagram-card-header"><span class="diagram-label">ARCHITECTURE ZOOM / <span id="level-label">BASIC</span></span><span class="diagram-hint">Select a level to inspect the thinking</span></div>
+                    <div class="mermaid diagram professional-diagram" id="professional-diagram"></div>
+                    <details class="source-details">
+                      <summary>Show diagram source</summary>
+                      <pre><code id="professional-source"></code></pre>
+                    </details>
+                  </div>
+                </div>
+                <div class="output-view" data-view-panel="b-sample" role="tabpanel" hidden>
+                  <div class="sample-output-heading"><div class="diagram-label">SAMPLE SWE-DESIGNED OUTPUT</div><span class="status-chip success-chip">evidence-backed</span></div>
+                  <div class="sample-output-card">
+                    <pre><code>{
+  "dataset_id": "ds_0199_silverado_1500",
+  "revision_id": "rev_0042",
+  "availability": "viewable",
+  "vehicle": {
+    "vehicle_id": "veh_gm_1999_silverado_1500_2wd_53",
+    "year": 1999,
+    "make": "Chevrolet",
+    "model": "Silverado 1500",
+    "drivetrain": "2WD",
+    "engine": "5.3L V8",
+    "aliases_used": ["99 Silverado 1500 2wd"]
+  },
+  "article": {
+    "title": "Brake pad replacement",
+    "status": "viewable",
+    "source_watermark": "2026-09-10T14:22:08Z",
+    "evidence": [{ "locator": "page:4", "confidence": 0.98 }]
+  },
+  "quality": { "duplicate_similarity": 0.97, "requires_review": false }
+}</code></pre>
+                    <div class="sample-output-note"><span class="result-icon success-result">✓</span><span>The answer is tied to a stable vehicle, an immutable revision, a source watermark, and evidence a reviewer can inspect.</span></div>
+                  </div>
                 </div>
               </div>
               <div class="path-step" data-path-step="b-3" role="tabpanel" hidden>

@@ -93,10 +93,10 @@ const diagrams = {
 };
 
 const genericDiagram = `flowchart LR
-  S[URL] --> LLM[LLM]
-  V[Vehicle] --> LLM
-  LLM --> J[JSON]
-  J --> U[UI]`;
+  U[Browser UI] --> R[Single API route]
+  R --> P[Prompt + parser]
+  P --> J[JSON response]
+  R --> S[Ad hoc source fetch]`;
 
 const mermaidConfig = {
   startOnLoad: false,
@@ -180,11 +180,29 @@ function setActiveStep(stepper, requestedStep) {
     next.innerHTML = step === 3 ? 'Continue to the proof <span>→</span>' : 'Next <span>→</span>';
   }
 
+  setActiveView(path, 'architecture');
+
   if (path === 'a' && step === 2) {
     const generic = stepper.querySelector('.generic-diagram');
     if (generic) renderMermaid(generic, genericDiagram);
   }
   if (path === 'b' && step === 2) renderProfessional('basic');
+}
+
+function setActiveView(path, view) {
+  document.querySelectorAll(`[data-view-button^="${path}-"]`).forEach((button) => {
+    const active = button.dataset.viewButton === `${path}-${view}`;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  document.querySelectorAll(`[data-view-panel^="${path}-"]`).forEach((panel) => {
+    panel.hidden = panel.dataset.viewPanel !== `${path}-${view}`;
+  });
+  if (path === 'a' && view === 'architecture') {
+    const generic = document.querySelector('[data-view-panel="a-architecture"] .generic-diagram');
+    if (generic) renderMermaid(generic, genericDiagram);
+  }
+  if (path === 'b' && view === 'architecture') renderProfessional('basic');
 }
 
 async function renderMermaid(element, source) {
@@ -261,6 +279,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.querySelectorAll('[data-level]').forEach((button) => {
     button.addEventListener('click', () => renderProfessional(button.dataset.level));
+  });
+  document.querySelectorAll('[data-view-button]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const [path, view] = button.dataset.viewButton.split('-');
+      setActiveView(path, view);
+    });
   });
   document.querySelectorAll('[data-wizard-next], [data-wizard-nav]').forEach((control) => {
     control.addEventListener('click', (event) => {
