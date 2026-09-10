@@ -6,7 +6,7 @@ import pytest
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from autodata_ingestion.job_plan import plan_job, translate_job_query_with_llm  # noqa: E402
+from autodata_ingestion.job_plan import compose_procedure_with_llm, plan_job, translate_job_query_with_llm  # noqa: E402
 from autodata_ingestion.worker import _cached_derived_job_plan  # noqa: E402
 
 
@@ -186,6 +186,48 @@ def test_mercury_translation_returns_only_allowlisted_autodata_component_intents
         ],
         "generation": "mercury-2",
     }
+
+
+def test_mercury_composition_accepts_labor_evidence_on_source_steps():
+    class FakeMercury:
+        def complete_json(self, _prompt):
+            return {
+                "title": "Water pump and oil pump service",
+                "steps": [{
+                    "action": "Complete the shared drive-belt work once.",
+                    "components": ["oil_pump", "water_pump"],
+                    "source_article_ids": ["P:oil", "P:water"],
+                    "evidence_ids": ["labor-evidence"],
+                    "requires_review": False,
+                }],
+                "warnings": [],
+                "requires_review": False,
+            }
+
+    result = compose_procedure_with_llm(
+        FakeMercury(),
+        "replace the oil pump and water pump",
+        VEHICLE,
+        [
+            {
+                "article_id": "P:oil",
+                "title": "Engine Oil Pump R&R",
+                "operations": [{"action": "Oil pump labor", "evidence_ids": ["labor-evidence"]}],
+                "evidence": [{"evidence_id": "article-evidence"}],
+            },
+            {
+                "article_id": "P:water",
+                "title": "Water Pump R&R",
+                "operations": [],
+                "evidence": [{"evidence_id": "water-evidence"}],
+            },
+        ],
+        {"total_labor_hours": 5.0},
+        {"title": "fallback", "steps": [], "warnings": [], "requires_review": True},
+    )
+
+    assert result["generation"] == "mercury-2"
+    assert result["steps"][0]["evidence_ids"] == ["labor-evidence"]
 
 
 def test_returns_review_state_without_fabricating_unknown_labor():

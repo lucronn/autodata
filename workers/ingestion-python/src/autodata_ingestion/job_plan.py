@@ -383,17 +383,36 @@ def compose_procedure_with_llm(
     for article in selected_articles:
         article_id = str(article.get("article_id", ""))
         allowed_article_ids.add(article_id)
-        allowed_evidence_ids.update(_article_evidence_ids(article))
+        article_evidence_ids = _article_evidence_ids(article)
+        allowed_evidence_ids.update(article_evidence_ids)
+        for operation in article.get("operations", []):
+            if isinstance(operation, Mapping):
+                allowed_evidence_ids.update(
+                    str(value)
+                    for value in operation.get("evidence_ids", [])
+                    if str(value).strip()
+                )
         article_payload.append({
             "article_id": article_id,
             "title": article.get("title"),
             "body": article.get("body"),
             "steps": article.get("steps", article.get("operations", [])),
-            "evidence_ids": _article_evidence_ids(article),
+            "evidence_ids": sorted(
+                set(article_evidence_ids)
+                | {
+                    str(value)
+                    for operation in article.get("operations", [])
+                    if isinstance(operation, Mapping)
+                    for value in operation.get("evidence_ids", [])
+                    if str(value).strip()
+                }
+            ),
         })
     prompt = (
         "Compose a vehicle repair procedure as JSON. Use only the supplied article steps and evidence. "
         "Do not invent torque values, tools, safety facts, durations, or vehicle facts. "
+        "Do not omit any required main or included source operation. Combine duplicate shared operations "
+        "into one step and retain every component and evidence reference attached to that shared work. "
         "Return title, steps, warnings, and requires_review. Every step must include sequence, action, "
         "components, source_article_ids, evidence_ids, origin, and requires_review.\n\n"
         + json.dumps({"query": query, "vehicle": dict(vehicle), "labor": labor, "articles": article_payload}, sort_keys=True)

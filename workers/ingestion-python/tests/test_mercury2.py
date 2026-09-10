@@ -143,6 +143,22 @@ class Mercury2Tests(unittest.TestCase):
         self.assertEqual(result, {"ok": True})
         self.assertEqual(seen["authorization"], "Bearer test-key")
 
+    def test_client_defaults_to_official_inception_api_base(self):
+        seen = {}
+
+        def transport(request, timeout):
+            del timeout
+            seen["url"] = request.full_url
+            return FakeResponse({"choices": [{"message": {"content": '{"ok": true}'}}]})
+
+        with patch.dict(os.environ, {"INCEPTION_API_KEY": "test-key"}, clear=True):
+            Mercury2Client.from_environment(transport=transport).complete_json("select")
+
+        self.assertEqual(
+            seen["url"],
+            "https://api.inceptionlabs.ai/v1/chat/completions",
+        )
+
     def test_adjudicator_accepts_only_a_supplied_high_confidence_candidate(self):
         def transport(_request, timeout):
             return FakeResponse({"selected_candidate_key": "chevrolet-silverado-1500-1999-us-drivetrain-2wd-engine-5-3l", "confidence": 0.99})

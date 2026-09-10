@@ -129,7 +129,11 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
                         "evidence_ids": _evidence_ids(result),
                         "requested_components": result.get("requested_components", []),
                     }),
-                    str(result.get("llm_status") or "deterministic"),
+                    str(
+                        result.get("procedure", {}).get("generation")
+                        or result.get("llm_status")
+                        or "deterministic"
+                    ),
                     DERIVED_ARTICLE_CONTRACT_VERSION,
                     str(result.get("status", "needs_review")),
                     now if result.get("status") == "ready" else None,

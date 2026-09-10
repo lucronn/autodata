@@ -6,6 +6,7 @@ import json
 import asyncio
 import os
 import time
+from collections.abc import Mapping
 from dataclasses import replace
 
 
@@ -349,6 +350,8 @@ def _cached_derived_job_plan(
         components = article.get("derived_components")
         if not isinstance(components, list) or set(str(value) for value in components) != requested_set:
             continue
+        if _mercury2_regeneration_required(article):
+            continue
         status = str(article.get("status") or "needs_review")
         return {
             "status": status,
@@ -372,6 +375,51 @@ def _cached_derived_job_plan(
             "cache_hit": True,
         }
     return None
+
+
+def _mercury2_regeneration_required(article: Mapping[str, object]) -> bool:
+    """Regenerate an old deterministic composition when Mercury-2 is configured."""
+
+    if (
+        os.getenv("AUTODATA_MERCURY2_JOB_PLANS_ENABLED") == "1"
+        and bool(os.getenv("INCEPTION_API_KEY", "").strip())
+        and str(article.get("model") or "deterministic") in {"mercury-2", "generated"}
+        and not _derived_procedure_covers_shared_labor(article)
+    ):
+        return True
+    return (
+        os.getenv("AUTODATA_MERCURY2_JOB_PLANS_ENABLED") == "1"
+        and bool(os.getenv("INCEPTION_API_KEY", "").strip())
+        and str(article.get("model") or "deterministic") not in {"mercury-2", "generated"}
+    )
+
+
+def _derived_procedure_covers_shared_labor(article: Mapping[str, object]) -> bool:
+    """Require cached LLM procedures to retain multi-component shared work."""
+
+    labor = article.get("labor")
+    procedure = article.get("procedure")
+    if not isinstance(labor, Mapping) or not isinstance(procedure, Mapping):
+        return True
+    operations = labor.get("operations", [])
+    steps = procedure.get("steps", [])
+    if not isinstance(operations, list) or not isinstance(steps, list):
+        return True
+    for operation in operations:
+        if not isinstance(operation, Mapping):
+            continue
+        components = {str(value) for value in operation.get("components", []) if str(value).strip()}
+        if len(components) < 2:
+            continue
+        if not any(
+            components.issubset(
+                {str(value) for value in step.get("components", []) if str(value).strip()}
+            )
+            for step in steps
+            if isinstance(step, Mapping)
+        ):
+            return False
+    return True
 
 
 def _load_autoapi_job_catalog(

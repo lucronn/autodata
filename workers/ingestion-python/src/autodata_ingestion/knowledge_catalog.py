@@ -97,7 +97,7 @@ def load_vehicle_knowledge_catalog(target: VehicleTarget) -> list[dict[str, Any]
                                dar.source_watermark, dar.status,
                                dar.derived_article_revision_id::text,
                                dar.provenance, dar.images, dar.labor,
-                               dar.normalized_fingerprint
+                               dar.normalized_fingerprint, dar.model
                         FROM derived_articles da
                         JOIN derived_article_revisions dar
                           ON dar.derived_article_id = da.derived_article_id
@@ -279,6 +279,7 @@ def _derived_rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget)
         article_id, title, body, steps, source_watermark, status, revision_id, provenance, images = row[:9]
         labor = row[9] if len(row) > 9 and isinstance(row[9], dict) else {}
         fingerprint = str(row[10]) if len(row) > 10 and row[10] else ""
+        model = str(row[11]) if len(row) > 11 and row[11] else "deterministic"
         evidence_ids = []
         source_article_ids = []
         requested_components = []
@@ -302,12 +303,13 @@ def _derived_rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget)
             "evidence_ids": evidence_ids,
             "labor": labor,
             "fingerprint": fingerprint,
+            "model": model,
             "procedure": {
                 "title": title,
                 "steps": steps or [],
+                "generation": "mercury-2" if model in {"mercury-2", "generated"} else "deterministic_fallback",
                 "warnings": [],
                 "requires_review": status != "ready",
-                "generation": "persisted_derived_article",
             },
         }
         evidence = [

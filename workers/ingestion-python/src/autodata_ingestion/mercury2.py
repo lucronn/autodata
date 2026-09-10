@@ -36,6 +36,7 @@ _SOURCE_CANDIDATE_KINDS = frozenset(
         "image_text",
     }
 )
+DEFAULT_INCEPTION_API_BASE_URL = "https://api.inceptionlabs.ai/v1"
 
 
 class JsonTransport(Protocol):
@@ -72,9 +73,7 @@ class Mercury2Client:
         """Build a client without reading credentials from repository files."""
 
         api_key = os.getenv("INCEPTION_API_KEY", "")
-        base_url = os.getenv("INCEPTION_API_BASE_URL", "")
-        if not base_url:
-            raise ValueError("INCEPTION_API_BASE_URL is required for Mercury-2")
+        base_url = os.getenv("INCEPTION_API_BASE_URL", DEFAULT_INCEPTION_API_BASE_URL)
         return cls(
             api_key=api_key,
             base_url=base_url,
