@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1117" />
+    <meta name="description" content="A portfolio case study for designing AutoData: fast answers on top of trustworthy automotive data." />
+    <title>AutoData / Architecture is the product</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script defer src="./app.js"></script>
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="topbar">
+        <a class="brand" href="#top" aria-label="AutoData home">
+          <span class="brand-mark" aria-hidden="true">A<span>+</span></span>
+          <span>AutoData</span>
+        </a>
+        <nav class="nav-links" aria-label="Primary navigation">
+          <a href="#choice">The choice</a>
+          <a href="#proof">The proof</a>
+          <a href="https://github.com/lucronn/autodata" target="_blank" rel="noreferrer">View the repo ↗</a>
+        </nav>
+        <a class="top-cta" href="#choice">See the difference</a>
+      </header>
+
+      <main id="top">
+        <section class="hero section-grid">
+          <div class="hero-copy">
+            <p class="kicker"><span class="signal-dot"></span> Systems built for the messy middle</p>
+            <h1>Make the hard parts <em>visible.</em></h1>
+            <p class="hero-lede">
+              Anyone can make a screen return JSON. The valuable work is making the
+              answer fast, traceable, vehicle-specific, and resilient when the source
+              data is not.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="#choice">Choose your build path <span>↓</span></a>
+              <a class="text-link" href="#problem">Why this problem matters</a>
+            </div>
+            <div class="hero-proof">
+              <div><strong>01</strong><span>identity before content</span></div>
+              <div><strong>02</strong><span>fast lane before deep lane</span></div>
+              <div><strong>03</strong><span>evidence behind every claim</span></div>
+            </div>
+          </div>
+          <div class="hero-visual">
+            <div class="visual-label">AUTODATA / SYSTEM MAP / 001</div>
+            <div class="image-frame">
+              <img src="../docs/assets/autodata-architecture-preview.jpeg" alt="AutoData architecture showing the Go API, PostgreSQL, NATS JetStream, MinIO, and Python workers" />
+              <div class="scan-line" aria-hidden="true"></div>
+            </div>
+            <div class="visual-caption">
+              <span>From source entropy</span>
+              <span class="caption-arrow">→</span>
+              <span>to a confident answer</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="problem section-grid" id="problem">
+          <div class="section-intro">
+            <p class="section-number">01 / THE PROBLEM</p>
+            <h2>Automotive data is not a content problem. It is an identity problem with a clock.</h2>
+          </div>
+          <div class="problem-copy">
+            <p>
+              A request like “1999 Chevy Silverado 1500 2WD 5.3L — service procedure”
+              looks simple until three sources describe the same vehicle three different
+              ways. The platform has to reconcile the identity, preserve the source, reject
+              duplicates, and still give a technician something useful now.
+            </p>
+            <div class="problem-grid">
+              <article class="problem-card">
+                <span class="card-index">A</span>
+                <h3>Identity drifts</h3>
+                <p>“99 Silverado” and “1999 Chevrolet C/K 1500 2WD” need to land on one stable vehicle.</p>
+              </article>
+              <article class="problem-card">
+                <span class="card-index">B</span>
+                <h3>Sources disagree</h3>
+                <p>Lists, PDFs, HTML, APIs, scans, and partner exports do not share one shape or one vocabulary.</p>
+              </article>
+              <article class="problem-card">
+                <span class="card-index">C</span>
+                <h3>Speed creates pressure</h3>
+                <p>The first useful answer cannot wait for every diagram, revision, and enrichment check.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="choice-section" id="choice">
+          <div class="choice-heading">
+            <div>
+              <p class="section-number">02 / THE CHOICE</p>
+              <h2>How do you want to solve it?</h2>
+            </div>
+            <p class="choice-note">Both paths can start fast. Only one is designed to keep getting faster.</p>
+          </div>
+
+          <div class="path-switcher" role="group" aria-label="Choose a build path">
+            <button class="path-tab is-active" type="button" data-path="a" aria-pressed="true">
+              <span class="path-letter">A</span>
+              <span><strong>I can vibe code this myself</strong><small>Get a rough answer on the screen</small></span>
+              <span class="path-chevron">↗</span>
+            </button>
+            <button class="path-tab" type="button" data-path="b" aria-pressed="false">
+              <span class="path-letter">B</span>
+              <span><strong>Hire a software engineer</strong><small>Build the system behind the answer</small></span>
+              <span class="path-chevron">↗</span>
+            </button>
+          </div>
+
+          <div class="path-panel" data-panel="a">
+            <div class="panel-heading">
+              <div>
+                <span class="eyebrow warning">PATH A / THE QUICK WIN</span>
+                <h3>Start with a prompt. Find the edges later.</h3>
+              </div>
+              <span class="status-chip warning-chip">prototype energy</span>
+            </div>
+            <div class="path-content two-column">
+              <div>
+                <p class="panel-lede">A generic prompt can get a demo moving quickly. It cannot decide what “the same vehicle” means, guarantee a complete source, or make a failed enrichment safe.</p>
+                <div class="prompt-card">
+                  <div class="code-bar"><span class="window-dots"><i></i><i></i><i></i></span><span>generic_build_prompt.txt</span><button type="button" class="copy-button" data-copy="prompt">Copy</button></div>
+                  <pre id="prompt"><code>Build an app that accepts a vehicle and a URL,
+uses AI to read automotive articles,
+and returns useful structured JSON.
+
+Keep it simple and make the interface look good.</code></pre>
+                  <div class="prompt-result"><span class="result-icon">!</span><span>It runs — until the first source changes shape.</span></div>
+                </div>
+              </div>
+              <div class="generic-diagram-wrap">
+                <div class="diagram-label">WHAT THE PROMPT SEES</div>
+                <div class="mermaid diagram generic-diagram">flowchart LR
+  S[URL] --> LLM[LLM]
+  V[Vehicle] --> LLM
+  LLM --> J[JSON]
+  J --> U[UI]</div>
+                <details class="source-details">
+                  <summary>Show diagram source</summary>
+                  <pre><code>flowchart LR
+  S[URL] --&gt; LLM[LLM]
+  V[Vehicle] --&gt; LLM
+  LLM --&gt; J[JSON]
+  J --&gt; U[UI]</code></pre>
+                </details>
+              </div>
+            </div>
+            <div class="path-verdict quick-verdict">
+              <div class="verdict-title">The honest summary</div>
+              <div class="verdict-grid">
+                <span class="plus">+</span><p><strong>Quick and cheap.</strong> Great for validating an idea or opening a door.</p>
+                <span class="minus">−</span><p><strong>Full of gaps.</strong> Duplicate vehicles, silent omissions, and opaque decisions arrive with the demo.</p>
+                <span class="minus">−</span><p><strong>A dead-end is expensive.</strong> SWEs eventually have to untangle the codebase before they can improve it.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="path-panel" data-panel="b" hidden>
+            <div class="panel-heading">
+              <div>
+                <span class="eyebrow success">PATH B / THE COMPOUNDING ASSET</span>
+                <h3>Design the boundaries first. Then make the answer fast.</h3>
+              </div>
+              <span class="status-chip success-chip">production-minded</span>
+            </div>
+            <div class="path-content professional-content">
+              <div class="professional-intro">
+                <p class="panel-lede">This is where my work lives: the visible feature is only the top layer. Under it are identity resolution, source contracts, immutable snapshots, deduplication, evidence, retries, projections, and a read path that gets faster as the system learns.</p>
+                <div class="architecture-claim"><span class="claim-mark">✦</span><span>Three zoom levels. One coherent system.</span></div>
+              </div>
+              <div class="diagram-controls" role="group" aria-label="Architecture depth">
+                <button type="button" class="level-button is-active" data-level="basic" aria-pressed="true"><span>01</span> Basic</button>
+                <button type="button" class="level-button" data-level="mid" aria-pressed="false"><span>02</span> Mid-level</button>
+                <button type="button" class="level-button" data-level="detailed" aria-pressed="false"><span>03</span> Detailed</button>
+              </div>
+              <div class="professional-diagram-card">
+                <div class="diagram-card-header"><span class="diagram-label">ARCHITECTURE ZOOM / <span id="level-label">BASIC</span></span><span class="diagram-hint">Select a level to inspect the thinking</span></div>
+                <div class="mermaid diagram professional-diagram" id="professional-diagram"></div>
+                <details class="source-details">
+                  <summary>Show diagram source</summary>
+                  <pre><code id="professional-source"></code></pre>
+                </details>
+              </div>
+            </div>
+            <div class="path-verdict pro-verdict">
+              <div class="verdict-title">What the engineering buys you</div>
+              <div class="verdict-grid">
+                <span class="plus">+</span><p><strong>Stable identity.</strong> New source spellings enrich the right vehicle instead of creating a new one.</p>
+                <span class="plus">+</span><p><strong>Fast now, deeper later.</strong> A viewable revision ships before optional enrichment finishes.</p>
+                <span class="plus">+</span><p><strong>Recoverable failure.</strong> Retries, dead letters, evidence, and section-level status make the system operable.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="proof-section" id="proof">
+          <div class="proof-heading">
+            <p class="section-number">03 / THE PROOF</p>
+            <h2>Good architecture is a chain of decisions.</h2>
+            <p>Every layer answers a question that the happy-path demo avoids.</p>
+          </div>
+          <div class="decision-rail">
+            <article class="decision-card"><span class="decision-number">01</span><h3>Which vehicle?</h3><p>Canonical identity and configuration aliases resolve “99 Silverado” to the correct record.</p><span class="decision-tag">identity</span></article>
+            <article class="decision-card"><span class="decision-number">02</span><h3>Which source?</h3><p>Immutable snapshots preserve hashes, licenses, versions, and retrieval context.</p><span class="decision-tag">provenance</span></article>
+            <article class="decision-card"><span class="decision-number">03</span><h3>Which article?</h3><p>Normalized candidates are compared, deduplicated, and quarantined when confidence is low.</p><span class="decision-tag">quality</span></article>
+            <article class="decision-card"><span class="decision-number">04</span><h3>Can it ship?</h3><p>Fast-lane contracts publish a useful revision while deep enrichment works independently.</p><span class="decision-tag">delivery</span></article>
+          </div>
+        </section>
+
+        <section class="close-section">
+          <div class="close-frame">
+            <div class="close-copy">
+              <p class="section-number">04 / THE HANDOFF</p>
+              <h2>Sell the outcome.<br /><em>Build the system.</em></h2>
+              <p>I help turn ambitious product ideas into software that can survive its first real users, its first bad source, and its first successful scale-up.</p>
+              <a class="button button-primary" href="https://github.com/lucronn/autodata" target="_blank" rel="noreferrer">Review the working repo <span>↗</span></a>
+            </div>
+            <div class="close-signal" aria-hidden="true">
+              <div class="signal-ring ring-one"></div><div class="signal-ring ring-two"></div><div class="signal-ring ring-three"></div>
+              <span class="signal-core">A<span>+</span></span>
+              <span class="signal-label label-top">identity</span><span class="signal-label label-right">evidence</span><span class="signal-label label-bottom">speed</span><span class="signal-label label-left">recovery</span>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer"><span>AutoData / a portfolio case study by Curtis Click</span><span>Built around the hard parts</span></footer>
+    </div>
+  </body>
+</html>
