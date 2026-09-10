@@ -13,23 +13,27 @@
   <body>
     <div class="site-shell">
       <header class="topbar">
-        <a class="brand" href="#top" aria-label="AutoData home">
+        <a class="brand" href="#top" data-wizard-nav="intro" aria-label="AutoData home">
           <span class="brand-mark" aria-hidden="true">A<span>+</span></span>
           <span>AutoData</span>
         </a>
-        <nav class="nav-links" aria-label="Primary navigation">
-          <a href="#choice">The choice</a>
-          <a href="#proof">The proof</a>
-          <a href="https://github.com/lucronn/autodata" target="_blank" rel="noreferrer">View the repo ↗</a>
+        <nav class="nav-links" aria-label="Walkthrough status">
+          <span class="nav-status">One screen at a time</span>
         </nav>
-        <a class="top-cta" href="#choice">See the difference</a>
+        <a class="top-cta" href="#top" data-wizard-nav="intro">Restart walkthrough</a>
       </header>
 
-      <main id="top">
-        <section class="hero section-grid">
+      <main id="top" class="wizard-stage">
+        <div class="wizard-progress" aria-live="polite">
+          <span class="wizard-progress-label"><strong id="wizard-step-number">01</strong> / <span id="wizard-step-name">INTRODUCTION</span></span>
+          <span class="wizard-progress-track" aria-hidden="true"><span id="wizard-progress-fill"></span></span>
+          <span class="wizard-progress-total">05 screens</span>
+        </div>
+
+        <section class="hero section-grid wizard-screen is-active" data-screen="intro" aria-labelledby="intro-title">
           <div class="hero-copy">
             <p class="kicker"><span class="signal-dot"></span> A better answer for the person asking</p>
-            <h1>When your car has a question, the answer should <em>make sense.</em></h1>
+            <h1 id="intro-title">When your car has a question, the answer should <em>make sense.</em></h1>
             <p class="hero-lede">
               Finding the right repair or maintenance information should not feel like
               searching through a junk drawer. AutoData brings scattered information
@@ -37,8 +41,8 @@
               they can trust.
             </p>
             <div class="hero-actions">
-              <a class="button button-primary" href="#choice">See how it gets solved <span>↓</span></a>
-              <a class="text-link" href="#problem">Start with the problem</a>
+              <button class="button button-primary" type="button" data-wizard-next="problem">Start the walkthrough <span>→</span></button>
+              <button class="text-link" type="button" data-wizard-next="problem">Start with the problem</button>
             </div>
             <div class="hero-proof">
               <div><strong>01</strong><span>find the right vehicle</span></div>
@@ -60,10 +64,10 @@
           </div>
         </section>
 
-        <section class="problem section-grid" id="problem">
+        <section class="problem section-grid wizard-screen" id="problem" data-screen="problem" aria-labelledby="problem-title" hidden>
           <div class="section-intro">
             <p class="section-number">01 / THE PROBLEM</p>
-            <h2>People ask simple car questions. Finding a trustworthy answer is not simple.</h2>
+            <h2 id="problem-title">People ask simple car questions. Finding a trustworthy answer is not simple.</h2>
           </div>
           <div class="problem-copy">
             <p>
@@ -90,14 +94,15 @@
                 <p>The first useful answer should be available before every supporting detail has been collected and checked.</p>
               </article>
             </div>
+            <div class="wizard-actions"><button class="button button-primary" type="button" data-wizard-next="choice">Choose a path <span>→</span></button></div>
           </div>
         </section>
 
-        <section class="choice-section" id="choice">
+        <section class="choice-section wizard-screen" id="choice" data-screen="choice" aria-labelledby="choice-title" hidden>
           <div class="choice-heading">
             <div>
               <p class="section-number">02 / THE CHOICE</p>
-              <h2>How do you want to solve it?</h2>
+              <h2 id="choice-title">How do you want to solve it?</h2>
             </div>
             <p class="choice-note">Both paths can start fast. Only one is designed to keep getting faster.</p>
           </div>
@@ -239,12 +244,13 @@ Keep it simple and make the interface look good.</code></pre>
               </div>
             </div>
           </div>
+          <div class="wizard-actions choice-actions"><button class="step-nav-button" type="button" data-wizard-nav="problem">← Back to the problem</button></div>
         </section>
 
-        <section class="proof-section" id="proof">
+        <section class="proof-section wizard-screen" id="proof" data-screen="proof" aria-labelledby="proof-title" hidden>
           <div class="proof-heading">
             <p class="section-number">03 / THE PROOF</p>
-            <h2>Good architecture is a chain of decisions.</h2>
+            <h2 id="proof-title">Good architecture is a chain of decisions.</h2>
             <p>Every layer answers a question that the happy-path demo avoids.</p>
           </div>
           <div class="decision-rail">
@@ -253,13 +259,14 @@ Keep it simple and make the interface look good.</code></pre>
             <article class="decision-card"><span class="decision-number">03</span><h3>Which article?</h3><p>Normalized candidates are compared, deduplicated, and quarantined when confidence is low.</p><span class="decision-tag">quality</span></article>
             <article class="decision-card"><span class="decision-number">04</span><h3>Can it ship?</h3><p>Fast-lane contracts publish a useful revision while deep enrichment works independently.</p><span class="decision-tag">delivery</span></article>
           </div>
+          <div class="wizard-actions proof-actions"><button class="step-nav-button" type="button" data-wizard-nav="choice">← Back to your path</button><button class="button button-primary" type="button" data-wizard-next="close">See the handoff <span>→</span></button></div>
         </section>
 
-        <section class="close-section">
+        <section class="close-section wizard-screen" data-screen="close" aria-labelledby="close-title" hidden>
           <div class="close-frame">
             <div class="close-copy">
               <p class="section-number">04 / THE HANDOFF</p>
-              <h2>Sell the outcome.<br /><em>Build the system.</em></h2>
+              <h2 id="close-title">Sell the outcome.<br /><em>Build the system.</em></h2>
               <p>I help turn ambitious product ideas into software that can survive its first real users, its first bad source, and its first successful scale-up.</p>
               <a class="button button-primary" href="https://github.com/lucronn/autodata" target="_blank" rel="noreferrer">Review the working repo <span>↗</span></a>
             </div>
@@ -269,6 +276,7 @@ Keep it simple and make the interface look good.</code></pre>
               <span class="signal-label label-top">identity</span><span class="signal-label label-right">evidence</span><span class="signal-label label-bottom">speed</span><span class="signal-label label-left">recovery</span>
             </div>
           </div>
+          <div class="wizard-actions close-actions"><button class="step-nav-button" type="button" data-wizard-nav="proof">← Back to the proof</button><button class="button button-primary" type="button" data-wizard-next="intro">Restart the walkthrough <span>↺</span></button></div>
         </section>
       </main>
 

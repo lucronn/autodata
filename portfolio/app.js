@@ -111,6 +111,29 @@ const mermaidConfig = {
   },
 };
 
+const wizardScreens = ['intro', 'problem', 'choice', 'proof', 'close'];
+const wizardNames = ['INTRODUCTION', 'THE PROBLEM', 'THE CHOICE', 'THE PROOF', 'THE HANDOFF'];
+
+function showScreen(screen, updateHash = true) {
+  if (!wizardScreens.includes(screen)) return;
+  const hasSelectedPath = Boolean(document.querySelector('.path-tab.is-active'));
+  if ((screen === 'proof' || screen === 'close') && !hasSelectedPath) screen = 'choice';
+  document.querySelectorAll('[data-screen]').forEach((section) => {
+    const active = section.dataset.screen === screen;
+    section.hidden = !active;
+    section.classList.toggle('is-active', active);
+    if (active) section.scrollTop = 0;
+  });
+  const index = wizardScreens.indexOf(screen);
+  const number = document.querySelector('#wizard-step-number');
+  const name = document.querySelector('#wizard-step-name');
+  const fill = document.querySelector('#wizard-progress-fill');
+  if (number) number.textContent = String(index + 1).padStart(2, '0');
+  if (name) name.textContent = wizardNames[index];
+  if (fill) fill.style.width = `${((index + 1) / wizardScreens.length) * 100}%`;
+  if (updateHash) history.replaceState(null, '', `#${screen}`);
+}
+
 function setActivePath(path) {
   document.querySelectorAll('[data-path]').forEach((button) => {
     const active = button.dataset.path === path;
@@ -147,8 +170,8 @@ function setActiveStep(stepper, requestedStep) {
   const next = stepper.querySelector(`[data-step-next="${path}"]`);
   if (previous) previous.disabled = step === 1;
   if (next) {
-    next.disabled = step === 3;
-    next.innerHTML = step === 3 ? 'Complete' : 'Next <span>→</span>';
+    next.disabled = false;
+    next.innerHTML = step === 3 ? 'Continue to the proof <span>→</span>' : 'Next <span>→</span>';
   }
 
   if (path === 'a' && step === 2) {
@@ -216,7 +239,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-step-next]').forEach((button) => {
     button.addEventListener('click', () => {
       const stepper = document.querySelector(`[data-stepper="${button.dataset.stepNext}"]`);
-      setActiveStep(stepper, Number(stepper.dataset.currentStep) + 1);
+      const current = Number(stepper.dataset.currentStep);
+      if (current === 3) {
+        showScreen('proof');
+        return;
+      }
+      setActiveStep(stepper, current + 1);
     });
   });
   document.querySelectorAll('[data-step-prev]').forEach((button) => {
@@ -228,6 +256,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-level]').forEach((button) => {
     button.addEventListener('click', () => renderProfessional(button.dataset.level));
   });
+  document.querySelectorAll('[data-wizard-next], [data-wizard-nav]').forEach((control) => {
+    control.addEventListener('click', (event) => {
+      event.preventDefault();
+      showScreen(control.dataset.wizardNext || control.dataset.wizardNav);
+    });
+  });
   setupCopy();
   setActivePath(null);
+  showScreen('intro');
 });
