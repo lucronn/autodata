@@ -28,31 +28,32 @@
       <main id="top">
         <section class="hero section-grid">
           <div class="hero-copy">
-            <p class="kicker"><span class="signal-dot"></span> Systems built for the messy middle</p>
-            <h1>Make the hard parts <em>visible.</em></h1>
+            <p class="kicker"><span class="signal-dot"></span> A better answer for the person asking</p>
+            <h1>When your car has a question, the answer should <em>make sense.</em></h1>
             <p class="hero-lede">
-              Anyone can make a screen return JSON. The valuable work is making the
-              answer fast, traceable, vehicle-specific, and resilient when the source
-              data is not.
+              Finding the right repair or maintenance information should not feel like
+              searching through a junk drawer. AutoData brings scattered information
+              together, matches it to the right vehicle, and gives people a clear answer
+              they can trust.
             </p>
             <div class="hero-actions">
-              <a class="button button-primary" href="#choice">Choose your build path <span>↓</span></a>
-              <a class="text-link" href="#problem">Why this problem matters</a>
+              <a class="button button-primary" href="#choice">See how it gets solved <span>↓</span></a>
+              <a class="text-link" href="#problem">Start with the problem</a>
             </div>
             <div class="hero-proof">
-              <div><strong>01</strong><span>identity before content</span></div>
-              <div><strong>02</strong><span>fast lane before deep lane</span></div>
-              <div><strong>03</strong><span>evidence behind every claim</span></div>
+              <div><strong>01</strong><span>find the right vehicle</span></div>
+              <div><strong>02</strong><span>get a useful answer now</span></div>
+              <div><strong>03</strong><span>know where it came from</span></div>
             </div>
           </div>
           <div class="hero-visual">
-            <div class="visual-label">AUTODATA / SYSTEM MAP / 001</div>
+            <div class="visual-label">A PERSON ASKS / THE SYSTEM RESPONDS / 001</div>
             <div class="image-frame">
               <img src="../docs/assets/autodata-architecture-preview.jpeg" alt="AutoData architecture showing the Go API, PostgreSQL, NATS JetStream, MinIO, and Python workers" />
               <div class="scan-line" aria-hidden="true"></div>
             </div>
             <div class="visual-caption">
-              <span>From source entropy</span>
+              <span>From scattered information</span>
               <span class="caption-arrow">→</span>
               <span>to a confident answer</span>
             </div>
@@ -62,30 +63,31 @@
         <section class="problem section-grid" id="problem">
           <div class="section-intro">
             <p class="section-number">01 / THE PROBLEM</p>
-            <h2>Automotive data is not a content problem. It is an identity problem with a clock.</h2>
+            <h2>People ask simple car questions. Finding a trustworthy answer is not simple.</h2>
           </div>
           <div class="problem-copy">
             <p>
-              A request like “1999 Chevy Silverado 1500 2WD 5.3L — service procedure”
-              looks simple until three sources describe the same vehicle three different
-              ways. The platform has to reconcile the identity, preserve the source, reject
-              duplicates, and still give a technician something useful now.
+              Someone asks, “What do I need for my 1999 Silverado?” The useful answer is
+              buried across manuals, websites, scans, parts lists, and old descriptions.
+              Worse, those sources may call the same vehicle different things. A good
+              product quietly sorts that out so a technician, shop owner, or driver can
+              get the right information without becoming a detective first.
             </p>
             <div class="problem-grid">
               <article class="problem-card">
                 <span class="card-index">A</span>
-                <h3>Identity drifts</h3>
-                <p>“99 Silverado” and “1999 Chevrolet C/K 1500 2WD” need to land on one stable vehicle.</p>
+                <h3>The car gets misidentified</h3>
+                <p>“99 Silverado” and “1999 Chevrolet C/K 1500 2WD” should lead to the same vehicle, not two conflicting answers.</p>
               </article>
               <article class="problem-card">
                 <span class="card-index">B</span>
-                <h3>Sources disagree</h3>
-                <p>Lists, PDFs, HTML, APIs, scans, and partner exports do not share one shape or one vocabulary.</p>
+                <h3>The information is scattered</h3>
+                <p>Repair instructions, diagrams, specifications, and parts information live in different places and formats.</p>
               </article>
               <article class="problem-card">
                 <span class="card-index">C</span>
-                <h3>Speed creates pressure</h3>
-                <p>The first useful answer cannot wait for every diagram, revision, and enrichment check.</p>
+                <h3>People need help now</h3>
+                <p>The first useful answer should be available before every supporting detail has been collected and checked.</p>
               </article>
             </div>
           </div>
