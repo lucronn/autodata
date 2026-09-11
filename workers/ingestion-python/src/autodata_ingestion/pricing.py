@@ -31,6 +31,8 @@ def price_freshness(priced_at: datetime, now: datetime) -> str:
 
     priced_at_utc = _utc_datetime(priced_at, "priced_at")
     now_utc = _utc_datetime(now, "now")
+    if priced_at_utc > now_utc:
+        raise ValueError("priced_at must not be in the future")
     return "fresh" if now_utc - priced_at_utc < PRICE_FRESHNESS_WINDOW else "stale"
 
 
@@ -91,9 +93,10 @@ def read_cached_price_or_queue_refresh(
         "refresh_request_id",
         "refresh_id",
     )
+    returned_request_id = _first_text(queue_result, "refresh_request_id")
     if returned_key:
         snapshot["refresh_idempotency_key"] = returned_key
-        snapshot["refresh_request_id"] = returned_key
+        snapshot["refresh_request_id"] = returned_request_id or returned_key
     attempt_number = _positive_int(
         queue_result.get("refresh_attempt_number", queue_result.get("attempt_count"))
     )
@@ -152,6 +155,10 @@ def _snapshot_from_part(part: Mapping[str, Any]) -> dict[str, Any]:
         "_priced_at_datetime": _parse_timestamp(priced_at_value),
     }
     for output_key, input_keys in (
+        (
+            "parts_price_snapshot_id",
+            ("parts_price_snapshot_id", "price_snapshot_row_id"),
+        ),
         ("name", ("name", "description", "part_description", "partDescription")),
         ("quantity", ("quantity",)),
         ("source", ("source", "provider")),
@@ -205,20 +212,32 @@ def _utc_datetime(value: datetime, name: str) -> datetime:
 
 
 def _refresh_idempotency_key(snapshot: Mapping[str, Any]) -> str:
+    priced_at = snapshot["priced_at"]
+    if isinstance(priced_at, datetime):
+        priced_at = priced_at.astimezone(UTC).isoformat()
+    else:
+        priced_at = _canonical_timestamp(str(priced_at).strip())
     identity = json.dumps(
         {
-            key: snapshot[key]
-            for key in (
-                "canonical_part_id",
-                "source_part_number",
-                "source_snapshot_id",
-                "priced_at",
-            )
+            "canonical_part_id": snapshot["canonical_part_id"],
+            "source_part_number": snapshot["source_part_number"],
+            "source_snapshot_id": snapshot["source_snapshot_id"],
+            "priced_at": priced_at,
         },
         sort_keys=True,
         separators=(",", ":"),
     )
     return "price-refresh:" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
+def _canonical_timestamp(value: str) -> str:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return value
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return value
+    return parsed.astimezone(UTC).isoformat()
 
 
 def _retryable_refresh_error(error: Exception) -> bool:

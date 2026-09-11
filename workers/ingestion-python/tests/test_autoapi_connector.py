@@ -2,6 +2,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from uuid import UUID
 from urllib.parse import urlsplit
 
 
@@ -36,6 +37,145 @@ class FakeResponse:
 
 
 class AutoAPIConnectorTests(unittest.TestCase):
+    def test_provider_part_rows_become_canonical_no_markup_price_snapshots(self):
+        responses = {
+            "/v1/api/source/Motor/vehicle/price-v1/articles/v2": {
+                "header": {},
+                "body": {"articleDetails": [{"id": "a1", "title": "Brake service"}]},
+            },
+            "/v1/api/source/Motor/vehicle/price-v1/article/a1": {
+                "header": {},
+                "body": {"documentId": "a1", "html": "<p>Brake</p>"},
+            },
+            "/v1/api/source/Motor/vehicle/price-v1/labor/a1": {
+                "header": {},
+                "body": {"operations": [{"operationId": "brake", "hours": 1.0}]},
+            },
+            "/v1/api/source/Motor/vehicle/price-v1/parts": {
+                "header": {},
+                "body": [
+                    {
+                        "partNumber": "P1",
+                        "partDescription": "Brake fluid",
+                        "price": "$18.99",
+                        "pricedAt": "2026-09-01T12:00:00Z",
+                        "currency": "USD",
+                    }
+                ],
+            },
+        }
+
+        def opener(request, timeout):
+            del timeout
+            return FakeResponse(responses[urlsplit(request.full_url).path])
+
+        connector = AutoAPIConnector(
+            "http://127.0.0.1:3000",
+            content_source="Motor",
+            opener=opener,
+        )
+        result = fetch_required_source_resources(
+            {"vehicle_id": "price-v1"},
+            [{"article_id": "a1", "part_numbers": ["P1"]}],
+            connector,
+        )
+
+        snapshot = result["parts"][0]
+        self.assertEqual(snapshot["canonical_part_id"], "part:p1")
+        self.assertEqual(snapshot["source_part_number"], "P1")
+        self.assertEqual(snapshot["amount"], 18.99)
+        self.assertEqual(snapshot["currency"], "USD")
+        self.assertEqual(snapshot["priced_at"], "2026-09-01T12:00:00Z")
+        UUID(snapshot["source_snapshot_id"])
+        UUID(snapshot["parts_price_snapshot_id"])
+        self.assertFalse(snapshot["markup_applied"])
+        self.assertEqual(
+            result["source_unnormalized"]["parts"]["body"][0]["price"],
+            "$18.99",
+        )
+
+    def test_helper_rejects_incomplete_authoritative_article_index(self):
+        responses = {
+            "/v1/api/source/Motor/vehicle/count-v1/articles/v2": {
+                "header": {},
+                "body": {
+                    "filterTabs": [{"name": "All", "articlesCount": 2}],
+                    "articleDetails": [{"id": "a1", "title": "Brake service"}],
+                },
+            }
+        }
+
+        def opener(request, timeout):
+            del timeout
+            return FakeResponse(responses[urlsplit(request.full_url).path])
+
+        connector = AutoAPIConnector(
+            "http://127.0.0.1:3000", content_source="Motor", opener=opener
+        )
+        with self.assertRaisesRegex(ValueError, "incomplete article index"):
+            fetch_required_source_resources(
+                {"vehicle_id": "count-v1"}, [{"article_id": "a1"}], connector
+            )
+
+    def test_cross_request_source_cache_reuses_selector_and_resource_reads(self):
+        responses = {
+            "/v1/api/source/Cross/vehicle/cache-v1/articles/v2": {
+                "header": {},
+                "body": {
+                    "articleDetails": [
+                        {"id": "a1", "title": "Brake service"},
+                        {"id": "a2", "title": "Engine service"},
+                    ]
+                },
+            },
+            "/v1/api/source/Cross/vehicle/cache-v1/article/a1": {
+                "header": {},
+                "body": {"documentId": "a1", "html": "<p>Brake</p>"},
+            },
+            "/v1/api/source/Cross/vehicle/cache-v1/labor/a1": {
+                "header": {},
+                "body": {"operations": [{"operationId": "brake", "hours": 1.0}]},
+            },
+            "/v1/api/source/Cross/vehicle/cache-v1/article/a2": {
+                "header": {},
+                "body": {"documentId": "a2", "html": "<p>Engine</p>"},
+            },
+            "/v1/api/source/Cross/vehicle/cache-v1/labor/a2": {
+                "header": {},
+                "body": {"operations": [{"operationId": "engine", "hours": 1.0}]},
+            },
+        }
+        requests = []
+
+        def opener(request, timeout):
+            del timeout
+            path = urlsplit(request.full_url).path
+            requests.append(path)
+            return FakeResponse(responses[path])
+
+        first = AutoAPIConnector(
+            "http://127.0.0.1:3017", content_source="Cross", opener=opener
+        )
+        second = AutoAPIConnector(
+            "http://127.0.0.1:3017", content_source="Cross", opener=opener
+        )
+        vehicle = {"vehicle_id": "cache-v1"}
+        operations = [{"article_id": "a1"}, {"article_id": "a2"}]
+
+        fetch_required_source_resources(vehicle, operations, first)
+        fetch_required_source_resources(vehicle, list(reversed(operations)), second)
+
+        self.assertEqual(
+            requests,
+            [
+                "/v1/api/source/Cross/vehicle/cache-v1/articles/v2",
+                "/v1/api/source/Cross/vehicle/cache-v1/article/a1",
+                "/v1/api/source/Cross/vehicle/cache-v1/labor/a1",
+                "/v1/api/source/Cross/vehicle/cache-v1/article/a2",
+                "/v1/api/source/Cross/vehicle/cache-v1/labor/a2",
+            ],
+        )
+
     def test_read_through_fetches_only_requested_resources_after_article_list(self):
         responses = {
             "/v1/api/source/Motor/vehicle/v1/articles/v2": {

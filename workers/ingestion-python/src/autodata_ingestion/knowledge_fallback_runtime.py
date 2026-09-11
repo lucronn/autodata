@@ -6,6 +6,7 @@ import hashlib
 import inspect
 import json
 import os
+import re
 import uuid
 from collections.abc import Mapping
 from copy import deepcopy
@@ -14,10 +15,12 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .article_intake import VehicleTarget
+from .autoapi_connector import AutoAPIConnector, fetch_required_source_resources
 from .http_connector import HttpSourceConnector
 from .knowledge_fallback import (
     KnowledgeFallbackFulfillmentHandler,
     KnowledgeFallbackRequest,
+    PermanentKnowledgeFallbackError,
     ResolvedSource,
 )
 from .pricing import read_cached_price_or_queue_refresh
@@ -34,15 +37,24 @@ def fulfill_once(envelope: Mapping[str, Any]) -> dict[str, Any]:
 
         return persist_source_bundle(bundle, artifacts, adapter_name=adapter_name)
 
+    source_resolver = ConfiguredKnowledgeSourceResolver(
+        source_persister=persist_source_payloads
+    )
     handler = KnowledgeFallbackFulfillmentHandler(
         catalog=catalog,
-        source_resolver=ConfiguredKnowledgeSourceResolver(
-            source_persister=persist_source_payloads
-        ),
+        source_resolver=source_resolver,
         persistence=persist,
     )
-    result = handler.handle(dict(envelope))
-    result = _expose_provisional_source_result(result)
+    try:
+        result = handler.handle(dict(envelope))
+    except PermanentKnowledgeFallbackError as error:
+        if source_resolver.last_source_references:
+            result = _source_unnormalized_failure(request, source_resolver, error)
+        else:
+            raise
+    result = _expose_provisional_source_result(
+        result, source_resolver.last_source_references
+    )
     result = _refresh_result_prices(result)
     if result["result"]["status"] == "fetched":
         result["publication"] = publish_fallback_revision(request, result)
@@ -54,6 +66,9 @@ class ConfiguredKnowledgeSourceResolver:
 
     def __init__(self, *, source_persister: Any | None = None) -> None:
         self.source_persister = source_persister
+        self.last_source_references: tuple[dict[str, Any], ...] = ()
+        self.last_source_persistence: dict[str, Any] | None = None
+        self.last_autoapi_result: dict[str, Any] | None = None
 
     def __call__(
         self,
@@ -62,6 +77,8 @@ class ConfiguredKnowledgeSourceResolver:
         keywords: tuple[str, ...],
         source_hint: Any | None = None,
     ) -> ResolvedSource:
+        if _is_autoapi_request(source_hint):
+            return self._resolve_autoapi(target, query, keywords, source_hint)
         source_uri, source_version = _source_configuration(
             target, query, keywords, source_hint
         )
@@ -73,36 +90,257 @@ class ConfiguredKnowledgeSourceResolver:
             request_headers=_source_headers(),
         )
         if self.source_persister is not None:
-            connector = _PersistingSourceConnector(connector, self.source_persister)
+            connector = _PersistingSourceConnector(
+                connector,
+                self.source_persister,
+                on_persisted=self._record_persistence,
+            )
         return ResolvedSource(
             source_uri,
             source_version=source_version,
             connector=connector,
         )
 
+    def _resolve_autoapi(
+        self,
+        target: VehicleTarget,
+        query: str,
+        keywords: tuple[str, ...],
+        source_hint: Any | None,
+    ) -> ResolvedSource:
+        hint = source_hint if isinstance(source_hint, Mapping) else {}
+        base_url = (
+            hint.get("base_url")
+            or hint.get("autoapi_base_url")
+            or os.getenv("AUTODATA_AUTOAPI_BASE_URL", "")
+        )
+        if not str(base_url).strip():
+            raise LookupError("AutoAPI source configuration requires a base URL")
+        content_source = str(
+            hint.get("content_source")
+            or os.getenv("AUTODATA_AUTOAPI_CONTENT_SOURCE", "GeneralMotors")
+        ).strip()
+        source_version = str(
+            hint.get("source_version")
+            or os.getenv("AUTODATA_AUTOAPI_SOURCE_VERSION", "autoapi-http-v1")
+        ).strip()
+        vehicle_id = str(
+            hint.get("vehicle_id")
+            or hint.get("autoapi_vehicle_id")
+            or target.vehicle_key
+        ).strip()
+        operations = hint.get("operations")
+        if not isinstance(operations, (list, tuple)):
+            operations = [
+                {
+                    "article_title": query,
+                    "keywords": list(keywords),
+                    "requires_parts": bool(hint.get("requires_parts")),
+                }
+            ]
+        connector = AutoAPIConnector(
+            str(base_url),
+            content_source=content_source,
+            source_version=source_version,
+            timeout_seconds=float(
+                os.getenv("AUTODATA_AUTOAPI_TIMEOUT_SECONDS", "30")
+            ),
+            max_bytes=int(
+                os.getenv("AUTODATA_AUTOAPI_MAX_BYTES", str(50 * 1024 * 1024))
+            ),
+        )
+        source_connector = _AutoAPIKnowledgeSourceConnector(
+            connector,
+            vehicle_id=vehicle_id,
+            vehicle=target.as_dict(),
+            operations=tuple(
+                dict(operation)
+                for operation in operations
+                if isinstance(operation, Mapping)
+            )
+            or ({"article_title": query},),
+            source_persister=self.source_persister,
+            on_persisted=self._record_persistence,
+            on_result=self._record_autoapi_result,
+        )
+        return ResolvedSource(
+            str(base_url).strip().rstrip("/"),
+            source_version=source_version,
+            connector=source_connector,
+        )
+
+    def _record_persistence(
+        self, result: Any, resources: tuple[Any, ...]
+    ) -> None:
+        self.last_source_persistence = (
+            deepcopy(dict(result)) if isinstance(result, Mapping) else None
+        )
+        references = (
+            result.get("source_references")
+            if isinstance(result, Mapping)
+            else None
+        )
+        self.last_source_references = tuple(
+            _safe_source_references(references or resources)
+        )
+
+    def _record_autoapi_result(self, result: dict[str, Any]) -> None:
+        self.last_autoapi_result = deepcopy(result)
+        if not self.last_source_references:
+            self.last_source_references = tuple(
+                _safe_source_references(result.get("source_references", ()))
+            )
+
+
+def _is_autoapi_request(source_hint: Any | None) -> bool:
+    if isinstance(source_hint, Mapping):
+        provider = str(
+            source_hint.get("provider")
+            or source_hint.get("source_provider")
+            or ""
+        ).strip().casefold()
+        return provider == "autoapi" or source_hint.get("autoapi") is True
+    return (
+        os.getenv("AUTODATA_KNOWLEDGE_SOURCE_PROVIDER", "").strip().casefold()
+        == "autoapi"
+        and bool(os.getenv("AUTODATA_AUTOAPI_BASE_URL", "").strip())
+    ) or bool(os.getenv("AUTODATA_AUTOAPI_BASE_URL", "").strip())
+
+
+def _safe_source_references(references: Any) -> list[dict[str, Any]]:
+    if isinstance(references, Mapping):
+        references = references.get("source_references", ())
+    if not isinstance(references, (list, tuple)):
+        references = (references,) if references else ()
+    safe: list[dict[str, Any]] = []
+    for reference in references:
+        if isinstance(reference, Mapping):
+            values = reference
+        else:
+            values = {
+                "source_uri": getattr(reference, "source_uri", None),
+                "source_version": getattr(reference, "source_version", None),
+                "content_sha256": getattr(reference, "content_sha256", None),
+                "source_snapshot_id": getattr(reference, "source_snapshot_id", None),
+                "source_artifact_id": getattr(reference, "source_artifact_id", None),
+                "object_key": getattr(reference, "object_key", None),
+            }
+        item = {
+            key: str(values[key])
+            for key in (
+                "source_uri",
+                "source_version",
+                "content_sha256",
+                "source_snapshot_id",
+                "source_artifact_id",
+                "object_key",
+            )
+            if values.get(key) is not None and str(values[key]).strip()
+        }
+        if item.get("source_uri") or item.get("content_sha256"):
+            safe.append(item)
+    return safe
+
 
 class _PersistingSourceConnector:
     """Persist immutable source bytes before the intake normalizer sees them."""
 
-    def __init__(self, delegate: Any, persister: Any) -> None:
+    def __init__(
+        self,
+        delegate: Any,
+        persister: Any,
+        *,
+        on_persisted: Any | None = None,
+    ) -> None:
         self._delegate = delegate
         self._persister = persister
+        self._on_persisted = on_persisted
         self.name = str(getattr(delegate, "name", "source"))
 
     def fetch(self, request: dict[str, Any]) -> list[Any]:
         resources = list(self._delegate.fetch(request))
-        try:
-            inspect.signature(self._persister).bind(
-                tuple(resources), adapter_name=self.name
-            )
-        except (TypeError, ValueError):
-            self._persister(tuple(resources))
-        else:
-            self._persister(tuple(resources), adapter_name=self.name)
+        result = _invoke_source_persister(
+            self._persister, tuple(resources), adapter_name=self.name
+        )
+        if callable(self._on_persisted):
+            self._on_persisted(result, tuple(resources))
         return resources
 
 
-def _expose_provisional_source_result(result: dict[str, Any]) -> dict[str, Any]:
+class _AutoAPIKnowledgeSourceConnector:
+    """Adapt the multi-resource AutoAPI read-through result to article intake."""
+
+    name = "autoapi"
+
+    def __init__(
+        self,
+        connector: AutoAPIConnector,
+        *,
+        vehicle_id: str,
+        vehicle: Mapping[str, Any],
+        operations: tuple[Mapping[str, Any], ...],
+        source_persister: Any | None,
+        on_persisted: Any | None,
+        on_result: Any | None,
+    ) -> None:
+        self._connector = connector
+        self._vehicle_id = vehicle_id
+        self._vehicle = dict(vehicle)
+        self._operations = operations
+        self._source_persister = source_persister
+        self._on_persisted = on_persisted
+        self._on_result = on_result
+        self.last_result: dict[str, Any] | None = None
+        self.last_price_persistence: dict[str, Any] | None = None
+
+    def fetch(self, _request: dict[str, Any]) -> list[Any]:
+        result = fetch_required_source_resources(
+            {**self._vehicle, "vehicle_id": self._vehicle_id},
+            self._operations,
+            self._connector,
+        )
+        self.last_result = result
+        if callable(self._on_result):
+            self._on_result(result)
+        resources = tuple(result.get("source_resources", ()))
+        if self._source_persister is not None:
+            persistence = _invoke_source_persister(
+                self._source_persister, resources, adapter_name=self.name
+            )
+            if callable(self._on_persisted):
+                self._on_persisted(persistence, resources)
+            if result.get("parts"):
+                self.last_price_persistence = persist_price_snapshots(result["parts"])
+        selected = next(
+            (
+                resource
+                for resource in resources
+                if "/article/" in resource.source_uri.casefold()
+                and "/labor/" not in resource.source_uri.casefold()
+            ),
+            None,
+        )
+        if selected is None and resources:
+            selected = resources[0]
+        if selected is None:
+            raise LookupError("AutoAPI returned no source resources")
+        return [selected]
+
+
+def _invoke_source_persister(
+    persister: Any, resources: tuple[Any, ...], *, adapter_name: str
+) -> Any:
+    try:
+        inspect.signature(persister).bind(resources, adapter_name=adapter_name)
+    except (TypeError, ValueError):
+        return persister(resources)
+    return persister(resources, adapter_name=adapter_name)
+
+
+def _expose_provisional_source_result(
+    result: dict[str, Any],
+    source_references: Any = (),
+) -> dict[str, Any]:
     """Map an intake rejection to a useful, explicitly unnormalized result."""
 
     if not isinstance(result, dict) or not isinstance(result.get("result"), Mapping):
@@ -111,6 +349,9 @@ def _expose_provisional_source_result(result: dict[str, Any]) -> dict[str, Any]:
     if payload.get("status") != "rejected":
         return result
     reason = str(payload.get("rejection_reason") or "").strip()
+    references = _safe_source_references(source_references)
+    if references:
+        payload["source_references"] = references
     if reason == "vehicle_identity_mismatch":
         payload["status"] = "needs_review"
         payload["data_state"] = "needs_review"
@@ -122,11 +363,67 @@ def _expose_provisional_source_result(result: dict[str, Any]) -> dict[str, Any]:
             "evidence": deepcopy(payload.get("evidence", ())),
             "rejection_reason": reason or "normalization_pending",
         }
+        if references:
+            payload["source_unnormalized"]["source_references"] = references
     result["result"] = payload
     publication = result.get("publication")
     if isinstance(publication, dict):
         publication["status"] = payload["status"]
     return result
+
+
+def _source_unnormalized_failure(
+    request: KnowledgeFallbackRequest,
+    resolver: ConfiguredKnowledgeSourceResolver,
+    error: Exception,
+) -> dict[str, Any]:
+    references = _safe_source_references(resolver.last_source_references)
+    source_uri = references[0].get("source_uri") if references else None
+    result = {
+        "status": "source_unnormalized",
+        "data_state": "source_unnormalized",
+        "idempotency_key": request.idempotency_key,
+        "vehicle": request.target.as_dict(),
+        "query": request.query,
+        "keywords": request.keywords,
+        "results": (),
+        "evidence": (),
+        "source_uri": source_uri,
+        "rejection_reason": "normalization_pending",
+        "source_references": references,
+        "source_unnormalized": {
+            "source_references": references,
+            "rejection_reason": "normalization_pending",
+            "error_type": type(error).__name__,
+        },
+    }
+    return {
+        "status": "completed",
+        "request_id": request.request_id,
+        "idempotency_key": request.idempotency_key,
+        "dataset_id": request.dataset_id,
+        "revision_id": request.revision_id,
+        "result": result,
+        "publication": {
+            "event_type": "dataset.knowledge.fallback.fulfilled",
+            "event_version": 1,
+            "event_id": "knowledge-publication:" + request.idempotency_key,
+            "request_id": request.request_id,
+            "projection_id": request.projection_id,
+            "revision_id": request.revision_id,
+            "correlation_id": request.correlation_id,
+            "idempotency_key": request.idempotency_key,
+            "dataset_id": request.dataset_id,
+            "vehicle_key": request.vehicle_key,
+            "query": request.query,
+            "keywords": list(request.keywords),
+            "kind": request.kind,
+            "status": "source_unnormalized",
+            "results": [],
+            "evidence": [],
+            "source_uri": source_uri,
+        },
+    }
 
 
 def _refresh_result_prices(result: dict[str, Any]) -> dict[str, Any]:
@@ -176,32 +473,242 @@ def persist_source_payloads(
     """
 
     from .bundle_persistence import _persist_snapshots, store_source_artifacts
-    from .source_adapters import adapt_source_resource
+    from .source_adapters import SourceArtifact, SourceResource, adapt_source_resource
 
-    artifacts = [adapt_source_resource(resource) for resource in resources]
-    if not artifacts:
+    resource_list = tuple(resources)
+    if not resource_list:
         return {"status": "no_source_payloads", "source_snapshots": 0}
-    store_source_artifacts(artifacts)
+    if not all(isinstance(resource, SourceResource) for resource in resource_list):
+        raise TypeError("source payload retention requires SourceResource values")
+
+    raw_artifacts = [
+        _raw_source_artifact(resource, SourceArtifact)
+        for resource in resource_list
+    ]
+    store_source_artifacts(raw_artifacts)
     import psycopg
     from psycopg.types.json import Jsonb
 
     now = datetime.now(UTC).replace(microsecond=0)
     with psycopg.connect(**_conninfo()) as connection:
         with connection.cursor() as cursor:
-            snapshot_ids = _persist_snapshots(cursor, artifacts, adapter_name, now, Jsonb)
+            snapshot_ids = _persist_snapshots(
+                cursor, raw_artifacts, adapter_name, now, Jsonb
+            )
+            _persist_raw_artifact_rows(
+                cursor, raw_artifacts, snapshot_ids, now, Jsonb
+            )
         connection.commit()
+    source_references = tuple(
+        _source_reference(resource, snapshot_ids[resource.content_sha256])
+        for resource in resource_list
+    )
+    try:
+        adapted_artifacts = [
+            adapt_source_resource(resource) for resource in resource_list
+        ]
+    except Exception as error:  # noqa: BLE001 - raw retention must survive adapter failure
+        return {
+            "status": "source_unnormalized",
+            "source_snapshots": len(snapshot_ids),
+            "source_snapshot_ids": tuple(sorted(snapshot_ids.values())),
+            "source_references": source_references,
+            "adaptation_error": {"error_type": type(error).__name__},
+        }
     return {
         "status": "persisted",
         "source_snapshots": len(snapshot_ids),
         "source_snapshot_ids": tuple(sorted(snapshot_ids.values())),
+        "source_artifacts": len(adapted_artifacts),
+        "source_references": source_references,
     }
 
 
-def queue_price_refresh(part: Mapping[str, Any]) -> dict[str, Any]:
+def _raw_source_artifact(resource: Any, artifact_type: Any) -> Any:
+    media_type = str(resource.media_type).split(";", 1)[0].casefold()
+    if media_type in {"application/json", "application/problem+json", "text/json"}:
+        kind = "structured"
+    elif media_type == "image/svg+xml":
+        kind = "diagram"
+    elif media_type in {"text/html", "application/pdf", "text/plain"}:
+        kind = "document"
+    else:
+        kind = "quarantine"
+    return artifact_type(
+        kind=kind,
+        source_uri=resource.source_uri,
+        source_version=resource.source_version,
+        media_type=resource.media_type,
+        content_sha256=resource.content_sha256,
+        payload=resource.payload,
+        raw_payload=resource.payload,
+        metadata={
+            **resource.metadata,
+            "retention_status": "raw",
+            "source_uri": resource.source_uri,
+            "source_version": resource.source_version,
+            "content_sha256": resource.content_sha256,
+            "locator": resource.locator,
+        },
+    )
+
+
+def _persist_raw_artifact_rows(
+    cursor: Any,
+    artifacts: list[Any],
+    snapshot_ids: Mapping[str, str],
+    now: datetime,
+    jsonb: Any,
+) -> None:
+    for artifact in artifacts:
+        cursor.execute(
+            """
+            INSERT INTO source_artifacts
+                (source_artifact_id, source_snapshot_id, artifact_kind, media_type,
+                 content_sha256, object_key, metadata, extraction_status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'needs_review')
+            ON CONFLICT (content_sha256) DO UPDATE SET
+                source_snapshot_id = EXCLUDED.source_snapshot_id,
+                object_key = EXCLUDED.object_key,
+                metadata = EXCLUDED.metadata
+            """,
+            (
+                str(
+                    uuid.uuid5(
+                        uuid.NAMESPACE_URL,
+                        f"autodata-bundle:source-artifact:{artifact.content_sha256}",
+                    )
+                ),
+                snapshot_ids[artifact.content_sha256],
+                artifact.kind,
+                artifact.media_type,
+                artifact.content_sha256,
+                artifact.object_key,
+                jsonb(
+                    {
+                        **artifact.metadata,
+                        "retained_at": now.isoformat(),
+                    }
+                ),
+            ),
+        )
+
+
+def _source_reference(resource: Any, source_snapshot_id: str) -> dict[str, Any]:
+    return {
+        "source_uri": resource.source_uri,
+        "source_version": resource.source_version,
+        "content_sha256": resource.content_sha256,
+        "source_snapshot_id": str(source_snapshot_id),
+        "source_artifact_id": str(
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"autodata-bundle:source-artifact:{resource.content_sha256}",
+            )
+        ),
+        "object_key": (
+            f"sources/{resource.content_sha256[:16]}/{resource.content_sha256}"
+        ),
+    }
+
+
+def persist_price_snapshots(parts: Any) -> dict[str, Any]:
+    """Persist canonical source prices using the immutable snapshot identity."""
+
+    records = [
+        deepcopy(dict(part))
+        for part in parts
+        if isinstance(part, Mapping)
+        and _first_text(part, "parts_price_snapshot_id")
+    ]
+    if not records:
+        return {"status": "no_price_snapshots", "price_snapshots": 0}
+    import psycopg
+    from psycopg.types.json import Jsonb
+
+    snapshot_ids: list[str] = []
+    with psycopg.connect(**_conninfo()) as connection:
+        with connection.cursor() as cursor:
+            for part in records:
+                if part.get("markup_applied") is not False:
+                    raise ValueError("source price snapshots cannot include markup")
+                snapshot_id = _first_text(part, "parts_price_snapshot_id")
+                source_snapshot_id = _first_text(part, "source_snapshot_id")
+                canonical_part_id = _first_text(part, "canonical_part_id")
+                source_part_number = _first_text(part, "source_part_number")
+                currency = _first_text(part, "currency")
+                if (
+                    not snapshot_id
+                    or not source_snapshot_id
+                    or not canonical_part_id
+                    or not source_part_number
+                ):
+                    raise ValueError("price snapshot identity is incomplete")
+                if currency is None or len(currency) != 3 or not currency.isalpha():
+                    raise ValueError("price snapshot currency must be three letters")
+                try:
+                    amount = float(part["amount"])
+                except (KeyError, TypeError, ValueError) as error:
+                    raise ValueError("price snapshot amount must be numeric") from error
+                if amount < 0:
+                    raise ValueError("price snapshot amount must be non-negative")
+                priced_at = _snapshot_timestamp(part.get("priced_at"))
+                cursor.execute(
+                    """
+                    INSERT INTO parts_price_snapshots
+                        (parts_price_snapshot_id, canonical_part_id,
+                         source_part_number, source_snapshot_id, amount, currency,
+                         priced_at, freshness, refresh_status, markup_applied,
+                         source_uri, source_part_payload)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, false, %s, %s)
+                    ON CONFLICT (canonical_part_id, source_snapshot_id, priced_at)
+                    DO NOTHING
+                    """,
+                    (
+                        snapshot_id,
+                        canonical_part_id,
+                        source_part_number,
+                        source_snapshot_id,
+                        amount,
+                        currency.upper(),
+                        priced_at,
+                        _first_text(part, "freshness") or "unknown",
+                        _first_text(part, "refresh_status") or "current",
+                        _first_text(part, "source_uri", "sourceUri"),
+                        Jsonb(part),
+                    ),
+                )
+                snapshot_ids.append(snapshot_id)
+        connection.commit()
+    return {
+        "status": "persisted",
+        "price_snapshots": len(snapshot_ids),
+        "price_snapshot_ids": tuple(snapshot_ids),
+    }
+
+
+def _snapshot_timestamp(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        except ValueError as error:
+            raise ValueError("price snapshot priced_at must be an ISO timestamp") from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("price snapshot priced_at must be timezone-aware")
+    return parsed.astimezone(UTC)
+
+
+def queue_price_refresh(
+    part: Mapping[str, Any], *, max_attempts: int = 3
+) -> dict[str, Any]:
     """Insert one idempotent durable price-refresh attempt."""
 
     if not isinstance(part, Mapping):
         raise TypeError("price refresh part must be a mapping")
+    if max_attempts < 1:
+        raise ValueError("maximum price refresh attempts must be positive")
     snapshot_id = _first_text(
         part,
         "parts_price_snapshot_id",
@@ -210,20 +717,55 @@ def queue_price_refresh(part: Mapping[str, Any]) -> dict[str, Any]:
     )
     if not snapshot_id:
         raise ValueError("price refresh requires parts_price_snapshot_id")
-    refresh_key = _price_refresh_key(part)
+    refresh_request_id = _price_refresh_key(part)
     import psycopg
 
     with psycopg.connect(**_conninfo()) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT COALESCE(MAX(refresh_attempt_number), 0)
+                SELECT refresh_attempt_number, refresh_status,
+                       refresh_idempotency_key, failure
                 FROM parts_price_snapshot_refreshes
                 WHERE parts_price_snapshot_id = %s
+                  AND (
+                      refresh_idempotency_key = %s
+                      OR refresh_idempotency_key LIKE %s
+                  )
+                ORDER BY refresh_attempt_number DESC
+                LIMIT 1
+                FOR UPDATE
                 """,
-                (snapshot_id,),
+                (
+                    snapshot_id,
+                    refresh_request_id,
+                    f"{refresh_request_id}:attempt:%",
+                ),
             )
-            attempt_number = int(cursor.fetchone()[0]) + 1
+            existing = cursor.fetchone()
+            if existing is not None:
+                previous_attempt, previous_status, previous_key, previous_failure = existing
+                previous_attempt = int(previous_attempt)
+                if previous_status in {"queued", "processing", "current"}:
+                    return {
+                        "status": str(previous_status),
+                        "refresh_idempotency_key": str(previous_key),
+                        "refresh_request_id": refresh_request_id,
+                        "refresh_attempt_number": previous_attempt,
+                    }
+                if previous_attempt >= max_attempts:
+                    return {
+                        "status": "dead_letter",
+                        "refresh_idempotency_key": str(previous_key),
+                        "refresh_request_id": refresh_request_id,
+                        "refresh_attempt_number": previous_attempt,
+                        "retryable": False,
+                        "failure": deepcopy(previous_failure),
+                    }
+                attempt_number = previous_attempt + 1
+            else:
+                attempt_number = 1
+            refresh_key = _refresh_attempt_key(refresh_request_id, attempt_number)
             cursor.execute(
                 """
                 INSERT INTO parts_price_snapshot_refreshes
@@ -231,7 +773,7 @@ def queue_price_refresh(part: Mapping[str, Any]) -> dict[str, Any]:
                      refresh_attempt_number, refresh_idempotency_key,
                      refresh_status, requested_at)
                 VALUES (%s, %s, %s, %s, 'queued', now())
-                ON CONFLICT (refresh_idempotency_key) DO NOTHING
+                ON CONFLICT DO NOTHING
                 """,
                 (
                     str(uuid.uuid5(uuid.NAMESPACE_URL, refresh_key)),
@@ -255,6 +797,7 @@ def queue_price_refresh(part: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "status": str(row[1]),
         "refresh_idempotency_key": refresh_key,
+        "refresh_request_id": refresh_request_id,
         "refresh_attempt_number": int(row[0]),
     }
 
@@ -408,14 +951,17 @@ def _first_text(value: Mapping[str, Any], *keys: str) -> str | None:
 
 
 def _price_refresh_key(part: Mapping[str, Any]) -> str:
-    supplied = _first_text(
-        part,
-        "refresh_idempotency_key",
-        "refresh_request_id",
-        "refresh_id",
-    )
+    request_id = _first_text(part, "refresh_request_id", "refresh_id")
+    if request_id:
+        return _refresh_request_root(request_id)
+    supplied = _first_text(part, "refresh_idempotency_key")
     if supplied:
-        return supplied
+        return _refresh_request_root(supplied)
+    priced_at = part.get("priced_at", "")
+    if isinstance(priced_at, datetime):
+        priced_at = priced_at.astimezone(UTC).isoformat()
+    else:
+        priced_at = _canonical_refresh_timestamp(str(priced_at).strip())
     identity = json.dumps(
         {
             "canonical_part_id": _first_text(
@@ -434,12 +980,30 @@ def _price_refresh_key(part: Mapping[str, Any]) -> str:
                 part, "source_snapshot_id", "price_snapshot_id", "snapshot_id"
             )
             or "",
-            "priced_at": str(part.get("priced_at", "")).strip(),
+            "priced_at": priced_at,
         },
         sort_keys=True,
         separators=(",", ":"),
     )
     return "price-refresh:" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
+def _refresh_request_root(value: str) -> str:
+    return re.sub(r":attempt:\\d+$", "", str(value).strip())
+
+
+def _refresh_attempt_key(request_id: str, attempt_number: int) -> str:
+    return f"{_refresh_request_root(request_id)}:attempt:{int(attempt_number)}"
+
+
+def _canonical_refresh_timestamp(value: str) -> str:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return value
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return value
+    return parsed.astimezone(UTC).isoformat()
 
 
 def load_revision_catalog(projection_id: str) -> dict[str, Any]:

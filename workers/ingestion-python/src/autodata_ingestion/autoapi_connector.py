@@ -8,18 +8,26 @@ deduplication, and persistence boundaries remain authoritative.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
+from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 import json
 from dataclasses import dataclass, replace
-from threading import RLock
+import hashlib
+import re
+from threading import Condition, RLock
 import time
 from typing import Any, Callable, Iterable, Mapping
+import uuid
+import weakref
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .source_adapters import SourceResource
+from .pricing import price_freshness
 from .vehicle_identity import canonicalize_vehicle_observation
 from .vehicle_selection import normalize_vehicle_list
 
@@ -30,6 +38,12 @@ DEFAULT_VEHICLE_MAX_CONCURRENCY = 4
 DEFAULT_VEHICLE_ID_BATCH_SIZE = 100
 DEFAULT_RETRY_ATTEMPTS = 3
 DEFAULT_RETRY_BACKOFF_SECONDS = 0.25
+DEFAULT_SOURCE_CACHE_MAX_ENTRIES = 512
+
+_SHARED_SOURCE_CACHE: OrderedDict[str, tuple[Any, SourceResource]] = OrderedDict()
+_SHARED_SOURCE_INFLIGHT: dict[str, Condition] = {}
+_SHARED_SOURCE_CACHE_LOCK = RLock()
+_OPENER_NAMESPACES: weakref.WeakKeyDictionary[Any, str] = weakref.WeakKeyDictionary()
 
 
 @dataclass(frozen=True)
@@ -123,6 +137,7 @@ class AutoAPIConnector:
         self._retry_backoff_seconds = retry_backoff_seconds
         self._request_headers = _request_headers(request_headers)
         self._opener = opener
+        self._opener_namespace = _opener_namespace(opener)
         # A connector instance is the read-through cache boundary for one
         # request worker.  Keys are complete normalized request URIs, so a
         # replay never silently reuses a response from another vehicle or
@@ -134,14 +149,14 @@ class AutoAPIConnector:
     def fetch_catalog(self) -> AutoAPICatalog:
         """Fetch years, makes, models, vehicle identities, and all articles."""
 
-        years_payload, _ = self._get_json("/v1/api/years")
+        years_payload, _ = self._cached_get_json("/v1/api/years")
         years = tuple(sorted({_year_value(item) for item in _items(years_payload)}))
         vehicle_targets: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
         for year in years:
             makes_scope = f"makes:{year}"
             try:
-                makes_payload, _ = self._get_json(
+                makes_payload, _ = self._cached_get_json(
                     f"/v1/api/year/{quote(str(year), safe='')}/makes"
                 )
             except Exception as error:  # noqa: BLE001 - retain other years
@@ -156,7 +171,7 @@ class AutoAPIConnector:
                 make_route_value = make_name
                 models_scope = f"models:{year}:{make_route_value}"
                 try:
-                    models_payload, _ = self._get_json(
+                    models_payload, _ = self._cached_get_json(
                         "/v1/api/year/{}/make/{}/models".format(
                             quote(str(year), safe=""), quote(make_route_value, safe="")
                         )
@@ -186,7 +201,7 @@ class AutoAPIConnector:
                 ):
                     vehicles_scope = f"vehicles:{year}:{make_route_value}:{batch_index}"
                     try:
-                        vehicles_payload, _ = self._get_json(
+                        vehicles_payload, _ = self._cached_get_json(
                             f"/v1/api/source/{quote(self._content_source, safe='')}/vehicles",
                             query={"vehicleIds": ",".join(model_id_batch)},
                         )
@@ -251,7 +266,7 @@ class AutoAPIConnector:
         vehicle IDs that can be passed to :meth:`fetch_vehicle_bundle`.
         """
 
-        makes_payload, _ = self._get_json(
+        makes_payload, _ = self._cached_get_json(
             f"/v1/api/year/{quote(str(year), safe='')}/makes"
         )
         requested_make = " ".join(str(make).split()).casefold()
@@ -268,7 +283,7 @@ class AutoAPIConnector:
             return ()
         make_name = _first_text(make_record, "makeName", "name", "make") or str(make)
         make_route_value = make_name
-        models_payload, _ = self._get_json(
+        models_payload, _ = self._cached_get_json(
             "/v1/api/year/{}/make/{}/models".format(
                 quote(str(year), safe=""), quote(make_route_value, safe="")
             )
@@ -283,7 +298,7 @@ class AutoAPIConnector:
         model_vehicle_ids = list(dict.fromkeys(model_vehicle_ids))
         if not model_vehicle_ids:
             return ()
-        vehicles_payload, _ = self._get_json(
+        vehicles_payload, _ = self._cached_get_json(
             f"/v1/api/source/{quote(self._content_source, safe='')}/vehicles",
             query={"vehicleIds": ",".join(model_vehicle_ids)},
         )
@@ -318,20 +333,18 @@ class AutoAPIConnector:
         # article IDs are available for a query-time selection.
         articles_payload, articles_resource = self.fetch_article_list(vehicle_id)
         resources.append(articles_resource)
-        name_payload, name_resource = self._get_json(f"{source_path}/name")
+        name_payload, name_resource = self._cached_get_json(f"{source_path}/name")
         resources.append(name_resource)
-        motor_payload, motor_resource = self._get_json(f"{source_path}/motorvehicles")
+        motor_payload, motor_resource = self._cached_get_json(f"{source_path}/motorvehicles")
         resources.append(motor_resource)
 
         article_items = _article_items(articles_payload)
         reported_article_count = _reported_article_count(articles_payload)
-        if reported_article_count is not None and len(article_items) < reported_article_count:
+        if reported_article_count is not None and len(article_items) != reported_article_count:
             raise ValueError(
                 "AutoAPI returned an incomplete article index: "
-                f"expected at least {reported_article_count}, received {len(article_items)}"
+                f"expected {reported_article_count}, received {len(article_items)}"
             )
-        if reported_article_count and not article_items:
-            raise ValueError("AutoAPI reported articles but returned no article records")
         article_ids = tuple(
             dict.fromkeys(
                 article_id
@@ -436,19 +449,78 @@ class AutoAPIConnector:
     ) -> tuple[Any, SourceResource]:
         """Return a source response from the per-connector read-through cache."""
 
-        key = _build_uri(self._base_url, path, query)
+        uri = _build_uri(self._base_url, path, query)
+        key = self._source_cache_key(uri)
         with self._source_cache_lock:
             cached = self._source_cache.get(key)
         if cached is not None:
             payload, resource = cached
             return deepcopy(payload), replace(resource, metadata=deepcopy(resource.metadata))
-        payload, resource = self._get_json(path, query=query)
-        with self._source_cache_lock:
-            self._source_cache[key] = (
-                deepcopy(payload),
-                replace(resource, metadata=deepcopy(resource.metadata)),
+
+        with _SHARED_SOURCE_CACHE_LOCK:
+            while True:
+                cached = _SHARED_SOURCE_CACHE.get(key)
+                if cached is not None:
+                    _SHARED_SOURCE_CACHE.move_to_end(key)
+                    payload, resource = cached
+                    break
+                waiter = _SHARED_SOURCE_INFLIGHT.get(key)
+                if waiter is None:
+                    _SHARED_SOURCE_INFLIGHT[key] = Condition(_SHARED_SOURCE_CACHE_LOCK)
+                    break
+                waiter.wait()
+        if cached is not None:
+            result = deepcopy(cached[0]), replace(
+                cached[1], metadata=deepcopy(cached[1].metadata)
             )
-        return payload, resource
+            with self._source_cache_lock:
+                self._source_cache[key] = (
+                    deepcopy(result[0]),
+                    replace(result[1], metadata=deepcopy(result[1].metadata)),
+                )
+            return result
+
+        try:
+            payload, resource = self._get_json(path, query=query)
+        except Exception:
+            with _SHARED_SOURCE_CACHE_LOCK:
+                waiter = _SHARED_SOURCE_INFLIGHT.pop(key, None)
+                if waiter is not None:
+                    waiter.notify_all()
+            raise
+
+        cached_value = (
+            deepcopy(payload),
+            replace(resource, metadata=deepcopy(resource.metadata)),
+        )
+        with _SHARED_SOURCE_CACHE_LOCK:
+            while len(_SHARED_SOURCE_CACHE) >= DEFAULT_SOURCE_CACHE_MAX_ENTRIES:
+                _SHARED_SOURCE_CACHE.popitem(last=False)
+            _SHARED_SOURCE_CACHE[key] = cached_value
+            waiter = _SHARED_SOURCE_INFLIGHT.pop(key, None)
+            if waiter is not None:
+                waiter.notify_all()
+        with self._source_cache_lock:
+            while len(self._source_cache) >= DEFAULT_SOURCE_CACHE_MAX_ENTRIES:
+                self._source_cache.pop(next(iter(self._source_cache)))
+            self._source_cache[key] = cached_value
+        return deepcopy(payload), replace(resource, metadata=deepcopy(resource.metadata))
+
+    def _source_cache_key(self, uri: str) -> str:
+        header_fingerprint = hashlib.sha256(
+            json.dumps(
+                sorted(self._request_headers.items()), separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest()
+        return "|".join(
+            (
+                self._content_source,
+                self.source_version,
+                header_fingerprint,
+                self._opener_namespace,
+                uri,
+            )
+        )
 
     def _get_json(
         self,
@@ -475,6 +547,7 @@ class AutoAPIConnector:
     ) -> tuple[Any, SourceResource]:
         uri = _build_uri(self._base_url, path, query)
         headers = {"Accept": "application/json", "User-Agent": "autodata-ingestion/1", **self._request_headers}
+        retrieved_at = datetime.now(UTC).replace(microsecond=0).isoformat()
         with self._opener(Request(uri, headers=headers, method="GET"), timeout=self._timeout_seconds) as response:
             status = int(getattr(response, "status", getattr(response, "code", 200)))
             if status < 200 or status >= 300:
@@ -492,7 +565,11 @@ class AutoAPIConnector:
             payload=payload,
             media_type="application/json",
             locator=uri,
-            metadata={"connector": self.name, "http_status": status},
+            metadata={
+                "connector": self.name,
+                "http_status": status,
+                "retrieved_at": retrieved_at,
+            },
         )
         return parsed, resource
 
@@ -533,7 +610,13 @@ def fetch_required_source_resources(
         return deepcopy(cached_result)
 
     article_list_payload, article_list_resource = connector.fetch_article_list(vehicle_id)
+    reported_article_count = _reported_article_count(article_list_payload)
     article_items = _article_items(article_list_payload)
+    if reported_article_count is not None and len(article_items) != reported_article_count:
+        raise ValueError(
+            "AutoAPI returned an incomplete article index: "
+            f"expected {reported_article_count}, received {len(article_items)}"
+        )
     article_by_id = {
         article_id: article
         for article in article_items
@@ -662,15 +745,31 @@ def fetch_required_source_resources(
     if requested_part_ids or all_parts_requested:
         parts_payload, parts_resource = connector.fetch_parts_resource(vehicle_id)
         source_resources.append(parts_resource)
-    parts = _requested_parts(parts_payload, requested_part_ids, all_parts_requested)
+    parts = _canonical_price_snapshots(
+        parts_payload,
+        requested_part_ids,
+        all_parts_requested,
+        parts_resource if parts_payload is not None else None,
+    )
     source_payloads = tuple(
         {
             "source_uri": resource.source_uri,
             "source_version": resource.source_version,
             "content_sha256": resource.content_sha256,
             "payload": resource.payload,
+            "source_snapshot_id": _source_snapshot_id(resource),
+            "source_artifact_id": _source_artifact_id(resource),
+            "object_key": _source_object_key(resource),
         }
         for resource in source_resources
+    )
+    source_references = tuple(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "payload"
+        }
+        for payload in source_payloads
     )
     result = {
         "vehicle_id": vehicle_id,
@@ -689,6 +788,7 @@ def fetch_required_source_resources(
         },
         "source_resources": tuple(source_resources),
         "source_payloads": source_payloads,
+        "source_references": source_references,
     }
     with connector._source_cache_lock:
         connector._required_source_cache[request_key] = deepcopy(result)
@@ -786,13 +886,32 @@ def _article_items(envelope: Mapping[str, Any]) -> list[Mapping[str, Any]]:
 def _required_resource_request_key(
     vehicle_id: str, operations: Iterable[Mapping[str, Any]]
 ) -> str:
+    canonical_operations = sorted(
+        (_canonical_request_value(operation) for operation in operations),
+        key=lambda value: json.dumps(value, sort_keys=True, separators=(",", ":")),
+    )
     payload = json.dumps(
-        {"vehicle_id": vehicle_id, "operations": list(operations)},
+        {"vehicle_id": vehicle_id, "operations": canonical_operations},
         sort_keys=True,
         separators=(",", ":"),
         default=str,
     )
     return payload
+
+
+def _canonical_request_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _canonical_request_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple, set)):
+        values = [_canonical_request_value(item) for item in value]
+        return sorted(
+            values,
+            key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":"), default=str),
+        )
+    return value
 
 
 def _operation_values(operation: Mapping[str, Any], *keys: str) -> list[str]:
@@ -863,6 +982,182 @@ def _requested_parts(
         ).casefold()
         in requested
     ]
+
+
+def _canonical_price_snapshots(
+    payload: Any,
+    requested_part_ids: list[str],
+    all_parts_requested: bool,
+    source_resource: SourceResource | None,
+) -> list[dict[str, Any]]:
+    """Convert provider part rows into immutable, source-priced snapshots."""
+
+    selected = _requested_parts(payload, requested_part_ids, all_parts_requested)
+    if source_resource is None:
+        return selected
+    source_snapshot_id = _source_snapshot_id(source_resource)
+    retrieved_at = source_resource.metadata.get("retrieved_at")
+    now = datetime.now(UTC)
+    snapshots: list[dict[str, Any]] = []
+    for raw in selected:
+        snapshot = deepcopy(raw)
+        source_part_number = _first_text(
+            raw,
+            "source_part_number",
+            "sourcePartNumber",
+            "part_number",
+            "partNumber",
+            "id",
+            "partId",
+        )
+        amount, currency = _provider_price(raw)
+        priced_at = _first_text(
+            raw,
+            "priced_at",
+            "pricedAt",
+            "price_date",
+            "priceDate",
+            "last_updated",
+            "lastUpdated",
+            "updated_at",
+            "updatedAt",
+        ) or (str(retrieved_at).strip() if retrieved_at is not None else None)
+        if not source_part_number or amount is None or currency is None or not priced_at:
+            snapshot.update(
+                {
+                    "freshness": "unknown",
+                    "refresh_status": "current",
+                    "markup_applied": False,
+                    "price_status": "needs_review",
+                }
+            )
+            snapshots.append(snapshot)
+            continue
+        try:
+            priced_at_utc = _provider_timestamp(priced_at)
+            freshness = price_freshness(priced_at_utc, now)
+        except ValueError:
+            snapshot.update(
+                {
+                    "source_part_number": source_part_number,
+                    "amount": amount,
+                    "currency": currency,
+                    "priced_at": priced_at,
+                    "freshness": "unknown",
+                    "refresh_status": "current",
+                    "markup_applied": False,
+                    "price_status": "needs_review",
+                }
+            )
+            snapshots.append(snapshot)
+            continue
+        canonical_part_id = _canonical_part_id(raw, source_part_number)
+        snapshot.update(
+            {
+                "canonical_part_id": canonical_part_id,
+                "source_part_number": source_part_number,
+                "amount": amount,
+                "currency": currency,
+                "priced_at": priced_at,
+                "source_snapshot_id": source_snapshot_id,
+                "parts_price_snapshot_id": _parts_price_snapshot_id(
+                    canonical_part_id, source_snapshot_id, priced_at_utc
+                ),
+                "source_uri": source_resource.source_uri,
+                "freshness": freshness,
+                "refresh_status": "current",
+                "markup_applied": False,
+                "price_status": "normalized",
+            }
+        )
+        snapshots.append(snapshot)
+    return snapshots
+
+
+def _provider_price(part: Mapping[str, Any]) -> tuple[float | None, str | None]:
+    value: Any = None
+    for key in ("amount", "price", "unit_price", "unitPrice", "source_price", "sourcePrice"):
+        if part.get(key) is not None:
+            value = part[key]
+            break
+    if isinstance(value, Mapping):
+        currency = _first_text(value, "currency", "currencyCode", "unit")
+        value = value.get("amount", value.get("value", value.get("price")))
+    else:
+        currency = None
+    currency = currency or _first_text(part, "currency", "currencyCode", "source_currency")
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        return None, None
+    if currency is None:
+        for symbol, symbol_currency in (("$", "USD"), ("€", "EUR"), ("£", "GBP")):
+            if symbol in text:
+                currency = symbol_currency
+                break
+        if currency is None:
+            match = re.search(r"\b([A-Za-z]{3})\b", text)
+            if match:
+                currency = match.group(1)
+    match = re.search(r"(?<![A-Za-z])[+-]?\d[\d,]*(?:\.\d+)?", text)
+    if match is None:
+        return None, None
+    try:
+        amount = Decimal(match.group(0).replace(",", ""))
+    except InvalidOperation:
+        return None, None
+    if not amount.is_finite() or amount < 0 or currency is None:
+        return None, None
+    currency = currency.strip().upper()
+    if len(currency) != 3 or not currency.isalpha():
+        return None, None
+    return float(amount), currency
+
+
+def _provider_timestamp(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("provider priced_at must be timezone-aware")
+    return parsed.astimezone(UTC)
+
+
+def _canonical_part_id(part: Mapping[str, Any], source_part_number: str) -> str:
+    supplied = _first_text(part, "canonical_part_id", "canonicalPartId")
+    if supplied:
+        return supplied
+    slug = re.sub(r"[^a-z0-9]+", "-", source_part_number.casefold()).strip("-")
+    return "part:" + (slug or hashlib.sha256(source_part_number.encode("utf-8")).hexdigest()[:16])
+
+
+def _source_snapshot_id(resource: SourceResource) -> str:
+    return str(
+        uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"autodata-bundle:source-snapshot:{resource.content_sha256}",
+        )
+    )
+
+
+def _source_artifact_id(resource: SourceResource) -> str:
+    return str(
+        uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"autodata-bundle:source-artifact:{resource.content_sha256}",
+        )
+    )
+
+
+def _source_object_key(resource: SourceResource) -> str:
+    return f"sources/{resource.content_sha256[:16]}/{resource.content_sha256}"
+
+
+def _parts_price_snapshot_id(
+    canonical_part_id: str, source_snapshot_id: str, priced_at: datetime
+) -> str:
+    identity = f"parts-price-snapshot:{canonical_part_id}:{source_snapshot_id}:{priced_at.isoformat()}"
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, identity))
 
 
 def _reported_article_count(envelope: Mapping[str, Any]) -> int | None:
@@ -1020,6 +1315,22 @@ def _request_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
             raise ValueError("AutoAPI request headers must not contain newlines")
         result[name] = content
     return result
+
+
+def _opener_namespace(opener: Callable[..., Any]) -> str:
+    if opener is urlopen:
+        return ""
+    try:
+        with _SHARED_SOURCE_CACHE_LOCK:
+            namespace = _OPENER_NAMESPACES.get(opener)
+            if namespace is None:
+                namespace = f"opener:{uuid.uuid4()}"
+                _OPENER_NAMESPACES[opener] = namespace
+            return namespace
+    except TypeError:
+        # Non-weak-referenceable callable instances are uncommon test or
+        # embedding hooks. Keep their cache isolated without retaining them.
+        return f"opener:{id(opener)}"
 
 
 def _safe_error(error: Exception) -> str:

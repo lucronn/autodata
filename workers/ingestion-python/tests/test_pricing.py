@@ -35,6 +35,7 @@ class PricingTests(unittest.TestCase):
             "currency": "USD",
             "priced_at": priced_at,
             "source_snapshot_id": "snapshot-1",
+            "parts_price_snapshot_id": "price-snapshot-1",
             "source_uri": "https://source.test/parts",
         }
         refresh_calls = []
@@ -53,6 +54,7 @@ class PricingTests(unittest.TestCase):
         self.assertEqual(result["freshness"], "stale")
         self.assertEqual(result["refresh_status"], "queued")
         self.assertEqual(result["refresh_idempotency_key"], "price-refresh:snapshot-1")
+        self.assertEqual(result["parts_price_snapshot_id"], "price-snapshot-1")
         self.assertFalse(result["markup_applied"])
         self.assertEqual(refresh_calls, [part])
         self.assertNotIn("refresh_status", part)
@@ -105,6 +107,10 @@ class PricingTests(unittest.TestCase):
         self.assertEqual(result["refresh_attempt_number"], 1)
         self.assertTrue(result["retryable"])
         self.assertIn("source unavailable", result["refresh_failure"]["message"])
+
+    def test_future_dated_price_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "future"):
+            price_freshness(self.now + timedelta(seconds=1), self.now)
 
 
 if __name__ == "__main__":
