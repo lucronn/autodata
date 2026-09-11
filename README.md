@@ -39,6 +39,16 @@ The current development slice is tracked in [Issue #85](https://github.com/lucro
 
 The RAV4 examples are automated `ready` results, not technician approval. Source evidence remains pending human review, and a genuinely uncached source request still depends on the local AutoAPI service being available. Those are tracked separately from the completed cache, composition, and dashboard behavior.
 
+The next planned product slice is the [chat-first natural-language quote and
+procedure generator](https://github.com/lucronn/autodata/issues/87), tracked in
+[Project #8](https://github.com/users/lucronn/projects/8). Its target
+interaction is a single request such as `97 Toyota RAV4 brake line replacement
+procedure, and quote`; it will return the full procedure, required and
+recommended supporting work, overlap-aware labor hours, source parts prices
+with pricing dates and no markup, and live worker progress. The design is being
+completed before implementation, and the repository [pre-implementation gate](docs/agents/pre-implementation-gate.md)
+remains mandatory.
+
 ## Start the local stack
 
 The deterministic local path uses PostgreSQL with pgvector, NATS JetStream,
