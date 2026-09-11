@@ -329,6 +329,7 @@ def translate_job_query_with_llm(
         "Translate this vehicle repair request into JSON for a fixed AutoData connector. "
         "Return only components from the allowlist and source article search terms. "
         "Never return URLs, HTTP methods, credentials, or provider route paths. "
+        'Use this shape exactly: {"components":["water_pump"],"source_queries":[]} . '
         f"Allowlist: {json.dumps(allowed_components)}\n"
         + json.dumps({"query": query, "vehicle": dict(vehicle)}, sort_keys=True)
     )
@@ -336,6 +337,8 @@ def translate_job_query_with_llm(
     if not isinstance(response, Mapping):
         raise ValueError("Mercury-2 query translation response must be an object")
     raw_components = response.get("components")
+    if isinstance(raw_components, str):
+        raw_components = [raw_components]
     if not isinstance(raw_components, list):
         raise ValueError("Mercury-2 query translation components must be an array")
     components: list[str] = []

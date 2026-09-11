@@ -188,6 +188,24 @@ def test_mercury_translation_returns_only_allowlisted_autodata_component_intents
     }
 
 
+def test_mercury_translation_normalizes_single_component_string_to_array():
+    class FakeMercury:
+        def complete_json(self, _prompt):
+            return {"components": "water_pump", "source_queries": []}
+
+    result = translate_job_query_with_llm(
+        FakeMercury(),
+        "what cooling system service does this vehicle need?",
+        VEHICLE,
+    )
+
+    assert result == {
+        "components": ["water_pump"],
+        "source_queries": [],
+        "generation": "mercury-2",
+    }
+
+
 def test_mercury_composition_accepts_labor_evidence_on_source_steps():
     class FakeMercury:
         def complete_json(self, _prompt):
