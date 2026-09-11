@@ -36,7 +36,6 @@
   "project_ref": "https://github.com/users/lucronn/projects/8",
   "repository_doc_refs": [
     "docs/superpowers/specs/2026-09-11-natural-language-quote-procedure-generator-design.md",
-    "README.md",
     "docs/agents/pre-implementation-gate.md"
   ],
   "todo": [
