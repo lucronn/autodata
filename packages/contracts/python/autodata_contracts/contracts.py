@@ -6,7 +6,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = 1
-DATA_STATE_VALUES = ('normalized', 'source_unnormalized', 'normalizing', 'mixed', 'unavailable', 'needs_review',)
+DATA_STATE_VALUES = ('normalized', 'source_unnormalized', 'stale', 'normalizing', 'mixed', 'unavailable', 'needs_review',)
 ANSWER_STATUS_VALUES = ('options', 'processing', 'available', 'partial', 'complete', 'failed', 'needs_review',)
 DATASET_AVAILABILITY_VALUES = ('purchased', 'fast_lane_processing', 'viewable', 'enriching', 'complete', 'failed', 'needs_review', 'revoked',)
 SECTION_STATUS_VALUES = ('pending', 'processing', 'viewable', 'complete', 'failed', 'needs_review',)
@@ -28,9 +28,9 @@ FEEDBACK_REQUIRED_FIELDS = ('feedback_id', 'dataset_id', 'category', 'body',)
 ERROR_REQUIRED_FIELDS = ('code', 'message', 'request_id', 'retryable', 'details',)
 EVENT_ENVELOPE_REQUIRED_FIELDS = ('event_id', 'event_type', 'event_version', 'occurred_at', 'producer', 'request_id', 'projection_id', 'revision_id', 'correlation_id', 'idempotency_key', 'payload',)
 PROCEDURE_STEP_REQUIRED_FIELDS = ('step_number', 'instruction', 'source_article_ids', 'evidence_ids',)
-VISUAL_ARTIFACT_REQUIRED_FIELDS = ('artifact_id', 'source_artifact_key', 'derived_artifact_key', 'review_state',)
+VISUAL_ARTIFACT_REQUIRED_FIELDS = ('artifact_id', 'source_artifact_id', 'source_artifact_key', 'derived_artifact_key', 'processor', 'processor_version', 'review_state',)
 PRICE_SNAPSHOT_REQUIRED_FIELDS = ('canonical_part_id', 'source_part_number', 'amount', 'currency', 'priced_at', 'freshness', 'source_snapshot_id', 'refresh_status', 'markup_applied',)
-CHAT_QUOTE_REQUIRED_FIELDS = ('required_hours', 'recommended_hours', 'total_hours', 'overlap_hours_removed', 'overlap_operations', 'parts', 'evidence',)
+CHAT_QUOTE_REQUIRED_FIELDS = ('required_hours', 'recommended_hours', 'total_hours', 'overlap_hours_removed', 'required_operations', 'recommended_operations', 'overlap_operations', 'parts', 'evidence',)
 CHAT_ANSWER_REQUIRED_FIELDS = ('answer_status', 'data_state', 'vehicle', 'procedure', 'quote', 'warnings', 'updated_at', 'worker_stream',)
 CHAT_QUERY_REQUIRED_FIELDS = ('query_id', 'conversation_id', 'message', 'idempotency_key', 'status', 'vehicle_options', 'answer', 'correlation_id',)
 CHAT_SELECTION_REQUIRED_FIELDS = ('query_id', 'selection_type', 'option_number',)
@@ -182,13 +182,15 @@ class ProcedureStep:
 @dataclass(frozen=True)
 class VisualArtifact:
     artifact_id: str
+    source_artifact_id: str
     source_artifact_key: str
     derived_artifact_key: str
+    processor: str
+    processor_version: str
     review_state: str
     source_uri: str | None = None
-    processor: str | None = None
-    processor_version: str | None = None
     label: str | None = None
+    published_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -211,6 +213,8 @@ class ChatQuote:
     recommended_hours: float
     total_hours: float
     overlap_hours_removed: float
+    required_operations: list[dict[str, Any]]
+    recommended_operations: list[dict[str, Any]]
     overlap_operations: list[dict[str, Any]]
     parts: list[PriceSnapshot]
     evidence: list[KnowledgeEvidence]

@@ -3,6 +3,7 @@
   "data_state": [
     "normalized",
     "source_unnormalized",
+    "stale",
     "normalizing",
     "mixed",
     "unavailable",
@@ -64,16 +65,26 @@
     }
   },
   "visual_artifact": {
-    "required": ["artifact_id", "source_artifact_key", "derived_artifact_key", "review_state"],
+    "required": [
+      "artifact_id",
+      "source_artifact_id",
+      "source_artifact_key",
+      "derived_artifact_key",
+      "processor",
+      "processor_version",
+      "review_state"
+    ],
     "properties": {
       "artifact_id": {"type": "uuid"},
+      "source_artifact_id": {"type": "uuid"},
       "source_artifact_key": {"type": "string"},
       "derived_artifact_key": {"type": "string"},
       "source_uri": {"type": "string", "optional": true},
-      "processor": {"type": "string", "optional": true},
-      "processor_version": {"type": "string", "optional": true},
+      "processor": {"type": "string"},
+      "processor_version": {"type": "string"},
       "review_state": {"enum": ["pending", "approved", "rejected"]},
-      "label": {"type": "string", "optional": true}
+      "label": {"type": "string", "optional": true},
+      "published_at": {"type": "string", "nullable": true, "optional": true}
     }
   },
   "price_snapshot": {
@@ -107,6 +118,8 @@
       "recommended_hours",
       "total_hours",
       "overlap_hours_removed",
+      "required_operations",
+      "recommended_operations",
       "overlap_operations",
       "parts",
       "evidence"
@@ -116,6 +129,8 @@
       "recommended_hours": {"type": "number"},
       "total_hours": {"type": "number"},
       "overlap_hours_removed": {"type": "number"},
+      "required_operations": {"type": "array"},
+      "recommended_operations": {"type": "array"},
       "overlap_operations": {"type": "array"},
       "parts": {"type": "array"},
       "evidence": {"type": "array"},

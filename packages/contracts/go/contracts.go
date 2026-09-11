@@ -3,7 +3,7 @@ package contracts
 
 const SchemaVersion = 1
 
-var DataStateValues = []string{"normalized", "source_unnormalized", "normalizing", "mixed", "unavailable", "needs_review"}
+var DataStateValues = []string{"normalized", "source_unnormalized", "stale", "normalizing", "mixed", "unavailable", "needs_review"}
 var AnswerStatusValues = []string{"options", "processing", "available", "partial", "complete", "failed", "needs_review"}
 var DatasetAvailabilityValues = []string{"purchased", "fast_lane_processing", "viewable", "enriching", "complete", "failed", "needs_review", "revoked"}
 var SectionStatusValues = []string{"pending", "processing", "viewable", "complete", "failed", "needs_review"}
@@ -26,9 +26,9 @@ var FeedbackRequiredFields = []string{"feedback_id", "dataset_id", "category", "
 var ErrorRequiredFields = []string{"code", "message", "request_id", "retryable", "details"}
 var EventEnvelopeRequiredFields = []string{"event_id", "event_type", "event_version", "occurred_at", "producer", "request_id", "projection_id", "revision_id", "correlation_id", "idempotency_key", "payload"}
 var ProcedureStepRequiredFields = []string{"step_number", "instruction", "source_article_ids", "evidence_ids"}
-var VisualArtifactRequiredFields = []string{"artifact_id", "source_artifact_key", "derived_artifact_key", "review_state"}
+var VisualArtifactRequiredFields = []string{"artifact_id", "source_artifact_id", "source_artifact_key", "derived_artifact_key", "processor", "processor_version", "review_state"}
 var PriceSnapshotRequiredFields = []string{"canonical_part_id", "source_part_number", "amount", "currency", "priced_at", "freshness", "source_snapshot_id", "refresh_status", "markup_applied"}
-var ChatQuoteRequiredFields = []string{"required_hours", "recommended_hours", "total_hours", "overlap_hours_removed", "overlap_operations", "parts", "evidence"}
+var ChatQuoteRequiredFields = []string{"required_hours", "recommended_hours", "total_hours", "overlap_hours_removed", "required_operations", "recommended_operations", "overlap_operations", "parts", "evidence"}
 var ChatAnswerRequiredFields = []string{"answer_status", "data_state", "vehicle", "procedure", "quote", "warnings", "updated_at", "worker_stream"}
 var ChatQueryRequiredFields = []string{"query_id", "conversation_id", "message", "idempotency_key", "status", "vehicle_options", "answer", "correlation_id"}
 var ChatSelectionRequiredFields = []string{"query_id", "selection_type", "option_number"}
@@ -162,13 +162,15 @@ type ProcedureStep struct {
 
 type VisualArtifact struct {
 	ArtifactID         string `json:"artifact_id"`
+	SourceArtifactID   string `json:"source_artifact_id"`
 	SourceArtifactKey  string `json:"source_artifact_key"`
 	DerivedArtifactKey string `json:"derived_artifact_key"`
 	SourceURI          string `json:"source_uri,omitempty"`
-	Processor          string `json:"processor,omitempty"`
-	ProcessorVersion   string `json:"processor_version,omitempty"`
+	Processor          string `json:"processor"`
+	ProcessorVersion   string `json:"processor_version"`
 	ReviewState        string `json:"review_state"`
 	Label              string `json:"label,omitempty"`
+	PublishedAt        *string `json:"published_at,omitempty"`
 }
 
 type PriceSnapshot struct {
@@ -189,6 +191,8 @@ type ChatQuote struct {
 	RecommendedHours    float64             `json:"recommended_hours"`
 	TotalHours          float64             `json:"total_hours"`
 	OverlapHoursRemoved float64             `json:"overlap_hours_removed"`
+	RequiredOperations  []map[string]any    `json:"required_operations"`
+	RecommendedOperations []map[string]any  `json:"recommended_operations"`
 	OverlapOperations   []map[string]any    `json:"overlap_operations"`
 	Parts               []PriceSnapshot     `json:"parts"`
 	Evidence            []KnowledgeEvidence `json:"evidence"`

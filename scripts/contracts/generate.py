@@ -62,6 +62,11 @@ def load_contract(path: Path) -> dict[str, Any]:
             raise ValueError(f"{name} must declare required and properties")
         if not set(required).issubset(properties):
             raise ValueError(f"{name} requires an undeclared property")
+    if contract["price_snapshot"]["properties"].get("markup_applied") != {
+        "type": "boolean",
+        "const": False,
+    }:
+        raise ValueError("price_snapshot.markup_applied must be a boolean const false")
     return contract
 
 
@@ -260,13 +265,15 @@ type ProcedureStep struct {
 
 type VisualArtifact struct {
 	ArtifactID         string `json:"artifact_id"`
+	SourceArtifactID   string `json:"source_artifact_id"`
 	SourceArtifactKey  string `json:"source_artifact_key"`
 	DerivedArtifactKey string `json:"derived_artifact_key"`
 	SourceURI          string `json:"source_uri,omitempty"`
-	Processor          string `json:"processor,omitempty"`
-	ProcessorVersion   string `json:"processor_version,omitempty"`
+	Processor          string `json:"processor"`
+	ProcessorVersion   string `json:"processor_version"`
 	ReviewState        string `json:"review_state"`
 	Label              string `json:"label,omitempty"`
+	PublishedAt        *string `json:"published_at,omitempty"`
 }
 
 type PriceSnapshot struct {
@@ -287,6 +294,8 @@ type ChatQuote struct {
 	RecommendedHours    float64             `json:"recommended_hours"`
 	TotalHours          float64             `json:"total_hours"`
 	OverlapHoursRemoved float64             `json:"overlap_hours_removed"`
+	RequiredOperations  []map[string]any    `json:"required_operations"`
+	RecommendedOperations []map[string]any  `json:"recommended_operations"`
 	OverlapOperations   []map[string]any    `json:"overlap_operations"`
 	Parts               []PriceSnapshot     `json:"parts"`
 	Evidence            []KnowledgeEvidence `json:"evidence"`
@@ -572,13 +581,15 @@ class ProcedureStep:
 @dataclass(frozen=True)
 class VisualArtifact:
     artifact_id: str
+    source_artifact_id: str
     source_artifact_key: str
     derived_artifact_key: str
+    processor: str
+    processor_version: str
     review_state: str
     source_uri: str | None = None
-    processor: str | None = None
-    processor_version: str | None = None
     label: str | None = None
+    published_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -601,6 +612,8 @@ class ChatQuote:
     recommended_hours: float
     total_hours: float
     overlap_hours_removed: float
+    required_operations: list[dict[str, Any]]
+    recommended_operations: list[dict[str, Any]]
     overlap_operations: list[dict[str, Any]]
     parts: list[PriceSnapshot]
     evidence: list[KnowledgeEvidence]
