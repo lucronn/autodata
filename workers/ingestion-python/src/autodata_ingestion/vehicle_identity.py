@@ -17,6 +17,10 @@ _MAKE_ALIASES = {
 _MODEL_FIRST_MAKE_ALIASES = {
     "silverado": "Chevrolet",
 }
+_MODEL_ALIASES = {
+    "rav 4": "RAV4",
+    "rav4": "RAV4",
+}
 _DRIVETRAIN_ALIASES = {
     "2wd": "2WD",
     "4x2": "2WD",
@@ -321,7 +325,7 @@ def _normalize_model(raw_model: Any) -> str:
     normalized = re.sub(r"[^A-Za-z0-9]+", " ", text).strip()
     if not normalized:
         raise ValueError("vehicle model is required")
-    return _normalize_title_words(normalized)
+    return _MODEL_ALIASES.get(normalized.casefold(), _normalize_title_words(normalized))
 
 
 def _normalize_region(raw_region: Any) -> str | None:

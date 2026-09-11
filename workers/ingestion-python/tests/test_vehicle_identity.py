@@ -142,6 +142,30 @@ class VehicleIdentityTests(unittest.TestCase):
         self.assertEqual(observation.model, "Silverado 1500")
         self.assertEqual(observation.engine_displacement_l, 5.3)
 
+    def test_text_input_normalizes_rav4_spelling_variants(self):
+        module = self._module()
+
+        observation = module.canonicalize_vehicle_observation("97 Toyota RAV-4 4x4 2.0L")
+
+        self.assertEqual(observation.year, 1997)
+        self.assertEqual(observation.make, "Toyota")
+        self.assertEqual(observation.model, "RAV4")
+        self.assertEqual(observation.drivetrain, "4WD")
+        self.assertEqual(observation.engine_displacement_l, 2.0)
+
+    def test_text_input_canonicalizes_rav4_spelling_variant(self):
+        module = self._module()
+
+        observation = module.canonicalize_vehicle_observation(
+            "97 Toyota RAV-4 2wd 2.5L"
+        )
+
+        self.assertEqual(observation.year, 1997)
+        self.assertEqual(observation.make, "Toyota")
+        self.assertEqual(observation.model, "RAV4")
+        self.assertEqual(observation.drivetrain, "2WD")
+        self.assertEqual(observation.engine_displacement_l, 2.5)
+
     def test_candidate_review_prefers_more_complete_exact_match(self):
         module = self._module()
 
