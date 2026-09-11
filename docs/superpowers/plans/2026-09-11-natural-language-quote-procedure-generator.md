@@ -10,19 +10,21 @@ This plan remains the canonical implementation record for Issue #87 and
 Project #8. Task 1 (versioned contracts and persistence) is complete and
 pushed through `b3bee40`. Task 2 (natural-language vehicle/operation intent)
 has a reviewed fix checkpoint at `30d166d`; its focused regression suite passes
-with 34 tests and the fresh scoped re-review is pending. Task 3 (read-through
-source retrieval and price snapshots) is implemented and pushed at `910ba88`;
-its focused suite passes with 20 tests and the full ingestion suite passes with
-276 tests and 12 subtests, with scoped review pending. The user-owned untracked
-`sample data/` directory remains outside every commit.
+with 34 tests and a fresh scoped re-review is pending. Task 3's review fixes
+are pushed at `3d2160c` and Task 4's review fixes are pushed at `493acd5`;
+each reports focused coverage and the combined ingestion suite is green at
+313 tests plus 12 subtests. Fresh scoped re-reviews for Tasks 3–4 are pending.
+The user-owned untracked `sample data/` directory remains outside every
+commit.
 
-Task 4 is now in implementation: deterministic overlap-aware quote
-calculation, procedure composition, and linked visual artifacts, with a pushed
-checkpoint at `48ebb77` and 26 focused tests passing. Scoped reviews for Tasks
-2–4 remain the current quality gate. The target acceptance path
-is a single natural-language request that returns whatever data is available
-immediately, then enriches the same answer asynchronously without repeating
-source or model calls on warm replay.
+Task 5's initial chat-service implementation is pushed at `f0ec594`, but its
+scoped review is not approved: production construction still needs a durable
+shared HTTP/worker state boundary, stronger ownership/idempotency, explicit
+normalization and price stages, bounded retry/dead-letter behavior, complete
+route authentication, and credential-safe errors. The review-fix worker is
+active. The target acceptance path remains a single natural-language request
+that returns whatever data is available immediately, then enriches the same
+answer asynchronously without repeating source or model calls on warm replay.
 
 **Architecture:** Keep Go as the authenticated public boundary and Python as the source/normalization/composition runtime. Search the normalized PostgreSQL cache first, read through to the provider-neutral AutoAPI connector only for missing data, return source data immediately when normalization is pending, and publish correlated background updates through NATS JetStream. Mercury-2 is constrained to structured intent suggestions, supporting-operation classification, procedure composition, and faithful source-diagram vectorization; application code owns vehicle scope, source calls, arithmetic, persistence, and publication validation.
 
