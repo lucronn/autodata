@@ -17,8 +17,9 @@ its focused suite passes with 20 tests and the full ingestion suite passes with
 `sample data/` directory remains outside every commit.
 
 Task 4 is now in implementation: deterministic overlap-aware quote
-calculation, procedure composition, and linked visual artifacts. The target
-acceptance path
+calculation, procedure composition, and linked visual artifacts, with a pushed
+checkpoint at `48ebb77` and 26 focused tests passing. Scoped reviews for Tasks
+2–4 remain the current quality gate. The target acceptance path
 is a single natural-language request that returns whatever data is available
 immediately, then enriches the same answer asynchronously without repeating
 source or model calls on warm replay.

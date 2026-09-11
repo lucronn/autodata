@@ -83,8 +83,10 @@ supporting work, overlap-aware labor hours, source parts prices with pricing
 dates and no markup, and live worker progress. Contracts and persistence are
 complete; natural-language intent extraction is pushed at `30d166d`, and
 read-through source retrieval/pricing is pushed at `910ba88`. Their scoped
-reviews are tracked in Issue #87 while quote composition, visuals, and chat
-orchestration continue as the next work. The repository
+reviews are tracked in Issue #87. Quote composition, visuals, and the
+overlap-aware procedure engine are pushed at `48ebb77` with 26 focused tests;
+chat orchestration, API delivery, and end-to-end integration continue as the
+next work. The repository
 [pre-implementation gate](docs/agents/pre-implementation-gate.md) remains
 mandatory.
 
