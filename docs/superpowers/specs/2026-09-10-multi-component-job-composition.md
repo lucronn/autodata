@@ -1,6 +1,6 @@
 # Natural-Language Multi-Component Job Composition Specification
 
-**Status:** implementation-ready design
+**Status:** implemented vertical slice; human review and live-source verification remain operational follow-ups
 **Date:** 2026-09-10
 **Scope:** vehicle-scoped job planning from natural language
 
@@ -13,6 +13,20 @@ Accept a natural-language request such as:
 Resolve the request to one canonical vehicle, locate the best normalized single-component articles for every requested component, calculate a combined labor estimate that counts shared work once, and return a structured procedure assembled from those articles.
 
 The result must be useful when the data is already indexed and must remain safe and auditable when the system needs to fetch, normalize, or ask for review. Any source data successfully accessed while satisfying this request is also a cache-warming ingestion opportunity: it is captured, normalized, deduplicated, vehicle-linked, provenance-linked, and indexed for future lookups.
+
+## Current implementation status
+
+The local development slice is implemented on the `automation/knowledge-fallback-runtime` branch and tracked by [Issue #85](https://github.com/lucronn/autodata/issues/85) in [Project #8](https://github.com/users/lucronn/projects/8). Verified behavior includes:
+
+- natural-language intent translation into allowlisted component keys;
+- query-aware PostgreSQL reads that select requested component articles without relying only on the first catalog page;
+- deterministic one-technician labor calculation with shared operations counted once;
+- Mercury-2 composition from normalized source articles and evidence;
+- immutable derived articles for each normalized component set;
+- warm replay without another source or model call; and
+- dashboard rendering of the complete procedure with an explicit `UNREVIEWED — human review pending` label.
+
+The RAV4 results currently stored in the local development database have passed automated structure, source, labor, and evidence-reference checks. `ready` means those automated checks passed; it does not mean a technician has approved the content. The dashboard exposes that distinction, while human approval remains a separate review boundary. The local AutoAPI service is required for genuinely uncached source hydration; already materialized RAV4 examples can be exercised while it is unavailable.
 
 ## Product behavior
 

@@ -160,13 +160,13 @@ For automation, prefer stable project/item/field IDs obtained from JSON discover
 
 Configure through repository administration after the repository exists:
 
-- Default branch: `main`.
+- Default branch: `master` for the current `lucronn/autodata` repository.
 - Require pull request before merging.
 - Require the CI checks listed in [operating-model.md](operating-model.md).
 - Require CODEOWNERS review for owned paths.
 - Require branch to be up to date before merge or use a merge queue.
 - Allow squash merge; disable unnecessary merge strategies.
-- Restrict force pushes and branch deletion on `main`.
+- Restrict force pushes and branch deletion on `master`.
 - Configure `dev`, `staging`, and `production` environments with scoped secrets.
 - Enable dependency/security update workflows after the repository manifests exist.
 - Add issue forms, pull-request template, CODEOWNERS, security policy, and contributing guidance as repository-native files in the later scaffold phase.

@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-10-multi-component-job-composition.md`
 
+> **Current status (2026-09-11):** The implementation slice described by this plan is on the pushed `automation/knowledge-fallback-runtime` branch and is tracked by [Issue #85](https://github.com/lucronn/autodata/issues/85) and [Project #8](https://github.com/users/lucronn/projects/8). The canonical specification records verified behavior. Remaining follow-ups are human review of source evidence and live AutoAPI verification for genuinely uncached source hydration; the checkboxes below are the historical execution checklist, not an indication that the slice is unstarted.
+
 ## Global Constraints
 
 - This plan is for the existing AutoData repository at `/Users/dull/Documents/ChatGPT/autodata`.

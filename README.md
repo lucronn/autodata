@@ -23,6 +23,20 @@ The repository is a modular monorepo:
   documentation.
 - `docs/github` — repository and Project operating model.
 
+## Current development slice
+
+The current development slice is tracked in [Issue #85](https://github.com/lucronn/autodata/issues/85) and [Project #8](https://github.com/users/lucronn/projects/8). The verified local path currently supports:
+
+- natural-language component intent translation into an allowlisted vehicle-scoped query;
+- query-aware normalized-article lookup with exact and near-duplicate protection;
+- deterministic single-technician labor calculation with shared-operation overlap counted once;
+- Mercury-2 composition of an evidence-linked multi-component procedure;
+- persistence of the composed procedure as a reusable derived article;
+- warm replay from PostgreSQL without repeating the source or model call; and
+- dashboard rendering of every generated step with an explicit `UNREVIEWED` label.
+
+The RAV4 examples are automated `ready` results, not technician approval. Source evidence remains pending human review, and a genuinely uncached source request still depends on the local AutoAPI service being available. Those are tracked separately from the completed cache, composition, and dashboard behavior.
+
 ## Start the local stack
 
 The deterministic local path uses PostgreSQL with pgvector, NATS JetStream,
@@ -51,9 +65,10 @@ Open the local chatbot dashboard at [http://127.0.0.1:8080/dashboard/](http://12
 after the API container is running. It loads normalized vehicle selectors,
 accepts a plain-language question, and submits it to `POST /job-plans`. The
 response includes structured labor, a combined procedure, source status,
-evidence, and original image URLs present in the ingested article. On a local
-cache miss, the ingestion service uses the configured source connector and
-materializes the returned source data for future lookups.
+evidence, original image URLs present in the ingested article, and an explicit
+`UNREVIEWED — human review pending` label until a reviewer approves the result.
+On a local cache miss, the ingestion service uses the configured source
+connector and materializes the returned source data for future lookups.
 
 The dashboard uses the local development identity format
 `Bearer local:demo:dataset_viewer` by default. A production identity adapter
@@ -96,7 +111,10 @@ python3 scripts/dev/ingest_autoapi_service.py \
 ```
 
 Mercury-2 is an advisory wording layer for selected, evidence-backed source
-steps. Set `INCEPTION_API_KEY` and `INCEPTION_API_BASE_URL` through the local
+steps. It may translate natural-language intent into allowlisted component
+keys and compose a procedure from normalized source articles, but it cannot
+invent vehicle facts, labor values, safety instructions, tools, or evidence.
+Set `INCEPTION_API_KEY` and `INCEPTION_API_BASE_URL` through the local
 environment or a deployment secret interface; the repository and browser
 bundle never contain those values. If the adapter is unavailable, the API
 returns the validated deterministic procedure and marks the LLM layer as
@@ -322,9 +340,13 @@ normalized article with evidence. Source responses are never treated as a
 match unless the requested vehicle and query both pass the intake boundary.
 
 When `catalog` is omitted from a knowledge request, the worker first performs
-an indexed PostgreSQL lookup by canonical `vehicle_key`, excludes linked
-duplicates and taken-down snapshots, and ranks the normalized records locally.
-Only when that database lookup has no matching result does it resolve and fetch
+an indexed PostgreSQL lookup by canonical `vehicle_key` and ranks the
+normalized records locally. Component job-plan queries add bounded title
+filters before applying the result limit, so a requested oil- or water-pump
+article is not missed merely because it sorts beyond the first page of a large
+catalog. Unfiltered reads exclude linked duplicates; all reads exclude
+records without persisted evidence and source snapshots marked for takedown.
+Only when the database lookup has no matching result does it resolve and fetch
 the configured source. Supplying `catalog: []` deliberately bypasses the
 database lookup and is useful for controlled fallback tests.
 
