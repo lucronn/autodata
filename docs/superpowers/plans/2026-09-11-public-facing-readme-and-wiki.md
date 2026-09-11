@@ -28,6 +28,13 @@
 - **Planning checkpoint:** `94e69d60b4ca6739025a75ee07d641ed9134f005`
 - **Work items:** refresh the README opening and remove the redundant remote image; replace the rough visual with an inspected local asset; publish four Wiki projection pages sourced from `docs/`; verify documentation hygiene and synchronize the final SHA in GitHub.
 
+### Synchronized todo
+
+- Remove the redundant remote image embed and tighten the README opening.
+- Replace the rough visual with an inspected local asset.
+- Publish four Wiki projection pages sourced from `docs/`.
+- Verify documentation hygiene and synchronize the final SHA in GitHub.
+
 ## Files and publication targets
 
 - Modify: `README.md` — public landing page, navigation, current-status framing, and single visual reference.
