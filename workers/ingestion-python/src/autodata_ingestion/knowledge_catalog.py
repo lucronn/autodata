@@ -12,7 +12,31 @@ DEFAULT_KNOWLEDGE_CACHE_LIMIT = 200
 MAX_KNOWLEDGE_CACHE_LIMIT = 1000
 
 
-def load_vehicle_knowledge_catalog(target: VehicleTarget) -> list[dict[str, Any]]:
+def _query_article_patterns(query: str) -> list[str]:
+    """Build bounded title patterns for a component-scoped cache read."""
+
+    from .job_plan import _components_from_query
+
+    title_terms = {
+        "brakes": "brake",
+        "brake_caliper": "caliper",
+        "brake_rotor": "rotor",
+        "brake_pads": "brake pad",
+    }
+    patterns: list[str] = []
+    for component in _components_from_query(query):
+        term = title_terms.get(component, component.replace("_", " "))
+        pattern = f"%{term}%"
+        if pattern not in patterns:
+            patterns.append(pattern)
+    return patterns
+
+
+def load_vehicle_knowledge_catalog(
+    target: VehicleTarget,
+    *,
+    query: str = "",
+) -> list[dict[str, Any]]:
     """Load non-duplicate normalized articles for one canonical vehicle key.
 
     This is deliberately a narrow indexed read. It does not scan all source
@@ -37,8 +61,28 @@ def load_vehicle_knowledge_catalog(target: VehicleTarget) -> list[dict[str, Any]
         "user": os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
         "password": password,
     }
-    query = """
-        SELECT ca.catalog_article_id::text, ca.article_id, ca.bucket, ca.title,
+    limit = _knowledge_cache_limit()
+    title_patterns = _query_article_patterns(query)
+    title_filter = ""
+    params: list[Any] = [target.vehicle_key]
+    if title_patterns:
+        title_filter = "\n          AND (" + " OR ".join("ca.title ILIKE %s" for _ in title_patterns) + ")"
+        params.extend(title_patterns)
+    params.append(limit)
+    select_prefix = "SELECT DISTINCT ON (ca.article_id)" if title_patterns else "SELECT"
+    duplicate_filter = "" if title_patterns else """
+          AND NOT EXISTS (
+              SELECT 1
+              FROM catalog_article_vehicle_links links
+              WHERE links.duplicate_catalog_article_id = ca.catalog_article_id
+          )"""
+    order_by = (
+        "ca.article_id, ca.title NULLS LAST, ca.catalog_article_id"
+        if title_patterns
+        else "ca.title NULLS LAST, ca.article_id, ca.catalog_article_id"
+    )
+    sql = f"""
+        {select_prefix} ca.catalog_article_id::text, ca.article_id, ca.bucket, ca.title,
                ca.bulletin_number, ca.release_date, ca.sort_order, ca.body,
                ca.steps, ca.source_snapshot_id::text, ca.source_locator,
                ca.evidence_locator, ca.evidence_confidence,
@@ -73,20 +117,15 @@ def load_vehicle_knowledge_catalog(target: VehicleTarget) -> list[dict[str, Any]
           ON css.source_snapshot_id = ca.content_source_snapshot_id
         LEFT JOIN extraction_evidence cee
           ON cee.extraction_evidence_id = ca.content_extraction_evidence_id
-        WHERE v.vehicle_key = %s
-          AND NOT EXISTS (
-              SELECT 1
-              FROM catalog_article_vehicle_links links
-              WHERE links.duplicate_catalog_article_id = ca.catalog_article_id
-          )
+        WHERE v.vehicle_key = %s{title_filter}
+          {duplicate_filter}
           AND ss.takedown_status = 'active'
-        ORDER BY ca.title NULLS LAST, ca.article_id, ca.catalog_article_id
+        ORDER BY {order_by}
         LIMIT %s
     """
-    limit = _knowledge_cache_limit()
     with psycopg.connect(**conninfo) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(query, (target.vehicle_key, limit))
+            cursor.execute(sql, tuple(params))
             rows = cursor.fetchall()
             catalog = _rows_to_catalog(rows, target)
             if os.getenv("AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED", "0") == "1":

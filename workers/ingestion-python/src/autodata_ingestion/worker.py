@@ -177,7 +177,7 @@ def run_vehicle_knowledge(serialized_request: str) -> dict[str, object]:
     else:
         from .knowledge_catalog import load_vehicle_knowledge_catalog
 
-        catalog = load_vehicle_knowledge_catalog(target)
+        catalog = load_vehicle_knowledge_catalog(target, query=str(query))
     source_template = request.get("source_uri_template") or os.getenv(
         "AUTODATA_KNOWLEDGE_SOURCE_URI_TEMPLATE", ""
     ).strip()
@@ -261,7 +261,7 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
         if year is None:
             raise ValueError("job plan vehicle requires year")
         target = _vehicle_target_from_mapping(vehicle, year)
-        catalog = load_vehicle_knowledge_catalog(target)
+        catalog = load_vehicle_knowledge_catalog(target, query=query)
         cached_derived = _cached_derived_job_plan(query, vehicle, catalog)
         if cached_derived is not None:
             return {"worker": "ingestion", "lane": "fast", **cached_derived}

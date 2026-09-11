@@ -125,6 +125,34 @@ class KnowledgeCatalogTests(unittest.TestCase):
         with patch.dict("os.environ", {"AUTODATA_KNOWLEDGE_CACHE_MAX_RECORDS": "50000"}):
             self.assertEqual(_knowledge_cache_limit(), 1000)
 
+    def test_query_aware_read_selects_requested_articles_outside_default_window(self):
+        cursor = Cursor([])
+        connection = Connection(cursor)
+        fake_psycopg = types.ModuleType("psycopg")
+        fake_psycopg.connect = lambda **_kwargs: connection
+        target = VehicleTarget("Toyota", "Rav4", 1997, "US")
+
+        with patch.dict(
+            sys.modules,
+            {"psycopg": fake_psycopg},
+        ):
+            with patch.dict(
+                "os.environ",
+                {
+                    "AUTODATA_POSTGRES_PASSWORD": "test-only",
+                    "AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED": "0",
+                },
+            ):
+                load_vehicle_knowledge_catalog(target, query="oil pump, water pump replacement procedure")
+
+        self.assertEqual(
+            cursor.params,
+            (target.vehicle_key, "%oil pump%", "%water pump%", 200),
+        )
+        self.assertIn("DISTINCT ON (ca.article_id)", cursor.query)
+        self.assertNotIn("NOT EXISTS", cursor.query)
+        self.assertIn("ca.title ILIKE %s", cursor.query)
+
     def test_catalog_read_exposes_separate_document_content_evidence(self):
         row = (
             "catalog-1",
