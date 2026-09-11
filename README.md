@@ -81,9 +81,10 @@ interaction is a single request such as `97 Toyota RAV4 brake line replacement
 procedure, and quote`; it returns the full procedure, required and recommended
 supporting work, overlap-aware labor hours, source parts prices with pricing
 dates and no markup, and live worker progress. Contracts and persistence are
-complete, and natural-language intent extraction is implemented and under
-scoped review at commit `eae7e3d`; source fallback, pricing, composition, and
-chat orchestration remain the next tracked work. The repository
+complete; natural-language intent extraction is pushed at `30d166d`, and
+read-through source retrieval/pricing is pushed at `910ba88`. Their scoped
+reviews are tracked in Issue #87 while quote composition, visuals, and chat
+orchestration continue as the next work. The repository
 [pre-implementation gate](docs/agents/pre-implementation-gate.md) remains
 mandatory.
 

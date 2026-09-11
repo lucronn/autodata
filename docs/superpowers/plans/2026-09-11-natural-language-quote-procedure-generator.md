@@ -9,14 +9,16 @@
 This plan remains the canonical implementation record for Issue #87 and
 Project #8. Task 1 (versioned contracts and persistence) is complete and
 pushed through `b3bee40`. Task 2 (natural-language vehicle/operation intent)
-has an implementation checkpoint at `eae7e3d`; its full ingestion suite passes
-with 256 tests and 12 subtests, and a scoped review is the next gate before it
-is marked complete. The user-owned untracked `sample data/` directory remains
-outside every commit.
+has a reviewed fix checkpoint at `30d166d`; its focused regression suite passes
+with 34 tests and the fresh scoped re-review is pending. Task 3 (read-through
+source retrieval and price snapshots) is implemented and pushed at `910ba88`;
+its focused suite passes with 20 tests and the full ingestion suite passes with
+276 tests and 12 subtests, with scoped review pending. The user-owned untracked
+`sample data/` directory remains outside every commit.
 
-Next implementation work is Task 3: read-through source retrieval and price
-snapshots, followed by Task 4: deterministic overlap-aware quote calculation,
-procedure composition, and linked visual artifacts. The target acceptance path
+Task 4 is now in implementation: deterministic overlap-aware quote
+calculation, procedure composition, and linked visual artifacts. The target
+acceptance path
 is a single natural-language request that returns whatever data is available
 immediately, then enriches the same answer asynchronously without repeating
 source or model calls on warm replay.
