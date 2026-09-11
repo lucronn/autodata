@@ -110,22 +110,23 @@ def interpret_chat_message(
         except Exception:
             proposal = {}
             advisory_error = True
-        if not operations:
-            operations = (
-                [_advisory_review_operation()]
-                if advisory_error
-                else _operations_from_proposal(proposal)
-            )
+        if advisory_error:
+            if not operations:
+                operations = [_advisory_review_operation()]
+        else:
+            try:
+                advisory_operations = _operations_from_proposal(proposal)
+            except (TypeError, ValueError):
+                advisory_operations = [_advisory_review_operation()]
+            operations = _merge_requested_operations(operations, advisory_operations)
         vehicle = _apply_advisory_vehicle_selection(vehicle, proposal, vehicle_candidates)
         if _proposal_has_unknown_component(proposal):
             vehicle = {**vehicle, "status": "needs_review"}
 
-    if vehicle.get("status") == "ambiguous":
+    if vehicle.get("status") in {"ambiguous", "unmatched", "needs_review"}:
         clarification = _vehicle_clarification(vehicle)
     elif not operations:
         clarification = "Which component needs service?"
-    elif vehicle.get("status") in {"unmatched", "needs_review"}:
-        clarification = "Which vehicle configuration should I use?"
     else:
         clarification = None
 
@@ -169,6 +170,13 @@ def derive_supporting_operations(
             or article.get("id")
             or ""
         ).strip()
+        article_evidence_ids = _collect_ids(
+            article.get("evidence_id"),
+            article.get("evidenceId"),
+            article.get("evidence_ids"),
+            article.get("evidenceIds"),
+            article.get("evidence"),
+        )
         for field, category, basis in (
             ("supporting_operations", None, "source_article"),
             ("trusted_rules", None, "trusted_rule"),
@@ -220,6 +228,12 @@ def derive_supporting_operations(
                 if origin in {"mercury2", "mercury-2", "model", "llm"}:
                     classification = "needs_review"
                     operation_basis = "model_advisory"
+                source_article_ids = _collect_ids(
+                    raw_operation.get("source_article_ids"),
+                    raw_operation.get("sourceArticleIds"),
+                )
+                if article_id:
+                    source_article_ids.add(article_id)
                 output = {
                     "operation_id": operation_id,
                     "action": str(
@@ -230,15 +244,16 @@ def derive_supporting_operations(
                     ).strip(),
                     "category": classification,
                     "basis": operation_basis,
-                    "source_article_ids": [article_id] if article_id else [],
+                    "source_article_ids": sorted(source_article_ids),
                 }
-                evidence_ids = raw_operation.get("evidence_ids") or raw_operation.get("evidenceIds")
-                if isinstance(evidence_ids, str):
-                    evidence_ids = [evidence_ids]
-                if isinstance(evidence_ids, (list, tuple, set)):
-                    output["evidence_ids"] = sorted(
-                        {str(evidence_id) for evidence_id in evidence_ids if str(evidence_id).strip()}
-                    )
+                evidence_ids = article_evidence_ids | _collect_ids(
+                    raw_operation.get("evidence_id"),
+                    raw_operation.get("evidenceId"),
+                    raw_operation.get("evidence_ids"),
+                    raw_operation.get("evidenceIds"),
+                )
+                if evidence_ids:
+                    output["evidence_ids"] = sorted(evidence_ids)
                 existing = by_operation_id.get(operation_id)
                 if existing is None:
                     by_operation_id[operation_id] = output
@@ -248,14 +263,41 @@ def derive_supporting_operations(
                     set(existing.get("source_article_ids", ()))
                     | set(output.get("source_article_ids", ()))
                 )
-                existing["evidence_ids"] = sorted(
-                    set(existing.get("evidence_ids", ()))
-                    | set(output.get("evidence_ids", ()))
+                merged_evidence_ids = set(existing.get("evidence_ids", ())) | set(
+                    output.get("evidence_ids", ())
                 )
-                if _classification_rank(output["category"]) > _classification_rank(existing["category"]):
+                if merged_evidence_ids:
+                    existing["evidence_ids"] = sorted(merged_evidence_ids)
+                if _operation_strength(output) > _operation_strength(existing):
                     existing["category"] = output["category"]
                     existing["basis"] = output["basis"]
+                    existing["action"] = output["action"]
     return tuple(derived)
+
+
+def _collect_ids(*values: Any) -> set[str]:
+    collected: set[str] = set()
+    for value in values:
+        if isinstance(value, str):
+            if value.strip():
+                collected.add(value.strip())
+            continue
+        if isinstance(value, Mapping):
+            nested = value.get("evidence_id") or value.get("evidenceId") or value.get("id")
+            if nested is not None and str(nested).strip():
+                collected.add(str(nested).strip())
+            continue
+        if isinstance(value, Iterable) and not isinstance(value, (bytes, bytearray)):
+            collected.update(_collect_ids(*value))
+    return collected
+
+
+def _operation_strength(operation: Mapping[str, Any]) -> tuple[int, int]:
+    basis_rank = {"model_advisory": 0, "trusted_rule": 1, "source_article": 2}
+    return (
+        _classification_rank(str(operation.get("category", "needs_review"))),
+        basis_rank.get(str(operation.get("basis", "")), 0),
+    )
 
 
 def _require_message(message: str) -> str:
@@ -327,16 +369,6 @@ def _resolve_candidates(
         score += _specificity_score(observation, candidate_observation)
         ranked.append((score, candidate, candidate_observation))
     if not ranked:
-        if not candidates and all(
-            observation.get(key) is not None for key in ("year", "make", "model")
-        ):
-            return {
-                **dict(observation),
-                "status": "matched",
-                "selected_vehicle_id": None,
-                "selected_candidate_key": None,
-                "candidates": [],
-            }
         return {**dict(observation), "status": "unmatched", "candidates": []}
     ranked.sort(key=lambda item: _candidate_sort_key(item[1], item[2]))
     options = [
@@ -410,12 +442,16 @@ def _candidate_option(
         if value
     )
     qualifiers = " ".join(f"{name}={value}" for name, value in dimensions if value)
+    candidate_key = str(candidate.get("candidate_key") or _candidate_key(candidate)).strip()
+    label_parts = [f"Option {option_number}", identity, qualifiers]
+    if candidate_key:
+        label_parts.append(f"id={candidate_key}")
     return {
         "option_number": option_number,
         "vehicle_id": vehicle_id,
-        "candidate_key": str(candidate.get("candidate_key", vehicle_id)),
+        "candidate_key": candidate_key or vehicle_id,
         "confidence": float(candidate.get("confidence", 0.0)),
-        "label": f"{identity} {qualifiers}".strip(),
+        "label": " ".join(part for part in label_parts if part),
         "year": observation.get("year"),
         "make": observation.get("make"),
         "model": observation.get("model"),
@@ -442,7 +478,14 @@ def _candidate_sort_key(
             "drivetrain",
             "engine_displacement_l",
         )
-    ) + (str(candidate.get("vehicle_id") or candidate.get("vehicle_key") or "").casefold(),)
+    ) + (
+        str(
+            candidate.get("candidate_key")
+            or candidate.get("vehicle_id")
+            or candidate.get("vehicle_key")
+            or ""
+        ).casefold(),
+    )
 
 
 def _vehicle_compatible(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
@@ -499,6 +542,24 @@ def _parse_operations(message: str) -> list[dict[str, Any]]:
         )
         seen.add((action, component))
     return operations
+
+
+def _merge_requested_operations(
+    deterministic: list[dict[str, Any]],
+    advisory: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged = list(deterministic)
+    seen = {
+        (str(operation.get("action", "replace")), str(operation.get("component")))
+        for operation in merged
+    }
+    for operation in advisory:
+        key = (str(operation.get("action", "replace")), str(operation.get("component")))
+        if key in seen and operation.get("component") is not None:
+            continue
+        merged.append(operation)
+        seen.add(key)
+    return merged
 
 
 def _action_for_component(
@@ -647,8 +708,17 @@ def _apply_advisory_vehicle_selection(
     ).strip()
     if not selected_key:
         return dict(vehicle)
+    if not all(vehicle.get(key) is not None for key in ("year", "make", "model")):
+        return {**dict(vehicle), "status": "needs_review"}
     valid: dict[str, Mapping[str, Any]] = {}
     for candidate in candidates:
+        try:
+            candidate_identity = canonicalize_vehicle_observation(candidate)
+            candidate_dict = candidate_identity.to_dict()
+        except (TypeError, ValueError):
+            continue
+        if not _vehicle_compatible(vehicle, candidate_dict):
+            continue
         for key in (
             candidate.get("candidate_key"),
             candidate.get("vehicle_id"),
@@ -657,19 +727,28 @@ def _apply_advisory_vehicle_selection(
             if key:
                 valid[str(key).strip()] = candidate
         try:
-            identity = canonicalize_vehicle_observation(candidate)
             from .vehicle_identity import build_vehicle_configuration
-            valid[build_vehicle_configuration(identity).configuration_key] = candidate
+            valid[build_vehicle_configuration(candidate_identity).configuration_key] = candidate
         except (TypeError, ValueError):
-            continue
+            pass
     selected = valid.get(selected_key)
     if selected is None:
+        if vehicle.get("status") == "matched":
+            return dict(vehicle)
         return {**dict(vehicle), "status": "needs_review"}
     if vehicle.get("status") == "ambiguous":
         # Mercury may point at an option for UI ranking, but a user must still
         # make the selection when more than one compatible vehicle remains.
         return {**dict(vehicle), "advisory_candidate_key": selected_key}
     selected_id = str(selected.get("vehicle_id", selected.get("vehicle_key", ""))).strip()
+    if not selected_id:
+        return {**dict(vehicle), "status": "needs_review"}
+    if (
+        vehicle.get("status") == "matched"
+        and vehicle.get("selected_vehicle_id")
+        and selected_id != vehicle.get("selected_vehicle_id")
+    ):
+        return dict(vehicle)
     canonical = canonicalize_vehicle_observation(selected).to_dict()
     return {
         **dict(vehicle),
