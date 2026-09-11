@@ -91,6 +91,7 @@ SHA, then pass the machine preflight against the implementation base SHA.
 - Modify: `packages/contracts/python/autodata_contracts/contracts.py` through `scripts/contracts/generate.py`
 - Create: `db/migrations/025_chat_quote_procedure.sql`
 - Create: `scripts/contracts/test_chat_quote_contract.py`
+- Modify: `scripts/dev/test_migrations.py`
 - Modify: `packages/contracts/go/contracts_test.go`
 
 **Interfaces:**
