@@ -45,6 +45,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "023_catalog_article_images.sql",
                 "024_catalog_article_operations.sql",
                 "025_chat_quote_procedure.sql",
+                "026_chat_quote_operation_categories.sql",
             ],
         )
 
@@ -126,6 +127,37 @@ class MigrationPlanTests(unittest.TestCase):
                 f"CHECK (jsonb_typeof({collection}) = 'array')",
                 migration,
             )
+
+    def test_quote_operation_categories_upgrade_existing_025_table(self):
+        clean_install = (ROOT / "db/migrations/025_chat_quote_procedure.sql").read_text()
+        upgrade = (ROOT / "db/migrations/026_chat_quote_operation_categories.sql").read_text()
+
+        for collection in ("required_operations", "recommended_operations"):
+            definition = f"{collection} jsonb NOT NULL DEFAULT '[]'::jsonb"
+            self.assertIn(definition, clean_install)
+            self.assertIn(
+                f"CHECK (jsonb_typeof({collection}) = 'array')",
+                clean_install,
+            )
+            self.assertRegex(
+                upgrade,
+                rf"ALTER TABLE chat_quote_revisions\s+"
+                rf"ADD COLUMN IF NOT EXISTS {collection} jsonb NOT NULL DEFAULT '\[\]'::jsonb;",
+            )
+            self.assertIn(
+                f"CONSTRAINT chat_quote_revisions_{collection}_array_check",
+                upgrade,
+            )
+            self.assertIn(
+                f"CHECK (jsonb_typeof({collection}) = 'array')",
+                upgrade,
+            )
+
+        self.assertNotIn("CREATE TABLE IF NOT EXISTS chat_quote_revisions", upgrade)
+        self.assertIn(
+            "VALUES ('026_chat_quote_operation_categories')",
+            upgrade,
+        )
 
     def test_worker_events_persist_the_complete_event_envelope(self):
         migration = (ROOT / "db/migrations/025_chat_quote_procedure.sql").read_text()
