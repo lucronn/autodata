@@ -31,6 +31,14 @@ def run_once() -> dict[str, object]:
     job_plan_request = os.getenv("AUTODATA_JOB_PLAN_REQUEST_JSON", "").strip()
     if job_plan_request:
         return run_job_plan(job_plan_request)
+    chat_query_request = os.getenv("AUTODATA_CHAT_QUERY_JSON", "").strip()
+    if chat_query_request:
+        return run_chat_query(chat_query_request)
+    chat_selection_request = os.getenv("AUTODATA_CHAT_SELECTION_JSON", "").strip()
+    if chat_selection_request:
+        return run_chat_selection(chat_selection_request)
+    if os.getenv("AUTODATA_CHAT_WORKER_ENABLED") == "1":
+        return run_chat_worker_once()
     vehicle_list = os.getenv("AUTODATA_VEHICLE_LIST_JSON", "").strip()
     if vehicle_list:
         return run_vehicle_selection(vehicle_list)
@@ -310,6 +318,69 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
 
         result["derived_article_persistence"] = persist_derived_article(result, vehicle=vehicle)
     return {"worker": "ingestion", "lane": "fast", **result}
+
+
+def run_chat_query(serialized_request: str) -> dict[str, object]:
+    """Create or replay one chat query from a worker-compatible JSON envelope."""
+
+    try:
+        request = json.loads(serialized_request)
+    except json.JSONDecodeError as error:
+        raise ValueError("chat query request must be valid JSON") from error
+    if not isinstance(request, dict):
+        raise ValueError("chat query request must contain an object")
+    message = request.get("message")
+    idempotency_key = str(request.get("idempotency_key", "")).strip()
+    principal = request.get("principal", {})
+    if not isinstance(message, str) or not message.strip():
+        raise ValueError("chat query request requires message")
+    if not idempotency_key:
+        raise ValueError("chat query request requires idempotency_key")
+    if not isinstance(principal, Mapping):
+        raise ValueError("chat query request principal must be an object")
+    from .chat_service import create_chat_query
+
+    return create_chat_query(
+        message,
+        idempotency_key=idempotency_key,
+        principal=principal,
+    )
+
+
+def run_chat_selection(serialized_request: str) -> dict[str, object]:
+    """Apply one pending chat vehicle selection from a worker JSON envelope."""
+
+    try:
+        request = json.loads(serialized_request)
+    except json.JSONDecodeError as error:
+        raise ValueError("chat selection request must be valid JSON") from error
+    if not isinstance(request, dict):
+        raise ValueError("chat selection request must contain an object")
+    query_id = str(request.get("query_id", "")).strip()
+    selection = request.get("selection", request)
+    if not query_id:
+        raise ValueError("chat selection request requires query_id")
+    if not isinstance(selection, Mapping):
+        raise ValueError("chat selection request selection must be an object")
+    from .chat_service import select_chat_vehicle
+
+    return select_chat_vehicle(query_id, selection)
+
+
+def run_chat_worker_once() -> dict[str, object]:
+    """Process at most one queued chat source/model job."""
+
+    from .chat_service import process_chat_jobs
+
+    processed = process_chat_jobs(max_jobs=1)
+    if not processed:
+        return {"worker": "ingestion", "lane": "fast", "status": "idle"}
+    return {
+        "worker": "ingestion",
+        "lane": "fast",
+        "status": "completed",
+        "query": processed[0],
+    }
 
 
 def _catalog_needs_job_plan_hydration(
@@ -955,9 +1026,12 @@ def main() -> None:
     interval = float(os.getenv("AUTODATA_WORKER_HEARTBEAT_SECONDS", "30"))
     consumer_enabled = os.getenv("AUTODATA_FAST_CONSUMER_ENABLED") == "1"
     knowledge_consumer_enabled = os.getenv("AUTODATA_KNOWLEDGE_CONSUMER_ENABLED") == "1"
+    chat_worker_enabled = os.getenv("AUTODATA_CHAT_WORKER_ENABLED") == "1"
     if os.getenv("AUTODATA_WORKER_ONCE") == "1":
         if knowledge_consumer_enabled:
             result = run_knowledge_fallback_once()
+        elif chat_worker_enabled:
+            result = run_chat_worker_once()
         else:
             result = run_nats_once() if consumer_enabled else run_once()
         print(json.dumps(result, sort_keys=True))
@@ -965,6 +1039,8 @@ def main() -> None:
     while True:
         if knowledge_consumer_enabled:
             result = run_knowledge_fallback_once()
+        elif chat_worker_enabled:
+            result = run_chat_worker_once()
         else:
             result = run_nats_once() if consumer_enabled else run_once()
         print(json.dumps(result, sort_keys=True), flush=True)
