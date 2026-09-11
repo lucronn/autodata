@@ -4,6 +4,23 @@
 
 **Goal:** Deliver a chat-first AutoData flow that accepts one natural-language vehicle repair request and returns the fastest available procedure, overlap-aware labor quote, source parts prices, and progressive worker updates.
 
+## Current delivery checkpoint — 2026-09-11
+
+This plan remains the canonical implementation record for Issue #87 and
+Project #8. Task 1 (versioned contracts and persistence) is complete and
+pushed through `b3bee40`. Task 2 (natural-language vehicle/operation intent)
+has an implementation checkpoint at `eae7e3d`; its full ingestion suite passes
+with 256 tests and 12 subtests, and a scoped review is the next gate before it
+is marked complete. The user-owned untracked `sample data/` directory remains
+outside every commit.
+
+Next implementation work is Task 3: read-through source retrieval and price
+snapshots, followed by Task 4: deterministic overlap-aware quote calculation,
+procedure composition, and linked visual artifacts. The target acceptance path
+is a single natural-language request that returns whatever data is available
+immediately, then enriches the same answer asynchronously without repeating
+source or model calls on warm replay.
+
 **Architecture:** Keep Go as the authenticated public boundary and Python as the source/normalization/composition runtime. Search the normalized PostgreSQL cache first, read through to the provider-neutral AutoAPI connector only for missing data, return source data immediately when normalization is pending, and publish correlated background updates through NATS JetStream. Mercury-2 is constrained to structured intent suggestions, supporting-operation classification, procedure composition, and faithful source-diagram vectorization; application code owns vehicle scope, source calls, arithmetic, persistence, and publication validation.
 
 **Tech Stack:** Go 1.26 `net/http`, Python 3 with the existing ingestion/enrichment packages, PostgreSQL with pgvector, NATS JetStream, MinIO/S3-compatible storage, versioned JSON contracts, Docker Compose, and the repository’s existing pytest, Go, contract, and runtime-smoke tooling.
