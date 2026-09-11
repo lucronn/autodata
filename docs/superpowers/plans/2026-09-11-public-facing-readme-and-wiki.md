@@ -21,7 +21,12 @@
 
 ## Gate synchronization record
 
-The local plan checkpoint is written before GitHub tracking is created. After the checkpoint, add the exact Issue and Project references to this section and to the canonical documentation record, pin the synchronized record to the checkpoint SHA, and run the machine preflight before implementing the README, asset, or wiki sources.
+- **GitHub Issue:** [#88 — Refresh the public README and publish a navigable Wiki](https://github.com/lucronn/autodata/issues/88)
+- **GitHub Project:** [Project #8 — AutoData Portfolio](https://github.com/users/lucronn/projects/8)
+- **Repository record:** `docs/agents/records/2026-09-11-public-facing-readme-and-wiki.json`
+- **Synchronized status:** `synchronized`
+- **Planning checkpoint:** `94e69d60b4ca6739025a75ee07d641ed9134f005`
+- **Work items:** refresh the README opening and remove the redundant remote image; replace the rough visual with an inspected local asset; publish four Wiki projection pages sourced from `docs/`; verify documentation hygiene and synchronize the final SHA in GitHub.
 
 ## Files and publication targets
 
@@ -33,6 +38,7 @@ The local plan checkpoint is written before GitHub tracking is created. After th
 - Create: `docs/wiki/Architecture.md` — architecture map linking canonical docs.
 - Create: `docs/wiki/Getting-Started.md` — deterministic local setup and verification links.
 - Create: `docs/wiki/Contributing.md` — contribution, documentation, and planning-gate expectations.
+- Create: `docs/agents/records/2026-09-11-public-facing-readme-and-wiki.json` — machine-checked synchronized pre-implementation record.
 - Modify: `docs/github/operating-model.md` — document the README/Wiki publication boundary and canonical source rule.
 - Publish: the four `docs/wiki/*.md` files to the `lucronn/autodata.wiki` repository with GitHub Wiki-compatible names.
 

@@ -91,3 +91,27 @@ All implementation work follows the [pre-implementation planning and tracking ga
 Agents may create or modify Markdown, MDX, reStructuredText, and AsciiDoc only under `docs/`. The runner treats a document changed outside that tree as a critical scope violation. Run evidence, logs, and machine-readable reports belong in the external run directory or their explicitly declared fixture/report paths; they are not replacement documentation.
 
 Every documentation change must update the relevant Project index item or linked implementation issue in the same release flow. The item records the canonical document path, affected area, review status, source/dependency reference, and the commit or release where it was verified. If a Project item and repository document disagree, the repository document at the exact verified SHA wins and the Project item is marked `Blocked` until synchronized.
+
+### Public-facing README and Wiki
+
+The root `README.md` is the repository's public landing page: it should explain
+what AutoData does, show one intentional local visual, identify the current
+verified development slice, and route readers to the canonical documentation.
+It is an index and product introduction, not a replacement for the technical
+documents under `docs/`.
+
+The GitHub Wiki is a lightweight public-facing projection for first-time
+readers. Wiki page sources live under `docs/wiki/` and are published to the
+repository Wiki only after they are reviewed against the repository documents.
+The Wiki may summarize and navigate, but it must link to repository `docs/`
+for architecture, lifecycle, contracts, infrastructure, governance, and
+agent-policy details. Repository `docs/` at the verified commit remains the
+source of truth when a Wiki page or README summary differs.
+
+The README/Wiki refresh tracked by [Issue #88](https://github.com/lucronn/autodata/issues/88)
+and [Project #8](https://github.com/users/lucronn/projects/8) has four concrete
+work items: remove the redundant remote image embed and tighten the README
+opening; replace the rough local visual; publish the four `docs/wiki/` pages;
+and verify exact-SHA documentation and GitHub synchronization. The machine
+checked pre-implementation record is
+`docs/agents/records/2026-09-11-public-facing-readme-and-wiki.json`.
