@@ -15,13 +15,21 @@ repository `docs/` tree at the exact verified commit.
 - **GitHub Project:** [Project #8 — AutoData Portfolio](https://github.com/users/lucronn/projects/8)
 - **Plan:** [`docs/superpowers/plans/2026-09-11-public-facing-readme-and-wiki.md`](../superpowers/plans/2026-09-11-public-facing-readme-and-wiki.md)
 - **Machine record:** [`docs/agents/records/2026-09-11-public-facing-readme-and-wiki.json`](../agents/records/2026-09-11-public-facing-readme-and-wiki.json)
-- **Status:** `synchronized` before implementation
+- **Status:** `in progress`: repository-facing implementation is complete; Wiki publication is waiting for GitHub's required first-page initialization.
+
+## Implementation evidence
+
+- **README and asset commit:** `67bb3e420f444c159a6126121fcb526f3eac3507`
+- **Current branch head read back:** `3f45b73ea3af6c651928b281a288febcc50b7a9f` (also contains a separate user-owned quote-generator documentation change).
+- **Local repository checks:** repository governance `6 passed`; pre-implementation validator `7 passed`; Markdown fence, local-link, secret, and redundant-image checks passed; replacement image inspected at `1942 x 809` PNG.
+- **GitHub repository branch:** `automation/knowledge-fallback-runtime` matches the current branch head.
+- **Wiki status:** GitHub Wiki is enabled but uninitialized. The four source pages are complete under `docs/wiki/`; publication requires saving the first Wiki page once in the GitHub UI, after which the Wiki Git remote can be cloned and updated.
 
 ## Concrete work items
 
 1. Remove the redundant remote repository-image embed and tighten the README's public opening while preserving accurate local setup guidance.
 2. Replace the rough architecture preview with one inspected, readable local visual that makes no unverified claims.
-3. Author and publish `Home`, `Architecture`, `Getting Started`, and `Contributing` Wiki pages from the repository's canonical documentation boundary.
+3. Author and publish `Home`, `Architecture`, `Getting Started`, and `Contributing` Wiki pages from the repository's canonical documentation boundary. The source pages are authored; remote publication is pending initial Wiki seed-page creation.
 4. Verify Markdown hygiene, links, image references, secret handling, exact commit state, and synchronized Issue/Project records.
 
 ## Source map
