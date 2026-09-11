@@ -8,7 +8,11 @@ from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from autodata_ingestion.autoapi_batch import execute_autoapi_batch  # noqa: E402
-from autodata_ingestion.autoapi_connector import AutoAPIConnector, _selector_rows  # noqa: E402
+from autodata_ingestion.autoapi_connector import (  # noqa: E402
+    AutoAPIConnector,
+    _selector_rows,
+    fetch_required_source_resources,
+)
 
 
 class FakeResponse:
@@ -32,6 +36,68 @@ class FakeResponse:
 
 
 class AutoAPIConnectorTests(unittest.TestCase):
+    def test_read_through_fetches_only_requested_resources_after_article_list(self):
+        responses = {
+            "/v1/api/source/Motor/vehicle/v1/articles/v2": {
+                "header": {},
+                "body": {
+                    "articleDetails": [
+                        {"id": "a1", "title": "Brake line replacement"},
+                        {"id": "a2", "title": "Engine replacement"},
+                    ]
+                },
+            },
+            "/v1/api/source/Motor/vehicle/v1/article/a1": {
+                "header": {},
+                "body": {"documentId": "a1", "html": "<p>Brake line</p>"},
+            },
+            "/v1/api/source/Motor/vehicle/v1/labor/a1": {
+                "header": {},
+                "body": {"operations": [{"operationId": "line", "hours": 1.5}]},
+            },
+            "/v1/api/source/Motor/vehicle/v1/parts": {
+                "header": {},
+                "body": [
+                    {"partNumber": "P1", "partDescription": "Brake fluid", "price": "$18.99"},
+                    {"partNumber": "P2", "partDescription": "Engine oil", "price": "$9.50"},
+                ],
+            },
+        }
+        requests = []
+
+        def opener(request, timeout):
+            del timeout
+            path = urlsplit(request.full_url).path
+            requests.append(path)
+            return FakeResponse(responses[path])
+
+        connector = AutoAPIConnector(
+            "http://127.0.0.1:3000",
+            content_source="Motor",
+            opener=opener,
+        )
+        vehicle = {"vehicle_id": "v1", "vehicle_key": "toyota-rav4-2024-us"}
+        operations = [{"article_id": "a1", "part_numbers": ["P1"]}]
+
+        result = fetch_required_source_resources(vehicle, operations, connector)
+
+        self.assertEqual(
+            requests,
+            [
+                "/v1/api/source/Motor/vehicle/v1/articles/v2",
+                "/v1/api/source/Motor/vehicle/v1/article/a1",
+                "/v1/api/source/Motor/vehicle/v1/labor/a1",
+                "/v1/api/source/Motor/vehicle/v1/parts",
+            ],
+        )
+        self.assertEqual(result["requested_article_ids"], ("a1",))
+        self.assertEqual([part["partNumber"] for part in result["parts"]], ["P1"])
+        self.assertEqual(result["data_state"], "source_unnormalized")
+        self.assertEqual(len(result["source_resources"]), 4)
+
+        fetch_required_source_resources(vehicle, operations, connector)
+        self.assertEqual(len(requests), 4)
+
     def test_selector_identity_uses_requested_base_model_not_provider_engine_name(self):
         rows = _selector_rows(
             {"header": {}, "body": "1997 Toyota RAV4 Base 2.0L L4 (P) 3S-FE GAS Electronic"},

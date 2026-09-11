@@ -9,10 +9,12 @@ deduplication, and persistence boundaries remain authoritative.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import deepcopy
 import json
 from dataclasses import dataclass, replace
+from threading import RLock
 import time
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -121,6 +123,13 @@ class AutoAPIConnector:
         self._retry_backoff_seconds = retry_backoff_seconds
         self._request_headers = _request_headers(request_headers)
         self._opener = opener
+        # A connector instance is the read-through cache boundary for one
+        # request worker.  Keys are complete normalized request URIs, so a
+        # replay never silently reuses a response from another vehicle or
+        # endpoint.  SourceResource keeps the original bytes for persistence.
+        self._source_cache: dict[str, tuple[Any, SourceResource]] = {}
+        self._required_source_cache: dict[str, dict[str, Any]] = {}
+        self._source_cache_lock = RLock()
 
     def fetch_catalog(self) -> AutoAPICatalog:
         """Fetch years, makes, models, vehicle identities, and all articles."""
@@ -304,14 +313,15 @@ class AutoAPIConnector:
         source_path = f"/v1/api/source/{quote(self._content_source, safe='')}/{quote(vehicle_id, safe='') }"
         resources: list[SourceResource] = []
 
+        # The article index is the narrow discovery gate.  Hydrate vehicle
+        # identity/configuration only after the list has established which
+        # article IDs are available for a query-time selection.
+        articles_payload, articles_resource = self.fetch_article_list(vehicle_id)
+        resources.append(articles_resource)
         name_payload, name_resource = self._get_json(f"{source_path}/name")
         resources.append(name_resource)
         motor_payload, motor_resource = self._get_json(f"{source_path}/motorvehicles")
         resources.append(motor_resource)
-        articles_payload, articles_resource = self._get_json(
-            f"/v1/api/source/{quote(self._content_source, safe='')}/vehicle/{quote(vehicle_id, safe='')}/articles/v2"
-        )
-        resources.append(articles_resource)
 
         article_items = _article_items(articles_payload)
         reported_article_count = _reported_article_count(articles_payload)
@@ -357,6 +367,32 @@ class AutoAPIConnector:
             article_ids=article_ids,
         )
 
+    def fetch_article_list(
+        self, vehicle_id: str
+    ) -> tuple[Any, SourceResource]:
+        """Read the vehicle article index without hydrating article bodies."""
+
+        vehicle = quote(str(_required_text({"vehicle_id": vehicle_id}, "vehicle_id")), safe="")
+        source = quote(self._content_source, safe="")
+        return self._cached_get_json(
+            f"/v1/api/source/{source}/vehicle/{vehicle}/articles/v2"
+        )
+
+    def fetch_parts_resource(
+        self, vehicle_id: str
+    ) -> tuple[Any, SourceResource]:
+        """Read the provider's vehicle-scoped parts/price resource once."""
+
+        vehicle = quote(str(_required_text({"vehicle_id": vehicle_id}, "vehicle_id")), safe="")
+        source = quote(self._content_source, safe="")
+        return self._cached_get_json(
+            f"/v1/api/source/{source}/vehicle/{vehicle}/parts"
+        )
+
+    # The plural spelling mirrors the domain interface used by callers while
+    # retaining the singular provider resource name in the implementation.
+    fetch_part_resources = fetch_parts_resource
+
     def fetch_article_resources(
         self,
         vehicle_id: str,
@@ -375,10 +411,10 @@ class AutoAPIConnector:
         vehicle = quote(str(vehicle_id), safe="")
         article = quote(str(article_id), safe="")
         labor_article = quote(str(labor_article_id or article_id), safe="")
-        _detail_payload, detail_resource = self._get_json(
+        _detail_payload, detail_resource = self._cached_get_json(
             f"/v1/api/source/{source}/vehicle/{vehicle}/article/{article}"
         )
-        _labor_payload, labor_resource = self._get_json(
+        _labor_payload, labor_resource = self._cached_get_json(
             f"/v1/api/source/{source}/vehicle/{vehicle}/labor/{labor_article}"
         )
         if labor_article_id and str(labor_article_id) != str(article_id):
@@ -391,6 +427,28 @@ class AutoAPIConnector:
                 },
             )
         return detail_resource, labor_resource
+
+    def _cached_get_json(
+        self,
+        path: str,
+        *,
+        query: Mapping[str, str] | None = None,
+    ) -> tuple[Any, SourceResource]:
+        """Return a source response from the per-connector read-through cache."""
+
+        key = _build_uri(self._base_url, path, query)
+        with self._source_cache_lock:
+            cached = self._source_cache.get(key)
+        if cached is not None:
+            payload, resource = cached
+            return deepcopy(payload), replace(resource, metadata=deepcopy(resource.metadata))
+        payload, resource = self._get_json(path, query=query)
+        with self._source_cache_lock:
+            self._source_cache[key] = (
+                deepcopy(payload),
+                replace(resource, metadata=deepcopy(resource.metadata)),
+            )
+        return payload, resource
 
     def _get_json(
         self,
@@ -438,6 +496,203 @@ class AutoAPIConnector:
         )
         return parsed, resource
 
+
+def fetch_required_source_resources(
+    vehicle: Mapping[str, Any],
+    operations: Iterable[Mapping[str, Any]],
+    connector: AutoAPIConnector,
+) -> dict[str, Any]:
+    """Read the article index, then hydrate only resources required by ops.
+
+    The index is authoritative for article IDs.  An operation that names an
+    unknown article is reported as unavailable and cannot cause an arbitrary
+    provider detail URL to be fetched.  Part retrieval is vehicle-scoped in
+    AutoAPI, so one parts resource is read when at least one requested
+    operation needs a named part.  The returned ``SourceResource`` values are
+    the raw payload retention boundary; normalization can safely run later.
+    """
+
+    if not isinstance(vehicle, Mapping):
+        raise TypeError("AutoAPI vehicle must be a mapping")
+    if not isinstance(connector, AutoAPIConnector):
+        raise TypeError("source connector must be an AutoAPIConnector")
+    vehicle_id = _first_text(
+        vehicle,
+        "vehicle_id",
+        "autoapi_vehicle_id",
+        "provider_vehicle_id",
+        "id",
+    )
+    if not vehicle_id:
+        raise ValueError("AutoAPI vehicle requires vehicle_id")
+    operation_list = [dict(operation) for operation in operations if isinstance(operation, Mapping)]
+    request_key = _required_resource_request_key(vehicle_id, operation_list)
+    with connector._source_cache_lock:
+        cached_result = connector._required_source_cache.get(request_key)
+    if cached_result is not None:
+        return deepcopy(cached_result)
+
+    article_list_payload, article_list_resource = connector.fetch_article_list(vehicle_id)
+    article_items = _article_items(article_list_payload)
+    article_by_id = {
+        article_id: article
+        for article in article_items
+        if (article_id := _first_text(article, "id", "articleId", "article_id"))
+    }
+    labor_by_title = {
+        _normalized_text(_first_text(article, "title", "name") or ""): article_id
+        for article_id, article in article_by_id.items()
+        if _is_labor_article_record(article)
+        and _normalized_text(_first_text(article, "title", "name") or "")
+    }
+
+    requested_article_ids: list[str] = []
+    missing_article_ids: list[str] = []
+    labor_ids: dict[str, str] = {}
+    requested_part_ids: list[str] = []
+    all_parts_requested = False
+    for operation in operation_list:
+        article_ids = _operation_values(
+            operation,
+            "article_id",
+            "articleId",
+            "source_article_id",
+            "sourceArticleId",
+        )
+        article_ids.extend(
+            _operation_values(
+                operation,
+                "article_ids",
+                "articleIds",
+                "source_article_ids",
+                "sourceArticleIds",
+            )
+        )
+        if not article_ids:
+            search_text = _normalized_text(
+                _first_text(operation, "article_title", "title", "component", "name") or ""
+            )
+            article_ids = [
+                article_id
+                for article_id, article in article_by_id.items()
+                if search_text
+                and search_text in _normalized_text(
+                    _first_text(article, "title", "name") or ""
+                )
+            ]
+        for article_id in dict.fromkeys(article_ids):
+            if article_id not in article_by_id:
+                missing_article_ids.append(article_id)
+                continue
+            if article_id not in requested_article_ids:
+                requested_article_ids.append(article_id)
+            labor_id = _first_text(
+                operation,
+                "labor_article_id",
+                "laborArticleId",
+                "source_labor_article_id",
+            )
+            if labor_id is None:
+                title = _normalized_text(
+                    _first_text(article_by_id[article_id], "title", "name") or ""
+                )
+                labor_id = labor_by_title.get(title)
+            if labor_id:
+                labor_ids[article_id] = labor_id
+
+        part_values = _operation_values(
+            operation,
+            "part_number",
+            "partNumber",
+            "source_part_number",
+            "sourcePartNumber",
+            "part_id",
+            "partId",
+        )
+        part_values.extend(
+            _operation_values(
+                operation,
+                "part_numbers",
+                "partNumbers",
+                "source_part_numbers",
+                "sourcePartNumbers",
+                "part_ids",
+                "partIds",
+            )
+        )
+        nested_parts = operation.get("parts")
+        if isinstance(nested_parts, list):
+            part_values.extend(
+                value
+                for nested in nested_parts
+                for value in _operation_values(
+                    nested if isinstance(nested, Mapping) else {"part_number": nested},
+                    "part_number",
+                    "partNumber",
+                    "source_part_number",
+                    "sourcePartNumber",
+                    "part_id",
+                    "partId",
+                )
+            )
+        if operation.get("requires_parts") is True or operation.get("parts_requested") is True:
+            all_parts_requested = not part_values
+        requested_part_ids.extend(part_values)
+
+    requested_part_ids = list(dict.fromkeys(requested_part_ids))
+    source_resources: list[SourceResource] = [article_list_resource]
+    article_details: dict[str, Any] = {}
+    labor: dict[str, Any] = {}
+    for article_id in requested_article_ids:
+        resources = connector.fetch_article_resources(
+            vehicle_id,
+            article_id,
+            **(
+                {"labor_article_id": labor_ids[article_id]}
+                if article_id in labor_ids
+                else {}
+            ),
+        )
+        detail_resource, labor_resource = resources
+        source_resources.extend(resources)
+        article_details[article_id] = _resource_payload(detail_resource)
+        labor[article_id] = _resource_payload(labor_resource)
+
+    parts_payload: Any | None = None
+    if requested_part_ids or all_parts_requested:
+        parts_payload, parts_resource = connector.fetch_parts_resource(vehicle_id)
+        source_resources.append(parts_resource)
+    parts = _requested_parts(parts_payload, requested_part_ids, all_parts_requested)
+    source_payloads = tuple(
+        {
+            "source_uri": resource.source_uri,
+            "source_version": resource.source_version,
+            "content_sha256": resource.content_sha256,
+            "payload": resource.payload,
+        }
+        for resource in source_resources
+    )
+    result = {
+        "vehicle_id": vehicle_id,
+        "requested_article_ids": tuple(requested_article_ids),
+        "missing_article_ids": tuple(dict.fromkeys(missing_article_ids)),
+        "article_list": deepcopy(article_list_payload),
+        "article_details": article_details,
+        "labor": labor,
+        "parts": parts,
+        "data_state": "source_unnormalized",
+        "source_unnormalized": {
+            "article_list": deepcopy(article_list_payload),
+            "article_details": deepcopy(article_details),
+            "labor": deepcopy(labor),
+            "parts": deepcopy(parts_payload),
+        },
+        "source_resources": tuple(source_resources),
+        "source_payloads": source_payloads,
+    }
+    with connector._source_cache_lock:
+        connector._required_source_cache[request_key] = deepcopy(result)
+    return result
 
 def _selector_rows(
     name_payload: Mapping[str, Any],
@@ -526,6 +781,88 @@ def _article_items(envelope: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     if isinstance(body, Mapping) and isinstance(body.get("articleDetails"), list):
         return [item for item in body["articleDetails"] if isinstance(item, Mapping)]
     return [item for item in _items(envelope) if isinstance(item, Mapping)]
+
+
+def _required_resource_request_key(
+    vehicle_id: str, operations: Iterable[Mapping[str, Any]]
+) -> str:
+    payload = json.dumps(
+        {"vehicle_id": vehicle_id, "operations": list(operations)},
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return payload
+
+
+def _operation_values(operation: Mapping[str, Any], *keys: str) -> list[str]:
+    values: list[str] = []
+    for key in keys:
+        value = operation.get(key)
+        if value is None:
+            continue
+        candidates = value if isinstance(value, (list, tuple, set)) else (value,)
+        values.extend(str(candidate).strip() for candidate in candidates if str(candidate).strip())
+    return list(dict.fromkeys(values))
+
+
+def _normalized_text(value: Any) -> str:
+    return " ".join(str(value).casefold().split())
+
+
+def _is_labor_article_record(article: Mapping[str, Any]) -> bool:
+    article_id = _first_text(article, "id", "articleId", "article_id") or ""
+    bucket = _first_text(article, "bucket", "bucketName", "articleType") or ""
+    return article_id.casefold().startswith("l:") or bucket.casefold() == "labor"
+
+
+def _resource_payload(resource: SourceResource) -> Any:
+    try:
+        return json.loads(resource.payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return {"raw_payload": resource.payload}
+
+
+def _part_items(payload: Any) -> list[Mapping[str, Any]]:
+    if not isinstance(payload, Mapping):
+        return []
+    body = payload.get("body")
+    if isinstance(body, list):
+        return [item for item in body if isinstance(item, Mapping)]
+    if isinstance(body, Mapping):
+        for key in ("parts", "partDetails", "part_details", "items", "results", "records", "rows"):
+            values = body.get(key)
+            if isinstance(values, list):
+                return [item for item in values if isinstance(item, Mapping)]
+    return []
+
+
+def _requested_parts(
+    payload: Any,
+    requested_part_ids: list[str],
+    all_parts_requested: bool,
+) -> list[dict[str, Any]]:
+    parts = _part_items(payload)
+    if all_parts_requested or not requested_part_ids:
+        return [deepcopy(dict(part)) for part in parts]
+    requested = {value.casefold() for value in requested_part_ids}
+    return [
+        deepcopy(dict(part))
+        for part in parts
+        if (
+            _first_text(
+                part,
+                "partNumber",
+                "part_number",
+                "sourcePartNumber",
+                "source_part_number",
+                "id",
+                "partId",
+            )
+            or ""
+        ).casefold()
+        in requested
+    ]
 
 
 def _reported_article_count(envelope: Mapping[str, Any]) -> int | None:
@@ -698,4 +1035,9 @@ def _is_retryable(error: Exception) -> bool:
     return any(f"AutoAPI returned HTTP status {status}" in message for status in (408, 425, 429, 500, 502, 503, 504))
 
 
-__all__ = ["AutoAPICatalog", "AutoAPIConnector", "AutoAPIVehicleBundle"]
+__all__ = [
+    "AutoAPICatalog",
+    "AutoAPIConnector",
+    "AutoAPIVehicleBundle",
+    "fetch_required_source_resources",
+]
