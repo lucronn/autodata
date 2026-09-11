@@ -141,6 +141,15 @@ def _flatten_articles(catalog: Iterable[Mapping[str, Any]]) -> list[dict[str, An
             "operation_category",
             "vehicle_identity",
             "source_watermark",
+            "source_version",
+            "watermark",
+            "evidence_ids",
+            "evidence_id",
+            "components",
+            "component_keys",
+            "covered_components",
+            "visuals",
+            "source_visuals",
         ):
             if key not in article and key in record:
                 article[key] = record[key]
@@ -149,13 +158,38 @@ def _flatten_articles(catalog: Iterable[Mapping[str, Any]]) -> list[dict[str, An
 
 
 def _article_components(article: Mapping[str, Any]) -> set[str]:
-    values: list[Any] = [article.get("component"), article.get("component_key"), article.get("components"), article.get("title"), article.get("bucket")]
-    text = " ".join(str(value) for value in values if value is not None).casefold()
-    return set(_component_matches(text))
+    components: set[str] = set()
+    for key in (
+        "component",
+        "component_key",
+        "components",
+        "component_keys",
+        "covered_components",
+    ):
+        for value in _component_values(article.get(key)):
+            components.update(_component_matches(value))
+    for operation in _article_operations(article):
+        for value in _component_values(operation.get("components")):
+            components.update(_component_matches(value))
+        components.update(_component_matches(operation.get("component")))
+    for key in ("title", "bucket"):
+        components.update(_component_matches(article.get(key, "")))
+    return components
 
 
 def _component_matches(value: Any) -> list[str]:
     """Match natural component phrases after punctuation/spacing normalization."""
+
+    if isinstance(value, Mapping):
+        values: list[str] = []
+        for key in ("component", "component_key", "name", "value", "title"):
+            values.extend(_component_matches(value.get(key)))
+        return list(dict.fromkeys(values))
+    if isinstance(value, (list, tuple, set)):
+        values: list[str] = []
+        for item in value:
+            values.extend(_component_matches(item))
+        return list(dict.fromkeys(values))
 
     normalized = re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
     matches: list[tuple[int, int, int, str]] = []
@@ -175,6 +209,20 @@ def _component_matches(value: Any) -> list[str]:
             found.append(canonical)
             occupied.append((start, end))
     return found
+
+
+def _component_values(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [item for nested in value for item in _component_values(nested)]
+    if isinstance(value, Mapping):
+        return [
+            nested
+            for key in ("component", "component_key", "name", "value", "title")
+            for nested in _component_values(value.get(key))
+        ]
+    return [value]
 
 
 def _article_score(article: Mapping[str, Any], component: str) -> int:
@@ -214,7 +262,7 @@ def _calculate_labor(selected: Mapping[str, Mapping[str, Any]]) -> tuple[dict[st
                 reasons.append(f"unknown_duration:{operation_id}")
             else:
                 standalone += duration
-            evidence = sorted({str(item) for item in raw.get("evidence_ids", _article_evidence_ids(article)) if str(item).strip()})
+            evidence = _operation_evidence_ids(raw, article)
             current = merged.get(operation_id)
             if current is None:
                 merged[operation_id] = {"operation_id": operation_id, "action": action, "duration_hours": float(duration) if duration is not None else None, "components": [component], "evidence_ids": evidence, "origin": "source_operation"}
@@ -289,13 +337,171 @@ def _collect_images(articles: Iterable[Mapping[str, Any]]) -> list[dict[str, Any
     return images
 
 
+def _vectorize_selected_visuals(
+    selected_records: Iterable[Mapping[str, Any]],
+    *,
+    vectorizer: Any | None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Redraw only source-backed images and return linked immutable refs."""
+
+    from .visual_vectorization import DeterministicLocalVectorizer, vectorize_source_diagram
+
+    active_vectorizer = vectorizer
+    artifacts: list[dict[str, Any]] = []
+    review_reasons: set[str] = set()
+    seen: set[tuple[str, str]] = set()
+    for record in selected_records:
+        article = record["article"]
+        article_id = str(article.get("article_id", "")).strip()
+        for visual in _article_visuals(article):
+            source_bytes = visual.get("source_bytes", visual.get("bytes", visual.get("content")))
+            if isinstance(source_bytes, bytearray):
+                source_bytes = bytes(source_bytes)
+            source_uri = str(
+                visual.get("source_uri") or visual.get("uri") or visual.get("url") or ""
+            ).strip()
+            if source_bytes is None:
+                continue
+            if not isinstance(source_bytes, bytes) or not source_bytes:
+                review_reasons.add("visual_source_bytes_missing")
+                continue
+            if not source_uri:
+                review_reasons.add("visual_source_uri_missing")
+                continue
+            identity = (hashlib.sha256(source_bytes).hexdigest(), source_uri)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            if active_vectorizer is None:
+                active_vectorizer = DeterministicLocalVectorizer()
+            try:
+                raw_artifact = vectorize_source_diagram(
+                    {"source_bytes": source_bytes, "source_uri": source_uri},
+                    vectorizer=active_vectorizer,
+                )
+            except Exception:
+                review_reasons.add("visual_vectorization_failed")
+                continue
+            artifact = dict(raw_artifact)
+            source_sha256 = str(
+                artifact.get("source_sha256") or hashlib.sha256(source_bytes).hexdigest()
+            )
+            derived_bytes = artifact.get("derived_bytes")
+            if isinstance(derived_bytes, str):
+                derived_bytes = derived_bytes.encode("utf-8")
+            derived_sha256 = str(artifact.get("derived_sha256") or "")
+            if not derived_sha256 and isinstance(derived_bytes, bytes):
+                derived_sha256 = hashlib.sha256(derived_bytes).hexdigest()
+            source_artifact_id = str(
+                artifact.get("source_artifact_id") or f"visual-source:{source_sha256}"
+            )
+            derived_artifact_id = str(
+                artifact.get("derived_artifact_id")
+                or f"visual-derived:{derived_sha256 or source_sha256}"
+            )
+            source_key = str(
+                artifact.get("source_artifact_key") or artifact.get("source_object_key") or ""
+            ).strip()
+            derived_key = str(
+                artifact.get("derived_artifact_key") or artifact.get("derived_object_key") or ""
+            ).strip()
+            evidence_ids = sorted(
+                set(_string_ids(visual.get("evidence_ids")))
+                | set(_string_ids(visual.get("evidence_id")))
+                | set(_article_evidence_ids(article))
+            )
+            source_ref = {
+                "artifact_id": source_artifact_id,
+                "object_key": source_key,
+                "uri": source_uri,
+                "article_id": article_id,
+                "evidence_ids": evidence_ids,
+            }
+            source_ref = {key: value for key, value in source_ref.items() if value not in (None, "")}
+            derived_ref = {
+                "artifact_id": derived_artifact_id,
+                "source_artifact_id": source_artifact_id,
+                "object_key": derived_key,
+                "media_type": str(artifact.get("media_type") or "image/svg+xml"),
+                "review_state": "pending",
+                "label": "AI-enhanced / UNREVIEWED",
+            }
+            derived_ref = {key: value for key, value in derived_ref.items() if value not in (None, "")}
+            artifact.update(
+                {
+                    "source_artifact_id": source_artifact_id,
+                    "derived_artifact_id": derived_artifact_id,
+                    "source_artifact_key": source_key,
+                    "derived_artifact_key": derived_key,
+                    "source_object_key": source_key,
+                    "derived_object_key": derived_key,
+                    "source_uri": source_uri,
+                    "source_article_ids": [article_id] if article_id else [],
+                    "evidence_ids": evidence_ids,
+                    "review_state": "pending",
+                    "label": "AI-enhanced / UNREVIEWED",
+                    "requires_review": True,
+                    "source_ref": source_ref,
+                    "derived_ref": derived_ref,
+                }
+            )
+            # Binary payloads remain in the storage/vectorizer boundary; the
+            # quote and persistence contracts carry references and metadata.
+            artifact.pop("derived_bytes", None)
+            artifacts.append(artifact)
+            review_reasons.add("visual_requires_review")
+    return artifacts, sorted(review_reasons)
+
+
+def _article_visuals(article: Mapping[str, Any]) -> list[dict[str, Any]]:
+    values: list[Any] = []
+    for key in ("source_visual", "source_visuals", "visuals", "images", "diagrams"):
+        value = article.get(key, [])
+        if isinstance(value, Mapping):
+            values.append(value)
+        elif isinstance(value, list):
+            values.extend(value)
+    if article.get("source_bytes") is not None or article.get("source_uri"):
+        values.append(article)
+    return [dict(value) for value in values if isinstance(value, Mapping)]
+
+
 def _article_evidence_ids(article: Mapping[str, Any]) -> list[str]:
+    evidence_ids = set(_string_ids(article.get("evidence_ids")))
+    evidence_ids.update(_string_ids(article.get("evidence_id")))
     evidence = article.get("evidence", [])
     if isinstance(evidence, Mapping):
         evidence = [evidence]
-    if not isinstance(evidence, list):
-        evidence = []
-    return [str(item.get("evidence_id")) for item in evidence if isinstance(item, Mapping) and item.get("evidence_id")]
+    if isinstance(evidence, (str, int)):
+        evidence = [evidence]
+    if isinstance(evidence, list):
+        for item in evidence:
+            if isinstance(item, Mapping):
+                evidence_ids.update(_string_ids(item.get("evidence_ids")))
+                evidence_ids.update(_string_ids(item.get("evidence_id") or item.get("id")))
+            else:
+                evidence_ids.update(_string_ids(item))
+    return sorted(evidence_ids)
+
+
+def _string_ids(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, Mapping):
+        return _string_ids(value.get("evidence_ids") or value.get("evidence_id") or value.get("id"))
+    if isinstance(value, (list, tuple, set)):
+        return [item for nested in value for item in _string_ids(nested)]
+    value = str(value).strip()
+    return [value] if value else []
+
+
+def _operation_evidence_ids(raw: Mapping[str, Any], article: Mapping[str, Any]) -> list[str]:
+    if "evidence_ids" in raw or "evidence_id" in raw:
+        return sorted(
+            set(_string_ids(raw.get("evidence_ids")))
+            | set(_string_ids(raw.get("evidence_id")))
+        )
+    return _article_evidence_ids(article)
 
 
 def _stable_operation_id(raw: Mapping[str, Any], action: str, component: str, index: int) -> str:
@@ -312,7 +518,9 @@ def _decimal_hours(value: Any) -> Decimal | None:
         parsed = Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
-    return parsed if parsed >= 0 else None
+    if not parsed.is_finite() or parsed < 0:
+        return None
+    return parsed
 
 
 def _empty_labor() -> dict[str, Any]:
@@ -338,6 +546,7 @@ def build_quote_and_procedure(
     articles: Iterable[Mapping[str, Any]],
     *,
     mercury_client: Any | None = None,
+    vectorizer: Any | None = None,
 ) -> dict[str, Any]:
     """Build a deterministic quote and an evidence-linked procedure.
 
@@ -429,8 +638,14 @@ def build_quote_and_procedure(
         for record in selected_records
         if not record["requested"] and record["category"] == "recommended"
     )
-    unknown_price_ids = list(parts.get("unknown_price_ids", []))
-    public_parts = {key: value for key, value in parts.items() if key != "unknown_price_ids"}
+    parts_review_reasons = list(parts.get("review_reasons", []))
+    public_parts = {key: value for key, value in parts.items() if key != "review_reasons"}
+    source_images = _collect_images(record["article"] for record in selected_records)
+    visual_artifacts, visual_review_reasons = _vectorize_selected_visuals(
+        selected_records, vectorizer=vectorizer
+    )
+    source_visual_refs = [artifact["source_ref"] for artifact in visual_artifacts]
+    derived_visual_refs = [artifact["derived_ref"] for artifact in visual_artifacts]
     quote = {
         "vehicle": dict(vehicle),
         "required_hours": labor["required_hours"],
@@ -453,6 +668,9 @@ def build_quote_and_procedure(
         "requested_components": requested_components,
         "required_supporting_components": required_supporting,
         "recommended_supporting_components": recommended_supporting,
+        "visual_artifacts": visual_artifacts,
+        "source_visual_refs": source_visual_refs,
+        "derived_visual_refs": derived_visual_refs,
     }
     quote["quote_identity"] = _json_fingerprint(quote)
 
@@ -461,23 +679,38 @@ def build_quote_and_procedure(
         labor["operations"],
         title=_quote_title(requested_components, required_supporting, recommended_supporting),
     )
-    procedure = compose_procedure_revision(
-        {**quote, "procedure": deterministic_procedure},
-        [record["article"] for record in selected_records],
-        mercury_client=mercury_client,
-    )
-    review_reasons = sorted(set(selection_reasons + labor_reasons))
-    if unknown_price_ids:
-        review_reasons.extend(
-            f"unknown_part_price:{part_id}" for part_id in unknown_price_ids
+    composition_failed = False
+    if mercury_client is None:
+        procedure = compose_procedure_revision(
+            {**quote, "procedure": deterministic_procedure},
+            [record["article"] for record in selected_records],
         )
+    else:
+        try:
+            procedure = compose_procedure_revision(
+                {**quote, "procedure": deterministic_procedure},
+                [record["article"] for record in selected_records],
+                mercury_client=mercury_client,
+            )
+        except Exception:
+            # A model/provider failure must not discard the deterministic quote
+            # and source-bound procedure already calculated by the application.
+            procedure = compose_procedure_revision(
+                {**quote, "procedure": deterministic_procedure},
+                [record["article"] for record in selected_records],
+            )
+            composition_failed = True
+    review_reasons = sorted(set(selection_reasons + labor_reasons))
+    review_reasons.extend(parts_review_reasons)
+    review_reasons.extend(visual_review_reasons)
+    if composition_failed:
+        review_reasons.append("procedure_composition_failed")
     if procedure.get("requires_review"):
         review_reasons.append("procedure_requires_review")
     # unknown_price_ids is diagnostic input, not part of the public quote
     # contract.
     parts = public_parts
     status = "ready" if not review_reasons else "needs_review"
-    source_images = _collect_images(record["article"] for record in selected_records)
     procedure_revision = str(procedure.get("revision_id") or "")
     derived_id = _quote_derived_article_id(
         vehicle,
@@ -495,7 +728,7 @@ def build_quote_and_procedure(
             "quote_identity": quote["quote_identity"],
             "procedure_revision": procedure_revision,
             "procedure": procedure,
-            "visual_artifacts": [],
+            "visual_artifacts": visual_artifacts,
         }
     )
     result = {
@@ -512,7 +745,9 @@ def build_quote_and_procedure(
         "procedure": procedure,
         "parts": parts,
         "images": source_images,
-        "visual_artifacts": [],
+        "visual_artifacts": visual_artifacts,
+        "source_visual_refs": source_visual_refs,
+        "derived_visual_refs": derived_visual_refs,
         "source_watermarks": watermarks,
         "quote_identity": quote["quote_identity"],
         "procedure_revision": procedure_revision,
@@ -530,7 +765,7 @@ def build_quote_and_procedure(
             "source_watermarks": watermarks,
             "quote_identity": quote["quote_identity"],
             "procedure_revision": procedure_revision,
-            "visual_artifacts": [],
+            "visual_artifacts": visual_artifacts,
         },
     }
     # Keep the source selection available to the procedure validator without
@@ -613,6 +848,7 @@ def compose_procedure_revision(
             selected_articles,
             labor,
             deterministic,
+            quote_context={**dict(quote), "procedure": deterministic},
         )
     else:
         procedure = deterministic
@@ -643,6 +879,7 @@ def _select_quote_articles(
     selected_by_component: dict[str, dict[str, Any]] = {}
     reasons: list[str] = []
     selected_ids: set[str] = set()
+    selected_records_by_id: dict[str, dict[str, Any]] = {}
     for component in requested_components:
         candidates = [article for article in articles if component in _article_components(article)]
         candidates.sort(
@@ -652,15 +889,24 @@ def _select_quote_articles(
             reasons.append(f"missing_article:{component}")
             continue
         article = candidates[0]
+        article_id = str(article.get("article_id", "")).strip()
+        existing = selected_records_by_id.get(article_id) if article_id else None
+        if existing is not None:
+            existing["components"] = sorted(set(existing["components"]) | {component})
+            selected_by_component[component] = existing
+            continue
         record = {
             "article": article,
             "component": component,
+            "components": [component],
             "category": "required",
             "requested": True,
         }
         selected.append(record)
         selected_by_component[component] = record
-        selected_ids.add(str(article.get("article_id", "")))
+        if article_id:
+            selected_ids.add(article_id)
+            selected_records_by_id[article_id] = record
 
     for article in articles:
         article_id = str(article.get("article_id", ""))
@@ -679,15 +925,20 @@ def _select_quote_articles(
         )
         if category is None:
             continue
+        support_components = sorted(_article_components(article))
+        if not support_components:
+            support_components = [component]
         selected.append(
             {
                 "article": article,
                 "component": component,
+                "components": support_components,
                 "category": category,
                 "requested": False,
             }
         )
-        selected_ids.add(article_id)
+        if article_id:
+            selected_ids.add(article_id)
     return selected, selected_by_component, reasons
 
 
@@ -697,17 +948,33 @@ def _records_for_quote(quote: Mapping[str, Any], articles: list[dict[str, Any]])
     recommended = {str(value) for value in quote.get("recommended_supporting_components", [])}
     records: list[dict[str, Any]] = []
     for article in articles:
-        component = _article_primary_component(article) or str(article.get("component", ""))
-        category = "required" if component in requested or component in required else "recommended"
+        article_components = _article_components(article)
+        selected_components = article_components & (requested | required | recommended)
+        if selected_components:
+            components = sorted(selected_components)
+        else:
+            primary = _article_primary_component(article) or str(article.get("component", ""))
+            components = [primary] if primary else []
+        component = components[0] if components else ""
+        category = "required" if article_components & (requested | required) else "recommended"
         records.append(
             {
                 "article": article,
                 "component": component,
+                "components": components,
                 "category": category,
-                "requested": component in requested,
+                "requested": bool(article_components & requested),
             }
         )
     return records
+
+
+def _record_components(record: Mapping[str, Any]) -> list[str]:
+    values = record.get("components")
+    matches = set(_component_matches(values))
+    if not matches:
+        matches.update(_component_matches(record.get("component", "")))
+    return sorted(matches)
 
 
 def _calculate_categorized_labor(
@@ -720,7 +987,8 @@ def _calculate_categorized_labor(
     reasons: list[str] = []
     for record in selected_records:
         article = record["article"]
-        component = str(record["component"])
+        record_components = _record_components(record)
+        component = record_components[0] if record_components else str(record.get("component", ""))
         default_category = str(record.get("category") or "required")
         operations = article.get("operations", article.get("labor_operations", []))
         if not isinstance(operations, list) or not operations:
@@ -739,6 +1007,11 @@ def _calculate_categorized_labor(
             operation_id = _stable_operation_id(raw, action, component, index)
             scope = _shared_work_scope(raw, operation_id, component, index)
             identity = (operation_id, scope)
+            operation_components = sorted(
+                set(_component_matches(raw.get("components")))
+                or set(record_components)
+                or {component}
+            )
             duration = _decimal_hours(
                 raw.get("duration_hours", raw.get("hours", raw.get("labor_hours")))
             )
@@ -752,11 +1025,7 @@ def _calculate_categorized_labor(
                 else:
                     recommended_hours += duration
             evidence = sorted(
-                {
-                    str(value)
-                    for value in raw.get("evidence_ids", _article_evidence_ids(article))
-                    if str(value).strip()
-                }
+                set(_operation_evidence_ids(raw, article))
             )
             current = merged.get(identity)
             if current is None:
@@ -765,7 +1034,7 @@ def _calculate_categorized_labor(
                     "action": action,
                     "duration_hours": float(duration) if duration is not None else None,
                     "raw_hours": float(duration) if duration is not None else None,
-                    "components": [component],
+                    "components": operation_components,
                     "category": category,
                     "categories": [category],
                     "shared_work_scope": scope,
@@ -774,7 +1043,7 @@ def _calculate_categorized_labor(
                     "origin": "source_operation",
                     "contributions": [
                         {
-                            "component": component,
+                            "components": operation_components,
                             "category": category,
                             "duration_hours": float(duration) if duration is not None else None,
                             "source_article_id": str(article.get("article_id", "")),
@@ -789,7 +1058,9 @@ def _calculate_categorized_labor(
                     and current["duration_hours"] != float(duration)
                 ):
                     reasons.append(f"conflicting_duration:{operation_id}")
-                current["components"] = sorted(set(current["components"]) | {component})
+                if _normalize_text(current["action"]) != _normalize_text(action):
+                    reasons.append(f"conflicting_action:{operation_id}")
+                current["components"] = sorted(set(current["components"]) | set(operation_components))
                 current["categories"] = sorted(set(current["categories"]) | {category})
                 current["category"] = (
                     "required" if "required" in current["categories"] else "recommended"
@@ -802,7 +1073,7 @@ def _calculate_categorized_labor(
                     current["raw_hours"] = float(Decimal(str(current["raw_hours"])) + duration)
                 current["contributions"].append(
                     {
-                        "component": component,
+                        "components": operation_components,
                         "category": category,
                         "duration_hours": float(duration) if duration is not None else None,
                         "source_article_id": str(article.get("article_id", "")),
@@ -820,7 +1091,14 @@ def _calculate_categorized_labor(
     overlap_operations: list[dict[str, Any]] = []
     for operation in merged.values():
         contributions = operation["contributions"]
-        components = sorted({str(item["component"]) for item in contributions})
+        components = sorted(
+            {
+                component
+                for item in contributions
+                for component in item.get("components", [])
+            }
+        )
+        components = sorted(set(components) | set(operation["components"]))
         if len(components) < 2:
             continue
         raw_hours = sum(
@@ -831,6 +1109,8 @@ def _calculate_categorized_labor(
         if counted_hours is None:
             continue
         deducted_hours = raw_hours - counted_hours
+        if deducted_hours <= 0:
+            continue
         overlap_operations.append(
             {
                 "operation_id": operation["operation_id"],
@@ -851,6 +1131,34 @@ def _calculate_categorized_labor(
         operation for operation in operations if operation["category"] == "recommended"
     ]
     has_invalid = bool(reasons)
+    counted_required = sum(
+        (
+            Decimal(str(operation["duration_hours"]))
+            for operation in required_operations
+            if operation["duration_hours"] is not None
+        ),
+        Decimal("0"),
+    )
+    counted_recommended = sum(
+        (
+            Decimal(str(operation["duration_hours"]))
+            for operation in recommended_operations
+            if operation["duration_hours"] is not None
+        ),
+        Decimal("0"),
+    )
+    category_subtotals = {
+        "required": {
+            "raw_hours": float(required_hours),
+            "counted_hours": float(counted_required),
+            "overlap_hours_removed": float(max(Decimal("0"), required_hours - counted_required)),
+        },
+        "recommended": {
+            "raw_hours": float(recommended_hours),
+            "counted_hours": float(counted_recommended),
+            "overlap_hours_removed": float(max(Decimal("0"), recommended_hours - counted_recommended)),
+        },
+    }
     labor = {
         "basis": "one_technician_standard_hours",
         "standalone_hours": float(standalone),
@@ -863,6 +1171,11 @@ def _calculate_categorized_labor(
         "overlap_operations": overlap_operations,
         "required_operations": required_operations,
         "recommended_operations": recommended_operations,
+        "category_subtotals": category_subtotals,
+        "category_hours_after_overlap": {
+            "required": float(counted_required),
+            "recommended": float(counted_recommended),
+        },
         "confidence": 0.0 if has_invalid else 1.0,
         "assumptions": [
             "required and recommended subtotals include their source operations",
@@ -915,7 +1228,10 @@ def _article_primary_component(article: Mapping[str, Any]) -> str:
         if normalized:
             return normalized
     matches = _component_matches(article.get("title", ""))
-    return matches[0] if matches else ""
+    if matches:
+        return matches[0]
+    article_components = sorted(_article_components(article))
+    return article_components[0] if article_components else ""
 
 
 def _support_targets(article: Mapping[str, Any], key: str) -> set[str]:
@@ -986,7 +1302,7 @@ def _empty_parts_quote() -> dict[str, Any]:
 
 def _collect_parts_quote(selected_records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     parts: OrderedDict[str, dict[str, Any]] = OrderedDict()
-    unknown_price_ids: list[str] = []
+    review_reasons: set[str] = set()
     for record in selected_records:
         article = record["article"]
         article_id = str(article.get("article_id", ""))
@@ -1015,17 +1331,23 @@ def _collect_parts_quote(selected_records: Iterable[Mapping[str, Any]]) -> dict[
             ).strip()
             if not part_id:
                 continue
-            amount = _decimal_amount(
-                raw.get("amount", raw.get("price", raw.get("unit_price", raw.get("source_price"))))
+            amount_value = _first_present(
+                raw, ("amount", "price", "unit_price", "source_price")
             )
-            quantity = _decimal_amount(raw.get("quantity", 1)) or Decimal("1")
+            amount = _decimal_amount(amount_value[1]) if amount_value[0] else None
+            if not amount_value[0]:
+                review_reasons.add(f"unknown_part_price:{part_id}")
+            elif amount is None:
+                review_reasons.add(f"invalid_part_price:{part_id}")
+            quantity_value = raw.get("quantity", 1)
+            quantity = _decimal_amount(quantity_value)
+            quantity_invalid = quantity is None
+            if quantity is None:
+                review_reasons.add(f"invalid_part_quantity:{part_id}")
+                quantity = Decimal("1")
             currency = str(raw.get("currency") or article.get("currency") or "USD").upper()
             evidence = sorted(
-                {
-                    str(value)
-                    for value in raw.get("evidence_ids", _article_evidence_ids(article))
-                    if str(value).strip()
-                }
+                set(_operation_evidence_ids(raw, article))
             )
             existing = parts.get(part_id)
             if existing is None:
@@ -1044,6 +1366,7 @@ def _collect_parts_quote(selected_records: Iterable[Mapping[str, Any]]) -> dict[
                     "markup_applied": False,
                     "source_article_ids": [article_id],
                     "evidence_ids": evidence,
+                    "requires_review": (not amount_value[0]) or amount is None or quantity_invalid,
                 }
                 parts[part_id] = {
                     key: value
@@ -1051,6 +1374,16 @@ def _collect_parts_quote(selected_records: Iterable[Mapping[str, Any]]) -> dict[
                     if value not in (None, [], "")
                 }
             else:
+                existing_amount = _decimal_amount(existing.get("amount"))
+                if existing_amount is not None and amount is not None and existing_amount != amount:
+                    existing["amount"] = None
+                    existing["price_conflict"] = True
+                    existing["requires_review"] = True
+                    review_reasons.add(f"conflicting_part_price:{part_id}")
+                if str(existing.get("currency", "USD")) != currency:
+                    existing["currency_conflict"] = True
+                    existing["requires_review"] = True
+                    review_reasons.add(f"conflicting_part_currency:{part_id}")
                 existing["quantity"] = _number_from_decimal(
                     Decimal(str(existing.get("quantity", 1))) + quantity
                 )
@@ -1060,13 +1393,14 @@ def _collect_parts_quote(selected_records: Iterable[Mapping[str, Any]]) -> dict[
                 existing["evidence_ids"] = sorted(
                     set(existing.get("evidence_ids", [])) | set(evidence)
                 )
-            if amount is None:
-                unknown_price_ids.append(part_id)
+                if amount is None and amount_value[0]:
+                    existing["requires_review"] = True
+                    review_reasons.add(f"invalid_part_price:{part_id}")
     subtotal = Decimal("0")
     currencies: set[str] = set()
     for item in parts.values():
         currencies.add(str(item.get("currency", "USD")))
-        if item.get("amount") is not None:
+        if item.get("amount") is not None and not item.get("price_conflict"):
             subtotal += Decimal(str(item["amount"])) * Decimal(str(item.get("quantity", 1)))
     subtotal = subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return {
@@ -1075,7 +1409,7 @@ def _collect_parts_quote(selected_records: Iterable[Mapping[str, Any]]) -> dict[
         "currency": sorted(currencies)[0] if len(currencies) == 1 else "MULTI",
         "price_basis": "source_catalog_only",
         "markup_applied": False,
-        "unknown_price_ids": sorted(set(unknown_price_ids)),
+        "review_reasons": sorted(review_reasons),
     }
 
 
@@ -1086,7 +1420,16 @@ def _decimal_amount(value: Any) -> Decimal | None:
         parsed = Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
-    return parsed if parsed >= 0 else None
+    if not parsed.is_finite() or parsed < 0:
+        return None
+    return parsed
+
+
+def _first_present(raw: Mapping[str, Any], keys: Iterable[str]) -> tuple[bool, Any]:
+    for key in keys:
+        if key in raw:
+            return True, raw[key]
+    return False, None
 
 
 def _number_from_decimal(value: Decimal) -> int | float:
@@ -1153,6 +1496,7 @@ def _collect_safety_warnings(records: Iterable[Mapping[str, Any]]) -> list[dict[
     for record in records:
         article = record["article"]
         article_id = str(article.get("article_id", ""))
+        article_evidence = set(_article_evidence_ids(article))
         values: list[Any] = []
         for key in ("safety_warnings", "safety", "warnings"):
             value = article.get(key, [])
@@ -1163,27 +1507,48 @@ def _collect_safety_warnings(records: Iterable[Mapping[str, Any]]) -> list[dict[
         for raw in values:
             if isinstance(raw, Mapping):
                 message = str(raw.get("message") or raw.get("warning") or raw.get("text") or "").strip()
-                evidence_ids = sorted(
-                    str(value) for value in raw.get("evidence_ids", _article_evidence_ids(article)) if str(value).strip()
-                )
+                explicit_evidence = "evidence_ids" in raw or "evidence_id" in raw
+                requested_evidence = (
+                    set(_string_ids(raw.get("evidence_ids")))
+                    | set(_string_ids(raw.get("evidence_id")))
+                ) if explicit_evidence else article_evidence
+                evidence_ids = sorted(requested_evidence & article_evidence)
+                invalid_evidence = requested_evidence - article_evidence
+                warning_id = str(raw.get("warning_id") or "").strip()
+                source_ids = set(_string_ids(raw.get("source_article_ids")))
+                invalid_source = source_ids and source_ids != {article_id}
+                requires_review = bool(raw.get("requires_review", False)) or not evidence_ids or bool(invalid_evidence) or bool(invalid_source)
             else:
                 message = str(raw).strip()
-                evidence_ids = _article_evidence_ids(article)
+                evidence_ids = sorted(article_evidence)
+                warning_id = ""
+                requires_review = not bool(evidence_ids)
             if not message:
                 continue
+            warning_id = warning_id or _warning_id(article_id, message, evidence_ids)
             key = (message, tuple(evidence_ids))
             warnings.setdefault(
                 key,
                 {
+                    "warning_id": warning_id,
                     "message": message,
                     "source_article_ids": [article_id],
                     "evidence_ids": evidence_ids,
-                    "requires_review": not bool(evidence_ids),
+                    "requires_review": requires_review,
                 },
             )
             if article_id not in warnings[key]["source_article_ids"]:
                 warnings[key]["source_article_ids"].append(article_id)
+            warnings[key]["requires_review"] = warnings[key]["requires_review"] or requires_review
     return list(warnings.values())
+
+
+def _warning_id(article_id: str, message: str, evidence_ids: Iterable[str]) -> str:
+    return f"warning:{_json_fingerprint((article_id, message, sorted(evidence_ids)))[:24]}"
+
+
+def _normalize_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
 
 
 def _quote_title(requested: list[str], required: list[str], recommended: list[str]) -> str:
@@ -1321,6 +1686,7 @@ def compose_procedure_with_llm(
     selected_articles: Iterable[Mapping[str, Any]],
     labor: Mapping[str, Any],
     deterministic_procedure: Mapping[str, Any],
+    quote_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Ask Mercury-2 to consolidate only the already validated source steps."""
 
@@ -1344,15 +1710,16 @@ def compose_procedure_with_llm(
         allowed_evidence_ids.update(article_evidence_ids)
         operations = _article_operations(article)
         for operation in operations:
-            allowed_components.update(
-                _component_matches(operation.get("component", operation.get("components", "")))
-            )
-            if isinstance(operation, Mapping):
-                allowed_evidence_ids.update(
-                    str(value)
-                    for value in operation.get("evidence_ids", [])
-                    if str(value).strip()
-                )
+            allowed_components.update(_component_matches(operation.get("component")))
+            allowed_components.update(_component_matches(operation.get("components")))
+            allowed_evidence_ids.update(_operation_evidence_ids(operation, article))
+        source_record = {
+            "article": article,
+            "component": _article_primary_component(article),
+            "components": sorted(article_components),
+            "category": "required",
+            "requested": True,
+        }
         article_payload.append(
             {
                 "article_id": article_id,
@@ -1364,19 +1731,26 @@ def compose_procedure_with_llm(
                 "evidence_ids": sorted(
                     set(article_evidence_ids)
                     | {
-                        str(value)
+                        evidence_id
                         for operation in operations
-                        if isinstance(operation, Mapping)
-                        for value in operation.get("evidence_ids", [])
-                        if str(value).strip()
+                        for evidence_id in _operation_evidence_ids(operation, article)
                     }
                 ),
+                "safety_warnings": _collect_safety_warnings([source_record]),
             }
         )
+    complete_quote = dict(quote_context or {})
+    complete_quote.update(
+        {
+            "vehicle": dict(vehicle),
+            "labor": dict(labor),
+            "procedure": dict(deterministic_procedure),
+        }
+    )
     response = compose_procedure_draft(
         client,
         vehicle=vehicle,
-        quote={"labor": dict(labor)},
+        quote=complete_quote,
         articles=article_payload,
     )
     return _validate_llm_procedure(
@@ -1387,6 +1761,7 @@ def compose_procedure_with_llm(
         allowed_evidence_ids=allowed_evidence_ids,
         allowed_components=allowed_components,
         labor=labor,
+        deterministic_procedure=deterministic_procedure,
     )
 
 
@@ -1406,11 +1781,16 @@ def _validate_llm_procedure(
     allowed_evidence_ids: set[str],
     allowed_components: set[str],
     labor: Mapping[str, Any],
+    deterministic_procedure: Mapping[str, Any],
 ) -> dict[str, Any]:
     if not isinstance(response, Mapping):
         raise ValueError("Mercury-2 procedure response must be an object")
-    if not str(response.get("title", "")).strip() or not isinstance(response.get("steps"), list):
-        raise ValueError("Mercury-2 procedure response requires title and steps")
+    if (
+        not str(response.get("title", "")).strip()
+        or not isinstance(response.get("steps"), list)
+        or not isinstance(response.get("warnings"), list)
+    ):
+        raise ValueError("Mercury-2 procedure response requires title, steps, and warnings")
     top_level_allowed = {"title", "steps", "warnings", "requires_review", "excluded_operation_ids"}
     unexpected = set(response) - top_level_allowed
     if unexpected:
@@ -1419,13 +1799,13 @@ def _validate_llm_procedure(
     raw_excluded = response.get("excluded_operation_ids", [])
     if not isinstance(raw_excluded, list):
         raise ValueError("Mercury-2 excluded_operation_ids must be an array")
-    excluded_operation_ids = {str(value).strip() for value in raw_excluded if str(value).strip()}
-    labor_operations = [
-        operation
-        for operation in labor.get("operations", [])
-        if isinstance(operation, Mapping) and str(operation.get("operation_id", "")).strip()
-    ] if isinstance(labor.get("operations", []), list) else []
-    known_operation_ids = {str(operation["operation_id"]) for operation in labor_operations}
+    if any(not isinstance(value, str) or not value.strip() for value in raw_excluded):
+        raise ValueError("Mercury-2 excluded_operation_ids must contain non-empty strings")
+    excluded_operation_ids = {value.strip() for value in raw_excluded}
+    if "requires_review" in response and not isinstance(response["requires_review"], bool):
+        raise ValueError("Mercury-2 procedure requires_review must be a boolean")
+    operation_provenance = _operation_provenance(labor, articles_by_id)
+    known_operation_ids = set(operation_provenance)
     if not excluded_operation_ids.issubset(known_operation_ids):
         raise ValueError("Mercury-2 procedure excludes an unsupported labor operation")
 
@@ -1448,14 +1828,38 @@ def _validate_llm_procedure(
             raise ValueError(
                 f"Mercury-2 procedure step {index} has unsupported fields: {sorted(unexpected_step)}"
             )
+        if not isinstance(raw_step.get("operation_id"), str):
+            raise ValueError(f"Mercury-2 procedure step {index} requires operation provenance")
+        operation_id = raw_step["operation_id"].strip()
+        if not operation_id:
+            raise ValueError(f"Mercury-2 procedure step {index} requires operation provenance")
+        if operation_id not in operation_provenance:
+            raise ValueError(f"Mercury-2 procedure step {index} references an unsupported operation")
+        if operation_id in represented_operation_ids:
+            raise ValueError(f"Mercury-2 procedure step {index} repeats an operation")
+        expected = operation_provenance[operation_id]
         article_ids = _string_list(raw_step.get("source_article_ids"), "source article references", index)
         evidence_ids = _string_list(raw_step.get("evidence_ids"), "evidence references", index)
-        if not article_ids or not set(article_ids).issubset(allowed_article_ids):
+        if not article_ids:
+            raise ValueError(f"Mercury-2 procedure step {index} has no article provenance")
+        if not evidence_ids:
+            raise ValueError(f"Mercury-2 procedure step {index} has no evidence provenance")
+        if set(article_ids) != set(expected["source_article_ids"]):
+            raise ValueError(f"Mercury-2 procedure step {index} has invalid article provenance")
+        if not set(article_ids).issubset(allowed_article_ids):
             raise ValueError(f"Mercury-2 procedure step {index} has invalid article references")
-        if not evidence_ids or not set(evidence_ids).issubset(allowed_evidence_ids):
+        if set(evidence_ids) != set(expected["evidence_ids"]):
+            raise ValueError(f"Mercury-2 procedure step {index} has invalid evidence provenance")
+        if not set(evidence_ids).issubset(allowed_evidence_ids):
             raise ValueError(f"Mercury-2 procedure step {index} has invalid evidence references")
-        action = str(raw_step.get("action", "")).strip()
-        components = [str(value).strip() for value in raw_step.get("components", []) if str(value).strip()] if isinstance(raw_step.get("components"), list) else []
+        if not isinstance(raw_step.get("action"), str):
+            raise ValueError(f"Mercury-2 procedure step {index} requires an action")
+        action = raw_step["action"].strip()
+        components = [
+            value.strip() for value in raw_step.get("components", [])
+        ] if isinstance(raw_step.get("components"), list) and all(
+            isinstance(value, str) and value.strip() for value in raw_step.get("components", [])
+        ) else []
         if not action or not components:
             raise ValueError(f"Mercury-2 procedure step {index} is incomplete")
         unsupported_components = set(components) - allowed_components
@@ -1463,35 +1867,36 @@ def _validate_llm_procedure(
             raise ValueError(
                 f"Mercury-2 procedure step {index} has unsupported components: {sorted(unsupported_components)}"
             )
-        source_components = set().union(
-            *(_article_components(articles_by_id[article_id]) for article_id in article_ids)
-        )
-        if not set(components).issubset(source_components):
-            raise ValueError(f"Mercury-2 procedure step {index} is not grounded in its source articles")
         for article_id in article_ids:
             article_vehicle = articles_by_id[article_id].get("vehicle") or articles_by_id[article_id].get("vehicle_identity")
             if isinstance(article_vehicle, Mapping) and not _vehicle_scopes_match(vehicle, article_vehicle):
                 raise ValueError(f"Mercury-2 procedure step {index} has a vehicle scope mismatch")
-        category = _operation_category(raw_step, "required")
-        if str(raw_step.get("category", "")).strip() and str(raw_step["category"]).casefold() not in {"required", "recommended"}:
+        raw_category = raw_step.get("category")
+        if not isinstance(raw_category, str):
+            raise ValueError(f"Mercury-2 procedure step {index} requires category provenance")
+        category = raw_category.strip().casefold()
+        if category not in {"required", "recommended"}:
             raise ValueError(f"Mercury-2 procedure step {index} has an unsupported category")
-        operation_id = str(raw_step.get("operation_id", "")).strip()
-        if operation_id:
-            if operation_id not in known_operation_ids:
-                raise ValueError(f"Mercury-2 procedure step {index} references an unsupported operation")
-            represented_operation_ids.add(operation_id)
+        if category != expected["category"]:
+            raise ValueError(f"Mercury-2 procedure step {index} has invalid category provenance")
+        if _normalize_text(action) != _normalize_text(expected["action"]):
+            raise ValueError(f"Mercury-2 procedure step {index} has invalid action provenance")
+        if set(components) != set(expected["components"]):
+            raise ValueError(f"Mercury-2 procedure step {index} has invalid component provenance")
+        if "requires_review" in raw_step and not isinstance(raw_step["requires_review"], bool):
+            raise ValueError(f"Mercury-2 procedure step {index} requires a boolean review flag")
+        represented_operation_ids.add(operation_id)
         step = {
             "sequence": index,
             "action": action,
             "components": sorted(set(components)),
-            "category": category,
+            "category": expected["category"],
             "source_article_ids": sorted(set(article_ids)),
             "evidence_ids": sorted(set(evidence_ids)),
             "origin": "llm_wording",
             "requires_review": bool(raw_step.get("requires_review", False)),
         }
-        if operation_id:
-            step["operation_id"] = operation_id
+        step["operation_id"] = operation_id
         validated_steps.append(step)
 
     missing_operation_ids = known_operation_ids - represented_operation_ids - excluded_operation_ids
@@ -1499,10 +1904,18 @@ def _validate_llm_procedure(
         raise ValueError(
             f"Mercury-2 procedure omits labor operations: {sorted(missing_operation_ids)}"
         )
+    expected_warnings = {
+        str(warning.get("warning_id")): warning
+        for warning in deterministic_procedure.get("warnings", [])
+        if isinstance(warning, Mapping) and str(warning.get("warning_id", "")).strip()
+    }
     warnings = _validate_llm_warnings(
-        response.get("warnings", []), allowed_article_ids, allowed_evidence_ids
+        response["warnings"],
+        expected_warnings,
+        allowed_article_ids,
+        allowed_evidence_ids,
     )
-    requires_review = bool(response.get("requires_review", False)) or any(
+    requires_review = bool(response.get("requires_review", False)) or bool(excluded_operation_ids) or any(
         step["requires_review"] for step in validated_steps
     ) or any(warning["requires_review"] for warning in warnings)
     return {
@@ -1520,38 +1933,128 @@ def _validate_llm_procedure(
 def _string_list(value: Any, label: str, index: int) -> list[str]:
     if not isinstance(value, list):
         raise ValueError(f"Mercury-2 procedure step {index} requires {label} array")
-    return [str(item).strip() for item in value if str(item).strip()]
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError(f"Mercury-2 procedure step {index} requires non-empty string {label}")
+    return [item.strip() for item in value]
+
+
+def _operation_provenance(
+    labor: Mapping[str, Any], articles_by_id: Mapping[str, Mapping[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    operations = labor.get("operations", [])
+    if not isinstance(operations, list):
+        operations = []
+    provenance: dict[str, dict[str, Any]] = {}
+    for raw_operation in operations:
+        if not isinstance(raw_operation, Mapping):
+            continue
+        operation_id = str(raw_operation.get("operation_id", "")).strip()
+        if not operation_id:
+            continue
+        source_article_ids = set(_string_ids(raw_operation.get("source_article_ids")))
+        evidence_ids = set(_string_ids(raw_operation.get("evidence_ids")))
+        normalized_components = set(_component_matches(raw_operation.get("components")))
+        category = str(raw_operation.get("category", "required")).strip().casefold()
+        action = str(raw_operation.get("action", "")).strip()
+        for article_id, article in articles_by_id.items():
+            for index, source_operation in enumerate(_article_operations(article)):
+                source_action = str(
+                    source_operation.get("action") or source_operation.get("name") or ""
+                ).strip()
+                source_id = _stable_operation_id(
+                    source_operation,
+                    source_action,
+                    _article_primary_component(article),
+                    index,
+                )
+                if source_id != operation_id:
+                    continue
+                source_article_ids.add(article_id)
+                evidence_ids.update(_operation_evidence_ids(source_operation, article))
+                if not action:
+                    action = source_action
+                source_components = _component_matches(source_operation.get("components"))
+                normalized_components.update(source_components or _article_components(article))
+        if not normalized_components:
+            for article_id in source_article_ids:
+                if article_id in articles_by_id:
+                    normalized_components.update(_article_components(articles_by_id[article_id]))
+        if not action:
+            action = operation_id.replace("-", " ")
+        provenance[operation_id] = {
+            "operation_id": operation_id,
+            "action": action,
+            "components": sorted(normalized_components),
+            "category": category if category in {"required", "recommended"} else "required",
+            "source_article_ids": sorted(source_article_ids),
+            "evidence_ids": sorted(evidence_ids),
+        }
+    return provenance
 
 
 def _validate_llm_warnings(
-    raw_warnings: Any, allowed_article_ids: set[str], allowed_evidence_ids: set[str]
+    raw_warnings: Any,
+    expected_warnings: Mapping[str, Mapping[str, Any]],
+    allowed_article_ids: set[str],
+    allowed_evidence_ids: set[str],
 ) -> list[dict[str, Any]]:
     if not isinstance(raw_warnings, list):
         raise ValueError("Mercury-2 procedure warnings must be an array")
     warnings: list[dict[str, Any]] = []
+    represented_warning_ids: set[str] = set()
     for index, raw_warning in enumerate(raw_warnings, 1):
-        if isinstance(raw_warning, Mapping):
-            message = str(raw_warning.get("message") or raw_warning.get("warning") or "").strip()
-            article_ids = _string_list(raw_warning.get("source_article_ids", []), "warning article references", index)
-            evidence_ids = _string_list(raw_warning.get("evidence_ids", []), "warning evidence references", index)
-            if article_ids and not set(article_ids).issubset(allowed_article_ids):
-                raise ValueError(f"Mercury-2 warning {index} has invalid article references")
-            if evidence_ids and not set(evidence_ids).issubset(allowed_evidence_ids):
-                raise ValueError(f"Mercury-2 warning {index} has invalid evidence references")
-        else:
-            message = str(raw_warning).strip()
-            article_ids = []
-            evidence_ids = []
+        if not isinstance(raw_warning, Mapping):
+            raise ValueError(f"Mercury-2 warning {index} must be a structured object")
+        unexpected = set(raw_warning) - {
+            "warning_id",
+            "message",
+            "source_article_ids",
+            "evidence_ids",
+            "requires_review",
+        }
+        if unexpected:
+            raise ValueError(f"Mercury-2 warning {index} has unsupported fields: {sorted(unexpected)}")
+        warning_id = str(raw_warning.get("warning_id", "")).strip()
+        expected = expected_warnings.get(warning_id)
+        if expected is None:
+            raise ValueError(f"Mercury-2 warning {index} has unsupported provenance")
+        if not isinstance(raw_warning.get("warning_id"), str) or not isinstance(raw_warning.get("message"), str):
+            raise ValueError(f"Mercury-2 warning {index} requires string identity and message")
+        message = raw_warning["message"].strip()
+        article_ids = _string_list(raw_warning.get("source_article_ids"), "warning article references", index)
+        evidence_ids = _string_list(raw_warning.get("evidence_ids"), "warning evidence references", index)
+        if set(article_ids) != set(expected.get("source_article_ids", [])):
+            raise ValueError(f"Mercury-2 warning {index} has invalid article provenance")
+        if set(evidence_ids) != set(expected.get("evidence_ids", [])):
+            raise ValueError(f"Mercury-2 warning {index} has invalid evidence provenance")
+        if not set(article_ids).issubset(allowed_article_ids):
+            raise ValueError(f"Mercury-2 warning {index} has invalid article references")
+        if not set(evidence_ids).issubset(allowed_evidence_ids):
+            raise ValueError(f"Mercury-2 warning {index} has invalid evidence references")
+        if _normalize_text(message) != _normalize_text(expected.get("message", "")):
+            raise ValueError(f"Mercury-2 warning {index} has invalid message provenance")
+        if warning_id in represented_warning_ids:
+            raise ValueError(f"Mercury-2 warning {index} repeats a warning")
+        if not isinstance(raw_warning.get("requires_review"), bool):
+            raise ValueError(f"Mercury-2 warning {index} requires a boolean review flag")
+        requires_review = raw_warning["requires_review"] or not bool(evidence_ids)
+        if expected.get("requires_review") and not requires_review:
+            raise ValueError(f"Mercury-2 warning {index} cannot clear a source review requirement")
         if not message:
             raise ValueError(f"Mercury-2 warning {index} is incomplete")
+        represented_warning_ids.add(warning_id)
         warnings.append(
             {
+                "warning_id": warning_id,
                 "message": message,
                 "source_article_ids": sorted(set(article_ids)),
                 "evidence_ids": sorted(set(evidence_ids)),
-                "requires_review": not bool(evidence_ids),
+                "requires_review": requires_review,
             }
         )
+    missing_warning_ids = set(expected_warnings) - represented_warning_ids
+    if missing_warning_ids:
+        raise ValueError(f"Mercury-2 procedure omits safety warnings: {sorted(missing_warning_ids)}")
     return warnings
 
 

@@ -7,6 +7,7 @@ from autodata_ingestion.mercury2 import (
     Mercury2Client,
     Mercury2SourceExtractor,
     Mercury2VehicleAdjudicator,
+    PROCEDURE_COMPOSITION_SCHEMA,
 )
 from autodata_ingestion.source_adapters import SourceResource
 from autodata_ingestion.vehicle_identity import canonicalize_vehicle_observation
@@ -27,6 +28,18 @@ class FakeResponse:
 
 
 class Mercury2Tests(unittest.TestCase):
+    def test_procedure_schema_requires_provenance_and_structured_warnings(self):
+        step_schema = PROCEDURE_COMPOSITION_SCHEMA["properties"]["steps"]["items"]
+        warning_schema = PROCEDURE_COMPOSITION_SCHEMA["properties"]["warnings"]["items"]
+
+        self.assertIn("operation_id", step_schema["required"])
+        self.assertEqual(step_schema["additionalProperties"], False)
+        self.assertEqual(warning_schema["additionalProperties"], False)
+        self.assertEqual(
+            warning_schema["required"],
+            ["warning_id", "message", "source_article_ids", "evidence_ids", "requires_review"],
+        )
+
     def test_source_extractor_returns_validated_typed_candidates(self):
         class FakeClient:
             def complete_json(self, prompt):

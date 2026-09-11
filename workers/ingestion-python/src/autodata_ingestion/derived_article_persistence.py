@@ -156,7 +156,17 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
     canonical_vehicle = result.get("canonical_vehicle") or result.get("vehicle") or vehicle
     if not isinstance(canonical_vehicle, Mapping):
         canonical_vehicle = vehicle
-    source_watermarks = result.get("source_watermarks") or result.get("derived_article", {}).get("source_watermarks", [])
+    derived_metadata = result.get("derived_article", {})
+    if not isinstance(derived_metadata, Mapping):
+        derived_metadata = {}
+    quote = result.get("quote", {})
+    if not isinstance(quote, Mapping):
+        quote = {}
+    source_watermarks = (
+        result.get("source_watermarks")
+        or derived_metadata.get("source_watermarks", [])
+        or quote.get("source_watermarks", [])
+    )
     if isinstance(source_watermarks, str):
         source_watermarks = [source_watermarks]
     if not isinstance(source_watermarks, (list, tuple, set)):
@@ -170,15 +180,13 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
     procedure = result.get("procedure", {})
     if not isinstance(procedure, Mapping):
         procedure = {}
-    quote = result.get("quote", {})
-    if not isinstance(quote, Mapping):
-        quote = {}
     labor = result.get("labor", {})
     if not isinstance(labor, Mapping):
         labor = {}
     visual_artifacts = result.get("visual_artifacts", [])
     if not isinstance(visual_artifacts, list):
         visual_artifacts = []
+    persistence_status = _persistence_status(result, procedure, visual_artifacts)
     vehicle_id = str(canonical_vehicle.get("vehicle_id", vehicle.get("vehicle_id", ""))).strip()
     with psycopg.connect(**conninfo) as connection:
         with connection.cursor() as cursor:
@@ -193,6 +201,10 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
                 connection.commit()
                 return {"status": "skipped", "reason": "vehicle_not_persisted", "article_id": article_id}
             derived_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"autodata:derived-article:{article_id}"))
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                (f"autodata:derived-article:{article_id}",),
+            )
             now = datetime.now(UTC).replace(microsecond=0)
             cursor.execute(
                 """
@@ -212,7 +224,7 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
                     article_id,
                     vehicle_id,
                     str(procedure.get("title") or article_id),
-                    str(result.get("status", "needs_review")),
+                    persistence_status,
                     str(result.get("job_plan_id", "")) or None,
                     now,
                     now,
@@ -288,8 +300,8 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
                         or "deterministic"
                     ),
                     DERIVED_ARTICLE_CONTRACT_VERSION,
-                    str(result.get("status", "needs_review")),
-                    now if result.get("status") == "ready" else None,
+                    persistence_status,
+                    now if persistence_status == "ready" else None,
                 ),
             )
             for source_article_id in result.get("selected_articles", []):
@@ -342,10 +354,48 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
                 )
             cursor.execute(
                 "UPDATE derived_articles SET current_revision_number = %s, current_status = %s, updated_at = %s WHERE derived_article_id = %s",
-                (revision_number, str(result.get("status", "needs_review")), now, derived_id),
+                (revision_number, persistence_status, now, derived_id),
             )
         connection.commit()
-    return {"status": "persisted", "article_id": article_id, "derived_article_id": derived_id, "revision_id": revision_id, "revision_number": revision_number, "fingerprint": fingerprint}
+    return {
+        "status": "persisted",
+        "publication_status": persistence_status,
+        "review_required": persistence_status != "ready",
+        "article_id": article_id,
+        "derived_article_id": derived_id,
+        "revision_id": revision_id,
+        "revision_number": revision_number,
+        "fingerprint": fingerprint,
+    }
+
+
+def _persistence_status(
+    result: Mapping[str, Any],
+    procedure: Mapping[str, Any],
+    visual_artifacts: Iterable[Any],
+) -> str:
+    status = str(result.get("status", "needs_review")).strip().casefold()
+    result_review = str(result.get("review_state", "")).strip().casefold() in {
+        "pending",
+        "needs_review",
+        "unreviewed",
+        "rejected",
+    }
+    procedure_review = bool(procedure.get("requires_review", False)) or str(
+        procedure.get("review_state", "")
+    ).strip().casefold() in {"pending", "needs_review", "rejected"}
+    visual_review = any(
+        isinstance(artifact, Mapping)
+        and (
+            bool(artifact.get("requires_review", False))
+            or str(artifact.get("review_state", "")).strip().casefold()
+            in {"pending", "needs_review", "unreviewed", "rejected"}
+        )
+        for artifact in visual_artifacts
+    )
+    if status != "ready" or result_review or procedure_review or visual_review:
+        return "needs_review"
+    return "ready"
 
 
 def _evidence_ids(result: Mapping[str, Any]) -> list[str]:
@@ -355,29 +405,43 @@ def _evidence_ids(result: Mapping[str, Any]) -> list[str]:
         for operation in labor.get("operations", []):
             if isinstance(operation, Mapping):
                 evidence_ids.update(
-                    str(value) for value in operation.get("evidence_ids", []) if str(value).strip()
+                    _string_ids(operation.get("evidence_ids"))
                 )
+                evidence_ids.update(_string_ids(operation.get("evidence_id")))
     procedure = result.get("procedure", {})
     if isinstance(procedure, Mapping):
         for step in procedure.get("steps", []):
             if isinstance(step, Mapping):
                 evidence_ids.update(
-                    str(value) for value in step.get("evidence_ids", []) if str(value).strip()
+                    _string_ids(step.get("evidence_ids"))
                 )
+                evidence_ids.update(_string_ids(step.get("evidence_id")))
         for warning in procedure.get("warnings", []):
             if isinstance(warning, Mapping):
                 evidence_ids.update(
-                    str(value) for value in warning.get("evidence_ids", []) if str(value).strip()
+                    _string_ids(warning.get("evidence_ids"))
                 )
+                evidence_ids.update(_string_ids(warning.get("evidence_id")))
     quote = result.get("quote", {})
     if isinstance(quote, Mapping):
         evidence_ids.update(
-            str(value) for value in quote.get("evidence_ids", []) if str(value).strip()
+            _string_ids(quote.get("evidence_ids"))
         )
+        evidence_ids.update(_string_ids(quote.get("evidence_id")))
     evidence_ids.update(
-        str(value) for value in result.get("evidence_ids", []) if str(value).strip()
+        _string_ids(result.get("evidence_ids"))
     )
+    evidence_ids.update(_string_ids(result.get("evidence_id")))
     return sorted(evidence_ids)
+
+
+def _string_ids(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [item for nested in value for item in _string_ids(nested)]
+    value = str(value).strip()
+    return [value] if value else []
 
 
 def _visual_lineage_keys(visual_artifacts: list[Any]) -> list[str]:
@@ -385,14 +449,23 @@ def _visual_lineage_keys(visual_artifacts: list[Any]) -> list[str]:
     for artifact in visual_artifacts:
         if not isinstance(artifact, Mapping):
             continue
-        key = str(
-            artifact.get("source_artifact_key")
-            or artifact.get("derived_artifact_key")
-            or artifact.get("source_object_key")
-            or ""
-        ).strip()
-        if key:
-            keys.add(key)
+        for key_name in (
+            "source_artifact_key",
+            "derived_artifact_key",
+            "source_object_key",
+            "derived_object_key",
+        ):
+            key = str(artifact.get(key_name) or "").strip()
+            if key:
+                keys.add(key)
+        for ref_name in ("source_ref", "derived_ref"):
+            reference = artifact.get(ref_name)
+            if not isinstance(reference, Mapping):
+                continue
+            for key_name in ("object_key", "artifact_key"):
+                key = str(reference.get(key_name) or "").strip()
+                if key:
+                    keys.add(key)
     return sorted(keys)
 
 

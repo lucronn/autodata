@@ -31,8 +31,7 @@ class DeterministicLocalVectorizer:
     processor_version = "1"
 
     def redraw(self, source_bytes: bytes, *, source_uri: str) -> dict[str, Any]:
-        if not isinstance(source_bytes, bytes) or not source_bytes:
-            raise ValueError("source visual bytes are required for vectorization")
+        _require_image_bytes(source_bytes)
         source_uri = str(source_uri or "").strip()
         if not source_uri:
             raise ValueError("source visual URI is required for vectorization")
@@ -55,16 +54,19 @@ class DeterministicLocalVectorizer:
         )
         if not _is_renderable_svg(svg.encode("utf-8")):
             raise ValueError("vectorizer produced a non-renderable SVG")
+        derived_bytes = svg.encode("utf-8")
         return {
             "svg": svg,
-            "derived_bytes": svg.encode("utf-8"),
+            "derived_bytes": derived_bytes,
             "media_type": "image/svg+xml",
             "source_uri": source_uri,
             "source_sha256": source_hash,
+            "source_artifact_id": f"visual-source:{source_hash}",
+            "derived_artifact_id": f"visual-derived:{sha256(derived_bytes).hexdigest()}",
             "processor": self.processor,
             "processor_version": self.processor_version,
             "renderable": True,
-            "review_state": "UNREVIEWED",
+            "review_state": "pending",
             "label": "AI-enhanced / UNREVIEWED",
         }
 
@@ -92,8 +94,7 @@ class ObjectStorageSourceDiagramVectorizer:
         self._derived_prefix = derived_prefix.strip().strip("/")
 
     def redraw(self, source_bytes: bytes, *, source_uri: str) -> dict[str, Any]:
-        if not isinstance(source_bytes, bytes) or not source_bytes:
-            raise ValueError("source visual bytes are required for vectorization")
+        _require_image_bytes(source_bytes)
         source_uri = str(source_uri or "").strip()
         if not source_uri:
             raise ValueError("source visual URI is required for vectorization")
@@ -115,13 +116,22 @@ class ObjectStorageSourceDiagramVectorizer:
         self._put(derived_key, svg_bytes, "image/svg+xml")
         return {
             **dict(result),
+            "source_artifact_id": str(
+                result.get("source_artifact_id") or f"visual-source:{source_hash}"
+            ),
+            "derived_artifact_id": str(
+                result.get("derived_artifact_id")
+                or f"visual-derived:{sha256(svg_bytes).hexdigest()}"
+            ),
+            "source_artifact_key": source_key,
+            "derived_artifact_key": derived_key,
             "source_object_key": source_key,
             "derived_object_key": derived_key,
             "source_uri": source_uri,
             "source_sha256": source_hash,
             "derived_sha256": sha256(svg_bytes).hexdigest(),
             "renderable": True,
-            "review_state": "UNREVIEWED",
+            "review_state": "pending",
             "label": "AI-enhanced / UNREVIEWED",
         }
 
@@ -152,6 +162,7 @@ def vectorize_source_diagram(
     source_uri = source_visual.get("source_uri") or source_visual.get("uri") or source_visual.get("url")
     if not isinstance(source_bytes, bytes) or not source_bytes:
         raise ValueError("source visual bytes are required; text-only diagram requests are unsupported")
+    _require_image_bytes(source_bytes)
     if not str(source_uri or "").strip():
         raise ValueError("source visual URI is required for vectorization")
     return vectorizer.redraw(source_bytes, source_uri=str(source_uri).strip())
@@ -163,6 +174,31 @@ def _is_renderable_svg(payload: bytes) -> bool:
     except (ElementTree.ParseError, ValueError):
         return False
     return root.tag.rsplit("}", 1)[-1].casefold() == "svg"
+
+
+def _is_image_bytes(payload: bytes) -> bool:
+    """Sniff bytes so an image-looking URI cannot authorize arbitrary text."""
+
+    if not isinstance(payload, bytes) or not payload:
+        return False
+    if payload.startswith(b"\x89PNG\r\n\x1a\n"):
+        return True
+    if payload.startswith(b"\xff\xd8\xff"):
+        return True
+    if payload.startswith((b"GIF87a", b"GIF89a", b"BM")):
+        return True
+    if payload.startswith((b"II*\x00", b"MM\x00*")):
+        return True
+    if len(payload) >= 12 and payload[:4] == b"RIFF" and payload[8:12] == b"WEBP":
+        return True
+    return _is_renderable_svg(payload)
+
+
+def _require_image_bytes(payload: bytes) -> None:
+    if not isinstance(payload, bytes) or not payload:
+        raise ValueError("source visual bytes are required for vectorization")
+    if not _is_image_bytes(payload):
+        raise ValueError("source visual bytes must be an image")
 
 
 def _source_suffix(source_uri: str) -> str:
