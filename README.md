@@ -80,6 +80,10 @@ with pricing dates and no markup, and live worker progress. The design is being
 completed before implementation, and the repository [pre-implementation gate](docs/agents/pre-implementation-gate.md)
 remains mandatory.
 
+The approved [design spec](docs/superpowers/specs/2026-09-11-natural-language-quote-procedure-generator-design.md)
+and [implementation plan](docs/superpowers/plans/2026-09-11-natural-language-quote-procedure-generator.md)
+are the canonical technical records for this slice.
+
 ## Start the local stack
 
 The deterministic local path uses PostgreSQL with pgvector, NATS JetStream,
