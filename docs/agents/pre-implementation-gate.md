@@ -4,6 +4,8 @@
 **Scope:** every implementation agent, provider, model, IDE, and automation interface
 **Canonical location:** this document is the sole normative source for the gate
 
+**Current verified implementation:** `99175fff019957264ab77914dbdf6c53b9d5aaf8`
+
 ## Purpose
 
 AutoData work begins with a traceable plan. Before any implementation agent changes application, schema, infrastructure, workflow, or other implementation files, the task must have a written plan, synchronized GitHub tracking, and canonical repository documentation that state the same goal and work items.
@@ -61,6 +63,30 @@ No agent may treat a natural-language approval, an untracked file, an unverified
 The checked-in `.autodata-autonomy-policy.json` declares this record and its canonical paths. `scripts/autonomy/pre_implementation.py` validates the record. `scripts/autonomy/runner.py` rejects implementation-role envelopes before output setup, worktree creation, or provider invocation. `scripts/autonomy/orchestrator.py` rejects an architect result before invoking the builder.
 
 `AGENTS.md` and `.cursor/rules/plan-before-implementation.mdc` are discovery adapters only. They point here so agents that discover different repository instruction files still receive one rule and one record shape.
+
+## Verified delivery
+
+The gate is implemented at commit `99175fff019957264ab77914dbdf6c53b9d5aaf8`.
+The planning checkpoint was committed and pushed at
+`ef1a8582818086228a06dedb8c02a60e400e11d0` before implementation began.
+
+Local verification at the implementation commit passed:
+
+- autonomy tests: `37 passed`;
+- ingestion worker tests: `240 passed, 12 subtests passed`;
+- enrichment worker tests: `46 passed, 16 subtests passed`;
+- developer adapter tests: `44 passed`;
+- Go API and shared-contract tests: passed;
+- contract checks: `7 tests`, `OK`; and
+- policy parsing and `git diff --check`: passed.
+
+The GitHub verification workflow passed, including the live Compose fast-lane
+smoke, at [run 34564744459](https://github.com/lucronn/autodata/actions/runs/34564744459).
+Issue [#86](https://github.com/lucronn/autodata/issues/86) and the
+[AutoData Portfolio Project](https://github.com/users/lucronn/projects/8) item
+are the synchronized delivery records. The rule remains required for all later
+implementation work; this verified implementation does not waive the gate for
+future tasks.
 
 ## Evidence and recovery
 

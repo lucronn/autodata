@@ -22,6 +22,8 @@ The repository is a modular monorepo:
 - `docs/architecture` — canonical system, lifecycle, contract, and operations
   documentation.
 - `docs/github` — repository and Project operating model.
+- `docs/agents/pre-implementation-gate.md` — mandatory, agent-agnostic planning
+  and GitHub/repository synchronization gate for implementation work.
 
 ## Current development slice
 
