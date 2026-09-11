@@ -20,7 +20,7 @@ repository `docs/` tree at the exact verified commit.
 ## Implementation evidence
 
 - **README and asset commit:** `3dcef0511ea4bd15ecc30923131c6981f575d44d`
-- **Current branch head read back:** `3dcef0511ea4bd15ecc30923131c6981f575d44d`.
+- **Current branch head read back:** matched origin during verification; the exact final SHA is recorded in the Issue #88 evidence comment.
 - **Local repository checks:** repository governance `6 passed`; pre-implementation validator `7 passed`; Markdown fence, local-link, secret, and redundant-image checks passed; replacement image inspected at `1942 x 809` PNG.
 - **GitHub repository branch:** `automation/knowledge-fallback-runtime` matches the current branch head.
 - **Wiki status:** GitHub Wiki is enabled but uninitialized. The four source pages are complete under `docs/wiki/`; publication requires saving the first Wiki page once in the GitHub UI, after which the Wiki Git remote can be cloned and updated.
