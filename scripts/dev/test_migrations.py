@@ -114,6 +114,19 @@ class MigrationPlanTests(unittest.TestCase):
             migration,
         )
 
+    def test_quote_persists_required_and_recommended_operation_collections(self):
+        migration = (ROOT / "db/migrations/025_chat_quote_procedure.sql").read_text()
+
+        for collection in ("required_operations", "recommended_operations"):
+            self.assertIn(
+                f"{collection} jsonb NOT NULL DEFAULT '[]'::jsonb",
+                migration,
+            )
+            self.assertIn(
+                f"CHECK (jsonb_typeof({collection}) = 'array')",
+                migration,
+            )
+
     def test_worker_events_persist_the_complete_event_envelope(self):
         migration = (ROOT / "db/migrations/025_chat_quote_procedure.sql").read_text()
 
