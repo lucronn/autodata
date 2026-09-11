@@ -90,6 +90,7 @@ SHA, then pass the machine preflight against the implementation base SHA.
 - Modify: `packages/contracts/go/contracts.go` through `scripts/contracts/generate.py`
 - Modify: `packages/contracts/python/autodata_contracts/contracts.py` through `scripts/contracts/generate.py`
 - Create: `db/migrations/025_chat_quote_procedure.sql`
+- Create: `db/migrations/026_chat_quote_operation_categories.sql` for upgrade-safe adoption of the Task 1 quote-category columns
 - Create: `scripts/contracts/test_chat_quote_contract.py`
 - Modify: `scripts/dev/test_migrations.py`
 - Modify: `packages/contracts/go/contracts_test.go`
