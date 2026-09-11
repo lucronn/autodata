@@ -15,7 +15,7 @@ repository `docs/` tree at the exact verified commit.
 - **GitHub Project:** [Project #8 — AutoData Portfolio](https://github.com/users/lucronn/projects/8)
 - **Plan:** [`docs/superpowers/plans/2026-09-11-public-facing-readme-and-wiki.md`](../superpowers/plans/2026-09-11-public-facing-readme-and-wiki.md)
 - **Machine record:** [`docs/agents/records/2026-09-11-public-facing-readme-and-wiki.json`](../agents/records/2026-09-11-public-facing-readme-and-wiki.json)
-- **Status:** `in progress`: repository-facing implementation is complete; Wiki publication is waiting for GitHub's required first-page initialization.
+- **Status:** `in progress`: repository-facing implementation is complete; the visual now explains the customer problem and solution; Wiki publication is waiting for GitHub's required first-page initialization.
 
 ## Implementation evidence
 
@@ -24,6 +24,7 @@ repository `docs/` tree at the exact verified commit.
 - **Local repository checks:** repository governance `6 passed`; pre-implementation validator `7 passed`; Markdown fence, local-link, secret, and redundant-image checks passed; replacement image inspected at `1942 x 809` PNG.
 - **GitHub repository branch:** `automation/knowledge-fallback-runtime` matches the current branch head.
 - **Wiki status:** GitHub Wiki is enabled but uninitialized. The four source pages are complete under `docs/wiki/`; publication requires saving the first Wiki page once in the GitHub UI, after which the Wiki Git remote can be cloned and updated.
+- **Visual message:** scattered repair data becomes one vehicle-specific workspace that produces a procedure, labor-and-parts quote, source evidence, and review status.
 
 ## Concrete work items
 

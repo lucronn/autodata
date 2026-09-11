@@ -1,15 +1,19 @@
 # AutoData
 
-> Vehicle-specific automotive knowledge, assembled from heterogeneous sources
-> into evidence-backed datasets that become useful quickly and improve over
-> time.
+> Turn scattered repair data into a vehicle-specific procedure, quote, and
+> evidence-backed answer.
 
-![AutoData platform overview](docs/assets/autodata-platform-overview.png)
+![AutoData turns scattered repair data into a vehicle-specific procedure, quote, and evidence-backed workspace](docs/assets/autodata-platform-overview.png)
 
-AutoData is a cloud-neutral, containerized automotive data platform. It turns
-source resources into vehicle-specific dataset projections, publishes a
-minimum useful view through a fast lane, and enriches that projection in the
-background through a deep lane.
+Finding the right repair answer is fragmented across manuals, generic search,
+diagnostic data, parts catalogs, and wiring diagrams. AutoData brings those
+sources together for one vehicle, preserves where the answer came from, and
+turns a plain-language request into a usable repair workflow.
+
+The result is a vehicle-specific workspace with the relevant procedure,
+labor-and-parts quote, supporting source evidence, and clear review status. A
+fast lane makes the first useful answer available quickly; a deep lane keeps
+enriching it in the background.
 
 [Architecture](docs/architecture/domain-model.md) ·
 [Local quick start](#start-the-local-stack) ·

@@ -14,7 +14,7 @@
 
 - Normative technical content remains under `docs/`; the GitHub Project is an index and the Wiki is a navigational/public-facing projection.
 - The README contains one local visual asset and no redundant remote repository-image embed.
-- Public-facing copy must describe the current deterministic local path accurately and label generated automotive content as unreviewed until human review.
+- Public-facing copy must describe the current deterministic local path accurately, sell the problem/solution clearly, and label generated automotive content as unreviewed until human review.
 - Wiki pages must not contain credentials, private source payloads, or instructions that imply production readiness beyond the verified local path.
 - Preserve the user-owned untracked `sample data/` directory and do not stage it.
 - GitHub mutations are limited to the dedicated documentation Issue, its Project #8 item, and publication of the requested README/wiki change; no unrelated issues, projects, or pull requests are changed.
@@ -76,7 +76,7 @@
 - Consumes: the canonical architecture, lifecycle, infrastructure, and current development-slice documentation.
 - Produces: one readable local hero image, a concise public opening, stable navigation to the Wiki and canonical docs, and accurate local verification guidance.
 
-- [x] Generate a polished wide visual for the repository front page: a clean, dark-on-light automotive data flow with a vehicle silhouette or repair-data motif, no tiny copy, no invented product claims, no watermark, and no embedded text that must be read as documentation.
+- [x] Generate a polished wide visual for the repository front page: a clear problem-to-solution story with readable marketing labels, a vehicle-specific workspace, procedure/quote/evidence outcomes, no invented product claims, and no watermark.
 - [x] Inspect the generated image, copy it to `docs/assets/autodata-platform-overview.png`, and confirm its dimensions and format.
 - [x] Remove the remote `repository-images.githubusercontent.com` embed and the obsolete JPEG reference from `README.md`; place the replacement image once near the title.
 - [x] Add a short navigation row for the Wiki, architecture docs, local setup, current slice, and Project #8; preserve the existing detailed commands below it while tightening inaccurate or duplicate opening prose.
