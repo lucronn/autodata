@@ -566,7 +566,7 @@ class SourceBundleTests(unittest.TestCase):
 
         self.assertIsNotNone(bundle.vehicle)
         self.assertEqual(bundle.vehicle["vehicle_key"], "toyota-rav4-1997-us")
-        self.assertEqual(bundle.vehicle["model"], "Rav4")
+        self.assertEqual(bundle.vehicle["model"], "RAV4")
 
 
 if __name__ == "__main__":

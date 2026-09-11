@@ -40,7 +40,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
             default_region="US",
         )
 
-        self.assertEqual(rows[0]["model"], "Rav4")
+        self.assertEqual(rows[0]["model"], "RAV4")
 
     def test_resolves_one_year_make_model_family_without_full_catalog_traversal(self):
         responses = {

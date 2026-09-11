@@ -78,6 +78,19 @@ def test_normalizes_component_and_operation_spelling_variants():
     )
 
 
+def test_extracts_engine_and_drivetrain_natural_language_aliases():
+    module = _module()
+
+    result = module.interpret_chat_message(
+        "1997 Toyota RAV-4 2.5 liter 4-wheel drive brake line replacement",
+        (),
+    )
+
+    assert result.vehicle_observation["model"] == "RAV4"
+    assert result.vehicle_observation["engine_displacement_l"] == 2.5
+    assert result.vehicle_observation["drivetrain"] == "4WD"
+
+
 def test_interprets_multiple_component_operations_in_message_order():
     module = _module()
 
@@ -130,6 +143,17 @@ def test_returns_stable_vehicle_options_with_preserved_confidence_and_one_questi
         "rav4-4wd",
     ]
     assert [option["confidence"] for option in result.vehicle_observation["candidates"]] == [0.81, 0.92]
+    assert [option["option_number"] for option in result.vehicle_observation["candidates"]] == [1, 2]
+    assert all("drive=" in option["label"] for option in result.vehicle_observation["candidates"])
+    assert result.clarification == "Which RAV4 configuration should I use?"
+
+
+def test_vehicle_clarification_precedes_missing_component_question():
+    module = _module()
+
+    result = module.interpret_chat_message("97 Toyota RAV4 please help", (RAV4_4WD, RAV4_2WD))
+
+    assert result.vehicle_observation["status"] == "ambiguous"
     assert result.clarification == "Which RAV4 configuration should I use?"
 
 
@@ -156,16 +180,80 @@ def test_mercury_proposal_is_constrained_to_candidates_and_allowlisted_component
 
     assert mercury.prompt["allowed_components"] == ["alternator", "battery", "brake_caliper", "brake_line", "brake_pads", "brake_rotor", "brakes", "oil_pump", "power_steering_pump", "starter", "timing_belt", "water_pump"]
     assert mercury.prompt["vehicle_candidates"][0]["vehicle_id"] == "rav4-2wd"
+    assert result.requested_operations[0] == {
+        "operation_id": "replace-brake-line",
+        "action": "replace",
+        "component": "brake_line",
+        "status": "needs_review",
+        "source": "mercury2_advisory",
+    }
+    assert result.requested_operations[1] == {
+        "operation_id": "review-unknown-made-up-component",
+        "action": "review",
+        "component": "made_up_component",
+        "status": "needs_review",
+        "source": "mercury2_advisory",
+        "reason": "component_not_allowlisted",
+        "raw_component": "made_up_component",
+    }
+    assert result.vehicle_observation["status"] == "needs_review"
+
+
+def test_mercury_selection_copies_canonical_candidate_identity():
+    module = _module()
+
+    class FakeMercury:
+        def complete_json(self, prompt):
+            return {"components": [{"component": "brake_line", "action": "replace"}], "selected_candidate_key": "rav4-4wd"}
+
+    result = module.interpret_chat_message(
+        "97 Toyota RAV4 please help",
+        (RAV4_4WD,),
+        mercury_client=FakeMercury(),
+    )
+
+    assert result.vehicle_observation["status"] == "matched"
+    assert result.vehicle_observation["selected_vehicle_id"] == "rav4-4wd"
+    assert result.vehicle_observation["drivetrain"] == "4WD"
+
+
+def test_malformed_mercury_response_becomes_explicit_review_operation():
+    module = _module()
+
+    class FakeMercury:
+        def complete_json(self, prompt):
+            return {"components": {"component": "brake_line"}}
+
+    result = module.interpret_chat_message(
+        "97 Toyota RAV4 please help",
+        (RAV4_2WD,),
+        mercury_client=FakeMercury(),
+    )
+
     assert result.requested_operations == (
         {
-            "operation_id": "replace-brake-line",
-            "action": "replace",
-            "component": "brake_line",
+            "operation_id": "review-chat-intent",
+            "action": "review",
+            "component": None,
             "status": "needs_review",
-            "source": "mercury2_advisory",
+            "source": "mercury2_unavailable",
+            "reason": "advisory_response_unavailable_or_invalid",
         },
     )
-    assert result.vehicle_observation["status"] == "needs_review"
+
+
+def test_action_aware_deduplication_keeps_distinct_actions_for_one_component():
+    module = _module()
+
+    result = module.interpret_chat_message(
+        "97 Toyota RAV4 inspect brake line and replace brake line",
+        (RAV4_2WD,),
+    )
+
+    assert [operation["operation_id"] for operation in result.requested_operations] == [
+        "inspect-brake-line",
+        "replace-brake-line",
+    ]
 
 
 def test_derives_source_and_rule_backed_support_operations_and_keeps_advisories_unknown():
@@ -216,5 +304,43 @@ def test_derives_source_and_rule_backed_support_operations_and_keeps_advisories_
             "category": "needs_review",
             "basis": "model_advisory",
             "source_article_ids": ["M:brake-line"],
+        },
+    )
+
+
+def test_support_operation_merge_preserves_sources_and_upgrades_advisory():
+    module = _module()
+
+    result = module.derive_supporting_operations(
+        (),
+        (
+            {
+                "article_id": "M:brake-line",
+                "model_suggestions": [
+                    {"operation_id": "bleed-brakes", "action": "Bleed brakes"},
+                ],
+            },
+            {
+                "article_id": "P:brake-line",
+                "supporting_operations": [
+                    {
+                        "operation_id": "bleed-brakes",
+                        "action": "Bleed brakes",
+                        "classification": "required",
+                        "evidence_ids": ["evidence-1"],
+                    },
+                ],
+            },
+        ),
+    )
+
+    assert result == (
+        {
+            "operation_id": "bleed-brakes",
+            "action": "Bleed brakes",
+            "category": "required",
+            "basis": "source_article",
+            "source_article_ids": ["M:brake-line", "P:brake-line"],
+            "evidence_ids": ["evidence-1"],
         },
     )

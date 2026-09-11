@@ -24,6 +24,7 @@ _MODEL_ALIASES = {
 _DRIVETRAIN_ALIASES = {
     "2wd": "2WD",
     "4x2": "2WD",
+    "4wd": "4WD",
     "4x4": "4WD",
     "awd": "AWD",
     "fwd": "FWD",
@@ -225,10 +226,18 @@ def _canonicalize_mapping_observation(value: Mapping[str, Any]) -> CanonicalVehi
 
 
 def _canonicalize_text_observation(value: str) -> CanonicalVehicleObservation:
+    normalized_value = value.casefold()
+    for phrase, canonical in (
+        (r"\b4\s*(?:-\s*)?wheel\s+drive\b", "4wd"),
+        (r"\ball\s*(?:-\s*)?wheel\s+drive\b", "awd"),
+        (r"\bfront\s*(?:-\s*)?wheel\s+drive\b", "fwd"),
+        (r"\brear\s*(?:-\s*)?wheel\s+drive\b", "rwd"),
+    ):
+        normalized_value = re.sub(phrase, canonical, normalized_value)
     normalized_text = re.sub(
-        r"(\d+(?:\.\d+)?)\s+(l(?:t)?)\b",
+        r"(\d+(?:\.\d+)?)\s+(l(?:t|iter|itre)?)\b",
         r"\1\2",
-        value.casefold(),
+        normalized_value,
     )
     tokens = re.findall(r"[a-z0-9.]+", normalized_text)
     year_indexes = [
@@ -395,7 +404,10 @@ def _first_non_empty(*values: Any) -> Any:
 
 
 def _extract_engine_displacement(text: str) -> float | None:
-    match = re.search(r"(?<!\d)(\d+(?:\.\d+)?)\s*l(?:t)?\b", text.casefold())
+    match = re.search(
+        r"(?<!\d)(\d+(?:\.\d+)?)\s*l(?:t|iter|itre)?\b",
+        text.casefold(),
+    )
     if match is None:
         return None
     return float(match.group(1))
