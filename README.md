@@ -1,11 +1,38 @@
-![AutoData architecture preview](docs/assets/autodata-architecture-preview.jpeg)
 # AutoData
 
-AutoData is a cloud-neutral, containerized automotive data platform. It turns
-heterogeneous source resources into evidence-backed, vehicle-specific dataset
-projections that can be published quickly and enriched incrementally.
+> Vehicle-specific automotive knowledge, assembled from heterogeneous sources
+> into evidence-backed datasets that become useful quickly and improve over
+> time.
 
-[![AutoData architecture and development platform](https://repository-images.githubusercontent.com/1354240578/bc662088-d074-4e35-872e-a0a3b12c3612)](https://github.com/lucronn/autodata)
+![AutoData platform overview](docs/assets/autodata-platform-overview.png)
+
+AutoData is a cloud-neutral, containerized automotive data platform. It turns
+source resources into vehicle-specific dataset projections, publishes a
+minimum useful view through a fast lane, and enriches that projection in the
+background through a deep lane.
+
+[Architecture](docs/architecture/domain-model.md) ·
+[Local quick start](#start-the-local-stack) ·
+[Wiki](https://github.com/lucronn/autodata/wiki) ·
+[Project #8](https://github.com/users/lucronn/projects/8)
+
+## At a glance
+
+- **Vehicle-scoped:** identity, configuration, procedures, specifications,
+  diagnostics, evidence, and feedback stay attached to the requested vehicle
+  projection.
+- **Fast to useful:** the fast lane normalizes core facts and publishes an
+  immutable, viewable revision without waiting for every enrichment section.
+- **Built to deepen:** the deep lane adds documents, images, diagrams, search,
+  embeddings, and quality review independently of the first viewable result.
+- **Safe by default:** provenance, evidence, review status, entitlements, and
+  source-rights boundaries are part of the platform contract.
+
+The current verified local path is deterministic and uses PostgreSQL with
+pgvector, NATS JetStream, MinIO, fake source data, and a fake payment provider.
+It does not require cloud credentials. Generated procedures and source-derived
+results remain explicitly `UNREVIEWED` until an authorized human review changes
+their status.
 
 The repository is a modular monorepo:
 
@@ -24,6 +51,10 @@ The repository is a modular monorepo:
 - `docs/github` — repository and Project operating model.
 - `docs/agents/pre-implementation-gate.md` — mandatory, agent-agnostic planning
   and GitHub/repository synchronization gate for implementation work.
+
+For a guided introduction, start with the [GitHub Wiki](https://github.com/lucronn/autodata/wiki).
+For the authoritative technical details, use the linked documents under
+[`docs/`](docs/).
 
 ## Current development slice
 
