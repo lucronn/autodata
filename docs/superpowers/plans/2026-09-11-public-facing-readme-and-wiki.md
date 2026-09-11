@@ -115,7 +115,7 @@
 
 - [x] Run `git diff --check`, Markdown fence/link/reference scans, secret-marker scans, the repository-governance tests, and the applicable documentation checks.
 - [x] Inspect the rendered README and replacement image, confirming the title, navigation, image count, local setup commands, and review-status disclaimer are all visible and accurate.
-- [x] Re-read the GitHub Issue and Project #8 item, update their status and exact commit/source references, and preserve the repository-docs-as-authority statement. Final evidence comment remains to be added with the current head.
+- [x] Re-read the GitHub Issue and Project #8 item, update their status and exact commit/source references, and preserve the repository-docs-as-authority statement. The current README/asset evidence is recorded at `3dcef0511ea4bd15ecc30923131c6981f575d44d`.
 - [x] Commit only the requested README, asset, canonical docs, plan, and Wiki source paths; inspect `git diff --cached --name-only` before committing.
 - [x] Push the requested repository branch, verify the local SHA matches the remote SHA, and record the Wiki initialization blocker; remote Wiki page read-back remains pending.
 
