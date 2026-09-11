@@ -191,6 +191,16 @@ class Mercury2Tests(unittest.TestCase):
         self.assertEqual(result.status, "needs_review")
         self.assertEqual(result.reason, "mercury_invalid_candidate")
 
+    def test_procedure_schema_is_exposed_for_constrained_composition(self):
+        from autodata_ingestion.mercury2 import PROCEDURE_COMPOSITION_SCHEMA
+
+        self.assertEqual(PROCEDURE_COMPOSITION_SCHEMA["type"], "object")
+        self.assertIn("steps", PROCEDURE_COMPOSITION_SCHEMA["required"])
+        self.assertEqual(
+            PROCEDURE_COMPOSITION_SCHEMA["properties"]["steps"]["items"]["properties"]["category"]["enum"],
+            ["required", "recommended"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

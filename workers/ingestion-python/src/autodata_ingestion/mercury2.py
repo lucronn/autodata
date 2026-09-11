@@ -39,6 +39,45 @@ _SOURCE_CANDIDATE_KINDS = frozenset(
 DEFAULT_INCEPTION_API_BASE_URL = "https://api.inceptionlabs.ai/v1"
 
 
+# The application still validates every field after the model responds.  This
+# schema is deliberately small: Mercury-2 may word and order already sourced
+# operations, but it cannot add vehicle facts, components, or evidence.
+PROCEDURE_COMPOSITION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["title", "steps", "warnings"],
+    "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "steps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "action",
+                    "components",
+                    "category",
+                    "source_article_ids",
+                    "evidence_ids",
+                ],
+                "properties": {
+                    "operation_id": {"type": "string"},
+                    "action": {"type": "string", "minLength": 1},
+                    "components": {"type": "array", "items": {"type": "string"}},
+                    "category": {"type": "string", "enum": ["required", "recommended"]},
+                    "source_article_ids": {"type": "array", "items": {"type": "string"}},
+                    "evidence_ids": {"type": "array", "items": {"type": "string"}},
+                    "requires_review": {"type": "boolean"},
+                },
+            },
+        },
+        "warnings": {"type": "array"},
+        "requires_review": {"type": "boolean"},
+        "excluded_operation_ids": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
+
 class JsonTransport(Protocol):
     def __call__(self, request: Request, timeout: float) -> Any:
         ...
@@ -112,6 +151,54 @@ class Mercury2Client:
         if not isinstance(result, dict):
             raise ValueError("Mercury-2 response must be a JSON object")
         return result
+
+
+def compose_procedure_draft(
+    client: Any,
+    *,
+    vehicle: Mapping[str, Any],
+    quote: Mapping[str, Any],
+    articles: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Request wording for a procedure from already validated inputs.
+
+    The prompt contains only canonical vehicle identity, the application-owned
+    quote, and normalized source articles.  The caller remains responsible for
+    validating all references and for deciding whether a draft is publishable.
+    """
+
+    if not isinstance(vehicle, Mapping):
+        raise ValueError("Mercury-2 procedure vehicle must be an object")
+    if not isinstance(quote, Mapping):
+        raise ValueError("Mercury-2 procedure quote must be an object")
+    if not isinstance(articles, list):
+        raise ValueError("Mercury-2 procedure articles must be an array")
+    prompt = json.dumps(
+        {
+            "task": (
+                "Compose only a faithful procedure from the supplied normalized articles and quote. "
+                "Do not invent steps, components, vehicle facts, values, tools, or evidence. "
+                "Every step must retain its source article IDs, evidence IDs, and required/recommended category."
+            ),
+            "vehicle": dict(vehicle),
+            "quote": dict(quote),
+            "articles": [dict(article) for article in articles],
+            "schema": PROCEDURE_COMPOSITION_SCHEMA,
+            "output": {
+                "title": "string",
+                "steps": [],
+                "warnings": [],
+                "requires_review": True,
+            },
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    response = client.complete_json(prompt)
+    if not isinstance(response, Mapping):
+        raise ValueError("Mercury-2 procedure response must be an object")
+    return dict(response)
 
 
 class Mercury2SourceExtractor:
@@ -346,5 +433,7 @@ __all__ = [
     "Mercury2Client",
     "Mercury2SourceExtractor",
     "Mercury2VehicleAdjudicator",
+    "PROCEDURE_COMPOSITION_SCHEMA",
+    "compose_procedure_draft",
     "configured_source_extractor",
 ]

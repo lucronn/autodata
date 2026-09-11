@@ -6,7 +6,13 @@ import pytest
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from autodata_ingestion.job_plan import compose_procedure_with_llm, plan_job, translate_job_query_with_llm  # noqa: E402
+from autodata_ingestion.job_plan import (  # noqa: E402
+    build_quote_and_procedure,
+    compose_procedure_revision,
+    compose_procedure_with_llm,
+    plan_job,
+    translate_job_query_with_llm,
+)
 from autodata_ingestion.worker import _cached_derived_job_plan  # noqa: E402
 
 
@@ -285,3 +291,131 @@ def test_persisted_combined_article_is_returned_without_replanning():
     assert result["labor"]["total_labor_hours"] == 4.25
     assert result["derived_article"]["revision_id"] == "revision-2"
     assert result["images"] == [{"url": "https://source.test/combined.png"}]
+
+
+def test_build_quote_separates_support_categories_and_explains_shared_labor_deduction():
+    articles = [
+        article(
+            "brake-line",
+            "brake_line",
+            [
+                {
+                    "operation_id": "vehicle-access",
+                    "action": "Raise and support vehicle",
+                    "duration_hours": 0.4,
+                    "category": "required",
+                    "shared_work_scope": "vehicle-access",
+                    "evidence_ids": ["evidence-brake-line"],
+                },
+                {
+                    "operation_id": "replace-brake-line",
+                    "action": "Replace brake line",
+                    "duration_hours": 1.2,
+                    "category": "required",
+                    "evidence_ids": ["evidence-brake-line"],
+                },
+            ],
+            images=[{"url": "https://source.test/brake-line.svg"}],
+        )
+        | {
+            "parts": [{"part_id": "brake-line-kit", "name": "Brake line kit", "amount": 50.0, "currency": "USD"}],
+            "safety_warnings": [{"message": "Depressurize the brake system before opening the line.", "evidence_ids": ["evidence-brake-line"]}],
+        },
+        article(
+            "brake-bleeding",
+            "brake_bleeding",
+            [
+                {
+                    "operation_id": "vehicle-access",
+                    "action": "Raise and support vehicle",
+                    "duration_hours": 0.4,
+                    "category": "required",
+                    "shared_work_scope": "vehicle-access",
+                    "evidence_ids": ["evidence-brake-bleeding"],
+                },
+                {
+                    "operation_id": "bleed-brakes",
+                    "action": "Bleed brake system",
+                    "duration_hours": 0.6,
+                    "category": "required",
+                    "evidence_ids": ["evidence-brake-bleeding"],
+                },
+            ],
+        )
+        | {
+            "supporting_for": ["brake_line"],
+            "support_category": "required",
+            "parts": [{"part_id": "brake-fluid", "name": "Brake fluid", "amount": 18.99, "currency": "USD"}],
+        },
+        article(
+            "brake-inspection",
+            "brake_inspection",
+            [
+                {
+                    "operation_id": "vehicle-access",
+                    "action": "Raise and support vehicle",
+                    "duration_hours": 0.4,
+                    "category": "recommended",
+                    "shared_work_scope": "vehicle-access",
+                    "evidence_ids": ["evidence-brake-inspection"],
+                },
+                {
+                    "operation_id": "inspect-brake-system",
+                    "action": "Inspect brake system",
+                    "duration_hours": 0.4,
+                    "category": "recommended",
+                    "evidence_ids": ["evidence-brake-inspection"],
+                },
+            ],
+        )
+        | {"supporting_for": ["brake_line"], "support_category": "recommended"},
+    ]
+
+    result = build_quote_and_procedure("replace the brake line", VEHICLE, articles)
+
+    assert result["status"] == "ready"
+    quote = result["quote"]
+    assert quote["required_hours"] == 2.6
+    assert quote["recommended_hours"] == 0.8
+    assert quote["total_hours"] == 2.6
+    assert quote["overlap_hours_removed"] == 0.8
+    assert quote["overlap_operations"] == [
+        {
+            "operation_id": "vehicle-access",
+            "shared_work_scope": "vehicle-access",
+            "counted_once_for": ["brake_bleeding", "brake_inspection", "brake_line"],
+            "raw_hours": 1.2,
+            "counted_hours": 0.4,
+            "deducted_hours": 0.8,
+        }
+    ]
+    assert result["parts"]["subtotal"] == 68.99
+    assert result["parts"]["markup_applied"] is False
+    assert "evidence-brake-line" in quote["evidence_ids"]
+    assert result["procedure"]["review_state"] == "UNREVIEWED"
+    assert any("Depressurize" in warning["message"] for warning in result["procedure"]["warnings"])
+
+
+def test_compose_procedure_revision_rejects_a_step_with_an_unsupported_component():
+    quote = build_quote_and_procedure(
+        "replace the alternator",
+        VEHICLE,
+        [article("alternator-article", "alternator", [{"operation_id": "replace-alternator", "action": "Replace alternator", "duration_hours": 1.0}])],
+    )
+
+    class FakeMercury:
+        def complete_json(self, _prompt):
+            return {
+                "title": "Alternator service",
+                "steps": [{
+                    "action": "Replace the unsupported transmission",
+                    "components": ["transmission"],
+                    "category": "required",
+                    "source_article_ids": ["alternator-article"],
+                    "evidence_ids": ["evidence-alternator-article"],
+                }],
+                "warnings": [],
+            }
+
+    with pytest.raises(ValueError, match="unsupported"):
+        compose_procedure_revision(quote, [article("alternator-article", "alternator", [{"operation_id": "replace-alternator", "action": "Replace alternator", "duration_hours": 1.0}])], mercury_client=FakeMercury())
