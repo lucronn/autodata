@@ -3,19 +3,53 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 from runner import (
+    RunnerError,
     build_provider_command,
     changed_paths,
     document_scope_violations,
     redact_text,
+    run_agent,
     _make_guard_bin,
     validate_envelope,
 )
 
 
 class RunnerTests(unittest.TestCase):
+    def test_builder_without_pre_implementation_record_is_rejected_before_worktree(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        base_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+        envelope = {
+            "run_id": "run-preflight-test",
+            "task_id": "issue-86",
+            "base_sha": base_sha,
+            "agent_name": "autodata-go-builder",
+            "allowed_paths": ["apps/api-go/**"],
+            "deployment_target": "none",
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_root = Path(directory) / "run"
+            with patch("runner._git_show", return_value="builder prompt"), patch(
+                "runner._run_git", return_value=base_sha
+            ), patch("runner._make_guard_bin", return_value=Path(directory)), patch(
+                "runner.build_provider_command", return_value=["false"]
+            ) as provider:
+                with self.assertRaises(RunnerError):
+                    run_agent(repo_root, envelope, "local-cli", output_root, timeout_seconds=1)
+
+            provider.assert_not_called()
+            self.assertFalse((output_root / "worktree").exists())
+
     def test_local_cli_command_is_noninteractive_and_workspace_scoped(self):
         command = build_provider_command(
             provider="local-cli",

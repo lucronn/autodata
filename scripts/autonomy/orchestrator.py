@@ -15,9 +15,11 @@ from typing import Any
 
 try:
     from .runner import run_agent
+    from .pre_implementation import validate_record
     from .validate_run import evaluate
 except ImportError:  # Support direct execution: python scripts/autonomy/orchestrator.py
     from runner import run_agent
+    from pre_implementation import validate_record
     from validate_run import evaluate
 
 
@@ -41,6 +43,7 @@ CONTRACT_FIELDS = (
     "acceptance_tests",
     "forbidden_scope",
     "compatibility",
+    "pre_implementation",
 )
 
 
@@ -69,7 +72,18 @@ def validate_task_contract(contract: Any) -> list[str]:
         for field in ("api", "events", "schema"):
             if not isinstance(compatibility.get(field), str) or not compatibility[field].strip():
                 errors.append(f"compatibility.{field} must be a non-empty string")
-    serialized = json.dumps(contract, sort_keys=True).lower()
+    if not isinstance(contract.get("pre_implementation"), dict):
+        errors.append("pre_implementation must be an object")
+    def string_values(value: Any):
+        if isinstance(value, dict):
+            for child in value.values():
+                yield from string_values(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from string_values(child)
+        elif isinstance(value, str):
+            yield value.lower()
+
     unresolved_markers = (
         "t" + "odo",
         "t" + "bd",
@@ -77,7 +91,7 @@ def validate_task_contract(contract: Any) -> list[str]:
         "open " + "question",
     )
     for marker in unresolved_markers:
-        if marker in serialized:
+        if any(marker in value for value in string_values(contract)):
             errors.append(f"task contract contains unresolved marker: {marker}")
     return errors
 
@@ -220,7 +234,19 @@ def orchestrate_task(
     architect_result = _provider_result(architect_root, architect_manifest)
     contract = architect_result["response"].get("task_contract")
     contract_errors = validate_task_contract(contract)
-    if architect_code not in {0, 20} or not _agent_usable(architect_result, False, base_sha) or contract_errors:
+    policy = _load_json(repo_root / ".autodata-autonomy-policy.json")
+    preflight_errors = validate_record(
+        contract.get("pre_implementation") if isinstance(contract, dict) else None,
+        repo_root,
+        base_sha,
+        policy,
+    )
+    if (
+        architect_code not in {0, 20}
+        or not _agent_usable(architect_result, False, base_sha)
+        or contract_errors
+        or preflight_errors
+    ):
         decision = {
             "state": "blocked",
             "phase": "planning",
@@ -228,6 +254,7 @@ def orchestrate_task(
             "base_sha": base_sha,
             "architect": architect_result,
             "contract_errors": contract_errors,
+            "pre_implementation_errors": preflight_errors,
         }
         _write_json(output_root / "orchestration-decision.json", decision)
         return 20, output_root / "orchestration-decision.json"
