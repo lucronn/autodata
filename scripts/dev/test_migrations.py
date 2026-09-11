@@ -44,6 +44,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "022_job_plan_derived_articles.sql",
                 "023_catalog_article_images.sql",
                 "024_catalog_article_operations.sql",
+                "025_chat_quote_procedure.sql",
             ],
         )
 

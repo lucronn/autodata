@@ -10,6 +10,14 @@ from typing import Any
 
 
 CONTRACT_NAMES = (
+    "procedure_step",
+    "visual_artifact",
+    "price_snapshot",
+    "chat_quote",
+    "chat_answer",
+    "chat_query",
+    "chat_selection",
+    "worker_progress_event",
     "dataset_read",
     "knowledge_search_response",
     "knowledge_result",
@@ -30,6 +38,8 @@ def load_contract(path: Path) -> dict[str, Any]:
     contract = json.loads(path.read_text())
     required_top_level = {
         "schema_version",
+        "data_state",
+        "answer_status",
         "dataset_availability",
         "section_status",
         "event_subjects",
@@ -41,8 +51,9 @@ def load_contract(path: Path) -> dict[str, Any]:
         raise ValueError(f"contract is missing top-level keys: {sorted(missing)}")
     if not isinstance(contract["schema_version"], int) or contract["schema_version"] < 1:
         raise ValueError("schema_version must be a positive integer")
-    if not isinstance(contract["knowledge_result_kind"], list) or not contract["knowledge_result_kind"]:
-        raise ValueError("knowledge_result_kind must be a non-empty list")
+    for enum_name in ("data_state", "answer_status", "knowledge_result_kind"):
+        if not isinstance(contract[enum_name], list) or not contract[enum_name]:
+            raise ValueError(f"{enum_name} must be a non-empty list")
     for name in CONTRACT_NAMES:
         definition = contract[name]
         required = definition.get("required")
@@ -99,7 +110,7 @@ package contracts
 
 const SchemaVersion = %(schema_version)d
 
-%(dataset_availability)s%(section_status)s%(event_subjects)s%(knowledge_result_kind)s%(entitlement_status)s%(feedback_category)s%(error_codes)s
+%(data_state)s%(answer_status)s%(dataset_availability)s%(section_status)s%(event_subjects)s%(knowledge_result_kind)s%(entitlement_status)s%(feedback_category)s%(error_codes)s
 var DatasetReadRequiredFields = []string{%(dataset_read_required)s}
 var KnowledgeSearchResponseRequiredFields = []string{%(knowledge_search_response_required)s}
 var KnowledgeResultRequiredFields = []string{%(knowledge_result_required)s}
@@ -112,6 +123,14 @@ var EvidenceRequiredFields = []string{%(evidence_required)s}
 var FeedbackRequiredFields = []string{%(feedback_required)s}
 var ErrorRequiredFields = []string{%(error_required)s}
 var EventEnvelopeRequiredFields = []string{%(event_envelope_required)s}
+var ProcedureStepRequiredFields = []string{%(procedure_step_required)s}
+var VisualArtifactRequiredFields = []string{%(visual_artifact_required)s}
+var PriceSnapshotRequiredFields = []string{%(price_snapshot_required)s}
+var ChatQuoteRequiredFields = []string{%(chat_quote_required)s}
+var ChatAnswerRequiredFields = []string{%(chat_answer_required)s}
+var ChatQueryRequiredFields = []string{%(chat_query_required)s}
+var ChatSelectionRequiredFields = []string{%(chat_selection_required)s}
+var WorkerProgressEventRequiredFields = []string{%(worker_progress_event_required)s}
 
 type DatasetSection struct {
 	Name                  string  `json:"name"`
@@ -228,8 +247,107 @@ type EventEnvelope struct {
 	IdempotencyKey string         `json:"idempotency_key"`
 	Payload        map[string]any `json:"payload"`
 }
+
+type ProcedureStep struct {
+	StepNumber        int      `json:"step_number"`
+	Instruction       string   `json:"instruction"`
+	OperationID       string   `json:"operation_id,omitempty"`
+	SourceArticleIDs  []string `json:"source_article_ids"`
+	EvidenceIDs       []string `json:"evidence_ids"`
+	SafetyWarnings    []string `json:"safety_warnings,omitempty"`
+	VisualArtifactIDs []string `json:"visual_artifact_ids,omitempty"`
+}
+
+type VisualArtifact struct {
+	ArtifactID         string `json:"artifact_id"`
+	SourceArtifactKey  string `json:"source_artifact_key"`
+	DerivedArtifactKey string `json:"derived_artifact_key"`
+	SourceURI          string `json:"source_uri,omitempty"`
+	Processor          string `json:"processor,omitempty"`
+	ProcessorVersion   string `json:"processor_version,omitempty"`
+	ReviewState        string `json:"review_state"`
+	Label              string `json:"label,omitempty"`
+}
+
+type PriceSnapshot struct {
+	CanonicalPartID  string  `json:"canonical_part_id"`
+	SourcePartNumber string  `json:"source_part_number"`
+	Amount           float64 `json:"amount"`
+	Currency         string  `json:"currency"`
+	PricedAt         string  `json:"priced_at"`
+	Freshness        string  `json:"freshness"`
+	SourceSnapshotID string  `json:"source_snapshot_id"`
+	RefreshStatus    string  `json:"refresh_status"`
+	MarkupApplied    bool    `json:"markup_applied"`
+	SourceURI        string  `json:"source_uri,omitempty"`
+}
+
+type ChatQuote struct {
+	RequiredHours       float64             `json:"required_hours"`
+	RecommendedHours    float64             `json:"recommended_hours"`
+	TotalHours          float64             `json:"total_hours"`
+	OverlapHoursRemoved float64             `json:"overlap_hours_removed"`
+	OverlapOperations   []map[string]any    `json:"overlap_operations"`
+	Parts               []PriceSnapshot     `json:"parts"`
+	Evidence            []KnowledgeEvidence `json:"evidence"`
+	Currency            string              `json:"currency,omitempty"`
+}
+
+type WorkerProgressEvent struct {
+	EventID        string         `json:"event_id"`
+	EventType      string         `json:"event_type"`
+	EventVersion   int            `json:"event_version"`
+	OccurredAt     string         `json:"occurred_at"`
+	Producer       string         `json:"producer"`
+	RequestID      string         `json:"request_id"`
+	ProjectionID   string         `json:"projection_id"`
+	RevisionID     *string        `json:"revision_id"`
+	CorrelationID  string         `json:"correlation_id"`
+	IdempotencyKey string         `json:"idempotency_key"`
+	Payload        map[string]any `json:"payload"`
+	QueryID        string         `json:"query_id"`
+	Stage          string         `json:"stage"`
+	Status         string         `json:"status"`
+	DataState      string         `json:"data_state"`
+	Message        string         `json:"message"`
+}
+
+type ChatAnswer struct {
+	AnswerStatus    string                `json:"answer_status"`
+	DataState       string                `json:"data_state"`
+	Vehicle         map[string]any        `json:"vehicle"`
+	Procedure       map[string]any        `json:"procedure"`
+	Quote           map[string]any        `json:"quote"`
+	Warnings        []map[string]any      `json:"warnings"`
+	UpdatedAt       string                `json:"updated_at"`
+	WorkerStream    []WorkerProgressEvent `json:"worker_stream"`
+	SourceWatermark string                `json:"source_watermark,omitempty"`
+	RevisionID      *string               `json:"revision_id,omitempty"`
+}
+
+type ChatQuery struct {
+	QueryID        string          `json:"query_id"`
+	ConversationID string          `json:"conversation_id"`
+	Message        string          `json:"message"`
+	IdempotencyKey string          `json:"idempotency_key"`
+	Status         string          `json:"status"`
+	VehicleOptions []map[string]any `json:"vehicle_options"`
+	Answer         *ChatAnswer     `json:"answer"`
+	CorrelationID  string          `json:"correlation_id"`
+}
+
+type ChatSelection struct {
+	QueryID       string  `json:"query_id"`
+	SelectionType string  `json:"selection_type"`
+	OptionNumber  *int    `json:"option_number"`
+	VehicleID     *string `json:"vehicle_id"`
+}
 """ % {
         "schema_version": contract["schema_version"],
+        "data_state": _go_enum("DataStateValues", contract["data_state"]),
+        "answer_status": _go_enum("AnswerStatusValues", contract["answer_status"]),
+        "data_state_values": _json_strings(contract["data_state"]),
+        "answer_status_values": _json_strings(contract["answer_status"]),
         "dataset_availability": _go_enum("DatasetAvailabilityValues", contract["dataset_availability"]),
         "section_status": _go_enum("SectionStatusValues", contract["section_status"]),
         "event_subjects": _go_enum("EventSubjects", contract["event_subjects"]),
@@ -256,6 +374,14 @@ type EventEnvelope struct {
                 "feedback",
                 "error",
                 "event_envelope",
+                "procedure_step",
+                "visual_artifact",
+                "price_snapshot",
+                "chat_quote",
+                "chat_answer",
+                "chat_query",
+                "chat_selection",
+                "worker_progress_event",
             )
         },
     }
@@ -270,6 +396,8 @@ from typing import Any
 
 
 SCHEMA_VERSION = %(schema_version)d
+DATA_STATE_VALUES = (%(data_state)s,)
+ANSWER_STATUS_VALUES = (%(answer_status)s,)
 DATASET_AVAILABILITY_VALUES = (%(dataset_availability)s,)
 SECTION_STATUS_VALUES = (%(section_status)s,)
 EVENT_SUBJECTS = (%(event_subjects)s,)
@@ -289,6 +417,14 @@ EVIDENCE_REQUIRED_FIELDS = (%(evidence_required)s,)
 FEEDBACK_REQUIRED_FIELDS = (%(feedback_required)s,)
 ERROR_REQUIRED_FIELDS = (%(error_required)s,)
 EVENT_ENVELOPE_REQUIRED_FIELDS = (%(event_envelope_required)s,)
+PROCEDURE_STEP_REQUIRED_FIELDS = (%(procedure_step_required)s,)
+VISUAL_ARTIFACT_REQUIRED_FIELDS = (%(visual_artifact_required)s,)
+PRICE_SNAPSHOT_REQUIRED_FIELDS = (%(price_snapshot_required)s,)
+CHAT_QUOTE_REQUIRED_FIELDS = (%(chat_quote_required)s,)
+CHAT_ANSWER_REQUIRED_FIELDS = (%(chat_answer_required)s,)
+CHAT_QUERY_REQUIRED_FIELDS = (%(chat_query_required)s,)
+CHAT_SELECTION_REQUIRED_FIELDS = (%(chat_selection_required)s,)
+WORKER_PROGRESS_EVENT_REQUIRED_FIELDS = (%(worker_progress_event_required)s,)
 
 
 @dataclass(frozen=True)
@@ -420,8 +556,113 @@ class EventEnvelope:
     correlation_id: str
     idempotency_key: str
     payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ProcedureStep:
+    step_number: int
+    instruction: str
+    source_article_ids: list[str]
+    evidence_ids: list[str]
+    operation_id: str | None = None
+    safety_warnings: list[str] | None = None
+    visual_artifact_ids: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class VisualArtifact:
+    artifact_id: str
+    source_artifact_key: str
+    derived_artifact_key: str
+    review_state: str
+    source_uri: str | None = None
+    processor: str | None = None
+    processor_version: str | None = None
+    label: str | None = None
+
+
+@dataclass(frozen=True)
+class PriceSnapshot:
+    canonical_part_id: str
+    source_part_number: str
+    amount: float
+    currency: str
+    priced_at: str
+    freshness: str
+    source_snapshot_id: str
+    refresh_status: str
+    markup_applied: bool
+    source_uri: str | None = None
+
+
+@dataclass(frozen=True)
+class ChatQuote:
+    required_hours: float
+    recommended_hours: float
+    total_hours: float
+    overlap_hours_removed: float
+    overlap_operations: list[dict[str, Any]]
+    parts: list[PriceSnapshot]
+    evidence: list[KnowledgeEvidence]
+    currency: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkerProgressEvent:
+    event_id: str
+    event_type: str
+    event_version: int
+    occurred_at: str
+    producer: str
+    request_id: str
+    projection_id: str
+    revision_id: str | None
+    correlation_id: str
+    idempotency_key: str
+    payload: dict[str, Any]
+    query_id: str
+    stage: str
+    status: str
+    data_state: str
+    message: str
+
+
+@dataclass(frozen=True)
+class ChatAnswer:
+    answer_status: str
+    data_state: str
+    vehicle: dict[str, Any]
+    procedure: dict[str, Any] | None
+    quote: dict[str, Any] | None
+    warnings: list[dict[str, Any]]
+    updated_at: str
+    worker_stream: list[WorkerProgressEvent]
+    source_watermark: str | None = None
+    revision_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ChatQuery:
+    query_id: str
+    conversation_id: str
+    message: str
+    idempotency_key: str
+    status: str
+    vehicle_options: list[dict[str, Any]]
+    answer: ChatAnswer | None
+    correlation_id: str
+
+
+@dataclass(frozen=True)
+class ChatSelection:
+    query_id: str
+    selection_type: str
+    option_number: int | None
+    vehicle_id: str | None = None
 """ % {
         "schema_version": contract["schema_version"],
+        "data_state": ", ".join(repr(value) for value in contract["data_state"]),
+        "answer_status": ", ".join(repr(value) for value in contract["answer_status"]),
         "dataset_availability": ", ".join(repr(value) for value in contract["dataset_availability"]),
         "section_status": ", ".join(repr(value) for value in contract["section_status"]),
         "event_subjects": ", ".join(repr(value) for value in contract["event_subjects"]),
@@ -448,6 +689,14 @@ class EventEnvelope:
                 "feedback",
                 "error",
                 "event_envelope",
+                "procedure_step",
+                "visual_artifact",
+                "price_snapshot",
+                "chat_quote",
+                "chat_answer",
+                "chat_query",
+                "chat_selection",
+                "worker_progress_event",
             )
         },
     }

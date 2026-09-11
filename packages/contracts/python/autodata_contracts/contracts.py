@@ -6,9 +6,11 @@ from typing import Any
 
 
 SCHEMA_VERSION = 1
+DATA_STATE_VALUES = ('normalized', 'source_unnormalized', 'normalizing', 'mixed', 'unavailable', 'needs_review',)
+ANSWER_STATUS_VALUES = ('options', 'processing', 'available', 'partial', 'complete', 'failed', 'needs_review',)
 DATASET_AVAILABILITY_VALUES = ('purchased', 'fast_lane_processing', 'viewable', 'enriching', 'complete', 'failed', 'needs_review', 'revoked',)
 SECTION_STATUS_VALUES = ('pending', 'processing', 'viewable', 'complete', 'failed', 'needs_review',)
-EVENT_SUBJECTS = ('dataset.fast.requested', 'dataset.viewable', 'dataset.deep.requested', 'dataset.knowledge.fallback.requested', 'dataset.section.published', 'dataset.enrichment.failed', 'dataset.review.requested', 'dataset.revision.revoked',)
+EVENT_SUBJECTS = ('dataset.fast.requested', 'dataset.viewable', 'dataset.deep.requested', 'dataset.knowledge.fallback.requested', 'dataset.section.published', 'dataset.enrichment.failed', 'dataset.review.requested', 'dataset.revision.revoked', 'chat.answer.updated', 'chat.vehicle.options', 'chat.worker.progress', 'chat.price.refresh.requested', 'chat.procedure.published', 'chat.visual.published',)
 KNOWLEDGE_RESULT_KIND_VALUES = ('article', 'procedure',)
 ENTITLEMENT_STATUS_VALUES = ('active', 'revoked',)
 FEEDBACK_CATEGORY_VALUES = ('correction', 'missing', 'quality', 'safety',)
@@ -25,6 +27,14 @@ EVIDENCE_REQUIRED_FIELDS = ('evidence_id', 'source_snapshot_id', 'extraction_run
 FEEDBACK_REQUIRED_FIELDS = ('feedback_id', 'dataset_id', 'category', 'body',)
 ERROR_REQUIRED_FIELDS = ('code', 'message', 'request_id', 'retryable', 'details',)
 EVENT_ENVELOPE_REQUIRED_FIELDS = ('event_id', 'event_type', 'event_version', 'occurred_at', 'producer', 'request_id', 'projection_id', 'revision_id', 'correlation_id', 'idempotency_key', 'payload',)
+PROCEDURE_STEP_REQUIRED_FIELDS = ('step_number', 'instruction', 'source_article_ids', 'evidence_ids',)
+VISUAL_ARTIFACT_REQUIRED_FIELDS = ('artifact_id', 'source_artifact_key', 'derived_artifact_key', 'review_state',)
+PRICE_SNAPSHOT_REQUIRED_FIELDS = ('canonical_part_id', 'source_part_number', 'amount', 'currency', 'priced_at', 'freshness', 'source_snapshot_id', 'refresh_status', 'markup_applied',)
+CHAT_QUOTE_REQUIRED_FIELDS = ('required_hours', 'recommended_hours', 'total_hours', 'overlap_hours_removed', 'overlap_operations', 'parts', 'evidence',)
+CHAT_ANSWER_REQUIRED_FIELDS = ('answer_status', 'data_state', 'vehicle', 'procedure', 'quote', 'warnings', 'updated_at', 'worker_stream',)
+CHAT_QUERY_REQUIRED_FIELDS = ('query_id', 'conversation_id', 'message', 'idempotency_key', 'status', 'vehicle_options', 'answer', 'correlation_id',)
+CHAT_SELECTION_REQUIRED_FIELDS = ('query_id', 'selection_type', 'option_number',)
+WORKER_PROGRESS_EVENT_REQUIRED_FIELDS = ('event_id', 'event_type', 'event_version', 'occurred_at', 'producer', 'request_id', 'projection_id', 'revision_id', 'correlation_id', 'idempotency_key', 'payload', 'query_id', 'stage', 'status', 'data_state', 'message',)
 
 
 @dataclass(frozen=True)
@@ -156,3 +166,106 @@ class EventEnvelope:
     correlation_id: str
     idempotency_key: str
     payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ProcedureStep:
+    step_number: int
+    instruction: str
+    source_article_ids: list[str]
+    evidence_ids: list[str]
+    operation_id: str | None = None
+    safety_warnings: list[str] | None = None
+    visual_artifact_ids: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class VisualArtifact:
+    artifact_id: str
+    source_artifact_key: str
+    derived_artifact_key: str
+    review_state: str
+    source_uri: str | None = None
+    processor: str | None = None
+    processor_version: str | None = None
+    label: str | None = None
+
+
+@dataclass(frozen=True)
+class PriceSnapshot:
+    canonical_part_id: str
+    source_part_number: str
+    amount: float
+    currency: str
+    priced_at: str
+    freshness: str
+    source_snapshot_id: str
+    refresh_status: str
+    markup_applied: bool
+    source_uri: str | None = None
+
+
+@dataclass(frozen=True)
+class ChatQuote:
+    required_hours: float
+    recommended_hours: float
+    total_hours: float
+    overlap_hours_removed: float
+    overlap_operations: list[dict[str, Any]]
+    parts: list[PriceSnapshot]
+    evidence: list[KnowledgeEvidence]
+    currency: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkerProgressEvent:
+    event_id: str
+    event_type: str
+    event_version: int
+    occurred_at: str
+    producer: str
+    request_id: str
+    projection_id: str
+    revision_id: str | None
+    correlation_id: str
+    idempotency_key: str
+    payload: dict[str, Any]
+    query_id: str
+    stage: str
+    status: str
+    data_state: str
+    message: str
+
+
+@dataclass(frozen=True)
+class ChatAnswer:
+    answer_status: str
+    data_state: str
+    vehicle: dict[str, Any]
+    procedure: dict[str, Any] | None
+    quote: dict[str, Any] | None
+    warnings: list[dict[str, Any]]
+    updated_at: str
+    worker_stream: list[WorkerProgressEvent]
+    source_watermark: str | None = None
+    revision_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ChatQuery:
+    query_id: str
+    conversation_id: str
+    message: str
+    idempotency_key: str
+    status: str
+    vehicle_options: list[dict[str, Any]]
+    answer: ChatAnswer | None
+    correlation_id: str
+
+
+@dataclass(frozen=True)
+class ChatSelection:
+    query_id: str
+    selection_type: str
+    option_number: int | None
+    vehicle_id: str | None = None

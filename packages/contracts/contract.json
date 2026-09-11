@@ -1,5 +1,22 @@
 {
   "schema_version": 1,
+  "data_state": [
+    "normalized",
+    "source_unnormalized",
+    "normalizing",
+    "mixed",
+    "unavailable",
+    "needs_review"
+  ],
+  "answer_status": [
+    "options",
+    "processing",
+    "available",
+    "partial",
+    "complete",
+    "failed",
+    "needs_review"
+  ],
   "dataset_availability": [
     "purchased",
     "fast_lane_processing",
@@ -26,8 +43,178 @@
     "dataset.section.published",
     "dataset.enrichment.failed",
     "dataset.review.requested",
-    "dataset.revision.revoked"
+    "dataset.revision.revoked",
+    "chat.answer.updated",
+    "chat.vehicle.options",
+    "chat.worker.progress",
+    "chat.price.refresh.requested",
+    "chat.procedure.published",
+    "chat.visual.published"
   ],
+  "procedure_step": {
+    "required": ["step_number", "instruction", "source_article_ids", "evidence_ids"],
+    "properties": {
+      "step_number": {"type": "integer"},
+      "instruction": {"type": "string"},
+      "operation_id": {"type": "string", "optional": true},
+      "source_article_ids": {"type": "array"},
+      "evidence_ids": {"type": "array"},
+      "safety_warnings": {"type": "array", "optional": true},
+      "visual_artifact_ids": {"type": "array", "optional": true}
+    }
+  },
+  "visual_artifact": {
+    "required": ["artifact_id", "source_artifact_key", "derived_artifact_key", "review_state"],
+    "properties": {
+      "artifact_id": {"type": "uuid"},
+      "source_artifact_key": {"type": "string"},
+      "derived_artifact_key": {"type": "string"},
+      "source_uri": {"type": "string", "optional": true},
+      "processor": {"type": "string", "optional": true},
+      "processor_version": {"type": "string", "optional": true},
+      "review_state": {"enum": ["pending", "approved", "rejected"]},
+      "label": {"type": "string", "optional": true}
+    }
+  },
+  "price_snapshot": {
+    "required": [
+      "canonical_part_id",
+      "source_part_number",
+      "amount",
+      "currency",
+      "priced_at",
+      "freshness",
+      "source_snapshot_id",
+      "refresh_status",
+      "markup_applied"
+    ],
+    "properties": {
+      "canonical_part_id": {"type": "string"},
+      "source_part_number": {"type": "string"},
+      "amount": {"type": "number"},
+      "currency": {"type": "string"},
+      "priced_at": {"type": "string"},
+      "freshness": {"enum": ["fresh", "stale", "unknown"]},
+      "source_snapshot_id": {"type": "uuid"},
+      "refresh_status": {"enum": ["current", "queued", "processing", "failed"]},
+      "markup_applied": {"type": "boolean", "const": false},
+      "source_uri": {"type": "string", "optional": true}
+    }
+  },
+  "chat_quote": {
+    "required": [
+      "required_hours",
+      "recommended_hours",
+      "total_hours",
+      "overlap_hours_removed",
+      "overlap_operations",
+      "parts",
+      "evidence"
+    ],
+    "properties": {
+      "required_hours": {"type": "number"},
+      "recommended_hours": {"type": "number"},
+      "total_hours": {"type": "number"},
+      "overlap_hours_removed": {"type": "number"},
+      "overlap_operations": {"type": "array"},
+      "parts": {"type": "array"},
+      "evidence": {"type": "array"},
+      "currency": {"type": "string", "optional": true}
+    }
+  },
+  "chat_answer": {
+    "required": [
+      "answer_status",
+      "data_state",
+      "vehicle",
+      "procedure",
+      "quote",
+      "warnings",
+      "updated_at",
+      "worker_stream"
+    ],
+    "properties": {
+      "answer_status": {"enum_ref": "answer_status"},
+      "data_state": {"enum_ref": "data_state"},
+      "vehicle": {"type": "object"},
+      "procedure": {"type": "object", "nullable": true},
+      "quote": {"type": "object", "nullable": true},
+      "warnings": {"type": "array"},
+      "updated_at": {"type": "string"},
+      "worker_stream": {"type": "array"},
+      "source_watermark": {"type": "string", "optional": true},
+      "revision_id": {"type": "uuid", "nullable": true, "optional": true}
+    }
+  },
+  "chat_query": {
+    "required": [
+      "query_id",
+      "conversation_id",
+      "message",
+      "idempotency_key",
+      "status",
+      "vehicle_options",
+      "answer",
+      "correlation_id"
+    ],
+    "properties": {
+      "query_id": {"type": "uuid"},
+      "conversation_id": {"type": "uuid"},
+      "message": {"type": "string"},
+      "idempotency_key": {"type": "string"},
+      "status": {"enum": ["awaiting_vehicle", "processing", "available", "failed", "revoked"]},
+      "vehicle_options": {"type": "array"},
+      "answer": {"type": "object", "nullable": true},
+      "correlation_id": {"type": "uuid"}
+    }
+  },
+  "chat_selection": {
+    "required": ["query_id", "selection_type", "option_number"],
+    "properties": {
+      "query_id": {"type": "uuid"},
+      "selection_type": {"enum": ["vehicle", "retry"]},
+      "option_number": {"type": "integer", "nullable": true},
+      "vehicle_id": {"type": "uuid", "nullable": true}
+    }
+  },
+  "worker_progress_event": {
+    "required": [
+      "event_id",
+      "event_type",
+      "event_version",
+      "occurred_at",
+      "producer",
+      "request_id",
+      "projection_id",
+      "revision_id",
+      "correlation_id",
+      "idempotency_key",
+      "payload",
+      "query_id",
+      "stage",
+      "status",
+      "data_state",
+      "message"
+    ],
+    "properties": {
+      "event_id": {"type": "uuid"},
+      "event_type": {"type": "string"},
+      "event_version": {"type": "integer"},
+      "occurred_at": {"type": "string"},
+      "producer": {"type": "string"},
+      "request_id": {"type": "uuid"},
+      "projection_id": {"type": "uuid"},
+      "revision_id": {"type": "uuid", "nullable": true},
+      "correlation_id": {"type": "uuid"},
+      "idempotency_key": {"type": "string"},
+      "payload": {"type": "object"},
+      "query_id": {"type": "uuid"},
+      "stage": {"type": "string"},
+      "status": {"enum": ["queued", "processing", "completed", "failed", "dead_letter"]},
+      "data_state": {"enum_ref": "data_state"},
+      "message": {"type": "string"}
+    }
+  },
   "dataset_read": {
     "required": [
       "dataset_id",
