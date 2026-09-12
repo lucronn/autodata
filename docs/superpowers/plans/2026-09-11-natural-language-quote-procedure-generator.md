@@ -133,6 +133,73 @@ commit.
 }
 ```
 
+## AutoAPI labor association correction — 2026-09-12
+
+**Goal:** Pair a selected AutoAPI procedure article with its corresponding
+labor article when the provider uses different operation wording, so labor
+retrieval uses the labor article ID instead of incorrectly reusing the
+procedure article ID.
+
+**Tracking:** Issue #87
+([https://github.com/lucronn/autodata/issues/87](https://github.com/lucronn/autodata/issues/87));
+AutoData Portfolio Project #8
+([https://github.com/users/lucronn/projects/8](https://github.com/users/lucronn/projects/8)).
+
+**Confirmed root cause:** the RAV4 article index contains procedure
+`P:564294320` titled `Brake Line Inspect` and labor `L:23903519` titled
+`Brake Line R&R`. The fallback matcher uses exact normalized title equality,
+so it misses the valid pair and requests
+`labor/P:564294320`, which returns HTTP 502 after three retries.
+
+**Decision and invariants:**
+
+- Match procedure and labor records using a normalized component title with
+  operation suffixes such as `Inspect`, `R&R`, and `Replacement` removed.
+- Preserve meaningful qualifiers such as front/rear, side, and variant when
+  they are present; never pair records by broad token overlap alone.
+- Prefer an exact title match, then an exact normalized component match, and
+  otherwise leave labor unpaired rather than guessing.
+- Keep the existing three-attempt GET retry behavior and preserve article
+  content when labor remains unavailable.
+- Keep this association deterministic and source-bound; Mercury is not used
+  to choose provider IDs.
+
+**Concrete todo:**
+
+- [ ] Add a failing regression for `Brake Line Inspect` paired with `Brake
+  Line R&R`.
+- [ ] Implement deterministic component/suffix normalization with qualifier
+  preservation.
+- [ ] Verify the exact RAV4 trace requests `labor/L:23903519` and returns
+  labor operations when the provider supplies them.
+- [ ] Run the full worker/API test suites and update Issue #87 and Project #8
+  with the pushed SHA.
+
+**Synchronized pre-implementation record:**
+
+```json
+{
+  "goal": "Pair differently titled AutoAPI procedure and labor records deterministically",
+  "plan_ref": "docs/superpowers/plans/2026-09-11-natural-language-quote-procedure-generator.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/87",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/pre-implementation-gate.md",
+    "docs/architecture/contracts.md",
+    "docs/github/operating-model.md"
+  ],
+  "todo": [
+    "Add the mismatched procedure/labor title regression",
+    "Implement deterministic component and qualifier matching",
+    "Verify the RAV4 labor endpoint and full test suites",
+    "Synchronize Issue #87 and Project #8 with the pushed SHA"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-09-12T00:00:00Z",
+  "base_sha": "d8680b127313b1418f04a6e2e5bf92006268dc46"
+}
+```
+
 ## Post-implementation evidence — 2026-09-12
 
 The integrity correction is implemented and verified locally. AutoAPI's
