@@ -74,13 +74,16 @@
         </aside>
       </section>
 
-      <section class="panel answer-panel" aria-labelledby="answer-title">
+      <section class="panel answer-panel" id="answer-panel" data-detail-view="compact" aria-labelledby="answer-title">
         <div class="answer-heading panel-heading">
           <div>
             <p class="eyebrow">Answer</p>
             <h2 id="answer-title">Procedure and quote</h2>
           </div>
-          <span id="result-status" class="result-status" data-state="idle">Waiting for a question</span>
+          <div class="answer-actions">
+            <button id="detail-toggle" class="detail-toggle" type="button" aria-expanded="false">Detailed view</button>
+            <span id="result-status" class="result-status" data-state="idle">Waiting for a question</span>
+          </div>
         </div>
 
         <div class="answer-identity" id="answer-identity" hidden>
@@ -88,23 +91,29 @@
             <span class="identity-label">Vehicle resolved</span>
             <strong id="answer-vehicle">—</strong>
           </div>
-          <div>
+          <div class="technical-only">
             <span class="identity-label">Revision</span>
             <strong id="answer-revision">—</strong>
           </div>
-          <div>
+          <div class="technical-only">
             <span class="identity-label">Source watermark</span>
             <strong id="answer-watermark">—</strong>
           </div>
+        </div>
+
+        <div class="consumer-summary" id="consumer-summary" hidden>
+          <p class="eyebrow">At a glance</p>
+          <h3 id="consumer-job">Your requested work</h3>
+          <p id="consumer-message">I’ll show the available procedure and quote here.</p>
         </div>
 
         <div class="vehicle-options" id="vehicle-options" hidden>
           <div class="options-heading">
             <div>
               <p class="eyebrow">Choose a match</p>
-              <h3>Which vehicle should this request use?</h3>
+              <h3 id="options-title">Which vehicle should this request use?</h3>
             </div>
-            <span class="options-hint">Click an option or reply with its number.</span>
+            <span class="options-hint" id="options-hint">Click an option or reply with its number.</span>
           </div>
           <div class="option-list" id="option-list"></div>
         </div>
@@ -119,12 +128,13 @@
               <span class="review-badge" id="review-badge" hidden>UNREVIEWED</span>
             </div>
             <p class="generation-line" id="procedure-generation">A structured procedure will appear here.</p>
+            <p class="technical-line technical-only" id="procedure-technical-generation"></p>
             <div class="notice-list" id="procedure-warnings" hidden></div>
             <ol class="procedure-steps" id="procedure-steps">
               <li class="empty-output">Ask a question to load source-backed procedure steps.</li>
             </ol>
             <div class="visual-grid" id="procedure-visuals" hidden></div>
-            <div class="evidence-strip" id="procedure-evidence" hidden></div>
+            <div class="evidence-strip technical-only" id="procedure-evidence" hidden></div>
           </article>
 
           <article class="output-section quote-section" aria-labelledby="quote-title">
@@ -147,11 +157,11 @@
                 <p class="empty-output">No parts have been returned yet.</p>
               </div>
             </div>
-            <div class="evidence-strip" id="quote-evidence" hidden></div>
+            <div class="evidence-strip technical-only" id="quote-evidence" hidden></div>
           </article>
         </div>
 
-        <section class="source-section" aria-labelledby="source-title">
+        <section class="source-section technical-only" aria-labelledby="source-title">
           <div class="section-heading">
             <div>
               <p class="eyebrow">Source state</p>
@@ -171,7 +181,7 @@
         </section>
 
         <div class="global-warnings" id="global-warnings" hidden></div>
-        <details class="raw-output">
+        <details class="raw-output technical-only">
           <summary>View structured JSON response</summary>
           <pre id="json-output">{}</pre>
         </details>

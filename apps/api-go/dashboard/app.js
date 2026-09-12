@@ -17,6 +17,7 @@
     eventsController: null,
     lastAssistantMessage: null,
     terminalInitialized: false,
+    detailView: false,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -88,6 +89,17 @@
     if (!element) return;
     element.textContent = label;
     element.dataset.state = stateName;
+  }
+
+  function setDetailView(enabled) {
+    state.detailView = Boolean(enabled);
+    const panel = $("answer-panel");
+    const button = $("detail-toggle");
+    if (panel) panel.dataset.detailView = state.detailView ? "detailed" : "compact";
+    if (button) {
+      button.setAttribute("aria-expanded", String(state.detailView));
+      button.textContent = state.detailView ? "Hide detailed view" : "Detailed view";
+    }
   }
 
   function replaceChildren(element, children) {
@@ -190,6 +202,38 @@
     return stateLabel || answerLabel || "Processing";
   }
 
+  function friendlyProcedureTitle(procedure) {
+    const title = text(pick(procedure, ["title", "name", "article_title"]));
+    if (!title) return "Your requested repair";
+    return title.charAt(0).toUpperCase() + title.slice(1);
+  }
+
+  function renderConsumerSummary(payload, answer) {
+    const target = $("consumer-summary");
+    if (!target) return;
+    const procedure = isObject(answer.procedure) ? answer.procedure : null;
+    const quote = isObject(answer.quote) ? answer.quote : (isObject(answer.labor) ? answer.labor : null);
+    const vehicle = isObject(answer.vehicle) ? answer.vehicle : (isObject(payload.vehicle) ? payload.vehicle : null);
+    const options = vehicleOptionsFrom(payload, answer);
+    if (!vehicle && !procedure && !quote && !options.length) {
+      target.hidden = true;
+      return;
+    }
+    target.hidden = false;
+    const vehicleLabel = formatVehicle(vehicle);
+    const jobLabel = friendlyProcedureTitle(procedure) || text(payload.message) || "Your requested repair";
+    setText("consumer-job", vehicleLabel ? `${vehicleLabel} · ${jobLabel}` : jobLabel);
+    let message = "I’m preparing the answer. Available information will stay visible while it loads.";
+    if (procedure || quote) {
+      message = "The available procedure and quote are ready below. Technical source details are in Detailed view.";
+    } else if (options.length) {
+      message = "Choose the matching vehicle below to load the exact source-backed procedure and quote.";
+    } else if (text(payload.status) === "failed" || dataStateFrom(payload, answer) === "unavailable") {
+      message = "I couldn’t complete the lookup yet. Any source-backed information is shown below.";
+    }
+    setText("consumer-message", message);
+  }
+
   function messageText(payload) {
     if (!isObject(payload)) return "The API returned no structured response.";
     if (isObject(payload.error)) {
@@ -199,9 +243,12 @@
     }
     const answer = answerFrom(payload);
     const options = vehicleOptionsFrom(payload, answer);
-    if (options.length) return `I found ${options.length} vehicle matches. Choose one below or reply with its number.`;
+    if (options.length && !answer.procedure && !answer.quote && !answer.labor) {
+      return `I found ${options.length} vehicle match${options.length === 1 ? "" : "es"}. Choose one below or reply with its number.`;
+    }
     const procedure = isObject(answer.procedure) ? answer.procedure : null;
     const quote = isObject(answer.quote) ? answer.quote : (isObject(answer.labor) ? answer.labor : null);
+    if (procedure || quote) return "Matched vehicle. The procedure and quote are shown below.";
     const title = text(pick(procedure, ["title", "name", "article_title"]));
     const hours = pick(quote, ["total_hours", "total_labor_hours"]);
     const stateLabel = dataStateFrom(payload, answer);
@@ -265,12 +312,15 @@
     state.lastEventId = null;
     state.eventIds = new Set();
     state.lastAssistantMessage = null;
+    setDetailView(false);
     setResultStatus("Waiting for a question", "idle");
     $("answer-identity").hidden = true;
+    $("consumer-summary").hidden = true;
     $("vehicle-options").hidden = true;
     replaceChildren($("option-list"), []);
     setText("procedure-title", "No procedure yet");
     setText("procedure-generation", "A structured procedure will appear here.");
+    setText("procedure-technical-generation", "");
     $("review-badge").hidden = true;
     replaceChildren($("procedure-warnings"), []);
     $("procedure-warnings").hidden = true;
@@ -316,6 +366,11 @@
       return;
     }
     container.hidden = false;
+    const hasAnswer = isObject(answer?.procedure) || isObject(answer?.quote) || isObject(answer?.labor);
+    setText("options-title", hasAnswer ? "Vehicle matched" : "Which vehicle should this request use?");
+    setText("options-hint", hasAnswer
+      ? "Confirm this match or choose another."
+      : "Click an option or reply with its number.");
     const buttons = options.map((option, index) => {
       const optionNumber = Number(option.option_number || index + 1);
       const button = element("button", "option-button");
@@ -358,10 +413,19 @@
     return text(pick(warning, ["message", "detail", "reason", "code"])) || JSON.stringify(warning);
   }
 
+  function friendlyWarning(warning) {
+    const value = warningText(warning);
+    const normalized = value.toLowerCase();
+    if (normalized.includes("procedure_requires_review")) return "This procedure is unreviewed and should be checked before use.";
+    if (normalized.includes("unknown_duration")) return "Labor time is not available for one or more steps yet.";
+    if (normalized.includes("source_unnormalized")) return "Some information is still being normalized from the source.";
+    return value;
+  }
+
   function warningList(payload, answer, procedure) {
     const result = [];
     for (const item of [...values(payload.warnings), ...values(answer.warnings), ...values(procedure?.warnings)]) {
-      const value = warningText(item);
+      const value = friendlyWarning(item);
       if (value && !result.includes(value)) result.push(value);
     }
     return result;
@@ -393,18 +457,24 @@
   function renderProcedure(payload, answer) {
     const procedure = isObject(answer.procedure) ? answer.procedure : null;
     if (!procedure) {
-      setText("procedure-title", "No procedure yet");
-      setText("procedure-generation", "The API has not returned a procedure.");
+      const options = vehicleOptionsFrom(payload, answer);
+      setText("procedure-title", options.length ? "Choose a vehicle to continue" : "Procedure loading");
+      setText("procedure-generation", options.length
+        ? "The exact procedure will appear after the vehicle match is confirmed."
+        : "The procedure is still being prepared. Available information will remain visible while it loads.");
       renderWarnings("procedure-warnings", []);
-      replaceChildren($("procedure-steps"), [element("li", "empty-output", "Procedure steps are not available yet.")]);
+      replaceChildren($("procedure-steps"), [element("li", "empty-output", options.length
+        ? "Select the matching vehicle above to continue."
+        : "Procedure steps are not available yet.")]);
       $("review-badge").hidden = true;
       $("procedure-visuals").hidden = true;
       $("procedure-evidence").hidden = true;
       return;
     }
-    setText("procedure-title", pick(procedure, ["title", "name", "article_title"]) || "Procedure");
+    setText("procedure-title", friendlyProcedureTitle(procedure));
     const generation = pick(procedure, ["generation", "generated_by", "generator", "model"]);
-    setText("procedure-generation", generation ? `Generated by ${generation}` : "Generation source was not returned by the API.");
+    setText("procedure-generation", "Here’s the step-by-step procedure. Follow the steps in order.");
+    setText("procedure-technical-generation", generation ? `Generated by ${generation}` : "Generation source was not returned by the API.");
     const review = reviewState(procedure);
     const reviewBadge = $("review-badge");
     reviewBadge.hidden = !review || text(review).toLowerCase() === "approved";
@@ -419,7 +489,7 @@
         const item = element("li", "procedure-step");
         const instruction = pick(step, ["instruction", "action", "description", "text"]);
         item.append(element("span", "step-instruction", instruction || JSON.stringify(step)));
-        const meta = element("div", "step-meta");
+        const meta = element("div", "step-meta technical-only");
         appendLabelValue(meta, "Operation", pick(step, ["operation_id"]));
         const sources = values(step.source_article_ids).join(", ");
         const evidence = values(step.evidence_ids).join(", ");
@@ -479,7 +549,7 @@
   function operationLabel(operation) {
     if (typeof operation === "string") return operation;
     if (!isObject(operation)) return text(operation);
-    return text(pick(operation, ["name", "title", "operation", "description", "article_title", "operation_id"])) || JSON.stringify(operation);
+    return text(pick(operation, ["name", "title", "operation", "description", "action", "article_title", "operation_id"])) || JSON.stringify(operation);
   }
 
   function renderOperationGroup(target, label, operations) {
@@ -500,9 +570,13 @@
     const hours = pick(labor, ["total_hours", "total_labor_hours"]);
     setText("total-hours", hasValue(hours) ? formatHours(hours) : "—");
     const overlap = pick(labor, ["overlap_hours_removed", "overlap_hours"]);
-    setText("overlap-hours", hasValue(overlap) ? `Overlap removed: ${formatHours(overlap)}` : "No overlap value returned.");
+    setText("overlap-hours", hasValue(overlap) && Number(overlap) > 0
+      ? `Includes ${formatHours(overlap)} saved by shared work`
+      : labor ? "Shared work was checked; no overlap deduction was reported." : "Overlap details will appear with the labor quote.");
     const quoteState = $("quote-state");
-    quoteState.textContent = labor ? "Returned" : "Awaiting data";
+    quoteState.textContent = labor
+      ? (hasValue(hours) ? "Ready" : "Labor time pending")
+      : "Awaiting data";
     const breakdown = $("labor-breakdown");
     replaceChildren(breakdown, []);
     if (labor) {
@@ -643,6 +717,7 @@
     const answerStatus = answerStatusFrom(state.payload, answer);
     setResultStatus(statusLabel(dataState, answerStatus), dataState === "unavailable" ? "error" : "ready");
     setSystemStatus(dataState === "normalized" ? "Cache served" : "Source-backed work active", "ready");
+    renderConsumerSummary(state.payload, answer);
     renderVehicleOptions(state.payload, answer);
     renderIdentity(state.payload, answer);
     renderProcedure(state.payload, answer);
@@ -886,6 +961,7 @@
 
   function bind() {
     $("query-form")?.addEventListener("submit", submitQuery);
+    $("detail-toggle")?.addEventListener("click", () => setDetailView(!state.detailView));
     $("query")?.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
@@ -898,6 +974,7 @@
         $("query").focus();
       });
     }
+    setDetailView(false);
     setWorkerStatus("Idle", "idle");
   }
 
