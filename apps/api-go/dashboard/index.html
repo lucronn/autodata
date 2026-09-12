@@ -3,82 +3,176 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AutoData cockpit</title>
+    <meta name="theme-color" content="#0c1110" />
+    <title>AutoData service bay</title>
     <link rel="stylesheet" href="/dashboard/styles.css" />
   </head>
   <body>
     <main class="shell">
       <header class="masthead">
-        <div>
-          <p class="kicker">AUTODATA / LOCAL COCKPIT</p>
-          <h1>Ask about a vehicle.</h1>
-          <p class="lede">Choose a vehicle, describe the work in plain language, and get the structured answer already in the cache—or watch the source-backed intake begin.</p>
+        <div class="brand-line">
+          <span class="brand-mark" aria-hidden="true">AD</span>
+          <span>AutoData / service bay</span>
         </div>
-        <div class="status-pill" id="system-status" data-state="idle">Checking cache</div>
+        <div class="header-state">
+          <span class="environment-label">Local development</span>
+          <span class="status-pill" id="system-status" data-state="idle">Ready for a request</span>
+        </div>
+        <div class="intro">
+          <p class="kicker">Natural-language repair intelligence</p>
+          <h1>Describe the job.<br /><em>Get the work.</em></h1>
+          <p class="lede">Tell AutoData the vehicle and what it needs in one sentence. It returns the best available procedure and source-priced parts while missing details are filled in behind the scenes.</p>
+        </div>
       </header>
 
-      <section class="workspace" aria-label="Vehicle knowledge assistant">
-        <aside class="panel vehicle-panel">
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Vehicle</p>
-              <h2>Set the scope</h2>
-            </div>
-            <button class="quiet-button" id="refresh-vehicles" type="button">Refresh</button>
-          </div>
-          <p class="panel-copy">Cached selectors keep identity matching fast and prevent the same catalog calls on every question.</p>
-          <label for="vehicle-select">Cached vehicle</label>
-          <select id="vehicle-select">
-            <option value="">Loading cached vehicles…</option>
-          </select>
-          <div class="manual-grid">
-            <label>Year<input id="year" inputmode="numeric" placeholder="1999" /></label>
-            <label>Region<input id="region" value="US" /></label>
-            <label>Make<input id="make" placeholder="Chevrolet" /></label>
-            <label>Model<input id="model" placeholder="Silverado 1500" /></label>
-            <label>Drive<input id="drivetrain" placeholder="2WD" /></label>
-            <label>Engine L<input id="engine" inputmode="decimal" placeholder="5.3" /></label>
-          </div>
-          <div class="cache-note" id="cache-note">No selector data loaded yet.</div>
-        </aside>
-
-        <section class="panel chat-panel">
+      <section class="workspace" aria-label="AutoData chatbot workspace">
+        <section class="panel conversation-panel" aria-labelledby="conversation-title">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Conversation</p>
-              <h2>What do you need?</h2>
+              <h2 id="conversation-title">What should we work on?</h2>
             </div>
-            <span class="route-label">POST /job-plans</span>
+            <span class="route-label">POST /chat/queries</span>
           </div>
           <div class="chat-log" id="chat-log" aria-live="polite">
             <div class="message assistant-message">
               <span class="message-label">AutoData</span>
-              <p>Ask for an article, procedure, diagnostic, specification, or multi-component job.</p>
+              <p>Give me the year, make, model, and job in plain language. I’ll show available vehicle matches before asking you to choose.</p>
             </div>
           </div>
+          <div class="examples" aria-label="Example requests">
+            <span class="examples-label">Try a request</span>
+            <button class="example-button" type="button" data-query="1997 Toyota RAV4 4WD brake line replacement procedure and quote">97 RAV4 / brake line</button>
+            <button class="example-button" type="button" data-query="oil pump, water pump, timing belt, and power steering pump replacement for a 1999 Chevrolet Silverado 1500 2WD 5.3L">99 Silverado / four pumps</button>
+          </div>
           <form id="query-form" class="query-form">
-            <label class="sr-only" for="query">Natural-language request</label>
-            <textarea id="query" rows="3" placeholder="Example: replace the alternator and starter, and give me the combined labor estimate"></textarea>
+            <label class="sr-only" for="query">Natural-language repair request</label>
+            <textarea id="query" rows="3" required placeholder="Example: 97 Toyota RAV4 brake line replacement procedure and quote"></textarea>
             <div class="form-footer">
-              <span class="hint">Answers stay vehicle-scoped and evidence-linked.</span>
-              <button class="primary-button" type="submit">Ask AutoData</button>
+              <span class="hint">One message. Vehicle matching, retrieval, labor overlap, and source state are handled for you.</span>
+              <button class="primary-button" type="submit"><span>Ask AutoData</span><span aria-hidden="true">↗</span></button>
             </div>
           </form>
         </section>
+
+        <aside class="panel workers-panel" aria-labelledby="workers-title">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Operations</p>
+              <h2 id="workers-title">Workers terminal</h2>
+            </div>
+            <span class="terminal-status" id="worker-connection" data-state="idle">Idle</span>
+          </div>
+          <div class="terminal-meta">
+            <span id="worker-query-id">No query connected</span>
+            <span id="worker-event-count">0 events</span>
+          </div>
+          <div class="workers-terminal" id="worker-terminal" role="log" aria-live="polite" aria-label="Correlated worker progress">
+            <div class="terminal-empty" id="worker-empty">Worker progress will appear here after a request.</div>
+          </div>
+          <p class="terminal-note">Events are correlated to this query. A retry or deep-lane failure does not erase a usable answer.</p>
+        </aside>
       </section>
 
-      <section class="panel output-panel" aria-label="Structured output">
-        <div class="panel-heading">
+      <section class="panel answer-panel" aria-labelledby="answer-title">
+        <div class="answer-heading panel-heading">
           <div>
-            <p class="eyebrow">Result</p>
-            <h2>Structured output</h2>
+            <p class="eyebrow">Answer</p>
+            <h2 id="answer-title">Procedure and quote</h2>
           </div>
-          <span id="result-status" class="result-status">Waiting for a question</span>
+          <span id="result-status" class="result-status" data-state="idle">Waiting for a question</span>
         </div>
-        <div id="result-summary" class="result-summary empty-state">Your normalized article or procedure will appear here.</div>
-        <div id="source-images" class="source-images" aria-label="Original source images"></div>
+
+        <div class="answer-identity" id="answer-identity" hidden>
+          <div>
+            <span class="identity-label">Vehicle resolved</span>
+            <strong id="answer-vehicle">—</strong>
+          </div>
+          <div>
+            <span class="identity-label">Revision</span>
+            <strong id="answer-revision">—</strong>
+          </div>
+          <div>
+            <span class="identity-label">Source watermark</span>
+            <strong id="answer-watermark">—</strong>
+          </div>
+        </div>
+
+        <div class="vehicle-options" id="vehicle-options" hidden>
+          <div class="options-heading">
+            <div>
+              <p class="eyebrow">Choose a match</p>
+              <h3>Which vehicle should this request use?</h3>
+            </div>
+            <span class="options-hint">Click an option or reply with its number.</span>
+          </div>
+          <div class="option-list" id="option-list"></div>
+        </div>
+
+        <div class="answer-grid">
+          <article class="output-section procedure-section" aria-labelledby="procedure-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Procedure</p>
+                <h3 id="procedure-title">No procedure yet</h3>
+              </div>
+              <span class="review-badge" id="review-badge" hidden>UNREVIEWED</span>
+            </div>
+            <p class="generation-line" id="procedure-generation">A structured procedure will appear here.</p>
+            <div class="notice-list" id="procedure-warnings" hidden></div>
+            <ol class="procedure-steps" id="procedure-steps">
+              <li class="empty-output">Ask a question to load source-backed procedure steps.</li>
+            </ol>
+            <div class="visual-grid" id="procedure-visuals" hidden></div>
+            <div class="evidence-strip" id="procedure-evidence" hidden></div>
+          </article>
+
+          <article class="output-section quote-section" aria-labelledby="quote-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Quote</p>
+                <h3 id="quote-title">Labor and parts</h3>
+              </div>
+              <span class="quote-state" id="quote-state">Awaiting data</span>
+            </div>
+            <div class="quote-total">
+              <span>Total labor</span>
+              <strong id="total-hours">—</strong>
+              <small id="overlap-hours">Overlap details will appear with the quote.</small>
+            </div>
+            <div class="labor-breakdown" id="labor-breakdown"></div>
+            <div class="parts-block">
+              <div class="subheading"><span>Source-priced parts</span><span id="parts-currency"></span></div>
+              <div class="parts-list" id="parts-list">
+                <p class="empty-output">No parts have been returned yet.</p>
+              </div>
+            </div>
+            <div class="evidence-strip" id="quote-evidence" hidden></div>
+          </article>
+        </div>
+
+        <section class="source-section" aria-labelledby="source-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Source state</p>
+              <h3 id="source-title">What the answer is based on</h3>
+            </div>
+            <span class="source-state" id="source-state">No source accessed</span>
+          </div>
+          <div class="source-content">
+            <div class="source-links" id="source-links">
+              <p class="empty-output">Source references will appear here when returned by the API.</p>
+            </div>
+            <details class="source-raw" id="source-raw" hidden>
+              <summary>View source data while normalization continues</summary>
+              <pre id="source-output"></pre>
+            </details>
+          </div>
+        </section>
+
+        <div class="global-warnings" id="global-warnings" hidden></div>
         <details class="raw-output">
-          <summary>View JSON response</summary>
+          <summary>View structured JSON response</summary>
           <pre id="json-output">{}</pre>
         </details>
       </section>

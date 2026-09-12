@@ -214,6 +214,37 @@ class Mercury2Tests(unittest.TestCase):
             ["required", "recommended"],
         )
 
+    def test_procedure_prompt_carries_structured_evidence_context(self):
+        from autodata_ingestion.mercury2 import compose_procedure_draft
+
+        class FakeClient:
+            def complete_json(self, prompt):
+                self.prompt = prompt
+                return {"title": "Service", "steps": [], "warnings": []}
+
+        client = FakeClient()
+        compose_procedure_draft(
+            client,
+            vehicle={"year": 1999, "make": "Chevrolet", "model": "Silverado 1500"},
+            quote={"labor": {"operations": []}, "procedure": {"warnings": []}},
+            articles=[{
+                "article_id": "article-1",
+                "evidence": [{
+                    "evidence_id": "evidence-1",
+                    "excerpt": "Use the specified tool.",
+                    "locator": "body.steps[1]",
+                    "source_uri": "https://source.test/article.html",
+                    "source_watermark": "source-v2",
+                }],
+            }],
+        )
+
+        payload = json.loads(client.prompt)
+        self.assertEqual(payload["articles"][0]["evidence"][0]["excerpt"], "Use the specified tool.")
+        self.assertEqual(payload["articles"][0]["evidence"][0]["locator"], "body.steps[1]")
+        self.assertEqual(payload["articles"][0]["evidence"][0]["source_uri"], "https://source.test/article.html")
+        self.assertEqual(payload["articles"][0]["evidence"][0]["source_watermark"], "source-v2")
+
 
 if __name__ == "__main__":
     unittest.main()

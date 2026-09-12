@@ -46,6 +46,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "024_catalog_article_operations.sql",
                 "025_chat_quote_procedure.sql",
                 "026_chat_quote_operation_categories.sql",
+                "027_chat_runtime_durable_state.sql",
             ],
         )
 

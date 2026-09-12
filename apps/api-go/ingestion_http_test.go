@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeIngestionClient struct {
@@ -116,5 +118,29 @@ func TestKnowledgeQueryAPIRejectsTrailingJSON(t *testing.T) {
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnprocessableEntity)
+	}
+}
+
+func TestHTTPIngestionClientAcceptsBoundedSourceFallbackResponse(t *testing.T) {
+	largeSource := append([]byte(`{"source_unnormalized":"`), bytes.Repeat([]byte("a"), 2<<20)...)
+	largeSource = append(largeSource, []byte(`"}`)...)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/chat/queries/q-large" {
+			t.Fatalf("path = %q, want chat query path", request.URL.Path)
+		}
+		_, _ = response.Write(largeSource)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPIngestionClient(server.URL, "", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body, err := client.Get(context.Background(), httptest.NewRequest(http.MethodGet, "/chat/queries/q-large", nil), "q-large")
+	if err != nil {
+		t.Fatalf("large source response failed: %v", err)
+	}
+	if status != http.StatusOK || len(body) != len(largeSource) {
+		t.Fatalf("status/body length = %d/%d, want %d/%d", status, len(body), http.StatusOK, len(largeSource))
 	}
 }

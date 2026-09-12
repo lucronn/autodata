@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -114,6 +115,75 @@ def test_event_envelope_rejects_non_contract_state_and_owns_correlation_fields()
     assert event["query_id"] == "query-contract"
     assert event["payload"]["query_id"] == "query-contract"
     assert event["payload"]["stage"] == "answer"
+
+
+def test_stage_idempotency_ignores_timestamps_and_recursive_history():
+    register_query_context("query-stage")
+    first = publish_progress_event(
+        "query-stage",
+        "answer",
+        "completed",
+        data_state="source_unnormalized",
+        payload={
+            "message": "provisional",
+            "answer": {
+                "answer_status": "partial",
+                "data_state": "source_unnormalized",
+                "updated_at": "2026-09-11T00:00:00Z",
+                "worker_stream": [{"event_id": "history-1"}],
+                "source_uri": "https://source.test/raw",
+            },
+        },
+    )
+    replay = publish_progress_event(
+        "query-stage",
+        "answer",
+        "completed",
+        data_state="source_unnormalized",
+        payload={
+            "message": "provisional",
+            "answer": {
+                "answer_status": "partial",
+                "data_state": "source_unnormalized",
+                "updated_at": "2026-09-11T00:01:00Z",
+                "worker_stream": [{"event_id": "history-2"}],
+                "source_uri": "https://source.test/raw",
+            },
+        },
+    )
+
+    assert replay["event_id"] == first["event_id"]
+    assert len(list(ProgressEventStore.current().iter_events("query-stage"))) == 1
+
+
+def test_redaction_covers_url_userinfo_serialized_headers_and_query_secrets():
+    event = publish_progress_event(
+        "query-url-redact",
+        "source_retrieval",
+        "failed",
+        data_state="unavailable",
+        payload={
+            "url": "https://user:secret-userinfo@source.test/path?api_key=secret-query&ok=1",
+            "headers": '{"Authorization":"Bearer serialized-secret","X-Api-Key":"header-secret"}',
+            "message": "request https://source.test/?token=secret-message",
+        },
+    )
+
+    rendered = str(event)
+    for secret in ("secret-userinfo", "secret-query", "serialized-secret", "header-secret", "secret-message"):
+        assert secret not in rendered
+
+
+def test_progress_retry_metadata_is_redacted_and_truncated():
+    result = record_chat_retry(
+        "query-error",
+        "source_retrieval",
+        RuntimeError("password=hidden " + "x" * 2000),
+        max_attempts=2,
+    )
+
+    assert result["error"]["message"].startswith("password=[REDACTED_SECRET]")
+    assert len(result["error"]["message"]) <= 512
 
 
 def test_retries_are_bounded_and_exhaustion_publishes_dead_letter():

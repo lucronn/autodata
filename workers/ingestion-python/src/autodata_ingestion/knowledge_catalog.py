@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from typing import Any
 
 from .article_intake import VehicleTarget
@@ -319,13 +320,63 @@ def _derived_rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget)
         labor = row[9] if len(row) > 9 and isinstance(row[9], dict) else {}
         fingerprint = str(row[10]) if len(row) > 10 and row[10] else ""
         model = str(row[11]) if len(row) > 11 and row[11] else "deterministic"
-        evidence_ids = []
-        source_article_ids = []
-        requested_components = []
+        evidence_ids: list[str] = []
+        source_article_ids: list[str] = []
+        requested_components: list[str] = []
+        stored_procedure: dict[str, Any] = {}
+        review_reasons: list[str] = []
+        excluded_operation_ids: list[str] = []
+        excluded_operation_reasons: dict[str, Any] = {}
+        review_state = status
+        review_label: str | None = None
+        requires_review = status != "ready"
         if isinstance(provenance, dict):
-            evidence_ids = [str(value) for value in provenance.get("evidence_ids", [])]
-            source_article_ids = [str(value) for value in provenance.get("article_ids", [])]
-            requested_components = [str(value) for value in provenance.get("requested_components", [])]
+            evidence_ids = [str(value) for value in provenance.get("evidence_ids", []) if str(value).strip()]
+            source_article_ids = [str(value) for value in provenance.get("article_ids", []) if str(value).strip()]
+            requested_components = [str(value) for value in provenance.get("requested_components", []) if str(value).strip()]
+            raw_procedure = provenance.get("procedure")
+            if isinstance(raw_procedure, dict):
+                stored_procedure = deepcopy(raw_procedure)
+            review_reasons = [str(value) for value in provenance.get("review_reasons", []) if str(value).strip()]
+            excluded_operation_ids = [
+                str(value)
+                for value in provenance.get("excluded_operation_ids", [])
+                if str(value).strip()
+            ]
+            raw_excluded_reasons = provenance.get("excluded_operation_reasons", {})
+            if isinstance(raw_excluded_reasons, dict):
+                excluded_operation_reasons = deepcopy(raw_excluded_reasons)
+            review_state = str(
+                provenance.get("review_state")
+                or stored_procedure.get("review_state")
+                or status
+            )
+            raw_review_label = provenance.get("review_label") or stored_procedure.get("review_label")
+            review_label = str(raw_review_label) if raw_review_label is not None else None
+            requires_review = bool(
+                provenance.get("requires_review")
+                or stored_procedure.get("requires_review")
+                or status != "ready"
+            )
+        procedure = {
+            **stored_procedure,
+            "title": stored_procedure.get("title") or title,
+            "steps": stored_procedure.get("steps") or steps or [],
+            "generation": stored_procedure.get(
+                "generation",
+                "mercury-2" if model in {"mercury-2", "generated"} else "deterministic_fallback",
+            ),
+            "warnings": deepcopy(stored_procedure.get("warnings") or []),
+            "requires_review": requires_review,
+        }
+        if review_state:
+            procedure.setdefault("review_state", review_state)
+        if review_label:
+            procedure.setdefault("review_label", review_label)
+        if excluded_operation_ids:
+            procedure["excluded_operation_ids"] = excluded_operation_ids
+        if excluded_operation_reasons:
+            procedure["excluded_operation_reasons"] = excluded_operation_reasons
         article = {
             "article_id": str(article_id),
             "article_key": f"derived:{revision_id}",
@@ -343,13 +394,13 @@ def _derived_rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget)
             "labor": labor,
             "fingerprint": fingerprint,
             "model": model,
-            "procedure": {
-                "title": title,
-                "steps": steps or [],
-                "generation": "mercury-2" if model in {"mercury-2", "generated"} else "deterministic_fallback",
-                "warnings": [],
-                "requires_review": status != "ready",
-            },
+            "procedure": procedure,
+            "review_state": review_state,
+            "review_label": review_label,
+            "requires_review": requires_review,
+            "review_reasons": review_reasons,
+            "excluded_operation_ids": excluded_operation_ids,
+            "excluded_operation_reasons": excluded_operation_reasons,
         }
         evidence = [
             {

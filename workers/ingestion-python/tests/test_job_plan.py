@@ -1,4 +1,6 @@
+import json
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -144,6 +146,24 @@ def test_recognizes_multiword_pump_and_belt_components_from_natural_language():
         "timing-belt-article",
         "power-steering-pump-article",
     ]
+
+
+def test_shared_provider_bucket_does_not_assign_one_article_to_every_component():
+    alternator = article(
+        "P:alternator",
+        "alternator",
+        [{"operation_id": "replace-alternator", "action": "Alternator R&R", "duration_hours": 0.7}],
+    )
+    alternator["bucket"] = "Starter & Alternator Replacement Procedures"
+
+    result = plan_job(
+        "replace the alternator and starter",
+        VEHICLE,
+        catalog=[alternator],
+    )
+
+    assert result["selected_articles"] == ["P:alternator"]
+    assert "missing_article:starter" in result["review_reasons"]
 
 
 def test_prefers_procedure_article_over_same_named_labor_row():
@@ -520,6 +540,242 @@ def test_singular_article_and_operation_evidence_ids_are_normalized():
     assert result["quote"]["evidence_ids"] == ["article-evidence", "operation-evidence"]
 
 
+def test_mercury_prompt_contains_selected_evidence_context_not_only_ids():
+    captured = {}
+
+    class FakeMercury:
+        def complete_json(self, prompt):
+            captured["payload"] = json.loads(prompt)
+            return {
+                "title": "Alternator service",
+                "steps": [{
+                    "operation_id": "replace-alternator",
+                    "action": "Replace alternator",
+                    "components": ["alternator"],
+                    "category": "required",
+                    "source_article_ids": ["alternator-context"],
+                    "evidence_ids": ["evidence-context"],
+                    "requires_review": False,
+                }],
+                "warnings": [],
+                "requires_review": False,
+            }
+
+    source = {
+        "article_id": "alternator-context",
+        "title": "Alternator replacement",
+        "component": "alternator",
+        "operations": [{
+            "operation_id": "replace-alternator",
+            "action": "Replace alternator",
+            "duration_hours": 1.0,
+            "evidence_ids": ["evidence-context"],
+        }],
+        "evidence": [{
+            "evidence_id": "evidence-context",
+            "excerpt": "Remove the alternator after isolating the battery.",
+            "locator": "body.steps[2]",
+            "source_uri": "https://source.test/alternator.html",
+            "source_watermark": "source-v7",
+            "artifact_key": "source/alternator.html",
+        }],
+    }
+
+    result = compose_procedure_with_llm(
+        FakeMercury(),
+        "replace the alternator",
+        VEHICLE,
+        [source],
+        {
+            "operations": [{
+                "operation_id": "replace-alternator",
+                "action": "Replace alternator",
+                "components": ["alternator"],
+                "category": "required",
+                "source_article_ids": ["alternator-context"],
+                "evidence_ids": ["evidence-context"],
+            }],
+        },
+        {"title": "fallback", "steps": [], "warnings": [], "requires_review": True},
+    )
+
+    assert result["generation"] == "mercury-2"
+    assert captured["payload"]["articles"][0]["evidence"] == [{
+        "evidence_id": "evidence-context",
+        "excerpt": "Remove the alternator after isolating the battery.",
+        "locator": "body.steps[2]",
+        "source_article_id": "alternator-context",
+        "source_uri": "https://source.test/alternator.html",
+        "source_watermark": "source-v7",
+        "artifact_key": "source/alternator.html",
+    }]
+
+
+def test_mercury_rejects_operation_id_not_bound_to_a_source_operation():
+    class FakeMercury:
+        def complete_json(self, _prompt):
+            return {
+                "title": "Alternator service",
+                "steps": [{
+                    "operation_id": "unbound-operation",
+                    "action": "Replace alternator",
+                    "components": ["alternator"],
+                    "category": "required",
+                    "source_article_ids": ["alternator-source"],
+                    "evidence_ids": ["alternator-evidence"],
+                }],
+                "warnings": [],
+            }
+
+    with pytest.raises(ValueError, match="source-bound"):
+        compose_procedure_with_llm(
+            FakeMercury(),
+            "replace the alternator",
+            VEHICLE,
+            [{
+                "article_id": "alternator-source",
+                "title": "Alternator replacement",
+                "component": "alternator",
+                "operations": [{
+                    "operation_id": "actual-operation",
+                    "action": "Replace alternator",
+                    "evidence_ids": ["alternator-evidence"],
+                }],
+                "evidence_ids": ["alternator-evidence"],
+            }],
+            {
+                "operations": [{
+                    "operation_id": "unbound-operation",
+                    "action": "Replace alternator",
+                    "components": ["alternator"],
+                    "category": "required",
+                    "source_article_ids": ["alternator-source"],
+                    "evidence_ids": ["alternator-evidence"],
+                }],
+            },
+            {"title": "fallback", "steps": [], "warnings": [], "requires_review": True},
+        )
+
+
+def test_missing_article_id_cannot_produce_a_ready_lineage():
+    result = build_quote_and_procedure(
+        "replace the alternator",
+        VEHICLE,
+        [{
+            "title": "Alternator replacement",
+            "component": "alternator",
+            "operations": [{
+                "operation_id": "replace-alternator",
+                "action": "Replace alternator",
+                "duration_hours": 1.0,
+            }],
+            "evidence_ids": ["alternator-evidence"],
+        }],
+    )
+
+    assert result["status"] == "needs_review"
+    assert "missing_article_id_lineage" in result["review_reasons"]
+    assert result["selected_articles"] == []
+
+
+def test_missing_operation_scope_does_not_infer_an_article_component_union():
+    result = build_quote_and_procedure(
+        "replace the alternator and starter",
+        VEHICLE,
+        [{
+            "article_id": "multi-component-source",
+            "title": "Alternator and starter service",
+            "components": ["alternator", "starter"],
+            "operations": [{
+                "operation_id": "shared-work",
+                "action": "Perform the shared service",
+                "duration_hours": 1.0,
+                "evidence_ids": ["multi-component-evidence"],
+            }],
+            "evidence_ids": ["multi-component-evidence"],
+        }],
+    )
+
+    assert result["status"] == "needs_review"
+    assert "ambiguous_operation_scope:shared-work" in result["review_reasons"]
+
+
+def test_duplicate_visual_source_merges_all_article_and_evidence_lineage():
+    image_bytes = b"\x89PNG\r\n\x1a\nvisual-fixture"
+    articles = [
+        article(
+            "alternator-visual-source",
+            "alternator",
+            [{
+                "operation_id": "replace-alternator",
+                "action": "Replace alternator",
+                "duration_hours": 1.0,
+                "evidence_ids": ["alternator-visual-evidence"],
+            }],
+            images=[{
+                "source_bytes": image_bytes,
+                "source_uri": "https://source.test/shared.png",
+                "evidence_ids": ["alternator-visual-evidence"],
+            }],
+        ),
+        article(
+            "starter-visual-source",
+            "starter",
+            [{
+                "operation_id": "replace-starter",
+                "action": "Replace starter",
+                "duration_hours": 1.0,
+                "evidence_ids": ["starter-visual-evidence"],
+            }],
+            images=[{
+                "source_bytes": image_bytes,
+                "source_uri": "https://source.test/shared.png",
+                "evidence_ids": ["starter-visual-evidence"],
+            }],
+        ),
+    ]
+
+    result = build_quote_and_procedure(
+        "replace the alternator and starter", VEHICLE, articles
+    )
+
+    assert len(result["visual_artifacts"]) == 1
+    artifact = result["visual_artifacts"][0]
+    assert artifact["source_article_ids"] == [
+        "alternator-visual-source",
+        "starter-visual-source",
+    ]
+    assert artifact["evidence_ids"] == [
+        "alternator-visual-evidence",
+        "evidence-alternator-visual-source",
+        "evidence-starter-visual-source",
+        "starter-visual-evidence",
+    ]
+
+
+def test_conflicting_part_currencies_have_no_numeric_subtotal():
+    result = build_quote_and_procedure(
+        "replace the alternator and starter",
+        VEHICLE,
+        [
+            article(
+                "alternator-currency",
+                "alternator",
+                [{"operation_id": "replace-alternator", "action": "Replace alternator", "duration_hours": 1.0}],
+            ) | {"parts": [{"part_id": "alternator-kit", "amount": 10, "currency": "USD"}]},
+            article(
+                "starter-currency",
+                "starter",
+                [{"operation_id": "replace-starter", "action": "Replace starter", "duration_hours": 1.0}],
+            ) | {"parts": [{"part_id": "starter-kit", "amount": 20, "currency": "EUR"}]},
+        ],
+    )
+
+    assert result["parts"]["currency"] == "MULTI"
+    assert result["parts"]["subtotal"] is None
+    assert "conflicting_currencies" in result["review_reasons"]
+
+
 def test_mercury_step_must_match_exact_operation_provenance():
     source = article(
         "alternator-article",
@@ -771,8 +1027,10 @@ def test_public_builder_vectorizes_source_images_and_returns_linked_refs():
 
     assert vectorizer.calls == [(b"\x89PNG\r\n\x1a\nsource-image", "https://source.test/alternator.png")]
     artifact = result["visual_artifacts"][0]
-    assert artifact["source_ref"]["artifact_id"] == "visual-source-1"
-    assert artifact["derived_ref"]["artifact_id"] == "visual-derived-1"
+    uuid.UUID(artifact["source_ref"]["artifact_id"])
+    uuid.UUID(artifact["derived_ref"]["artifact_id"])
+    assert artifact["source_ref"]["provider_artifact_id"] == "visual-source-1"
+    assert artifact["derived_ref"]["provider_artifact_id"] == "visual-derived-1"
     assert artifact["source_ref"]["article_id"] == "alternator-article"
     assert artifact["derived_ref"]["review_state"] == "pending"
     assert result["source_visual_refs"] == [artifact["source_ref"]]

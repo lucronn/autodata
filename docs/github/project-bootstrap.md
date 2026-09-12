@@ -2,13 +2,30 @@
 
 This is a future, parameterized provisioning guide. It is intentionally not executed by the architecture package. Replace the required variables only after the repository owner and target repository have been explicitly selected.
 
+**FUTURE EXECUTION POLICY:** Every `gh` command in this document is a
+future-execution step for a separately authorized provisioning run. The
+commands are examples only while this document is being authored or reviewed;
+they must not be run as part of the architecture/documentation package. In a
+future run, execute the read-only discovery steps first, then make mutations
+only after the returned IDs and existing-state checks have been reviewed.
+
 ## Parameters and prerequisites
 
 ```bash
+# FUTURE EXECUTION VARIABLES — replace placeholders only in an authorized run.
+export OWNER="OWNER"
+export REPO="$OWNER/REPO"
 export PROJECT_OWNER="OWNER"
-export REPO="OWNER/REPO"
+export PROJECT_NUMBER="PROJECT_NUMBER"
 export PROJECT_TITLE="AutoData Platform"
 ```
+
+`OWNER` is the repository owner, `REPO` is the full `OWNER/REPO` name,
+`PROJECT_OWNER` is the user or organization that owns the Project,
+`PROJECT_NUMBER` is the existing or newly returned Project number, and
+`PROJECT_TITLE` is the exact title to reconcile. `OWNER` and
+`PROJECT_OWNER` may be the same account but are intentionally separate
+parameters.
 
 Required access:
 
@@ -16,9 +33,11 @@ Required access:
 - Repository administration permission for repository settings and Actions configuration.
 - Project permission for the selected project owner. The `gh project` manual identifies the `project` token scope as the minimum scope for Project operations; verify authentication before running a mutation.
 
-Read-only discovery comes first:
+Read-only discovery comes first. This is a **FUTURE EXECUTION — READ-ONLY**
+step; it is not an instruction to run commands during documentation work:
 
 ```bash
+# FUTURE EXECUTION ONLY — read-only authentication, repository, and Project discovery.
 gh auth status
 gh repo view "$REPO"
 gh project list --owner "$PROJECT_OWNER" --format json --limit 100
@@ -28,19 +47,22 @@ The operator must select an existing project with the exact intended title or cr
 
 ## Project creation and fields
 
-Create the project only after discovery confirms that the title is not already present:
+Create the project only after discovery confirms that the title is not already
+present. This is a **FUTURE EXECUTION — MUTATION** step:
 
 ```bash
+# FUTURE EXECUTION ONLY — create only after the preceding discovery is reviewed.
 gh project create \
   --owner "$PROJECT_OWNER" \
   --title "$PROJECT_TITLE" \
   --format json
 ```
 
-Record the returned project number as `PROJECT_NUMBER`, then inspect the built-in fields:
+Record the returned project number as `PROJECT_NUMBER`, then inspect the
+built-in fields. This is a **FUTURE EXECUTION — READ-ONLY** step:
 
 ```bash
-export PROJECT_NUMBER="PROJECT_NUMBER"
+# FUTURE EXECUTION ONLY — inspect the returned Project and field IDs.
 gh project view "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json
 gh project field-list "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json --limit 100
 ```
@@ -48,6 +70,7 @@ gh project field-list "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json -
 Create only missing custom fields. The intended field set is:
 
 ```bash
+# FUTURE EXECUTION ONLY — create only fields absent from the preceding field list.
 gh project field-create "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" \
   --name "Priority" --data-type SINGLE_SELECT \
   --single-select-options "P0,P1,P2,P3"
@@ -89,9 +112,11 @@ Views should show linked issues and pull requests, preserve the standard Status 
 
 ## Labels
 
-Create labels only after listing existing labels and reconciling names:
+Create labels only after listing existing labels and reconciling names. This
+is a **FUTURE EXECUTION — READ-ONLY** step:
 
 ```bash
+# FUTURE EXECUTION ONLY — inspect existing labels before any later mutation.
 gh label list --repo "$REPO" --limit 200
 ```
 
@@ -124,18 +149,23 @@ Label colors and descriptions are an administrative presentation choice; names a
 
 ## Adding and updating project items
 
-Add existing Issues or pull requests by URL:
+Add existing Issues or pull requests by URL only after listing the Project and
+confirming that the URL is not already an item. This is a **FUTURE EXECUTION —
+MUTATION** step:
 
 ```bash
+# FUTURE EXECUTION ONLY — add one already-existing Issue or pull request.
 gh project item-add "$PROJECT_NUMBER" \
   --owner "$PROJECT_OWNER" \
   --url "https://github.com/$REPO/issues/ISSUE_NUMBER" \
   --format json
 ```
 
-Inspect the item before updating it:
+Inspect the item before updating it. This is a **FUTURE EXECUTION — READ-ONLY**
+step:
 
 ```bash
+# FUTURE EXECUTION ONLY — discover the existing item and field values.
 gh project item-list "$PROJECT_NUMBER" \
   --owner "$PROJECT_OWNER" \
   --format json \
@@ -144,9 +174,11 @@ gh project item-list "$PROJECT_NUMBER" \
   --field "Area"
 ```
 
-Update one project field at a time by issue/PR URL, using the exact field name and single-select option:
+Update one project field at a time by issue/PR URL, using the exact field name
+and single-select option. This is a **FUTURE EXECUTION — MUTATION** step:
 
 ```bash
+# FUTURE EXECUTION ONLY — update after the preceding item/field discovery.
 gh project item-edit "$PROJECT_NUMBER" \
   --owner "$PROJECT_OWNER" \
   --url "https://github.com/$REPO/issues/ISSUE_NUMBER" \
@@ -155,6 +187,13 @@ gh project item-edit "$PROJECT_NUMBER" \
 ```
 
 For automation, prefer stable project/item/field IDs obtained from JSON discovery rather than guessing names. The CLI also supports ID-based item editing. Never update or delete fields/items in parallel when a preceding command's returned ID or state is required.
+
+For an implementation item, the `Source or dependency` text is the compact
+tracking pointer: include the Issue/PR URL or number, canonical plan path,
+exact pushed SHA or the literal `uncommitted`, current review state, relevant
+test/CI evidence, and any source or infrastructure dependency. Keep the full
+acceptance criteria in the Issue and repository plan; do not copy a second
+technical specification into the Project item.
 
 ## Repository settings checklist
 
@@ -173,9 +212,11 @@ Configure through repository administration after the repository exists:
 
 ## Verification and rollback
 
-After any future provisioning run:
+After any future provisioning run, verify the returned state. This is a
+**FUTURE EXECUTION — READ-ONLY** step:
 
 ```bash
+# FUTURE EXECUTION ONLY — verify Project, fields, items, and labels after a run.
 gh project view "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json
 gh project field-list "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json --limit 100
 gh project item-list "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json --limit 100

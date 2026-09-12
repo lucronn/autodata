@@ -172,11 +172,14 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
     if not isinstance(source_watermarks, (list, tuple, set)):
         source_watermarks = []
     source_watermarks = sorted({str(value) for value in source_watermarks if str(value).strip()})
-    source_watermark = ",".join(source_watermarks) or str(
-        result.get("source", {}).get("source_version", "unknown")
-        if isinstance(result.get("source", {}), Mapping)
-        else "unknown"
+    source_metadata = result.get("source", {})
+    source_fallback = (
+        source_metadata.get("source_watermark")
+        or source_metadata.get("source_version")
+        if isinstance(source_metadata, Mapping)
+        else None
     )
+    source_watermark = ",".join(source_watermarks) or str(source_fallback or "unknown")
     procedure = result.get("procedure", {})
     if not isinstance(procedure, Mapping):
         procedure = {}
@@ -208,29 +211,50 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
             now = datetime.now(UTC).replace(microsecond=0)
             cursor.execute(
                 """
-                INSERT INTO derived_articles
-                    (derived_article_id, article_id, vehicle_id, title,
-                     current_revision_number, current_status, creating_job_plan_id,
-                     created_at, updated_at)
-                VALUES (%s, %s, %s, %s, 0, %s, %s, %s, %s)
-                ON CONFLICT (article_id) DO UPDATE SET
-                    title = EXCLUDED.title,
-                    current_status = EXCLUDED.current_status,
-                    updated_at = EXCLUDED.updated_at
-                RETURNING derived_article_id::text
+                SELECT derived_article_id::text, current_revision_number,
+                       current_status
+                FROM derived_articles
+                WHERE article_id = %s AND vehicle_id = %s
+                FOR UPDATE
                 """,
-                (
-                    derived_id,
-                    article_id,
-                    vehicle_id,
-                    str(procedure.get("title") or article_id),
-                    persistence_status,
-                    str(result.get("job_plan_id", "")) or None,
-                    now,
-                    now,
-                ),
+                (article_id, vehicle_id),
             )
-            derived_id = str(cursor.fetchone()[0])
+            parent_row = cursor.fetchone()
+            current_revision_number = int(parent_row[1]) if parent_row and len(parent_row) > 1 else 0
+            current_status = str(parent_row[2]) if parent_row and len(parent_row) > 2 else ""
+            if parent_row:
+                derived_id = str(parent_row[0])
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO derived_articles
+                        (derived_article_id, article_id, vehicle_id, title,
+                         current_revision_number, current_status, creating_job_plan_id,
+                         created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, 0, %s, %s, %s, %s)
+                    ON CONFLICT (article_id) DO UPDATE SET
+                        title = EXCLUDED.title,
+                        current_status = EXCLUDED.current_status,
+                        updated_at = EXCLUDED.updated_at
+                    RETURNING derived_article_id::text
+                    """,
+                    (
+                        derived_id,
+                        article_id,
+                        vehicle_id,
+                        str(procedure.get("title") or article_id),
+                        persistence_status,
+                        str(result.get("job_plan_id", "")) or None,
+                        now,
+                        now,
+                    ),
+                )
+                derived_row = cursor.fetchone()
+                # PostgreSQL returns the row from the INSERT ... RETURNING
+                # clause. Lightweight replay adapters may not implement it;
+                # the deterministic identity remains authoritative then.
+                if derived_row:
+                    derived_id = str(derived_row[0])
             cursor.execute(
                 "SELECT derived_article_revision_id::text, revision_number FROM derived_article_revisions WHERE derived_article_id = %s AND normalized_fingerprint = %s",
                 (derived_id, fingerprint),
@@ -290,6 +314,15 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
                         "source_watermarks": source_watermarks,
                         "quote_identity": result.get("quote_identity") or quote.get("quote_identity"),
                         "procedure_revision": result.get("procedure_revision") or procedure.get("procedure_revision"),
+                        "procedure": procedure,
+                        "review_state": result.get("review_state") or procedure.get("review_state"),
+                        "review_label": result.get("review_label") or procedure.get("review_label"),
+                        "requires_review": bool(
+                            result.get("requires_review") or procedure.get("requires_review")
+                        ),
+                        "review_reasons": result.get("review_reasons", []),
+                        "excluded_operation_ids": procedure.get("excluded_operation_ids", []),
+                        "excluded_operation_reasons": procedure.get("excluded_operation_reasons", {}),
                         "required_operations": labor.get("required_operations", []),
                         "recommended_operations": labor.get("recommended_operations", []),
                         "visual_artifacts": visual_artifacts,
@@ -383,7 +416,7 @@ def _persistence_status(
     }
     procedure_review = bool(procedure.get("requires_review", False)) or str(
         procedure.get("review_state", "")
-    ).strip().casefold() in {"pending", "needs_review", "rejected"}
+    ).strip().casefold() in {"pending", "needs_review", "unreviewed", "rejected"}
     visual_review = any(
         isinstance(artifact, Mapping)
         and (
@@ -454,6 +487,8 @@ def _visual_lineage_keys(visual_artifacts: list[Any]) -> list[str]:
             "derived_artifact_key",
             "source_object_key",
             "derived_object_key",
+            "source_artifact_id",
+            "derived_artifact_id",
         ):
             key = str(artifact.get(key_name) or "").strip()
             if key:

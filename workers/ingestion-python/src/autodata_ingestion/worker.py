@@ -320,7 +320,15 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
     return {"worker": "ingestion", "lane": "fast", **result}
 
 
-def run_chat_query(serialized_request: str) -> dict[str, object]:
+def configure_chat_worker(runtime=None):
+    """Bind the worker to the same injected chat repository/queue as HTTP."""
+
+    from .chat_service import ensure_chat_runtime
+
+    return ensure_chat_runtime(runtime)
+
+
+def run_chat_query(serialized_request: str, *, runtime=None) -> dict[str, object]:
     """Create or replay one chat query from a worker-compatible JSON envelope."""
 
     try:
@@ -340,14 +348,18 @@ def run_chat_query(serialized_request: str) -> dict[str, object]:
         raise ValueError("chat query request principal must be an object")
     from .chat_service import create_chat_query
 
+    configure_chat_worker(runtime)
+
     return create_chat_query(
         message,
         idempotency_key=idempotency_key,
         principal=principal,
+        conversation_id=request.get("conversation_id"),
+        request_params=request.get("request_params"),
     )
 
 
-def run_chat_selection(serialized_request: str) -> dict[str, object]:
+def run_chat_selection(serialized_request: str, *, runtime=None) -> dict[str, object]:
     """Apply one pending chat vehicle selection from a worker JSON envelope."""
 
     try:
@@ -364,23 +376,41 @@ def run_chat_selection(serialized_request: str) -> dict[str, object]:
         raise ValueError("chat selection request selection must be an object")
     from .chat_service import select_chat_vehicle
 
-    return select_chat_vehicle(query_id, selection)
+    configure_chat_worker(runtime)
+
+    return select_chat_vehicle(query_id, selection, principal=request.get("principal"))
 
 
-def run_chat_worker_once() -> dict[str, object]:
-    """Process at most one queued chat source/model job."""
+def run_chat_worker_once(*, runtime=None) -> dict[str, object]:
+    """Process one source job, then one independent price-refresh job.
 
-    from .chat_service import process_chat_jobs
+    Source work keeps the fast lane ahead of refresh work. If no source job is
+    due, the same worker process drains one price refresh so cached prices can
+    update asynchronously without delaying the already published answer.
+    """
+
+    from .chat_service import process_chat_jobs, process_chat_price_jobs
+
+    configure_chat_worker(runtime)
 
     processed = process_chat_jobs(max_jobs=1)
-    if not processed:
-        return {"worker": "ingestion", "lane": "fast", "status": "idle"}
-    return {
-        "worker": "ingestion",
-        "lane": "fast",
-        "status": "completed",
-        "query": processed[0],
-    }
+    if processed:
+        return {
+            "worker": "ingestion",
+            "lane": "fast",
+            "status": "completed",
+            "query": processed[0],
+        }
+
+    refreshed = process_chat_price_jobs(max_jobs=1)
+    if refreshed:
+        return {
+            "worker": "ingestion",
+            "lane": "price_refresh",
+            "status": "completed",
+            "query": refreshed[0],
+        }
+    return {"worker": "ingestion", "lane": "fast", "status": "idle"}
 
 
 def _catalog_needs_job_plan_hydration(

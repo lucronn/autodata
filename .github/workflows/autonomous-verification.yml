@@ -122,6 +122,13 @@ jobs:
           AUTODATA_MINIO_ROOT_PASSWORD: ci-validation-only
         run: docker compose -f infra/compose/compose.yaml config --quiet
 
+      - name: Run deterministic chat cold/warm smoke
+        env:
+          AUTODATA_POSTGRES_PASSWORD: ci-validation-only
+          AUTODATA_MINIO_ROOT_USER: ci-validation-admin
+          AUTODATA_MINIO_ROOT_PASSWORD: ci-validation-only
+        run: docker compose -f infra/compose/compose.yaml --profile verification run --rm --no-deps chat-smoke
+
       - name: Run fake integration smoke
         env:
           AUTODATA_POSTGRES_PASSWORD: ci-validation-only

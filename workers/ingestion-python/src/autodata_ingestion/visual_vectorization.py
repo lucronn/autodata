@@ -12,6 +12,7 @@ from hashlib import sha256
 from html import escape
 from io import BytesIO
 import re
+import uuid
 from typing import Any, Mapping, Protocol
 from urllib.parse import urlsplit
 from xml.etree import ElementTree
@@ -55,16 +56,21 @@ class DeterministicLocalVectorizer:
         if not _is_renderable_svg(svg.encode("utf-8")):
             raise ValueError("vectorizer produced a non-renderable SVG")
         derived_bytes = svg.encode("utf-8")
+        derived_hash = sha256(derived_bytes).hexdigest()
         return {
             "svg": svg,
             "derived_bytes": derived_bytes,
             "media_type": "image/svg+xml",
             "source_uri": source_uri,
             "source_sha256": source_hash,
-            "source_artifact_id": f"visual-source:{source_hash}",
-            "derived_artifact_id": f"visual-derived:{sha256(derived_bytes).hexdigest()}",
+            "source_artifact_id": _visual_artifact_uuid("source", source_hash),
+            "derived_artifact_id": _visual_artifact_uuid("derived", derived_hash),
             "processor": self.processor,
             "processor_version": self.processor_version,
+            "provider_metadata": {
+                "processor": self.processor,
+                "processor_version": self.processor_version,
+            },
             "renderable": True,
             "review_state": "pending",
             "label": "AI-enhanced / UNREVIEWED",
@@ -103,6 +109,11 @@ class ObjectStorageSourceDiagramVectorizer:
         self._put(source_key, source_bytes, _source_media_type(source_uri))
 
         result = self._vectorizer.redraw(source_bytes, source_uri=source_uri)
+        if not isinstance(result, Mapping):
+            raise ValueError("vectorizer result must be an object")
+        returned_source_hash = str(result.get("source_sha256") or "").strip()
+        if returned_source_hash and returned_source_hash != source_hash:
+            raise ValueError("vectorizer returned a source hash that does not match source bytes")
         svg_value = result.get("derived_bytes") or result.get("svg")
         if isinstance(svg_value, str):
             svg_bytes = svg_value.encode("utf-8")
@@ -112,24 +123,29 @@ class ObjectStorageSourceDiagramVectorizer:
             raise ValueError("vectorizer did not return SVG bytes")
         if not _is_renderable_svg(svg_bytes):
             raise ValueError("vectorizer produced a non-renderable SVG")
+        derived_hash = sha256(svg_bytes).hexdigest()
+        returned_derived_hash = str(result.get("derived_sha256") or "").strip()
+        if returned_derived_hash and returned_derived_hash != derived_hash:
+            raise ValueError("vectorizer returned a derived hash that does not match SVG bytes")
         derived_key = f"{self._derived_prefix}/{source_hash}.svg"
         self._put(derived_key, svg_bytes, "image/svg+xml")
+        provider_metadata = _safe_provider_metadata(result)
         return {
-            **dict(result),
-            "source_artifact_id": str(
-                result.get("source_artifact_id") or f"visual-source:{source_hash}"
-            ),
-            "derived_artifact_id": str(
-                result.get("derived_artifact_id")
-                or f"visual-derived:{sha256(svg_bytes).hexdigest()}"
-            ),
+            **{
+                key: value
+                for key, value in result.items()
+                if key in {"media_type", "processor", "processor_version", "renderable"}
+            },
+            "source_artifact_id": _visual_artifact_uuid("source", source_hash),
+            "derived_artifact_id": _visual_artifact_uuid("derived", derived_hash),
             "source_artifact_key": source_key,
             "derived_artifact_key": derived_key,
             "source_object_key": source_key,
             "derived_object_key": derived_key,
             "source_uri": source_uri,
             "source_sha256": source_hash,
-            "derived_sha256": sha256(svg_bytes).hexdigest(),
+            "derived_sha256": derived_hash,
+            "provider_metadata": provider_metadata,
             "renderable": True,
             "review_state": "pending",
             "label": "AI-enhanced / UNREVIEWED",
@@ -165,7 +181,14 @@ def vectorize_source_diagram(
     _require_image_bytes(source_bytes)
     if not str(source_uri or "").strip():
         raise ValueError("source visual URI is required for vectorization")
-    return vectorizer.redraw(source_bytes, source_uri=str(source_uri).strip())
+    result = vectorizer.redraw(source_bytes, source_uri=str(source_uri).strip())
+    if not isinstance(result, Mapping):
+        raise ValueError("vectorizer result must be an object")
+    expected_hash = sha256(source_bytes).hexdigest()
+    returned_hash = str(result.get("source_sha256") or "").strip()
+    if returned_hash and returned_hash != expected_hash:
+        raise ValueError("vectorizer returned a source hash that does not match source bytes")
+    return dict(result)
 
 
 def _is_renderable_svg(payload: bytes) -> bool:
@@ -199,6 +222,65 @@ def _require_image_bytes(payload: bytes) -> None:
         raise ValueError("source visual bytes are required for vectorization")
     if not _is_image_bytes(payload):
         raise ValueError("source visual bytes must be an image")
+
+
+_SENSITIVE_METADATA_TERMS = (
+    "api_key",
+    "apikey",
+    "authorization",
+    "credential",
+    "password",
+    "secret",
+    "token",
+)
+
+
+def _visual_artifact_uuid(kind: str, content_hash: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"autodata:visual:{kind}:{content_hash}"))
+
+
+def _safe_provider_metadata(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Retain provider diagnostics without allowing credentials or bytes out."""
+
+    metadata: dict[str, Any] = {}
+    nested = result.get("provider_metadata")
+    if isinstance(nested, Mapping):
+        metadata.update(nested)
+    for key, value in result.items():
+        if key in {
+            "svg",
+            "derived_bytes",
+            "provider_metadata",
+            "source_sha256",
+            "derived_sha256",
+            "source_artifact_id",
+            "derived_artifact_id",
+        }:
+            continue
+        metadata.setdefault(key, value)
+
+    def safe_key(key: Any) -> bool:
+        normalized = str(key).casefold().replace("-", "_")
+        return not any(term in normalized for term in _SENSITIVE_METADATA_TERMS)
+
+    def safe_value(value: Any) -> Any:
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, Mapping):
+            return {
+                str(key): safe_value(nested_value)
+                for key, nested_value in value.items()
+                if safe_key(key) and not isinstance(nested_value, (bytes, bytearray))
+            }
+        if isinstance(value, (list, tuple)):
+            return [safe_value(item) for item in value if not isinstance(item, (bytes, bytearray))]
+        return None
+
+    return {
+        str(key): safe_value(value)
+        for key, value in metadata.items()
+        if safe_key(key) and not isinstance(value, (bytes, bytearray))
+    }
 
 
 def _source_suffix(source_uri: str) -> str:

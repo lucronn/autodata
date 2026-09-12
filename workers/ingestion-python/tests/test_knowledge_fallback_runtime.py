@@ -8,9 +8,12 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
 
 from autodata_ingestion.article_intake import VehicleTarget
+from autodata_ingestion import knowledge_fallback_runtime as runtime
 from autodata_ingestion.knowledge_fallback_runtime import (
     ConfiguredKnowledgeSourceResolver,
     _expose_provisional_source_result,
+    _price_refresh_key,
+    _refresh_request_root,
     persist_price_snapshots,
     persist_source_payloads,
     queue_price_refresh,
@@ -23,6 +26,8 @@ class RefreshDatabase:
     def __init__(self):
         self.rows = {}
         self.events = []
+        self.refresh_events = []
+        self.commands = []
         self.connections = []
 
     def connection(self):
@@ -58,6 +63,7 @@ class RefreshCursor:
 
     def execute(self, query, params):
         self.calls.append((query, params))
+        self.database.commands.append((query, params))
         if (
             "SELECT refresh_attempt_number, refresh_status," in query
             and "refresh_idempotency_key LIKE" in query
@@ -104,6 +110,12 @@ class RefreshCursor:
         elif "SELECT refresh_attempt_number, refresh_status" in query:
             row = self.database.rows.get(params[0])
             self.result = None if row is None else (row["attempt"], row["status"])
+        elif "SET refresh_status = 'current'" in query:
+            refresh_key, current_snapshot_id = params
+            row = self.database.rows.get(refresh_key)
+            if row is not None:
+                row["status"] = "current"
+                row["current_snapshot_id"] = current_snapshot_id
         elif "SELECT parts_price_snapshot_refresh_id::text" in query:
             row = self.database.rows.get(params[0])
             self.result = (
@@ -118,7 +130,10 @@ class RefreshCursor:
                     row["status"] = "failed"
                     row["failure"] = failure
         elif "INSERT INTO publication_events" in query:
-            self.database.events.append(params)
+            if "chat.price.refresh.requested" in query:
+                self.database.refresh_events.append(params)
+            else:
+                self.database.events.append(params)
 
     def fetchone(self):
         return self.result
@@ -240,6 +255,185 @@ class KnowledgeFallbackRuntimeTests(unittest.TestCase):
         helper.assert_called_once()
         self.assertEqual(helper.call_args.args[0]["vehicle_id"], "v1")
         self.assertEqual(helper.call_args.args[1], ({"article_id": "a1"},))
+
+    def test_explicit_string_http_hint_stays_http_when_autoapi_is_configured(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTODATA_AUTOAPI_BASE_URL": "http://autoapi.test",
+                "AUTODATA_KNOWLEDGE_SOURCE_PROVIDER": "autoapi",
+            },
+            clear=False,
+        ):
+            source = ConfiguredKnowledgeSourceResolver()(
+                self.target,
+                "brake",
+                ("brake",),
+                "https://source.test/article",
+            )
+
+        self.assertEqual(source.source_uri, "https://source.test/article")
+        self.assertEqual(source.connector.name, "http")
+
+    def test_autoapi_resolver_uses_canonical_make_region_headers_and_runtime_limits(self):
+        from autodata_ingestion import knowledge_fallback_runtime as runtime
+
+        captured = {}
+
+        class FakeAutoAPIConnector:
+            def __init__(self, base_url, **kwargs):
+                captured["base_url"] = base_url
+                captured.update(kwargs)
+
+        with patch.dict(
+            os.environ,
+            {
+                "AUTODATA_AUTOAPI_BASE_URL": "http://autoapi.test",
+                "AUTODATA_AUTOAPI_CONTENT_SOURCE": "",
+                "AUTODATA_AUTOAPI_VEHICLE_CONCURRENCY": "7",
+                "AUTODATA_AUTOAPI_RETRY_ATTEMPTS": "5",
+                "AUTODATA_AUTOAPI_RETRY_BACKOFF_SECONDS": "0.5",
+                "AUTODATA_SOURCE_REQUEST_HEADERS_JSON": '{"X-Source": "test"}',
+            },
+            clear=True,
+        ), patch.object(runtime, "AutoAPIConnector", FakeAutoAPIConnector):
+            source = ConfiguredKnowledgeSourceResolver()(
+                self.target,
+                "brake",
+                ("brake",),
+                {"provider": "autoapi", "vehicle_id": "toyota-v1"},
+            )
+
+        self.assertEqual(source.source_uri, "http://autoapi.test")
+        self.assertEqual(captured["content_source"], "Motor")
+        self.assertEqual(captured["default_region"], "US")
+        self.assertEqual(captured["request_headers"], {"X-Source": "test"})
+        self.assertEqual(captured["vehicle_max_concurrency"], 7)
+        self.assertEqual(captured["retry_attempts"], 5)
+        self.assertEqual(captured["retry_backoff_seconds"], 0.5)
+
+    def test_autoapi_resolver_resolves_provider_vehicle_id_before_required_fetch(self):
+        from autodata_ingestion import knowledge_fallback_runtime as runtime
+        from autodata_ingestion.source_adapters import SourceResource
+
+        resource = SourceResource.from_bytes(
+            "http://autoapi.test/v1/api/source/Toyota/vehicle/provider-v1/article/a1",
+            "autoapi-v1",
+            b'{"header": {}, "body": {"documentId": "a1"}}',
+            "application/json",
+        )
+        helper_result = {"source_resources": (resource,), "requested_article_ids": ("a1",)}
+        calls = []
+
+        class FakeAutoAPIConnector:
+            def __init__(self, _base_url, **_kwargs):
+                pass
+
+            def find_vehicle_targets(self, year, make, model):
+                calls.append((year, make, model))
+                return ({"vehicle_id": "provider-v1"},)
+
+        resolver = ConfiguredKnowledgeSourceResolver()
+        with patch.dict(
+            os.environ,
+            {"AUTODATA_AUTOAPI_BASE_URL": "http://autoapi.test"},
+            clear=True,
+        ), patch.object(runtime, "AutoAPIConnector", FakeAutoAPIConnector), patch.object(
+            runtime, "fetch_required_source_resources", return_value=helper_result
+        ) as helper:
+            source = resolver(
+                self.target,
+                "brake",
+                ("brake",),
+                {"provider": "autoapi", "operations": [{"article_id": "a1"}]},
+            )
+            source.connector.fetch({})
+
+        self.assertEqual(calls, [(2024, "Toyota", "Corolla")])
+        self.assertEqual(helper.call_args.args[0]["vehicle_id"], "provider-v1")
+
+    def test_fulfill_once_retains_autoapi_parts_raw_result_and_references(self):
+        from autodata_ingestion import knowledge_fallback_runtime as runtime
+
+        envelope = {
+            "event_type": "dataset.knowledge.fallback.requested",
+            "event_version": 1,
+            "event_id": "event-autoapi-result",
+            "occurred_at": "2026-09-11T12:00:00Z",
+            "producer": "test",
+            "request_id": "request-autoapi-result",
+            "projection_id": "projection-autoapi-result",
+            "revision_id": "revision-autoapi-result",
+            "correlation_id": "correlation-autoapi-result",
+            "idempotency_key": "fallback-autoapi-result",
+            "payload": {
+                "vehicle_key": "toyota-corolla-2024-us",
+                "region": "US",
+                "query": "brake",
+                "keywords": ["brake"],
+                "kind": "article",
+                "dataset_id": "dataset-autoapi-result",
+                "revision_id": "revision-autoapi-result",
+            },
+        }
+        references = ({"source_uri": "https://autoapi.test/article", "source_snapshot_id": "snapshot-1", "source_artifact_id": "artifact-1", "object_key": "sources/a/a"},)
+        part = {
+            "parts_price_snapshot_id": "price-1",
+            "canonical_part_id": "part:p1",
+            "source_part_number": "P1",
+            "source_snapshot_id": "snapshot-1",
+            "amount": 18.99,
+            "currency": "USD",
+            "priced_at": "2026-09-11T11:00:00Z",
+            "freshness": "fresh",
+            "refresh_status": "current",
+            "markup_applied": False,
+        }
+        autoapi_result = {
+            "parts": [part],
+            "source_unnormalized": {
+                "article_list": {"body": {"articleDetails": [{"id": "a1"}]}},
+                "article_details": {"a1": {"body": {"documentId": "a1"}}},
+                "labor": {"a1": {"body": {"hours": 1.0}}},
+                "parts": {"body": [{"partNumber": "P1", "price": "$18.99"}]},
+            },
+            "source_references": references,
+        }
+        fulfillment = {
+            "status": "completed",
+            "result": {
+                "status": "fetched",
+                "idempotency_key": "fallback-autoapi-result",
+                "vehicle": self.target.as_dict(),
+                "query": "brake",
+                "keywords": ("brake",),
+                "results": (),
+                "evidence": (),
+                "source_uri": "https://autoapi.test/article",
+            },
+        }
+        resolver = type(
+            "ResolverState",
+            (),
+            {
+                "last_source_references": references,
+                "last_autoapi_result": autoapi_result,
+            },
+        )()
+        handler = type("FakeHandler", (), {"handle": lambda self, _envelope: fulfillment})()
+        with patch.object(runtime, "load_revision_catalog", return_value={}), patch.object(
+            runtime, "ConfiguredKnowledgeSourceResolver", return_value=resolver
+        ), patch.object(runtime, "KnowledgeFallbackFulfillmentHandler", return_value=handler), patch.object(
+            runtime, "publish_fallback_revision", return_value={"status": "published"}
+        ):
+            result = runtime.fulfill_once(envelope)
+
+        self.assertEqual(result["result"]["parts"][0]["parts_price_snapshot_id"], "price-1")
+        self.assertEqual(
+            result["result"]["source_unnormalized"]["parts"]["body"][0]["price"],
+            "$18.99",
+        )
+        self.assertEqual(result["result"]["source_references"], list(references))
 
     def test_raw_source_is_retained_before_adaptation_failure(self):
         from autodata_ingestion import bundle_persistence, source_adapters
@@ -403,7 +597,153 @@ class KnowledgeFallbackRuntimeTests(unittest.TestCase):
         self.assertEqual(repeated["status"], "dead_letter")
         self.assertEqual(len(database.rows), 3)
         self.assertEqual(len(database.events), 1)
+        self.assertEqual(len(database.refresh_events), 3)
         self.assertTrue(all(row["snapshot_id"] == "snapshot-1" for row in database.rows.values()))
+
+    def test_refresh_consumer_persists_new_current_snapshot_and_completes_attempt(self):
+        database = RefreshDatabase()
+        fake_json = types.ModuleType("psycopg.types.json")
+        fake_json.Jsonb = lambda value: value
+        fake_types = types.ModuleType("psycopg.types")
+        fake_types.json = fake_json
+        fake_psycopg = types.ModuleType("psycopg")
+        fake_psycopg.connect = lambda **_kwargs: database.connection()
+        part = {
+            "parts_price_snapshot_id": "old-price-1",
+            "canonical_part_id": "part:p1",
+            "source_part_number": "P1",
+            "source_snapshot_id": "source-old",
+            "priced_at": "2026-08-01T12:00:00Z",
+            "amount": 18.99,
+            "currency": "USD",
+        }
+        persisted = []
+        now_text = datetime.now(UTC).replace(microsecond=0).isoformat()
+        consumer = getattr(runtime, "consume_price_refresh_once", None)
+        self.assertTrue(callable(consumer))
+        if not callable(consumer):
+            return
+
+        def persist(parts):
+            persisted.extend(parts)
+            return {"status": "persisted", "price_snapshot_ids": ("new-price-1",)}
+
+        def fetch(request):
+            self.assertEqual(request["parts_price_snapshot_id"], "old-price-1")
+            return {
+                **part,
+                "parts_price_snapshot_id": "new-price-1",
+                "source_snapshot_id": "source-new",
+                "priced_at": now_text,
+                "freshness": "fresh",
+                "refresh_status": "current",
+                "markup_applied": False,
+            }
+
+        with patch.dict(
+            sys.modules,
+            {
+                "psycopg": fake_psycopg,
+                "psycopg.types": fake_types,
+                "psycopg.types.json": fake_json,
+            },
+        ), patch.dict(os.environ, {"AUTODATA_POSTGRES_PASSWORD": "test-only"}):
+            queued = queue_price_refresh(part)
+            result = consumer(
+                {
+                    **part,
+                    "refresh_idempotency_key": queued["refresh_idempotency_key"],
+                },
+                fetch=fetch,
+                persist=persist,
+            )
+
+        self.assertEqual(result["status"], "current")
+        self.assertEqual(result["current_price_snapshot_id"], "new-price-1")
+        self.assertEqual(persisted[0]["parts_price_snapshot_id"], "new-price-1")
+        self.assertEqual(
+            database.rows[queued["refresh_idempotency_key"]]["status"], "current"
+        )
+        self.assertEqual(
+            database.rows[queued["refresh_idempotency_key"]]["current_snapshot_id"],
+            "new-price-1",
+        )
+
+    def test_refresh_consumer_exhaustion_is_durable_dead_letter(self):
+        database = RefreshDatabase()
+        fake_json = types.ModuleType("psycopg.types.json")
+        fake_json.Jsonb = lambda value: value
+        fake_types = types.ModuleType("psycopg.types")
+        fake_types.json = fake_json
+        fake_psycopg = types.ModuleType("psycopg")
+        fake_psycopg.connect = lambda **_kwargs: database.connection()
+        part = {
+            "parts_price_snapshot_id": "old-price-dl",
+            "canonical_part_id": "part:p-dl",
+            "source_part_number": "P-DL",
+            "source_snapshot_id": "source-dl",
+            "priced_at": "2026-08-01T12:00:00Z",
+            "amount": 1.00,
+            "currency": "USD",
+        }
+        consumer = getattr(runtime, "consume_price_refresh_once", None)
+        self.assertTrue(callable(consumer))
+        if not callable(consumer):
+            return
+        with patch.dict(
+            sys.modules,
+            {
+                "psycopg": fake_psycopg,
+                "psycopg.types": fake_types,
+                "psycopg.types.json": fake_json,
+            },
+        ), patch.dict(os.environ, {"AUTODATA_POSTGRES_PASSWORD": "test-only"}):
+            request = queue_price_refresh(part)
+            outcomes = []
+            for _attempt in range(3):
+                outcomes.append(
+                    consumer(
+                        {
+                            **part,
+                            "refresh_idempotency_key": request["refresh_idempotency_key"],
+                        },
+                        fetch=lambda _request: (_ for _ in ()).throw(
+                            TimeoutError("provider unavailable")
+                        ),
+                    )
+                )
+                if outcomes[-1]["status"] != "dead_letter":
+                    request = queue_price_refresh(
+                        {
+                            **part,
+                            "refresh_idempotency_key": request["refresh_idempotency_key"],
+                        }
+                    )
+
+        self.assertEqual(outcomes[-1]["status"], "dead_letter")
+        self.assertEqual(len(database.events), 1)
+        self.assertEqual(database.events[0][2], "price-refresh-dead-letter:" + request["refresh_idempotency_key"] + ":3")
+        self.assertEqual(len(database.rows), 3)
+
+    def test_refresh_root_strips_attempt_suffix_without_nesting(self):
+        part = {
+            "parts_price_snapshot_id": "price-root",
+            "canonical_part_id": "part:root",
+            "source_part_number": "ROOT",
+            "source_snapshot_id": "source-root",
+            "priced_at": "2026-08-01T12:00:00Z",
+        }
+        root = _price_refresh_key(part)
+
+        self.assertEqual(_refresh_request_root(f"{root}:attempt:1"), root)
+        self.assertEqual(
+            _price_refresh_key({**part, "refresh_idempotency_key": f"{root}:attempt:1"}),
+            root,
+        )
+        self.assertEqual(
+            _refresh_request_root(f"{root}:attempt:1:attempt:2"),
+            f"{root}:attempt:1",
+        )
 
     def test_price_snapshots_persist_through_immutable_migration_keys(self):
         from autodata_ingestion import bundle_persistence
@@ -413,7 +753,13 @@ class KnowledgeFallbackRuntimeTests(unittest.TestCase):
             "Cursor",
             (),
             {
-                "execute": lambda self, query, params: calls.append((query, params)),
+                "execute": lambda self, query, params: (
+                    calls.append((query, params)),
+                    setattr(self, "result", ("existing-price-snapshot",))
+                    if "SELECT parts_price_snapshot_id::text" in query
+                    else None,
+                ),
+                "fetchone": lambda self: getattr(self, "result", None),
                 "__enter__": lambda self: self,
                 "__exit__": lambda self, *_args: False,
             },
@@ -458,7 +804,7 @@ class KnowledgeFallbackRuntimeTests(unittest.TestCase):
             result = persist_price_snapshots([part])
 
         self.assertEqual(result["status"], "persisted")
-        self.assertEqual(result["price_snapshot_ids"], ("price-snapshot-1",))
+        self.assertEqual(result["price_snapshot_ids"], ("existing-price-snapshot",))
         insert = next(query for query, _params in calls if "INSERT INTO parts_price_snapshots" in query)
         self.assertIn("ON CONFLICT (canonical_part_id, source_snapshot_id, priced_at)", insert)
 

@@ -176,6 +176,45 @@ class AutoAPIConnectorTests(unittest.TestCase):
             ],
         )
 
+    def test_shared_source_cache_expires_when_ttl_is_zero(self):
+        response = {
+            "/v1/api/source/Ttl/vehicle/ttl-v1/articles/v2": {
+                "header": {},
+                "body": {"articleDetails": [{"id": "a1", "title": "Brake service"}]},
+            }
+        }
+        requests = []
+
+        def opener(request, timeout):
+            del timeout
+            path = urlsplit(request.full_url).path
+            requests.append(path)
+            return FakeResponse(response[path])
+
+        first = AutoAPIConnector(
+            "http://127.0.0.1:3018",
+            content_source="Ttl",
+            source_cache_ttl_seconds=0,
+            opener=opener,
+        )
+        second = AutoAPIConnector(
+            "http://127.0.0.1:3018",
+            content_source="Ttl",
+            source_cache_ttl_seconds=0,
+            opener=opener,
+        )
+
+        first.fetch_article_list("ttl-v1")
+        second.fetch_article_list("ttl-v1")
+
+        self.assertEqual(
+            requests,
+            [
+                "/v1/api/source/Ttl/vehicle/ttl-v1/articles/v2",
+                "/v1/api/source/Ttl/vehicle/ttl-v1/articles/v2",
+            ],
+        )
+
     def test_read_through_fetches_only_requested_resources_after_article_list(self):
         responses = {
             "/v1/api/source/Motor/vehicle/v1/articles/v2": {

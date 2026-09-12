@@ -146,6 +146,32 @@ docker compose -f infra/compose/compose.yaml run --rm ingestion-smoke
 
 `ingestion-smoke` runs the deterministic `ingest-fixture` dependency first. It fails with a non-zero exit and an actionable message when the migration, payment/entitlement, normalized vehicle, source object, or `dataset.viewable` event contract is not satisfied. It is safe to rerun: the fixture uses stable identifiers and idempotency keys, while published revisions remain immutable.
 
+The chatbot integration boundary has a separate, opt-in Compose verification
+service. It is deliberately independent of PostgreSQL, NATS, MinIO, the Go
+API, and all provider credentials so it can prove the request lifecycle without
+altering the default local stack:
+
+```sh
+AUTODATA_POSTGRES_PASSWORD=compose-validation-only \
+AUTODATA_MINIO_ROOT_USER=compose-validation-admin \
+AUTODATA_MINIO_ROOT_PASSWORD=compose-validation-only \
+docker compose -f infra/compose/compose.yaml --profile verification \
+  run --rm --no-deps chat-smoke
+```
+
+`chat-smoke` mounts the repository read-only and runs
+`scripts/dev/chat_smoke.py` with deterministic in-memory fake source,
+normalizer, price refresher, model, and vectorizer adapters. `network_mode:
+none` makes any accidental provider call fail locally. The report has explicit
+cold and warm assertions: raw source data is returned before normalized data;
+overlap-aware labor and a no-markup parts quote are present; stale prices carry
+their `priced_at` timestamp while refresh proceeds; the source diagram is
+linked to a reviewable vector artifact; worker events are present; and same-key
+and semantically equivalent warm requests perform zero source or model calls.
+The service is enabled only with `--profile verification`, and therefore does
+not change `docker compose up` behavior. CI runs the same command after Compose
+definition validation and before the existing fake and live Compose smokes.
+
 For a local source drop containing mixed JSON, HTML, PDF, SVG, XML, or CSV resources, inspect the normalized bundle without uploading the raw files:
 
 ```sh

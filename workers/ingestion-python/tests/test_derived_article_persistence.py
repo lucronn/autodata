@@ -138,10 +138,24 @@ def test_persistence_downgrades_reviewed_procedure_and_visual_and_serializes_rev
         "procedure": {
             "title": "Brake line service",
             "steps": [],
-            "warnings": [],
+            "warnings": [{
+                "warning_id": "warning-1",
+                "message": "Verify the system is depressurized.",
+                "source_article_ids": ["brake-line"],
+                "evidence_ids": ["evidence-1"],
+                "requires_review": True,
+            }],
             "requires_review": True,
             "review_state": "UNREVIEWED",
+            "review_label": "UNREVIEWED — human review pending",
+            "excluded_operation_ids": ["operation-1"],
+            "excluded_operation_reasons": {"operation-1": "required operation needs review"},
         },
+        "review_state": "pending",
+        "review_label": "pending human review",
+        "requires_review": True,
+        "review_reasons": ["procedure_requires_review"],
+        "source": {"source_watermark": "source-v9"},
         "visual_artifacts": [{
             "source_artifact_key": "source/diagram.png",
             "derived_artifact_key": "derived/diagram.svg",
@@ -164,6 +178,20 @@ def test_persistence_downgrades_reviewed_procedure_and_visual_and_serializes_rev
     assert persisted["status"] == "persisted"
     assert revision_insert[12] == "needs_review"
     assert revision_insert[13] is None
+    assert revision_insert[4] == "source-v9"
+    provenance = revision_insert[9]
+    assert provenance["procedure"]["warnings"][0]["warning_id"] == "warning-1"
+    assert provenance["procedure"]["review_state"] == "UNREVIEWED"
+    assert provenance["procedure"]["review_label"] == "UNREVIEWED — human review pending"
+    assert provenance["procedure"]["requires_review"] is True
+    assert provenance["procedure"]["excluded_operation_ids"] == ["operation-1"]
+    assert provenance["procedure"]["excluded_operation_reasons"] == {
+        "operation-1": "required operation needs review",
+    }
+    assert provenance["review_state"] == "pending"
+    assert provenance["review_label"] == "pending human review"
+    assert provenance["requires_review"] is True
+    assert provenance["review_reasons"] == ["procedure_requires_review"]
     assert any("pg_advisory_xact_lock" in query for query, _ in cursor.statements)
     image_lineage_params = [
         params for query, params in cursor.statements
@@ -173,3 +201,55 @@ def test_persistence_downgrades_reviewed_procedure_and_visual_and_serializes_rev
         "derived/diagram.svg",
         "source/diagram.png",
     }
+
+
+def test_procedure_unreviewed_state_downgrades_persistence_even_without_boolean_flag():
+    from autodata_ingestion.derived_article_persistence import _persistence_status
+
+    assert _persistence_status(
+        {"status": "ready"},
+        {"review_state": "UNREVIEWED", "requires_review": False},
+        [],
+    ) == "needs_review"
+
+
+def test_replaying_non_current_revision_does_not_publish_parent_state():
+    class ReplayCursor(_RecordingCursor):
+        def execute(self, query, params=()):
+            self.statements.append((query, params))
+            if "SELECT vehicle_id::text FROM vehicles" in query:
+                self._next_row = ("00000000-0000-0000-0000-000000000001",)
+            elif "FROM derived_articles" in query and "SELECT" in query:
+                self._next_row = (
+                    "00000000-0000-0000-0000-000000000002",
+                    4,
+                    "source-current",
+                )
+            elif "SELECT derived_article_revision_id::text" in query:
+                self._next_row = ("00000000-0000-0000-0000-000000000003", 3)
+            else:
+                self._next_row = None
+
+    cursor = ReplayCursor()
+    connection = _RecordingConnection(cursor)
+    fake_psycopg = types.ModuleType("psycopg")
+    fake_psycopg.connect = lambda **_kwargs: connection
+    fake_json = types.ModuleType("psycopg.types.json")
+    fake_json.Jsonb = lambda value: value
+    fake_types = types.ModuleType("psycopg.types")
+    fake_types.json = fake_json
+    result = {
+        "status": "ready",
+        "canonical_vehicle": {"vehicle_id": "00000000-0000-0000-0000-000000000001", "make": "Toyota", "model": "RAV4"},
+        "derived_article": {"article_id": "combined:replay"},
+        "selected_articles": ["source-1"],
+        "source_watermarks": ["source-current"],
+        "procedure": {"title": "Replay", "steps": [], "warnings": []},
+        "labor": {"operations": []},
+    }
+    with patch.dict(sys.modules, {"psycopg": fake_psycopg, "psycopg.types": fake_types, "psycopg.types.json": fake_json}), patch.dict(os.environ, {"AUTODATA_POSTGRES_PASSWORD": "test-password"}, clear=False):
+        persisted = persist_derived_article(result, vehicle=result["canonical_vehicle"])
+
+    assert persisted["status"] == "replayed"
+    assert not any("INSERT INTO derived_articles" in query for query, _ in cursor.statements)
+    assert not any("UPDATE derived_articles SET current_revision_number" in query for query, _ in cursor.statements)

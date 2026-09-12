@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import json
 from dataclasses import dataclass, replace
@@ -39,6 +39,7 @@ DEFAULT_VEHICLE_ID_BATCH_SIZE = 100
 DEFAULT_RETRY_ATTEMPTS = 3
 DEFAULT_RETRY_BACKOFF_SECONDS = 0.25
 DEFAULT_SOURCE_CACHE_MAX_ENTRIES = 512
+DEFAULT_SOURCE_CACHE_TTL_SECONDS = 300.0
 
 _SHARED_SOURCE_CACHE: OrderedDict[str, tuple[Any, SourceResource]] = OrderedDict()
 _SHARED_SOURCE_INFLIGHT: dict[str, Condition] = {}
@@ -102,6 +103,7 @@ class AutoAPIConnector:
         vehicle_id_batch_size: int = DEFAULT_VEHICLE_ID_BATCH_SIZE,
         retry_attempts: int = DEFAULT_RETRY_ATTEMPTS,
         retry_backoff_seconds: float = DEFAULT_RETRY_BACKOFF_SECONDS,
+        source_cache_ttl_seconds: float | None = DEFAULT_SOURCE_CACHE_TTL_SECONDS,
         request_headers: Mapping[str, str] | None = None,
         opener: Callable[..., Any] = urlopen,
     ):
@@ -121,6 +123,10 @@ class AutoAPIConnector:
             or vehicle_id_batch_size < 1
             or retry_attempts < 1
             or retry_backoff_seconds < 0
+            or (
+                source_cache_ttl_seconds is not None
+                and source_cache_ttl_seconds < 0
+            )
         ):
             raise ValueError("AutoAPI limits must be positive")
         self._base_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
@@ -135,6 +141,7 @@ class AutoAPIConnector:
         self._vehicle_id_batch_size = vehicle_id_batch_size
         self._retry_attempts = retry_attempts
         self._retry_backoff_seconds = retry_backoff_seconds
+        self._source_cache_ttl_seconds = source_cache_ttl_seconds
         self._request_headers = _request_headers(request_headers)
         self._opener = opener
         self._opener_namespace = _opener_namespace(opener)
@@ -451,8 +458,12 @@ class AutoAPIConnector:
 
         uri = _build_uri(self._base_url, path, query)
         key = self._source_cache_key(uri)
+        now = datetime.now(UTC)
         with self._source_cache_lock:
             cached = self._source_cache.get(key)
+            if cached is not None and not self._source_cache_entry_is_fresh(cached[1], now):
+                self._source_cache.pop(key, None)
+                cached = None
         if cached is not None:
             payload, resource = cached
             return deepcopy(payload), replace(resource, metadata=deepcopy(resource.metadata))
@@ -460,6 +471,9 @@ class AutoAPIConnector:
         with _SHARED_SOURCE_CACHE_LOCK:
             while True:
                 cached = _SHARED_SOURCE_CACHE.get(key)
+                if cached is not None and not self._source_cache_entry_is_fresh(cached[1], now):
+                    _SHARED_SOURCE_CACHE.pop(key, None)
+                    cached = None
                 if cached is not None:
                     _SHARED_SOURCE_CACHE.move_to_end(key)
                     payload, resource = cached
@@ -505,6 +519,26 @@ class AutoAPIConnector:
                 self._source_cache.pop(next(iter(self._source_cache)))
             self._source_cache[key] = cached_value
         return deepcopy(payload), replace(resource, metadata=deepcopy(resource.metadata))
+
+    def _source_cache_entry_is_fresh(
+        self, resource: SourceResource, now: datetime
+    ) -> bool:
+        """Apply the process-wide read-through cache TTL to one source entry."""
+
+        if self._source_cache_ttl_seconds is None:
+            return True
+        retrieved_at = resource.metadata.get("retrieved_at")
+        if not isinstance(retrieved_at, str):
+            return False
+        try:
+            retrieved = datetime.fromisoformat(retrieved_at.replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        if retrieved.tzinfo is None or retrieved.utcoffset() is None:
+            return False
+        return now - retrieved.astimezone(UTC) < timedelta(
+            seconds=self._source_cache_ttl_seconds
+        )
 
     def _source_cache_key(self, uri: str) -> str:
         header_fingerprint = hashlib.sha256(

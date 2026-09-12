@@ -23,7 +23,7 @@ from .knowledge_fallback import (
     PermanentKnowledgeFallbackError,
     ResolvedSource,
 )
-from .pricing import read_cached_price_or_queue_refresh
+from .pricing import price_freshness, read_cached_price_or_queue_refresh
 
 
 def fulfill_once(envelope: Mapping[str, Any]) -> dict[str, Any]:
@@ -52,6 +52,11 @@ def fulfill_once(envelope: Mapping[str, Any]) -> dict[str, Any]:
             result = _source_unnormalized_failure(request, source_resolver, error)
         else:
             raise
+    result = _merge_autoapi_result(
+        result,
+        source_resolver.last_autoapi_result,
+        source_resolver.last_source_references,
+    )
     result = _expose_provisional_source_result(
         result, source_resolver.last_source_references
     )
@@ -116,19 +121,18 @@ class ConfiguredKnowledgeSourceResolver:
         )
         if not str(base_url).strip():
             raise LookupError("AutoAPI source configuration requires a base URL")
-        content_source = str(
-            hint.get("content_source")
-            or os.getenv("AUTODATA_AUTOAPI_CONTENT_SOURCE", "GeneralMotors")
-        ).strip()
+        content_source = _autoapi_content_source(target, hint)
+        default_region = str(
+            hint.get("region")
+            or target.region
+            or os.getenv("AUTODATA_SOURCE_REGION", "US")
+        ).strip().upper()
         source_version = str(
             hint.get("source_version")
             or os.getenv("AUTODATA_AUTOAPI_SOURCE_VERSION", "autoapi-http-v1")
         ).strip()
-        vehicle_id = str(
-            hint.get("vehicle_id")
-            or hint.get("autoapi_vehicle_id")
-            or target.vehicle_key
-        ).strip()
+        vehicle_id_value = hint.get("vehicle_id") or hint.get("autoapi_vehicle_id")
+        vehicle_id = str(vehicle_id_value).strip() if vehicle_id_value else None
         operations = hint.get("operations")
         if not isinstance(operations, (list, tuple)):
             operations = [
@@ -148,10 +152,25 @@ class ConfiguredKnowledgeSourceResolver:
             max_bytes=int(
                 os.getenv("AUTODATA_AUTOAPI_MAX_BYTES", str(50 * 1024 * 1024))
             ),
+            default_region=default_region,
+            vehicle_max_concurrency=int(
+                os.getenv("AUTODATA_AUTOAPI_VEHICLE_CONCURRENCY", "4")
+            ),
+            retry_attempts=int(
+                os.getenv("AUTODATA_AUTOAPI_RETRY_ATTEMPTS", "3")
+            ),
+            retry_backoff_seconds=float(
+                os.getenv("AUTODATA_AUTOAPI_RETRY_BACKOFF_SECONDS", "0.25")
+            ),
+            request_headers=_source_headers(),
+            source_cache_ttl_seconds=float(
+                os.getenv("AUTODATA_AUTOAPI_SOURCE_CACHE_TTL_SECONDS", "300")
+            ),
         )
         source_connector = _AutoAPIKnowledgeSourceConnector(
             connector,
             vehicle_id=vehicle_id,
+            target=target,
             vehicle=target.as_dict(),
             operations=tuple(
                 dict(operation)
@@ -193,6 +212,8 @@ class ConfiguredKnowledgeSourceResolver:
 
 
 def _is_autoapi_request(source_hint: Any | None) -> bool:
+    if isinstance(source_hint, str):
+        return False
     if isinstance(source_hint, Mapping):
         provider = str(
             source_hint.get("provider")
@@ -200,11 +221,33 @@ def _is_autoapi_request(source_hint: Any | None) -> bool:
             or ""
         ).strip().casefold()
         return provider == "autoapi" or source_hint.get("autoapi") is True
-    return (
-        os.getenv("AUTODATA_KNOWLEDGE_SOURCE_PROVIDER", "").strip().casefold()
-        == "autoapi"
-        and bool(os.getenv("AUTODATA_AUTOAPI_BASE_URL", "").strip())
-    ) or bool(os.getenv("AUTODATA_AUTOAPI_BASE_URL", "").strip())
+    return bool(os.getenv("AUTODATA_AUTOAPI_BASE_URL", "").strip())
+
+
+_AUTOAPI_SOURCE_BY_MAKE = {
+    "buick": "GeneralMotors",
+    "cadillac": "GeneralMotors",
+    "chevrolet": "GeneralMotors",
+    "gmc": "GeneralMotors",
+    "oldsmobile": "GeneralMotors",
+    "pontiac": "GeneralMotors",
+    "lexus": "Motor",
+    "scion": "Motor",
+    "toyota": "Motor",
+}
+
+
+def _autoapi_content_source(
+    target: VehicleTarget, hint: Mapping[str, Any]
+) -> str:
+    for key in ("content_source", "autoapi_content_source"):
+        value = str(hint.get(key) or "").strip()
+        if value:
+            return value
+    configured = os.getenv("AUTODATA_AUTOAPI_CONTENT_SOURCE", "").strip()
+    if configured:
+        return configured
+    return _AUTOAPI_SOURCE_BY_MAKE.get(target.make.casefold(), "Motor")
 
 
 def _safe_source_references(references: Any) -> list[dict[str, Any]]:
@@ -276,7 +319,8 @@ class _AutoAPIKnowledgeSourceConnector:
         self,
         connector: AutoAPIConnector,
         *,
-        vehicle_id: str,
+        vehicle_id: str | None,
+        target: VehicleTarget,
         vehicle: Mapping[str, Any],
         operations: tuple[Mapping[str, Any], ...],
         source_persister: Any | None,
@@ -285,6 +329,7 @@ class _AutoAPIKnowledgeSourceConnector:
     ) -> None:
         self._connector = connector
         self._vehicle_id = vehicle_id
+        self._target = target
         self._vehicle = dict(vehicle)
         self._operations = operations
         self._source_persister = source_persister
@@ -294,8 +339,9 @@ class _AutoAPIKnowledgeSourceConnector:
         self.last_price_persistence: dict[str, Any] | None = None
 
     def fetch(self, _request: dict[str, Any]) -> list[Any]:
+        vehicle_id = self._vehicle_id or self._resolve_provider_vehicle_id()
         result = fetch_required_source_resources(
-            {**self._vehicle, "vehicle_id": self._vehicle_id},
+            {**self._vehicle, "vehicle_id": vehicle_id},
             self._operations,
             self._connector,
         )
@@ -326,6 +372,22 @@ class _AutoAPIKnowledgeSourceConnector:
             raise LookupError("AutoAPI returned no source resources")
         return [selected]
 
+    def _resolve_provider_vehicle_id(self) -> str:
+        candidates = self._connector.find_vehicle_targets(
+            self._target.model_year,
+            self._target.make,
+            self._target.model,
+        )
+        if len(candidates) != 1:
+            raise LookupError(
+                "AutoAPI vehicle resolution requires one canonical provider vehicle; "
+                f"received {len(candidates)} candidates"
+            )
+        vehicle_id = str(candidates[0].get("vehicle_id", "")).strip()
+        if not vehicle_id:
+            raise LookupError("AutoAPI vehicle resolution returned no provider vehicle ID")
+        return vehicle_id
+
 
 def _invoke_source_persister(
     persister: Any, resources: tuple[Any, ...], *, adapter_name: str
@@ -335,6 +397,45 @@ def _invoke_source_persister(
     except (TypeError, ValueError):
         return persister(resources)
     return persister(resources, adapter_name=adapter_name)
+
+
+def _merge_autoapi_result(
+    result: dict[str, Any],
+    autoapi_result: Mapping[str, Any] | None,
+    source_references: Any = (),
+) -> dict[str, Any]:
+    """Keep the multi-resource AutoAPI result beside the intake projection."""
+
+    if not isinstance(result, dict) or not isinstance(autoapi_result, Mapping):
+        return result
+    if not isinstance(result.get("result"), Mapping):
+        return result
+    payload = dict(result["result"])
+    parts = autoapi_result.get("parts")
+    if isinstance(parts, list):
+        payload["parts"] = deepcopy(parts)
+    raw_result = autoapi_result.get("source_unnormalized")
+    raw = deepcopy(dict(raw_result)) if isinstance(raw_result, Mapping) else {}
+    for key in (
+        "requested_article_ids",
+        "missing_article_ids",
+        "article_list",
+        "article_details",
+        "labor",
+        "parts",
+    ):
+        if key not in raw and key in autoapi_result:
+            raw[key] = deepcopy(autoapi_result[key])
+    references = _safe_source_references(
+        source_references or autoapi_result.get("source_references", ())
+    )
+    if references:
+        payload["source_references"] = references
+        raw["source_references"] = references
+    if raw:
+        payload["source_unnormalized"] = raw
+    result["result"] = payload
+    return result
 
 
 def _expose_provisional_source_result(
@@ -358,13 +459,22 @@ def _expose_provisional_source_result(
     else:
         payload["status"] = "source_unnormalized"
         payload["data_state"] = "source_unnormalized"
-        payload["source_unnormalized"] = {
+        existing_raw = payload.get("source_unnormalized")
+        provisional = (
+            deepcopy(dict(existing_raw))
+            if isinstance(existing_raw, Mapping)
+            else {}
+        )
+        provisional.update(
+            {
             "source_uri": payload.get("source_uri"),
             "evidence": deepcopy(payload.get("evidence", ())),
             "rejection_reason": reason or "normalization_pending",
-        }
+            }
+        )
+        payload["source_unnormalized"] = provisional
         if references:
-            payload["source_unnormalized"]["source_references"] = references
+            provisional["source_references"] = references
     result["result"] = payload
     publication = result.get("publication")
     if isinstance(publication, dict):
@@ -678,7 +788,20 @@ def persist_price_snapshots(parts: Any) -> dict[str, Any]:
                         Jsonb(part),
                     ),
                 )
-                snapshot_ids.append(snapshot_id)
+                cursor.execute(
+                    """
+                    SELECT parts_price_snapshot_id::text
+                    FROM parts_price_snapshots
+                    WHERE canonical_part_id = %s
+                      AND source_snapshot_id = %s
+                      AND priced_at = %s
+                    """,
+                    (canonical_part_id, source_snapshot_id, priced_at),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    raise RuntimeError("price snapshot was not persisted")
+                snapshot_ids.append(str(row[0]))
         connection.commit()
     return {
         "status": "persisted",
@@ -782,6 +905,43 @@ def queue_price_refresh(
                     refresh_key,
                 ),
             )
+            from psycopg.types.json import Jsonb
+
+            cursor.execute(
+                """
+                INSERT INTO publication_events
+                    (publication_event_id, event_type, event_version,
+                     correlation_id, idempotency_key, payload, published_at,
+                     producer)
+                VALUES (%s, 'chat.price.refresh.requested', 1, %s, %s,
+                        %s, NULL, 'pricing-runtime')
+                ON CONFLICT (idempotency_key) DO NOTHING
+                """,
+                (
+                    str(
+                        uuid.uuid5(
+                            uuid.NAMESPACE_URL,
+                            f"autodata:price-refresh-event:{refresh_key}",
+                        )
+                    ),
+                    str(
+                        uuid.uuid5(
+                            uuid.NAMESPACE_URL,
+                            f"autodata:price-refresh-request:{refresh_request_id}",
+                        )
+                    ),
+                    f"price-refresh-request:{refresh_key}",
+                    Jsonb(
+                        _refresh_request_payload(
+                            part,
+                            snapshot_id=snapshot_id,
+                            refresh_request_id=refresh_request_id,
+                            refresh_key=refresh_key,
+                            attempt_number=attempt_number,
+                        )
+                    ),
+                ),
+            )
             cursor.execute(
                 """
                 SELECT refresh_attempt_number, refresh_status
@@ -800,6 +960,146 @@ def queue_price_refresh(
         "refresh_request_id": refresh_request_id,
         "refresh_attempt_number": int(row[0]),
     }
+
+
+def consume_price_refresh_once(
+    refresh_request: Mapping[str, Any],
+    *,
+    fetch: Any,
+    persist: Any | None = None,
+    max_attempts: int = 3,
+) -> dict[str, Any]:
+    """Consume one outbox refresh request through a provider-neutral fetch adapter.
+
+    The adapter must return a canonical source-price mapping for a new
+    ``parts_price_snapshot_id``.  Provider credentials and transport remain
+    outside this runtime.  Successful work persists the new immutable price
+    snapshot and marks only the refresh attempt current; failures retain the
+    old snapshot and use the bounded retry/dead-letter path.
+    """
+
+    if not isinstance(refresh_request, Mapping):
+        raise TypeError("price refresh request must be a mapping")
+    if not callable(fetch):
+        raise TypeError("price refresh fetch adapter must be callable")
+    refresh_key = _first_text(
+        refresh_request,
+        "refresh_idempotency_key",
+        "refresh_request_id",
+        "refresh_id",
+    )
+    old_snapshot_id = _first_text(
+        refresh_request,
+        "parts_price_snapshot_id",
+        "price_snapshot_row_id",
+        "price_snapshot_id",
+    )
+    if not refresh_key or not old_snapshot_id:
+        raise ValueError(
+            "price refresh request requires refresh_idempotency_key and parts_price_snapshot_id"
+        )
+    try:
+        refreshed = fetch(deepcopy(dict(refresh_request)))
+        if not isinstance(refreshed, Mapping):
+            raise TypeError("price refresh fetch adapter must return a mapping")
+        refreshed = deepcopy(dict(refreshed))
+        new_snapshot_id = _first_text(
+            refreshed,
+            "parts_price_snapshot_id",
+            "price_snapshot_row_id",
+            "price_snapshot_id",
+        )
+        if not new_snapshot_id or new_snapshot_id == old_snapshot_id:
+            raise ValueError("price refresh must return a new parts_price_snapshot_id")
+        if refreshed.get("markup_applied") is not False:
+            raise ValueError("source price refresh cannot include markup")
+        priced_at = _snapshot_timestamp(refreshed.get("priced_at"))
+        if price_freshness(priced_at, datetime.now(UTC)) != "fresh":
+            raise ValueError("price refresh did not return a fresh price")
+        persist_fn = persist or persist_price_snapshots
+        if not callable(persist_fn):
+            raise TypeError("price refresh persist adapter must be callable")
+        persisted = persist_fn([refreshed])
+        persisted_ids = (
+            persisted.get("price_snapshot_ids")
+            if isinstance(persisted, Mapping)
+            else None
+        )
+        authoritative_id = (
+            str(next(iter(persisted_ids))).strip()
+            if persisted_ids
+            else ""
+        )
+        if not authoritative_id or authoritative_id == old_snapshot_id:
+            raise RuntimeError("price refresh persistence returned no new snapshot")
+        _mark_price_refresh_current(refresh_key, authoritative_id)
+        return {
+            "status": "current",
+            "refresh_idempotency_key": refresh_key,
+            "current_price_snapshot_id": authoritative_id,
+            "refresh_status": "current",
+        }
+    except Exception as error:  # noqa: BLE001 - consumer records bounded failure state
+        return record_price_refresh_failure(
+            refresh_key,
+            error,
+            max_attempts=max_attempts,
+        )
+
+
+def _refresh_request_payload(
+    part: Mapping[str, Any],
+    *,
+    snapshot_id: str,
+    refresh_request_id: str,
+    refresh_key: str,
+    attempt_number: int,
+) -> dict[str, Any]:
+    priced_at = part.get("priced_at")
+    if isinstance(priced_at, datetime):
+        priced_at = priced_at.astimezone(UTC).isoformat()
+    else:
+        priced_at = _canonical_refresh_timestamp(str(priced_at or "").strip())
+    return {
+        "parts_price_snapshot_id": snapshot_id,
+        "refresh_request_id": refresh_request_id,
+        "refresh_idempotency_key": refresh_key,
+        "refresh_attempt_number": attempt_number,
+        "canonical_part_id": _first_text(part, "canonical_part_id", "part_id", "canonical_id"),
+        "source_part_number": _first_text(
+            part,
+            "source_part_number",
+            "part_number",
+            "partNumber",
+            "sourcePartNumber",
+        ),
+        "source_snapshot_id": _first_text(
+            part, "source_snapshot_id", "price_snapshot_id", "snapshot_id"
+        ),
+        "amount": part.get("amount"),
+        "currency": _first_text(part, "currency", "source_currency"),
+        "priced_at": priced_at,
+        "source_uri": _first_text(part, "source_uri", "sourceUri"),
+    }
+
+
+def _mark_price_refresh_current(
+    refresh_idempotency_key: str, current_snapshot_id: str
+) -> None:
+    import psycopg
+
+    with psycopg.connect(**_conninfo()) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE parts_price_snapshot_refreshes
+                SET refresh_status = 'current', failure = NULL, completed_at = now()
+                WHERE refresh_idempotency_key = %s
+                  AND %s IS NOT NULL
+                """,
+                (refresh_idempotency_key, current_snapshot_id),
+            )
+        connection.commit()
 
 
 def record_price_refresh_failure(
@@ -989,7 +1289,7 @@ def _price_refresh_key(part: Mapping[str, Any]) -> str:
 
 
 def _refresh_request_root(value: str) -> str:
-    return re.sub(r":attempt:\\d+$", "", str(value).strip())
+    return re.sub(r":attempt:\d+$", "", str(value).strip())
 
 
 def _refresh_attempt_key(request_id: str, attempt_number: int) -> str:

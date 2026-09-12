@@ -72,7 +72,7 @@ The current development slice is tracked in [Issue #85](https://github.com/lucro
 - warm replay from PostgreSQL without repeating the source or model call; and
 - dashboard rendering of every generated step with an explicit `UNREVIEWED` label.
 
-The RAV4 examples are automated `ready` results, not technician approval. Source evidence remains pending human review, and a genuinely uncached source request still depends on the local AutoAPI service being available. Those are tracked separately from the completed cache, composition, and dashboard behavior.
+The RAV4 examples are automated `ready` results, not technician approval. Source evidence remains pending human review, and a genuinely uncached source request still depends on the configured AutoAPI service being available. Those are tracked separately from the completed cache, composition, and dashboard behavior.
 
 The active product slice is the [chat-first natural-language quote and
 procedure generator](https://github.com/lucronn/autodata/issues/87), tracked in
@@ -118,6 +118,26 @@ revision, PostgreSQL records, MinIO source object, and `dataset.viewable`
 JetStream event. The full developer workflows and recovery checks are in
 [`docs/architecture/infrastructure-and-dev.md`](docs/architecture/infrastructure-and-dev.md).
 
+To verify the chatbot's source-visible cold path and normalized warm path
+without starting the application stack, run the opt-in `verification` profile:
+
+```sh
+AUTODATA_POSTGRES_PASSWORD=compose-validation-only \
+AUTODATA_MINIO_ROOT_USER=compose-validation-admin \
+AUTODATA_MINIO_ROOT_PASSWORD=compose-validation-only \
+docker compose -f infra/compose/compose.yaml --profile verification \
+  run --rm --no-deps chat-smoke
+```
+
+`chat-smoke` uses only deterministic in-memory fake source, normalizer, price,
+model, and vectorizer adapters. Its container has no network, needs no provider
+credentials, and does not change the default Compose services. A passing JSON
+report proves that the first request exposes unnormalized source data before
+normalized publication, calculates overlap-aware labor, returns stale parts
+prices immediately with `priced_at`, refreshes them asynchronously, links a
+reviewable vector redraw to its source diagram, and makes both same-key and
+semantic warm replays with zero source/model calls.
+
 Open the local chatbot dashboard at [http://127.0.0.1:8080/dashboard/](http://127.0.0.1:8080/dashboard/)
 after the API container is running. It loads normalized vehicle selectors,
 accepts a plain-language question, and submits it to `POST /job-plans`. The
@@ -148,6 +168,9 @@ curl -sS -X POST http://127.0.0.1:8080/job-plans \
 Omit the request's `catalog` after a successful persisted request to exercise
 the warm derived-article path. A cache miss uses
 `AUTODATA_AUTOAPI_BASE_URL` only after the indexed local lookup is empty.
+The Compose development default is the verified deployment at
+`https://autoapi-sigma.vercel.app`; set `AUTODATA_AUTOAPI_BASE_URL` explicitly
+for another local, staging, or provider-neutral connector deployment.
 The fallback first reads the vehicle's article list, selects only the articles
 relevant to the natural-language request, then fetches those articles' detail
 and labor resources. It persists the normalized article body, source images,

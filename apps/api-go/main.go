@@ -68,6 +68,7 @@ type Server struct {
 	knowledgeFallbackPublisher KnowledgeFallbackPublisher
 	sourceReviews              SourceReviewStore
 	ingestionClient            IngestionClient
+	chatClient                 ChatClient
 	vehicleIdentity            VehicleIdentityStore
 	metrics                    *apiMetrics
 }
@@ -125,6 +126,9 @@ func NewServerWithSourceReviewStore(readiness ReadinessChecker, auth Authenticat
 func NewServerWithIngestionClient(readiness ReadinessChecker, auth Authenticator, requests RequestStore, client IngestionClient, projections ...ProjectionStore) *Server {
 	server := NewServerWithDependencies(readiness, auth, requests, projections...)
 	server.ingestionClient = client
+	if chatClient, ok := client.(ChatClient); ok {
+		server.chatClient = chatClient
+	}
 	return server
 }
 
@@ -162,6 +166,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /article-intakes", s.requireRole("ingestion_operator", s.createArticleIntake))
 	mux.Handle("POST /knowledge-queries", s.requireRole("dataset_viewer", s.createKnowledgeQuery))
 	mux.Handle("POST /job-plans", s.requireRole("dataset_viewer", s.createJobPlan))
+	mux.Handle("POST /chat/queries", s.requireRole("dataset_viewer", s.createChatQuery))
+	mux.Handle("GET /chat/queries/{id}", s.requireRole("dataset_viewer", s.getChatQuery))
+	mux.Handle("POST /chat/queries/{id}/selections", s.requireRole("dataset_viewer", s.selectChatVehicle))
+	mux.Handle("GET /chat/queries/{id}/events", s.requireRole("dataset_viewer", s.streamChatEvents))
 	mux.Handle("GET /dataset-requests/{id}", s.requireRole("dataset_viewer", s.getDatasetRequest))
 	mux.Handle("GET /datasets/{id}", s.requireRole("dataset_viewer", s.getDataset))
 	mux.Handle("GET /datasets/{id}/sections", s.requireRole("dataset_viewer", s.getDatasetSections))
@@ -539,6 +547,7 @@ func main() {
 			log.Fatal(fmt.Errorf("configure ingestion client: %w", err))
 		}
 		application.ingestionClient = client
+		application.chatClient = client
 	}
 	server := &http.Server{
 		Addr:              address,

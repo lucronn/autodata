@@ -226,6 +226,54 @@ class KnowledgeCatalogTests(unittest.TestCase):
         self.assertEqual(article["labor"]["total_labor_hours"], 4.25)
         self.assertEqual(article["procedure"]["steps"][0]["action"], "Disconnect battery")
 
+    def test_derived_catalog_read_preserves_review_warnings_and_exclusions(self):
+        result = _derived_rows_to_catalog(
+            [(
+                "combined:vehicle:brake-line:v2",
+                "Brake line service",
+                "Replace the line and bleed the system.",
+                [{"sequence": 1, "action": "Replace brake line"}],
+                "source-v9",
+                "needs_review",
+                "revision-3",
+                {
+                    "article_ids": ["brake-line"],
+                    "evidence_ids": ["ev-1"],
+                    "requested_components": ["brake_line"],
+                    "procedure": {
+                        "title": "Brake line service",
+                        "steps": [{"sequence": 1, "action": "Replace brake line"}],
+                        "warnings": [{"warning_id": "warn-1", "message": "Depressurize first."}],
+                        "review_state": "UNREVIEWED",
+                        "review_label": "UNREVIEWED / human review pending",
+                        "requires_review": True,
+                        "excluded_operation_ids": ["bleed-brakes"],
+                        "excluded_operation_reasons": {"bleed-brakes": "missing source evidence"},
+                    },
+                    "review_state": "pending",
+                    "review_label": "pending human review",
+                    "requires_review": True,
+                    "review_reasons": ["procedure_requires_review"],
+                    "excluded_operation_ids": ["bleed-brakes"],
+                    "excluded_operation_reasons": {"bleed-brakes": "missing source evidence"},
+                },
+                [],
+                {"total_labor_hours": 1.5},
+                "b" * 64,
+                "mercury-2",
+            )],
+            VehicleTarget("Toyota", "RAV4", 1997, "US"),
+        )
+
+        article = result[0]["article"]
+        assert article["procedure"]["warnings"][0]["warning_id"] == "warn-1"
+        assert article["procedure"]["review_state"] == "UNREVIEWED"
+        assert article["review_label"] == "pending human review"
+        assert article["requires_review"] is True
+        assert article["review_reasons"] == ["procedure_requires_review"]
+        assert article["excluded_operation_ids"] == ["bleed-brakes"]
+        assert article["excluded_operation_reasons"]["bleed-brakes"] == "missing source evidence"
+
 
 if __name__ == "__main__":
     unittest.main()
