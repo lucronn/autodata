@@ -15,6 +15,25 @@ from autodata_ingestion.source_adapters import SourceResource  # noqa: E402
 
 
 class IngestionWorkerTests(unittest.TestCase):
+    def test_labor_article_match_uses_component_when_titles_use_different_operations(self):
+        from autodata_ingestion.worker import _match_labor_article_id
+
+        procedure = {
+            "article_id": "P:564294320",
+            "title": "Brake Line Inspect",
+            "bucket": "Maintenance Procedures",
+        }
+        labor_articles = [{
+            "article_id": "L:23903519",
+            "title": "Brake Line R&R",
+            "bucket": "Labor",
+        }]
+
+        self.assertEqual(
+            _match_labor_article_id(procedure, labor_articles),
+            "L:23903519",
+        )
+
     def test_title_only_catalog_requires_procedure_content_hydration(self):
         from autodata_ingestion.worker import _catalog_needs_procedure_content_hydration
 
@@ -161,7 +180,9 @@ class IngestionWorkerTests(unittest.TestCase):
         with patch("autodata_ingestion.autoapi_connector.AutoAPIConnector") as connector_class:
             connector = connector_class.return_value
             connector.fetch_vehicle_bundle.return_value = bundle
-            connector.fetch_article_resources.side_effect = lambda _vehicle_id, article_id: details[article_id]
+            connector.fetch_article_resources.side_effect = (
+                lambda _vehicle_id, article_id, **_kwargs: details[article_id]
+            )
             with patch.dict(
                 "os.environ",
                 {

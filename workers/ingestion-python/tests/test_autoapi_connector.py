@@ -420,6 +420,29 @@ class AutoAPIConnectorTests(unittest.TestCase):
         ])
         self.assertEqual(resources[1].metadata["target_article_id"], "P:1")
 
+    def test_fetches_article_detail_without_guessing_a_labor_id(self):
+        responses = {
+            "/v1/api/source/Motor/vehicle/v1/article/P%3A1": {
+                "header": {}, "body": {"documentId": "P:1", "html": "<p>Inspect the line.</p>"}
+            },
+        }
+        requests = []
+
+        def opener(request, timeout):
+            del timeout
+            path = urlsplit(request.full_url).path
+            requests.append(path)
+            return FakeResponse(responses[path])
+
+        connector = AutoAPIConnector("http://127.0.0.1:3000", content_source="Motor", opener=opener)
+
+        resources = connector.fetch_article_resources("v1", "P:1", include_labor=False)
+
+        self.assertEqual(len(resources), 1)
+        self.assertEqual(requests, [
+            "/v1/api/source/Motor/vehicle/v1/article/P%3A1",
+        ])
+
     def test_discovers_catalog_and_fetches_every_article_as_source_resources(self):
         responses = {
             "/v1/api/years": {"header": {}, "body": [1999]},

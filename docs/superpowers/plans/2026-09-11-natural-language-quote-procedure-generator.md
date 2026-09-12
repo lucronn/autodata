@@ -155,8 +155,8 @@ so it misses the valid pair and requests
 
 - Match procedure and labor records using a normalized component title with
   operation suffixes such as `Inspect`, `R&R`, and `Replacement` removed.
-- Preserve meaningful qualifiers such as front/rear, side, and variant when
-  they are present; never pair records by broad token overlap alone.
+- Preserve meaningful qualifiers when they are already present in normalized
+  records; never pair records by broad token overlap alone.
 - Prefer an exact title match, then an exact normalized component match, and
   otherwise leave labor unpaired rather than guessing.
 - Keep the existing three-attempt GET retry behavior and preserve article
@@ -166,13 +166,13 @@ so it misses the valid pair and requests
 
 **Concrete todo:**
 
-- [ ] Add a failing regression for `Brake Line Inspect` paired with `Brake
+- [x] Add a failing regression for `Brake Line Inspect` paired with `Brake
   Line R&R`.
-- [ ] Implement deterministic component/suffix normalization with qualifier
+- [x] Implement deterministic component/suffix normalization with qualifier
   preservation.
-- [ ] Verify the exact RAV4 trace requests `labor/L:23903519` and returns
+- [x] Verify the exact RAV4 trace requests `labor/L:23903519` and returns
   labor operations when the provider supplies them.
-- [ ] Run the full worker/API test suites and update Issue #87 and Project #8
+- [x] Run the full worker/API test suites and update Issue #87 and Project #8
   with the pushed SHA.
 
 **Synchronized pre-implementation record:**
@@ -199,6 +199,22 @@ so it misses the valid pair and requests
   "base_sha": "d8680b127313b1418f04a6e2e5bf92006268dc46"
 }
 ```
+
+Implementation evidence for this checkpoint: the live RAV4 request now calls
+`/v1/api/source/Motor/vehicle/17075%3A996/labor/L%3A23903519` once and receives
+HTTP 200. The returned quote reports `0.8` labor hours, and the procedure
+retains the source-backed instruction and labor/content evidence. No request
+is made to `labor/P:564294320` when the labor association is ambiguous or
+unavailable.
+
+Verification for this checkpoint:
+
+- Ingestion: 361 passed, 12 subtests.
+- Enrichment: 46 passed, 16 subtests.
+- Contracts: 14 passed.
+- Developer checks: 59 passed, 2 subtests.
+- Go API and dashboard syntax checks: passed.
+- Compose API health: `{"status":"ok"}`.
 
 ## Post-implementation evidence — 2026-09-12
 

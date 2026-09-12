@@ -419,6 +419,7 @@ class AutoAPIConnector:
         article_id: str,
         *,
         labor_article_id: str | None = None,
+        include_labor: bool = True,
     ) -> tuple[SourceResource, ...]:
         """Fetch one requested article body and its labor resource.
 
@@ -434,6 +435,8 @@ class AutoAPIConnector:
         _detail_payload, detail_resource = self._cached_get_json(
             f"/v1/api/source/{source}/vehicle/{vehicle}/article/{article}"
         )
+        if not include_labor:
+            return (detail_resource,)
         try:
             _labor_payload, labor_resource = self._cached_get_json(
                 f"/v1/api/source/{source}/vehicle/{vehicle}/labor/{labor_article}"

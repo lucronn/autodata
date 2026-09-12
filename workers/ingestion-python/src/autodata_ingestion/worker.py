@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import asyncio
 import os
+import re
 import time
 from collections.abc import Mapping
 from dataclasses import replace
@@ -622,24 +623,26 @@ def _load_autoapi_job_catalog(
         if query and list_records:
             provisional = plan_job(query, vehicle, catalog=list_records)
             selected_ids = set(str(value) for value in provisional.get("selected_articles", []))
-            labor_ids_by_title = {
-                _article_lookup_title(record["article"]): str(record["article"].get("article_id"))
+            labor_articles = [
+                record["article"]
                 for record in list_records
                 if _is_labor_article(record["article"])
-            }
+            ]
             for article_id in sorted(selected_ids):
                 selected_article = next(
                     (record["article"] for record in list_records if str(record["article"].get("article_id")) == article_id),
                     {},
                 )
-                labor_article_id = labor_ids_by_title.get(_article_lookup_title(selected_article))
+                labor_article_id = _match_labor_article_id(selected_article, labor_articles)
                 if labor_article_id and labor_article_id != article_id:
                     resources = connector.fetch_article_resources(
                         bundle.vehicle_id, article_id, labor_article_id=labor_article_id
                     )
                 else:
                     resources = connector.fetch_article_resources(
-                        bundle.vehicle_id, article_id
+                        bundle.vehicle_id,
+                        article_id,
+                        include_labor=False,
                     )
                 artifacts.extend(adapt_source_resource(resource) for resource in resources)
                 targeted_article_count += 1
@@ -678,7 +681,59 @@ def _load_autoapi_job_catalog(
 
 
 def _article_lookup_title(article: Mapping[str, object]) -> str:
-    return " ".join(str(article.get("title") or "").casefold().split())
+    values = [article.get("title"), article.get("subtitle")]
+    return " ".join(" ".join(str(value or "").split()) for value in values if value).casefold()
+
+
+_LABOR_OPERATION_WORDS = frozenset({
+    "adjust",
+    "adjustment",
+    "check",
+    "inspect",
+    "inspection",
+    "install",
+    "installation",
+    "overhaul",
+    "r",
+    "remove",
+    "removal",
+    "replace",
+    "replacement",
+    "repair",
+    "rpr",
+    "service",
+    "servicing",
+    "test",
+    "testing",
+})
+
+
+def _article_component_key(article: Mapping[str, object]) -> str:
+    tokens = re.findall(r"[a-z0-9]+", _article_lookup_title(article))
+    return " ".join(token for token in tokens if token not in _LABOR_OPERATION_WORDS)
+
+
+def _match_labor_article_id(
+    procedure: Mapping[str, object], labor_articles: list[Mapping[str, object]]
+) -> str | None:
+    """Match one labor row without guessing across ambiguous qualifiers."""
+
+    procedure_title = _article_lookup_title(procedure)
+    exact = [
+        article
+        for article in labor_articles
+        if _article_lookup_title(article) == procedure_title
+    ]
+    candidates = exact or [
+        article
+        for article in labor_articles
+        if _article_component_key(article)
+        and _article_component_key(article) == _article_component_key(procedure)
+    ]
+    if len(candidates) != 1:
+        return None
+    article_id = str(candidates[0].get("article_id") or "").strip()
+    return article_id or None
 
 
 def _is_labor_article(article: Mapping[str, object]) -> bool:
