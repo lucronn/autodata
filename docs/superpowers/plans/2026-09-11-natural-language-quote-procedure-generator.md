@@ -795,3 +795,82 @@ following:
 - The Workers terminal streams correlated progress and dead-letter outcomes.
 - Source, evidence, review, revision, and idempotency links remain intact.
 - Local fake adapters and protected Compose CI verify cold and warm paths.
+
+## Procedure content integrity correction — 2026-09-12
+
+**Goal:** Do not present a title-only labor operation as a complete repair
+procedure. A requested procedure must include source-backed instructional
+content when the provider supplies it, and must explicitly identify partial or
+unavailable procedure content when it does not.
+
+**Tracking:** Issue #87
+([https://github.com/lucronn/autodata/issues/87](https://github.com/lucronn/autodata/issues/87));
+AutoData Portfolio Project #8
+([https://github.com/users/lucronn/projects/8](https://github.com/users/lucronn/projects/8)).
+
+**Root cause found:** the warm chat cache accepts normalized catalog articles
+whose title and labor operation exist but whose body, steps, and content
+evidence are empty. That bypasses the existing targeted AutoAPI hydration.
+Separately, `_compose_composed_procedure` emits only the labor operation action
+and does not include normalized article body or steps in the published
+procedure. The RAV4 cache therefore renders `Replace brake line` as if it were
+a complete procedure even though no instructional source content is present.
+
+**Scope and invariants:**
+
+- Preserve article-list-first retrieval and hydrate only the selected matching
+  article detail and labor resources.
+- Treat a warm article as procedure-complete only when it has source-backed
+  body/steps and content evidence; otherwise rehydrate or return an explicit
+  partial/unavailable procedure state.
+- Carry normalized source steps/body into the composed procedure with the
+  original article and evidence lineage intact.
+- Mercury-2 may order or rewrite source-bound instructions only; it may not
+  invent an instruction or turn a labor label into a procedure.
+- A title-only result must never be labeled as a complete procedure.
+- Keep the response fast: return usable source data immediately while the
+  normalized revision is being rebuilt, and reuse the persisted revision on
+  later reads.
+
+**Concrete todo:**
+
+- [ ] Add regression fixtures for an AutoAPI article index, selected article
+  detail with instructional HTML/steps, and labor response.
+- [ ] Add a warm-cache regression proving a title-only article triggers
+  targeted hydration instead of publishing a placeholder procedure.
+- [ ] Add a composer regression proving source instructional content appears in
+  procedure steps and retains article/evidence provenance.
+- [ ] Implement cache completeness validation and source-content-aware
+  procedure composition.
+- [ ] Implement explicit partial/unavailable labeling when source content is
+  absent.
+- [ ] Run focused red/green tests, the full worker/API suites, deterministic
+  chat smoke, and live local RAV4 verification.
+- [ ] Push the implementation and update Issue #87 and Project #8 with exact
+  SHAs and evidence.
+
+**Synchronized pre-implementation record:**
+
+```json
+{
+  "goal": "Prevent title-only normalized records from being presented as complete repair procedures",
+  "plan_ref": "docs/superpowers/plans/2026-09-11-natural-language-quote-procedure-generator.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/87",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/pre-implementation-gate.md",
+    "docs/architecture/contracts.md",
+    "docs/github/operating-model.md"
+  ],
+  "todo": [
+    "Add source-content and warm-cache regression fixtures",
+    "Implement cache completeness validation and content-aware composition",
+    "Expose explicit partial or unavailable procedure state",
+    "Run focused, full-stack, and live local verification",
+    "Push and synchronize Issue #87 and Project #8"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-09-12T00:00:00Z",
+  "base_sha": "b87920d701da41856f3415968ec44fafb7d3ab62"
+}
+```
