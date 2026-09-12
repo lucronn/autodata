@@ -51,6 +51,39 @@ the detail view is closed. The regression scope is the static dashboard
 contract plus a live local response for `1997 Toyota RAV4 4WD brake line
 replacement procedure and quote`.
 
+### UX correction implementation checkpoint — 2026-09-12
+
+The dashboard correction is implemented and pushed at commit
+`c9b9344402088e46663176553d2741bf488604e0` on
+`automation/knowledge-fallback-runtime`.
+
+The default answer now presents the resolved vehicle, a consumer-friendly
+procedure summary, readable procedure steps and warnings, labor/overlap
+status, and available source-priced parts. Vehicle matches remain numbered
+and clickable. The `Detailed view` control reveals revision/source metadata,
+generator information, operation/article/evidence identifiers, source state,
+and structured JSON without removing the procedure from the default view.
+
+Verification completed:
+
+- live local dashboard request for `1997 Toyota RAV4 4WD brake line
+  replacement procedure and quote` showed `Matched vehicle. The procedure
+  and quote are shown below.`, the clickable vehicle option, the brake-line
+  procedure step, and the `UNREVIEWED` label;
+- detailed view revealed revision, source watermark, generator, operation,
+  and source article metadata;
+- Go API/dashboard tests passed;
+- ingestion passed: 354 tests and 12 subtests;
+- enrichment passed: 46 tests and 16 subtests;
+- contracts passed: 14 tests;
+- developer tests passed: 59 tests and 2 subtests;
+- deterministic chat smoke passed with cold/warm cache, overlap, source
+  visibility, price refresh, and vector artifact coverage; and
+- `git diff --check` and JavaScript syntax checks passed.
+
+The user-owned untracked `sample data/` directory remains outside every
+commit.
+
 **Architecture:** Keep Go as the authenticated public boundary and Python as the source/normalization/composition runtime. Search the normalized PostgreSQL cache first, read through to the provider-neutral AutoAPI connector only for missing data, return source data immediately when normalization is pending, and publish correlated background updates through NATS JetStream. Mercury-2 is constrained to structured intent suggestions, supporting-operation classification, procedure composition, and faithful source-diagram vectorization; application code owns vehicle scope, source calls, arithmetic, persistence, and publication validation.
 
 **Tech Stack:** Go 1.26 `net/http`, Python 3 with the existing ingestion/enrichment packages, PostgreSQL with pgvector, NATS JetStream, MinIO/S3-compatible storage, versioned JSON contracts, Docker Compose, and the repository’s existing pytest, Go, contract, and runtime-smoke tooling.
@@ -96,7 +129,7 @@ replacement procedure and quote`.
     "Verify the complete cold and warm paths in local Compose and protected CI"
   ],
   "status": "synchronized",
-  "updated_at": "2026-09-12T16:53:58Z"
+  "updated_at": "2026-09-12T17:04:20Z"
 }
 ```
 
