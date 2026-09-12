@@ -15,6 +15,43 @@ from autodata_ingestion.source_adapters import SourceResource  # noqa: E402
 
 
 class IngestionWorkerTests(unittest.TestCase):
+    def test_title_only_catalog_requires_procedure_content_hydration(self):
+        from autodata_ingestion.worker import _catalog_needs_procedure_content_hydration
+
+        title_only = [{
+            "kind": "article",
+            "article": {
+                "article_id": "P:brake-line",
+                "title": "Brake Line Inspect",
+                "component": "brake_line",
+                "operations": [{
+                    "operation_id": "replace-brake-line",
+                    "action": "Replace brake line",
+                    "duration_hours": 1.2,
+                }],
+                "evidence": [{"evidence_id": "index-evidence"}],
+            },
+        }]
+
+        complete = [{
+            "kind": "article",
+            "article": {
+                **title_only[0]["article"],
+                "body": "Remove the line and bleed the system.",
+                "steps": ["Remove the line", "Bleed the system"],
+            },
+        }]
+
+        self.assertTrue(
+            _catalog_needs_procedure_content_hydration(
+                "brake line replacement procedure", title_only
+            )
+        )
+        self.assertFalse(
+            _catalog_needs_procedure_content_hydration(
+                "brake line replacement procedure", complete
+            )
+        )
     def test_autoapi_content_source_defaults_from_vehicle_make(self):
         from autodata_ingestion.worker import _autoapi_content_source
 

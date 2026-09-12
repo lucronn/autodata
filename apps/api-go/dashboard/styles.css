@@ -91,6 +91,8 @@ button:focus-visible, textarea:focus-visible, a:focus-visible, summary:focus-vis
   background: var(--faint);
   content: "";
 }
+.step-detail { margin-top: 8px; color: var(--muted); line-height: 1.55; }
+.step-detail-line { margin: 0 0 6px; }
 .status-pill[data-state="ready"], .terminal-status[data-state="ready"] { color: var(--cool); border-color: #356458; }
 .status-pill[data-state="ready"]::before, .terminal-status[data-state="ready"]::before { background: var(--cool); }
 .status-pill[data-state="error"], .result-status[data-state="error"], .terminal-status[data-state="error"] { color: var(--danger); border-color: #70423a; }

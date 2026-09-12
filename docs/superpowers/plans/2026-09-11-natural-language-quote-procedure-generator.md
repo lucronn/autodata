@@ -133,6 +133,33 @@ commit.
 }
 ```
 
+## Post-implementation evidence — 2026-09-12
+
+The integrity correction is implemented and verified locally. AutoAPI's
+procedure index identifies the RAV4 article as `P:564294320`, while its
+document response identifies the same content as `documentId: 564294320`.
+The normalizer now joins either identifier shape using exact ID segments,
+preserves the fetched content evidence, and removes a duplicated HTML heading
+from the normalized instruction text. The optional labor endpoint may return
+HTTP 502; that failure no longer discards the usable article body or blocks
+publication, and labor remains explicitly unavailable for review.
+
+The live request for `1997 Toyota RAV4 4WD brake line replacement procedure
+and quote` returned an available normalized revision with the source-backed
+instruction: `Visually inspect brake lines for cracks, kinks, leaks or
+corrosion. Replace, as required.` The procedure step carries both article and
+content evidence IDs. No instruction was generated from the labor label alone.
+
+Verification completed:
+
+- Ingestion: 359 passed, 12 subtests.
+- Enrichment: 46 passed, 16 subtests.
+- Contracts: 14 passed.
+- Developer checks: 59 passed, 2 subtests.
+- Go API: passed.
+- Dashboard JavaScript syntax check and `git diff --check`: passed.
+- Local Compose API health: `{"status":"ok"}`.
+
 The plan checkpoint must be committed and pushed before implementation workers
 start. After that push, update Issue #87 and Project #8 with the exact plan
 SHA, then pass the machine preflight against the implementation base SHA.

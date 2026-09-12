@@ -1183,7 +1183,10 @@ def _default_normalized_cache(
     try:
         from .article_intake import VehicleTarget
         from .knowledge_catalog import load_vehicle_knowledge_catalog
-        from .worker import _cached_derived_job_plan
+        from .worker import (
+            _cached_derived_job_plan,
+            _catalog_needs_procedure_content_hydration,
+        )
 
         year = vehicle.get("model_year", vehicle.get("year"))
         region = vehicle.get("region") or os.getenv("AUTODATA_SOURCE_REGION", "US")
@@ -1200,6 +1203,11 @@ def _default_normalized_cache(
             vehicle.get("engine_displacement_l", vehicle.get("engine")),
         )
         catalog = load_vehicle_knowledge_catalog(target, query=query)
+        if _catalog_needs_procedure_content_hydration(query, catalog):
+            # A title/labor row is not a usable procedure. Treat it as a
+            # source miss so the retriever hydrates only the selected article
+            # detail and labor resources.
+            return None
         derived = _cached_derived_job_plan(query, dict(vehicle), catalog)
         if derived is not None:
             return {**derived, "cache_hit": True, "data_state": "normalized"}

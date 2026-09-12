@@ -429,6 +429,34 @@ def _catalog_needs_job_plan_hydration(
     )
 
 
+def _catalog_needs_procedure_content_hydration(
+    query: str, catalog: list[dict[str, object]] | tuple[dict[str, object], ...]
+) -> bool:
+    """Return true when selected local articles lack source instructions."""
+
+    from .job_plan import (
+        _article_components,
+        _article_procedure_instructions,
+        _components_from_query,
+    )
+
+    requested = _components_from_query(query)
+    if not requested:
+        return False
+    articles: list[dict[str, object]] = []
+    for record in catalog:
+        if not isinstance(record, dict):
+            continue
+        article = record.get("article", record)
+        if isinstance(article, dict):
+            articles.append(article)
+    for component in requested:
+        candidates = [article for article in articles if component in _article_components(article)]
+        if not candidates or not any(_article_procedure_instructions(article) for article in candidates):
+            return True
+    return False
+
+
 def _cached_derived_job_plan(
     query: str,
     vehicle: dict[str, object],
@@ -606,18 +634,16 @@ def _load_autoapi_job_catalog(
                 )
                 labor_article_id = labor_ids_by_title.get(_article_lookup_title(selected_article))
                 if labor_article_id and labor_article_id != article_id:
-                    detail_resource, labor_resource = connector.fetch_article_resources(
+                    resources = connector.fetch_article_resources(
                         bundle.vehicle_id, article_id, labor_article_id=labor_article_id
                     )
                 else:
-                    detail_resource, labor_resource = connector.fetch_article_resources(
+                    resources = connector.fetch_article_resources(
                         bundle.vehicle_id, article_id
                     )
-                artifacts.extend(
-                    [adapt_source_resource(detail_resource), adapt_source_resource(labor_resource)]
-                )
+                artifacts.extend(adapt_source_resource(resource) for resource in resources)
                 targeted_article_count += 1
-                targeted_labor_count += 1
+                targeted_labor_count += max(0, len(resources) - 1)
         normalized = normalize_source_bundle(
             artifacts,
             str(vehicle.get("region") or "US"),

@@ -434,9 +434,15 @@ class AutoAPIConnector:
         _detail_payload, detail_resource = self._cached_get_json(
             f"/v1/api/source/{source}/vehicle/{vehicle}/article/{article}"
         )
-        _labor_payload, labor_resource = self._cached_get_json(
-            f"/v1/api/source/{source}/vehicle/{vehicle}/labor/{labor_article}"
-        )
+        try:
+            _labor_payload, labor_resource = self._cached_get_json(
+                f"/v1/api/source/{source}/vehicle/{vehicle}/labor/{labor_article}"
+            )
+        except Exception:
+            # Labor is an enrichment resource. Preserve a usable article body
+            # when the provider cannot supply labor for an otherwise valid
+            # procedure; the planner will expose labor as unavailable/review.
+            return (detail_resource,)
         if labor_article_id and str(labor_article_id) != str(article_id):
             labor_resource = replace(
                 labor_resource,
@@ -770,10 +776,11 @@ def fetch_required_source_resources(
                 else {}
             ),
         )
-        detail_resource, labor_resource = resources
         source_resources.extend(resources)
+        detail_resource = resources[0]
         article_details[article_id] = _resource_payload(detail_resource)
-        labor[article_id] = _resource_payload(labor_resource)
+        if len(resources) > 1:
+            labor[article_id] = _resource_payload(resources[1])
 
     parts_payload: Any | None = None
     if requested_part_ids or all_parts_requested:

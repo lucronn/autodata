@@ -405,7 +405,7 @@ def test_build_quote_separates_support_categories_and_explains_shared_labor_dedu
 
     result = build_quote_and_procedure("replace the brake line", VEHICLE, articles)
 
-    assert result["status"] == "ready"
+    assert result["status"] == "needs_review"
     quote = result["quote"]
     assert quote["required_hours"] == 2.6
     assert quote["recommended_hours"] == 0.8
@@ -536,7 +536,10 @@ def test_singular_article_and_operation_evidence_ids_are_normalized():
         }],
     )
 
-    assert result["procedure"]["steps"][0]["evidence_ids"] == ["operation-evidence"]
+    assert result["procedure"]["steps"][0]["evidence_ids"] == [
+        "article-evidence",
+        "operation-evidence",
+    ]
     assert result["quote"]["evidence_ids"] == ["article-evidence", "operation-evidence"]
 
 
@@ -786,7 +789,7 @@ def test_mercury_step_must_match_exact_operation_provenance():
             "duration_hours": 1.0,
             "evidence_ids": ["evidence-alternator-article"],
         }],
-    )
+    ) | {"body": "Remove the alternator and install the replacement."}
     quote = build_quote_and_procedure("replace the alternator", VEHICLE, [source])
 
     class FakeMercury:
@@ -818,7 +821,7 @@ def test_mercury_required_operation_exclusion_forces_review():
             "duration_hours": 1.0,
             "evidence_ids": ["evidence-alternator-article"],
         }],
-    )
+    ) | {"body": "Remove the alternator and install the replacement."}
     quote = build_quote_and_procedure("replace the alternator", VEHICLE, [source])
 
     class FakeMercury:
@@ -946,7 +949,7 @@ def test_public_builder_passes_complete_validated_context_to_mercury():
             "duration_hours": 1.0,
             "evidence_ids": ["evidence-alternator-article"],
         }],
-    )
+    ) | {"body": "Remove the alternator and install the replacement."}
 
     class InspectingMercury:
         def complete_json(self, prompt):
@@ -1067,3 +1070,67 @@ def test_nonfinite_or_conflicting_parts_force_review_without_nonfinite_subtotal(
     assert "invalid_part_price:belt" in result["review_reasons"]
     assert "conflicting_part_price:filter" in result["review_reasons"]
     assert result["parts"]["subtotal"] == 0.0
+
+
+def test_composed_procedure_includes_source_instructions_not_only_labor_label():
+    source_article = article(
+        "brake-line-source",
+        "brake_line",
+        [{
+            "operation_id": "replace-brake-line",
+            "action": "Replace brake line",
+            "duration_hours": 1.2,
+            "evidence_ids": ["evidence-brake-line-source"],
+        }],
+    ) | {
+        "body": "Remove the damaged line and clean the fittings before installation.",
+        "content_evidence_id": "evidence-brake-line-content",
+        "steps": [
+            "Raise and support the vehicle.",
+            "Remove the damaged line.",
+            "Bleed the brake system and check for leaks.",
+        ],
+    }
+
+    result = build_quote_and_procedure(
+        "brake line replacement procedure",
+        VEHICLE,
+        [source_article],
+    )
+
+    procedure = result["procedure"]
+    assert procedure["content_status"] == "complete"
+    assert procedure["steps"][0]["action"] == "Replace brake line"
+    assert procedure["steps"][0]["instructions"] == source_article["steps"]
+    assert procedure["steps"][0]["source_article_ids"] == ["brake-line-source"]
+    assert procedure["steps"][0]["evidence_ids"] == [
+        "evidence-brake-line-content",
+        "evidence-brake-line-source",
+    ]
+
+
+def test_title_only_article_is_partial_and_explains_missing_procedure_content():
+    result = build_quote_and_procedure(
+        "brake line replacement procedure",
+        VEHICLE,
+        [article(
+            "brake-line-title-only",
+            "brake_line",
+            [{
+                "operation_id": "replace-brake-line",
+                "action": "Replace brake line",
+                "duration_hours": 1.2,
+                "evidence_ids": ["evidence-brake-line-title-only"],
+            }],
+        )],
+    )
+
+    procedure = result["procedure"]
+    assert procedure["content_status"] == "partial"
+    assert procedure["requires_review"] is True
+    assert procedure["steps"][0]["instructions"] == []
+    assert "procedure_content_unavailable" in result["review_reasons"]
+    assert any(
+        warning["warning_id"] == "procedure_content_unavailable"
+        for warning in procedure["warnings"]
+    )

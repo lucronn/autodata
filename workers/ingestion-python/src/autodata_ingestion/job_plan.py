@@ -512,6 +512,7 @@ def _article_visuals(article: Mapping[str, Any]) -> list[dict[str, Any]]:
 def _article_evidence_ids(article: Mapping[str, Any]) -> list[str]:
     evidence_ids = set(_string_ids(article.get("evidence_ids")))
     evidence_ids.update(_string_ids(article.get("evidence_id")))
+    evidence_ids.update(_string_ids(article.get("content_evidence_id")))
     evidence = article.get("evidence", [])
     if isinstance(evidence, Mapping):
         evidence = [evidence]
@@ -848,6 +849,8 @@ def build_quote_and_procedure(
         review_reasons.append("procedure_composition_failed")
     if procedure.get("requires_review"):
         review_reasons.append("procedure_requires_review")
+    if procedure.get("content_status") != "complete":
+        review_reasons.append("procedure_content_unavailable")
     # unknown_price_ids is diagnostic input, not part of the public quote
     # contract.
     parts = public_parts
@@ -1620,6 +1623,7 @@ def _compose_composed_procedure(
         if str(record["article"].get("article_id", "")).strip()
     }
     steps: list[dict[str, Any]] = []
+    missing_content_article_ids: set[str] = set()
     for sequence, operation in enumerate(operations, 1):
         article_ids = [
             str(value)
@@ -1635,6 +1639,21 @@ def _compose_composed_procedure(
                 if str(value).strip()
             }
         )
+        source_instructions: list[str] = []
+        source_evidence_ids: set[str] = set()
+        for article_id in article_ids:
+            record = article_by_id.get(article_id)
+            if record is None:
+                continue
+            source_evidence_ids.update(_article_evidence_ids(record["article"]))
+            instructions = _article_procedure_instructions(record["article"])
+            if not instructions:
+                missing_content_article_ids.add(article_id)
+            for instruction in instructions:
+                if instruction not in source_instructions:
+                    source_instructions.append(instruction)
+        if not source_instructions:
+            missing_content_article_ids.update(article_ids)
         step = {
             "sequence": sequence,
             "operation_id": str(operation.get("operation_id", "")),
@@ -1643,13 +1662,32 @@ def _compose_composed_procedure(
             "category": str(operation.get("category", "required")),
             "source_article_ids": sorted(set(article_ids)),
             "evidence_ids": sorted(
-                str(value) for value in operation.get("evidence_ids", []) if str(value).strip()
+                source_evidence_ids
+                | {
+                    str(value)
+                    for value in operation.get("evidence_ids", [])
+                    if str(value).strip()
+                }
             ),
+            "instructions": source_instructions,
             "origin": "shared_source_step" if len(components) > 1 else "source_step",
-            "requires_review": not bool(operation.get("evidence_ids")),
+            "requires_review": not bool(operation.get("evidence_ids")) or not source_instructions,
         }
         steps.append(step)
     warnings = _collect_safety_warnings(records)
+    if missing_content_article_ids:
+        warnings.append(
+            {
+                "warning_id": "procedure_content_unavailable",
+                "message": (
+                    "Instructional procedure content was not returned for one or more "
+                    "source articles; only labor operation labels are available."
+                ),
+                "source_article_ids": sorted(missing_content_article_ids),
+                "evidence_ids": [],
+                "requires_review": True,
+            }
+        )
     requires_review = any(step["requires_review"] for step in steps) or any(
         warning["requires_review"] for warning in warnings
     )
@@ -1657,11 +1695,43 @@ def _compose_composed_procedure(
         "title": title or "Vehicle service procedure",
         "steps": steps,
         "warnings": warnings,
+        "content_status": "partial" if missing_content_article_ids else "complete",
         "requires_review": requires_review,
         "review_state": "UNREVIEWED",
         "review_label": "UNREVIEWED — human review pending",
         "generation": "deterministic",
     }
+
+
+def _article_procedure_instructions(article: Mapping[str, Any]) -> list[str]:
+    """Return source-authored instructions without inventing repair guidance."""
+
+    values: list[str] = []
+    raw_steps = article.get("steps")
+    if isinstance(raw_steps, list):
+        for raw_step in raw_steps:
+            if isinstance(raw_step, Mapping):
+                value = next(
+                    (
+                        raw_step.get(key)
+                        for key in ("instruction", "description", "text", "action", "body")
+                        if isinstance(raw_step.get(key), str) and raw_step.get(key).strip()
+                    ),
+                    None,
+                )
+            else:
+                value = raw_step
+            text = re.sub(r"\s+", " ", str(value or "")).strip()
+            if text and text not in values:
+                values.append(text)
+    if values:
+        return values
+    body = article.get("body", article.get("content", article.get("articleBody")))
+    if isinstance(body, str):
+        text = re.sub(r"\s+", " ", body).strip()
+        if text:
+            return [text]
+    return []
 
 
 def _collect_safety_warnings(records: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -1738,6 +1808,7 @@ def _empty_composed_procedure(title: str) -> dict[str, Any]:
         "title": title,
         "steps": [],
         "warnings": [],
+        "content_status": "partial",
         "requires_review": True,
         "review_state": "UNREVIEWED",
         "review_label": "UNREVIEWED — human review pending",
@@ -2003,6 +2074,7 @@ def _validate_llm_procedure(
             "category",
             "source_article_ids",
             "evidence_ids",
+            "instructions",
             "requires_review",
         }
         unexpected_step = set(raw_step) - step_allowed
@@ -2082,6 +2154,7 @@ def _validate_llm_procedure(
             "category": expected["category"],
             "source_article_ids": sorted(set(article_ids)),
             "evidence_ids": sorted(set(evidence_ids)),
+            "instructions": list(expected.get("instructions", [])),
             "origin": "llm_wording",
             "requires_review": bool(raw_step.get("requires_review", False)),
         }
@@ -2098,13 +2171,26 @@ def _validate_llm_procedure(
         for warning in deterministic_procedure.get("warnings", [])
         if isinstance(warning, Mapping) and str(warning.get("warning_id", "")).strip()
     }
+    content_warning = expected_warnings.pop("procedure_content_unavailable", None)
     warnings = _validate_llm_warnings(
-        response["warnings"],
+        [
+            warning
+            for warning in response["warnings"]
+            if not (
+                isinstance(warning, Mapping)
+                and warning.get("warning_id") == "procedure_content_unavailable"
+            )
+        ],
         expected_warnings,
         allowed_article_ids,
         allowed_evidence_ids,
         evidence_article_ids,
     )
+    if content_warning is not None:
+        # Missing source instructions are an application-owned integrity
+        # warning. Mercury-2 cannot dismiss or rewrite it, and it has no
+        # evidence IDs by design because the missing content is the problem.
+        warnings.append(dict(content_warning))
     requires_review = bool(response.get("requires_review", False)) or bool(excluded_operation_ids) or any(
         step["requires_review"] for step in validated_steps
     ) or any(warning["requires_review"] for warning in warnings)
@@ -2112,6 +2198,7 @@ def _validate_llm_procedure(
         "title": str(response["title"]).strip(),
         "steps": validated_steps,
         "warnings": warnings,
+        "content_status": "complete" if all(step["instructions"] for step in validated_steps) else "partial",
         "requires_review": requires_review,
         "review_state": "UNREVIEWED",
         "review_label": "UNREVIEWED — human review pending",
@@ -2190,6 +2277,14 @@ def _operation_provenance(
                     normalized_components.update(_article_components(articles_by_id[article_id]))
         if not action:
             action = operation_id.replace("-", " ")
+        instructions: list[str] = []
+        for article_id in sorted(source_article_ids):
+            article = articles_by_id.get(article_id)
+            if not article:
+                continue
+            for instruction in _article_procedure_instructions(article):
+                if instruction not in instructions:
+                    instructions.append(instruction)
         provenance[operation_id] = {
             "operation_id": operation_id,
             "action": action,
@@ -2197,6 +2292,7 @@ def _operation_provenance(
             "category": category if category in {"required", "recommended"} else "required",
             "source_article_ids": sorted(source_article_ids),
             "evidence_ids": sorted(evidence_ids),
+            "instructions": instructions,
             "source_bound": matched_source_operation,
         }
     return provenance

@@ -68,6 +68,7 @@ PROCEDURE_COMPOSITION_SCHEMA: dict[str, Any] = {
                     "category": {"type": "string", "enum": ["required", "recommended"]},
                     "source_article_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
                     "evidence_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                    "instructions": {"type": "array", "items": {"type": "string"}},
                     "requires_review": {"type": "boolean"},
                 },
             },

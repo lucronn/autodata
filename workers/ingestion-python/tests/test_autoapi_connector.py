@@ -364,6 +364,35 @@ class AutoAPIConnectorTests(unittest.TestCase):
             "/v1/api/source/GeneralMotors/vehicle/v1/labor/a1",
         ])
 
+    def test_article_body_survives_when_optional_labor_resource_is_unavailable(self):
+        responses = {
+            "/v1/api/source/Motor/vehicle/v1/article/P%3A1": {
+                "header": {},
+                "body": {"documentId": "P:1", "html": "<p>Remove the line and inspect the fittings.</p>"},
+            },
+        }
+        requests = []
+
+        def opener(request, timeout):
+            del timeout
+            path = urlsplit(request.full_url).path
+            requests.append(path)
+            if "/labor/" in path:
+                return FakeResponse({"error": "upstream unavailable"}, status=502)
+            return FakeResponse(responses[path])
+
+        connector = AutoAPIConnector("http://127.0.0.1:3000", content_source="Motor", opener=opener)
+
+        resources = connector.fetch_article_resources("v1", "P:1")
+
+        self.assertEqual(len(resources), 1)
+        self.assertEqual(resources[0].source_uri.rsplit("/", 1)[-1], "P%3A1")
+        self.assertEqual(requests[0], "/v1/api/source/Motor/vehicle/v1/article/P%3A1")
+        self.assertEqual(
+            requests[1:],
+            ["/v1/api/source/Motor/vehicle/v1/labor/P%3A1"] * 3,
+        )
+
     def test_fetches_labor_by_separate_provider_id_and_targets_procedure(self):
         responses = {
             "/v1/api/source/Motor/vehicle/v1/article/P%3A1": {

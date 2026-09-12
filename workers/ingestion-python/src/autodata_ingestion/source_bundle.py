@@ -569,8 +569,16 @@ def _attach_document_content(
     aggregate_evidence: list[dict[str, Any]] = []
     for article in articles:
         article_id = str(article.get("article_id") or "")
-        document_id = article_id.split(":", 1)[0].strip()
-        content_records = by_document_id.get(document_id, [])
+        article_id_parts = {part.strip() for part in article_id.split(":") if part.strip()}
+        content_records = []
+        for document_id, records_for_document in by_document_id.items():
+            # AutoAPI uses more than one article-id shape. Some indexes use
+            # ``document-id:content-id`` while procedure rows use a provider
+            # prefix such as ``P:document-id``. A fetched document is allowed
+            # to join when its document id is an exact id segment, preserving
+            # the source evidence while avoiding title-based guesses.
+            if document_id in article_id_parts or document_id == article_id:
+                content_records.extend(records_for_document)
         if not content_records:
             continue
         html_records = [
@@ -580,7 +588,10 @@ def _attach_document_content(
         ]
         selected_records = html_records or content_records
         content = _document_content_record(selected_records, aggregate_evidence)
-        article.setdefault("body", content["text"])
+        article.setdefault(
+            "body",
+            _remove_repeated_article_title(content["text"], article.get("title")),
+        )
         article["content_evidence_id"] = content["evidence_id"]
         article["content_locator"] = content["locator"]
         article["content_source_uri"] = content["source_uri"]
@@ -590,6 +601,23 @@ def _attach_document_content(
         if images:
             article["images"] = images
     return articles, aggregate_evidence
+
+
+def _remove_repeated_article_title(text: Any, title: Any) -> str:
+    """Keep document instructions while removing a duplicated HTML heading."""
+
+    original_text = str(text or "").strip()
+    normalized_text = re.sub(r"\s+", " ", original_text)
+    normalized_title = re.sub(r"\s+", " ", str(title or "")).strip()
+    if not normalized_text or not normalized_title:
+        return original_text
+    if normalized_text.casefold() == normalized_title.casefold():
+        return original_text
+    if normalized_text.casefold().startswith(normalized_title.casefold()):
+        remainder = original_text[len(normalized_title):].lstrip(" :.-\n\r\t")
+        if remainder:
+            return remainder
+    return original_text
 
 
 def _resolve_document_images(

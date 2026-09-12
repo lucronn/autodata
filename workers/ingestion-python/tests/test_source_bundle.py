@@ -314,6 +314,32 @@ class SourceBundleTests(unittest.TestCase):
         self.assertIn(article["content_evidence_id"], {item["evidence_id"] for item in bundle.evidence})
         self.assertNotEqual(article["content_evidence_id"], article["evidence_id"])
 
+    def test_autoapi_document_body_joins_provider_prefixed_article_id(self):
+        index_resource = SourceResource.from_bytes(
+            "file://v2.json",
+            "autoapi-v1",
+            b'{"body":{"articleDetails":[{"id":"P:564294320","title":"Brake Line Inspect"}]}}',
+            "application/json",
+        )
+        document_resource = SourceResource.from_bytes(
+            "file://564294320.json",
+            "autoapi-v1",
+            b'{"body":{"documentId":"564294320","html":"<h2>Brake Line Inspect</h2><p>Visually inspect brake lines and replace as required.</p>"}}',
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle(
+            [adapt_source_resource(index_resource), adapt_source_resource(document_resource)],
+            "US",
+        )
+
+        article = next(article for article in bundle.articles if article["article_id"] == "P:564294320")
+        self.assertEqual(
+            article["body"],
+            "Visually inspect brake lines and replace as required.",
+        )
+        self.assertEqual(article["content_locator"], "body.html:564294320")
+
     def test_autoapi_pdf_pages_are_joined_with_aggregate_content_evidence(self):
         class FakePage:
             def __init__(self, text):
