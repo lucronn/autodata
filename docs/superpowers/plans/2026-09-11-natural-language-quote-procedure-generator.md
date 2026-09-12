@@ -25,6 +25,32 @@ explicit `UNREVIEWED — human review pending` label. Final status remains
 `Review` until the fresh read-only review of the pushed range completes; the
 exact evidence is recorded in the SDD ledger.
 
+## UX correction checkpoint — 2026-09-12
+
+Issue #87 remains the canonical delivery record for this follow-up. The API
+already returns the RAV4 vehicle option, normalized procedure, and quote
+envelope, but the dashboard needs to make that result obvious to a non-
+technical user. This checkpoint covers the presentation correction only; it
+does not change source retrieval, labor arithmetic, or publication semantics.
+
+The default answer must:
+
+- render every returned vehicle match as a visible numbered and clickable
+  option, even while the query is still processing or when only one match
+  exists;
+- show the resolved vehicle, requested job, consumer-friendly procedure steps,
+  labor hours, overlap explanation, and available parts prices/date without
+  requiring a raw JSON or worker view; and
+- show a clear partial-data message when a procedure or quote field is not yet
+  available instead of implying that the request completed without a result.
+
+The optional `Detailed view` must contain technical provenance, review state,
+source references, evidence identifiers, raw/source-unnormalized payloads,
+revision metadata, and worker progress. The procedure remains visible when
+the detail view is closed. The regression scope is the static dashboard
+contract plus a live local response for `1997 Toyota RAV4 4WD brake line
+replacement procedure and quote`.
+
 **Architecture:** Keep Go as the authenticated public boundary and Python as the source/normalization/composition runtime. Search the normalized PostgreSQL cache first, read through to the provider-neutral AutoAPI connector only for missing data, return source data immediately when normalization is pending, and publish correlated background updates through NATS JetStream. Mercury-2 is constrained to structured intent suggestions, supporting-operation classification, procedure composition, and faithful source-diagram vectorization; application code owns vehicle scope, source calls, arithmetic, persistence, and publication validation.
 
 **Tech Stack:** Go 1.26 `net/http`, Python 3 with the existing ingestion/enrichment packages, PostgreSQL with pgvector, NATS JetStream, MinIO/S3-compatible storage, versioned JSON contracts, Docker Compose, and the repository’s existing pytest, Go, contract, and runtime-smoke tooling.
@@ -65,10 +91,12 @@ exact evidence is recorded in the SDD ledger.
     "Implement normalized read-through retrieval and 30-day price snapshots",
     "Implement overlap-aware quote and immutable composed-procedure publication",
     "Implement the chat API, clickable vehicle options, answer updates, and Workers terminal",
+    "Correct dashboard answer presentation with consumer defaults and optional Detailed view",
+    "Verify visible vehicle options and procedure rendering for the RAV4 local query",
     "Verify the complete cold and warm paths in local Compose and protected CI"
   ],
   "status": "synchronized",
-  "updated_at": "2026-09-11T15:47:33Z"
+  "updated_at": "2026-09-12T16:53:58Z"
 }
 ```
 
