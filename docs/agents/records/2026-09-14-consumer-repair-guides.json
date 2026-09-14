@@ -4,7 +4,17 @@
   "issue_ref": "https://github.com/lucronn/autodata/issues/89",
   "project_ref": "https://github.com/users/lucronn/projects/8",
   "repository_doc_refs": ["docs/architecture/consumer-repair-guides.md"],
-  "todo": ["Connect and validate the additional source", "Retrieve and compose complete repair dependencies with images", "Render consumer guides and revision-matched PDF downloads", "Verify live chat, images, PDF and warm replay"],
+  "todo": ["Connect and validate the additional source: complete", "Retrieve and compose complete repair dependencies with images: complete", "Render consumer guides and revision-matched PDF downloads: complete", "Verify live chat, images, PDF and warm replay: complete"],
+  "verification": {
+    "live_request": "1997 Toyota RAV4 2-door 2WD 2.0L oil pump and water pump replacement",
+    "guide_status": "complete",
+    "guide_steps": 99,
+    "guide_figures": 80,
+    "pdf_pages": 14,
+    "pdf_embedded_image_objects": 75,
+    "warm_replay_identical": true,
+    "tests": "371 passed, 1 skipped, 12 subtests passed; Go tests passed"
+  },
   "status": "synchronized",
-  "updated_at": "2026-09-14T12:00:00Z"
+  "updated_at": "2026-09-14T21:23:30Z"
 }

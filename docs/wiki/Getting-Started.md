@@ -30,6 +30,23 @@ records, MinIO source object, and `dataset.viewable` JetStream event. With the
 API container running, open the local dashboard at
 <http://127.0.0.1:8080/dashboard/>.
 
+## Try an illustrated repair guide
+
+Configure the ingestion service with
+`AUTODATA_AUTOAPITWO_BASE_URL=https://autoapitwo.vercel.app`, then enter a
+request such as:
+
+```text
+1997 Toyota RAV4 2-door 2WD 2.0L oil pump and water pump replacement
+```
+
+Choose the exact vehicle match when prompted. The guide keeps removal and
+installation together, includes timing-belt access and final fluid/leak
+checks when required by the returned procedure, and shows each available
+figure beside its step. The PDF link appears only after the required procedure
+coverage and figures are complete. The full local configuration and source
+boundary are documented in the [repository README](https://github.com/lucronn/autodata#illustrated-diy-repair-guides).
+
 ## Read the full workflow
 
 The root [README](https://github.com/lucronn/autodata#start-the-local-stack)

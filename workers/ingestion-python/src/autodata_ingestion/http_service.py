@@ -159,6 +159,32 @@ def make_handler(internal_token: str = "", *, chat_runtime: Any | None = None):
             if request_path == "/healthz":
                 self._write_json(200, {"status": "ok"})
                 return
+            if _is_chat_pdf_path(request_path):
+                if not self._internal_authorized():
+                    self._write_json(401, {"error": "internal authentication required"})
+                    return
+                query_id = request_path.strip("/").split("/")[3]
+                try:
+                    from .chat_service import render_chat_guide_pdf
+
+                    body = render_chat_guide_pdf(query_id, principal=self._request_principal())
+                except KeyError:
+                    self._write_json(404, {"error": "chat query not found"})
+                except PermissionError:
+                    self._write_json(403, {"error": "chat owner authorization failed"})
+                except ValueError as error:
+                    self._write_json(409, {"error": sanitize_http_error(error)})
+                except Exception:  # noqa: BLE001 - do not expose worker failures
+                    self._write_json(502, {"error": "guide PDF is unavailable"})
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Disposition", 'attachment; filename="autodata-repair-guide.pdf"')
+                    self.send_header("Cache-Control", "private, no-store")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                return
             if _is_chat_events_path(request_path):
                 if not self._internal_authorized():
                     self._write_json(401, {"error": "internal authentication required"})
@@ -333,6 +359,11 @@ def _is_chat_query_path(path: str) -> bool:
     return len(parts) == 4 and parts[:3] == ["v1", "chat", "queries"] and bool(parts[3])
 
 
+def _is_chat_pdf_path(path: str) -> bool:
+    parts = path.strip("/").split("/")
+    return len(parts) == 5 and parts[:3] == ["v1", "chat", "queries"] and parts[4] == "guide.pdf" and bool(parts[3])
+
+
 def _is_chat_events_path(path: str) -> bool:
     parts = path.strip("/").split("/")
     return len(parts) == 5 and parts[:3] == ["v1", "chat", "queries"] and parts[4] == "events" and bool(parts[3])
@@ -344,7 +375,7 @@ def _is_chat_selection_path(path: str) -> bool:
 
 
 def _allowed_methods(path: str) -> str:
-    if _is_chat_query_path(path) or _is_chat_events_path(path) or path == "/healthz":
+    if _is_chat_query_path(path) or _is_chat_pdf_path(path) or _is_chat_events_path(path) or path == "/healthz":
         return "GET, OPTIONS"
     if _is_chat_selection_path(path) or path in {
         "/v1/article-intakes",

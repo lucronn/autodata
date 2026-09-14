@@ -36,3 +36,18 @@ section; it does not hide a previously viewable revision.
 
 The [repository architecture overview](https://github.com/lucronn/autodata/blob/master/docs/assets/autodata-platform-overview.png)
 is a visual orientation aid, not a substitute for those contracts.
+
+## Chat guide path
+
+The chat answer is an additive projection over the existing quote/procedure
+contract. Vehicle resolution remains application-owned. Read-only AutoAPI Two
+content is fetched only for the selected provider vehicle, and the guide
+composer retains ordered source text, torque values, warnings, evidence IDs,
+and figure associations. Removal and installation are separate required
+coverage checks, with timing-belt access included when the selected vehicle's
+repair content requires it. The PDF renderer consumes the same complete guide
+revision and checks each referenced image before serving it through the
+authenticated chat boundary.
+
+See [the canonical consumer repair-guide contract](https://github.com/lucronn/autodata/blob/master/docs/architecture/consumer-repair-guides.md)
+and [Issue #89](https://github.com/lucronn/autodata/issues/89).

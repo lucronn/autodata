@@ -774,7 +774,7 @@ def test_price_refresh_retry_is_due_only_and_never_blocks_available_answer():
     assert attempts == ["price", "price", "price"]
 
 
-def test_http_chat_get_auth_methods_errors_and_idempotency_header_conflicts():
+def test_http_chat_get_auth_methods_errors_and_idempotency_header_conflicts(monkeypatch):
     install_runtime(candidates=lambda _message, _principal: (VEHICLE_A,))
     owner = principal()
     created = create_chat_query(
@@ -798,6 +798,23 @@ def test_http_chat_get_auth_methods_errors_and_idempotency_header_conflicts():
 
         status, _allow, _data = request("GET", f"/v1/chat/queries/{created['query_id']}")
         assert status == 401
+        monkeypatch.setattr(
+            "autodata_ingestion.chat_service.render_chat_guide_pdf",
+            lambda _query_id, *, principal: b"%PDF-test",
+        )
+        status, _allow, _data = request("GET", f"/v1/chat/queries/{created['query_id']}/guide.pdf")
+        assert status == 401
+        status, _allow, data = request(
+            "GET",
+            f"/v1/chat/queries/{created['query_id']}/guide.pdf",
+            headers={
+                "X-Autodata-Internal-Token": "internal-token",
+                "X-Autodata-Owner-Id": owner["owner_id"],
+                "X-Autodata-Organization-Id": owner["organization_id"],
+            },
+        )
+        assert status == 200
+        assert data == b"%PDF-test"
         status, _allow, _data = request(
             "GET",
             f"/v1/chat/queries/{created['query_id']}",

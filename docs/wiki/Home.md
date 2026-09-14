@@ -13,6 +13,16 @@ diagrams, search, embeddings, and quality review.
 - [Repository README](https://github.com/lucronn/autodata#readme)
 - [Canonical documentation](https://github.com/lucronn/autodata/tree/master/docs)
 
+## Illustrated repair guides
+
+Describe the exact vehicle and repair in chat. AutoData can combine its
+existing catalog with the read-only [AutoAPI Two repair-content API](https://autoapitwo.vercel.app/docs)
+to produce a vehicle-matched DIY guide with access, removal, reassembly,
+installation, torque values, timing, fluids, final checks, and step-specific
+figures. A complete guide can be downloaded as the same immutable PDF revision
+shown in chat. Missing required content remains a preview and does not produce
+a final PDF.
+
 ## Current boundary
 
 The deterministic local path uses PostgreSQL with pgvector, NATS JetStream,
@@ -21,9 +31,9 @@ credential-free development path. A generated procedure or source-derived
 result is `UNREVIEWED` until authorized human review changes its status.
 
 The current development slice and remaining source-evidence follow-ups are
-tracked in [Issue #85](https://github.com/lucronn/autodata/issues/85), while the
-next chat-first quote and procedure slice is tracked in
-[Issue #87](https://github.com/lucronn/autodata/issues/87).
+tracked in [Issue #85](https://github.com/lucronn/autodata/issues/85), while
+illustrated repair guides are tracked in
+[Issue #89](https://github.com/lucronn/autodata/issues/89).
 
 ## Source of truth
 

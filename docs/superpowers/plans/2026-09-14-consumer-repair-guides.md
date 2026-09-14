@@ -22,7 +22,7 @@ Live acceptance: submit a 1997 RAV4 oil-pump plus water-pump request, choose the
 
 Tracking: https://github.com/lucronn/autodata/issues/89 and https://github.com/users/lucronn/projects/8. Canonical contract: docs/architecture/consumer-repair-guides.md. Establish a synchronized machine record and validate the pinned planning commit before implementation. Preserve sample data/, output/ and tmp/ as local artifacts, not repository sources.
 
-- Connect and validate the additional source.
-- Retrieve and compose complete repair dependencies with images.
-- Render consumer guides and revision-matched PDF downloads.
-- Verify tests, live chat, images, PDF and warm replay; synchronize delivery evidence.
+- [x] Connect and validate the additional source.
+- [x] Retrieve and compose complete repair dependencies with images.
+- [x] Render consumer guides and revision-matched PDF downloads.
+- [x] Verify tests, live chat, images, PDF and warm replay; synchronize delivery evidence.

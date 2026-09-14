@@ -91,6 +91,19 @@ def test_extracts_engine_and_drivetrain_natural_language_aliases():
     assert result.vehicle_observation["drivetrain"] == "4WD"
 
 
+def test_extracts_door_body_style_without_polluting_model_name():
+    module = _module()
+
+    result = module.interpret_chat_message(
+        "1997 Toyota RAV4 2-door 2WD oil pump replacement",
+        ({**RAV4_2WD, "body_style": "2-door"},),
+    )
+
+    assert result.vehicle_observation["model"] == "RAV4"
+    assert result.vehicle_observation["body_style"] == "2-door"
+    assert result.vehicle_observation["status"] == "matched"
+
+
 def test_interprets_multiple_component_operations_in_message_order():
     module = _module()
 

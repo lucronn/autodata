@@ -20,6 +20,7 @@ import os
 import re
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from .chat_intent import ChatIntent, interpret_chat_message
@@ -210,6 +211,8 @@ _runtime: ChatRuntime = _UNAVAILABLE_RUNTIME
 
 _dependencies = ChatDependencies()
 _runtime_lock = threading.RLock()
+_guide_pdf_cache: dict[str, bytes] = {}
+_guide_pdf_cache_lock = threading.RLock()
 
 
 def configure_chat_runtime(
@@ -1244,20 +1247,35 @@ def _default_source_retriever(
         vehicle.get("engine_displacement_l", vehicle.get("engine")),
     )
     records, source_info = _load_autoapi_job_catalog(dict(vehicle), target, query=query)
-    if not records:
-        return {
-            "status": "unavailable",
-            "data_state": "unavailable",
-            "vehicle": dict(vehicle),
-            "source": source_info,
-            "articles": [],
-        }
+    articles = _source_articles({"articles": records})
+    autoapitwo_info: dict[str, Any] = {"mode": "not_attempted"}
+    try:
+        from .autoapitwo_guide import retrieve_autoapitwo_articles, vehicle_candidates_from_autoapitwo
+
+        selected_vehicle = dict(vehicle)
+        provider_id = str(selected_vehicle.get("autoapitwo_vehicle_id") or "").strip()
+        if not provider_id:
+            for candidate in vehicle_candidates_from_autoapitwo(query):
+                if all(
+                    selected_vehicle.get(key) is None
+                    or str(selected_vehicle.get(key)).casefold() == str(candidate.get(key)).casefold()
+                    for key in ("year", "make", "model", "body_style", "drivetrain")
+                ):
+                    selected_vehicle.update(candidate)
+                    break
+        two_articles = retrieve_autoapitwo_articles(query, selected_vehicle, _operations)
+        articles.extend(two_articles)
+        autoapitwo_info = {"mode": "autoapitwo", "vehicle_id": selected_vehicle.get("autoapitwo_vehicle_id"), "article_count": len(two_articles)}
+    except Exception as error:  # noqa: BLE001 - retain any partial first-provider answer
+        autoapitwo_info = {"mode": "source_unavailable", "reason": type(error).__name__}
+    if not articles:
+        return {"status": "unavailable", "data_state": "unavailable", "vehicle": dict(vehicle), "source": {**source_info, "autoapitwo": autoapitwo_info}, "articles": []}
     return {
         "status": "source_unnormalized",
         "data_state": "source_unnormalized",
         "vehicle": dict(vehicle),
-        "articles": records,
-        "source": source_info,
+        "articles": [{"article": article} for article in articles],
+        "source": {**source_info, "autoapitwo": autoapitwo_info},
         "normalization_pending": True,
     }
 
@@ -1267,10 +1285,39 @@ def _default_composer(
     vehicle: Mapping[str, Any],
     articles: Iterable[Mapping[str, Any]],
 ) -> Mapping[str, Any]:
+    from .autoapitwo_guide import compose_illustrated_guide
     from .job_plan import build_quote_and_procedure
 
-    result = build_quote_and_procedure(query, vehicle, articles)
-    return {**result, "data_state": "normalized"}
+    article_list = tuple(articles)
+    try:
+        legacy = build_quote_and_procedure(query, vehicle, article_list)
+    except Exception:  # noqa: BLE001 - the guide remains useful without pricing
+        legacy = {}
+    has_illustrated_source = any(
+        isinstance(article, Mapping)
+        and (article.get("provider") == "autoapitwo" or article.get("procedure_kind"))
+        for article in article_list
+    )
+    if not has_illustrated_source:
+        return {**legacy, "data_state": "normalized"}
+    guide = compose_illustrated_guide(query, vehicle, article_list)
+    review_reasons = sorted(set(guide.get("gaps", [])) | set(legacy.get("review_reasons", [])))
+    return {
+        "status": "ready" if guide.get("content_status") == "complete" else "needs_review",
+        "data_state": "normalized",
+        "vehicle": dict(vehicle),
+        "canonical_vehicle": dict(vehicle),
+        "procedure": guide,
+        "guide": guide,
+        "quote": legacy.get("quote"),
+        "labor": legacy.get("labor"),
+        "parts": legacy.get("parts"),
+        "images": guide.get("images", []),
+        "review_reasons": review_reasons,
+        "source_watermarks": legacy.get("source_watermarks", []),
+        "procedure_revision": guide.get("revision_id"),
+        "derived_article": {"revision_id": guide.get("revision_id"), "title": guide.get("title")},
+    }
 
 
 def _source_articles(result: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -1347,6 +1394,12 @@ def _answer_from_result(
         # of the persisted answer prevents recursive payload growth.
         "worker_stream": [],
     }
+    if isinstance(procedure, Mapping) and procedure.get("pdf_ready") is True:
+        answer["pdf"] = {
+            "ready": True,
+            "url": f"/chat/queries/{query_id}/guide.pdf",
+            "revision_id": str(procedure.get("revision_id") or ""),
+        }
     source_watermark = safe.get("source_watermark")
     if source_watermark is None and isinstance(safe.get("source"), Mapping):
         source_watermark = safe["source"].get("source_watermark") or safe["source"].get("source_version")
@@ -1379,6 +1432,68 @@ def _answer_from_result(
             }
         answer["source_unnormalized"] = dict(raw_source)
     return answer
+
+
+def render_chat_guide_pdf(query_id: str, *, principal: Mapping[str, Any]) -> bytes:
+    """Render only the authorized, immutable complete guide revision."""
+
+    query = get_chat_query(query_id, principal=principal)
+    answer = query.get("answer") if isinstance(query, Mapping) else None
+    guide = answer.get("procedure") if isinstance(answer, Mapping) else None
+    if not isinstance(guide, Mapping) or guide.get("pdf_ready") is not True:
+        raise ValueError("a complete guide PDF is not available")
+    from .autoapitwo_connector import AutoAPITwoConnector
+    from .guide_pdf import render_guide_pdf
+
+    vehicle = guide.get("vehicle") if isinstance(guide.get("vehicle"), Mapping) else answer.get("vehicle", {})
+    provider_id = str(vehicle.get("autoapitwo_vehicle_id") or "").strip() if isinstance(vehicle, Mapping) else ""
+    revision_id = str(guide.get("revision_id") or "").strip()
+    if not revision_id:
+        raise ValueError("guide revision is missing")
+    with _guide_pdf_cache_lock:
+        cached_pdf = _guide_pdf_cache.get(revision_id)
+    if cached_pdf is not None:
+        return cached_pdf
+    prepared = deepcopy(dict(guide))
+    steps = prepared.get("steps", []) if isinstance(prepared.get("steps"), list) else []
+    image_refs = [
+        image
+        for step in steps
+        if isinstance(step, dict)
+        for image in (step.get("images", []) if isinstance(step.get("images"), list) else [])
+        if isinstance(image, dict) and image.get("url")
+    ]
+    expected_images = len(image_refs)
+    unique_urls = list(dict.fromkeys(str(image["url"]) for image in image_refs))
+    connector = AutoAPITwoConnector(
+        os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "https://autoapitwo.vercel.app")
+    )
+
+    def fetch_image(url: str) -> tuple[str, bytes]:
+        return url, connector.read(url, car_id=provider_id or None, binary=True)
+
+    image_bytes: dict[str, bytes] = {}
+    with ThreadPoolExecutor(max_workers=min(4, max(1, len(unique_urls)))) as pool:
+        for url, value in pool.map(fetch_image, unique_urls):
+            image_bytes[url] = value
+    for image in image_refs:
+        if str(image["url"]) in image_bytes:
+            image["image_bytes"] = image_bytes[str(image["url"])]
+    all_images = [
+        image
+        for step in prepared.get("steps", [])
+        if isinstance(prepared.get("steps"), list) and isinstance(step, Mapping)
+        for image in (step.get("images", []) if isinstance(step.get("images"), list) else [])
+        if isinstance(image, Mapping) and image.get("url")
+    ]
+    if expected_images and not all(isinstance(image, Mapping) and image.get("image_bytes") for image in all_images):
+        raise ValueError("guide figures could not be prepared")
+    rendered = render_guide_pdf(prepared)
+    with _guide_pdf_cache_lock:
+        _guide_pdf_cache[revision_id] = rendered
+        while len(_guide_pdf_cache) > 8:
+            _guide_pdf_cache.pop(next(iter(_guide_pdf_cache)))
+    return rendered
 
 
 def _apply_answer(query: dict[str, Any], answer: Mapping[str, Any]) -> None:
@@ -1470,6 +1585,15 @@ def _vehicle_candidates(message: str, principal: Mapping[str, Any]) -> list[Mapp
         values = principal.get("vehicle_candidates", principal.get("candidates", ()))
         if not values:
             values = _environment_candidates()
+        if not values:
+            try:
+                parsed = interpret_chat_message(message, ()).vehicle_observation
+                if all(parsed.get(key) is not None for key in ("year", "make", "model")):
+                    from .autoapitwo_guide import vehicle_candidates_from_autoapitwo
+
+                    values = vehicle_candidates_from_autoapitwo(message)
+            except Exception:  # noqa: BLE001 - selector fallback must not break chat
+                values = []
     if isinstance(values, Mapping):
         values = [values]
     candidates = [value for value in values if isinstance(value, Mapping)] if isinstance(values, Iterable) else []

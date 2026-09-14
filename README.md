@@ -62,6 +62,27 @@ For the authoritative technical details, use the linked documents under
 
 ## Current development slice
 
+### Illustrated DIY repair guides
+
+The chat workflow now turns a vehicle-and-job request into one consumer-ready
+guide, including the access work that makes the repair possible, removal,
+reassembly, installation, torque values, timing checks, fluid refill, and final
+leak checks. It combines the existing AutoAPI retrieval path with the
+read-only [AutoAPI Two content API](https://autoapitwo.vercel.app/docs), keeps
+provider vehicle identities separate, and places the returned diagrams beside
+the steps they explain.
+
+Complete guides expose a revision-matched PDF download from the authenticated
+chat query. If an installation page, required prerequisite, or figure is
+missing, chat shows the available material as a clearly labeled preview and
+withholds the final PDF. Generated automotive content remains
+`UNREVIEWED — human review pending`; completeness is not technician approval.
+
+For local source-backed chat runs, set
+`AUTODATA_AUTOAPITWO_BASE_URL=https://autoapitwo.vercel.app` in the ingestion
+environment. The connector uses only vehicle search, vehicle-scoped repair
+content, and returned media links; it does not use account or session routes.
+
 The current development slice is tracked in [Issue #85](https://github.com/lucronn/autodata/issues/85) and [Project #8](https://github.com/users/lucronn/projects/8). The verified local path currently supports:
 
 - natural-language component intent translation into an allowlisted vehicle-scoped query;

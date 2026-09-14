@@ -332,6 +332,7 @@ def _parse_vehicle(message: str) -> dict[str, Any]:
             return {"status": "needs_review", "raw": observation_text, "candidates": []}
         parsed = observation.to_dict()
         parsed.update(_dimensions_from_message(message, parsed))
+        parsed = _normalize_vehicle_qualifiers(parsed)
         parsed["engine"] = parsed.get("engine_displacement_l")
         return {**parsed, "status": "unresolved", "raw": observation_text}
     vehicle_text = message[match.start() :]
@@ -343,6 +344,7 @@ def _parse_vehicle(message: str) -> dict[str, Any]:
         return {"status": "needs_review", "raw": observation_text, "candidates": []}
     parsed = observation.to_dict()
     parsed.update(_dimensions_from_message(message, parsed))
+    parsed = _normalize_vehicle_qualifiers(parsed)
     parsed["engine"] = parsed.get("engine_displacement_l")
     return {
         **parsed,
@@ -396,6 +398,9 @@ def _dimensions_from_message(
     parsed: Mapping[str, Any],
 ) -> dict[str, Any]:
     dimensions: dict[str, Any] = {}
+    door = re.search(r"\b(2|4)\s*[- ]?door\b", message, re.IGNORECASE)
+    if parsed.get("body_style") is None and door is not None:
+        dimensions["body_style"] = f"{door.group(1)}-door"
     if parsed.get("engine_displacement_l") is None:
         engine = re.search(
             r"(?<!\d)(\d+(?:\.\d+)?)\s*(?:l|lt|liter|litre)\b",
@@ -415,6 +420,15 @@ def _dimensions_from_message(
                 dimensions["drivetrain"] = drivetrain
                 break
     return dimensions
+
+
+def _normalize_vehicle_qualifiers(parsed: Mapping[str, Any]) -> dict[str, Any]:
+    result = dict(parsed)
+    model = str(result.get("model") or "")
+    cleaned = re.sub(r"\s+(?:2|4)\s*[- ]?door\b.*$", "", model, flags=re.IGNORECASE).strip()
+    if cleaned:
+        result["model"] = "RAV4" if cleaned.casefold().replace("-", "") == "rav4" else cleaned
+    return result
 
 
 def _candidate_option(
@@ -460,6 +474,11 @@ def _candidate_option(
         "trim": observation.get("trim"),
         "drivetrain": observation.get("drivetrain"),
         "engine_displacement_l": observation.get("engine_displacement_l"),
+        **{
+            key: candidate[key]
+            for key in ("autoapitwo_vehicle_id", "autoapi_vehicle_id")
+            if candidate.get(key) is not None
+        },
     }
 
 
@@ -492,7 +511,11 @@ def _vehicle_compatible(left: Mapping[str, Any], right: Mapping[str, Any]) -> bo
     for key in ("year", "make", "model", "region", "body_style", "trim", "drivetrain"):
         expected = left.get(key)
         actual = right.get(key)
-        if expected is not None and actual is not None and str(expected).casefold() != str(actual).casefold():
+        if key == "body_style":
+            normalize = lambda value: re.sub(r"[^a-z0-9]", "", str(value).casefold())
+        else:
+            normalize = lambda value: str(value).casefold()
+        if expected is not None and actual is not None and normalize(expected) != normalize(actual):
             return False
     expected_engine = left.get("engine_displacement_l")
     actual_engine = right.get("engine_displacement_l")

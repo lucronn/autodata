@@ -168,6 +168,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /job-plans", s.requireRole("dataset_viewer", s.createJobPlan))
 	mux.Handle("POST /chat/queries", s.requireRole("dataset_viewer", s.createChatQuery))
 	mux.Handle("GET /chat/queries/{id}", s.requireRole("dataset_viewer", s.getChatQuery))
+	mux.Handle("GET /chat/queries/{id}/guide.pdf", s.requireRole("dataset_viewer", s.getChatGuidePDF))
 	mux.Handle("POST /chat/queries/{id}/selections", s.requireRole("dataset_viewer", s.selectChatVehicle))
 	mux.Handle("GET /chat/queries/{id}/events", s.requireRole("dataset_viewer", s.streamChatEvents))
 	mux.Handle("GET /dataset-requests/{id}", s.requireRole("dataset_viewer", s.getDatasetRequest))

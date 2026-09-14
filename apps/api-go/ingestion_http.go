@@ -87,6 +87,28 @@ func (c *HTTPIngestionClient) Get(ctx context.Context, incoming *http.Request, q
 	return c.doChatJSON(ctx, incoming, http.MethodGet, path, nil, "")
 }
 
+func (c *HTTPIngestionClient) GuidePDF(ctx context.Context, incoming *http.Request, queryID string) (int, []byte, error) {
+	path, err := chatInternalPath(queryID, "guide.pdf")
+	if err != nil {
+		return 0, nil, err
+	}
+	outgoing, err := c.newInternalRequest(requestContext(ctx, incoming), incoming, http.MethodGet, path, nil, "")
+	if err != nil {
+		return 0, nil, err
+	}
+	outgoing.Header.Set("Accept", "application/pdf")
+	result, err := c.client.Do(outgoing)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer result.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(result.Body, maxIngestionProxyBytes+1))
+	if err != nil || len(body) > maxIngestionProxyBytes {
+		return 0, nil, fmt.Errorf("guide PDF exceeds the configured limit")
+	}
+	return result.StatusCode, body, nil
+}
+
 func (c *HTTPIngestionClient) Events(ctx context.Context, incoming *http.Request, queryID, lastEventID string) (io.ReadCloser, error) {
 	if c == nil || c.client == nil {
 		return nil, fmt.Errorf("ingestion client is not configured")

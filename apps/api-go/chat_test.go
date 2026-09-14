@@ -34,6 +34,12 @@ type fakeChatClient struct {
 	getReply  []byte
 	getErr    error
 
+	guidePDFCalls  int
+	guidePDFID     string
+	guidePDFStatus int
+	guidePDFReply  []byte
+	guidePDFErr    error
+
 	eventsCalls  int
 	eventsID     string
 	eventsLastID string
@@ -68,6 +74,12 @@ func (f *fakeChatClient) Get(_ context.Context, request *http.Request, queryID s
 	f.getReq = request.Clone(request.Context())
 	f.getID = queryID
 	return f.getStatus, f.getReply, f.getErr
+}
+
+func (f *fakeChatClient) GuidePDF(_ context.Context, request *http.Request, queryID string) (int, []byte, error) {
+	f.guidePDFCalls++
+	f.guidePDFID = queryID
+	return f.guidePDFStatus, f.guidePDFReply, f.guidePDFErr
 }
 
 func (f *fakeChatClient) Events(_ context.Context, request *http.Request, queryID, lastEventID string) (io.ReadCloser, error) {
@@ -187,6 +199,28 @@ func TestChatGetAndSelectionForwardQueryIDsAndBodies(t *testing.T) {
 	}
 	if client.selectID != "q-1" || string(client.selectBody) != selectBody || client.selectKey != "selection-1" {
 		t.Fatalf("selection forwarding = id %q body %q key %q", client.selectID, client.selectBody, client.selectKey)
+	}
+}
+
+func TestChatGuidePDFForwardsQueryIDAndReturnsPrivatePDF(t *testing.T) {
+	client := &fakeChatClient{guidePDFStatus: http.StatusOK, guidePDFReply: []byte("%PDF-test")}
+	server := newChatServer(client)
+	request := httptest.NewRequest(http.MethodGet, "/chat/queries/q-guide/guide.pdf", nil)
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || string(response.Body.Bytes()) != "%PDF-test" {
+		t.Fatalf("status/body = %d/%q, want 200/%q", response.Code, response.Body.Bytes(), "%PDF-test")
+	}
+	if client.guidePDFCalls != 1 || client.guidePDFID != "q-guide" {
+		t.Fatalf("guide PDF forwarding = %d/%q", client.guidePDFCalls, client.guidePDFID)
+	}
+	if response.Header().Get("Content-Type") != "application/pdf" {
+		t.Fatalf("content type = %q, want application/pdf", response.Header().Get("Content-Type"))
+	}
+	if response.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("cache control = %q, want private, no-store", response.Header().Get("Cache-Control"))
 	}
 }
 

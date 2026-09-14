@@ -27,6 +27,10 @@ type ChatClient interface {
 	Events(context.Context, *http.Request, string, string) (io.ReadCloser, error)
 }
 
+type chatGuidePDFClient interface {
+	GuidePDF(context.Context, *http.Request, string) (int, []byte, error)
+}
+
 func (s *Server) createChatQuery(response http.ResponseWriter, request *http.Request, principal Principal) {
 	idempotencyKey, ok := chatIdempotencyKey(request)
 	if !ok {
@@ -67,6 +71,29 @@ func (s *Server) getChatQuery(response http.ResponseWriter, request *http.Reques
 		queryID,
 	)
 	s.writeChatJSONResponse(response, request, status, upstreamBody, err)
+}
+
+func (s *Server) getChatGuidePDF(response http.ResponseWriter, request *http.Request, principal Principal) {
+	queryID, err := chatPathID(request)
+	if err != nil {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", err.Error(), false)
+		return
+	}
+	client, ok := s.chatClient.(chatGuidePDFClient)
+	if !ok {
+		writeAPIError(response, request, http.StatusServiceUnavailable, "INGESTION_UNAVAILABLE", "guide PDF service is not configured", true)
+		return
+	}
+	status, body, err := client.GuidePDF(request.Context(), chatInternalRequest(request, principal), queryID)
+	if err != nil || status < http.StatusOK || status >= http.StatusMultipleChoices || len(body) == 0 {
+		writeAPIError(response, request, http.StatusBadGateway, "INGESTION_UNAVAILABLE", "guide PDF is unavailable", true)
+		return
+	}
+	response.Header().Set("Content-Type", "application/pdf")
+	response.Header().Set("Content-Disposition", `attachment; filename="autodata-repair-guide.pdf"`)
+	response.Header().Set("Cache-Control", "private, no-store")
+	response.WriteHeader(status)
+	_, _ = response.Write(body)
 }
 
 func (s *Server) selectChatVehicle(response http.ResponseWriter, request *http.Request, principal Principal) {
