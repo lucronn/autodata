@@ -36,7 +36,11 @@ def _configured_connector() -> AutoAPITwoConnector:
 def _components(query: str) -> list[str]:
     from .job_plan import _components_from_query
 
-    return list(_components_from_query(query))
+    components = list(_components_from_query(query))
+    specific_brake_components = {component for component in components if component.startswith("brake_")}
+    if specific_brake_components:
+        components = [component for component in components if component != "brakes"]
+    return components
 
 
 def _slug(value: Any) -> str:
@@ -133,9 +137,28 @@ def _href(result: Mapping[str, Any]) -> str:
 
 
 def _action(display: str) -> str | None:
+    actions = _actions(display)
+    return actions[-1] if actions else None
+
+
+def _actions(display: str) -> list[str]:
     normalized = display.casefold()
+    terminal = normalized.rsplit(">>", 1)[-1]
+    if re.search(r"\bremoval\s+and\s+replacement\b", terminal):
+        return ["removal_and_installation"]
+    terminal_matches = list(re.finditer(r"\b(removal|installation)\b", terminal))
+    if terminal_matches:
+        terminal_actions = list(dict.fromkeys(match.group(1) for match in terminal_matches))
+        if len(terminal_actions) > 1:
+            return ["removal_and_installation"]
+        return terminal_actions
+    if re.search(r"\bremoval\s+and\s+replacement\b", normalized):
+        return ["removal_and_installation"]
     matches = list(re.finditer(r"\b(removal|installation)\b", normalized))
-    return matches[-1].group(1) if matches else None
+    actions = list(dict.fromkeys(match.group(1) for match in matches))
+    if len(actions) > 1:
+        return ["removal_and_installation"]
+    return actions
 
 
 def _result_component(display: str, requested: Iterable[str]) -> str | None:
@@ -164,7 +187,7 @@ def retrieve_autoapitwo_articles(
     # the completeness checker expose the prerequisite instead of hiding it.
     terms_components = list(dict.fromkeys(requested + (["timing_belt"] if {"oil_pump", "water_pump"} & set(requested) else [])))
     client = connector or _configured_connector()
-    selected: dict[str, tuple[str, str, str]] = {}
+    selected: dict[str, tuple[str, str, str, str]] = {}
     for component in terms_components:
         term = _COMPONENT_TERMS.get(component, component.replace("_", " "))
         try:
@@ -176,21 +199,21 @@ def retrieve_autoapitwo_articles(
                 continue
             display = _display(result)
             href = _href(result)
-            if not href or "procedures (service and repair)" not in display.casefold():
+            if not href or "service and repair" not in display.casefold():
                 continue
             found_component = _result_component(display, (component,))
-            action = _action(display)
-            if found_component is None or action is None:
+            actions = _actions(display)
+            if found_component is None or not actions:
                 continue
-            key = f"{found_component}:{action}"
-            selected.setdefault(key, (href, display, found_component))
+            action = actions[0]
+            key = f"{found_component}:{href}"
+            selected.setdefault(key, (href, display, found_component, action))
             # Torque/specification pages are fetched from the same search but
             # are treated as supporting facts when they are returned inline.
             if len(selected) >= 16:
                 break
     articles: list[dict[str, Any]] = []
-    for href, display, component in selected.values():
-        action = _action(display) or "procedure"
+    for href, display, component, action in selected.values():
         try:
             article = client.article(provider_id, href, title=display.rsplit(" >> ", 1)[-1])
         except (SourceUnavailable, ValueError, KeyError):
@@ -227,6 +250,7 @@ def _article_steps(article: Mapping[str, Any]) -> list[dict[str, Any]]:
         blocks = [{"kind": "text", "text": article.get("body", "")}]
     pending_images: list[dict[str, Any]] = []
     steps: list[dict[str, Any]] = []
+    current_phase = "removal" if kind == "removal_and_installation" else kind
     for block in blocks:
         if not isinstance(block, Mapping):
             continue
@@ -244,6 +268,10 @@ def _article_steps(article: Mapping[str, Any]) -> list[dict[str, Any]]:
         # readable detail under one consumer-facing step.
         starts_step = bool(re.match(r"^\d+[.)]\s", text)) or not steps
         if starts_step:
+            if kind == "removal_and_installation":
+                verb = re.match(r"^\d+[.)]\s*(remove|install|replace)\b", text, re.IGNORECASE)
+                if verb:
+                    current_phase = "installation" if verb.group(1).casefold() in {"install", "replace"} else "removal"
             steps.append({
                 "action": _step_action(text, component, kind),
                 "instructions": [text],
@@ -251,7 +279,7 @@ def _article_steps(article: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "source_article_ids": [str(article.get("article_id"))],
                 "evidence_ids": sorted(set(evidence_ids)),
                 "images": pending_images,
-                "phase": kind,
+                "phase": current_phase,
             })
             pending_images = []
         else:
@@ -279,7 +307,14 @@ def compose_illustrated_guide(
     requested = _components(query)
     all_articles = [dict(article) for article in articles if isinstance(article, Mapping)]
     required = list(dict.fromkeys(requested + (["timing_belt"] if {"oil_pump", "water_pump"} & set(requested) else [])))
-    present = {(str(article.get("component")), str(article.get("procedure_kind"))) for article in all_articles}
+    present: set[tuple[str, str]] = set()
+    for article in all_articles:
+        component = str(article.get("component"))
+        kind = str(article.get("procedure_kind"))
+        if kind == "removal_and_installation":
+            present.update({(component, "removal"), (component, "installation")})
+        else:
+            present.add((component, kind))
     gaps: list[str] = []
     for component in required:
         if (component, "removal") not in present:
@@ -290,7 +325,7 @@ def compose_illustrated_guide(
     ordered_articles = sorted(
         all_articles,
         key=lambda article: (
-            0 if str(article.get("procedure_kind")) == "removal" else 1,
+            0 if str(article.get("procedure_kind")) in {"removal", "removal_and_installation"} else 1,
             order.get(str(article.get("component")), 99),
             str(article.get("article_id", "")),
         ),

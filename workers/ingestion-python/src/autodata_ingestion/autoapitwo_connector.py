@@ -142,11 +142,13 @@ class AutoAPITwoConnector:
 
     def search_vehicles(self, query):
         result = self.read('/api/v1/fleet/search/' + quote(str(query), safe=''))
-        return result.get('results', [])
+        values = result.get('results', [])
+        return values if isinstance(values, list) else []
 
     def search(self, car_id, term):
         result = self.read(f'/api/v1/content/carids/{car_id}/search/{quote(term, safe="")}', car_id=car_id)
-        return result.get('_embedded', {}).get('data', {}).get('results', [])
+        values = result.get('_embedded', {}).get('data', {}).get('results', [])
+        return values if isinstance(values, list) else []
 
     def article(self, car_id, href, *, title=None):
         url = self.safe_url(href, car_id)

@@ -104,6 +104,77 @@ def test_extracts_door_body_style_without_polluting_model_name():
     assert result.vehicle_observation["status"] == "matched"
 
 
+def test_extracts_directional_brake_modifier_without_polluting_model_name():
+    module = _module()
+    candidate = {
+        "vehicle_id": "civic-lx-sedan",
+        "year": 2002,
+        "make": "Honda",
+        "model": "Civic LX Sedan",
+        "confidence": 1.0,
+    }
+
+    result = module.interpret_chat_message(
+        "2002 Honda Civic LX Sedan front brake caliper replacement", (candidate,)
+    )
+
+    assert result.vehicle_observation["model"] == "Civic Lx Sedan"
+    assert result.vehicle_observation["status"] == "matched"
+
+
+def test_extracts_engine_qualifier_without_polluting_model_name():
+    module = _module()
+    candidate = {
+        "vehicle_id": "forester-sohc",
+        "year": 2010,
+        "make": "Subaru",
+        "model": "Forester",
+        "engine_displacement_l": 2.5,
+        "confidence": 1.0,
+    }
+
+    result = module.interpret_chat_message(
+        "2010 Subaru Forester 2.5L SOHC water pump replacement", (candidate,)
+    )
+
+    assert result.vehicle_observation["model"] == "Forester"
+    assert result.vehicle_observation["status"] == "matched"
+
+
+def test_provider_selection_label_keeps_engine_variant_distinction():
+    module = _module()
+    candidates = (
+        {
+            "vehicle_id": "forester-sohc",
+            "candidate_key": "autoapitwo:51204",
+            "autoapitwo_vehicle_id": "51204",
+            "year": 2010,
+            "make": "Subaru",
+            "model": "Forester",
+            "engine_displacement_l": 2.5,
+            "label": "2010 Subaru Forester F4-2.5L SOHC",
+            "confidence": 1.0,
+        },
+        {
+            "vehicle_id": "forester-turbo",
+            "candidate_key": "autoapitwo:51205",
+            "autoapitwo_vehicle_id": "51205",
+            "year": 2010,
+            "make": "Subaru",
+            "model": "Forester",
+            "engine_displacement_l": 2.5,
+            "label": "2010 Subaru Forester F4-2.5L DOHC Turbo",
+            "confidence": 1.0,
+        },
+    )
+
+    result = module.interpret_chat_message("2010 Subaru Forester 2.5L water pump replacement", candidates)
+
+    assert result.vehicle_observation["status"] == "ambiguous"
+    assert "SOHC" in result.vehicle_observation["candidates"][0]["label"]
+    assert "DOHC Turbo" in result.vehicle_observation["candidates"][1]["label"]
+
+
 def test_interprets_multiple_component_operations_in_message_order():
     module = _module()
 

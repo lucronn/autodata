@@ -26,3 +26,9 @@ Tracking: https://github.com/lucronn/autodata/issues/89 and https://github.com/u
 - [x] Retrieve and compose complete repair dependencies with images.
 - [x] Render consumer guides and revision-matched PDF downloads.
 - [x] Verify tests, live chat, images, PDF and warm replay; synchronize delivery evidence.
+
+Live breadth evidence: the chat state machine returned complete guides for the
+RAV4 oil-and-water-pump job, Camry starter, Forester SOHC water pump after
+engine selection, and Civic LX front caliper. Camry and Civic PDFs were also
+rendered and parsed successfully; combined “Removal and Installation” and
+“Removal and Replacement” provider page shapes are covered by regression tests.

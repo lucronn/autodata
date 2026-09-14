@@ -46,3 +46,9 @@ class ConnectorTests(unittest.TestCase):
     def test_oversize_rejected(self):
         client = AutoAPITwoConnector(max_bytes=2, opener=lambda *a, **k: io.BytesIO(b'large'))
         with self.assertRaises(SourceUnavailable): client.search_vehicles('test')
+
+    def test_null_search_arrays_are_treated_as_empty(self):
+        payload = json.dumps({'results': None, '_embedded': {'data': {'results': None}}}).encode()
+        client = AutoAPITwoConnector(opener=lambda *a, **k: io.BytesIO(payload))
+        self.assertEqual(client.search_vehicles('test'), [])
+        self.assertEqual(client.search('1', 'starter'), [])

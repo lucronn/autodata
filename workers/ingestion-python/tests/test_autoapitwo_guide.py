@@ -1,6 +1,8 @@
 import unittest
 
 from autodata_ingestion.autoapitwo_guide import (
+    _actions,
+    _components,
     compose_illustrated_guide,
     retrieve_autoapitwo_articles,
     vehicle_candidates_from_autoapitwo,
@@ -39,7 +41,33 @@ class FakeConnector:
         return self.articles[href.lstrip("/")]
 
 
+class CombinedProcedureConnector(FakeConnector):
+    def __init__(self):
+        super().__init__()
+        self.articles["starter-combined"] = {
+            "article_id": "starter-combined",
+            "title": "Removal and Installation",
+            "body": "1. REMOVE STARTER. 2. INSTALL STARTER. Torque: 39 Nm.",
+            "blocks": [
+                {"kind": "text", "text": "1. REMOVE STARTER.", "evidence_ids": ["e-starter"]},
+                {"kind": "text", "text": "2. INSTALL STARTER.", "evidence_ids": ["e-starter"]},
+                {"kind": "image", "url": "https://autoapitwo.vercel.app/fig/starter.png", "alt": "Starter", "evidence_ids": ["e-starter"]},
+            ],
+            "images": [],
+            "evidence_ids": ["e-starter"],
+            "vehicle": {"id": "41215"},
+        }
+
+    def search(self, car_id, term):
+        if "starter" in term.casefold():
+            return [{"display": "Starter Motor >> Removal and Installation (Service and Repair)", "_links": {"self": {"href": "/starter-combined"}}}]
+        return super().search(car_id, term)
+
+
 class IllustratedGuideTests(unittest.TestCase):
+    def test_specific_brake_component_does_not_expand_to_generic_brakes(self):
+        self.assertEqual(_components("front brake caliper replacement"), ["brake_caliper"])
+
     def test_vehicle_candidates_keep_provider_identity_separate(self):
         candidate = vehicle_candidates_from_autoapitwo("1997 Toyota RAV4 oil pump", connector=FakeConnector())[0]
         self.assertEqual(candidate["autoapitwo_vehicle_id"], "41215")
@@ -68,3 +96,24 @@ class IllustratedGuideTests(unittest.TestCase):
         self.assertEqual(guide["content_status"], "partial")
         self.assertFalse(guide["pdf_ready"])
         self.assertIn("missing_installation:water_pump", guide["gaps"])
+
+    def test_combined_removal_and_installation_article_covers_both_phases(self):
+        connector = CombinedProcedureConnector()
+        articles = retrieve_autoapitwo_articles(
+            "starter replacement",
+            {"year": 1997, "make": "Toyota", "model": "RAV4", "autoapitwo_vehicle_id": "41215"},
+            connector=connector,
+        )
+        guide = compose_illustrated_guide(
+            "starter replacement", {"year": 1997, "make": "Toyota", "model": "RAV4"}, articles
+        )
+        self.assertEqual(len(articles), 1)
+        self.assertEqual(guide["content_status"], "complete")
+        self.assertFalse(any(gap.startswith("missing_") for gap in guide["gaps"]))
+        self.assertEqual([step["phase"] for step in guide["steps"]], ["removal", "installation"])
+
+    def test_removal_and_replacement_title_is_a_combined_procedure(self):
+        self.assertEqual(
+            _actions("Water Pump >> Removal and Replacement (Service and Repair)"),
+            ["removal_and_installation"],
+        )

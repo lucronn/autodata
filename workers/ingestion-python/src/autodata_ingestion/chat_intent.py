@@ -426,6 +426,8 @@ def _normalize_vehicle_qualifiers(parsed: Mapping[str, Any]) -> dict[str, Any]:
     result = dict(parsed)
     model = str(result.get("model") or "")
     cleaned = re.sub(r"\s+(?:2|4)\s*[- ]?door\b.*$", "", model, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"\s+(?:front|rear|left|right)\s*$", "", cleaned, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"\s+(?:sohc|dohc|turbo|supercharged|cng)\b.*$", "", cleaned, flags=re.IGNORECASE).strip()
     if cleaned:
         result["model"] = "RAV4" if cleaned.casefold().replace("-", "") == "rav4" else cleaned
     return result
@@ -460,6 +462,9 @@ def _candidate_option(
     label_parts = [f"Option {option_number}", identity, qualifiers]
     if candidate_key:
         label_parts.append(f"id={candidate_key}")
+    provider_label = str(candidate.get("label") or "").strip()
+    if provider_label and candidate.get("autoapitwo_vehicle_id"):
+        label_parts.append(f"match={provider_label}")
     return {
         "option_number": option_number,
         "vehicle_id": vehicle_id,
