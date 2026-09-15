@@ -209,13 +209,13 @@ only and can race the migration runner.
 Make the Compose worker wait for successful migration completion without
 changing production deployment or adding credentials.
 
-- [ ] **Step 4: Run focused and live verification**
+- [x] **Step 4: Run focused and live verification**
 
 Run the focused test, recreate a fresh isolated Compose project, verify the
 worker remains healthy, and execute the four-case consumer matrix with a
 bounded cold-start timeout.
 
-- [ ] **Step 5: Record exact runtime evidence and reconcile findings**
+- [x] **Step 5: Record exact runtime evidence and reconcile findings**
 
 Update the canonical contract, runbook, and synchronized record with the
 post-fix report hash, decision, service status, and any remaining human-review
@@ -252,12 +252,12 @@ Retry only transient 502/503/504 responses, with a finite attempt count and
 context-aware delay. Do not retry authorization failures or arbitrary client
 errors.
 
-- [ ] **Step 4: Run focused and live verification**
+- [x] **Step 4: Run focused and live verification**
 
 Run Go tests, rebuild the QA API from the current checkout, and rerun the
 consumer matrix after a cold request and a warm replay.
 
-- [ ] **Step 5: Record exact response and PDF evidence**
+- [x] **Step 5: Record exact response and PDF evidence**
 
 Update the canonical contract, runbook, and synchronized record with the
 post-fix aggregate report hash and individual PDF hashes.
@@ -293,12 +293,12 @@ Use 120 seconds as the default only for the internal proxy client. Preserve
 explicit environment overrides, context cancellation, authorization, and
 maximum response bytes.
 
-- [ ] **Step 4: Run focused and live verification**
+- [x] **Step 4: Run focused and live verification**
 
 Run Go tests, rebuild the QA API, and execute cold and warm consumer matrices
 covering RAV4, Camry, Forester, and Civic.
 
-- [ ] **Step 5: Record exact matrix evidence**
+- [x] **Step 5: Record exact matrix evidence**
 
 Update the canonical contract, runbook, and synchronized record with the
 post-fix aggregate report and PDF hashes, including any remaining external or
@@ -319,21 +319,21 @@ human-review blockers.
   including 502/503/504 and rate-limit responses, while preserving source
   origin validation, vehicle scoping, byte limits, and fail-closed behavior.
 
-- [ ] **Step 1: Write failing source-read retry tests**
+- [x] **Step 1: Write failing source-read retry tests**
 
 Assert that a transient provider response is retried and that a persistent
 transient response remains `SourceUnavailable` after the finite attempt limit.
 Assert that non-transient failures are not retried and that a successful
 binary figure remains vehicle-scoped.
 
-- [ ] **Step 2: Run focused tests to verify they fail**
+- [x] **Step 2: Run focused tests to verify they fail**
 
 Run: `PYTHONPATH=src python3 -m pytest tests/test_autoapitwo_connector.py -q`
 
 Expected: FAIL because source reads currently abort on the first transient
 provider response.
 
-- [ ] **Step 3: Add bounded transient source retries**
+- [x] **Step 3: Add bounded transient source retries**
 
 Retry only the allow-listed transient statuses with a small finite backoff;
 honor a numeric `Retry-After` only within a configured cap. Do not retry
@@ -353,8 +353,9 @@ Update the canonical contract, runbook, synchronized record, and issues #90
 and #91 with exact report hashes, PDF hashes, and container health. Close the
 findings only when the fresh cold matrix reproduces the fix; otherwise retain
 the release blocker. The source-read and query-poll retry regressions pass
-locally, but the current cold matrix remains blocked at 2/4; the runtime
-findings remain open.
+locally. The current cold and warm four-case matrices pass at implementation
+`8a2a7ee`; issues #90 and #91 were closed against those reports. The exact
+2-door 4WD extension is tracked separately under Issue #85.
 
 ### Task 9: Tolerate transient chat polling failures without hiding outages
 

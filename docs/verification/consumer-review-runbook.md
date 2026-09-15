@@ -113,10 +113,18 @@ the production release matrix pass.
 
 ## RAV4 4WD matrix extension
 
-The release matrix is being extended under [Issue #85](https://github.com/lucronn/autodata/issues/85)
+The release matrix now includes the exact 2-door 4WD case under [Issue #85](https://github.com/lucronn/autodata/issues/85)
 using [the dated plan](../superpowers/plans/2026-09-15-rav4-4wd-consumer-matrix.md).
 The exact 2-door 4WD 2.0L RAV4 variant is provider vehicle `41216`; the
 4-door 4WD variant is `41218`. The case must be selected by exact fields when
 the API presents both options. Keep the request report-only and retain the
 consumer projection plus PDF hash under the local artifact directory. Do not
 claim technician approval from an automated pass.
+
+The completed report at implementation `1c4d69c154e3346caa398b0ae7e9e43a511e3247`
+is `tmp/consumer-review-live/rav4-4wd-formal-v2/consumer-review-f6156af1dbaeea0df7c055f3.json`
+with SHA-256
+`746224da1c5c251ca92f95348ec4ed2fae2485352bf17dca3e20161ed8f7404d`. It
+passed 6/6 dimensions with 131 steps, 89 figures, and a revision-matched PDF
+whose SHA-256 is
+`754407d8d5abda5f81865bf5136f6d603e0c4d07ee24d3af2d951e67fd8a3c32`.

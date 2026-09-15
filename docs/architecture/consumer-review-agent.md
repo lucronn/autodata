@@ -191,14 +191,21 @@ current cold and warm matrices confirm the compact response remains complete.
 Issue: https://github.com/lucronn/autodata/issues/85
 Plan: ../superpowers/plans/2026-09-15-rav4-4wd-consumer-matrix.md
 
-The reproducible matrix is being extended with the exact 1997 Toyota RAV4
+The reproducible matrix now includes the exact 1997 Toyota RAV4
 2-door 4WD 2.0L request for oil pump, water pump, timing belt, and power
 steering pump replacement. AutoAPI Two exposes the exact 2-door variant as
 provider vehicle `41216`; the 4-door variant remains a separate selectable
 vehicle (`41218`) and must not be guessed when a body style is requested.
 
-The extension todo is to add the case, rerun the live five-case matrix, verify
-complete removal and installation coverage, figure and PDF revision parity,
-consumer-copy hygiene, and retain the report hashes. Automated readiness does
-not approve the stored source evidence or procedure; the uncached AutoAPI
-session and human technician review remain explicit Issue #85 follow-ups.
+The live report-only acceptance passed at implementation
+`1c4d69c154e3346caa398b0ae7e9e43a511e3247`. It resolved provider vehicle
+`41216`, returned a complete 131-step procedure with 89 figures, passed all
+six rubric dimensions, and returned a revision-matched PDF. The report is
+`tmp/consumer-review-live/rav4-4wd-formal-v2/consumer-review-f6156af1dbaeea0df7c055f3.json`
+with SHA-256
+`746224da1c5c251ca92f95348ec4ed2fae2485352bf17dca3e20161ed8f7404d`; the PDF
+SHA-256 is
+`754407d8d5abda5f81865bf5136f6d603e0c4d07ee24d3af2d951e67fd8a3c32`.
+Automated readiness does not approve the stored source evidence or procedure;
+the uncached AutoAPI session and human technician review remain explicit Issue
+#85 follow-ups.

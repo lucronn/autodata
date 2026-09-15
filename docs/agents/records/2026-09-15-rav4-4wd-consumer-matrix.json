@@ -15,6 +15,20 @@
     "Keep human source-evidence review and uncached AutoAPI hydration as explicit follow-ups"
   ],
   "base_sha": "7783cdfb0621bb9c6e7f78ffbf3ad2db861547f1",
+  "verification": {
+    "implementation_sha": "1c4d69c154e3346caa398b0ae7e9e43a511e3247",
+    "report_path": "tmp/consumer-review-live/rav4-4wd-formal-v2/consumer-review-f6156af1dbaeea0df7c055f3.json",
+    "report_sha256": "746224da1c5c251ca92f95348ec4ed2fae2485352bf17dca3e20161ed8f7404d",
+    "decision": "pass",
+    "summary": {"case_count": 1, "pass": 1, "fail": 0, "needs_review": 0, "blocked": 0},
+    "response_sha256": "0eb5c0f51d4559186967ad3fbd9b31eca7bb7c2baf03bbf82a50428caeb1b21e",
+    "pdf_sha256": "754407d8d5abda5f81865bf5136f6d603e0c4d07ee24d3af2d951e67fd8a3c32",
+    "steps": 131,
+    "figures": 89,
+    "rubric_dimensions": 6,
+    "human_review": "pending",
+    "uncached_autoapi_hydration": "blocked until local AutoAPI session is restored"
+  },
   "status": "synchronized",
-  "updated_at": "2026-09-15T05:12:00Z"
+  "updated_at": "2026-09-15T05:40:00Z"
 }

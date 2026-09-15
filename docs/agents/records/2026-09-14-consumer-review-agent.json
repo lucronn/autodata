@@ -18,7 +18,7 @@
   "verification": {
     "implementation_sha": "8a2a7ee",
     "latest_local_hardening_sha": "8a2a7ee",
-    "latest_local_hardening_tests": "developer 72 passed, 2 subtests; autonomy 37 passed; ingestion chat-service 21 passed and full-suite recheck pending; Go API/contracts passed",
+    "latest_local_hardening_tests": "developer 72 passed, 2 subtests; autonomy 37 passed; ingestion 384 passed, 2 skipped, 12 subtests; Go API/contracts passed",
     "fresh_live_recheck": "pass: cold and warm four-vehicle matrices pass 4/4 after bounded consumer poll retries, compact public projection, and aligned 8 MB consumer response limit",
     "latest_runtime_finding": "resolved: Camry and Forester complete with compact consumer-visible answers and revision-matched PDFs; no transient polling or response-size blockers remain in the verified matrix",
     "latest_live_recheck": {
