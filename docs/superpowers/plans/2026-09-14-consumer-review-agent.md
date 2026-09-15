@@ -10,6 +10,13 @@
 
 **Spec:** `docs/architecture/consumer-review-agent.md`
 
+**Tracking:** [Issue #89](https://github.com/lucronn/autodata/issues/89) and
+[Project #8](https://github.com/users/lucronn/projects/8)
+
+**Todo:** register the consumer agent; implement bounded chat transport and
+deterministic scoring; record redacted responses; deduplicate and create issue
+findings; run the live review matrix; reconcile every finding.
+
 ## Global Constraints
 
 - No provider credentials, authorization headers, cookies, raw provider HTML, or arbitrary request headers may enter a report or issue body.
