@@ -14,7 +14,7 @@
     "Re-run the documented negative case and fresh five-case positive matrix",
     "Record the result in the issue and canonical documentation"
   ],
-  "base_sha": "7c0c100",
+  "base_sha": "a4bef0769dbce39ca85687c5e403411d79e938ce",
   "status": "synchronized",
   "updated_at": "2026-09-15T05:25:00Z"
 }
