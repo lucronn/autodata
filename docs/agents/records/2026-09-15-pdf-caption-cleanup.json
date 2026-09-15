@@ -15,7 +15,7 @@
     "Re-run the affected live consumer case and record report and PDF hashes",
     "Reconcile Issue #92 only after fresh evidence passes"
   ],
-  "base_sha": "4c330d6fe6ae5b69ee314c7ad92cc3bdd64be306",
+  "base_sha": "e7a1619dc529f8aba471894d39e7902072cbad3c",
   "status": "synchronized",
   "updated_at": "2026-09-15T03:45:30Z"
 }
