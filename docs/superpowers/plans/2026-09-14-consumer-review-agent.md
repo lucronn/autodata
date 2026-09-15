@@ -177,3 +177,46 @@ Require the rerun to show the corrected finding as resolved or absent, then upda
 - [x] **Step 5: Commit case definitions and evidence references**
 
 Run: `git add scripts/dev/consumer_review_cases.json docs/architecture/consumer-review-agent.md docs/superpowers/plans/2026-09-14-consumer-review-agent.md && git commit -m "test: add live consumer review matrix"`
+
+### Task 5: Make clean Compose startup release-safe
+
+**Files:**
+- Modify: `infra/compose/compose.yaml`
+- Modify: `scripts/dev/test_ingestion_smoke.py`
+- Modify: `docs/architecture/consumer-review-agent.md`
+- Modify: `docs/verification/consumer-review-runbook.md`
+
+**Interfaces:**
+- Consumes: the migration runner's completion state and the ingestion worker's
+  durable chat queue tables.
+- Produces: a clean-stack startup contract in which the worker cannot claim
+  chat work until the durable runtime schema exists.
+
+- [ ] **Step 1: Write the failing Compose dependency regression test**
+
+Assert that `ingestion-worker` declares `migration-runner` with
+`service_completed_successfully`.
+
+- [ ] **Step 2: Run the regression test to verify it fails**
+
+Run: `PYTHONPATH=. python3 -m pytest scripts/dev/test_ingestion_smoke.py -q`
+
+Expected: FAIL because the worker currently starts after dependency health
+only and can race the migration runner.
+
+- [ ] **Step 3: Add the migration completion dependency**
+
+Make the Compose worker wait for successful migration completion without
+changing production deployment or adding credentials.
+
+- [ ] **Step 4: Run focused and live verification**
+
+Run the focused test, recreate a fresh isolated Compose project, verify the
+worker remains healthy, and execute the four-case consumer matrix with a
+bounded cold-start timeout.
+
+- [ ] **Step 5: Record exact runtime evidence and reconcile findings**
+
+Update the canonical contract, runbook, and synchronized record with the
+post-fix report hash, decision, service status, and any remaining human-review
+or publication blockers.

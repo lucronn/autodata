@@ -6,6 +6,13 @@ guide's `UNREVIEWED` state.
 
 ## Run against dev
 
+Before running the matrix against a fresh local Compose project, wait for the
+migration runner to complete successfully and verify the ingestion worker is
+healthy. A worker that starts before `chat_runtime_queue` exists will exit and
+leave requests in `processing`; that is a deployment failure, not a consumer
+review result. Use a bounded cold-start timeout such as `--timeout 300` for a
+clean stack.
+
 Set `AUTODATA_CHAT_BASE_URL` to the dev API origin and provide a report
 directory outside the repository when the response may contain customer or
 source data:

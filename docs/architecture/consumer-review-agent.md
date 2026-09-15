@@ -46,6 +46,9 @@ does not change the guide's `UNREVIEWED` state.
   response and review reports.
 - Reconcile confirmed findings, update the production-readiness evidence, and
   close only issues whose acceptance evidence is complete.
+- Make clean Compose startup migration-safe: the ingestion worker must wait for
+  the migration runner to complete successfully before it can process durable
+  chat work.
 
 ## Acceptance evidence
 
@@ -96,3 +99,14 @@ negative report is
 `tmp/consumer-review-negative/consumer-review-2a8a000b3220a21f90fd94b9.json`
 with SHA-256
 `3884e26423809b5f149ba3347eb56d3cda2198dc1f4fe54634cab4aad3f2b9b7`.
+
+## Current release blocker
+
+A fresh isolated Compose run on 2026-09-15 reproduced a startup race: the
+`ingestion-worker` began before the migration runner had created
+`chat_runtime_queue` and exited with `UndefinedTable`. The consumer requests
+then remained in `processing`, so this run is not a valid procedure-quality
+result. The release repair is to add a
+`migration-runner: service_completed_successfully` dependency to the worker,
+add a regression test, and rerun the clean four-case matrix. Until that rerun
+passes, Issue #89 remains blocked and no live release claim is made.
