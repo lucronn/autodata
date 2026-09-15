@@ -27,6 +27,7 @@ from autodata_ingestion.chat_service import (  # noqa: E402
     process_chat_price_jobs,
     process_chat_jobs,
     select_chat_vehicle,
+    _public_query,
 )
 from autodata_ingestion.http_service import dispatch_request, make_handler  # noqa: E402
 from autodata_ingestion.progress_events import ProgressEventStore  # noqa: E402
@@ -685,6 +686,38 @@ def test_reprocessing_a_claim_does_not_duplicate_answer_revision_or_event():
     assert len(result["updates"]) == 2
     answer_events = [event for event in result["answer"]["worker_stream"] if event["stage"] == "answer"]
     assert len(answer_events) == 2
+
+
+def test_public_query_compacts_internal_provenance_but_keeps_consumer_content():
+    public = _public_query(
+        {
+            "query_id": "query-public-compact",
+            "answer": {
+                "procedure": {
+                    "title": "Starter Replacement Guide",
+                    "steps": [
+                        {
+                            "action": "Install the starter.",
+                            "images": [{"url": "https://example.test/starter.png", "image_id": "figure-1"}],
+                            "evidence_ids": ["internal-evidence"],
+                            "source_article_ids": ["internal-article"],
+                        }
+                    ],
+                },
+                "quote": {"evidence": [{"evidence_id": "internal-evidence"}]},
+                "source_watermark": "internal-watermark",
+            },
+        }
+    )
+
+    encoded = json.dumps(public, ensure_ascii=False)
+    assert "internal-evidence" not in encoded
+    assert "internal-article" not in encoded
+    assert "internal-watermark" not in encoded
+    step = public["answer"]["procedure"]["steps"][0]
+    assert step["action"] == "Install the starter."
+    assert step["images"] == [{"url": "https://example.test/starter.png", "image_id": "figure-1"}]
+    assert "worker_stream" in public["answer"]
 
 
 def test_source_result_cannot_be_labeled_normalized_and_composer_failure_stays_retryable():

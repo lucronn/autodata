@@ -47,6 +47,25 @@ _ALLOWED_DATA_STATES = {
     "unavailable",
     "needs_review",
 }
+_PUBLIC_PROVENANCE_KEYS = frozenset(
+    {
+        "article_id",
+        "aliases",
+        "candidates",
+        "evidence",
+        "evidence_id",
+        "evidence_ids",
+        "provider",
+        "raw",
+        "raw_html",
+        "source_article_ids",
+        "source_uri",
+        "source_visual_refs",
+        "source_watermark",
+        "source_watermarks",
+        "source_unnormalized",
+    }
+)
 
 
 class ChatDurabilityError(RuntimeError):
@@ -1742,6 +1761,8 @@ def _public_query(query: Mapping[str, Any]) -> dict[str, Any]:
         job_plan.pop("_normalized_result", None)
     answer = public.get("answer")
     if isinstance(answer, dict):
+        answer = _compact_public_value(answer)
+        public["answer"] = answer
         answer["worker_stream"] = list(
             iter_progress_events(
                 str(public["query_id"]),
@@ -1749,6 +1770,27 @@ def _public_query(query: Mapping[str, Any]) -> dict[str, Any]:
             )
         )
     return public
+
+
+def _compact_public_value(value: Any) -> Any:
+    """Strip internal provenance before the answer crosses the public edge."""
+
+    if isinstance(value, Mapping):
+        compact: dict[str, Any] = {}
+        for key, child in value.items():
+            key_text = str(key)
+            normalized = key_text.casefold()
+            if normalized in _PUBLIC_PROVENANCE_KEYS or (
+                normalized.startswith("source_") and normalized != "source_revision_id"
+            ):
+                continue
+            compact[key_text] = _compact_public_value(child)
+        return compact
+    if isinstance(value, list):
+        return [_compact_public_value(child) for child in value]
+    if isinstance(value, tuple):
+        return [_compact_public_value(child) for child in value]
+    return value
 
 
 def _owner_principal(query: Mapping[str, Any]) -> dict[str, str]:
