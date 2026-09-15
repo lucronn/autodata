@@ -103,6 +103,44 @@ def test_score_response_requires_case_declared_procedure_depth_terms():
     assert any(finding["finding_id"] == "depth-check:procedure:required-terms" for finding in result["findings"])
 
 
+def test_score_response_flags_provider_summary_artifact_but_preserves_valid_steps():
+    response = _complete_response()
+    response["answer"]["procedure"]["steps"].insert(
+        1,
+        {
+            "phase": "procedure",
+            "components": ["starter"],
+            "action": "Refer to Figs for the complete provider procedure...",
+            "instructions": [],
+            "images": [],
+        },
+    )
+
+    result = score_response(
+        {
+            "name": "artifact-check",
+            "message": "replace starter",
+            "expected_vehicle": {"vehicle_id": "vehicle-1"},
+            "expected_components": ["starter"],
+            "min_steps": 2,
+            "min_figures": 2,
+        },
+        response,
+        pdf_response=b"%PDF-1.7 test",
+    )
+
+    assert result["decision"] == "needs_review"
+    assert result["dimensions"]["consumer_copy"]["passed"] is False
+    assert any(
+        finding["finding_id"] == "artifact-check:copy:provider-summary"
+        and finding["severity"] == "medium"
+        and finding["path"] == "answer.procedure.steps"
+        for finding in result["findings"]
+    )
+    assert any(step["action"] == "Remove the starter." for step in response["answer"]["procedure"]["steps"])
+    assert any(step["action"] == "Install the starter." for step in response["answer"]["procedure"]["steps"])
+
+
 class FakeChatClient:
     def __init__(self):
         self.polls = 0

@@ -320,6 +320,30 @@ def _finding(case: Mapping[str, Any], *, finding_id: str, severity: str, categor
     }
 
 
+def _procedure_summary_artifacts(steps: Iterable[Any]) -> list[dict[str, Any]]:
+    """Find provider-only summary rows that leaked into consumer procedure steps."""
+
+    artifacts: list[dict[str, Any]] = []
+    for index, step in enumerate(steps):
+        if not isinstance(step, Mapping) or str(step.get("phase") or "").casefold() != "procedure":
+            continue
+        instructions = step.get("instructions")
+        images = step.get("images")
+        if instructions or images:
+            continue
+        action = str(step.get("action") or "").strip()
+        signals: list[str] = []
+        if action.endswith("..."):
+            signals.append("ellipsis")
+        if len(action) > 180:
+            signals.append("truncated-length")
+        if re.search(r"\b(?:figs?\w*|refer\s+to|service\s+and\s+repair)\b", action, re.IGNORECASE):
+            signals.append("provider-reference")
+        if signals:
+            artifacts.append({"step_index": index, "signals": signals})
+    return artifacts
+
+
 def score_response(case: Mapping[str, Any], response: Mapping[str, Any], *, pdf_response: bytes | None = None) -> dict[str, Any]:
     """Score one persisted chat answer without using model-generated judgment."""
 
@@ -391,10 +415,13 @@ def score_response(case: Mapping[str, Any], response: Mapping[str, Any], *, pdf_
 
     public_text = json.dumps(consumer_projection(response).get("answer", {}).get("procedure", {}), ensure_ascii=False).casefold()
     banned = [phrase for phrase in CONSUMER_COPY_BANS if phrase in public_text]
-    copy_ok = not banned
+    summary_artifacts = _procedure_summary_artifacts(steps)
+    copy_ok = not banned and not summary_artifacts
     if banned:
         findings.append(_finding(case, finding_id=f"{name}:copy:provenance", severity="medium", category="contract", path="answer.procedure", message=f"consumer copy contains prohibited provenance commentary: {', '.join(banned)}", reproduction=reproduction))
-    dimensions["consumer_copy"] = {"passed": copy_ok, "evidence": {"banned_phrases": banned}}
+    if summary_artifacts:
+        findings.append(_finding(case, finding_id=f"{name}:copy:provider-summary", severity="medium", category="contract", path="answer.procedure.steps", message=f"consumer procedure exposes {len(summary_artifacts)} provider-only or truncated summary row(s)", reproduction=reproduction))
+    dimensions["consumer_copy"] = {"passed": copy_ok, "evidence": {"banned_phrases": banned, "provider_summary_artifacts": summary_artifacts}}
 
     pdf_meta = answer.get("pdf") if isinstance(answer.get("pdf"), Mapping) else {}
     pdf_ready = pdf_meta.get("ready") is True
