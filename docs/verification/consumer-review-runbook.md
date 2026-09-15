@@ -56,6 +56,13 @@ The PDF link is part of the consumer contract. A guide that advertises a ready
 PDF but returns a transient 502/503/504 is a release-blocking finding until the
 proxy's bounded retry behavior is verified by a fresh cold and warm matrix.
 
+The API-to-ingestion proxy default is 120 seconds because provider-backed PDFs
+may require multiple figure reads. It retries only transient 502/503/504
+responses with bounded context-aware backoff. Keep the timeout finite and
+retain explicit deployment overrides; do not treat an unbounded wait as a
+readiness strategy. The clean matrix remains release-blocked if a first PDF
+request fails even when a later manual request succeeds.
+
 ## Negative-path acceptance
 
 Run `scripts/dev/consumer_review_negative_cases.json` separately from the

@@ -51,6 +51,9 @@ does not change the guide's `UNREVIEWED` state.
   chat work.
 - Make a ready PDF resilient to transient internal source-image failures with
   bounded retries at the Go proxy boundary.
+- Give the internal Go-to-ingestion proxy a bounded 120-second default for
+  provider-backed guide/PDF generation; explicit deployment overrides remain
+  supported.
 
 ## Acceptance evidence
 
@@ -104,19 +107,21 @@ with SHA-256
 
 ## Current release blocker
 
-A fresh isolated Compose run on 2026-09-15 reproduced a startup race: the
-`ingestion-worker` began before the migration runner had created
-`chat_runtime_queue` and exited with `UndefinedTable`. The consumer requests
-then remained in `processing`, so this run is not a valid procedure-quality
-result. The release repair is to add a
-`migration-runner: service_completed_successfully` dependency to the worker,
-add a regression test, and rerun the clean four-case matrix. Until that rerun
-passes, Issue #89 remains blocked and no live release claim is made.
+A fresh isolated Compose run on 2026-09-15 first reproduced a startup race:
+the `ingestion-worker` began before the migration runner had created
+`chat_runtime_queue` and exited with `UndefinedTable`. Commit `59d1bf1`
+repairs this by requiring `migration-runner: service_completed_successfully`
+before the worker starts; the focused regression passed and the isolated
+worker is healthy.
 
-The first post-ordering current-API matrix also observed a transient PDF
-failure: the Camry guide returned HTTP 502 on its first download attempt and
-returned a valid PDF on a later attempt. The Forester guide completed after
-the 300-second consumer timeout and also returned a valid PDF afterward. This
-is recorded as a release reliability gap, not a procedure-quality pass. The
-Go API PDF proxy must retry only transient upstream statuses with bounded,
-context-aware backoff before the final matrix is accepted.
+The same clean runtime then exposed two remaining live reliability blockers.
+The Go-to-ingestion proxy now has bounded retries for transient 502/503/504
+responses and a 120-second default, but the final current-code matrix still
+returned first-fetch 502s for Camry and Forester while later direct requests
+succeeded. The latest report is
+`tmp/consumer-review-live/post-hardening-final-timeout120/consumer-review-32506b2e5b0a2086ef74d08d.json`
+with SHA-256
+`d757602c2e8cbbfae679463291d8c4de1191164b8056c5c566cabf0514aa09b9`:
+RAV4 and Civic passed; Camry and Forester were blocked. Issue #89 remains
+blocked and no live release claim is made until first-request PDF generation
+is reliable across all four vehicles.

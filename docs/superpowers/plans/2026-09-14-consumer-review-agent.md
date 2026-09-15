@@ -192,19 +192,19 @@ Run: `git add scripts/dev/consumer_review_cases.json docs/architecture/consumer-
 - Produces: a clean-stack startup contract in which the worker cannot claim
   chat work until the durable runtime schema exists.
 
-- [ ] **Step 1: Write the failing Compose dependency regression test**
+- [x] **Step 1: Write the failing Compose dependency regression test**
 
 Assert that `ingestion-worker` declares `migration-runner` with
 `service_completed_successfully`.
 
-- [ ] **Step 2: Run the regression test to verify it fails**
+- [x] **Step 2: Run the regression test to verify it fails**
 
 Run: `PYTHONPATH=. python3 -m pytest scripts/dev/test_ingestion_smoke.py -q`
 
 Expected: FAIL because the worker currently starts after dependency health
 only and can race the migration runner.
 
-- [ ] **Step 3: Add the migration completion dependency**
+- [x] **Step 3: Add the migration completion dependency**
 
 Make the Compose worker wait for successful migration completion without
 changing production deployment or adding credentials.
@@ -234,19 +234,19 @@ or publication blockers.
 - Produces: bounded, context-aware retries for transient 502/503/504 PDF
   responses while preserving authorization and byte limits.
 
-- [ ] **Step 1: Write the failing proxy retry regression test**
+- [x] **Step 1: Write the failing proxy retry regression test**
 
 Assert that a transient PDF response is retried and that a successful PDF is
 returned without exposing upstream error content.
 
-- [ ] **Step 2: Run the regression test to verify it fails**
+- [x] **Step 2: Run the regression test to verify it fails**
 
 Run: `go test ./...` from `apps/api-go`.
 
 Expected: FAIL because `GuidePDF` currently forwards the first transient
 upstream status without retrying.
 
-- [ ] **Step 3: Add bounded context-aware retries**
+- [x] **Step 3: Add bounded context-aware retries**
 
 Retry only transient 502/503/504 responses, with a finite attempt count and
 context-aware delay. Do not retry authorization failures or arbitrary client
@@ -261,3 +261,45 @@ consumer matrix after a cold request and a warm replay.
 
 Update the canonical contract, runbook, and synchronized record with the
 post-fix aggregate report hash and individual PDF hashes.
+
+### Task 7: Bound the long-running internal PDF proxy request
+
+**Files:**
+- Modify: `apps/api-go/main.go`
+- Modify: `apps/api-go/ingestion_http_test.go`
+- Modify: `docs/architecture/consumer-review-agent.md`
+- Modify: `docs/verification/consumer-review-runbook.md`
+
+**Interfaces:**
+- Consumes: the internal ingestion timeout configuration used by chat and PDF
+  forwarding.
+- Produces: a 120-second default for long-running provider-backed guide
+  retrieval while retaining caller cancellation and response-size limits.
+
+- [x] **Step 1: Write the failing timeout-default regression test**
+
+Assert that the API's documented/default internal ingestion timeout is at
+least 120 seconds for provider-backed guide generation.
+
+- [x] **Step 2: Run the regression test to verify it fails**
+
+Run: `go test ./...` from `apps/api-go`.
+
+Expected: FAIL because the current default is 30 seconds.
+
+- [x] **Step 3: Raise the bounded default**
+
+Use 120 seconds as the default only for the internal proxy client. Preserve
+explicit environment overrides, context cancellation, authorization, and
+maximum response bytes.
+
+- [ ] **Step 4: Run focused and live verification**
+
+Run Go tests, rebuild the QA API, and execute cold and warm consumer matrices
+covering RAV4, Camry, Forester, and Civic.
+
+- [ ] **Step 5: Record exact matrix evidence**
+
+Update the canonical contract, runbook, and synchronized record with the
+post-fix aggregate report and PDF hashes, including any remaining external or
+human-review blockers.
