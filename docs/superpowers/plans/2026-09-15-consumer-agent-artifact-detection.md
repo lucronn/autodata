@@ -26,12 +26,12 @@ ellipsized or provider-reference-only text.
 
 ## Concrete todo
 
-- Add a regression for provider-summary detection and valid-step preservation.
-- Implement deterministic artifact findings in the consumer rubric.
-- Run the focused and full developer test suites.
-- Re-run the five-case live consumer matrix and confirm all current outputs pass
+- [x] Add a regression for provider-summary detection and valid-step preservation.
+- [x] Implement deterministic artifact findings in the consumer rubric.
+- [x] Run the focused and full developer test suites.
+- [x] Re-run the five-case live consumer matrix and confirm all current outputs pass
   with zero artifact findings.
-- Record the implementation and report evidence in the issue and repository
+- [x] Record the implementation and report evidence in the issue and repository
   documents.
 
 ## Verification contract
@@ -39,3 +39,20 @@ ellipsized or provider-reference-only text.
 The repair is complete only when a synthetic artifact produces a stable finding
 with the expected severity/category/path, valid current responses still pass,
 and the fresh five-case live matrix remains pass with no artifact findings.
+
+## Acceptance evidence
+
+Implementation commit: `a85c6ff` (`test: detect consumer procedure artifacts`).
+The developer suite passed with `73 passed, 2 subtests passed`. The focused
+regression passes and verifies stable finding metadata for a synthetic
+provider-summary leak while retaining valid removal and installation steps.
+
+Fresh live report-only matrix passed all five cases, each at score 100 with no
+findings or issue actions. The aggregate report is
+`tmp/consumer-review-live/artifact-detection-v1/consumer-review-f303ee0efd00f7ba9ddc7d5d.json`
+with SHA-256
+`87e479a84b12dc51f35d70aecfe621e937b13ce064010a4aab06c7bc8ef1538f`. Its
+freshly downloaded PDFs matched the previously verified hashes for RAV4 4WD,
+RAV4 2WD, Camry, Forester, and Civic, and the projected response scan found no
+ellipses, `Figs`, `service and repair`, `procedure figure`, or `source diagram`
+artifacts.

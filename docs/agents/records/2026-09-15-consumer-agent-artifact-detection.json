@@ -8,13 +8,15 @@
     "docs/verification/consumer-review-runbook.md"
   ],
   "todo": [
-    "Add a regression for provider-summary detection and valid-step preservation",
-    "Implement deterministic artifact findings in the consumer rubric",
-    "Run the focused and full developer test suites",
-    "Re-run the five-case live consumer matrix and confirm zero artifact findings",
-    "Record implementation and report evidence in the issue and repository docs"
+    "[x] Add a regression for provider-summary detection and valid-step preservation",
+    "[x] Implement deterministic artifact findings in the consumer rubric",
+    "[x] Run the focused and full developer test suites",
+    "[x] Re-run the five-case live consumer matrix and confirm zero artifact findings",
+    "[x] Record implementation and report evidence in the issue and repository docs"
   ],
   "base_sha": "ef1c8a7a500db4c30925dded1f08872d2499f59c",
   "status": "synchronized",
-  "updated_at": "2026-09-15T04:20:00Z"
+  "implementation_sha": "a85c6ff2220b29846d38bfc303911aece13a1b0c",
+  "report_sha256": "87e479a84b12dc51f35d70aecfe621e937b13ce064010a4aab06c7bc8ef1538f",
+  "updated_at": "2026-09-15T04:30:00Z"
 }

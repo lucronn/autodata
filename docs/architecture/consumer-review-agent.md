@@ -99,11 +99,21 @@ Plan: ../superpowers/plans/2026-09-15-consumer-agent-artifact-detection.md
 
 Todo:
 
-- Add a regression for provider-summary detection and valid-step preservation.
-- Implement deterministic artifact findings in the consumer rubric.
-- Run the focused and full developer test suites.
-- Re-run the five-case live consumer matrix and confirm zero artifact findings.
-- Record implementation and report evidence in the issue and repository docs.
+- [x] Add a regression for provider-summary detection and valid-step preservation.
+- [x] Implement deterministic artifact findings in the consumer rubric.
+- [x] Run the focused and full developer test suites.
+- [x] Re-run the five-case live consumer matrix and confirm zero artifact findings.
+- [x] Record implementation and report evidence in the issue and repository docs.
+
+Acceptance at implementation commit `a85c6ff`: the developer suite passed
+(`73 passed, 2 subtests passed`), and the fresh five-case report-only matrix
+passed every case at score 100 with zero findings and zero issue actions. The
+aggregate report is
+`tmp/consumer-review-live/artifact-detection-v1/consumer-review-f303ee0efd00f7ba9ddc7d5d.json`
+(SHA-256
+`87e479a84b12dc51f35d70aecfe621e937b13ce064010a4aab06c7bc8ef1538f`). The
+consumer projection scan found no ellipsized/provider-reference-only rows, and
+the fresh PDFs matched their recorded hashes.
 
 The `autodata-consumer-agent` is a release-readiness evaluator for the public
 chat experience. It calls the chat HTTP boundary with real consumer prompts,
