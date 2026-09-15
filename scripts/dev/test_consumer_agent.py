@@ -181,6 +181,27 @@ def test_run_cases_records_aggregate_decision_and_does_not_call_github_for_pass(
         assert persisted["decision"] == "pass"
 
 
+def test_run_cases_passes_timeout_to_each_case_poll(monkeypatch):
+    observed = []
+
+    def fake_run_case(_client, case, *, idempotency_prefix, timeout):
+        observed.append((case["name"], idempotency_prefix, timeout))
+        return {"review": {"decision": "pass"}}
+
+    monkeypatch.setattr("consumer_agent.run_case", fake_run_case)
+    with TemporaryDirectory() as directory:
+        run_cases(
+            [{"name": "forester", "message": "replace pump"}],
+            client=FakeChatClient(),
+            implementation_sha="a" * 40,
+            report_dir=Path(directory),
+            timeout=300,
+        )
+
+    assert observed[0][0] == "forester"
+    assert observed[0][2] == 300
+
+
 def test_issue_creation_reuses_stable_finding_marker():
     finding = {"finding_id": "camry-starter:procedure:coverage", "severity": "high", "category": "quality", "message": "missing installation", "reproduction": "replace starter"}
     with TemporaryDirectory() as directory:

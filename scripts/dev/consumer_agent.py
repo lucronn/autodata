@@ -540,6 +540,7 @@ def run_cases(
     client: ChatHTTPClient,
     implementation_sha: str,
     report_dir: Path,
+    timeout: float = 60,
     repository: str = "",
     create_issues: bool = False,
 ) -> dict[str, Any]:
@@ -548,7 +549,7 @@ def run_cases(
     results: list[dict[str, Any]] = []
     for case in cases:
         try:
-            results.append(run_case(client, case, idempotency_prefix=f"consumer-review:{run_id}"))
+            results.append(run_case(client, case, timeout=timeout, idempotency_prefix=f"consumer-review:{run_id}"))
         except ConsumerReviewError as error:
             results.append({"case": case.get("name", "case"), "message": case.get("message", ""), "response": None, "response_sha256": None, "pdf_sha256": None, "review": {"case": case.get("name", "case"), "decision": "blocked", "score": 0, "dimensions": {}, "findings": [{"finding_id": f"{case.get('name', 'case')}:transport", "severity": "high", "category": "reliability", "path": "transport", "line": 0, "message": str(error), "reproduction": str(case.get("message", "")), "blocking": True, "resolved_by": None}]}})
     decisions = [str(result["review"].get("decision")) for result in results]
@@ -601,7 +602,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         cases = [case for path in args.case_file for case in _load_cases(path)]
         client = ChatHTTPClient(args.api_base_url, timeout=args.timeout, auth_token=os.getenv("AUTODATA_CHAT_AUTH_TOKEN", ""), owner_id=os.getenv("AUTODATA_CHAT_OWNER_ID", ""), organization_id=os.getenv("AUTODATA_CHAT_ORGANIZATION_ID", ""), allow_nonlocal=args.allow_nonlocal)
-        report = run_cases(cases, client=client, implementation_sha=args.implementation_sha or _git_sha(), report_dir=args.report_dir, repository=args.repository, create_issues=args.create_issues)
+        report = run_cases(cases, client=client, implementation_sha=args.implementation_sha or _git_sha(), report_dir=args.report_dir, timeout=args.timeout, repository=args.repository, create_issues=args.create_issues)
     except (OSError, ValueError, ConsumerReviewError) as error:
         print(json.dumps({"agent": "autodata-consumer-agent", "decision": "blocked", "error": str(error)}, sort_keys=True))
         return 2
