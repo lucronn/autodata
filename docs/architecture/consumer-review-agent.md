@@ -45,3 +45,28 @@ does not change the guide's `UNREVIEWED` state.
   response and review reports.
 - Reconcile confirmed findings, update the production-readiness evidence, and
   close only issues whose acceptance evidence is complete.
+
+## Acceptance evidence
+
+The committed implementation was exercised in report-only mode through the
+chat HTTP contract, using the real chat state machine and live AutoAPI Two
+source retrieval in a loopback development adapter. The aggregate report is
+retained outside the source tree at
+`tmp/consumer-review-live/consumer-review-5f1e718e165f262cc44b8435.json`.
+Its SHA-256 is
+`7d19ff6c9f3607a978e841b393b1a7f199b8bd48646f894730bcf874159e6dd9`.
+
+| Case | Result | Steps | Figures | PDF SHA-256 |
+| --- | --- | ---: | ---: | --- |
+| 1997 Toyota RAV4 oil and water pumps | pass | 99 | 80 | `1e78a153641e26815adbec2666a1dbe43ce7db34da1fdddb07220e2cb22e4fc9` |
+| 2005 Toyota Camry starter | pass | 14 | 4 | `476c781f567c5e1a84a752f2390cc4b6876e8801aae4218be5aadc01cb1998db` |
+| 2010 Subaru Forester SOHC water pump | pass | 87 | 36 | `745371a8cdd1f6f7ed9051c1eae64d6149e06c1d030ab944b49a8ae58d063888` |
+| 2002 Honda Civic LX front caliper | pass | 14 | 5 | `86eb73d8d81cb7d063d013a74c7d6587071353898687e01830d8fd98ba3d5103` |
+
+All six rubric dimensions passed for all four cases: applicability,
+procedure coverage, figures, safety/review labeling, consumer-copy hygiene,
+and PDF integrity/revision parity. The report contains four passes, zero
+failures, zero `needs_review` results, zero blocked cases, and no issue
+actions. The projection check also confirmed that the recorded consumer
+responses contain no `source_`, `evidence`, `raw_html`, or `worker_stream`
+fields.

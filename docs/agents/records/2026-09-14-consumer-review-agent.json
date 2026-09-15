@@ -10,6 +10,13 @@
     "Create or reuse GitHub issues from stable findings without duplicates",
     "Run the live multi-vehicle review matrix and reconcile every finding"
   ],
+  "verification": {
+    "implementation_sha": "5252d2b41a8c8a53e1ba59039cb987b0363c185c",
+    "report_path": "tmp/consumer-review-live/consumer-review-5f1e718e165f262cc44b8435.json",
+    "report_sha256": "7d19ff6c9f3607a978e841b393b1a7f199b8bd48646f894730bcf874159e6dd9",
+    "decision": "pass",
+    "summary": {"case_count": 4, "pass": 4, "fail": 0, "needs_review": 0, "blocked": 0, "issue_actions": 0}
+  },
   "status": "synchronized",
   "updated_at": "2026-09-14T22:00:00Z"
 }
