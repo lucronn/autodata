@@ -144,6 +144,24 @@ issue actions. Its report SHA-256 is
 fresh PDF hash is recorded in the synchronized record. The rendered RAV4 cover
 shows the exact 2-door 4WD 2.0L (3S-FE) applicability label.
 
+## Tracked negative-path completeness gate
+
+[Issue #85](https://github.com/lucronn/autodata/issues/85) also tracks a
+fail-closed evaluator gap found in the documented negative case: a response
+marked `complete` without both removal and installation phases must be a
+blocking `fail`, not merely `needs_review`. Genuinely partial responses retain
+the softer review outcome.
+
+Plan: ../superpowers/plans/2026-09-15-negative-completeness-gate.md
+
+Todo:
+
+- Add a regression for a complete response missing installation/removal.
+- Implement the complete-procedure severity gate.
+- Run focused and full developer tests.
+- Re-run the documented negative case and fresh five-case positive matrix.
+- Record the result in the issue and canonical documentation.
+
 The `autodata-consumer-agent` is a release-readiness evaluator for the public
 chat experience. It calls the chat HTTP boundary with real consumer prompts,
 resolves vehicle choices when required, waits for the persisted answer, and
