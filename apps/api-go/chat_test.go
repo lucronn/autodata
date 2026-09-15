@@ -40,6 +40,12 @@ type fakeChatClient struct {
 	guidePDFReply  []byte
 	guidePDFErr    error
 
+	guideHTMLCalls  int
+	guideHTMLID     string
+	guideHTMLStatus int
+	guideHTMLReply  []byte
+	guideHTMLErr    error
+
 	eventsCalls  int
 	eventsID     string
 	eventsLastID string
@@ -80,6 +86,12 @@ func (f *fakeChatClient) GuidePDF(_ context.Context, request *http.Request, quer
 	f.guidePDFCalls++
 	f.guidePDFID = queryID
 	return f.guidePDFStatus, f.guidePDFReply, f.guidePDFErr
+}
+
+func (f *fakeChatClient) GuideHTML(_ context.Context, request *http.Request, queryID string) (int, []byte, error) {
+	f.guideHTMLCalls++
+	f.guideHTMLID = queryID
+	return f.guideHTMLStatus, f.guideHTMLReply, f.guideHTMLErr
 }
 
 func (f *fakeChatClient) Events(_ context.Context, request *http.Request, queryID, lastEventID string) (io.ReadCloser, error) {
@@ -218,6 +230,31 @@ func TestChatGuidePDFForwardsQueryIDAndReturnsPrivatePDF(t *testing.T) {
 	}
 	if response.Header().Get("Content-Type") != "application/pdf" {
 		t.Fatalf("content type = %q, want application/pdf", response.Header().Get("Content-Type"))
+	}
+	if response.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("cache control = %q, want private, no-store", response.Header().Get("Cache-Control"))
+	}
+}
+
+func TestChatGuideHTMLForwardsQueryIDAndReturnsPrivateHTML(t *testing.T) {
+	client := &fakeChatClient{guideHTMLStatus: http.StatusOK, guideHTMLReply: []byte("<!doctype html><img src=\"data:image/png;base64,AA==\">")}
+	server := newChatServer(client)
+	request := httptest.NewRequest(http.MethodGet, "/chat/queries/q-guide/guide.html", nil)
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || string(response.Body.Bytes()) != string(client.guideHTMLReply) {
+		t.Fatalf("status/body = %d/%q, want 200/html", response.Code, response.Body.Bytes())
+	}
+	if client.guideHTMLCalls != 1 || client.guideHTMLID != "q-guide" {
+		t.Fatalf("guide HTML forwarding = %d/%q", client.guideHTMLCalls, client.guideHTMLID)
+	}
+	if response.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Fatalf("content type = %q, want text/html; charset=utf-8", response.Header().Get("Content-Type"))
+	}
+	if response.Header().Get("Content-Disposition") != `attachment; filename="autodata-repair-guide.html"` {
+		t.Fatalf("content disposition = %q", response.Header().Get("Content-Disposition"))
 	}
 	if response.Header().Get("Cache-Control") != "private, no-store" {
 		t.Fatalf("cache control = %q, want private, no-store", response.Header().Get("Cache-Control"))

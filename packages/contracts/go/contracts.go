@@ -229,6 +229,8 @@ type ChatAnswer struct {
 	WorkerStream    []WorkerProgressEvent `json:"worker_stream"`
 	SourceWatermark string                `json:"source_watermark,omitempty"`
 	RevisionID      *string               `json:"revision_id,omitempty"`
+	PDF             map[string]any        `json:"pdf,omitempty"`
+	HTML            map[string]any        `json:"html,omitempty"`
 }
 
 type ChatQuery struct {

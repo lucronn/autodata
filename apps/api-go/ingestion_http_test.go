@@ -182,6 +182,43 @@ func TestHTTPIngestionClientRetriesTransientGuidePDFResponse(t *testing.T) {
 	}
 }
 
+func TestHTTPIngestionClientRetriesTransientGuideHTMLResponse(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requestCount++
+		if request.URL.Path != "/v1/chat/queries/q-html/guide.html" {
+			t.Fatalf("path = %q, want guide HTML path", request.URL.Path)
+		}
+		if requestCount == 1 {
+			response.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = response.Write([]byte(`{"error":"transient"}`))
+			return
+		}
+		response.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = response.Write([]byte("<!doctype html><html><body>guide</body></html>"))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPIngestionClient(server.URL, "", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body, err := client.GuideHTML(
+		context.Background(),
+		httptest.NewRequest(http.MethodGet, "/chat/queries/q-html/guide.html", nil),
+		"q-html",
+	)
+	if err != nil {
+		t.Fatalf("guide HTML failed: %v", err)
+	}
+	if status != http.StatusOK || string(body) != "<!doctype html><html><body>guide</body></html>" {
+		t.Fatalf("status/body = %d/%q, want 200/HTML", status, body)
+	}
+	if requestCount != 2 {
+		t.Fatalf("request count = %d, want one retry", requestCount)
+	}
+}
+
 func TestHTTPIngestionClientRetriesTransientChatQueryResponse(t *testing.T) {
 	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {

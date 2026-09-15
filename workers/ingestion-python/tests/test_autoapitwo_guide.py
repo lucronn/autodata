@@ -64,6 +64,18 @@ class CombinedProcedureConnector(FakeConnector):
         return super().search(car_id, term)
 
 
+class SilveradoCandidateConnector:
+    def search_vehicles(self, _query):
+        return [{
+            "id": "49999",
+            "year": "1999",
+            "make": "For A Chevrolet",
+            "model": "Silverado 1500 2WD",
+            "engine": "V8-5.3L",
+            "description": "1999 For A Chevrolet Silverado 1500 2WD 5.3L",
+        }]
+
+
 class IllustratedGuideTests(unittest.TestCase):
     def test_applicability_preserves_exact_selected_vehicle_label(self):
         vehicle = {
@@ -146,6 +158,21 @@ class IllustratedGuideTests(unittest.TestCase):
 
     def test_specific_brake_component_does_not_expand_to_generic_brakes(self):
         self.assertEqual(_components("front brake caliper replacement"), ["brake_caliper"])
+
+    def test_provider_prose_make_is_normalized_in_candidate_and_applicability(self):
+        candidate = vehicle_candidates_from_autoapitwo(
+            "1999 Chevrolet Silverado 1500 2WD 5.3L oil pump",
+            connector=SilveradoCandidateConnector(),
+        )[0]
+
+        self.assertEqual(candidate["make"], "Chevrolet")
+        self.assertEqual(candidate["label"], "1999 Chevrolet Silverado 1500 2WD 5.3L")
+        guide = compose_illustrated_guide(
+            "oil pump replacement",
+            {**candidate, "label": "1999 For A Chevrolet Silverado 1500 2WD 5.3L"},
+            [],
+        )
+        self.assertEqual(guide["applicability"], "1999 Chevrolet Silverado 1500 2WD 5.3L")
 
     def test_vehicle_candidates_keep_provider_identity_separate(self):
         candidate = vehicle_candidates_from_autoapitwo("1997 Toyota RAV4 oil pump", connector=FakeConnector())[0]

@@ -158,7 +158,9 @@
       "updated_at": {"type": "string"},
       "worker_stream": {"type": "array"},
       "source_watermark": {"type": "string", "optional": true},
-      "revision_id": {"type": "uuid", "nullable": true, "optional": true}
+      "revision_id": {"type": "uuid", "nullable": true, "optional": true},
+      "pdf": {"type": "object", "nullable": true, "optional": true},
+      "html": {"type": "object", "nullable": true, "optional": true}
     }
   },
   "chat_query": {

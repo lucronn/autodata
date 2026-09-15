@@ -24,10 +24,12 @@ def test_chat_answer_exposes_procedure_quote_and_progress() -> None:
         "procedure",
         "quote",
         "worker_stream",
+        "html",
     } <= set(answer["properties"])
     assert "source_unnormalized" in contract["data_state"]
     assert "stale" in contract["data_state"]
     assert hasattr(contracts, "ChatAnswer")
+    assert "html" in contracts.ChatAnswer.__annotations__
     assert "stale" in contracts.DATA_STATE_VALUES
 
 

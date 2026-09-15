@@ -31,6 +31,10 @@ type chatGuidePDFClient interface {
 	GuidePDF(context.Context, *http.Request, string) (int, []byte, error)
 }
 
+type chatGuideHTMLClient interface {
+	GuideHTML(context.Context, *http.Request, string) (int, []byte, error)
+}
+
 func (s *Server) createChatQuery(response http.ResponseWriter, request *http.Request, principal Principal) {
 	idempotencyKey, ok := chatIdempotencyKey(request)
 	if !ok {
@@ -91,6 +95,29 @@ func (s *Server) getChatGuidePDF(response http.ResponseWriter, request *http.Req
 	}
 	response.Header().Set("Content-Type", "application/pdf")
 	response.Header().Set("Content-Disposition", `attachment; filename="autodata-repair-guide.pdf"`)
+	response.Header().Set("Cache-Control", "private, no-store")
+	response.WriteHeader(status)
+	_, _ = response.Write(body)
+}
+
+func (s *Server) getChatGuideHTML(response http.ResponseWriter, request *http.Request, principal Principal) {
+	queryID, err := chatPathID(request)
+	if err != nil {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", err.Error(), false)
+		return
+	}
+	client, ok := s.chatClient.(chatGuideHTMLClient)
+	if !ok {
+		writeAPIError(response, request, http.StatusServiceUnavailable, "INGESTION_UNAVAILABLE", "guide HTML service is not configured", true)
+		return
+	}
+	status, body, err := client.GuideHTML(request.Context(), chatInternalRequest(request, principal), queryID)
+	if err != nil || status < http.StatusOK || status >= http.StatusMultipleChoices || len(body) == 0 {
+		writeAPIError(response, request, http.StatusBadGateway, "INGESTION_UNAVAILABLE", "guide HTML is unavailable", true)
+		return
+	}
+	response.Header().Set("Content-Type", "text/html; charset=utf-8")
+	response.Header().Set("Content-Disposition", `attachment; filename="autodata-repair-guide.html"`)
 	response.Header().Set("Cache-Control", "private, no-store")
 	response.WriteHeader(status)
 	_, _ = response.Write(body)

@@ -253,6 +253,8 @@ class ChatAnswer:
     worker_stream: list[WorkerProgressEvent]
     source_watermark: str | None = None
     revision_id: str | None = None
+    pdf: dict[str, Any] | None = None
+    html: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

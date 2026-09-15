@@ -4,9 +4,9 @@ Issue: https://github.com/lucronn/autodata/issues/89
 Project: https://github.com/users/lucronn/projects/8
 Plan: ../superpowers/plans/2026-09-14-consumer-repair-guides.md
 
-AutoData returns an illustrated DIY guide in chat and a matching PDF when required content is complete. Both providers contribute vehicle-matched evidence. Retrieve supporting removal, installation, specifications, sealing, timing, fluids and checks rather than replacing them with generic instructions. Shared work is consolidated by mechanical prerequisites. Model-generated wording cannot create unsupported specifications or discard warnings. The consumer view omits sourcing/generation commentary; provenance and review status remain internal data and the existing review notice remains visible. Completeness does not imply technician approval.
+AutoData returns an illustrated DIY guide in chat and a self-contained HTML download when required content is complete; the matching PDF remains available for compatibility. HTML is the preferred artifact because it carries prepared figures inline and opens without a second asset request. Both providers contribute vehicle-matched evidence. Retrieve supporting removal, installation, specifications, sealing, timing, fluids and checks rather than replacing them with generic instructions. Shared work is consolidated by mechanical prerequisites. Model-generated wording cannot create unsupported specifications or discard warnings. The consumer view omits sourcing/generation commentary; provenance and review status remain internal data and the existing review notice remains visible. Completeness does not imply technician approval.
 
-The additive guide answer includes revision, applicability, preparation, ordered phases/steps, figure associations, torque references, completion state and actionable gaps. Existing procedure/quote consumers remain compatible. Previews cannot produce final PDF downloads. Authorized downloads represent exactly the displayed immutable revision, including its images. Provider or media failures remain visible gaps, not fabricated completions.
+The additive guide answer includes revision, applicability, preparation, ordered phases/steps, figure associations, torque references, completion state and actionable gaps. Existing procedure/quote consumers remain compatible. Previews cannot produce final HTML or PDF downloads. Authorized downloads represent exactly the displayed immutable revision, including its prepared images. The HTML and PDF metadata carry the same revision ID. Provider or media failures remain visible gaps, not fabricated completions.
 
 Delivery status: the bounded second-provider connector, dependency-aware guide
 composition, revision-matched PDF renderer, and authenticated delivery path are
@@ -31,4 +31,21 @@ pages plus timing-belt prerequisites when required by the pump job. Ordered
 HTML text and returned figures are converted into grouped consumer steps; the
 installation instructions remain separate from removal and retain their
 sealing, torque, timing, refill, and final-check details. A complete guide is
-served as a revision-keyed PDF through the authenticated Go API proxy.
+served as revision-keyed HTML and PDF artifacts through the authenticated Go
+API proxy. The dashboard makes HTML primary and PDF secondary.
+
+## Artifact and identity rules
+
+The worker prepares each figure once, then the HTML renderer embeds every
+prepared image as a validated `data:image/*;base64,...` URI inside standalone
+HTML with inline CSS. The public answer exposes only permitted metadata; raw
+provider HTML and internal evidence IDs remain in the authorized persisted
+record. The consumer verifier checks the HTML document, image count, valid
+base64 payloads, absence of remote assets, and revision parity independently
+from the PDF check.
+
+At the AutoAPI boundary, canonical year, make, model, drivetrain, and engine
+fields win over malformed provider prose. For example, a provider value such
+as `For A Chevrolet` must produce the consumer heading
+`1999 Chevrolet Silverado 1500 2WD 5.3L`, never
+`1999 For A Chevrolet Silverado 1500 2WD 5.3L`.

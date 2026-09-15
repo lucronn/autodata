@@ -26,6 +26,7 @@ from autodata_ingestion.chat_service import (  # noqa: E402
     iter_chat_events,
     process_chat_price_jobs,
     process_chat_jobs,
+    render_chat_guide_html,
     select_chat_vehicle,
     _public_query,
 )
@@ -718,6 +719,110 @@ def test_public_query_compacts_internal_provenance_but_keeps_consumer_content():
     assert step["action"] == "Install the starter."
     assert step["images"] == [{"url": "https://example.test/starter.png", "image_id": "figure-1"}]
     assert "worker_stream" in public["answer"]
+
+
+def test_complete_guide_answer_exposes_html_and_pdf_metadata_with_one_revision():
+    from autodata_ingestion.chat_service import _answer_from_result
+
+    guide = {
+        "title": "Pump Replacement Guide",
+        "revision_id": "guide:revision-1",
+        "content_status": "complete",
+        "pdf_ready": True,
+        "steps": [],
+    }
+
+    answer = _answer_from_result(
+        {"procedure": guide},
+        vehicle=VEHICLE_A,
+        query_id="query-guide-metadata",
+    )
+
+    assert answer["html"] == {
+        "ready": True,
+        "url": "/chat/queries/query-guide-metadata/guide.html",
+        "revision_id": "guide:revision-1",
+    }
+    assert answer["pdf"] == {
+        "ready": True,
+        "url": "/chat/queries/query-guide-metadata/guide.pdf",
+        "revision_id": "guide:revision-1",
+    }
+
+
+def test_render_chat_guide_html_authorizes_and_reuses_prepared_images(monkeypatch):
+    calls = install_runtime(candidates=lambda _message, _principal: (VEHICLE_A,))
+    owner = principal()
+    query_id = "query-guide-html"
+    guide = {
+        "title": "Pump Replacement Guide",
+        "applicability": "1997 Toyota RAV4",
+        "revision_id": "guide:cached-html",
+        "evidence_ids": ["artifact-evidence-1"],
+        "content_status": "complete",
+        "pdf_ready": True,
+        "steps": [
+            {
+                "sequence": 1,
+                "action": "Install the pump.",
+                "images": [{"url": "https://source.test/pump.png", "media_type": "image/png"}],
+            }
+        ],
+    }
+    calls["repository"].save(
+        {
+            "query_id": query_id,
+            "idempotency_key": "guide-html-key",
+            "request_fingerprint": "guide-html-fingerprint",
+            "owner_id": owner["owner_id"],
+            "organization_id": owner["organization_id"],
+            "answer": {"vehicle": dict(VEHICLE_A), "procedure": guide},
+        }
+    )
+
+    class FakeConnector:
+        reads = []
+
+        def __init__(self, _base_url):
+            pass
+
+        def read(self, url, *, car_id=None, binary=False):
+            self.reads.append((url, car_id, binary))
+            return b"prepared-image"
+
+    monkeypatch.setattr("autodata_ingestion.autoapitwo_connector.AutoAPITwoConnector", FakeConnector)
+
+    first = render_chat_guide_html(query_id, principal=owner)
+    second = render_chat_guide_html(query_id, principal=owner)
+
+    assert first == second
+    assert first.startswith(b"<!doctype html>")
+    assert b"data:image/png;base64,cHJlcGFyZWQtaW1hZ2U=" in first
+    assert len(FakeConnector.reads) == 1
+    with pytest.raises(PermissionError, match="owner"):
+        render_chat_guide_html(query_id, principal=principal("other-owner", "org-1"))
+
+
+def test_render_chat_guide_html_rejects_incomplete_guides():
+    calls = install_runtime(candidates=lambda _message, _principal: (VEHICLE_A,))
+    owner = principal()
+    query_id = "query-incomplete-html"
+    calls["repository"].save(
+        {
+            "query_id": query_id,
+            "idempotency_key": "incomplete-html-key",
+            "request_fingerprint": "incomplete-html-fingerprint",
+            "owner_id": owner["owner_id"],
+            "organization_id": owner["organization_id"],
+            "answer": {
+                "vehicle": dict(VEHICLE_A),
+                "procedure": {"content_status": "partial", "pdf_ready": False},
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match="complete guide HTML"):
+        render_chat_guide_html(query_id, principal=owner)
 
 
 def test_source_result_cannot_be_labeled_normalized_and_composer_failure_stays_retryable():
