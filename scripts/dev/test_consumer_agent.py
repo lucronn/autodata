@@ -84,6 +84,25 @@ def test_score_response_marks_partial_answer_for_review():
     assert any(finding["finding_id"] == "partial:procedure:coverage" for finding in result["findings"])
 
 
+def test_score_response_requires_case_declared_procedure_depth_terms():
+    result = score_response(
+        {
+            "name": "depth-check",
+            "message": "replace starter",
+            "expected_vehicle": {"vehicle_id": "vehicle-1"},
+            "expected_components": ["starter"],
+            "min_steps": 2,
+            "min_figures": 2,
+            "required_terms": ["torque", "check"],
+        },
+        _complete_response(),
+        pdf_response=b"%PDF-1.7 test",
+    )
+    assert result["decision"] == "needs_review"
+    assert result["dimensions"]["procedure_coverage"]["passed"] is False
+    assert any(finding["finding_id"] == "depth-check:procedure:required-terms" for finding in result["findings"])
+
+
 class FakeChatClient:
     def __init__(self):
         self.polls = 0

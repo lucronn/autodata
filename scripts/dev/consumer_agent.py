@@ -344,7 +344,28 @@ def score_response(case: Mapping[str, Any], response: Mapping[str, Any], *, pdf_
     min_steps = int(case.get("min_steps", 1))
     if len(steps) < min_steps:
         findings.append(_finding(case, finding_id=f"{name}:procedure:step-count", severity="medium", category="quality", path="answer.procedure.steps", message=f"procedure has {len(steps)} steps; expected at least {min_steps}", reproduction=reproduction))
-    dimensions["procedure_coverage"] = {"passed": coverage_ok and "removal" in phases and "installation" in phases and len(steps) >= min_steps, "evidence": {"status": procedure.get("content_status"), "steps": len(steps), "phases": sorted(phases)}}
+    procedure_text = json.dumps(
+        [
+            {
+                "action": step.get("action"),
+                "instructions": step.get("instructions"),
+                "safety_warnings": step.get("safety_warnings"),
+            }
+            for step in steps
+            if isinstance(step, Mapping)
+        ],
+        ensure_ascii=False,
+    ).casefold()
+    required_terms = [
+        str(term).strip().casefold()
+        for term in case.get("required_terms", [])
+        if str(term).strip()
+    ]
+    missing_terms = [term for term in required_terms if term not in procedure_text]
+    if missing_terms:
+        findings.append(_finding(case, finding_id=f"{name}:procedure:required-terms", severity="medium", category="quality", path="answer.procedure.steps", message=f"procedure is missing required depth terms: {', '.join(missing_terms)}", reproduction=reproduction))
+    terms_ok = not missing_terms
+    dimensions["procedure_coverage"] = {"passed": coverage_ok and "removal" in phases and "installation" in phases and len(steps) >= min_steps and terms_ok, "evidence": {"status": procedure.get("content_status"), "steps": len(steps), "phases": sorted(phases), "required_terms": required_terms, "missing_terms": missing_terms}}
 
     figures = [image for step in steps if isinstance(step, Mapping) for image in (step.get("images", []) if isinstance(step.get("images"), list) else []) if isinstance(image, Mapping) and image.get("url")]
     min_figures = int(case.get("min_figures", 1))
