@@ -238,7 +238,7 @@ def _article_score(article: Mapping[str, Any], component: str) -> int:
         score += 100
     if component in _article_components(article):
         score += 25
-    if article.get("operations") or article.get("labor_operations"):
+    if _article_operations(article):
         score += 10
     if _article_evidence_ids(article):
         score += 5
@@ -256,7 +256,7 @@ def _calculate_labor(selected: Mapping[str, Mapping[str, Any]]) -> tuple[dict[st
     standalone = Decimal("0")
     reasons: list[str] = []
     for component, article in selected.items():
-        operations = article.get("operations", article.get("labor_operations", []))
+        operations = _article_operations(article)
         if not isinstance(operations, list) or not operations:
             operations = [{"operation_id": f"replace-{component}", "action": f"Replace {component}", "duration_hours": article.get("labor_hours")}]
         for index, raw in enumerate(operations):
@@ -1139,12 +1139,17 @@ def _calculate_categorized_labor(
     required_hours = Decimal("0")
     recommended_hours = Decimal("0")
     reasons: list[str] = []
+    preaggregated_labor: list[Mapping[str, Any]] = []
     for record in selected_records:
         article = record["article"]
         record_components = _record_components(record)
         component = record_components[0] if record_components else str(record.get("component", ""))
         default_category = str(record.get("category") or "required")
-        operations = article.get("operations", article.get("labor_operations", []))
+        if not article.get("operations") and not article.get("labor_operations"):
+            nested_labor = article.get("labor")
+            if isinstance(nested_labor, Mapping) and _article_operations(article):
+                preaggregated_labor.append(nested_labor)
+        operations = _article_operations(article)
         if not isinstance(operations, list) or not operations:
             operations = [
                 {
@@ -1285,6 +1290,39 @@ def _calculate_categorized_labor(
                 "deducted_hours": float(deducted_hours),
             }
         )
+    # A persisted composed article already performed its overlap accounting.
+    # Its nested operations are needed for the procedure, but recomputing from
+    # those already-deduplicated operations would erase the stored deduction.
+    if len(preaggregated_labor) == 1:
+        stored = preaggregated_labor[0]
+        stored_total = _decimal_hours(
+            stored.get("total_labor_hours", stored.get("total_hours"))
+        )
+        stored_standalone = _decimal_hours(stored.get("standalone_hours"))
+        stored_overlap = _decimal_hours(
+            stored.get("overlap_hours", stored.get("overlap_hours_removed"))
+        )
+        if stored_total is not None:
+            unique_hours = stored_total
+        if stored_standalone is not None:
+            standalone = stored_standalone
+        elif stored_overlap is not None:
+            standalone = unique_hours + stored_overlap
+        if stored_overlap is not None:
+            overlap_hours = stored_overlap
+        stored_required = _decimal_hours(stored.get("required_hours"))
+        stored_recommended = _decimal_hours(stored.get("recommended_hours"))
+        if stored_required is not None:
+            required_hours = stored_required
+        if stored_recommended is not None:
+            recommended_hours = stored_recommended
+        stored_overlap_operations = stored.get("overlap_operations")
+        if isinstance(stored_overlap_operations, list):
+            overlap_operations = [
+                dict(operation)
+                for operation in stored_overlap_operations
+                if isinstance(operation, Mapping)
+            ]
     for operation in merged.values():
         operation.pop("contributions", None)
     operations = list(merged.values())
@@ -1646,7 +1684,9 @@ def _compose_composed_procedure(
             if record is None:
                 continue
             source_evidence_ids.update(_article_evidence_ids(record["article"]))
-            instructions = _article_procedure_instructions(record["article"])
+            instructions = _article_procedure_instructions_for_operation(
+                record["article"], components
+            )
             if not instructions:
                 missing_content_article_ids.add(article_id)
             for instruction in instructions:
@@ -1732,6 +1772,65 @@ def _article_procedure_instructions(article: Mapping[str, Any]) -> list[str]:
         if text:
             return [text]
     return []
+
+
+def _article_procedure_instructions_for_operation(
+    article: Mapping[str, Any], components: Iterable[str]
+) -> list[str]:
+    """Keep structured source steps scoped to the operation they describe."""
+
+    raw_steps: Any = article.get("steps")
+    if not isinstance(raw_steps, list) or not raw_steps:
+        procedure = article.get("procedure")
+        raw_steps = procedure.get("steps") if isinstance(procedure, Mapping) else []
+    if not isinstance(raw_steps, list) or not raw_steps:
+        return _article_procedure_instructions(article)
+
+    scoped_steps = [
+        step
+        for step in raw_steps
+        if isinstance(step, Mapping)
+        and _component_matches(step.get("components", step.get("component", [])))
+    ]
+    if not scoped_steps:
+        return _article_procedure_instructions(article)
+
+    requested = set(components)
+    matching_scoped_steps = [
+        step
+        for step in scoped_steps
+        if set(_component_matches(step.get("components", step.get("component", [])))) == requested
+    ]
+    if not matching_scoped_steps:
+        matching_scoped_steps = [
+            step
+            for step in scoped_steps
+            if set(_component_matches(step.get("components", step.get("component", [])))).intersection(
+                requested
+            )
+        ]
+    matching_step_ids = {id(step) for step in matching_scoped_steps}
+    instructions: list[str] = []
+    for raw_step in raw_steps:
+        if not isinstance(raw_step, Mapping):
+            continue
+        step_components = set(
+            _component_matches(raw_step.get("components", raw_step.get("component", [])))
+        )
+        if step_components and id(raw_step) not in matching_step_ids:
+            continue
+        value = next(
+            (
+                raw_step.get(key)
+                for key in ("instruction", "description", "text", "action", "body")
+                if isinstance(raw_step.get(key), str) and raw_step.get(key).strip()
+            ),
+            None,
+        )
+        text = re.sub(r"\s+", " ", str(value or "")).strip()
+        if text and text not in instructions:
+            instructions.append(text)
+    return instructions
 
 
 def _collect_safety_warnings(records: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -2019,6 +2118,10 @@ def compose_procedure_with_llm(
 
 def _article_operations(article: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     values = article.get("operations", article.get("labor_operations", []))
+    if not isinstance(values, list) or not values:
+        labor = article.get("labor")
+        if isinstance(labor, Mapping):
+            values = labor.get("operations", [])
     if not isinstance(values, list):
         return []
     return [value for value in values if isinstance(value, Mapping)]

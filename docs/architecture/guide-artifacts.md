@@ -33,13 +33,51 @@ No source data, credentials, or user-owned runtime artifacts are part of this de
 
 ## Local verification checkpoint
 
-Implementation commit `d63ab7b` passed the applicable local checks:
+The current chat acceptance repair passed these local checks:
 
-- `426 passed, 3 skipped, 12 subtests passed` across the Python worker,
-  consumer, and contract suites.
+- `400 passed, 3 skipped, 12 subtests passed` in the Python worker suite.
 - `go test ./... -count=1` passed in `apps/api-go`.
 - `node --check apps/api-go/dashboard/app.js` passed.
 - `git diff --check` passed.
 
-The live/local Silverado chat run and HTML/PDF parity check remain a post-restart
-acceptance step; no live result is claimed by this checkpoint.
+## Follow-up: natural-language source retrieval acceptance
+
+The browser acceptance run exposed two separate defects tracked in
+[Issue #96](https://github.com/lucronn/autodata/issues/96) and the
+[follow-up plan](../superpowers/plans/2026-09-15-chat-source-failure.md): the
+local 8080 Compose API/worker were stale, and the chat parser treated the
+natural-language introducer `for a` as the vehicle make. The current parser
+must normalize `for a 1999 Chevrolet Silverado 1500 2WD 5.3L` to the canonical
+Chevrolet identity before source lookup.
+
+The subsequent browser run identified a warm-read defect as well. A persisted
+combined article can contain complete nested `procedure.steps` and
+`labor.operations`, while the compatibility composer expects top-level
+operation fields. Without an explicit compatibility mapping, the UI regresses
+to a one-component placeholder and loses known labor/overlap data. The
+acceptance contract therefore requires warm composed revisions to retain every
+requested component, source-linked step, and known labor value.
+
+When source retrieval exhausts its retries without any usable answer, the
+persisted query and nested answer must both expose terminal `failed` /
+`unavailable` state. The worker stream must publish the correlated terminal
+answer event so the dashboard cannot continue to show `processing ·
+normalizing`. If a provisional source-backed answer already exists, later
+normalization or composition failure keeps that answer visible and marks the
+affected work as failed; deep work never hides data that can already be shown.
+
+The warm-read compatibility path must preserve nested labor operations and
+procedure steps rather than rebuilding a partial placeholder.
+
+The rebuilt browser acceptance on 2026-09-15 produced query
+`f4634f2f-93e9-5c92-b523-6feb50fac5d6` and rendered `1999 Chevrolet Silverado
+1500 2WD 5.3L` with four distinct component steps and 9 known labor hours.
+The correlated Workers terminal ended after five events. The cached revision
+contained no source-priced parts, and the UI exposed that absence explicitly;
+it did not fabricate a price.
+
+This follow-up is not accepted by unit tests alone. The local API and ingestion
+containers must be rebuilt from the checked-out revision, and the exact
+Silverado request must be exercised in the browser with the canonical vehicle
+label, Workers terminal progress, and a visible procedure/quote result
+verified. User-owned `output/`, `sample data/`, and `tmp/` remain local-only.

@@ -315,7 +315,12 @@ def _parse_vehicle(message: str) -> dict[str, Any]:
         message,
         re.IGNORECASE,
     )
-    if later_year_match is not None and (match is None or later_year_match.start() < match.start()):
+    later_year_make = str(later_year_match.group("make") if later_year_match else "").casefold()
+    if (
+        later_year_match is not None
+        and later_year_make not in {"for", "on", "of", "a", "an", "the"}
+        and (match is None or later_year_match.start() < match.start())
+    ):
         match = None
     if match is None:
         # ``vehicle_identity`` already supports a later year.  This bounded
@@ -336,6 +341,19 @@ def _parse_vehicle(message: str) -> dict[str, Any]:
         parsed["engine"] = parsed.get("engine_displacement_l")
         return {**parsed, "status": "unresolved", "raw": observation_text}
     vehicle_text = message[match.start() :]
+    # Natural-language requests often introduce the vehicle with a phrase
+    # such as ``for a 1999 Chevrolet ...``.  The year-first matcher is
+    # intentionally bounded, so remove only that grammatical lead-in before
+    # handing the observation to the canonical vehicle parser.  Otherwise
+    # ``for`` becomes the make and the source lookup loses the vehicle.
+    vehicle_text = re.sub(
+        r"^(?P<year>\d{2}|(?:19|20)\d{2})\s+"
+        r"(?:(?:for|on|of)\s+)?(?:a|an|the)\s+",
+        r"\g<year> ",
+        vehicle_text,
+        count=1,
+        flags=re.IGNORECASE,
+    )
     stop = _first_operation_or_intent(vehicle_text)
     observation_text = vehicle_text[:stop] if stop is not None else vehicle_text
     try:

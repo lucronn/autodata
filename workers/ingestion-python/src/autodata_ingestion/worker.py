@@ -480,6 +480,8 @@ def _cached_derived_job_plan(
         components = article.get("derived_components")
         if not isinstance(components, list) or set(str(value) for value in components) != requested_set:
             continue
+        if not _derived_article_covers_requested_components(article, requested_set):
+            continue
         if _mercury2_regeneration_required(article):
             continue
         status = str(article.get("status") or "needs_review")
@@ -505,6 +507,49 @@ def _cached_derived_job_plan(
             "cache_hit": True,
         }
     return None
+
+
+def _derived_article_covers_requested_components(
+    article: Mapping[str, object], requested: set[str]
+) -> bool:
+    """Reject a warm composition that names work it does not actually cover."""
+
+    covered: set[str] = set()
+
+    procedure = article.get("procedure")
+    if isinstance(procedure, Mapping):
+        steps = procedure.get("steps", ())
+        if isinstance(steps, (list, tuple)):
+            for step in steps:
+                if not isinstance(step, Mapping):
+                    continue
+                values = step.get("components", step.get("component", ()))
+                if isinstance(values, str):
+                    values = [values]
+                if isinstance(values, (list, tuple, set)):
+                    covered.update(str(value) for value in values if str(value).strip())
+
+    labor = article.get("labor")
+    if isinstance(labor, Mapping):
+        operations = labor.get("operations", ())
+        if isinstance(operations, (list, tuple)):
+            for operation in operations:
+                if not isinstance(operation, Mapping):
+                    continue
+                values = operation.get("components", operation.get("component", ()))
+                if isinstance(values, str):
+                    values = [values]
+                if isinstance(values, (list, tuple, set)):
+                    covered.update(str(value) for value in values if str(value).strip())
+
+    if requested.issubset(covered):
+        return True
+    # A single-component persisted row may legitimately contain only a labor
+    # summary while its instructional content is still pending. It is safe to
+    # reuse that row for the one requested component; a multi-component row
+    # must prove coverage for every requested component before being reused.
+    declared = {str(value) for value in article.get("derived_components", [])}
+    return len(requested) == 1 and declared == requested
 
 
 def _mercury2_regeneration_required(article: Mapping[str, object]) -> bool:
