@@ -295,7 +295,7 @@ SHA, then pass the machine preflight against the implementation base SHA.
 - `price_snapshot`: canonical part identity, source part number, amount, currency, `priced_at`, freshness, source snapshot, and refresh status.
 - `worker_progress_event`: the existing event envelope plus `query_id`, `stage`, `status`, `data_state`, and a redacted message.
 
-- [ ] **Step 1: Write failing contract tests**
+- [x] **Step 1: Write failing contract tests**
 
 Add assertions that the generated bindings expose these exact fields and enum
 values:
@@ -324,7 +324,7 @@ python3 -m pytest scripts/contracts/test_chat_quote_contract.py -q
 
 Expected: FAIL because the new contract definitions do not exist.
 
-- [ ] **Step 2: Add the canonical JSON definitions**
+- [x] **Step 2: Add the canonical JSON definitions**
 
 Add `data_state`, `answer_status`, `quote`, `price_snapshot`, `procedure_step`,
 `visual_artifact`, `chat_answer`, `chat_query`, `chat_selection`, and
@@ -334,7 +334,7 @@ Add `chat.answer.updated`, `chat.vehicle.options`, `chat.worker.progress`,
 `chat.price.refresh.requested`, `chat.procedure.published`, and
 `chat.visual.published` to the versioned event subject list.
 
-- [ ] **Step 3: Add persistence constraints**
+- [x] **Step 3: Add persistence constraints**
 
 Create `025_chat_quote_procedure.sql` with forward-only tables and constraints
 for `chat_queries`, `chat_query_options`, `chat_job_plans`,
@@ -345,7 +345,7 @@ and `(query_id, event_id)`. Store raw answer snapshots and source watermarks as
 JSONB/text only where needed for audit; keep immutable published revisions
 protected from update/delete.
 
-- [ ] **Step 4: Regenerate bindings and make the tests pass**
+- [x] **Step 4: Regenerate bindings and make the tests pass**
 
 Run:
 
@@ -357,7 +357,7 @@ python3 -m pytest scripts/contracts/test_chat_quote_contract.py -q
 
 Expected: PASS, with generated Go/Python bindings matching the canonical JSON.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/contracts/contract.json packages/contracts/go/contracts.go packages/contracts/go/contracts_test.go packages/contracts/python/autodata_contracts/contracts.py db/migrations/025_chat_quote_procedure.sql scripts/contracts/test_chat_quote_contract.py
@@ -396,27 +396,27 @@ def derive_supporting_operations(
 ) -> tuple[dict[str, Any], ...]: ...
 ```
 
-- [ ] **Step 1: Write failing parser tests**
+- [x] **Step 1: Write failing parser tests**
 
 Cover `97 Toyota RAV4 brake line replacement procedure, and quote`, spelling
 variants, multiple components, quote-only requests, procedure-only requests,
 and a message with no identifiable component. Assert that vehicle details and
 requested operations are structured rather than copied as free text.
 
-- [ ] **Step 2: Write failing candidate/clarification tests**
+- [x] **Step 2: Write failing candidate/clarification tests**
 
 Provide two candidate vehicles and assert that the result exposes both in
 stable order, preserves confidence, and produces one clarification question.
 Provide one unambiguous candidate and assert that `clarification is None`.
 
-- [ ] **Step 3: Implement deterministic extraction**
+- [x] **Step 3: Implement deterministic extraction**
 
 Use the existing canonicalization and alias patterns as the first pass. Extract
 year, make, model, engine, drivetrain, operation verbs, component aliases, and
 `quote`/`procedure` intent. Return `ChatIntent` with normalized values and
 stable option ordering.
 
-- [ ] **Step 4: Implement constrained Mercury-2 fallback**
+- [x] **Step 4: Implement constrained Mercury-2 fallback**
 
 When deterministic extraction leaves an operation or vehicle field unresolved,
 call the existing `Mercury2Client` with a JSON-only schema. Validate that the
@@ -424,14 +424,14 @@ model can choose only among supplied vehicle candidates and allowlisted
 components. Keep the model response advisory; unknown values become
 `needs_review` instead of being treated as facts.
 
-- [ ] **Step 5: Implement supporting-operation classification**
+- [x] **Step 5: Implement supporting-operation classification**
 
 Read source article metadata and trusted rule metadata. Emit explicit
 `required` and `recommended` categories with a basis and source article IDs.
 Do not promote a model-only suggestion to `required` without source/rule
 support.
 
-- [ ] **Step 6: Run tests and commit**
+- [x] **Step 6: Run tests and commit**
 
 ```bash
 PYTHONPATH=workers/ingestion-python/src python3 -m pytest workers/ingestion-python/tests/test_chat_intent.py workers/ingestion-python/tests/test_vehicle_identity.py -q
@@ -468,40 +468,40 @@ def fetch_required_source_resources(
 ) -> dict[str, Any]: ...
 ```
 
-- [ ] **Step 1: Write failing price freshness tests**
+- [x] **Step 1: Write failing price freshness tests**
 
 Assert that a price at 29 days is `fresh`, a price at exactly 30 days is
 `stale`, and a stale price is returned immediately with its original
 `priced_at`, `refresh_status=queued`, and a refresh request identity.
 
-- [ ] **Step 2: Write failing source-selection tests**
+- [x] **Step 2: Write failing source-selection tests**
 
 Use the existing fake AutoAPI response and assert that a cache miss reads the
 article list first and fetches only requested article details, labor resources,
 and part-price resources. Assert that repeated requests use the normalized
 cache and make zero connector calls.
 
-- [ ] **Step 3: Implement the price snapshot module**
+- [x] **Step 3: Implement the price snapshot module**
 
 Use UTC timestamps and a fixed 30-day freshness boundary. Return immutable
 snapshot dictionaries with source part number, amount, currency, `priced_at`,
 source snapshot ID, freshness, refresh status, and `markup_applied=False`.
 
-- [ ] **Step 4: Extend source fulfillment**
+- [x] **Step 4: Extend source fulfillment**
 
 Update `fulfill_once` and its resolver to persist every fetched payload before
 normalization, return a `source_unnormalized` result when a normalized record is
 not ready, and emit a durable refresh job for stale prices. Reuse the existing
 AutoAPI article-list-first traversal and idempotency conventions.
 
-- [ ] **Step 5: Add persistence and failure behavior**
+- [x] **Step 5: Add persistence and failure behavior**
 
 Write price snapshots and source states through the migration’s unique keys.
 When refresh fails, retain the stale snapshot, record retry metadata, and
 return it without blocking the response. Exhausted refresh retries publish a
 dead-letter event without deleting the snapshot.
 
-- [ ] **Step 6: Run tests and commit**
+- [x] **Step 6: Run tests and commit**
 
 ```bash
 PYTHONPATH=workers/ingestion-python/src python3 -m pytest workers/ingestion-python/tests/test_pricing.py workers/ingestion-python/tests/test_knowledge_fallback_runtime.py workers/ingestion-python/tests/test_autoapi_connector.py -q
@@ -543,34 +543,34 @@ def compose_procedure_revision(
 ) -> dict[str, Any]: ...
 ```
 
-- [ ] **Step 1: Write failing labor tests**
+- [x] **Step 1: Write failing labor tests**
 
 Add a fixture containing brake-line replacement, brake bleeding, and inspection
 operations. Assert separate required/recommended subtotals, total hours, the
 shared operation counted once, and a detailed overlap deduction.
 
-- [ ] **Step 2: Write failing procedure tests**
+- [x] **Step 2: Write failing procedure tests**
 
 Assert that the composed procedure includes every requested and required
 supporting step, source article IDs, evidence IDs, safety warnings, and an
 explicit unreviewed state. Assert that a Mercury-2 response with an unsupported
 step is rejected rather than published.
 
-- [ ] **Step 3: Implement deterministic quote calculation**
+- [x] **Step 3: Implement deterministic quote calculation**
 
 Refactor the existing `_calculate_labor` and `_stable_operation_id` path into
 the public quote function. Deduplicate by stable operation identity and shared
 work scope. Keep arithmetic outside the model and include both raw and
 deducted hours in the response.
 
-- [ ] **Step 4: Implement constrained procedure composition**
+- [x] **Step 4: Implement constrained procedure composition**
 
 Extend the existing Mercury-2 composition path with a strict JSON schema. Feed
 it normalized articles and the validated quote only. Validate every generated
 step against article/evidence IDs, vehicle identity, and required/recommended
 classification before calling `persist_derived_article`.
 
-- [ ] **Step 5: Implement vector redraw boundary**
+- [x] **Step 5: Implement vector redraw boundary**
 
 Add a provider-neutral vectorizer interface with a deterministic local fake
 that returns a renderable SVG fixture for tests and Compose. The production
@@ -579,14 +579,14 @@ objects to object storage, records processor/version metadata, and marks the
 derived artifact `AI-enhanced / UNREVIEWED`. Reject text-only requests without
 a source visual.
 
-- [ ] **Step 6: Persist a reusable immutable revision**
+- [x] **Step 6: Persist a reusable immutable revision**
 
 Extend `derived_article_identity` and `persist_derived_article` to include the
 canonical vehicle, operation categories, source watermarks, quote identity,
 procedure revision, and visual artifact references. Replays return the same
 derived article without a new model or source call.
 
-- [ ] **Step 7: Run tests and commit**
+- [x] **Step 7: Run tests and commit**
 
 ```bash
 PYTHONPATH=workers/ingestion-python/src python3 -m pytest workers/ingestion-python/tests/test_job_plan.py workers/ingestion-python/tests/test_mercury2.py workers/ingestion-python/tests/test_derived_article_persistence.py workers/ingestion-python/tests/test_visual_vectorization.py -q
@@ -618,39 +618,39 @@ def iter_chat_events(query_id: str, *, last_event_id: str | None = None) -> Iter
 def publish_chat_progress(query_id: str, stage: str, status: str, *, data_state: str, payload: Mapping[str, Any]) -> dict[str, Any]: ...
 ```
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Test idempotent query creation, candidate option output, immediate typed/click
 selection, normalized cache hit, source-unormalized response, and same-answer
 updates after a background publication.
 
-- [ ] **Step 2: Write failing event tests**
+- [x] **Step 2: Write failing event tests**
 
 Assert deterministic event IDs/idempotency keys, query correlation, redaction
 of credential-like values, replay from `last_event_id`, bounded retry state,
 and dead-letter publication after the configured attempt limit.
 
-- [ ] **Step 3: Implement the service state machine**
+- [x] **Step 3: Implement the service state machine**
 
 Create the durable query and job-plan records. Run the following stages in
 order: interpret, resolve vehicle, lookup derived article, lookup normalized
 articles/prices, return immediate answer, enqueue missing source work, and
 publish later answer revisions. Keep each stage independently retryable.
 
-- [ ] **Step 4: Implement source and model fan-out**
+- [x] **Step 4: Implement source and model fan-out**
 
 Use the existing ingestion runtime and NATS/event abstractions. Emit progress
 events for every stage. A source or model failure updates only the affected
 item and leaves any answer already available.
 
-- [ ] **Step 5: Add HTTP service routes**
+- [x] **Step 5: Add HTTP service routes**
 
 Expose Python service routes for `POST /v1/chat/queries`,
 `POST /v1/chat/queries/{id}/selections`, `GET /v1/chat/queries/{id}`, and
 `GET /v1/chat/queries/{id}/events`. Return JSON immediately for query/selection
 calls and SSE-compatible frames for event delivery.
 
-- [ ] **Step 6: Run tests and commit**
+- [x] **Step 6: Run tests and commit**
 
 ```bash
 PYTHONPATH=workers/ingestion-python/src python3 -m pytest workers/ingestion-python/tests/test_chat_service.py workers/ingestion-python/tests/test_progress_events.py -q
@@ -680,20 +680,20 @@ type ChatClient interface {
 }
 ```
 
-- [ ] **Step 1: Write failing route/auth tests**
+- [x] **Step 1: Write failing route/auth tests**
 
 Assert that unauthenticated requests are rejected, authenticated
 `dataset_viewer` requests proxy JSON bodies with idempotency keys, and the
 event route preserves `Last-Event-ID` and `text/event-stream`.
 
-- [ ] **Step 2: Write failing duplicate/error tests**
+- [x] **Step 2: Write failing duplicate/error tests**
 
 Assert that duplicate idempotency keys return the original query, missing
 selection options return a structured `INVALID_REQUEST`, and upstream
 unavailability returns `INGESTION_UNAVAILABLE` without exposing internal
 headers or body secrets.
 
-- [ ] **Step 3: Implement the Go client boundary**
+- [x] **Step 3: Implement the Go client boundary**
 
 Extend the internal ingestion client with bounded GET/stream operations. Keep
 the existing `/job-plans` behavior unchanged for compatibility. Add routes:
@@ -705,13 +705,13 @@ mux.Handle("POST /chat/queries/{id}/selections", s.requireRole("dataset_viewer",
 mux.Handle("GET /chat/queries/{id}/events", s.requireRole("dataset_viewer", s.streamChatEvents))
 ```
 
-- [ ] **Step 4: Implement streaming safeguards**
+- [x] **Step 4: Implement streaming safeguards**
 
 Limit event frame size, flush each frame, stop on client cancellation, preserve
 request/correlation IDs, and redact authorization values from logs. Do not
 buffer an unbounded event stream.
 
-- [ ] **Step 5: Run tests and commit**
+- [x] **Step 5: Run tests and commit**
 
 ```bash
 (cd apps/api-go && gofmt -w chat.go chat_events.go chat_test.go chat_events_test.go ingestion_http.go main.go && go test ./...)
@@ -733,46 +733,46 @@ The dashboard calls the Go routes from Task 6 and renders these response
 properties without inventing client-side data: `vehicle_options`,
 `procedure`, `quote`, `warnings`, `data_state`, and `worker_stream`.
 
-- [ ] **Step 1: Write failing static dashboard tests**
+- [x] **Step 1: Write failing static dashboard tests**
 
 Assert that the HTML includes a natural-language message input, answer panel,
 procedure panel, quote panel, clickable vehicle-option container, and Workers
 terminal. Assert that there are no required year/make/model/engine/drivetrain
 inputs.
 
-- [ ] **Step 2: Write failing behavior markers**
+- [x] **Step 2: Write failing behavior markers**
 
 Assert that the JavaScript contains the chat query route, selection route,
 event stream route, numbered option rendering, click handler, stale price
 label, `source_unnormalized` label, required/recommended labor display, and
 `UNREVIEWED` label.
 
-- [ ] **Step 3: Implement the chat-first shell**
+- [x] **Step 3: Implement the chat-first shell**
 
 Replace vehicle selectors and mandatory fields with one message composer. Add
 conversation messages, structured JSON output, procedure steps, required and
 recommended labor sections, parts pricing dates, warnings, and source links.
 
-- [ ] **Step 4: Implement numbered/clickable options**
+- [x] **Step 4: Implement numbered/clickable options**
 
 Render stable buttons whose visible labels begin with the option number. Support
 typed numeric selection in the chat input. Both paths call the selection route
 and immediately rerender the pending result.
 
-- [ ] **Step 5: Implement progressive answer updates**
+- [x] **Step 5: Implement progressive answer updates**
 
 Open the request-specific event stream after query creation. Merge answer
 updates by revision ID, retain visible provisional data, show stale prices
 with their dates, and never clear a usable result when a background stage
 fails.
 
-- [ ] **Step 6: Implement the Workers terminal**
+- [x] **Step 6: Implement the Workers terminal**
 
 Render correlated progress events with timestamp, stage, status, retry count,
 and a safe message. Keep operational errors separate from the customer-facing
 procedure but link both by query ID.
 
-- [ ] **Step 7: Run tests and commit**
+- [x] **Step 7: Run tests and commit**
 
 ```bash
 (cd apps/api-go && gofmt -w dashboard_test.go && go test ./...)
@@ -800,7 +800,7 @@ request lifecycle for:
 97 Toyota RAV4 brake line replacement procedure, and quote
 ```
 
-- [ ] **Step 1: Write failing smoke assertions**
+- [x] **Step 1: Write failing smoke assertions**
 
 Assert:
 
@@ -818,40 +818,40 @@ Also assert that a second identical request makes zero source/model calls,
 that a stale price is returned immediately with `priced_at`, and that an
 existing source diagram yields a vector artifact linked to its original.
 
-- [ ] **Step 2: Implement the fake cold path**
+- [x] **Step 2: Implement the fake cold path**
 
 Wire the existing fake source, fake payment, fake Mercury-2, fake vectorizer,
 PostgreSQL, NATS, and MinIO services. Make the first response include
 available source data and the final event include normalized procedure, quote,
 price, and visual revisions.
 
-- [ ] **Step 3: Implement the warm path assertion**
+- [x] **Step 3: Implement the warm path assertion**
 
 Replay the same idempotency key and a semantically identical query. Assert that
 the derived article and price snapshot are reused and that no AutoAPI or
 Mercury-2 call is made.
 
-- [ ] **Step 4: Wire Compose services and health checks**
+- [x] **Step 4: Wire Compose services and health checks**
 
 Expose the Python chat service and its worker entry points through the existing
 Compose network. Add only non-secret environment names for event stream,
 price TTL, fake adapters, and object-storage buckets. Keep startup ordering,
 health checks, retry limits, and cleanup deterministic.
 
-- [ ] **Step 5: Add protected CI execution**
+- [x] **Step 5: Add protected CI execution**
 
 Run the chat smoke after migrations, fake integrations, and API readiness. Keep
 the existing live Compose smoke and add the new smoke’s output to the job
 summary. The workflow must report source/model skips explicitly rather than
 calling fixtures a live provider verification.
 
-- [ ] **Step 6: Update developer documentation**
+- [x] **Step 6: Update developer documentation**
 
 Document the single-message local test, the clickable selection behavior, the
 Workers terminal, the provisional-source state, the 30-day price policy, and
 the warm replay command. Do not add credentials or sample data.
 
-- [ ] **Step 7: Run the complete verification suite and commit**
+- [x] **Step 7: Run the complete verification suite and commit**
 
 ```bash
 (cd apps/api-go && go test ./...)

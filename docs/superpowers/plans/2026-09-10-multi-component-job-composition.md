@@ -43,11 +43,11 @@
 
 **Steps:**
 
-- [ ] Write the canonical vehicle/job examples and explicitly state the single-technician labor basis.
-- [ ] Add fixture records where every labor operation has a stable key and evidence locator.
-- [ ] Add fixture assertions for the expected union total: standalone hours 4.5, shared overlap 0.75, combined total 3.75.
-- [ ] Run the focused fixture/schema tests and observe the expected failure because the job-plan contract and calculator do not yet exist.
-- [ ] Commit only the specification and fixture paths with `docs: specify multi-component job composition`.
+- [x] Write the canonical vehicle/job examples and explicitly state the single-technician labor basis.
+- [x] Add fixture records where every labor operation has a stable key and evidence locator.
+- [x] Add fixture assertions for the expected union total: standalone hours 4.5, shared overlap 0.75, combined total 3.75.
+- [x] Run the focused fixture/schema tests and observe the expected failure because the job-plan contract and calculator do not yet exist.
+- [x] Commit only the specification and fixture paths with `docs: specify multi-component job composition`.
 
 **Verification:**
 
@@ -83,12 +83,12 @@ The first run is expected to fail with the missing test/module error; the tests 
 
 **Steps:**
 
-- [ ] Add the enums and object definitions to the canonical JSON source without adding new required fields to existing contracts.
-- [ ] Add the new subjects and required-field lists.
-- [ ] Regenerate both language bindings with the repository generator; never edit generated files by hand.
-- [ ] Add tests for enum membership, required-field membership, backward-compatible existing contracts, and Go/Python generated parity.
-- [ ] Run `python3 scripts/contracts/test_contracts.py` and `go test ./packages/contracts/go`.
-- [ ] Commit only contract source, generated bindings, and contract tests with `feat: define job plan contracts`.
+- [x] Add the enums and object definitions to the canonical JSON source without adding new required fields to existing contracts.
+- [x] Add the new subjects and required-field lists.
+- [x] Regenerate both language bindings with the repository generator; never edit generated files by hand.
+- [x] Add tests for enum membership, required-field membership, backward-compatible existing contracts, and Go/Python generated parity.
+- [x] Run `python3 scripts/contracts/test_contracts.py` and `go test ./packages/contracts/go`.
+- [x] Commit only contract source, generated bindings, and contract tests with `feat: define job plan contracts`.
 
 ## Task 3: Define the Python domain types and strict validators
 
@@ -112,11 +112,11 @@ The first run is expected to fail with the missing test/module error; the tests 
 
 **Steps:**
 
-- [ ] Write failing tests for valid alternator/starter models, malformed operations, dependency cycles, invalid evidence, unsupported parallelism, and stable JSON serialization.
-- [ ] Run the focused tests and capture the expected missing-model failure.
-- [ ] Implement immutable models and validators with explicit error codes.
-- [ ] Re-run the focused tests until they pass.
-- [ ] Commit only model/validator files with `feat: add job plan domain validation`.
+- [x] Write failing tests for valid alternator/starter models, malformed operations, dependency cycles, invalid evidence, unsupported parallelism, and stable JSON serialization.
+- [x] Run the focused tests and capture the expected missing-model failure.
+- [x] Implement immutable models and validators with explicit error codes.
+- [x] Re-run the focused tests until they pass.
+- [x] Commit only model/validator files with `feat: add job plan domain validation`.
 
 ## Task 4: Build constrained natural-language intent resolution
 
@@ -138,11 +138,11 @@ The first run is expected to fail with the missing test/module error; the tests 
 
 **Steps:**
 
-- [ ] Add failing tests for explicit parsing, aliases such as `alt`, natural-language component lists, ambiguous vehicle text, invalid LLM JSON, candidate outside the deterministic set, and provider failure.
-- [ ] Run `python3 -m pytest workers/ingestion-python/tests/test_job_intent.py workers/ingestion-python/tests/test_mercury2.py` and observe the missing adapter failure.
-- [ ] Implement deterministic parsing and the constrained Mercury-2 adapter.
-- [ ] Validate all model output before it can reach retrieval or persistence.
-- [ ] Re-run the focused tests and commit with `feat: resolve natural language job intent`.
+- [x] Add failing tests for explicit parsing, aliases such as `alt`, natural-language component lists, ambiguous vehicle text, invalid LLM JSON, candidate outside the deterministic set, and provider failure.
+- [x] Run `python3 -m pytest workers/ingestion-python/tests/test_job_intent.py workers/ingestion-python/tests/test_mercury2.py` and observe the missing adapter failure.
+- [x] Implement deterministic parsing and the constrained Mercury-2 adapter.
+- [x] Validate all model output before it can reach retrieval or persistence.
+- [x] Re-run the focused tests and commit with `feat: resolve natural language job intent`.
 
 ## Task 5: Add vehicle-scoped component article selection
 
@@ -169,11 +169,11 @@ The first run is expected to fail with the missing test/module error; the tests 
 
 **Steps:**
 
-- [ ] Add failing tests for exact vehicle matches, engine/configuration disambiguation, similar-article deduplication, missing component, stale article, and evidence-less article rejection.
-- [ ] Add failing materializer tests for article-list capture, individual article capture, multi-record response materialization, exact replay idempotency, content-hash deduplication, near-duplicate review, and source-term quarantine.
-- [ ] Run the focused selector/materializer/index tests and observe the expected missing selector/materializer behavior.
-- [ ] Implement selection, ranking, cache-miss delegation, and universal source read-through materialization.
-- [ ] Re-run the focused tests and commit with `feat: select and materialize vehicle job articles`.
+- [x] Add failing tests for exact vehicle matches, engine/configuration disambiguation, similar-article deduplication, missing component, stale article, and evidence-less article rejection.
+- [x] Add failing materializer tests for article-list capture, individual article capture, multi-record response materialization, exact replay idempotency, content-hash deduplication, near-duplicate review, and source-term quarantine.
+- [x] Run the focused selector/materializer/index tests and observe the expected missing selector/materializer behavior.
+- [x] Implement selection, ranking, cache-miss delegation, and universal source read-through materialization.
+- [x] Re-run the focused tests and commit with `feat: select and materialize vehicle job articles`.
 
 ## Task 6: Implement the deterministic overlap-aware labor calculator
 
@@ -208,11 +208,11 @@ The first run is expected to fail with the missing test/module error; the tests 
 
 **Steps:**
 
-- [ ] Write the failing test matrix before implementation.
-- [ ] Run `python3 -m pytest workers/ingestion-python/tests/test_labor_calculator.py` and observe the expected missing module failure.
-- [ ] Implement operation normalization, graph union, topological ordering, decimal arithmetic, and review conditions.
-- [ ] Re-run tests and assert all operation-level evidence survives serialization.
-- [ ] Commit with `feat: calculate overlap-aware job labor`.
+- [x] Write the failing test matrix before implementation.
+- [x] Run `python3 -m pytest workers/ingestion-python/tests/test_labor_calculator.py` and observe the expected missing module failure.
+- [x] Implement operation normalization, graph union, topological ordering, decimal arithmetic, and review conditions.
+- [x] Re-run tests and assert all operation-level evidence survives serialization.
+- [x] Commit with `feat: calculate overlap-aware job labor`.
 
 ## Task 7: Implement evidence-bounded procedure composition
 
@@ -236,10 +236,10 @@ The first run is expected to fail with the missing test/module error; the tests 
 
 **Steps:**
 
-- [ ] Write failing tests for a valid combined procedure, shared-step deduplication, source evidence propagation, hallucinated evidence IDs, unsupported torque/tool claims, contradictory source steps, and LLM outage fallback.
-- [ ] Run the focused tests and observe the expected missing composer failure.
-- [ ] Implement bounded prompt construction, response parsing, deterministic validation, and safe fallback.
-- [ ] Re-run tests and commit with `feat: compose evidence-backed job procedures`.
+- [x] Write failing tests for a valid combined procedure, shared-step deduplication, source evidence propagation, hallucinated evidence IDs, unsupported torque/tool claims, contradictory source steps, and LLM outage fallback.
+- [x] Run the focused tests and observe the expected missing composer failure.
+- [x] Implement bounded prompt construction, response parsing, deterministic validation, and safe fallback.
+- [x] Re-run tests and commit with `feat: compose evidence-backed job procedures`.
 
 ## Task 8: Persist job plans and operation provenance
 
@@ -266,12 +266,12 @@ The first run is expected to fail with the missing test/module error; the tests 
 
 **Steps:**
 
-- [ ] Add failing migration tests for table presence, enum/check constraints, unique idempotency key, result immutability, evidence linkage, and cascade behavior that preserves audit history.
-- [ ] Add migration tests proving a source list and later article body are separately auditable, an exact replay does not create another normalized article, and a composed article has a new ID plus lineage to each source article/evidence record.
-- [ ] Run the migration tests and observe the expected missing migration failure.
-- [ ] Implement the migration with forward-only, idempotent statements matching repository migration conventions.
-- [ ] Implement insert/read/replay persistence methods with transaction boundaries around source materialization, plan creation, derived-article revision creation, and result publication.
-- [ ] Re-run migration and persistence tests; commit with `feat: persist multi-component job plans`.
+- [x] Add failing migration tests for table presence, enum/check constraints, unique idempotency key, result immutability, evidence linkage, and cascade behavior that preserves audit history.
+- [x] Add migration tests proving a source list and later article body are separately auditable, an exact replay does not create another normalized article, and a composed article has a new ID plus lineage to each source article/evidence record.
+- [x] Run the migration tests and observe the expected missing migration failure.
+- [x] Implement the migration with forward-only, idempotent statements matching repository migration conventions.
+- [x] Implement insert/read/replay persistence methods with transaction boundaries around source materialization, plan creation, derived-article revision creation, and result publication.
+- [x] Re-run migration and persistence tests; commit with `feat: persist multi-component job plans`.
 
 ## Task 9: Add the internal worker job-plan request path
 
@@ -296,10 +296,10 @@ The first run is expected to fail with the missing test/module error; the tests 
 
 **Steps:**
 
-- [ ] Write failing HTTP and runtime tests for validation, idempotency, warm hit, cold miss, source fallback, review outcome, retryable error, and duplicate delivery.
-- [ ] Run the focused tests and observe the expected missing route/orchestrator failure.
-- [ ] Implement dispatch and orchestration behind injected interfaces for source resolver, article selector, LLM client, calculator, composer, and persistence.
-- [ ] Re-run tests and commit with `feat: orchestrate job plan fulfillment`.
+- [x] Write failing HTTP and runtime tests for validation, idempotency, warm hit, cold miss, source fallback, review outcome, retryable error, and duplicate delivery.
+- [x] Run the focused tests and observe the expected missing route/orchestrator failure.
+- [x] Implement dispatch and orchestration behind injected interfaces for source resolver, article selector, LLM client, calculator, composer, and persistence.
+- [x] Re-run tests and commit with `feat: orchestrate job plan fulfillment`.
 
 ## Task 10: Add Go API endpoints and authorization behavior
 
@@ -343,10 +343,10 @@ The response is `202` for processing, `200` for a warm ready/review result, and 
 
 **Steps:**
 
-- [ ] Add failing tests for unauthenticated, forbidden, missing/revoked entitlement, malformed body, missing idempotency key, warm `200`, cold `202`, `needs_review`, `failed`, and duplicate requests.
-- [ ] Run `go test ./apps/api-go` and observe the expected missing handler/interface failures.
-- [ ] Implement the handler, request validation, proxying, status mapping, and response-size bounds using current API conventions.
-- [ ] Re-run Go tests and commit with `feat: expose job plan API`.
+- [x] Add failing tests for unauthenticated, forbidden, missing/revoked entitlement, malformed body, missing idempotency key, warm `200`, cold `202`, `needs_review`, `failed`, and duplicate requests.
+- [x] Run `go test ./apps/api-go` and observe the expected missing handler/interface failures.
+- [x] Implement the handler, request validation, proxying, status mapping, and response-size bounds using current API conventions.
+- [x] Re-run Go tests and commit with `feat: expose job plan API`.
 
 ## Task 11: Add NATS subjects, retry, and dead-letter delivery
 
@@ -369,10 +369,10 @@ The response is `202` for processing, `200` for a warm ready/review result, and 
 
 **Steps:**
 
-- [ ] Write failing tests for exact event envelope, idempotent duplicate, retryable error, permanent review, max delivery count, and secret-free dead-letter payload.
-- [ ] Run the consumer tests and observe the expected missing consumer failure.
-- [ ] Implement the JetStream consumer and dead-letter publisher using existing knowledge-fallback delivery patterns.
-- [ ] Re-run tests and commit with `feat: add durable job plan delivery`.
+- [x] Write failing tests for exact event envelope, idempotent duplicate, retryable error, permanent review, max delivery count, and secret-free dead-letter payload.
+- [x] Run the consumer tests and observe the expected missing consumer failure.
+- [x] Implement the JetStream consumer and dead-letter publisher using existing knowledge-fallback delivery patterns.
+- [x] Re-run tests and commit with `feat: add durable job plan delivery`.
 
 ## Task 12: Add the warm-path performance and consistency layer
 
@@ -394,10 +394,10 @@ The response is `202` for processing, `200` for a warm ready/review result, and 
 
 **Steps:**
 
-- [ ] Write failing tests that execute the same request twice and assert one cold calculation, zero second-call LLM/source calls, identical result/evidence, and a faster second response.
-- [ ] Run the benchmark test and observe the expected missing cache/benchmark failure.
-- [ ] Implement fingerprint lookup and warm-path short-circuiting.
-- [ ] Re-run tests and commit with `perf: add job plan warm path`.
+- [x] Write failing tests that execute the same request twice and assert one cold calculation, zero second-call LLM/source calls, identical result/evidence, and a faster second response.
+- [x] Run the benchmark test and observe the expected missing cache/benchmark failure.
+- [x] Implement fingerprint lookup and warm-path short-circuiting.
+- [x] Re-run tests and commit with `perf: add job plan warm path`.
 
 ## Task 13: Add end-to-end local fixtures and operational documentation
 
@@ -425,10 +425,10 @@ The response is `202` for processing, `200` for a warm ready/review result, and 
 
 **Steps:**
 
-- [ ] Add the deterministic fake source, fake payment/entitlement setup, fake Mercury-2 response, and database/NATS/MinIO harness wiring.
-- [ ] Run the smoke test against the local Compose stack and capture HTTP status, result JSON, operation totals, evidence IDs, retry count, dead-letter count, and warm-path call counts.
-- [ ] Run all Go tests, all ingestion tests, all enrichment tests, migration validation, and contract generation checks.
-- [ ] Commit the smoke harness and documentation with `test: verify multi-component job planning flow`.
+- [x] Add the deterministic fake source, fake payment/entitlement setup, fake Mercury-2 response, and database/NATS/MinIO harness wiring.
+- [x] Run the smoke test against the local Compose stack and capture HTTP status, result JSON, operation totals, evidence IDs, retry count, dead-letter count, and warm-path call counts.
+- [x] Run all Go tests, all ingestion tests, all enrichment tests, migration validation, and contract generation checks.
+- [x] Commit the smoke harness and documentation with `test: verify multi-component job planning flow`.
 
 ## Task 14: Final review and delivery checks
 
@@ -438,17 +438,17 @@ The response is `202` for processing, `200` for a warm ready/review result, and 
 
 **Checks:**
 
-- [ ] Run `git status --short` and confirm the user-provided `sample data/` directory remains unstaged and all other changes are intentional.
-- [ ] Perform a placeholder-marker and internal-artifact-name scan over the changed documentation and implementation paths; remove any unresolved planning placeholders or accidental internal artifact names.
-- [ ] Verify every job-plan status is defined in the canonical contract and used consistently by Go, Python, persistence, and documentation.
-- [ ] Verify the fast/warm path never waits on deep-lane enrichment and a deep-lane failure cannot revoke a valid viewable revision.
-- [ ] Verify every operation and procedure fact has evidence or an explicit derived/review marker.
-- [ ] Verify all handlers have idempotency, retry, and dead-letter tests.
-- [ ] Verify API section/readiness output includes job-plan status, labor result status, procedure status, source watermark, and review reasons.
-- [ ] Verify entitlement, refund/revocation, source takedown, correction, and prior-revision audit behavior.
-- [ ] Verify no secret appears in source, fixtures, logs, generated artifacts, commits, or dead-letter payloads.
-- [ ] Run the complete local test matrix and record exact command output and exit codes.
-- [ ] Review `git diff --stat` and `git diff --check`.
+- [x] Run `git status --short` and confirm the user-provided `sample data/` directory remains unstaged and all other changes are intentional.
+- [x] Perform a placeholder-marker and internal-artifact-name scan over the changed documentation and implementation paths; remove any unresolved planning placeholders or accidental internal artifact names.
+- [x] Verify every job-plan status is defined in the canonical contract and used consistently by Go, Python, persistence, and documentation.
+- [x] Verify the fast/warm path never waits on deep-lane enrichment and a deep-lane failure cannot revoke a valid viewable revision.
+- [x] Verify every operation and procedure fact has evidence or an explicit derived/review marker.
+- [x] Verify all handlers have idempotency, retry, and dead-letter tests.
+- [x] Verify API section/readiness output includes job-plan status, labor result status, procedure status, source watermark, and review reasons.
+- [x] Verify entitlement, refund/revocation, source takedown, correction, and prior-revision audit behavior.
+- [x] Verify no secret appears in source, fixtures, logs, generated artifacts, commits, or dead-letter payloads.
+- [x] Run the complete local test matrix and record exact command output and exit codes.
+- [x] Review `git diff --stat` and `git diff --check`.
 - [ ] Stage only intentional task paths, inspect `git diff --cached --name-only`, commit, push the completed implementation branch, and verify the remote SHA if the user authorizes implementation execution.
 
 ## Expected implementation outcome
