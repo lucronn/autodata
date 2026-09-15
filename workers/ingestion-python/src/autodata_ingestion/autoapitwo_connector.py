@@ -71,20 +71,32 @@ class ArticleParser(HTMLParser):
 
 
 class AutoAPITwoConnector:
-    def __init__(self, base_url="https://autoapitwo.vercel.app", *, opener=None, timeout=25, max_bytes=8_000_000, cache_entries=128, cache_ttl=300):
+    def __init__(
+        self,
+        base_url="https://autoapitwo.vercel.app",
+        *,
+        opener=None,
+        timeout=25,
+        max_bytes=8_000_000,
+        cache_entries=128,
+        cache_ttl=300,
+        retry_attempts=3,
+        retry_delay=0.25,
+        retry_after_cap=2.0,
+    ):
         parsed = urlsplit(base_url)
         if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
             raise ValueError("source base must be an HTTPS origin")
-        if min(timeout, max_bytes, cache_entries, cache_ttl) <= 0:
+        if min(timeout, max_bytes, cache_entries, cache_ttl, retry_attempts) <= 0 or retry_delay < 0 or retry_after_cap < 0:
             raise ValueError("source limits must be positive")
         self.base = base_url.rstrip("/")
         self.opener = opener or build_opener(_NoRedirect()).open
         self.timeout, self.max_bytes = timeout, max_bytes
         self.cache_entries, self.cache_ttl = cache_entries, cache_ttl
+        self.retry_attempts, self.retry_delay, self.retry_after_cap = retry_attempts, retry_delay, retry_after_cap
         self._cache = OrderedDict()
         # Serialize source reads to bound upstream load and coalesce identical misses.
         self._lock = RLock()
-        self._retry_at = 0.0
 
     def safe_url(self, href, car_id=None):
         url = urljoin(self.base + "/", href)
@@ -107,38 +119,47 @@ class AutoAPITwoConnector:
         url = self.safe_url(href, car_id)
         key = (url, binary)
         with self._lock:
-            now = time.monotonic()
             cached = self._cache.get(key)
-            if cached and cached[0] > now:
+            if cached and cached[0] > time.monotonic():
                 self._cache.move_to_end(key)
                 return deepcopy(cached[1])
-            if now < self._retry_at:
-                raise SourceUnavailable("source rate limited; retry later")
-            try:
-                with self.opener(Request(url, headers={"Accept": "image/*" if binary else "application/json"}), timeout=self.timeout) as response:
-                    if hasattr(response, "geturl") and response.geturl() != url:
-                        raise SourceUnavailable("unexpected source redirect")
-                    raw = response.read(self.max_bytes + 1)
-                    if len(raw) > self.max_bytes:
-                        raise SourceUnavailable("source response exceeds size limit")
-                    result = raw if binary else json.loads(raw)
-            except Exception as error:
-                if getattr(error, "code", None) in {429, 503}:
-                    value = error.headers.get("Retry-After", "30")
-                    try:
-                        delay = max(1, float(value))
-                    except (ValueError, TypeError):
-                        from email.utils import parsedate_to_datetime
-                        try:
-                            delay = max(1, parsedate_to_datetime(value).timestamp() - time.time())
-                        except Exception:
-                            delay = 30
-                    self._retry_at = time.monotonic() + delay
-                raise SourceUnavailable("repair source read failed") from error
+            for attempt in range(self.retry_attempts):
+                try:
+                    with self.opener(Request(url, headers={"Accept": "image/*" if binary else "application/json"}), timeout=self.timeout) as response:
+                        if hasattr(response, "geturl") and response.geturl() != url:
+                            raise SourceUnavailable("unexpected source redirect")
+                        raw = response.read(self.max_bytes + 1)
+                        if len(raw) > self.max_bytes:
+                            raise SourceUnavailable("source response exceeds size limit")
+                        result = raw if binary else json.loads(raw)
+                    break
+                except SourceUnavailable:
+                    raise
+                except Exception as error:
+                    status = getattr(error, "code", None)
+                    if status not in {429, 502, 503, 504} or attempt + 1 >= self.retry_attempts:
+                        raise SourceUnavailable("repair source read failed") from error
+                    delay = self._retry_delay(error, attempt)
+                    if delay:
+                        time.sleep(delay)
+            else:
+                raise SourceUnavailable("repair source read failed")
             self._cache[key] = (time.monotonic() + self.cache_ttl, result)
             while len(self._cache) > self.cache_entries:
                 self._cache.popitem(last=False)
             return deepcopy(result)
+
+    def _retry_delay(self, error, attempt):
+        """Return a small capped delay without exposing provider details."""
+        delay = self.retry_delay * (2**attempt)
+        headers = getattr(error, "headers", {}) or {}
+        retry_after = headers.get("Retry-After") if hasattr(headers, "get") else None
+        if retry_after is not None:
+            try:
+                delay = max(0.0, float(retry_after))
+            except (TypeError, ValueError):
+                pass
+        return min(self.retry_after_cap, delay)
 
     def search_vehicles(self, query):
         result = self.read('/api/v1/fleet/search/' + quote(str(query), safe=''))

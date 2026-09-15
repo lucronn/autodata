@@ -2,11 +2,57 @@ import io
 import json
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from urllib.error import HTTPError
 
 from autodata_ingestion.autoapitwo_connector import AutoAPITwoConnector, ArticleParser, SourceUnavailable
 
 
 class ConnectorTests(unittest.TestCase):
+    def test_transient_source_reads_are_retried_before_success(self):
+        calls = []
+
+        def opener(req, **kwargs):
+            calls.append(req.full_url)
+            if len(calls) < 3:
+                raise HTTPError(req.full_url, 502, "bad gateway", {}, io.BytesIO(b"upstream error"))
+            return io.BytesIO(b"figure-bytes")
+
+        client = AutoAPITwoConnector(opener=opener, retry_delay=0)
+        result = client.read(
+            "/api/v1/content/carids/1/images/figure.png",
+            car_id="1",
+            binary=True,
+        )
+
+        self.assertEqual(result, b"figure-bytes")
+        self.assertEqual(len(calls), 3)
+
+    def test_persistent_transient_source_failure_is_bounded(self):
+        calls = []
+
+        def opener(req, **kwargs):
+            calls.append(req.full_url)
+            raise HTTPError(req.full_url, 503, "unavailable", {}, io.BytesIO())
+
+        client = AutoAPITwoConnector(opener=opener, retry_attempts=3, retry_delay=0)
+        with self.assertRaises(SourceUnavailable):
+            client.read("/api/v1/content/carids/1/images/figure.png", car_id="1", binary=True)
+
+        self.assertEqual(len(calls), 3)
+
+    def test_non_transient_source_failure_is_not_retried(self):
+        calls = []
+
+        def opener(req, **kwargs):
+            calls.append(req.full_url)
+            raise HTTPError(req.full_url, 404, "not found", {}, io.BytesIO())
+
+        client = AutoAPITwoConnector(opener=opener, retry_attempts=3, retry_delay=0)
+        with self.assertRaises(SourceUnavailable):
+            client.read("/api/v1/content/carids/1/images/figure.png", car_id="1", binary=True)
+
+        self.assertEqual(len(calls), 1)
+
     def test_rejects_unsafe_links_and_vehicle_mismatch(self):
         client = AutoAPITwoConnector()
         for url in ['https://evil.test/api/v1/content/carids/1/a', '/api/v1/session', '/api/v1/content/carids/2/a', '/api/v1/content/carids/1/%2e%2e/account']:
