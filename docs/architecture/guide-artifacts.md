@@ -81,3 +81,28 @@ containers must be rebuilt from the checked-out revision, and the exact
 Silverado request must be exercised in the browser with the canonical vehicle
 label, Workers terminal progress, and a visible procedure/quote result
 verified. User-owned `output/`, `sample data/`, and `tmp/` remain local-only.
+
+## Follow-up: source-authored procedure fidelity
+
+The warm derived-answer cache must not treat a composed record containing only
+generated operation labels such as `Replace oil pump` as a complete procedure.
+When a selected operation has no meaningful source-authored instruction or
+source evidence, the cache lookup falls through to the narrow source path so
+the selected AutoAPI article body/steps and labor are rehydrated. The current
+answer remains available while that work runs; it is labeled provisional or
+needs review rather than presented as a finished repair procedure.
+
+The canonical procedure projection preserves the source instruction order (or
+an explicit dependency order for shared work), phase, source article IDs,
+evidence IDs, source URI, and content watermark. It may consolidate shared
+operations for labor arithmetic, but it may not replace source instructions
+with generic labels or invent warnings, torque values, installation steps, or
+other repair facts. If the source does not provide instructional content, the
+response exposes `procedure_content_unavailable` and keeps the gap visible.
+
+This work is tracked in [Issue #101](https://github.com/lucronn/autodata/issues/101)
+and the [source-fidelity plan](../superpowers/plans/2026-09-15-source-fidelity-procedure-hydration.md).
+The Project #8 item is an index to that canonical plan, not a competing source
+of technical truth. Acceptance requires a rebuilt local Compose service and a
+browser run of the RAV4 multi-component request that visibly shows source
+instructions and the correlated Workers terminal.
