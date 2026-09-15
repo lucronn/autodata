@@ -59,7 +59,9 @@ no longer pull that namespace. `AUTODATA_MINIO_IMAGE` remains an explicit
 override for a private or provider-managed registry; deployments should use a
 reviewed immutable release tag or digest rather than `latest`. This registry
 choice does not change the S3-compatible API, bucket contract, health check,
-or secret-management boundary.
+or secret-management boundary. The correction was delivered to protected
+`master` by PR #94 at `defec080f925e97ce3bd9b785579817c572d5807`; required
+verification run `35004339067` passed on the PR head.
 
 The Go API uses the same PostgreSQL connection pool for purchaser-facing
 projection reads and dataset-request status when `AUTODATA_PROJECTION_STORE`
