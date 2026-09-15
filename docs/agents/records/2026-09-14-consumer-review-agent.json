@@ -1,0 +1,15 @@
+{
+  "goal": "Exercise the live chat experience as a consumer, score responses, retain safe review records, and create deduplicated issues for reproducible findings",
+  "plan_ref": "docs/superpowers/plans/2026-09-14-consumer-review-agent.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/89",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": ["docs/architecture/consumer-review-agent.md"],
+  "todo": [
+    "Register the consumer review agent and least-privilege report capability",
+    "Implement bounded chat transport, redacted response recording, and deterministic scoring",
+    "Create or reuse GitHub issues from stable findings without duplicates",
+    "Run the live multi-vehicle review matrix and reconcile every finding"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-09-14T22:00:00Z"
+}
