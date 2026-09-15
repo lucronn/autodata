@@ -20,7 +20,7 @@ repository `docs/` tree at the exact verified commit.
 ## Implementation evidence
 
 - **README and asset commit:** `3dcef0511ea4bd15ecc30923131c6981f575d44d`
-- **Repository-facing verification:** the README/Wiki source work matched origin at the recorded checkpoint (`3dcef0511ea4bd15ecc30923131c6981f575d44d`). Subsequent local release-hardening commits are ahead of origin and have not been pushed; the current exact head is recorded in the release evidence.
+- **Repository-facing verification:** the README/Wiki source work matched origin at the recorded checkpoint (`3dcef0511ea4bd15ecc30923131c6981f575d44d`). Subsequent local release-hardening commits are ahead of origin and have not been pushed; the current local head is `f0835c0fb2184d925dc54ab1340be675e3d5669d`.
 - **Local repository checks:** repository governance `6 passed`; pre-implementation validator `7 passed`; Markdown fence, local-link, secret, and redundant-image checks passed; replacement image inspected at `1942 x 809` PNG.
 - **GitHub repository branch:** `automation/knowledge-fallback-runtime` does not yet include the local release-hardening commits; no push has been performed.
 - **Wiki status:** GitHub Wiki is enabled but uninitialized. The four source pages are complete under `docs/wiki/`; publication requires saving the first Wiki page once in the GitHub UI, after which the Wiki Git remote can be cloned and updated.
