@@ -130,6 +130,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "from autodata_ingestion.worker import run_once; assert run_once()['status'] == 'idle'"]
 

@@ -522,6 +522,8 @@ func configuredReadiness() ReadinessChecker {
 	}
 }
 
+const defaultIngestionTimeoutSeconds = 120
+
 func main() {
 	address := envOrDefault("AUTODATA_API_ADDR", ":8080")
 	requestStore, projectionStore, cleanup, err := configuredStores(context.Background())
@@ -542,7 +544,7 @@ func main() {
 		client, err := NewHTTPIngestionClient(
 			endpoint,
 			os.Getenv("AUTODATA_INGESTION_INTERNAL_TOKEN"),
-			envDurationSeconds("AUTODATA_INGESTION_TIMEOUT_SECONDS", 30),
+			envDurationSeconds("AUTODATA_INGESTION_TIMEOUT_SECONDS", defaultIngestionTimeoutSeconds),
 		)
 		if err != nil {
 			log.Fatal(fmt.Errorf("configure ingestion client: %w", err))

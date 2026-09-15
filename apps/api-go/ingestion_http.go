@@ -15,6 +15,8 @@ import (
 )
 
 const maxIngestionProxyBytes = 8 << 20
+const maxGuidePDFAttempts = 3
+const guidePDFRetryDelay = 250 * time.Millisecond
 
 type IngestionClient interface {
 	Do(*http.Request, string, []byte, string) (int, []byte, error)
@@ -92,21 +94,37 @@ func (c *HTTPIngestionClient) GuidePDF(ctx context.Context, incoming *http.Reque
 	if err != nil {
 		return 0, nil, err
 	}
-	outgoing, err := c.newInternalRequest(requestContext(ctx, incoming), incoming, http.MethodGet, path, nil, "")
-	if err != nil {
-		return 0, nil, err
+	for attempt := 0; attempt < maxGuidePDFAttempts; attempt++ {
+		outgoing, err := c.newInternalRequest(requestContext(ctx, incoming), incoming, http.MethodGet, path, nil, "")
+		if err != nil {
+			return 0, nil, err
+		}
+		outgoing.Header.Set("Accept", "application/pdf")
+		result, err := c.client.Do(outgoing)
+		if err != nil {
+			return 0, nil, err
+		}
+		body, readErr := io.ReadAll(io.LimitReader(result.Body, maxIngestionProxyBytes+1))
+		result.Body.Close()
+		if readErr != nil || len(body) > maxIngestionProxyBytes {
+			return 0, nil, fmt.Errorf("guide PDF exceeds the configured limit")
+		}
+		if !isTransientGuidePDFStatus(result.StatusCode) || attempt == maxGuidePDFAttempts-1 {
+			return result.StatusCode, body, nil
+		}
+		timer := time.NewTimer(guidePDFRetryDelay)
+		select {
+		case <-requestContext(ctx, incoming).Done():
+			timer.Stop()
+			return 0, nil, requestContext(ctx, incoming).Err()
+		case <-timer.C:
+		}
 	}
-	outgoing.Header.Set("Accept", "application/pdf")
-	result, err := c.client.Do(outgoing)
-	if err != nil {
-		return 0, nil, err
-	}
-	defer result.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(result.Body, maxIngestionProxyBytes+1))
-	if err != nil || len(body) > maxIngestionProxyBytes {
-		return 0, nil, fmt.Errorf("guide PDF exceeds the configured limit")
-	}
-	return result.StatusCode, body, nil
+	return 0, nil, fmt.Errorf("guide PDF retry limit reached")
+}
+
+func isTransientGuidePDFStatus(status int) bool {
+	return status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
 }
 
 func (c *HTTPIngestionClient) Events(ctx context.Context, incoming *http.Request, queryID, lastEventID string) (io.ReadCloser, error) {

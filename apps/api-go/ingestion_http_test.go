@@ -144,3 +144,46 @@ func TestHTTPIngestionClientAcceptsBoundedSourceFallbackResponse(t *testing.T) {
 		t.Fatalf("status/body length = %d/%d, want %d/%d", status, len(body), http.StatusOK, len(largeSource))
 	}
 }
+
+func TestHTTPIngestionClientRetriesTransientGuidePDFResponse(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requestCount++
+		if request.URL.Path != "/v1/chat/queries/q-pdf/guide.pdf" {
+			t.Fatalf("path = %q, want guide PDF path", request.URL.Path)
+		}
+		if requestCount == 1 {
+			response.WriteHeader(http.StatusBadGateway)
+			_, _ = response.Write([]byte(`{"error":"transient"}`))
+			return
+		}
+		response.Header().Set("Content-Type", "application/pdf")
+		_, _ = response.Write([]byte("%PDF-test"))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPIngestionClient(server.URL, "", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body, err := client.GuidePDF(
+		context.Background(),
+		httptest.NewRequest(http.MethodGet, "/chat/queries/q-pdf/guide.pdf", nil),
+		"q-pdf",
+	)
+	if err != nil {
+		t.Fatalf("guide PDF failed: %v", err)
+	}
+	if status != http.StatusOK || string(body) != "%PDF-test" {
+		t.Fatalf("status/body = %d/%q, want 200/PDF", status, body)
+	}
+	if requestCount != 2 {
+		t.Fatalf("request count = %d, want one retry", requestCount)
+	}
+}
+
+func TestDefaultIngestionTimeoutSupportsGuidePDFGeneration(t *testing.T) {
+	if defaultIngestionTimeoutSeconds < 120 {
+		t.Fatalf("default ingestion timeout = %d seconds, want at least 120", defaultIngestionTimeoutSeconds)
+	}
+}
