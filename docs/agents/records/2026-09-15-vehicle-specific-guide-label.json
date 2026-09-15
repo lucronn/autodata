@@ -14,7 +14,7 @@
     "Re-run the five-case live consumer matrix and verify vehicle-specific PDF applicability",
     "Record hashes and reconcile Issue #85 and canonical documentation"
   ],
-  "base_sha": "376ad33",
+  "base_sha": "5361eb66a81e2a3514e95f122086ef4efbf02735",
   "status": "synchronized",
   "updated_at": "2026-09-15T04:45:00Z"
 }
