@@ -6,8 +6,8 @@ Plan: ../superpowers/plans/2026-09-14-consumer-review-agent.md
 
 ## Current release status — 2026-09-15
 
-The current local implementation is `41d54acc12491222075dc44ff7906e355e35fc7c`.
-The independent five-case live consumer matrix passes 5/5, with all six
+The independent five-case live consumer matrix passes 5/5 at application
+implementation `7a4cb33ae2337bf1807144756bb5ccd735d7e480`, with all six
 rubric dimensions passing, no findings, and revision-matched PDFs. The cases
 cover two RAV4 variants, a Camry starter, a Forester SOHC water pump, and a
 Civic front caliper. A separate uncached 4-door RAV4 checkpoint also passed
