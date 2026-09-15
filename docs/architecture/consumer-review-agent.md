@@ -53,6 +53,29 @@ text scan found no generic figure-caption placeholder. Issue #92 is ready to
 close; technician review of automotive content remains separately tracked in
 Issue #85.
 
+## Tracked presentation repair — provider summary artifacts
+
+[Issue #93](https://github.com/lucronn/autodata/issues/93) tracks a second
+consumer-facing defect found during the caption-fix recheck: truncated
+`phase: procedure` summaries with literal ellipses and provider-only
+references such as `Refer to Figs...` appear after the detailed procedure.
+These rows are not consumer-ready instructions. The repair must suppress only
+ellipsized/provider summaries without instructions or figures, while preserving
+source-backed removal and installation steps, concise structured procedure
+steps, figures, evidence, and revision parity.
+
+Plan: ../superpowers/plans/2026-09-15-consumer-summary-filter.md
+
+Todo:
+
+- Add a regression for summary-artifact omission and preservation of valid
+  procedure steps.
+- Implement the consumer-summary filter.
+- Re-run full tests and the five-case live consumer matrix.
+- Verify consumer response and PDF output, including representative rendered
+  pages and final installation/check coverage.
+- Record hashes and reconcile Issue #93 after fresh evidence passes.
+
 The `autodata-consumer-agent` is a release-readiness evaluator for the public
 chat experience. It calls the chat HTTP boundary with real consumer prompts,
 resolves vehicle choices when required, waits for the persisted answer, and
