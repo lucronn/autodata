@@ -16,6 +16,21 @@
     "Reconcile Issue #92 only after fresh evidence passes"
   ],
   "base_sha": "e7a1619dc529f8aba471894d39e7902072cbad3c",
+  "verification": {
+    "implementation_sha": "f289c8fe81a5ca546e6e53ab64623cbc4f3dac85",
+    "report_path": "tmp/consumer-review-live/pdf-caption-fix-v2/consumer-review-5be2f4fa5d5976c2bd260bf0.json",
+    "report_sha256": "12c67c1fe3cc906456b466595763cc485d9bd905e6eddd90d655b53cf2438cd2",
+    "decision": "pass",
+    "summary": {"case_count": 5, "pass": 5, "fail": 0, "needs_review": 0, "blocked": 0},
+    "pdf_caption_scan": "pass: all five revision-matched PDFs omitted generic captions and retained embedded figures",
+    "pdf_sha256": {
+      "rav4-4wd-2door-four-component": "980cf4808a726d122b57ccc63b042ba5a8ffc0f2bde7551b7656db02eefb22a8",
+      "rav4-oil-water-pumps": "5afe61e25cf3d2d3dc7d140231baf84a8a48ec883a3aac9da5de9e7a44ada3c5",
+      "camry-starter": "0ed255a35d53cd30347001f11ed0975f9756a787fb9be3af7657c32f49c853ff",
+      "forester-sohc-water-pump": "a496f5f73959de65f53743f7e958bfb602c8b06fed4d0fa49b1f50873cbbd697",
+      "civic-lx-front-caliper": "62281d1a5dfc8775b8302abb3472eb03c01779417806bf97f2bed3f541d42c"
+    }
+  },
   "status": "synchronized",
-  "updated_at": "2026-09-15T03:45:30Z"
+  "updated_at": "2026-09-15T04:01:00Z"
 }

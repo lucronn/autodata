@@ -43,6 +43,16 @@ Todo:
 - Re-run the affected live consumer case and record report/PDF hashes.
 - Reconcile Issue #92 only after fresh evidence passes.
 
+All six items are complete at application commit
+`f289c8fe81a5ca546e6e53ab64623cbc4f3dac85`. The fresh five-case report is
+`tmp/consumer-review-live/pdf-caption-fix-v2/consumer-review-5be2f4fa5d5976c2bd260bf0.json`
+with SHA-256
+`12c67c1fe3cc906456b466595763cc485d9bd905e6eddd90d655b53cf2438cd2`.
+Each case passed, each PDF hash matched the consumer report, and a direct
+text scan found no generic figure-caption placeholder. Issue #92 is ready to
+close; technician review of automotive content remains separately tracked in
+Issue #85.
+
 The `autodata-consumer-agent` is a release-readiness evaluator for the public
 chat experience. It calls the chat HTTP boundary with real consumer prompts,
 resolves vehicle choices when required, waits for the persisted answer, and

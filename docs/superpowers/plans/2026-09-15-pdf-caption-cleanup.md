@@ -24,16 +24,16 @@ procedure-completeness rubric.
 
 ## Concrete todo
 
-- Add a focused regression proving generic image labels are omitted from PDF
+- [x] Add a focused regression proving generic image labels are omitted from PDF
   text while meaningful captions remain available.
-- Implement caption filtering at the PDF rendering boundary.
-- Run focused PDF tests and the complete applicable worker/developer/API test
+- [x] Implement caption filtering at the PDF rendering boundary.
+- [x] Run focused PDF tests and the complete applicable worker/developer/API test
   suites.
-- Render representative first, middle, and final pages and inspect for
+- [x] Render representative first, middle, and final pages and inspect for
   clipping, spacing, image placement, and absence of generic caption artifacts.
-- Re-run the consumer agent against the affected RAV4 case and record the new
+- [x] Re-run the consumer agent against the affected RAV4 case and record the new
   report/PDF hashes in canonical documentation and Project #8.
-- Reconcile the finding in the GitHub Issue; do not close it until the fresh
+- [x] Reconcile the finding in the GitHub Issue; do not close it until the fresh
   rendered evidence passes.
 
 ## Verification contract
@@ -42,3 +42,16 @@ The repair is complete only when a complete guide with a generic image alt
 value produces a valid PDF whose extracted text does not contain that generic
 caption, a meaningful caption still renders, image objects remain embedded,
 and the live consumer review remains a pass with revision-matched PDF output.
+
+## Completed evidence
+
+The renderer fix is application commit
+`f289c8fe81a5ca546e6e53ab64623cbc4f3dac85`. The fresh five-case live report
+passed 5/5 with no findings at
+`tmp/consumer-review-live/pdf-caption-fix-v2/consumer-review-5be2f4fa5d5976c2bd260bf0.json`
+(SHA-256
+`12c67c1fe3cc906456b466595763cc485d9bd905e6eddd90d655b53cf2438cd2`).
+All five returned PDFs matched their report hashes, embedded figures remained
+present, and the generic-caption scan passed for every PDF. The representative
+RAV4 first, middle, and final pages were rendered and visually inspected with
+no caption, clipping, or placement defect found.
