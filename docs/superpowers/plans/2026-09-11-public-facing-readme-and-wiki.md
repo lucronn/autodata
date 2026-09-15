@@ -99,8 +99,8 @@
 - [x] Write `Architecture.md` as a concise map to the domain model, fast/deep lifecycle, contracts, infrastructure, and the single replacement visual.
 - [x] Write `Getting-Started.md` with the deterministic Compose path, dashboard URL, smoke-test intent, and links back to the full development guide.
 - [x] Write `Contributing.md` with the operating model, Issue/Project workflow, documentation source rule, pre-implementation gate, and secret-handling boundary.
-- [ ] Clone or initialize the GitHub Wiki repository only after confirming the target repository and authenticated identity; publish only the four requested pages. Blocked until GitHub's first Wiki page is saved in the web UI.
-- [ ] Verify that each published page is readable from the Wiki remote and that every repository-relative link resolves from the corresponding Wiki context or uses an absolute repository URL. Pending remote initialization.
+- [x] Clone or initialize the GitHub Wiki repository only after confirming the target repository and authenticated identity; publish only the four requested pages. The Wiki was initialized through the GitHub UI and only the requested pages were published.
+- [x] Verify that each published page is readable from the Wiki remote and that every repository-relative link resolves from the corresponding Wiki context or uses an absolute repository URL. Home, Architecture, Getting Started, and Contributing were read back successfully.
 
 ### Task 4: Verify the public-facing delivery and synchronize GitHub state
 
@@ -117,8 +117,12 @@
 - [x] Inspect the rendered README and replacement image, confirming the title, navigation, image count, local setup commands, and review-status disclaimer are all visible and accurate.
 - [x] Re-read the GitHub Issue and Project #8 item, update their status and exact commit/source references, and preserve the repository-docs-as-authority statement. The current README/asset evidence is recorded at `3dcef0511ea4bd15ecc30923131c6981f575d44d`.
 - [x] Commit only the requested README, asset, canonical docs, plan, and Wiki source paths; inspect `git diff --cached --name-only` before committing.
-- [x] Push the requested repository branch, verify the local SHA matches the remote SHA, and record the Wiki initialization blocker; remote Wiki page read-back remains pending.
+- [ ] Push the requested repository branch and verify the local SHA matches the remote SHA. This remains intentionally unperformed under the no-push boundary.
 
 ## Expected outcome
 
-The GitHub repository has a clear public front page with one intentional visual, the obsolete rough visual and redundant remote embed are gone, and the Wiki source provides a useful first-time path through AutoData while linking back to canonical repository documentation. Remote Wiki publication remains the single blocked follow-up until GitHub's first page is initialized.
+The local release branch has a clear public front page with one intentional
+visual, the obsolete rough visual and redundant remote embed are gone, and the
+published Wiki provides a useful first-time path through AutoData while linking
+back to canonical repository documentation. Remote repository README delivery
+remains pending because the branch has not been pushed.
