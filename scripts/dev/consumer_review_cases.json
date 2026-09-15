@@ -1,6 +1,15 @@
 {
   "cases": [
     {
+      "name": "rav4-4wd-2door-four-component",
+      "message": "1997 Toyota RAV4 2-door 4WD 2.0L oil pump, water pump, timing belt, and power steering pump replacement procedure",
+      "expected_vehicle": {"autoapitwo_vehicle_id": "41216"},
+      "expected_components": ["oil_pump", "water_pump", "timing_belt", "power_steering_pump"],
+      "min_steps": 50,
+      "min_figures": 10,
+      "required_terms": ["torque", "check"]
+    },
+    {
       "name": "rav4-oil-water-pumps",
       "message": "1997 Toyota RAV4 2-door 2WD 2.0L oil pump and water pump replacement",
       "expected_vehicle": {"autoapitwo_vehicle_id": "41215"},
