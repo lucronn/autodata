@@ -14,7 +14,7 @@
     "Verify consumer response and PDF output including representative rendered pages and final installation/check coverage",
     "Record hashes and reconcile Issue #93 after fresh evidence passes"
   ],
-  "base_sha": "cffce86fda5ad85431497be030e58b7dbc993fda",
+  "base_sha": "47c943d429016c096ef0c6cccb30546063fab430",
   "status": "synchronized",
   "updated_at": "2026-09-15T04:10:00Z"
 }
