@@ -65,6 +65,21 @@ class CombinedProcedureConnector(FakeConnector):
 
 
 class IllustratedGuideTests(unittest.TestCase):
+    def test_applicability_preserves_exact_selected_vehicle_label(self):
+        vehicle = {
+            "year": 1997,
+            "make": "Toyota",
+            "model": "RAV4",
+            "body_style": "2-door",
+            "drivetrain": "4WD",
+            "engine": 2.0,
+            "label": "1997 Toyota Truck RAV4 2-Door 4WD L4-2.0L (3S-FE)",
+        }
+
+        guide = compose_illustrated_guide("starter replacement", vehicle, [])
+
+        self.assertEqual(guide["applicability"], vehicle["label"])
+
     def test_ellipsized_provider_summary_is_omitted_but_concise_procedure_remains(self):
         articles = [
             {

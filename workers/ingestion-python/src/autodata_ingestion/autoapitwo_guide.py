@@ -232,6 +232,37 @@ def _text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
+def _vehicle_applicability(vehicle: Mapping[str, Any]) -> str:
+    """Return the most specific consumer-safe identity for the selected vehicle."""
+
+    label = _text(vehicle.get("label"))
+    if label:
+        return label
+
+    parts = [
+        _text(vehicle.get("year") or vehicle.get("model_year")),
+        _text(vehicle.get("make")),
+        _text(vehicle.get("model")),
+    ]
+    base = " ".join(part for part in parts if part)
+    base_casefold = base.casefold()
+    for value in (vehicle.get("body_style"), vehicle.get("drivetrain")):
+        detail = _text(value)
+        if detail and detail.casefold() not in base_casefold:
+            parts.append(detail)
+            base_casefold = f"{base_casefold} {detail.casefold()}"
+    raw_engine = vehicle.get("engine")
+    if isinstance(raw_engine, (int, float)) and not isinstance(raw_engine, bool):
+        engine = f"{raw_engine:g}L"
+    else:
+        engine = _text(raw_engine or vehicle.get("engine_displacement_l"))
+        if engine and re.fullmatch(r"\d+(?:\.\d+)?", engine):
+            engine = f"{engine}L"
+    if engine and engine.casefold() not in base_casefold:
+        parts.append(engine)
+    return " ".join(part for part in parts if part) or "Vehicle-specific procedure"
+
+
 def _step_action(text: str, component: str, kind: str) -> str:
     clean = _text(text)
     if clean:
@@ -374,7 +405,7 @@ def compose_illustrated_guide(
     public = {
         "title": " and ".join(_COMPONENT_TERMS.get(component, component.replace("_", " ")).title() for component in requested) + " Replacement Guide",
         "vehicle": dict(vehicle),
-        "applicability": f"{vehicle.get('year', vehicle.get('model_year', ''))} {vehicle.get('make', '')} {vehicle.get('model', '')}".strip(),
+        "applicability": _vehicle_applicability(vehicle),
         "preparation": ["Work on a cool vehicle, support it securely, and keep replacement seals, fluids, and basic hand tools ready."],
         "steps": steps,
         "warnings": warnings,
