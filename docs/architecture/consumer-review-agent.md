@@ -20,6 +20,29 @@ review of the stored source evidence and procedure content in [Issue #85](https:
 README delivery in [Issue #88](https://github.com/lucronn/autodata/issues/88)
 also remains blocked until the user explicitly authorizes a GitHub push.
 
+## Tracked presentation repair — generic PDF captions
+
+[Issue #92](https://github.com/lucronn/autodata/issues/92) tracks a
+consumer-facing PDF artifact found during visual review: source figures whose
+alt value is the generic word `image` are currently printed with that same
+placeholder as a caption. The repair is limited to the PDF presentation
+boundary. It must omit generic or empty captions, preserve meaningful captions,
+and leave image bytes, guide revisions, authorization, and the public response
+contract unchanged.
+
+Plan: ../superpowers/plans/2026-09-15-pdf-caption-cleanup.md
+
+Todo:
+
+- Add a regression for generic-caption omission and meaningful-caption
+  preservation.
+- Implement the PDF caption filter.
+- Re-run focused and full applicable test suites.
+- Render representative pages and verify the artifact is absent without layout
+  regressions.
+- Re-run the affected live consumer case and record report/PDF hashes.
+- Reconcile Issue #92 only after fresh evidence passes.
+
 The `autodata-consumer-agent` is a release-readiness evaluator for the public
 chat experience. It calls the chat HTTP boundary with real consumer prompts,
 resolves vehicle choices when required, waits for the persisted answer, and
