@@ -1,0 +1,20 @@
+{
+  "goal": "Repair the natural-language vehicle source-retrieval acceptance path and expose terminal failures in the public answer",
+  "plan_ref": "docs/superpowers/plans/2026-09-15-chat-source-failure.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/96",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/guide-artifacts.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add the natural-language for-a parser regression",
+    "Add the nested terminal source-failure projection regression",
+    "Implement filler handling and terminal answer-state publication",
+    "Rebuild local API and ingestion containers and rerun the exact browser flow",
+    "Synchronize the final commit, Issue #96, Project #8, and CI evidence"
+  ],
+  "base_sha": "b0331288f2c10d9cc1f03ef5b85a76c0c26882ef",
+  "status": "synchronized",
+  "updated_at": "2026-09-15T20:25:19Z"
+}
