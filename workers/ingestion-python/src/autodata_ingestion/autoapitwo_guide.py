@@ -70,11 +70,21 @@ def _vehicle_candidate(raw: Mapping[str, Any], index: int) -> dict[str, Any] | N
         return None
     body_match = re.search(r"\b(2|4)-Door\b", model_text, re.IGNORECASE)
     drive_match = re.search(r"\b(2WD|4WD)\b", model_text, re.IGNORECASE)
-    make = re.sub(r"\s+Truck$", "", str(raw.get("make") or "").strip(), flags=re.IGNORECASE)
+    raw_make = str(raw.get("make") or "").strip()
+    make = re.sub(r"\s+Truck$", "", raw_make, flags=re.IGNORECASE)
+    prose_make = re.fullmatch(r"For\s+(?:A|An|The)\s+(.+)", make, re.IGNORECASE)
+    if prose_make and prose_make.group(1).strip():
+        make = prose_make.group(1).strip()
     year = _number(raw.get("year"))
     if year is None or not make:
         return None
     candidate_key = f"autoapitwo:{provider_id}"
+    label = description or f"{year} {make} {model}"
+    if prose_make and description:
+        provider_prefix = re.compile(
+            rf"^\s*{year}\s+{re.escape(raw_make)}(?=\s|$)", re.IGNORECASE
+        )
+        label = provider_prefix.sub(f"{year} {make}", description, count=1)
     return {
         "vehicle_id": f"vehicle:{sha256(candidate_key.encode()).hexdigest()[:24]}",
         "candidate_key": candidate_key,
@@ -86,7 +96,7 @@ def _vehicle_candidate(raw: Mapping[str, Any], index: int) -> dict[str, Any] | N
         "body_style": body_match.group(1) + "-door" if body_match else None,
         "drivetrain": drive_match.group(1).upper() if drive_match else None,
         "engine_displacement_l": _engine_litres(raw.get("engine")),
-        "label": description or f"{year} {make} {model}",
+        "label": label,
         "confidence": 1.0,
     }
 
@@ -232,11 +242,15 @@ def _text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
+def _is_malformed_provider_label(label: str) -> bool:
+    return bool(re.match(r"^(?:19|20)\d{2}\s+For\s+(?:A|An|The)\s+", label, re.IGNORECASE))
+
+
 def _vehicle_applicability(vehicle: Mapping[str, Any]) -> str:
     """Return the most specific consumer-safe identity for the selected vehicle."""
 
     label = _text(vehicle.get("label"))
-    if label:
+    if label and not _is_malformed_provider_label(label):
         return label
 
     parts = [

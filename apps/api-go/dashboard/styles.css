@@ -260,8 +260,9 @@ textarea:focus { border-color: var(--signal); box-shadow: 0 0 0 3px rgb(242 164 
 .step-visuals { grid-column: 2; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 9px; }
 .step-visual { margin: 0; border: 1px solid var(--line); background: var(--surface); }
 .step-visual img { display: block; width: 100%; max-height: 280px; object-fit: contain; }
-.pdf-button { display: inline-flex; width: fit-content; gap: 9px; margin: 0 0 14px; border: 1px solid var(--cool); padding: 8px 10px; color: var(--cool); background: transparent; font-family: var(--mono); font-size: 10px; text-decoration: none; }
-.pdf-button:hover { border-color: var(--signal); color: var(--signal); }
+.guide-button, .pdf-button { display: inline-flex; width: fit-content; gap: 9px; margin: 0 0 14px; border: 1px solid var(--cool); padding: 8px 10px; color: var(--cool); background: transparent; font-family: var(--mono); font-size: 10px; text-decoration: none; }
+.html-button { border-color: var(--signal); color: var(--signal); }
+.guide-button:hover, .pdf-button:hover { border-color: var(--signal); color: var(--signal); }
 .step-meta { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px 13px; margin-top: 7px; color: var(--faint); font-family: var(--mono); font-size: 9px; line-height: 1.4; }
 .field-label { margin-right: 4px; color: var(--cool); font-weight: 500; }
 .safety-note .field-label { color: var(--danger); }

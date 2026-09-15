@@ -231,6 +231,8 @@ _runtime: ChatRuntime = _UNAVAILABLE_RUNTIME
 _dependencies = ChatDependencies()
 _runtime_lock = threading.RLock()
 _guide_pdf_cache: dict[str, bytes] = {}
+_guide_html_cache: dict[str, bytes] = {}
+_guide_prepared_cache: dict[str, dict[str, Any]] = {}
 _guide_pdf_cache_lock = threading.RLock()
 
 
@@ -574,6 +576,12 @@ def select_chat_vehicle(
 
 
 def get_chat_query(query_id: str, *, principal: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    return _public_query(_get_authorized_query(query_id, principal=principal))
+
+
+def _get_authorized_query(query_id: str, *, principal: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Load one query after authorization for artifact rendering."""
+
     query_text = _required_text(query_id, "query_id")
     with _runtime_lock:
         _require_durable_runtime()
@@ -581,7 +589,7 @@ def get_chat_query(query_id: str, *, principal: Mapping[str, Any] | None = None)
         if query is None:
             raise KeyError(f"chat query {query_text} was not found")
         _authorize_query(query, principal)
-        return _public_query(query)
+        return redact_secrets(query)
 
 
 def iter_chat_events(
@@ -1419,6 +1427,17 @@ def _answer_from_result(
             "url": f"/chat/queries/{query_id}/guide.pdf",
             "revision_id": str(procedure.get("revision_id") or ""),
         }
+    if (
+        isinstance(procedure, Mapping)
+        and procedure.get("content_status") == "complete"
+        and procedure.get("pdf_ready") is True
+        and str(procedure.get("revision_id") or "").strip()
+    ):
+        answer["html"] = {
+            "ready": True,
+            "url": f"/chat/queries/{query_id}/guide.html",
+            "revision_id": str(procedure.get("revision_id") or ""),
+        }
     source_watermark = safe.get("source_watermark")
     if source_watermark is None and isinstance(safe.get("source"), Mapping):
         source_watermark = safe["source"].get("source_watermark") or safe["source"].get("source_version")
@@ -1456,16 +1475,13 @@ def _answer_from_result(
 def render_chat_guide_pdf(query_id: str, *, principal: Mapping[str, Any]) -> bytes:
     """Render only the authorized, immutable complete guide revision."""
 
-    query = get_chat_query(query_id, principal=principal)
+    query = _get_authorized_query(query_id, principal=principal)
     answer = query.get("answer") if isinstance(query, Mapping) else None
     guide = answer.get("procedure") if isinstance(answer, Mapping) else None
     if not isinstance(guide, Mapping) or guide.get("pdf_ready") is not True:
         raise ValueError("a complete guide PDF is not available")
-    from .autoapitwo_connector import AutoAPITwoConnector
     from .guide_pdf import render_guide_pdf
 
-    vehicle = guide.get("vehicle") if isinstance(guide.get("vehicle"), Mapping) else answer.get("vehicle", {})
-    provider_id = str(vehicle.get("autoapitwo_vehicle_id") or "").strip() if isinstance(vehicle, Mapping) else ""
     revision_id = str(guide.get("revision_id") or "").strip()
     if not revision_id:
         raise ValueError("guide revision is missing")
@@ -1473,17 +1489,90 @@ def render_chat_guide_pdf(query_id: str, *, principal: Mapping[str, Any]) -> byt
         cached_pdf = _guide_pdf_cache.get(revision_id)
     if cached_pdf is not None:
         return cached_pdf
+    prepared = _prepare_guide_for_artifact(guide, answer)
+    rendered = render_guide_pdf(prepared)
+    with _guide_pdf_cache_lock:
+        _guide_pdf_cache[revision_id] = rendered
+        while len(_guide_pdf_cache) > 8:
+            _guide_pdf_cache.pop(next(iter(_guide_pdf_cache)))
+    return rendered
+
+
+def render_chat_guide_html(query_id: str, *, principal: Mapping[str, Any]) -> bytes:
+    """Render only the authorized, immutable complete guide revision as HTML."""
+
+    query = _get_authorized_query(query_id, principal=principal)
+    answer = query.get("answer") if isinstance(query, Mapping) else None
+    guide = answer.get("procedure") if isinstance(answer, Mapping) else None
+    if (
+        not isinstance(guide, Mapping)
+        or guide.get("content_status") != "complete"
+        or guide.get("pdf_ready") is not True
+    ):
+        raise ValueError("a complete guide HTML is not available")
+    revision_id = str(guide.get("revision_id") or "").strip()
+    if not revision_id:
+        raise ValueError("guide revision is missing")
+    with _guide_pdf_cache_lock:
+        cached_html = _guide_html_cache.get(revision_id)
+    if cached_html is not None:
+        return cached_html
+    from .guide_html import render_guide_html
+
+    prepared = _prepare_guide_for_artifact(guide, answer)
+    rendered = render_guide_html(prepared)
+    with _guide_pdf_cache_lock:
+        _guide_html_cache[revision_id] = rendered
+        while len(_guide_html_cache) > 8:
+            _guide_html_cache.pop(next(iter(_guide_html_cache)))
+    return rendered
+
+
+def _prepare_guide_for_artifact(
+    guide: Mapping[str, Any], answer: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """Prepare one immutable guide revision's figures for PDF and HTML."""
+
+    revision_id = str(guide.get("revision_id") or "").strip()
+    if not revision_id:
+        raise ValueError("guide revision is missing")
+    with _guide_pdf_cache_lock:
+        cached = _guide_prepared_cache.get(revision_id)
+    if cached is not None:
+        return deepcopy(cached)
+
+    from .autoapitwo_connector import AutoAPITwoConnector
+
     prepared = deepcopy(dict(guide))
+    vehicle = guide.get("vehicle") if isinstance(guide.get("vehicle"), Mapping) else {}
+    if not vehicle and isinstance(answer, Mapping) and isinstance(answer.get("vehicle"), Mapping):
+        vehicle = answer["vehicle"]
+    provider_id = str(vehicle.get("autoapitwo_vehicle_id") or "").strip() if isinstance(vehicle, Mapping) else ""
     steps = prepared.get("steps", []) if isinstance(prepared.get("steps"), list) else []
     image_refs = [
         image
         for step in steps
-        if isinstance(step, dict)
+        if isinstance(step, Mapping)
         for image in (step.get("images", []) if isinstance(step.get("images"), list) else [])
-        if isinstance(image, dict) and image.get("url")
+        if isinstance(image, Mapping)
     ]
-    expected_images = len(image_refs)
-    unique_urls = list(dict.fromkeys(str(image["url"]) for image in image_refs))
+    top_level_images = prepared.get("images", [])
+    if isinstance(top_level_images, Mapping):
+        top_level_images = [top_level_images]
+    if top_level_images is not None and not isinstance(top_level_images, list):
+        raise ValueError("guide figures could not be prepared")
+    if any(not isinstance(image, Mapping) for image in top_level_images or []):
+        raise ValueError("guide figures could not be prepared")
+    image_refs.extend(
+        image for image in top_level_images or [] if isinstance(image, Mapping)
+    )
+    unique_urls = list(
+        dict.fromkeys(
+            str(image["url"])
+            for image in image_refs
+            if image.get("url") and not image.get("image_bytes")
+        )
+    )
     connector = AutoAPITwoConnector(
         os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "https://autoapitwo.vercel.app")
     )
@@ -1492,27 +1581,25 @@ def render_chat_guide_pdf(query_id: str, *, principal: Mapping[str, Any]) -> byt
         return url, connector.read(url, car_id=provider_id or None, binary=True)
 
     image_bytes: dict[str, bytes] = {}
-    with ThreadPoolExecutor(max_workers=min(4, max(1, len(unique_urls)))) as pool:
-        for url, value in pool.map(fetch_image, unique_urls):
-            image_bytes[url] = value
+    if unique_urls:
+        with ThreadPoolExecutor(max_workers=min(4, len(unique_urls))) as pool:
+            for url, value in pool.map(fetch_image, unique_urls):
+                image_bytes[url] = value
     for image in image_refs:
-        if str(image["url"]) in image_bytes:
+        if not image.get("image_bytes") and str(image.get("url") or "") in image_bytes:
             image["image_bytes"] = image_bytes[str(image["url"])]
-    all_images = [
-        image
-        for step in prepared.get("steps", [])
-        if isinstance(prepared.get("steps"), list) and isinstance(step, Mapping)
-        for image in (step.get("images", []) if isinstance(step.get("images"), list) else [])
-        if isinstance(image, Mapping) and image.get("url")
-    ]
-    if expected_images and not all(isinstance(image, Mapping) and image.get("image_bytes") for image in all_images):
+    if any(
+        not isinstance(image.get("image_bytes"), (bytes, bytearray, memoryview))
+        or not bytes(image["image_bytes"])
+        for image in image_refs
+    ):
         raise ValueError("guide figures could not be prepared")
-    rendered = render_guide_pdf(prepared)
+
     with _guide_pdf_cache_lock:
-        _guide_pdf_cache[revision_id] = rendered
-        while len(_guide_pdf_cache) > 8:
-            _guide_pdf_cache.pop(next(iter(_guide_pdf_cache)))
-    return rendered
+        _guide_prepared_cache[revision_id] = deepcopy(prepared)
+        while len(_guide_prepared_cache) > 8:
+            _guide_prepared_cache.pop(next(iter(_guide_prepared_cache)))
+    return prepared
 
 
 def _apply_answer(query: dict[str, Any], answer: Mapping[str, Any]) -> None:
@@ -2066,5 +2153,7 @@ __all__ = [
     "process_chat_jobs",
     "process_chat_price_jobs",
     "publish_chat_progress",
+    "render_chat_guide_html",
+    "render_chat_guide_pdf",
     "select_chat_vehicle",
 ]

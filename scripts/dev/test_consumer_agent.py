@@ -43,8 +43,13 @@ def _complete_response():
                 "warnings": [],
             },
             "pdf": {"ready": True, "revision_id": "guide:revision-1"},
+            "html": {"ready": True, "revision_id": "guide:revision-1"},
         },
     }
+
+
+def _complete_html():
+    return b'<!doctype html><html><body><img src="data:image/png;base64,AA=="><img src="data:image/png;base64,Ag=="></body></html>'
 
 
 def test_consumer_projection_omits_internal_source_material():
@@ -58,6 +63,7 @@ def test_consumer_projection_omits_internal_source_material():
     assert "evidence" not in encoded
     assert "worker_stream" not in encoded
     assert projection["answer"]["procedure"]["title"] == "Starter Replacement Guide"
+    assert projection["answer"]["html"]["ready"] is True
 
 
 def test_score_response_passes_complete_illustrated_answer():
@@ -65,6 +71,7 @@ def test_score_response_passes_complete_illustrated_answer():
         {"name": "camry-starter", "message": "replace starter", "expected_vehicle": {"vehicle_id": "vehicle-1"}, "expected_components": ["starter"], "min_steps": 2, "min_figures": 2},
         _complete_response(),
         pdf_response=b"%PDF-1.7 test",
+        html_response=_complete_html(),
     )
     assert result["decision"] == "pass"
     assert result["score"] == 100
@@ -76,6 +83,7 @@ def test_score_response_marks_partial_answer_for_review():
     response["answer"]["procedure"]["content_status"] = "partial"
     response["answer"]["procedure"]["pdf_ready"] = False
     response["answer"]["pdf"] = {"ready": False}
+    response["answer"]["html"] = {"ready": False}
     result = score_response(
         {"name": "partial", "message": "replace starter", "expected_vehicle": {"vehicle_id": "vehicle-1"}, "expected_components": ["starter"], "min_steps": 2, "min_figures": 2},
         response,
@@ -99,6 +107,7 @@ def test_score_response_fails_false_complete_replacement_without_both_phases():
         },
         response,
         pdf_response=b"%PDF-1.7 test",
+        html_response=_complete_html(),
     )
 
     assert result["decision"] == "fail"
@@ -122,6 +131,7 @@ def test_score_response_requires_case_declared_procedure_depth_terms():
         },
         _complete_response(),
         pdf_response=b"%PDF-1.7 test",
+        html_response=_complete_html(),
     )
     assert result["decision"] == "needs_review"
     assert result["dimensions"]["procedure_coverage"]["passed"] is False
@@ -152,6 +162,7 @@ def test_score_response_flags_provider_summary_artifact_but_preserves_valid_step
         },
         response,
         pdf_response=b"%PDF-1.7 test",
+        html_response=_complete_html(),
     )
 
     assert result["decision"] == "needs_review"
@@ -185,6 +196,9 @@ class FakeChatClient:
     def pdf(self, _query_id):
         return b"%PDF-1.7 test"
 
+    def html(self, _query_id):
+        return _complete_html()
+
 
 class TransientPollingClient(FakeChatClient):
     def get(self, query_id):
@@ -212,8 +226,27 @@ def test_run_case_selects_vehicle_and_records_revision_hash():
     assert client.selected == [("query-12345678", 1)]
     assert result["response_sha256"]
     assert result["pdf_sha256"]
+    assert result["html_sha256"]
     assert result["expected_decision"] == "pass"
     assert result["expectation_met"] is True
+
+
+def test_html_integrity_rejects_remote_or_invalid_embedded_figures():
+    response = _complete_response()
+    remote = score_response(
+        {"name": "html-remote", "message": "replace starter", "expected_vehicle": {"vehicle_id": "vehicle-1"}, "expected_components": ["starter"], "min_steps": 2, "min_figures": 2},
+        response,
+        pdf_response=b"%PDF-1.7 test",
+        html_response=b'<!doctype html><html><body><img src="https://example.test/figure.png"><img src="data:image/png;base64,AA=="></body></html>',
+    )
+    invalid = score_response(
+        {"name": "html-invalid", "message": "replace starter", "expected_vehicle": {"vehicle_id": "vehicle-1"}, "expected_components": ["starter"], "min_steps": 2, "min_figures": 2},
+        response,
+        pdf_response=b"%PDF-1.7 test",
+        html_response=b'<!doctype html><html><body><img src="data:image/png;base64,not-base64"><img src="data:image/png;base64,AA=="></body></html>',
+    )
+    assert remote["dimensions"]["html_integrity"]["passed"] is False
+    assert invalid["dimensions"]["html_integrity"]["passed"] is False
 
 
 def test_http_client_bounds_and_parses_json_without_logging_auth_material():
@@ -241,6 +274,25 @@ def test_http_client_bounds_and_parses_json_without_logging_auth_material():
     assert seen[0][2]["Idempotency-key"] == "review-key"
     assert seen[0][2]["Authorization"] == "Bearer must-not-appear"
     assert seen[0][3] == 20
+
+
+def test_http_client_accepts_standalone_html_with_the_larger_artifact_budget():
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _limit):
+            return _complete_html()
+
+    client = ChatHTTPClient(
+        "http://127.0.0.1:8080",
+        opener=lambda _request, timeout: Response(),
+    )
+
+    assert client.html("query-12345678") == _complete_html()
 
 
 def test_run_cases_records_aggregate_decision_and_does_not_call_github_for_pass():

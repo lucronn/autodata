@@ -43,8 +43,10 @@ request such as:
 Choose the exact vehicle match when prompted. The guide keeps removal and
 installation together, includes timing-belt access and final fluid/leak
 checks when required by the returned procedure, and shows each available
-figure beside its step. The PDF link appears only after the required procedure
-coverage and figures are complete. The full local configuration and source
+figure beside its step. The HTML download appears first only after the required
+procedure coverage and figures are complete; it contains the prepared figures
+inline. The PDF link remains available as a compatibility fallback for the same
+revision. The full local configuration and source
 boundary are documented in the [repository README](https://github.com/lucronn/autodata#illustrated-diy-repair-guides).
 
 ## Read the full workflow

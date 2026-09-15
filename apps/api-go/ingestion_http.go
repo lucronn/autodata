@@ -15,7 +15,9 @@ import (
 )
 
 const maxIngestionProxyBytes = 8 << 20
+const maxGuideHTMLBytes = 32 << 20
 const maxGuidePDFAttempts = 3
+const maxGuideHTMLAttempts = 3
 const guidePDFRetryDelay = 250 * time.Millisecond
 const maxChatGetAttempts = 3
 const chatGetRetryDelay = 250 * time.Millisecond
@@ -136,6 +138,40 @@ func (c *HTTPIngestionClient) GuidePDF(ctx context.Context, incoming *http.Reque
 		}
 	}
 	return 0, nil, fmt.Errorf("guide PDF retry limit reached")
+}
+
+func (c *HTTPIngestionClient) GuideHTML(ctx context.Context, incoming *http.Request, queryID string) (int, []byte, error) {
+	path, err := chatInternalPath(queryID, "guide.html")
+	if err != nil {
+		return 0, nil, err
+	}
+	for attempt := 0; attempt < maxGuideHTMLAttempts; attempt++ {
+		outgoing, err := c.newInternalRequest(requestContext(ctx, incoming), incoming, http.MethodGet, path, nil, "")
+		if err != nil {
+			return 0, nil, err
+		}
+		outgoing.Header.Set("Accept", "text/html")
+		result, err := c.client.Do(outgoing)
+		if err != nil {
+			return 0, nil, err
+		}
+		body, readErr := io.ReadAll(io.LimitReader(result.Body, maxGuideHTMLBytes+1))
+		result.Body.Close()
+		if readErr != nil || len(body) > maxGuideHTMLBytes {
+			return 0, nil, fmt.Errorf("guide HTML exceeds the configured limit")
+		}
+		if !isTransientGuidePDFStatus(result.StatusCode) || attempt == maxGuideHTMLAttempts-1 {
+			return result.StatusCode, body, nil
+		}
+		timer := time.NewTimer(guidePDFRetryDelay)
+		select {
+		case <-requestContext(ctx, incoming).Done():
+			timer.Stop()
+			return 0, nil, requestContext(ctx, incoming).Err()
+		case <-timer.C:
+		}
+	}
+	return 0, nil, fmt.Errorf("guide HTML retry limit reached")
 }
 
 func isTransientGuidePDFStatus(status int) bool {

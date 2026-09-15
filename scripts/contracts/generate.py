@@ -332,6 +332,8 @@ type ChatAnswer struct {
 	WorkerStream    []WorkerProgressEvent `json:"worker_stream"`
 	SourceWatermark string                `json:"source_watermark,omitempty"`
 	RevisionID      *string               `json:"revision_id,omitempty"`
+	PDF             map[string]any        `json:"pdf,omitempty"`
+	HTML            map[string]any        `json:"html,omitempty"`
 }
 
 type ChatQuery struct {
@@ -652,6 +654,8 @@ class ChatAnswer:
     worker_stream: list[WorkerProgressEvent]
     source_watermark: str | None = None
     revision_id: str | None = None
+    pdf: dict[str, Any] | None = None
+    html: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

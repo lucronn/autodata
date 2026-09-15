@@ -40,8 +40,8 @@ selection.
 
 ## Report and issue handling
 
-The report contains the consumer-visible query/answer projection, response and
-PDF hashes, dimension evidence, findings, and issue actions. It deliberately
+The report contains the consumer-visible query/answer projection, response,
+HTML, and PDF hashes, dimension evidence, findings, and issue actions. It deliberately
 omits raw provider HTML, source URLs, evidence internals, credentials,
 authorization material, cookies, and arbitrary headers. Retain reports in the
 approved run-artifact store; do not commit live responses to the source tree.
@@ -52,9 +52,13 @@ response is incomplete or ambiguous and must be dispositioned before release.
 the dependency is restored. Re-run the same case after a fix and link the new
 report hash in the issue before closing it.
 
-The PDF link is part of the consumer contract. A guide that advertises a ready
-PDF but returns a transient 502/503/504 is a release-blocking finding until the
-proxy's bounded retry behavior is verified by a fresh cold and warm matrix.
+The HTML link is the preferred consumer artifact. A complete guide that
+advertises ready HTML must return standalone HTML with inline CSS and every
+prepared figure as a valid base64 `data:image/*` URI, with no remote asset
+references and the same revision ID as the chat answer. A complete guide that
+advertises a ready PDF must still return a revision-matched PDF; a transient
+502/503/504 is a release-blocking finding until the proxy's bounded retry
+behavior is verified by a fresh cold and warm matrix.
 
 The API-to-ingestion proxy default is 120 seconds because provider-backed PDFs
 may require multiple figure reads. It retries only transient 502/503/504
@@ -82,7 +86,11 @@ non-retryable failures are not retried.
 The public answer must remain below the API proxy response budget. Internal
 evidence and provenance metadata is not consumer content and must be removed
 from the serialized public projection before the 8 MB boundary; procedure
-steps, figure URLs, review state, and PDF revision identifiers must remain.
+steps, figure URLs, review state, and HTML/PDF revision identifiers must remain.
+
+For an incomplete or failed guide, neither final artifact may be advertised as
+ready. A deep-lane failure may leave HTML/PDF unavailable while the already
+viewable response remains accessible; it must not revoke that viewable revision.
 
 Latest cold verification at implementation `8a2a7ee` passes 4/4. The report is
 `tmp/consumer-review-live/post-public-compaction-cold-v2/consumer-review-73d119083fa152737b002ee1.json`
