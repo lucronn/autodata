@@ -185,3 +185,20 @@ answer, exceeding the API proxy's 8 MB limit. The next gated repair compacts
 that metadata at the worker public-projection boundary while retaining the
 consumer procedure, figures, review state, and PDF revision parity. The
 current cold and warm matrices confirm the compact response remains complete.
+
+## RAV4 4WD matrix extension
+
+Issue: https://github.com/lucronn/autodata/issues/85
+Plan: ../superpowers/plans/2026-09-15-rav4-4wd-consumer-matrix.md
+
+The reproducible matrix is being extended with the exact 1997 Toyota RAV4
+2-door 4WD 2.0L request for oil pump, water pump, timing belt, and power
+steering pump replacement. AutoAPI Two exposes the exact 2-door variant as
+provider vehicle `41216`; the 4-door variant remains a separate selectable
+vehicle (`41218`) and must not be guessed when a body style is requested.
+
+The extension todo is to add the case, rerun the live five-case matrix, verify
+complete removal and installation coverage, figure and PDF revision parity,
+consumer-copy hygiene, and retain the report hashes. Automated readiness does
+not approve the stored source evidence or procedure; the uncached AutoAPI
+session and human technician review remain explicit Issue #85 follow-ups.

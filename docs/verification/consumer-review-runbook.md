@@ -110,3 +110,13 @@ the missing source content must not become a fabricated procedure, and no
 final PDF may be offered. A matching `fail` result with
 `expectation_met: true` confirms safe fail-closed behavior; it does not make
 the production release matrix pass.
+
+## RAV4 4WD matrix extension
+
+The release matrix is being extended under [Issue #85](https://github.com/lucronn/autodata/issues/85)
+using [the dated plan](../superpowers/plans/2026-09-15-rav4-4wd-consumer-matrix.md).
+The exact 2-door 4WD 2.0L RAV4 variant is provider vehicle `41216`; the
+4-door 4WD variant is `41218`. The case must be selected by exact fields when
+the API presents both options. Keep the request report-only and retain the
+consumer projection plus PDF hash under the local artifact directory. Do not
+claim technician approval from an automated pass.

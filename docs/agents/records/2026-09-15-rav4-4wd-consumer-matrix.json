@@ -1,0 +1,20 @@
+{
+  "goal": "Add the exact 1997 Toyota RAV4 2-door 4WD multi-component request to the reproducible consumer review matrix and retain live acceptance evidence",
+  "plan_ref": "docs/superpowers/plans/2026-09-15-rav4-4wd-consumer-matrix.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/85",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/consumer-review-agent.md",
+    "docs/verification/consumer-review-runbook.md"
+  ],
+  "todo": [
+    "Add the exact 2-door 4WD RAV4 case to the consumer review case file",
+    "Run the case through the live dev API with bounded polling and report-only issue behavior",
+    "Verify applicability, four requested components, removal and installation phases, figures, torque/check depth, consumer-copy safety, and PDF revision parity",
+    "Record the report path and hashes in canonical review documentation and the synchronized tracking record",
+    "Keep human source-evidence review and uncached AutoAPI hydration as explicit follow-ups"
+  ],
+  "base_sha": "7075c3cec1277246a82704b424fc6c449b3a03b1",
+  "status": "synchronized",
+  "updated_at": "2026-09-15T05:12:00Z"
+}
