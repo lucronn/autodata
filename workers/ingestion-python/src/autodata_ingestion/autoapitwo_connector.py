@@ -82,7 +82,7 @@ class AutoAPITwoConnector:
         cache_ttl=300,
         retry_attempts=3,
         retry_delay=0.25,
-        retry_after_cap=2.0,
+        retry_after_cap=30.0,
     ):
         parsed = urlsplit(base_url)
         if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
@@ -97,6 +97,7 @@ class AutoAPITwoConnector:
         self._cache = OrderedDict()
         # Serialize source reads to bound upstream load and coalesce identical misses.
         self._lock = RLock()
+        self._retry_at = 0.0
 
     def safe_url(self, href, car_id=None):
         url = urljoin(self.base + "/", href)
@@ -124,6 +125,9 @@ class AutoAPITwoConnector:
                 self._cache.move_to_end(key)
                 return deepcopy(cached[1])
             for attempt in range(self.retry_attempts):
+                cooldown = self._retry_at - time.monotonic()
+                if cooldown > 0:
+                    time.sleep(cooldown)
                 try:
                     with self.opener(Request(url, headers={"Accept": "image/*" if binary else "application/json"}), timeout=self.timeout) as response:
                         if hasattr(response, "geturl") and response.geturl() != url:
@@ -140,6 +144,8 @@ class AutoAPITwoConnector:
                     if status not in {429, 502, 503, 504} or attempt + 1 >= self.retry_attempts:
                         raise SourceUnavailable("repair source read failed") from error
                     delay = self._retry_delay(error, attempt)
+                    if status == 429:
+                        self._retry_at = max(self._retry_at, time.monotonic() + delay)
                     if delay:
                         time.sleep(delay)
             else:

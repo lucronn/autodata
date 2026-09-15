@@ -40,6 +40,18 @@ class ConnectorTests(unittest.TestCase):
 
         self.assertEqual(len(calls), 3)
 
+    def test_retry_after_is_capped_and_rate_limit_cooldown_is_bounded(self):
+        error = HTTPError(
+            "https://autoapitwo.vercel.app/api/v1/content/carids/1/images/figure.png",
+            429,
+            "rate limited",
+            {"Retry-After": "300"},
+            io.BytesIO(),
+        )
+        client = AutoAPITwoConnector(retry_after_cap=2, retry_delay=0)
+
+        self.assertEqual(client._retry_delay(error, 0), 2)
+
     def test_non_transient_source_failure_is_not_retried(self):
         calls = []
 
