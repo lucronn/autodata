@@ -65,6 +65,48 @@ class CombinedProcedureConnector(FakeConnector):
 
 
 class IllustratedGuideTests(unittest.TestCase):
+    def test_ellipsized_provider_summary_is_omitted_but_concise_procedure_remains(self):
+        articles = [
+            {
+                "article_id": "starter-removal",
+                "component": "starter",
+                "procedure_kind": "removal",
+                "blocks": [{"kind": "text", "text": "Remove the starter.", "evidence_ids": ["e-removal"]}],
+                "evidence_ids": ["e-removal"],
+            },
+            {
+                "article_id": "starter-installation",
+                "component": "starter",
+                "procedure_kind": "installation",
+                "blocks": [{"kind": "text", "text": "Install the starter and torque the mounting bolts.", "evidence_ids": ["e-installation"]}],
+                "evidence_ids": ["e-installation"],
+            },
+            {
+                "article_id": "provider-summary",
+                "component": "starter",
+                "procedure_kind": "procedure",
+                "blocks": [{"kind": "text", "text": "Refer to Figs for the complete provider procedure " + ("x" * 220), "evidence_ids": ["e-summary"]}],
+                "evidence_ids": ["e-summary"],
+            },
+            {
+                "article_id": "concise-check",
+                "component": "starter",
+                "procedure_kind": "procedure",
+                "blocks": [{"kind": "text", "text": "Check charging output after installation.", "evidence_ids": ["e-check"]}],
+                "evidence_ids": ["e-check"],
+            },
+        ]
+
+        guide = compose_illustrated_guide(
+            "starter replacement", {"year": 2005, "make": "Toyota", "model": "Camry"}, articles
+        )
+
+        actions = [step["action"] for step in guide["steps"]]
+        self.assertIn("Remove the starter.", actions)
+        self.assertIn("Install the starter and torque the mounting bolts.", actions)
+        self.assertIn("Check charging output after installation.", actions)
+        self.assertFalse(any(action.endswith("...") for action in actions))
+
     def test_specific_brake_component_does_not_expand_to_generic_brakes(self):
         self.assertEqual(_components("front brake caliper replacement"), ["brake_caliper"])
 

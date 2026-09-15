@@ -301,6 +301,17 @@ def _clean_step_action(value: Any) -> str:
     return re.sub(r"^\s*(?:step\s*)?\d+\s*[.):-]\s*", "", _clean_public_text(value), flags=re.IGNORECASE)
 
 
+def _is_summary_artifact(step: Mapping[str, Any]) -> bool:
+    """Reject provider summaries that were truncated before consumer projection."""
+
+    if str(step.get("phase") or "").casefold() != "procedure":
+        return False
+    action = _text(step.get("action"))
+    instructions = step.get("instructions")
+    images = step.get("images")
+    return action.endswith("...") and not instructions and not images
+
+
 def compose_illustrated_guide(
     query: str,
     vehicle: Mapping[str, Any],
@@ -339,8 +350,10 @@ def compose_illustrated_guide(
     for article in ordered_articles:
         evidence.update(str(value) for value in article.get("evidence_ids", []) if str(value).strip())
         for step in _article_steps(article):
-            step["sequence"] = len(steps) + 1
             step["action"] = _clean_step_action(step["action"])
+            if _is_summary_artifact(step):
+                continue
+            step["sequence"] = len(steps) + 1
             steps.append(step)
     images = [image for step in steps for image in step.get("images", [])]
     warnings: list[dict[str, Any]] = []
