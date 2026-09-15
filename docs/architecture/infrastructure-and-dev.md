@@ -50,6 +50,17 @@ Services:
 - Payment reconciler that polls pending verified events and safely retries delayed entitlement fulfillment.
 - Optional Mailpit and OpenTelemetry-compatible services behind a development profile.
 
+### Container image provenance
+
+The Compose MinIO default is the verified stable release
+`quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z`. The Docker Hub
+`minio/minio:latest` reference is not used because the required CI runner can
+no longer pull that namespace. `AUTODATA_MINIO_IMAGE` remains an explicit
+override for a private or provider-managed registry; deployments should use a
+reviewed immutable release tag or digest rather than `latest`. This registry
+choice does not change the S3-compatible API, bucket contract, health check,
+or secret-management boundary.
+
 The Go API uses the same PostgreSQL connection pool for purchaser-facing
 projection reads and dataset-request status when `AUTODATA_PROJECTION_STORE`
 is set to `postgres`. In that mode, request creation stores the product,
