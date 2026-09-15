@@ -16,7 +16,7 @@
     "latest_local_hardening_sha": "5c28a0a2624cbb497759030508ffe929b5910bb5",
     "latest_local_hardening_tests": "consumer 68 passed, 2 subtests; autonomy 37 passed; ingestion 379 passed, 2 skipped, 12 subtests; Go API/contracts passed",
     "fresh_live_recheck": "blocked: clean isolated Compose run reproduced ingestion-worker startup race; worker exited with UndefinedTable for chat_runtime_queue before migration completion, so consumer requests remained processing",
-    "latest_runtime_finding": "ingestion-worker lacks migration-runner service_completed_successfully dependency in infra/compose/compose.yaml",
+    "latest_runtime_finding": "clean Compose startup ordering is repaired; current API matrix observed transient PDF 502 before later success and Forester cold hydration beyond the 300-second reviewer window",
     "retained_live_depth_recheck": "4/4 retained live responses contain all case-declared terms: torque and check",
     "report_path": "tmp/consumer-review-live/consumer-review-42469167db6ddb1f23428c4d.json",
     "report_sha256": "23bd27b93a0918eeced3ca5f1e71f4fc2007d6dc3456f6ee635cefe4ecb19fe3",

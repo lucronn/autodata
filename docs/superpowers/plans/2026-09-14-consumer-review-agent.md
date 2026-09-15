@@ -220,3 +220,44 @@ bounded cold-start timeout.
 Update the canonical contract, runbook, and synchronized record with the
 post-fix report hash, decision, service status, and any remaining human-review
 or publication blockers.
+
+### Task 6: Make ready-PDF delivery tolerant of transient upstream failures
+
+**Files:**
+- Modify: `apps/api-go/ingestion_http.go`
+- Modify: `apps/api-go/ingestion_http_test.go`
+- Modify: `docs/architecture/consumer-review-agent.md`
+- Modify: `docs/verification/consumer-review-runbook.md`
+
+**Interfaces:**
+- Consumes: the internal ingestion PDF response and request context.
+- Produces: bounded, context-aware retries for transient 502/503/504 PDF
+  responses while preserving authorization and byte limits.
+
+- [ ] **Step 1: Write the failing proxy retry regression test**
+
+Assert that a transient PDF response is retried and that a successful PDF is
+returned without exposing upstream error content.
+
+- [ ] **Step 2: Run the regression test to verify it fails**
+
+Run: `go test ./...` from `apps/api-go`.
+
+Expected: FAIL because `GuidePDF` currently forwards the first transient
+upstream status without retrying.
+
+- [ ] **Step 3: Add bounded context-aware retries**
+
+Retry only transient 502/503/504 responses, with a finite attempt count and
+context-aware delay. Do not retry authorization failures or arbitrary client
+errors.
+
+- [ ] **Step 4: Run focused and live verification**
+
+Run Go tests, rebuild the QA API from the current checkout, and rerun the
+consumer matrix after a cold request and a warm replay.
+
+- [ ] **Step 5: Record exact response and PDF evidence**
+
+Update the canonical contract, runbook, and synchronized record with the
+post-fix aggregate report hash and individual PDF hashes.

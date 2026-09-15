@@ -52,6 +52,10 @@ response is incomplete or ambiguous and must be dispositioned before release.
 the dependency is restored. Re-run the same case after a fix and link the new
 report hash in the issue before closing it.
 
+The PDF link is part of the consumer contract. A guide that advertises a ready
+PDF but returns a transient 502/503/504 is a release-blocking finding until the
+proxy's bounded retry behavior is verified by a fresh cold and warm matrix.
+
 ## Negative-path acceptance
 
 Run `scripts/dev/consumer_review_negative_cases.json` separately from the

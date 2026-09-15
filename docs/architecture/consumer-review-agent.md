@@ -49,6 +49,8 @@ does not change the guide's `UNREVIEWED` state.
 - Make clean Compose startup migration-safe: the ingestion worker must wait for
   the migration runner to complete successfully before it can process durable
   chat work.
+- Make a ready PDF resilient to transient internal source-image failures with
+  bounded retries at the Go proxy boundary.
 
 ## Acceptance evidence
 
@@ -110,3 +112,11 @@ result. The release repair is to add a
 `migration-runner: service_completed_successfully` dependency to the worker,
 add a regression test, and rerun the clean four-case matrix. Until that rerun
 passes, Issue #89 remains blocked and no live release claim is made.
+
+The first post-ordering current-API matrix also observed a transient PDF
+failure: the Camry guide returned HTTP 502 on its first download attempt and
+returned a valid PDF on a later attempt. The Forester guide completed after
+the 300-second consumer timeout and also returned a valid PDF afterward. This
+is recorded as a release reliability gap, not a procedure-quality pass. The
+Go API PDF proxy must retry only transient upstream statuses with bounded,
+context-aware backoff before the final matrix is accepted.
