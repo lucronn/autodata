@@ -24,7 +24,7 @@ The live 8080 dashboard is served by the `autodata-api-1` container and its work
 4. Rebuild only the local API and ingestion containers from the checked-out revision without removing PostgreSQL, NATS, MinIO, or their volumes. Verify health/readiness and AutoAPI source reachability without printing secrets.
 5. Run the exact browser flow in the in-app dashboard. Verify the canonical Silverado label, correlated Workers terminal progress, a visible procedure and quote, and the correct explicit failure state for a forced source failure. Do not claim completion from unit tests alone.
 
-## Concrete work queue
+## Concrete todo list
 
 - [ ] Add the natural-language `for a` parser regression.
 - [ ] Add the terminal source-failure answer-projection regression.
@@ -42,4 +42,3 @@ The live 8080 dashboard is served by the `autodata-api-1` container and its work
 - A fresh browser run reaches a user-visible procedure and quote when AutoAPI returns the required source data, or an explicit unavailable result when the source is unavailable.
 - The browser Workers terminal shows the same query’s source and terminal events.
 - No user-owned `output/`, `sample data/`, or `tmp/` files are staged or modified.
-
