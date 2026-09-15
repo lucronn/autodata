@@ -7,6 +7,26 @@ import re
 from typing import Any, Mapping
 
 
+_GENERIC_FIGURE_CAPTIONS = frozenset({
+    "diagram",
+    "figure",
+    "image",
+    "picture",
+    "procedure figure",
+    "source diagram",
+})
+
+
+def _figure_caption(image: Mapping[str, Any]) -> str:
+    """Return a useful caption without exposing source placeholder labels."""
+
+    for key in ("alt", "description", "label", "title"):
+        value = str(image.get(key) or "").strip()
+        if value and value.casefold() not in _GENERIC_FIGURE_CAPTIONS:
+            return value
+    return ""
+
+
 def render_guide_pdf(guide: Mapping[str, Any]) -> bytes:
     if guide.get("content_status") != "complete" or guide.get("pdf_ready") is not True:
         raise ValueError("a complete guide is required before creating a PDF")
@@ -72,7 +92,10 @@ def render_guide_pdf(guide: Mapping[str, Any]) -> bytes:
                 try:
                     rendered = Image(BytesIO(image["image_bytes"]))
                     rendered._restrictSize(6.35 * inch, 3.8 * inch)
-                    contents.extend([Spacer(1, 4), rendered, Paragraph(esc(image.get("alt") or "Procedure figure"), small)])
+                    contents.extend([Spacer(1, 4), rendered])
+                    caption = _figure_caption(image)
+                    if caption:
+                        contents.append(Paragraph(esc(caption), small))
                 except Exception:
                     continue
         story.append(KeepTogether(contents))

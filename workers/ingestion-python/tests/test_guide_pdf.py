@@ -12,6 +12,31 @@ except ImportError:
 
 class GuidePdfTests(unittest.TestCase):
     @unittest.skipUnless(_HAS_REPORTLAB, "reportlab is installed by the ingestion image")
+    def test_pdf_omits_generic_image_caption_but_preserves_meaningful_caption(self):
+        guide = {
+            "title": "Pump Replacement Guide",
+            "applicability": "1997 Toyota RAV4",
+            "content_status": "complete",
+            "pdf_ready": True,
+            "steps": [{
+                "sequence": 1,
+                "action": "Install the pump.",
+                "instructions": [],
+                "images": [
+                    {"url": "https://example.test/generic.png", "alt": "image", "image_bytes": b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")},
+                    {"url": "https://example.test/meaningful.png", "alt": "Pump installation view", "image_bytes": b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")},
+                ],
+            }],
+        }
+        pdf = render_guide_pdf(guide)
+        from io import BytesIO
+        from pypdf import PdfReader
+
+        text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf)).pages)
+        self.assertIn("Pump installation view", text)
+        self.assertNotRegex(text, r"(?im)^image$")
+
+    @unittest.skipUnless(_HAS_REPORTLAB, "reportlab is installed by the ingestion image")
     def test_pdf_contains_installation_content_and_embedded_figure(self):
         guide = {
             "title": "Water Pump Replacement Guide",
