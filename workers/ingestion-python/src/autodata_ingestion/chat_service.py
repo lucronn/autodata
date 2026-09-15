@@ -1772,7 +1772,7 @@ def _public_query(query: Mapping[str, Any]) -> dict[str, Any]:
     return public
 
 
-def _compact_public_value(value: Any) -> Any:
+def _compact_public_value(value: Any, *, parent_key: str = "") -> Any:
     """Strip internal provenance before the answer crosses the public edge."""
 
     if isinstance(value, Mapping):
@@ -1780,16 +1780,21 @@ def _compact_public_value(value: Any) -> Any:
         for key, child in value.items():
             key_text = str(key)
             normalized = key_text.casefold()
-            if normalized in _PUBLIC_PROVENANCE_KEYS or (
-                normalized.startswith("source_") and normalized != "source_revision_id"
-            ):
+            preserve_visual_source = (
+                parent_key.casefold() in {"visual", "visual_artifacts"}
+                and normalized in {"source_uri", "source_artifact_id"}
+            )
+            if (
+                normalized in _PUBLIC_PROVENANCE_KEYS
+                or (normalized.startswith("source_") and normalized != "source_revision_id")
+            ) and not preserve_visual_source:
                 continue
-            compact[key_text] = _compact_public_value(child)
+            compact[key_text] = _compact_public_value(child, parent_key=key_text)
         return compact
     if isinstance(value, list):
-        return [_compact_public_value(child) for child in value]
+        return [_compact_public_value(child, parent_key=parent_key) for child in value]
     if isinstance(value, tuple):
-        return [_compact_public_value(child) for child in value]
+        return [_compact_public_value(child, parent_key=parent_key) for child in value]
     return value
 
 

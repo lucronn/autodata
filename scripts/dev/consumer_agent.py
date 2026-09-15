@@ -26,7 +26,7 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, build_opener
 
 
-MAX_JSON_BYTES = 4_000_000
+MAX_JSON_BYTES = 8 << 20
 MAX_PDF_BYTES = 8_000_000
 TERMINAL_STATUSES = {"available", "failed", "needs_review", "blocked"}
 SENSITIVE_KEYS = {
