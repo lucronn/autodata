@@ -146,6 +146,16 @@ validation failures, authorization failures, oversized content, or arbitrary
 exceptions. Issues #90 and #91 remain open until a fresh cold matrix proves
 all four vehicles complete their first PDF request.
 
+The current release verification at commit `b7e1350` still reports `blocked`:
+RAV4 and Civic pass, while Camry returns a 502 during the consumer run and
+Forester exceeds the 300-second consumer window. The exact report is
+`tmp/consumer-review-live/post-poll-retry-cold/consumer-review-af962fddf8a4b9f08e76543a.json`
+with SHA-256
+`dd61c5323d3b89e7128c08c40e3dbde1603df326947554dd476e635cbb1f4c0b`. The
+source-read and query-poll retry regressions pass locally, and later direct
+requests can succeed, but that does not satisfy first-use matrix acceptance;
+issues #90 and #91 remain open.
+
 The public API also retries only transient internal query-read responses while
 the consumer is polling a processing query. The retry is finite, preserves
 caller cancellation and response limits, and does not mask authorization or

@@ -340,19 +340,21 @@ honor a numeric `Retry-After` only within a configured cap. Do not retry
 redirects, validation errors, authorization failures, oversized responses, or
 arbitrary exceptions. Keep all source failures sanitized at the public edge.
 
-- [ ] **Step 4: Run focused, full, and live verification**
+- [x] **Step 4: Run focused, full, and live verification**
 
 Run connector and full worker tests, rebuild the isolated QA API/worker from
 the current checkout, and execute cold and warm four-case consumer matrices.
 The release gate requires RAV4, Camry, Forester, and Civic to complete on the
 first PDF request with no blocked case.
 
-- [ ] **Step 5: Record exact runtime evidence and reconcile findings**
+- [x] **Step 5: Record exact runtime evidence and reconcile findings**
 
 Update the canonical contract, runbook, synchronized record, and issues #90
 and #91 with exact report hashes, PDF hashes, and container health. Close the
 findings only when the fresh cold matrix reproduces the fix; otherwise retain
- the release blocker.
+the release blocker. The source-read and query-poll retry regressions pass
+locally, but the current cold matrix remains blocked at 2/4; the runtime
+findings remain open.
 
 ### Task 9: Tolerate transient chat polling failures without hiding outages
 
@@ -371,33 +373,33 @@ findings only when the fresh cold matrix reproduces the fix; otherwise retain
   caller cancellation preserved, and CLI output that reports the aggregate
   `blocked` decision without relabeling it as `needs_review`.
 
-- [ ] **Step 1: Write failing polling and status-report tests**
+- [x] **Step 1: Write failing polling and status-report tests**
 
 Assert that a transient internal query GET is retried and then returned when
 successful, while persistent transient responses remain bounded. Assert that
 the consumer CLI's reported decision equals the aggregate decision for
 `blocked`, `fail`, `needs_review`, and `pass` outcomes.
 
-- [ ] **Step 2: Run focused tests to verify they fail**
+- [x] **Step 2: Run focused tests to verify they fail**
 
 Run `go test ./...` from `apps/api-go` and
 `PYTHONPATH=. python3 -m pytest scripts/dev/test_consumer_agent.py -q`.
 
-- [ ] **Step 3: Add bounded behavior**
+- [x] **Step 3: Add bounded behavior**
 
 Retry only transient query-read statuses with context-aware backoff; do not
 retry authorization, validation, or arbitrary client errors. Preserve the
 finite response-size limit. Map the runner's printed decision directly from
 the aggregate report.
 
-- [ ] **Step 4: Run full and live verification**
+- [x] **Step 4: Run full and live verification**
 
 Rebuild the isolated API, restart the worker/HTTP process to clear in-process
 PDF cache, and execute the cold and warm four-case matrix. Confirm the report
 and CLI output agree and that transient polling does not conceal a persistent
 failure.
 
-- [ ] **Step 5: Record exact evidence**
+- [x] **Step 5: Record exact evidence**
 
 Update the canonical contract, runbook, synchronized record, and issues #90
 and #91 with the exact implementation SHA, report SHA, service health, and

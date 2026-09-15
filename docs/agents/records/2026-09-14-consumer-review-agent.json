@@ -14,18 +14,18 @@
     "Retry transient internal chat polling reads without hiding persistent failures and keep CLI status faithful to the aggregate report"
   ],
   "verification": {
-    "implementation_sha": "59d1bf18d4c0be2b509646f17b951f861e613201",
-    "latest_local_hardening_sha": "59d1bf18d4c0be2b509646f17b951f861e613201",
-    "latest_local_hardening_tests": "developer 69 passed, 2 subtests; autonomy 37 passed; ingestion 379 passed, 2 skipped, 12 subtests; Go API/contracts passed",
-    "fresh_live_recheck": "blocked: startup ordering repaired and worker healthy, but final current-code matrix returned first-fetch PDF 502 for Camry and Forester; RAV4/Civic passed and later direct PDF retries succeeded; findings recorded as issues 90 and 91",
-    "latest_runtime_finding": "first-request provider-backed PDF generation remains unreliable for Camry and Forester after bounded proxy retries and 120-second default",
+    "implementation_sha": "b7e1350",
+    "latest_local_hardening_sha": "b7e1350",
+    "latest_local_hardening_tests": "developer 70 passed, 2 subtests; autonomy 37 passed; ingestion 382 passed, 2 skipped, 12 subtests; Go API/contracts passed",
+    "fresh_live_recheck": "blocked: startup ordering, provider figure-read retry, and transient chat-poll retry are repaired and QA services are healthy, but the final current-code cold matrix returned a 502 for Camry and exceeded the consumer timeout for Forester; RAV4/Civic passed; findings remain issues 90 and 91",
+    "latest_runtime_finding": "first-use Camry/Forester chat reliability remains unresolved after bounded provider-read and public query-poll retries; later direct PDF requests can succeed but do not satisfy cold matrix acceptance",
     "latest_live_recheck": {
-      "implementation_sha": "59d1bf18d4c0be2b509646f17b951f861e613201",
-      "report_path": "tmp/consumer-review-live/post-hardening-issue-creation/consumer-review-7388d45911aed5a8bc27d126.json",
-      "report_sha256": "f9ad5659f4ad1b3d52624f5fb6e57cef055019e7b1f40e4699a3ced14eddbfa2",
+      "implementation_sha": "b7e1350",
+      "report_path": "tmp/consumer-review-live/post-poll-retry-cold/consumer-review-af962fddf8a4b9f08e76543a.json",
+      "report_sha256": "dd61c5323d3b89e7128c08c40e3dbde1603df326947554dd476e635cbb1f4c0b",
       "decision": "blocked",
       "summary": {"case_count": 4, "pass": 2, "fail": 0, "needs_review": 0, "blocked": 2},
-      "issue_actions": [90, 91]
+      "issue_actions": []
     },
     "retained_live_depth_recheck": "4/4 retained live responses contain all case-declared terms: torque and check",
     "report_path": "tmp/consumer-review-live/consumer-review-42469167db6ddb1f23428c4d.json",
@@ -43,5 +43,5 @@
     "summary": {"case_count": 4, "pass": 2, "fail": 0, "needs_review": 0, "blocked": 2, "issue_actions": 0}
   },
   "status": "synchronized",
-  "updated_at": "2026-09-15T02:20:00Z"
+  "updated_at": "2026-09-15T02:35:00Z"
 }
