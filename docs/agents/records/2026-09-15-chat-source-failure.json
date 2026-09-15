@@ -11,10 +11,11 @@
     "Add the natural-language for-a parser regression",
     "Add the nested terminal source-failure projection regression",
     "Implement filler handling and terminal answer-state publication",
+    "Preserve complete nested labor and procedure data when reading a composed cache row",
     "Rebuild local API and ingestion containers and rerun the exact browser flow",
     "Synchronize the final commit, Issue #96, Project #8, and CI evidence"
   ],
-  "base_sha": "5cf1fc8d0d4d77ee65ee1e700683d040be49cfde",
+  "base_sha": "a31bc3353fb52c31815e992f931731e7fdfa32e9",
   "status": "synchronized",
   "updated_at": "2026-09-15T20:25:19Z"
 }
