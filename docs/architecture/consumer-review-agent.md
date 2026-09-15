@@ -68,13 +68,24 @@ Plan: ../superpowers/plans/2026-09-15-consumer-summary-filter.md
 
 Todo:
 
-- Add a regression for summary-artifact omission and preservation of valid
+- [x] Add a regression for summary-artifact omission and preservation of valid
   procedure steps.
-- Implement the consumer-summary filter.
-- Re-run full tests and the five-case live consumer matrix.
-- Verify consumer response and PDF output, including representative rendered
+- [x] Implement the consumer-summary filter.
+- [x] Re-run full tests and the five-case live consumer matrix.
+- [x] Verify consumer response and PDF output, including representative rendered
   pages and final installation/check coverage.
-- Record hashes and reconcile Issue #93 after fresh evidence passes.
+- [x] Record hashes and reconcile Issue #93 after fresh evidence passes.
+
+Acceptance at implementation commit `2c5e404`: focused guide/PDF tests passed
+(`9 passed, 3 skipped`); the full developer, autonomy, ingestion, Go API, and
+shared-contract suites passed; and the fresh five-case report-only consumer
+matrix passed all cases. The aggregate report is
+`tmp/consumer-review-live/summary-filter-v2/consumer-review-fb86fbcb2918b9b0388cf5f3.json`
+(SHA-256
+`c3d23ba97d6dc5dee8ab2b9610c86458724a5705a3129471e6d78d1b588652c2`). The
+matching PDFs were hash-verified, contained no generic captions, ellipses, or
+raw provider-summary references, and representative RAV4 pages were rendered
+and visually inspected through the final installation steps.
 
 The `autodata-consumer-agent` is a release-readiness evaluator for the public
 chat experience. It calls the chat HTTP boundary with real consumer prompts,
