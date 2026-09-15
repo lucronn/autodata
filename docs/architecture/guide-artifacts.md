@@ -43,3 +43,27 @@ Implementation commit `d63ab7b` passed the applicable local checks:
 
 The live/local Silverado chat run and HTML/PDF parity check remain a post-restart
 acceptance step; no live result is claimed by this checkpoint.
+
+## Follow-up: natural-language source retrieval acceptance
+
+The browser acceptance run exposed two separate defects tracked in
+[Issue #96](https://github.com/lucronn/autodata/issues/96) and the
+[follow-up plan](../superpowers/plans/2026-09-15-chat-source-failure.md): the
+local 8080 Compose API/worker were stale, and the chat parser treated the
+natural-language introducer `for a` as the vehicle make. The current parser
+must normalize `for a 1999 Chevrolet Silverado 1500 2WD 5.3L` to the canonical
+Chevrolet identity before source lookup.
+
+When source retrieval exhausts its retries without any usable answer, the
+persisted query and nested answer must both expose terminal `failed` /
+`unavailable` state. The worker stream must publish the correlated terminal
+answer event so the dashboard cannot continue to show `processing ·
+normalizing`. If a provisional source-backed answer already exists, later
+normalization or composition failure keeps that answer visible and marks the
+affected work as failed; deep work never hides data that can already be shown.
+
+This follow-up is not accepted by unit tests alone. The local API and ingestion
+containers must be rebuilt from the checked-out revision, and the exact
+Silverado request must be exercised in the browser with the canonical vehicle
+label, Workers terminal progress, and a visible procedure/quote result
+verified. User-owned `output/`, `sample data/`, and `tmp/` remain local-only.
