@@ -12,18 +12,19 @@
     "Run the live multi-vehicle review matrix and reconcile every finding",
     "Add bounded transient retries at the provider-backed figure-read boundary and re-run the cold matrix",
     "Retry transient internal chat polling reads without hiding persistent failures and keep CLI status faithful to the aggregate report",
-    "Continue consumer polling across retryable 502/503/504 responses until the finite case deadline and regression-test the processing-to-available transition"
+    "Continue consumer polling across retryable 502/503/504 responses until the finite case deadline and regression-test the processing-to-available transition",
+    "Compact repeated internal evidence/provenance metadata from the public chat projection before the 8 MB proxy boundary, preserving consumer procedure and PDF fields"
   ],
   "verification": {
     "implementation_sha": "8565b2b278e89a60660a390f149da5439f4fa3ed",
     "latest_local_hardening_sha": "8565b2b278e89a60660a390f149da5439f4fa3ed",
     "latest_local_hardening_tests": "developer 70 passed, 2 subtests; autonomy 37 passed; ingestion 382 passed, 2 skipped, 12 subtests; Go API/contracts passed",
-    "fresh_live_recheck": "blocked: QA services are healthy and the current cold matrix passed RAV4/Civic, but Camry/Forester encountered retryable public polling 502s that the runner treated as terminal; isolated traces show both queries later become available",
-    "latest_runtime_finding": "consumer polling needs bounded retry handling for transient 502/503/504 responses while a query remains processing; persistent failures must still block",
+    "fresh_live_recheck": "blocked: bounded consumer poll retry now continues through transient 502s, but Camry/Forester public answers exceed the 8 MB proxy budget because repeated evidence/provenance metadata is still serialized; RAV4/Civic passed",
+    "latest_runtime_finding": "public chat projection must omit internal evidence/provenance metadata before proxy serialization while retaining consumer procedure, figures, review state, and PDF parity",
     "latest_live_recheck": {
-      "implementation_sha": "8565b2b278e89a60660a390f149da5439f4fa3ed",
-      "report_path": "tmp/consumer-review-live/post-cooldown-cold/consumer-review-ac91ef9e5f84faf16aecc161.json",
-      "report_sha256": "daa2e5c58f814e426b28549ae83e1faf2dcd178d0ec853b094b22e6251d7172e",
+      "implementation_sha": "4f04d65",
+      "report_path": "tmp/consumer-review-live/post-consumer-poll-retry-cold/consumer-review-a7ca1650a46efe85da1d5b0a.json",
+      "report_sha256": "184643f743e344a45315fc4f079db5463192437fe1d56fb4fc21d24b5c4a8b16",
       "decision": "blocked",
       "summary": {"case_count": 4, "pass": 2, "fail": 0, "needs_review": 0, "blocked": 2},
       "issue_actions": []

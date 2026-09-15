@@ -79,6 +79,11 @@ same finite case deadline; persistent retryable failures and deadline expiry
 remain blocked. Authorization, validation, malformed-response, and other
 non-retryable failures are not retried.
 
+The public answer must remain below the API proxy response budget. Internal
+evidence and provenance metadata is not consumer content and must be removed
+from the serialized public projection before the 8 MB boundary; procedure
+steps, figure URLs, review state, and PDF revision identifiers must remain.
+
 Latest cold verification at implementation `b7e1350` remains blocked at 2/4:
 RAV4 and Civic passed; Camry returned a 502 and Forester exceeded the bounded
 300-second consumer timeout. Retain the exact report outside the source tree

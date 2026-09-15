@@ -172,3 +172,10 @@ bounded transport event: it backs off and polls again until the same finite
 case deadline. Persistent retryable failures, non-retryable failures, and
 deadline expiry remain blocked. This behavior is pending a focused regression
 and a fresh cold matrix at the current implementation SHA.
+
+The latest cold matrix also exposed a public-response budget issue: durable
+Camry and Forester snapshots were approximately 21.6 MB and 19.3 MB because
+repeated evidence/provenance metadata was still present in the serialized
+answer, exceeding the API proxy's 8 MB limit. The next gated repair compacts
+that metadata at the worker public-projection boundary while retaining the
+consumer procedure, figures, review state, and PDF revision parity.

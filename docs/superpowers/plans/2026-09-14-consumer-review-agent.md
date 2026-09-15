@@ -417,3 +417,35 @@ blocking result for a persistent error or an expired deadline. Add a focused
 regression that observes processing, a transient 502, then available; do not
 weaken the contract for authorization, validation, malformed, or non-retryable
 responses.
+
+### Task 10: Keep public chat answers within the proxy response budget
+
+**Files:**
+- Modify: `workers/ingestion-python/src/autodata_ingestion/chat_service.py`
+- Modify: `workers/ingestion-python/tests/test_chat_service.py`
+- Modify: `docs/architecture/consumer-review-agent.md`
+- Modify: `docs/verification/consumer-review-runbook.md`
+
+**Interfaces:**
+- Consumes: the durable chat answer and progress history.
+- Produces: a compact public answer that preserves consumer procedure,
+  figures, safety/review state, and PDF revision identifiers while omitting
+  internal evidence/provenance metadata before the API proxy size limit.
+
+- [ ] **Step 1: Add a failing public-projection size/redaction regression**
+
+Assert that repeated evidence and source metadata are omitted from the public
+answer while procedure steps, image URLs, and worker progress summaries remain
+available.
+
+- [ ] **Step 2: Implement bounded public projection**
+
+Remove internal provenance keys recursively from the public answer before it is
+serialized or sent through the API proxy. Keep durable source data and
+internal event behavior unchanged.
+
+- [ ] **Step 3: Verify compact answers and the live matrix**
+
+Run focused and full ingestion tests, rebuild the HTTP/worker services, and
+repeat the cold four-vehicle consumer matrix. Persistent transport or size
+failures remain release-blocking.
