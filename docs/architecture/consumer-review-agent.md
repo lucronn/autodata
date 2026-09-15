@@ -156,11 +156,19 @@ Plan: ../superpowers/plans/2026-09-15-negative-completeness-gate.md
 
 Todo:
 
-- Add a regression for a complete response missing installation/removal.
-- Implement the complete-procedure severity gate.
-- Run focused and full developer tests.
-- Re-run the documented negative case and fresh five-case positive matrix.
-- Record the result in the issue and canonical documentation.
+- [x] Add a regression for a complete response missing installation/removal.
+- [x] Implement the complete-procedure severity gate.
+- [x] Run focused and full developer tests.
+- [x] Re-run the documented negative case and fresh five-case positive matrix.
+- [x] Record the result in the issue and canonical documentation.
+
+Acceptance at implementation commit `87ca230`: the full developer suite passed
+(`74 passed, 2 subtests passed`). The fresh negative case returned `fail` with
+`expectation_met: true`, no PDF, and a blocking high-severity phase finding.
+The fresh five-case positive matrix passed every case at score 100 with zero
+findings and zero issue actions; each response carried exact vehicle
+applicability and a matching PDF hash. Report SHA-256 values are recorded in
+the synchronized record.
 
 The `autodata-consumer-agent` is a release-readiness evaluator for the public
 chat experience. It calls the chat HTTP boundary with real consumer prompts,

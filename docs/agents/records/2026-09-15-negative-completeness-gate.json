@@ -16,5 +16,15 @@
   ],
   "base_sha": "a4bef0769dbce39ca85687c5e403411d79e938ce",
   "status": "synchronized",
-  "updated_at": "2026-09-15T05:25:00Z"
+  "implementation_sha": "87ca230e0ce52d329695fc88641497f6a77e99d0",
+  "negative_report_sha256": "fd7de16d67d87aa87a1088211804c598ac05caea36d96369d82f2ca4939e681d",
+  "positive_report_sha256": "33539182a7b02eaaf3df09716bf744bef3ef8208ad817e8d8e1138db80d1b038",
+  "pdf_sha256": {
+    "rav4-4wd-2door-four-component": "37eb0a7a8401c0de5b0222dd3b9c531105eefebcfd4df124cfdd8cf85bb2b009",
+    "rav4-oil-water-pumps": "28ad6799eacea8638aeb32d2145dd8fb527fb1e83fff881d37f6971939e7a47e",
+    "camry-starter": "b99bc6ea9e4e2a71ff0a28b64667b434ea404afa129c09619af1490dd5460bf4",
+    "forester-sohc-water-pump": "fe5a1be051aaf7ff42263fc51855d2f5bf4d2955ef645689305d8e566d80cdfd",
+    "civic-lx-front-caliper": "2f593b554eee45007b378d4dadb708ab6e8f946d968f7562d299b8dca38abecb"
+  },
+  "updated_at": "2026-09-15T05:45:00Z"
 }
