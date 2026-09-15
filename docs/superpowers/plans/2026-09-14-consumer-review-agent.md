@@ -303,3 +303,53 @@ covering RAV4, Camry, Forester, and Civic.
 Update the canonical contract, runbook, and synchronized record with the
 post-fix aggregate report and PDF hashes, including any remaining external or
 human-review blockers.
+
+### Task 8: Make provider-backed figure retrieval resilient on first use
+
+**Files:**
+- Modify: `workers/ingestion-python/src/autodata_ingestion/autoapitwo_connector.py`
+- Modify: `workers/ingestion-python/tests/test_autoapitwo_connector.py`
+- Modify: `docs/architecture/consumer-review-agent.md`
+- Modify: `docs/verification/consumer-review-runbook.md`
+
+**Interfaces:**
+- Consumes: allow-listed AutoAPI Two JSON and image reads used by chat/PDF
+  generation.
+- Produces: bounded, serialized retries for transient provider responses,
+  including 502/503/504 and rate-limit responses, while preserving source
+  origin validation, vehicle scoping, byte limits, and fail-closed behavior.
+
+- [ ] **Step 1: Write failing source-read retry tests**
+
+Assert that a transient provider response is retried and that a persistent
+transient response remains `SourceUnavailable` after the finite attempt limit.
+Assert that non-transient failures are not retried and that a successful
+binary figure remains vehicle-scoped.
+
+- [ ] **Step 2: Run focused tests to verify they fail**
+
+Run: `PYTHONPATH=src python3 -m pytest tests/test_autoapitwo_connector.py -q`
+
+Expected: FAIL because source reads currently abort on the first transient
+provider response.
+
+- [ ] **Step 3: Add bounded transient source retries**
+
+Retry only the allow-listed transient statuses with a small finite backoff;
+honor a numeric `Retry-After` only within a configured cap. Do not retry
+redirects, validation errors, authorization failures, oversized responses, or
+arbitrary exceptions. Keep all source failures sanitized at the public edge.
+
+- [ ] **Step 4: Run focused, full, and live verification**
+
+Run connector and full worker tests, rebuild the isolated QA API/worker from
+the current checkout, and execute cold and warm four-case consumer matrices.
+The release gate requires RAV4, Camry, Forester, and Civic to complete on the
+first PDF request with no blocked case.
+
+- [ ] **Step 5: Record exact runtime evidence and reconcile findings**
+
+Update the canonical contract, runbook, synchronized record, and issues #90
+and #91 with exact report hashes, PDF hashes, and container health. Close the
+findings only when the fresh cold matrix reproduces the fix; otherwise retain
+the release blocker.

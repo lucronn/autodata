@@ -63,6 +63,13 @@ retain explicit deployment overrides; do not treat an unbounded wait as a
 readiness strategy. The clean matrix remains release-blocked if a first PDF
 request fails even when a later manual request succeeds.
 
+The ingestion source connector also retries only allow-listed transient
+provider reads, including 502/503/504 and rate limits, with a finite capped
+backoff. Origin checks, vehicle scoping, response-size limits, redirects,
+validation failures, and non-transient errors remain fail-closed. Verify this
+boundary with connector tests and then a fresh cold matrix; a warm replay alone
+does not establish first-use reliability.
+
 ## Negative-path acceptance
 
 Run `scripts/dev/consumer_review_negative_cases.json` separately from the

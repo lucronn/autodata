@@ -54,6 +54,9 @@ does not change the guide's `UNREVIEWED` state.
 - Give the internal Go-to-ingestion proxy a bounded 120-second default for
   provider-backed guide/PDF generation; explicit deployment overrides remain
   supported.
+- Make provider-backed figure retrieval resilient on first use with bounded,
+  serialized retries for transient source responses, while retaining strict
+  origin, vehicle, size, and fail-closed validation.
 
 ## Acceptance evidence
 
@@ -133,3 +136,12 @@ with SHA-256
 created the deduplicated reliability findings [#90](https://github.com/lucronn/autodata/issues/90)
 and [#91](https://github.com/lucronn/autodata/issues/91). Passing cases created
 no issues.
+
+The next release repair is tracked in [#90](https://github.com/lucronn/autodata/issues/90)
+and covers the provider-read boundary exposed by the cold matrix. The source
+connector currently aborts a first PDF render when an allow-listed provider
+image read returns a transient 502/503/504 or rate-limit response. The repair
+will add a finite, capped retry at that boundary; it will not retry redirects,
+validation failures, authorization failures, oversized content, or arbitrary
+exceptions. Issues #90 and #91 remain open until a fresh cold matrix proves
+all four vehicles complete their first PDF request.
