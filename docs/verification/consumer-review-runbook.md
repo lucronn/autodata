@@ -44,3 +44,12 @@ response is incomplete or ambiguous and must be dispositioned before release.
 `fail` or `blocked` is release-blocking until the reproduction is corrected or
 the dependency is restored. Re-run the same case after a fix and link the new
 report hash in the issue before closing it.
+
+## Negative-path acceptance
+
+Run `scripts/dev/consumer_review_negative_cases.json` separately from the
+release matrix. Its expected result is `fail`: the vehicle must still resolve,
+the missing source content must not become a fabricated procedure, and no
+final PDF may be offered. A matching `fail` result with
+`expectation_met: true` confirms safe fail-closed behavior; it does not make
+the production release matrix pass.

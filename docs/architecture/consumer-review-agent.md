@@ -75,3 +75,13 @@ the first, representative middle, and final pages were visually inspected
 for clipping, readable figures, clean numbering, headers, footers, and final
 installation/check steps. Its SHA-256 is
 `4f2da8686ada5dd6cb82df7155a2d338b65b1797616907c3cb40e909935f5a5d`.
+
+The negative path was also exercised against the valid RAV4 vehicle for a
+battery request with no returned procedure article. It resolved the vehicle,
+returned a failed lookup without fabricating a procedure, and withheld the
+final PDF. This expected `fail` result is tracked separately from the
+four-case release pass and is marked `expectation_met` in its report. The
+negative report is
+`tmp/consumer-review-negative/consumer-review-c5259382dfb1e813d3d878ee.json`
+with SHA-256
+`c9d122aa2c486d1273793fe25513b282701a3711df7559a16fdce04aa61292e3`.

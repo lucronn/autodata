@@ -433,6 +433,9 @@ def run_case(
         pdf_response = client.pdf(str(response.get("query_id")))
     public_response = consumer_projection(response)
     review = score_response(case, response, pdf_response=pdf_response)
+    expected_decision = str(case.get("expected_decision") or "").strip().casefold()
+    if expected_decision and expected_decision not in {"pass", "fail", "needs_review", "blocked"}:
+        raise ConsumerReviewError(f"case {name} has an invalid expected_decision")
     return {
         "case": name,
         "message": message,
@@ -441,6 +444,8 @@ def run_case(
         "response_sha256": _canonical_hash(public_response),
         "pdf_sha256": hashlib.sha256(pdf_response).hexdigest() if pdf_response else None,
         "review": review,
+        "expected_decision": expected_decision or None,
+        "expectation_met": not expected_decision or expected_decision == review["decision"],
     }
 
 

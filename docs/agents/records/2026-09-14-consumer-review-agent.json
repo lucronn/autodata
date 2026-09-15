@@ -16,6 +16,13 @@
     "report_sha256": "840d08df0c48f2762cbe55f58374d5786331f323bd434d580413d3253b798091",
     "visual_pdf_path": "tmp/pdfs/qa/current-rav4-fixed2.pdf",
     "visual_pdf_sha256": "4f2da8686ada5dd6cb82df7155a2d338b65b1797616907c3cb40e909935f5a5d",
+    "negative_case": "scripts/dev/consumer_review_negative_cases.json",
+    "negative_report_path": "tmp/consumer-review-negative/consumer-review-c5259382dfb1e813d3d878ee.json",
+    "negative_report_sha256": "c9d122aa2c486d1273793fe25513b282701a3711df7559a16fdce04aa61292e3",
+    "negative_expected_decision": "fail",
+    "negative_observed_decision": "fail",
+    "negative_expectation_met": true,
+    "negative_pdf_offered": false,
     "decision": "pass",
     "summary": {"case_count": 4, "pass": 4, "fail": 0, "needs_review": 0, "blocked": 0, "issue_actions": 0}
   },

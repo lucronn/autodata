@@ -106,12 +106,14 @@ class FakeChatClient:
 
 def test_run_case_selects_vehicle_and_records_revision_hash():
     client = FakeChatClient()
-    result = run_case(client, {"name": "camry-starter", "message": "replace starter", "expected_vehicle": {"vehicle_id": "vehicle-1"}, "expected_components": ["starter"], "min_steps": 2, "min_figures": 2}, poll_interval=0.01, timeout=1)
+    result = run_case(client, {"name": "camry-starter", "message": "replace starter", "expected_vehicle": {"vehicle_id": "vehicle-1"}, "expected_components": ["starter"], "min_steps": 2, "min_figures": 2, "expected_decision": "pass"}, poll_interval=0.01, timeout=1)
     assert result["review"]["decision"] == "pass"
     assert result["selected_vehicle"] is True
     assert client.selected == [("query-12345678", 1)]
     assert result["response_sha256"]
     assert result["pdf_sha256"]
+    assert result["expected_decision"] == "pass"
+    assert result["expectation_met"] is True
 
 
 def test_http_client_bounds_and_parses_json_without_logging_auth_material():

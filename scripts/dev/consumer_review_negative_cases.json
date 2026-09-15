@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "name": "rav4-battery-missing-content",
+      "message": "1997 Toyota RAV4 2-door 2WD 2.0L battery replacement",
+      "expected_vehicle": {"autoapitwo_vehicle_id": "41215"},
+      "expected_components": ["battery"],
+      "min_steps": 1,
+      "min_figures": 1,
+      "expected_decision": "fail"
+    }
+  ]
+}
