@@ -50,19 +50,19 @@ does not change the guide's `UNREVIEWED` state.
 
 The committed implementation was exercised in report-only mode through the
 chat HTTP contract, using the real chat state machine and live AutoAPI Two
-source retrieval in a loopback development adapter. The aggregate report is
-retained outside the source tree at
-`tmp/consumer-review-live/consumer-review-45261b9ee1e274e41ffe87ef.json`.
-The implementation under test is `27fa5cd03485c30d670bfe3824b58b3743a7653b`.
+source retrieval in a loopback development adapter. The latest aggregate
+report is retained outside the source tree at
+`tmp/consumer-review-live/consumer-review-42469167db6ddb1f23428c4d.json`.
+The implementation under test is `3175ba4dd994fff4cd752451b3791c4c0cf4df43`.
 Its SHA-256 is
-`840d08df0c48f2762cbe55f58374d5786331f323bd434d580413d3253b798091`.
+`23bd27b93a0918eeced3ca5f1e71f4fc2007d6dc3456f6ee635cefe4ecb19fe3`.
 
 | Case | Result | Steps | Figures | PDF SHA-256 |
 | --- | --- | ---: | ---: | --- |
-| 1997 Toyota RAV4 oil and water pumps | pass | 99 | 80 | `1e78a153641e26815adbec2666a1dbe43ce7db34da1fdddb07220e2cb22e4fc9` |
-| 2005 Toyota Camry starter | pass | 14 | 4 | `476c781f567c5e1a84a752f2390cc4b6876e8801aae4218be5aadc01cb1998db` |
-| 2010 Subaru Forester SOHC water pump | pass | 87 | 36 | `745371a8cdd1f6f7ed9051c1eae64d6149e06c1d030ab944b49a8ae58d063888` |
-| 2002 Honda Civic LX front caliper | pass | 14 | 5 | `86eb73d8d81cb7d063d013a74c7d6587071353898687e01830d8fd98ba3d5103` |
+| 1997 Toyota RAV4 oil and water pumps | pass | 99 | 80 | `21aa27d02f89826bddd793964e8384f98750304cd320fc199f9b03cf2d6df343` |
+| 2005 Toyota Camry starter | pass | 14 | 4 | `6fe70042efa04f114486ea51789b92c48787cb0325dd3d4140d0ec79efe8115d` |
+| 2010 Subaru Forester SOHC water pump | pass | 87 | 36 | `a02ddad8b39002c9f5f13455ccae413d0d12ecfcafd750eb740f1bee87680276` |
+| 2002 Honda Civic LX front caliper | pass | 14 | 5 | `1735197a3de294da437788125f541c1487da500376132d2ec28f96071b791a27` |
 
 All six rubric dimensions passed for all four cases: applicability,
 procedure coverage, figures, safety/review labeling, consumer-copy hygiene,
@@ -82,6 +82,6 @@ returned a failed lookup without fabricating a procedure, and withheld the
 final PDF. This expected `fail` result is tracked separately from the
 four-case release pass and is marked `expectation_met` in its report. The
 negative report is
-`tmp/consumer-review-negative/consumer-review-c5259382dfb1e813d3d878ee.json`
+`tmp/consumer-review-negative/consumer-review-2a8a000b3220a21f90fd94b9.json`
 with SHA-256
-`c9d122aa2c486d1273793fe25513b282701a3711df7559a16fdce04aa61292e3`.
+`3884e26423809b5f149ba3347eb56d3cda2198dc1f4fe54634cab4aad3f2b9b7`.

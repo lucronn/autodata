@@ -12,15 +12,16 @@ Delivery status: the bounded second-provider connector, dependency-aware guide
 composition, revision-matched PDF renderer, and authenticated delivery path are
 implemented. Live acceptance for the 1997 RAV4 oil-pump plus water-pump job
 returned a complete 99-step guide with 80 associated figures; the PDF rendered
-to 14 pages with 75 embedded image objects, and a warm replay returned the
-identical PDF from the revision cache. The remaining breadth checks are the
+to 61 pages with 80 embedded image objects, and a warm replay returned the
 identical PDF from the revision cache. Additional live chat and PDF acceptance
 also passed for a 2005 Toyota Camry starter (14 steps, 4 figures, 5-page PDF),
 a 2010 Subaru Forester 2.5L SOHC water pump (87 steps, 36 figures, 36-image
 source coverage), and a 2002 Honda Civic LX front brake caliper (14 steps, 5
 figures, 4-page PDF). The Forester test exercised the explicit engine-variant
-selection flow. Intentionally incomplete source content remains the next
-negative-path follow-up.
+selection flow. The consumer reviewer also exercised a valid RAV4 battery
+request with no returned procedure article: it resolved the vehicle, withheld
+the PDF, and recorded the expected fail-closed result without creating an
+issue.
 
 ## Current implementation notes
 

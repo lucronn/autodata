@@ -10,12 +10,14 @@
     "guide_status": "complete",
     "guide_steps": 99,
     "guide_figures": 80,
-    "pdf_pages": 14,
-    "pdf_embedded_image_objects": 75,
+    "pdf_pages": 61,
+    "pdf_embedded_image_objects": 80,
+    "implementation_sha": "3175ba4dd994fff4cd752451b3791c4c0cf4df43",
+    "consumer_review": "4/4 release cases pass; negative missing-content case fails closed with no PDF",
     "warm_replay_identical": true,
-    "tests": "378 passed, 1 skipped, 12 subtests passed; Go tests passed",
+    "tests": "379 passed, 2 skipped, 12 subtests passed; Go tests passed",
     "live_matrix": [
-      "1997 Toyota RAV4 2-door 2WD 2.0L oil pump and water pump: 99 steps, 80 figures, 14-page PDF",
+      "1997 Toyota RAV4 2-door 2WD 2.0L oil pump and water pump: 99 steps, 80 figures, 61-page PDF",
       "2005 Toyota Camry 2.4L starter: 14 steps, 4 figures, 5-page PDF",
       "2010 Subaru Forester 2.5L SOHC water pump: 87 steps, 36 figures, explicit engine selection, complete",
       "2002 Honda Civic LX Sedan front brake caliper: 14 steps, 5 figures, 4-page PDF"
