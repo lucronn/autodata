@@ -49,7 +49,7 @@
 
 ## Task 5: Verify, document, and deliver
 
-- [ ] Run focused worker, Go API, dashboard, and consumer-contract tests, then the complete applicable test suites and `git diff --check`.
+- [x] Run focused worker, Go API, dashboard, and consumer-contract tests, then the complete applicable test suites and `git diff --check`.
 - [x] Exercise a representative complete guide offline and verify that removing network access after preparation still leaves a renderable HTML document with embedded figures.
 - [ ] Run the live/local Silverado example through the chat path, verify the canonical heading and HTML/PDF revision parity, and record measured evidence in the plan and canonical guide document.
 - [x] Update `docs/architecture/consumer-repair-guides.md`, `docs/verification/consumer-review-runbook.md`, and `docs/wiki/Getting-Started.md` to make HTML the preferred artifact while documenting PDF compatibility and the identity-label rule.
@@ -64,3 +64,16 @@
 - Incomplete guides remain unavailable for final artifacts, source evidence and review status remain visible, and user-owned untracked directories remain untouched.
 
 **Tracking:** [Issue #96](https://github.com/lucronn/autodata/issues/96) and [Project #8](https://github.com/users/lucronn/projects/8).
+
+## Local verification checkpoint
+
+Implementation commit `d63ab7b` passed:
+
+- `PYTHONPATH=workers/ingestion-python/src python3 -m pytest -q workers/ingestion-python/tests scripts/dev/test_consumer_agent.py scripts/contracts/test_chat_quote_contract.py scripts/contracts/test_contracts.py` — `426 passed, 3 skipped, 12 subtests passed`.
+- `go test ./... -count=1` from `apps/api-go` — passed.
+- `node --check apps/api-go/dashboard/app.js` — passed.
+- `git diff --check` — passed.
+
+The live/local Silverado chat run and HTML/PDF parity check are still pending a
+restart of the running service on this branch; this plan does not claim that
+runtime result yet.

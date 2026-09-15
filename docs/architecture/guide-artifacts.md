@@ -25,8 +25,21 @@ Vehicle applicability is derived from canonical year, make, model, drivetrain, a
 - [x] Add failing HTML-artifact and Silverado-label tests.
 - [x] Implement HTML rendering, worker caching, internal delivery, Go proxying, answer metadata, dashboard preference, and consumer verification.
 - [x] Implement provider-label sanitization without changing valid detailed vehicle labels.
-- [ ] Run focused/full verification and record exact evidence here and in GitHub.
+- [x] Run focused/full verification and record exact evidence here and in GitHub.
 
 ## Boundaries
 
 No source data, credentials, or user-owned runtime artifacts are part of this delivery. The GitHub Project is a synchronized delivery index; this document and the linked implementation plan are the normative technical record. Verification evidence is added below after the final local test run.
+
+## Local verification checkpoint
+
+Implementation commit `d63ab7b` passed the applicable local checks:
+
+- `426 passed, 3 skipped, 12 subtests passed` across the Python worker,
+  consumer, and contract suites.
+- `go test ./... -count=1` passed in `apps/api-go`.
+- `node --check apps/api-go/dashboard/app.js` passed.
+- `git diff --check` passed.
+
+The live/local Silverado chat run and HTML/PDF parity check remain a post-restart
+acceptance step; no live result is claimed by this checkpoint.
