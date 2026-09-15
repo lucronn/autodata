@@ -25,16 +25,32 @@ consumer artifact did not display that specificity prominently.
 
 ## Concrete todo
 
-- Add a regression proving the exact selected vehicle variant appears in guide
+- [x] Add a regression proving the exact selected vehicle variant appears in guide
   applicability.
-- Implement the vehicle-specific applicability formatter.
-- Run focused and full applicable test suites.
-- Re-run the five-case live consumer matrix and verify all generated PDFs carry
+- [x] Implement the vehicle-specific applicability formatter.
+- [x] Run focused and full applicable test suites.
+- [x] Re-run the five-case live consumer matrix and verify all generated PDFs carry
   vehicle-specific applicability.
-- Record hashes and reconcile Issue #85 and canonical documentation.
+- [x] Record hashes and reconcile Issue #85 and canonical documentation.
 
 ## Verification contract
 
 The repair is complete only when the selected RAV4 guide visibly identifies its
 2-door 4WD variant, fallback formatting is deterministic, all live cases pass,
 and no existing procedure, PDF, or consumer-copy contract regresses.
+
+## Acceptance evidence
+
+Implementation commit: `256a42f` (`fix: show exact vehicle applicability`).
+Focused guide tests passed (`9 passed`). Full verification passed: developer
+`73 passed, 2 subtests`; autonomy `37 passed`; ingestion `386 passed, 3 skipped,
+12 subtests`; Go API and shared-contract suites passed; and `git diff --check`
+passed.
+
+Fresh live report-only matrix passed all five cases at score 100 with zero
+findings and zero issue actions. Report:
+`tmp/consumer-review-live/vehicle-label-v1/consumer-review-72b81614a35210f063b9cdfb.json`
+with SHA-256
+`be89b7f8cbcf2954ecf2f146016b8188f0fce3626056c8db37504c7b8bf4ee28`. The
+RAV4 PDF cover was rendered and visually inspected; it displays the exact
+`1997 Toyota Truck RAV4 2-Door 4WD L4-2.0L (3S-FE)` applicability line.

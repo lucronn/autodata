@@ -128,11 +128,20 @@ Plan: ../superpowers/plans/2026-09-15-vehicle-specific-guide-label.md
 
 Todo:
 
-- Add a regression proving the exact selected vehicle variant appears in guide applicability.
-- Implement the vehicle-specific applicability formatter.
-- Run focused and full applicable test suites.
-- Re-run the five-case live consumer matrix and verify vehicle-specific PDF applicability.
-- Record hashes and reconcile Issue #85 and canonical documentation.
+- [x] Add a regression proving the exact selected vehicle variant appears in guide applicability.
+- [x] Implement the vehicle-specific applicability formatter.
+- [x] Run focused and full applicable test suites.
+- [x] Re-run the five-case live consumer matrix and verify vehicle-specific PDF applicability.
+- [x] Record hashes and reconcile Issue #85 and canonical documentation.
+
+Acceptance at implementation commit `256a42f`: all local suites passed,
+including developer `73 passed, 2 subtests`, autonomy `37 passed`, ingestion
+`386 passed, 3 skipped, 12 subtests`, and both Go suites. The fresh five-case
+report-only matrix passed all cases at score 100 with zero findings and zero
+issue actions. Its report SHA-256 is
+`be89b7f8cbcf2954ecf2f146016b8188f0fce3626056c8db37504c7b8bf4ee28`; each
+fresh PDF hash is recorded in the synchronized record. The rendered RAV4 cover
+shows the exact 2-door 4WD 2.0L (3S-FE) applicability label.
 
 The `autodata-consumer-agent` is a release-readiness evaluator for the public
 chat experience. It calls the chat HTTP boundary with real consumer prompts,
