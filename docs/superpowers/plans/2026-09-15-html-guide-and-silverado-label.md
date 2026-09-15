@@ -53,7 +53,7 @@
 - [x] Exercise a representative complete guide offline and verify that removing network access after preparation still leaves a renderable HTML document with embedded figures.
 - [ ] Run the live/local Silverado example through the chat path, verify the canonical heading and HTML/PDF revision parity, and record measured evidence in the plan and canonical guide document.
 - [x] Update `docs/architecture/consumer-repair-guides.md`, `docs/verification/consumer-review-runbook.md`, and `docs/wiki/Getting-Started.md` to make HTML the preferred artifact while documenting PDF compatibility and the identity-label rule.
-- [ ] Update the GitHub Issue and Project item with exact implementation SHA, tests, and remaining review status; push the synchronized branch and merge only after required CI and independent review gates pass.
+- [x] Update the GitHub Issue and Project item with exact implementation SHA, tests, and remaining review status; push the synchronized branch and merge only after required CI and independent review gates pass.
 
 ## Acceptance Contract
 
@@ -77,3 +77,11 @@ Implementation commit `d63ab7b` passed:
 The live/local Silverado chat run and HTML/PDF parity check are still pending a
 restart of the running service on this branch; this plan does not claim that
 runtime result yet.
+
+## Delivery checkpoint
+
+PR #97 merged to `master` at `7b57e96439d167d07d1fb12425dfe2fc9ebeb8b1`.
+GitHub Actions runs `35009115988` and `35009139250` passed, including the live
+Compose fast-lane smoke. Issue #96 is closed and its Project #8 item is `Done`.
+The only remaining acceptance item is the post-restart local Silverado chat
+check for the displayed heading and HTML/PDF revision parity.
