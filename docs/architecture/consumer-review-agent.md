@@ -125,3 +125,11 @@ with SHA-256
 RAV4 and Civic passed; Camry and Forester were blocked. Issue #89 remains
 blocked and no live release claim is made until first-request PDF generation
 is reliable across all four vehicles.
+
+The explicit consumer issue-creation run retained the same 2/4 outcome in
+`tmp/consumer-review-live/post-hardening-issue-creation/consumer-review-7388d45911aed5a8bc27d126.json`
+with SHA-256
+`f9ad5659f4ad1b3d52624f5fb6e57cef055019e7b1f40e4699a3ced14eddbfa2` and
+created the deduplicated reliability findings [#90](https://github.com/lucronn/autodata/issues/90)
+and [#91](https://github.com/lucronn/autodata/issues/91). Passing cases created
+no issues.
