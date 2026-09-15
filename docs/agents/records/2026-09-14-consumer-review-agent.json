@@ -1,0 +1,57 @@
+{
+  "goal": "Exercise the live chat experience as a consumer, score responses, retain safe review records, and create deduplicated issues for reproducible findings",
+  "plan_ref": "docs/superpowers/plans/2026-09-14-consumer-review-agent.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/89",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": ["docs/architecture/consumer-review-agent.md"],
+  "todo": [
+    "Register the consumer review agent and least-privilege report capability",
+    "Implement bounded chat transport, redacted response recording, and deterministic scoring",
+    "Create or reuse GitHub issues from stable findings without duplicates",
+    "Enforce case-declared procedure-depth terms such as torque and final checks",
+    "Run the live multi-vehicle review matrix and reconcile every finding",
+    "Add bounded transient retries at the provider-backed figure-read boundary and re-run the cold matrix",
+    "Retry transient internal chat polling reads without hiding persistent failures and keep CLI status faithful to the aggregate report",
+    "Continue consumer polling across retryable 502/503/504 responses until the finite case deadline and regression-test the processing-to-available transition",
+    "Compact repeated internal evidence/provenance metadata from the public chat projection before the 8 MB proxy boundary, preserving consumer procedure and PDF fields"
+  ],
+  "verification": {
+    "implementation_sha": "8a2a7ee",
+    "latest_local_hardening_sha": "8a2a7ee",
+    "latest_local_hardening_tests": "developer 72 passed, 2 subtests; autonomy 37 passed; ingestion 384 passed, 2 skipped, 12 subtests; Go API/contracts passed",
+    "fresh_live_recheck": "pass: cold and warm four-vehicle matrices pass 4/4 after bounded consumer poll retries, compact public projection, and aligned 8 MB consumer response limit",
+    "latest_runtime_finding": "resolved: Camry and Forester complete with compact consumer-visible answers and revision-matched PDFs; no transient polling or response-size blockers remain in the verified matrix",
+    "latest_live_recheck": {
+      "implementation_sha": "8a2a7ee",
+      "report_path": "tmp/consumer-review-live/post-public-compaction-cold-v2/consumer-review-73d119083fa152737b002ee1.json",
+      "report_sha256": "21d39bca197a429d6dbe16064cf756f825eb420765e3c9b78f0122ae54eb9272",
+      "decision": "pass",
+      "summary": {"case_count": 4, "pass": 4, "fail": 0, "needs_review": 0, "blocked": 0},
+      "issue_actions": []
+    },
+    "warm_live_recheck": {
+      "implementation_sha": "8a2a7ee",
+      "report_path": "tmp/consumer-review-live/post-public-compaction-warm/consumer-review-5188d0e5b668927d2c870249.json",
+      "report_sha256": "8c28ab0dc68158d499fc41e9b3a8902d2e0f57dbc677f90c7adbff255de8367e",
+      "decision": "pass",
+      "summary": {"case_count": 4, "pass": 4, "fail": 0, "needs_review": 0, "blocked": 0},
+      "issue_actions": []
+    },
+    "retained_live_depth_recheck": "4/4 retained live responses contain all case-declared terms: torque and check",
+    "report_path": "tmp/consumer-review-live/consumer-review-42469167db6ddb1f23428c4d.json",
+    "report_sha256": "23bd27b93a0918eeced3ca5f1e71f4fc2007d6dc3456f6ee635cefe4ecb19fe3",
+    "visual_pdf_path": "tmp/pdfs/qa/current-rav4-fixed2.pdf",
+    "visual_pdf_sha256": "4f2da8686ada5dd6cb82df7155a2d338b65b1797616907c3cb40e909935f5a5d",
+    "negative_case": "scripts/dev/consumer_review_negative_cases.json",
+    "negative_report_path": "tmp/consumer-review-negative/consumer-review-2a8a000b3220a21f90fd94b9.json",
+    "negative_report_sha256": "3884e26423809b5f149ba3347eb56d3cda2198dc1f4fe54634cab4aad3f2b9b7",
+    "negative_expected_decision": "fail",
+    "negative_observed_decision": "fail",
+    "negative_expectation_met": true,
+    "negative_pdf_offered": false,
+    "decision": "pass",
+    "summary": {"case_count": 4, "pass": 4, "fail": 0, "needs_review": 0, "blocked": 0, "issue_actions": 0}
+  },
+  "status": "synchronized",
+  "updated_at": "2026-09-15T03:20:00Z"
+}

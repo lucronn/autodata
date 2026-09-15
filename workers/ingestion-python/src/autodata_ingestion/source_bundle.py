@@ -59,6 +59,8 @@ def normalize_source_bundle(
     powertrain_records: list[dict[str, Any]] = []
     part_records: list[dict[str, Any]] = []
     article_records: list[dict[str, Any]] = []
+    article_operations: dict[str, list[dict[str, Any]]] = {}
+    document_text_records: list[dict[str, Any]] = []
     document_records: list[dict[str, Any]] = []
     diagram_records: list[dict[str, Any]] = []
 
@@ -161,7 +163,29 @@ def normalize_source_bundle(
                 steps = _article_steps(candidate.data)
                 if steps is not None:
                     article_record["steps"] = steps
+                images = _article_images(candidate.data)
+                if images:
+                    article_record["images"] = images
                 article_records.append(article_record)
+            elif candidate.kind == "article_operations":
+                article_id = str(candidate.data.get("article_id") or "").strip()
+                operations = _article_operations(
+                    candidate.data.get("operations"), evidence_item["evidence_id"]
+                )
+                if article_id and operations:
+                    article_operations.setdefault(article_id, []).extend(operations)
+            elif candidate.kind == "document_text":
+                document_text_records.append(
+                    {
+                        "text": candidate.data.get("text"),
+                        "images": candidate.data.get("images", []),
+                        "evidence_id": evidence_item["evidence_id"],
+                        "locator": evidence_item["locator"],
+                        "source_uri": artifact.source_uri,
+                        "source_version": artifact.source_version,
+                        "content_sha256": artifact.content_sha256,
+                    }
+                )
             elif candidate.kind == "document":
                 document_records.append(
                     {
@@ -173,6 +197,14 @@ def normalize_source_bundle(
                     }
                 )
 
+    article_records, document_content_evidence = _attach_document_content(
+        article_records, document_text_records, diagram_records, evidence
+    )
+    for article in article_records:
+        operations = article_operations.get(str(article.get("article_id")), [])
+        if operations:
+            article["operations"] = operations
+    evidence.extend(document_content_evidence)
     article_records = _resolve_article_collisions(article_records, evidence, quarantined, conflicts)
     vehicle = _normalize_vehicle(
         vehicle_candidates,
@@ -353,7 +385,7 @@ def _normalize_vehicle(
         source_engine = record.get("engine_displacement_l")
         mismatch = (
             make.casefold() != expected_make.casefold()
-            or model.casefold() != expected_model.casefold()
+            or not _compatible_vehicle_model(model, expected_model)
             or year != expected_year
             or source_region != expected_region
             or (expected_trim is not None and source_trim is not None and source_trim != expected_trim)
@@ -394,18 +426,38 @@ def _normalize_vehicle(
                 }
             )
             return None
+    # The selector supplied by the caller is the canonical identity. The
+    # provider display name may contain trim, engine, fuel, and marketing
+    # suffixes; those remain in source evidence/configuration records rather
+    # than creating a second vehicle family in the local database.
+    canonical_make = expected_make if expected_vehicle is not None and expected_make else make
+    canonical_model = expected_model if expected_vehicle is not None and expected_model else model
+    canonical_year = expected_year if expected_vehicle is not None and expected_year is not None else year
+    canonical_region = expected_region if expected_vehicle is not None and expected_region else normalized_region
     return {
-        "vehicle_key": f"{_slug(make)}-{_slug(model)}-{year}-{_slug(normalized_region)}",
-        "make": make,
-        "model": model,
-        "model_year": year,
-        "region": normalized_region,
-        "body_style": record.get("body_style"),
-        "trim": record.get("trim"),
-        "drivetrain": record.get("drivetrain"),
-        "engine_displacement_l": record.get("engine_displacement_l"),
+        "vehicle_key": f"{_slug(canonical_make)}-{_slug(canonical_model)}-{canonical_year}-{_slug(canonical_region)}",
+        "make": canonical_make,
+        "model": canonical_model,
+        "model_year": canonical_year,
+        "region": canonical_region,
+        "body_style": expected_body_style if expected_vehicle is not None and expected_body_style is not None else record.get("body_style"),
+        "trim": expected_trim if expected_vehicle is not None and expected_trim is not None else record.get("trim"),
+        "drivetrain": expected_drivetrain if expected_vehicle is not None and expected_drivetrain is not None else record.get("drivetrain"),
+        "engine_displacement_l": expected_engine if expected_vehicle is not None and expected_engine is not None else record.get("engine_displacement_l"),
         "evidence_id": record["evidence_id"],
     }
+
+
+def _compatible_vehicle_model(source_model: object, expected_model: object) -> bool:
+    """Accept provider trim/engine suffixes for a selected base model."""
+
+    source = " ".join(str(source_model or "").split()).casefold()
+    expected = " ".join(str(expected_model or "").split()).casefold()
+    return (
+        source == expected
+        or source.startswith(expected + " ")
+        or expected.startswith(source + " ")
+    )
 
 
 def _resolve_article_collisions(
@@ -436,6 +488,8 @@ def _resolve_article_collisions(
             continue
         title = _article_text(record.get("title"))
         similar = accepted_by_title.get(title) if title else None
+        if similar is not None and _article_roles_differ(similar, record):
+            similar = None
         if similar is None:
             candidate_indices = sorted(
                 {
@@ -448,7 +502,8 @@ def _resolve_article_collisions(
                 (
                     accepted[index]
                     for index in candidate_indices
-                    if _similar_article(accepted[index], record)
+                    if not _article_roles_differ(accepted[index], record)
+                    and _similar_article(accepted[index], record)
                 ),
                 None,
             )
@@ -488,6 +543,175 @@ def _resolve_article_collisions(
     return accepted
 
 
+def _attach_document_content(
+    articles: list[dict[str, Any]],
+    document_text_records: list[dict[str, Any]],
+    media_artifacts: list[dict[str, Any]],
+    evidence: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Join AutoAPI document responses to their article index records.
+
+    AutoAPI exposes article metadata in ``v2.json`` and document bodies in
+    separate responses. The document locator carries the numeric document ID,
+    while the article ID is commonly ``<document-id>:<content-id>``.
+    """
+
+    by_document_id: dict[str, list[dict[str, Any]]] = {}
+    for record in sorted(document_text_records, key=_document_content_order):
+        locator = str(record.get("locator", ""))
+        if not locator.startswith(("body.html:", "body.pdf:")):
+            continue
+        prefix = "body.html:" if locator.startswith("body.html:") else "body.pdf:"
+        document_id = locator.removeprefix(prefix).split(":", 1)[0].strip()
+        if document_id and record.get("text"):
+            by_document_id.setdefault(document_id, []).append(record)
+
+    aggregate_evidence: list[dict[str, Any]] = []
+    for article in articles:
+        article_id = str(article.get("article_id") or "")
+        article_id_parts = {part.strip() for part in article_id.split(":") if part.strip()}
+        content_records = []
+        for document_id, records_for_document in by_document_id.items():
+            # AutoAPI uses more than one article-id shape. Some indexes use
+            # ``document-id:content-id`` while procedure rows use a provider
+            # prefix such as ``P:document-id``. A fetched document is allowed
+            # to join when its document id is an exact id segment, preserving
+            # the source evidence while avoiding title-based guesses.
+            if document_id in article_id_parts or document_id == article_id:
+                content_records.extend(records_for_document)
+        if not content_records:
+            continue
+        html_records = [
+            record
+            for record in content_records
+            if str(record.get("locator", "")).startswith("body.html:")
+        ]
+        selected_records = html_records or content_records
+        content = _document_content_record(selected_records, aggregate_evidence)
+        article.setdefault(
+            "body",
+            _remove_repeated_article_title(content["text"], article.get("title")),
+        )
+        article["content_evidence_id"] = content["evidence_id"]
+        article["content_locator"] = content["locator"]
+        article["content_source_uri"] = content["source_uri"]
+        article["content_source_version"] = content["source_version"]
+        article["content_sha256"] = content["content_sha256"]
+        images = _resolve_document_images(selected_records, media_artifacts, evidence)
+        if images:
+            article["images"] = images
+    return articles, aggregate_evidence
+
+
+def _remove_repeated_article_title(text: Any, title: Any) -> str:
+    """Keep document instructions while removing a duplicated HTML heading."""
+
+    original_text = str(text or "").strip()
+    normalized_text = re.sub(r"\s+", " ", original_text)
+    normalized_title = re.sub(r"\s+", " ", str(title or "")).strip()
+    if not normalized_text or not normalized_title:
+        return original_text
+    if normalized_text.casefold() == normalized_title.casefold():
+        return original_text
+    if normalized_text.casefold().startswith(normalized_title.casefold()):
+        remainder = original_text[len(normalized_title):].lstrip(" :.-\n\r\t")
+        if remainder:
+            return remainder
+    return original_text
+
+
+def _resolve_document_images(
+    records: list[dict[str, Any]],
+    media_artifacts: list[dict[str, Any]],
+    evidence: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Resolve guide image IDs to the original persisted media artifact."""
+
+    media_by_id: dict[str, dict[str, Any]] = {}
+    for artifact in media_artifacts:
+        source_uri = str(artifact.get("source_uri") or "")
+        filename = source_uri.rsplit("/", 1)[-1].split("?", 1)[0]
+        image_id = filename.rsplit(".", 1)[0]
+        if image_id:
+            media_by_id[image_id] = artifact
+    evidence_by_uri: dict[str, str] = {}
+    for item in evidence:
+        source_uri = str(item.get("source_uri") or "")
+        if source_uri and item.get("evidence_id"):
+            evidence_by_uri.setdefault(source_uri, str(item["evidence_id"]))
+    images: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for record in records:
+        raw_images = record.get("images", [])
+        if not isinstance(raw_images, list):
+            continue
+        for raw in raw_images:
+            if not isinstance(raw, dict):
+                continue
+            image = dict(raw)
+            image_id = str(image.get("image_id") or "").strip()
+            artifact = media_by_id.get(image_id) if image_id else None
+            if artifact is not None:
+                image["url"] = str(artifact.get("source_uri") or "")
+                image["artifact_key"] = str(artifact.get("object_key") or "")
+                evidence_id = evidence_by_uri.get(str(artifact.get("source_uri") or ""))
+                if evidence_id:
+                    image["evidence_id"] = evidence_id
+            url = str(image.get("url") or "").strip()
+            if not url or url in seen:
+                continue
+            image["url"] = url
+            image.pop("image_id", None)
+            image.setdefault("alt", "Source diagram")
+            seen.add(url)
+            images.append({key: value for key, value in image.items() if value})
+    return images
+
+
+def _document_content_record(
+    records: list[dict[str, Any]],
+    aggregate_evidence: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if len(records) == 1:
+        return records[0]
+    first = records[0]
+    last = records[-1]
+    locators = [str(record["locator"]) for record in records]
+    locator = f"{locators[0]}..{locators[-1]}"
+    evidence_id = str(
+        uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            "autodata-document-content:" + "|".join(
+                str(record["evidence_id"]) for record in records
+            ),
+        )
+    )
+    aggregate = {
+        "evidence_id": evidence_id,
+        "source_uri": first["source_uri"],
+        "content_sha256": first["content_sha256"],
+        "locator": locator,
+        "candidate_key": f"document-content:{evidence_id}",
+        "extracted_text": "\n\n".join(str(record["text"]) for record in records),
+        "confidence": min(float(record.get("confidence", 1.0)) for record in records),
+        "reviewer_state": "pending",
+    }
+    aggregate_evidence.append(aggregate)
+    return {
+        **first,
+        "text": aggregate["extracted_text"],
+        "evidence_id": evidence_id,
+        "locator": locator,
+    }
+
+
+def _document_content_order(record: dict[str, Any]) -> tuple[str, int, str]:
+    locator = str(record.get("locator", ""))
+    page_match = re.search(r":page:(\d+)$", locator)
+    page = int(page_match.group(1)) if page_match else 0
+    return (locator.split(":page:", 1)[0], page, str(record.get("evidence_id", "")))
+
+
 def _index_article_tokens(
     record: dict[str, Any],
     accepted_index: int,
@@ -514,6 +738,21 @@ def _article_order(record: dict[str, Any]) -> tuple[str, str, str]:
         _article_text(record.get("article_id")),
         str(record.get("evidence_id", "")),
     )
+
+
+def _article_roles_differ(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    """Keep a provider procedure and its labor row as distinct source records."""
+
+    def role(record: dict[str, Any]) -> str:
+        article_id = str(record.get("article_id") or "").casefold()
+        bucket = str(record.get("bucket") or "").casefold()
+        if article_id.startswith("p:"):
+            return "procedure"
+        if article_id.startswith("l:") or bucket == "labor":
+            return "labor"
+        return "article"
+
+    return role(left) != role(right)
 
 
 def _similar_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
@@ -578,13 +817,125 @@ def _article_steps(data: dict[str, Any]) -> list[Any] | None:
     return None
 
 
+def _article_operations(value: Any, evidence_id: str) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        # AutoAPI labor responses expose one priced main operation and zero or
+        # more operations included in that price. Optional operations are not
+        # part of the requested replacement unless explicitly selected later.
+        operation_values: list[Any] = []
+        main_operation = value.get("mainOperation")
+        if isinstance(main_operation, dict):
+            operation_values.append(main_operation)
+        included_operations = value.get("includedOperations")
+        if isinstance(included_operations, list):
+            operation_values.extend(included_operations)
+        value = operation_values
+    if not isinstance(value, list):
+        return []
+    operations: list[dict[str, Any]] = []
+    for index, raw in enumerate(value):
+        if not isinstance(raw, dict):
+            continue
+        operation_type = str(raw.get("operationType") or "").casefold()
+        title = str(raw.get("title") or "").strip()
+        operation_id = str(
+            raw.get("operation_id")
+            or raw.get("operationId")
+            or raw.get("key")
+            or raw.get("code")
+            or raw.get("id")
+            or f"operation-{index + 1}"
+        ).strip()
+        if operation_type == "included operation" and title:
+            # Provider IDs for equivalent included work can differ between
+            # labor articles. A normalized title gives the overlap calculator
+            # a stable cross-article key while the evidence retains the source
+            # operation ID in the action metadata below.
+            operation_id = f"included:{_slug(title)}"
+        action = str(
+            raw.get("action")
+            or raw.get("name")
+            or raw.get("description")
+            or raw.get("operation")
+            or raw.get("title")
+            or operation_id
+        ).strip()
+        duration = next(
+            (
+                raw[key]
+                for key in (
+                    "duration_hours", "durationHours", "hours",
+                    "labor_hours", "laborHours", "laborTime", "time",
+                )
+                if raw.get(key) is not None
+            ),
+            None,
+        )
+        if duration is None and str(raw.get("operationType") or "").casefold() == "included operation":
+            # Included work is already priced in the main operation. Retain it
+            # for procedure composition without adding labor twice.
+            duration = 0.0
+        if operation_id and action:
+            operations.append(
+                {
+                    "operation_id": operation_id,
+                    "action": action,
+                    "duration_hours": duration,
+                    "evidence_ids": [evidence_id],
+                }
+            )
+    return operations
+
+
+def _article_images(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Keep only safe, displayable source-media references on an article."""
+
+    values: list[Any] = []
+    for key in ("images", "imageUrls", "image_urls", "diagrams", "media"):
+        value = data.get(key)
+        if isinstance(value, list):
+            values.extend(value)
+        elif value:
+            values.append(value)
+    images: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for value in values:
+        if isinstance(value, str):
+            url = value.strip()
+            image = {"url": url} if url else None
+        elif isinstance(value, dict):
+            url = str(value.get("url") or value.get("src") or value.get("href") or "").strip()
+            image = {"url": url} if url else None
+            if image is not None:
+                for key in ("alt", "title", "evidence_id", "source_uri"):
+                    if value.get(key):
+                        image[key] = str(value[key]).strip()
+        else:
+            image = None
+        if image is None:
+            continue
+        identity = (image["url"], image.get("alt", image.get("title", "")))
+        if identity not in seen:
+            seen.add(identity)
+            images.append(image)
+    return images
+
+
 def _merge_article(target: dict[str, Any], duplicate: dict[str, Any]) -> None:
     for field in ("bucket", "title", "bulletin_number", "release_date"):
         if not target.get(field) and duplicate.get(field):
             target[field] = duplicate[field]
-    for field in ("body", "steps"):
+    for field in ("body", "steps", "operations"):
         if not target.get(field) and duplicate.get(field):
             target[field] = duplicate[field]
+    if duplicate.get("images"):
+        merged = target.setdefault("images", [])
+        existing = {(item.get("url"), item.get("alt", item.get("title", ""))) for item in merged}
+        for image in duplicate["images"]:
+            identity = (image.get("url"), image.get("alt", image.get("title", "")))
+            if identity not in existing:
+                merged.append(image)
+                existing.add(identity)
     evidence_ids = set(target.get("evidence_ids", [target["evidence_id"]]))
     evidence_ids.add(duplicate["evidence_id"])
     target["evidence_ids"] = sorted(evidence_ids)

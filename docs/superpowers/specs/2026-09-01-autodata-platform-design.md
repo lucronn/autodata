@@ -15,7 +15,7 @@ This document is the decision record for the initial architecture package. It de
 - Make revisions immutable, auditable, and safe to consume while new enrichment is published.
 - Give operators explicit quality, review, takedown, and entitlement controls.
 - Provide local developer parity using containers and deterministic fake source/payment services.
-- Make delivery work visible through a parameterized GitHub Project and a protected-main workflow.
+- Make delivery work visible through a parameterized GitHub Project and a protected `master` workflow, matching the repository's current default branch.
 
 ## Non-goals for the first implementation slice
 
@@ -97,7 +97,7 @@ The initial organization uses these roles: platform admin, ingestion operator, d
 - Deployment posture: Kubernetes-compatible and cloud-neutral.
 - Commercial model: one-time entitlement for a vehicle-specific dataset product.
 - Payment reference: Stripe adapter with deterministic local fake provider.
-- Git workflow: trunk-based development with protected `main`.
+- Git workflow: trunk-based development with protected `master` in this repository; future migrations to another default branch must update the operating model and repository settings together.
 - Planning: one parameterized GitHub Portfolio Project.
 
 ## Related documents

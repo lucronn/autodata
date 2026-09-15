@@ -58,6 +58,26 @@
     "project_is_index_only": true,
     "project_items_must_link_canonical_documents": true
   },
+  "pre_implementation": {
+    "required": true,
+    "required_status": "synchronized",
+    "required_fields": [
+      "goal",
+      "plan_ref",
+      "issue_ref",
+      "project_ref",
+      "repository_doc_refs",
+      "todo",
+      "status",
+      "updated_at"
+    ],
+    "plan_paths": [
+      "docs/superpowers/plans/**"
+    ],
+    "repository_doc_paths": [
+      "docs/**"
+    ]
+  },
   "protected_paths": [
     ".github/workflows/",
     ".autodata-autonomy-policy.json",

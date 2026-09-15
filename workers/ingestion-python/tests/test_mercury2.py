@@ -7,6 +7,7 @@ from autodata_ingestion.mercury2 import (
     Mercury2Client,
     Mercury2SourceExtractor,
     Mercury2VehicleAdjudicator,
+    PROCEDURE_COMPOSITION_SCHEMA,
 )
 from autodata_ingestion.source_adapters import SourceResource
 from autodata_ingestion.vehicle_identity import canonicalize_vehicle_observation
@@ -27,6 +28,18 @@ class FakeResponse:
 
 
 class Mercury2Tests(unittest.TestCase):
+    def test_procedure_schema_requires_provenance_and_structured_warnings(self):
+        step_schema = PROCEDURE_COMPOSITION_SCHEMA["properties"]["steps"]["items"]
+        warning_schema = PROCEDURE_COMPOSITION_SCHEMA["properties"]["warnings"]["items"]
+
+        self.assertIn("operation_id", step_schema["required"])
+        self.assertEqual(step_schema["additionalProperties"], False)
+        self.assertEqual(warning_schema["additionalProperties"], False)
+        self.assertEqual(
+            warning_schema["required"],
+            ["warning_id", "message", "source_article_ids", "evidence_ids", "requires_review"],
+        )
+
     def test_source_extractor_returns_validated_typed_candidates(self):
         class FakeClient:
             def complete_json(self, prompt):
@@ -143,6 +156,22 @@ class Mercury2Tests(unittest.TestCase):
         self.assertEqual(result, {"ok": True})
         self.assertEqual(seen["authorization"], "Bearer test-key")
 
+    def test_client_defaults_to_official_inception_api_base(self):
+        seen = {}
+
+        def transport(request, timeout):
+            del timeout
+            seen["url"] = request.full_url
+            return FakeResponse({"choices": [{"message": {"content": '{"ok": true}'}}]})
+
+        with patch.dict(os.environ, {"INCEPTION_API_KEY": "test-key"}, clear=True):
+            Mercury2Client.from_environment(transport=transport).complete_json("select")
+
+        self.assertEqual(
+            seen["url"],
+            "https://api.inceptionlabs.ai/v1/chat/completions",
+        )
+
     def test_adjudicator_accepts_only_a_supplied_high_confidence_candidate(self):
         def transport(_request, timeout):
             return FakeResponse({"selected_candidate_key": "chevrolet-silverado-1500-1999-us-drivetrain-2wd-engine-5-3l", "confidence": 0.99})
@@ -174,6 +203,47 @@ class Mercury2Tests(unittest.TestCase):
         )
         self.assertEqual(result.status, "needs_review")
         self.assertEqual(result.reason, "mercury_invalid_candidate")
+
+    def test_procedure_schema_is_exposed_for_constrained_composition(self):
+        from autodata_ingestion.mercury2 import PROCEDURE_COMPOSITION_SCHEMA
+
+        self.assertEqual(PROCEDURE_COMPOSITION_SCHEMA["type"], "object")
+        self.assertIn("steps", PROCEDURE_COMPOSITION_SCHEMA["required"])
+        self.assertEqual(
+            PROCEDURE_COMPOSITION_SCHEMA["properties"]["steps"]["items"]["properties"]["category"]["enum"],
+            ["required", "recommended"],
+        )
+
+    def test_procedure_prompt_carries_structured_evidence_context(self):
+        from autodata_ingestion.mercury2 import compose_procedure_draft
+
+        class FakeClient:
+            def complete_json(self, prompt):
+                self.prompt = prompt
+                return {"title": "Service", "steps": [], "warnings": []}
+
+        client = FakeClient()
+        compose_procedure_draft(
+            client,
+            vehicle={"year": 1999, "make": "Chevrolet", "model": "Silverado 1500"},
+            quote={"labor": {"operations": []}, "procedure": {"warnings": []}},
+            articles=[{
+                "article_id": "article-1",
+                "evidence": [{
+                    "evidence_id": "evidence-1",
+                    "excerpt": "Use the specified tool.",
+                    "locator": "body.steps[1]",
+                    "source_uri": "https://source.test/article.html",
+                    "source_watermark": "source-v2",
+                }],
+            }],
+        )
+
+        payload = json.loads(client.prompt)
+        self.assertEqual(payload["articles"][0]["evidence"][0]["excerpt"], "Use the specified tool.")
+        self.assertEqual(payload["articles"][0]["evidence"][0]["locator"], "body.steps[1]")
+        self.assertEqual(payload["articles"][0]["evidence"][0]["source_uri"], "https://source.test/article.html")
+        self.assertEqual(payload["articles"][0]["evidence"][0]["source_watermark"], "source-v2")
 
 
 if __name__ == "__main__":

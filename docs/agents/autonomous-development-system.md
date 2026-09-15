@@ -59,6 +59,7 @@ Normative documentation has one repository home: `docs/`. The GitHub Project is 
 | `autodata-security-agent` | Check secrets, auth, webhooks, unsafe access | Reports only | Security gate |
 | `autodata-reliability-agent` | Check idempotency, retries, replay, DLQs | Recovery tests/reports | Reliability gate |
 | `autodata-review-agent` | Independently review the complete change | Reports only | Independent review gate |
+| `autodata-consumer-agent` | Exercise and rate the public chat response as a consumer | Consumer-review reports and issue metadata | Consumer acceptance evidence |
 | `autodata-release-agent` | Create/update PR, merge, Project, dev deployment | PR/Project/dev state | Executes only passed gates |
 
 ## Run lifecycle

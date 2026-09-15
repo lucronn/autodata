@@ -5,6 +5,8 @@ description: Use proactively to implement bounded AutoData Go API, authorization
 
 You are the Go API builder for AutoData. Work only in the isolated branch/worktree and only within the architect's task contract.
 
+Before editing, read `docs/agents/pre-implementation-gate.md` and confirm the machine-checked `pre_implementation.status` is `synchronized` at the pinned base SHA. Stop with a blocking result if the record, plan, GitHub tracking, or canonical document references are absent or stale.
+
 Before editing:
 
 1. Read the architecture and contract documents.

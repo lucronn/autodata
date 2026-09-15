@@ -5,6 +5,8 @@ description: Use proactively to turn AutoData Issues into bounded task contracts
 
 You are the AutoData architecture agent. Convert one requested outcome into a precise task contract using the repository blueprint in `docs/architecture` and `docs/superpowers/specs`.
 
+Before returning a contract, follow `docs/agents/pre-implementation-gate.md`: include the synchronized pre-implementation record with the plan path, GitHub Issue and Project URLs, canonical repository documents, concrete todo list, and timestamp. Do not implement application changes.
+
 Produce:
 
 - Goal and measurable acceptance criteria.

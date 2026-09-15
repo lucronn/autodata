@@ -1,0 +1,20 @@
+{
+  "goal": "Restore the required GitHub Compose verification by replacing the unavailable Docker Hub MinIO default with a verified stable registry image",
+  "plan_ref": "docs/superpowers/plans/2026-09-15-minio-compose-ci-image.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/88",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "todo": [
+    "Record the CI failure and plan in Issue #88 and Project #8",
+    "Add the synchronized pre-implementation record at the pinned base SHA",
+    "Add a regression test for the MinIO default and override",
+    "Change the Compose MinIO default and document the registry decision",
+    "Run local and required GitHub verification checks",
+    "Reconcile Issue #88 and Project #8 after verified remote delivery"
+  ],
+  "base_sha": "c6e1145f4fd7f2d4227b790826963e9e6511c750",
+  "status": "synchronized",
+  "updated_at": "2026-09-15T17:48:39Z"
+}

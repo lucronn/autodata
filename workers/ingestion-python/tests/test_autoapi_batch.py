@@ -1,0 +1,315 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+
+from autodata_ingestion.autoapi_batch import (
+    AutoAPIBatch,
+    build_autoapi_batch_plan,
+    collect_autoapi_selection_rows,
+    derive_autoapi_vehicle_rows,
+    execute_autoapi_batch,
+    load_selector_rows,
+)
+
+
+class AutoAPIBatchTests(unittest.TestCase):
+    def test_derives_vehicle_configurations_from_split_autoapi_responses(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "name.json").write_text(
+                json.dumps({"header": {"status": "OK"}, "body": "2019 Cadillac Escalade ESV - 2WD"})
+            )
+            (root / "motorvehicles.json").write_text(
+                json.dumps(
+                    {
+                        "header": {"status": "OK"},
+                        "body": [
+                            {
+                                "model": "Escalade ESV Base",
+                                "id": "168702",
+                                "engines": [
+                                    {"id": "168702:7864", "name": "6.2L V8 (J) L86 FLEX Electronic"}
+                                ],
+                            }
+                        ],
+                    }
+                )
+            )
+
+            rows = derive_autoapi_vehicle_rows(root, default_region="US")
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["vehicle_key"], "cadillac-escalade-esv-2019-us")
+        self.assertEqual(rows[0]["trim"], "Base")
+        self.assertEqual(rows[0]["engine"], "6.2L")
+        self.assertEqual(rows[0]["drivetrain"], "2WD")
+
+    def test_plan_groups_one_source_bundle_with_all_configurations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "name.json").write_text(
+                json.dumps({"header": {"status": "OK"}, "body": "2019 Cadillac Escalade ESV - 2WD"})
+            )
+            (root / "motorvehicles.json").write_text(
+                json.dumps(
+                    {
+                        "header": {"status": "OK"},
+                        "body": [
+                            {
+                                "model": "Escalade ESV Base",
+                                "id": "168702",
+                                "engines": [
+                                    {"id": "1", "name": "6.2L V8 GAS"},
+                                    {"id": "2", "name": "5.3L V8 FLEX"},
+                                ],
+                            }
+                        ],
+                    }
+                )
+            )
+
+            plan = build_autoapi_batch_plan(root, default_region="US")
+
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0].vehicle_key, "cadillac-escalade-esv-2019-us")
+        self.assertEqual(plan[0].source_directory, root)
+        self.assertEqual(
+            sorted(item["engine_displacement_l"] for item in plan[0].configurations),
+            [5.3, 6.2],
+        )
+
+    def test_collects_selector_rows_for_every_discovered_source_bundle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / "cadillac"
+            bundle.mkdir()
+            (bundle / "name.json").write_text(
+                json.dumps({"header": {"status": "OK"}, "body": "2019 Cadillac Escalade ESV - 2WD"})
+            )
+            (bundle / "motorvehicles.json").write_text(
+                json.dumps(
+                    {
+                        "header": {"status": "OK"},
+                        "body": [
+                            {
+                                "model": "Escalade ESV Base",
+                                "id": "168702",
+                                "engines": [{"id": "1", "name": "6.2L V8 GAS"}],
+                            }
+                        ],
+                    }
+                )
+            )
+
+            rows = collect_autoapi_selection_rows(root, default_region="US")
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["vehicle_key"], "cadillac-escalade-esv-2019-us")
+        self.assertEqual(rows[0]["engine"], "6.2L")
+
+    def test_plan_surfaces_selector_vehicles_without_a_source_bundle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "name.json").write_text(
+                json.dumps({"header": {"status": "OK"}, "body": "2019 Cadillac Escalade ESV - 2WD"})
+            )
+            (root / "motorvehicles.json").write_text(
+                json.dumps({"header": {"status": "OK"}, "body": []})
+            )
+
+            plan = build_autoapi_batch_plan(
+                root,
+                selector_rows=[
+                    {"year": 2019, "make": "Cadillac", "model": "Escalade ESV", "region": "US"},
+                    {"year": 2020, "make": "Ford", "model": "F-150", "region": "US"},
+                ],
+                default_region="US",
+            )
+
+        self.assertEqual(
+            [item.vehicle_key for item in plan],
+            ["cadillac-escalade-esv-2019-us", "ford-f-150-2020-us"],
+        )
+        self.assertIsNone(plan[1].source_directory)
+
+    def test_execution_reports_missing_source_without_stringifying_null_path(self):
+        result = execute_autoapi_batch(
+            [
+                AutoAPIBatch(
+                    vehicle_key="ford-f-150-2020-us",
+                    vehicle={
+                        "year": 2020,
+                        "make": "Ford",
+                        "model": "F-150",
+                        "region": "US",
+                    },
+                    source_directory=None,
+                    configurations=(),
+                )
+            ],
+            source_version="autoapi-batch-test-v1",
+        )
+
+        self.assertEqual(result["status"], "pending_source")
+        self.assertIsNone(result["results"][0]["source_directory"])
+
+    def test_selector_only_export_is_plannable_before_article_bundles_arrive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "vehicles.json").write_text(
+                json.dumps(
+                    {
+                        "body": [
+                            {
+                                "modelYear": 1999,
+                                "makeName": "Chevy",
+                                "modelName": "Silverado 1500",
+                                "region": "US",
+                                "drivetrain": "2WD",
+                                "engines": [
+                                    {"engineName": "5.3L V8"},
+                                    {"engineName": "4.8L V8"},
+                                ],
+                            }
+                        ]
+                    }
+                )
+            )
+            selector_rows = load_selector_rows(root / "vehicles.json")
+            plan = build_autoapi_batch_plan(
+                root,
+                selector_rows=selector_rows,
+                default_region="US",
+            )
+
+        self.assertEqual(len(selector_rows), 2)
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0].vehicle_key, "chevrolet-silverado-1500-1999-us")
+        self.assertIsNone(plan[0].source_directory)
+        self.assertEqual(
+            sorted(item["engine_displacement_l"] for item in plan[0].configurations),
+            [4.8, 5.3],
+        )
+
+    def test_matching_selector_rows_are_merged_with_bundle_configurations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "name.json").write_text(
+                json.dumps({"header": {"status": "OK"}, "body": "2019 Cadillac Escalade ESV - 2WD"})
+            )
+            (root / "motorvehicles.json").write_text(
+                json.dumps(
+                    {
+                        "header": {"status": "OK"},
+                        "body": [
+                            {
+                                "model": "Escalade ESV Base",
+                                "id": "168702",
+                                "engines": [{"id": "1", "name": "6.2L V8 GAS"}],
+                            }
+                        ],
+                    }
+                )
+            )
+            plan = build_autoapi_batch_plan(
+                root,
+                selector_rows=[
+                    {
+                        "year": 2019,
+                        "make": "Cadillac",
+                        "model": "Escalade ESV",
+                        "region": "US",
+                    }
+                ],
+                default_region="US",
+            )
+
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(len(plan[0].configurations), 2)
+        self.assertEqual(
+            {item["engine_displacement_l"] for item in plan[0].configurations},
+            {None, 6.2},
+        )
+
+    def test_selector_loader_accepts_nested_vehicle_envelope_without_reading_article_index(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "vehicles.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "body": {
+                            "vehicles": [
+                                {
+                                    "modelYear": 1999,
+                                    "makeName": "Chevy",
+                                    "modelName": "Silverado 1500",
+                                    "region": "US",
+                                    "engines": [{"engineName": "5.3L V8"}],
+                                }
+                            ]
+                        }
+                    }
+                )
+            )
+            rows = load_selector_rows(path)
+            plan = build_autoapi_batch_plan(
+                root, selector_rows=rows, default_region="US"
+            )
+
+        self.assertEqual(rows[0]["makeName"], "Chevy")
+        self.assertEqual(rows[0]["engineName"], "5.3L V8")
+        self.assertEqual(plan[0].vehicle_key, "chevrolet-silverado-1500-1999-us")
+
+    def test_article_index_envelope_is_not_accepted_as_a_selector_export(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "v2.json"
+            path.write_text(json.dumps({"body": {"articleDetails": [{"id": "a-1"}]}}))
+            with self.assertRaises(ValueError):
+                load_selector_rows(path)
+
+    def test_duplicate_vehicle_bundles_are_one_batch_with_all_source_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "first"
+            second = root / "second"
+            first.mkdir()
+            second.mkdir()
+            for bundle in (first, second):
+                (bundle / "name.json").write_text(
+                    json.dumps(
+                        {
+                            "header": {"status": "OK"},
+                            "body": "2019 Cadillac Escalade ESV - 2WD",
+                        }
+                    )
+                )
+                (bundle / "motorvehicles.json").write_text(
+                    json.dumps(
+                        {
+                            "header": {"status": "OK"},
+                            "body": [
+                                {
+                                    "model": "Escalade ESV Base",
+                                    "id": "168702",
+                                    "engines": [
+                                        {"id": "1", "name": "6.2L V8 GAS"}
+                                    ],
+                                }
+                            ],
+                        }
+                    )
+                )
+
+            plan = build_autoapi_batch_plan(root, default_region="US")
+
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0].vehicle_key, "cadillac-escalade-esv-2019-us")
+        self.assertEqual(plan[0].source_directory, first)
+        self.assertEqual(plan[0].source_directories, (first, second))
+
+
+if __name__ == "__main__":
+    unittest.main()

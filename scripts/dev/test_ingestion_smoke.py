@@ -12,6 +12,17 @@ from autodata_ingestion.source_adapters import SourceResource, adapt_source_reso
 
 
 class IngestionSmokeContractTests(unittest.TestCase):
+    def test_chat_worker_waits_for_migrations_before_claiming_durable_work(self):
+        compose = (ROOT / "infra/compose/compose.yaml").read_text()
+        worker = compose.split("\n  ingestion-worker:\n", 1)[1].split(
+            "\n  ingestion-http:\n", 1
+        )[0]
+
+        self.assertRegex(
+            worker,
+            r"migration-runner:\s*\n\s+condition: service_completed_successfully",
+        )
+
     def test_source_report_exposes_safe_deterministic_resource_outcomes(self):
         html = SourceResource.from_bytes(
             "file://b.html",

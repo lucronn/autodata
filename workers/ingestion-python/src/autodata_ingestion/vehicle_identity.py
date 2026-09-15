@@ -17,9 +17,14 @@ _MAKE_ALIASES = {
 _MODEL_FIRST_MAKE_ALIASES = {
     "silverado": "Chevrolet",
 }
+_MODEL_ALIASES = {
+    "rav 4": "RAV4",
+    "rav4": "RAV4",
+}
 _DRIVETRAIN_ALIASES = {
     "2wd": "2WD",
     "4x2": "2WD",
+    "4wd": "4WD",
     "4x4": "4WD",
     "awd": "AWD",
     "fwd": "FWD",
@@ -182,9 +187,14 @@ def review_vehicle_candidates(
 
 def _canonicalize_mapping_observation(value: Mapping[str, Any]) -> CanonicalVehicleObservation:
     aliases: list[VehicleAlias] = []
-    year = _normalize_year(value.get("year"))
-    make = _normalize_make(value.get("make"), aliases)
-    model = _normalize_model(value.get("model"))
+    year = _normalize_year(_first_non_empty(value.get("year"), value.get("model_year"), value.get("modelYear")))
+    make = _normalize_make(
+        _first_non_empty(value.get("make"), value.get("makeName"), value.get("vehicleMake")),
+        aliases,
+    )
+    model = _normalize_model(
+        _first_non_empty(value.get("model"), value.get("modelName"), value.get("vehicleModel"))
+    )
     region = _normalize_region(value.get("region", value.get("market")))
     body_style = _normalize_body_style(
         _first_non_empty(value.get("body_style"), value.get("bodyStyle"))
@@ -198,6 +208,7 @@ def _canonicalize_mapping_observation(value: Mapping[str, Any]) -> CanonicalVehi
             value.get("engine"),
             value.get("engine_displacement_l"),
             value.get("engineDisplacementL"),
+            value.get("engineName"),
         ),
         aliases,
     )
@@ -215,10 +226,18 @@ def _canonicalize_mapping_observation(value: Mapping[str, Any]) -> CanonicalVehi
 
 
 def _canonicalize_text_observation(value: str) -> CanonicalVehicleObservation:
+    normalized_value = value.casefold()
+    for phrase, canonical in (
+        (r"\b4\s*(?:-\s*)?wheel\s+drive\b", "4wd"),
+        (r"\ball\s*(?:-\s*)?wheel\s+drive\b", "awd"),
+        (r"\bfront\s*(?:-\s*)?wheel\s+drive\b", "fwd"),
+        (r"\brear\s*(?:-\s*)?wheel\s+drive\b", "rwd"),
+    ):
+        normalized_value = re.sub(phrase, canonical, normalized_value)
     normalized_text = re.sub(
-        r"(\d+(?:\.\d+)?)\s+(l(?:t)?)\b",
+        r"(\d+(?:\.\d+)?)\s+(l(?:t|iter|itre)?)\b",
         r"\1\2",
-        value.casefold(),
+        normalized_value,
     )
     tokens = re.findall(r"[a-z0-9.]+", normalized_text)
     year_indexes = [
@@ -315,7 +334,7 @@ def _normalize_model(raw_model: Any) -> str:
     normalized = re.sub(r"[^A-Za-z0-9]+", " ", text).strip()
     if not normalized:
         raise ValueError("vehicle model is required")
-    return _normalize_title_words(normalized)
+    return _MODEL_ALIASES.get(normalized.casefold(), _normalize_title_words(normalized))
 
 
 def _normalize_region(raw_region: Any) -> str | None:
@@ -385,7 +404,10 @@ def _first_non_empty(*values: Any) -> Any:
 
 
 def _extract_engine_displacement(text: str) -> float | None:
-    match = re.search(r"(\d+(?:\.\d+)?)\s*l(?:t)?$", text.casefold())
+    match = re.search(
+        r"(?<!\d)(\d+(?:\.\d+)?)\s*l(?:t|iter|itre)?\b",
+        text.casefold(),
+    )
     if match is None:
         return None
     return float(match.group(1))

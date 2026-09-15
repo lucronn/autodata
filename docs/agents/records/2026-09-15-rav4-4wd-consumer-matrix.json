@@ -1,0 +1,55 @@
+{
+  "goal": "Add the exact 1997 Toyota RAV4 2-door 4WD multi-component request to the reproducible consumer review matrix and retain live acceptance evidence",
+  "plan_ref": "docs/superpowers/plans/2026-09-15-rav4-4wd-consumer-matrix.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/85",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/consumer-review-agent.md",
+    "docs/verification/consumer-review-runbook.md"
+  ],
+  "todo": [
+    "Add the exact 2-door 4WD RAV4 case to the consumer review case file",
+    "Run the case through the live dev API with bounded polling and report-only issue behavior",
+    "Verify applicability, four requested components, removal and installation phases, figures, torque/check depth, consumer-copy safety, and PDF revision parity",
+    "Record the report path and hashes in canonical review documentation and the synchronized tracking record",
+    "Keep human source-evidence review as an explicit follow-up"
+  ],
+  "base_sha": "7783cdfb0621bb9c6e7f78ffbf3ad2db861547f1",
+  "verification": {
+    "implementation_sha": "1c4d69c154e3346caa398b0ae7e9e43a511e3247",
+    "report_path": "tmp/consumer-review-live/rav4-4wd-formal-v2/consumer-review-f6156af1dbaeea0df7c055f3.json",
+    "report_sha256": "746224da1c5c251ca92f95348ec4ed2fae2485352bf17dca3e20161ed8f7404d",
+    "decision": "pass",
+    "summary": {"case_count": 1, "pass": 1, "fail": 0, "needs_review": 0, "blocked": 0},
+    "response_sha256": "0eb5c0f51d4559186967ad3fbd9b31eca7bb7c2baf03bbf82a50428caeb1b21e",
+    "pdf_sha256": "754407d8d5abda5f81865bf5136f6d603e0c4d07ee24d3af2d951e67fd8a3c32",
+    "steps": 131,
+    "figures": 89,
+    "rubric_dimensions": 6,
+    "human_review": "pending",
+    "uncached_autoapi_hydration": {
+      "status": "pass",
+      "vehicle": "1997 Toyota RAV4 4-door 4WD 2.0L",
+      "provider_vehicle_id": "41218",
+      "query_id": "dd9f6456-4b73-5c50-8b41-dbe422743a86",
+      "event_sequence": ["derived_cache_miss", "source_retrieval", "source_unnormalized", "normalized", "procedure_published"],
+      "report_path": "tmp/consumer-review-live/rav4-4wd-4door-uncached-v2/consumer-review-8aa4a17d03c034f59b436725.json",
+      "report_sha256": "c7aab0b58d2ede3c238b454bde1dee21a6848d6f6640d070966ed5e83d47239e",
+      "local_autoapi": {"healthz": 200, "readyz": "ready", "openapi_paths": 23}
+    }
+  },
+  "current_head_matrix": {
+    "implementation_sha": "7a4cb33ae2337bf1807144756bb5ccd735d7e480",
+    "decision": "pass",
+    "summary": {"case_count": 5, "pass": 5, "fail": 0, "needs_review": 0, "blocked": 0},
+    "reports": [
+      {"case": "rav4-4wd-2door-four-component", "report_path": "tmp/consumer-review-live/current-head/rav4-4wd-2door-four-component/consumer-review-5c552f8ddf9e208ceb864ed7.json", "report_sha256": "5573d0075f34621bd6b98349b959fb61791d41ee9b11918c6fa54c6e487892c1", "steps": 131, "figures": 89, "pdf_sha256": "754407d8d5abda5f81865bf5136f6d603e0c4d07ee24d3af2d951e67fd8a3c32"},
+      {"case": "rav4-oil-water-pumps", "report_path": "tmp/consumer-review-live/current-head/rav4-oil-water-pumps/consumer-review-0c00c11c39a41aa34d699999.json", "report_sha256": "4f94251cb2aaa89491129d4822eb97effedeb86f1d0cde09bc26636d0146334f", "steps": 101, "figures": 80, "pdf_sha256": "d4008dffb9c8dce162845c6a77eaa55e80e9a38ffa60ec979baf78c6bfe3c955"},
+      {"case": "camry-starter", "report_path": "tmp/consumer-review-live/current-head/camry-starter/consumer-review-2be0ab79b88e4326e83dac48.json", "report_sha256": "41c17925e79e7e156a5ebefae6e5a5ddf8fcedabd804260e862c9d1af2042392", "steps": 21, "figures": 4, "pdf_sha256": "8afcdccb2b29022a396956722f2d5739452cfd5e2e9c8f4b697939c9b0bc6221"},
+      {"case": "forester-sohc-water-pump", "report_path": "tmp/consumer-review-live/current-head/forester-sohc-water-pump-v2/consumer-review-c159985028b2869e2c995076.json", "report_sha256": "5c016842789f3a4390755b13804ff70d4ce5d6539ef418f1928bf6be2a71c3d0", "steps": 92, "figures": 36, "pdf_sha256": "978642687d8d95734271b21f2a3564b1ca587369e48c9d4af1abfd67fe7b72f9"},
+      {"case": "civic-lx-front-caliper", "report_path": "tmp/consumer-review-live/current-head/civic-lx-front-caliper/consumer-review-476194541a267a652e11db70.json", "report_sha256": "312635f7ac5fc86f9e58f498c705a07ddabc2de8df16bad77b8e2c001cc7ed75", "steps": 14, "figures": 5, "pdf_sha256": "334f412a2608f8f39f107a79e8c52ba22f20cb34d92997ec8dbd09257a6a7c03"}
+    ]
+  },
+  "status": "synchronized",
+  "updated_at": "2026-09-15T05:40:00Z"
+}

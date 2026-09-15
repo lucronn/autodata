@@ -8,7 +8,77 @@ from unittest.mock import patch
 from orchestrator import GATE_AGENTS, aggregate_gate_reports, orchestrate_task, validate_task_contract
 
 
+def valid_pre_implementation_record():
+    return {
+        "goal": "Enforce an agent-agnostic planning gate before implementation",
+        "plan_ref": "docs/superpowers/plans/2026-09-11-pre-implementation-gate.md",
+        "issue_ref": "https://github.com/lucronn/autodata/issues/86",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "repository_doc_refs": ["docs/github/operating-model.md"],
+        "todo": ["Add policy enforcement", "Run the gate tests"],
+        "status": "synchronized",
+        "updated_at": "2026-09-11T00:00:00Z",
+    }
+
+
 class OrchestratorTests(unittest.TestCase):
+    def test_orchestrator_does_not_call_builder_without_pre_implementation_record(self):
+        task = {
+            "task_id": "issue-86",
+            "goal": "Enforce the planning gate",
+            "builder_agent": "autodata-go-builder",
+            "allowed_paths": ["apps/api-go/**"],
+            "bounded_contexts": ["developer infrastructure"],
+            "inputs": ["docs/agents/pre-implementation-gate.md"],
+            "outputs": ["scripts/autonomy/"],
+            "acceptance_tests": ["A builder is blocked without a synchronized record"],
+            "forbidden_scope": ["runtime behavior"],
+            "compatibility": {"api": "preserve", "events": "preserve", "schema": "none"},
+        }
+        contract = {
+            "task_id": task["task_id"],
+            "goal": task["goal"],
+            "bounded_contexts": task["bounded_contexts"],
+            "inputs": task["inputs"],
+            "outputs": task["outputs"],
+            "acceptance_tests": task["acceptance_tests"],
+            "forbidden_scope": task["forbidden_scope"],
+            "compatibility": task["compatibility"],
+        }
+        calls = []
+
+        def fake_run_agent(repo_root, envelope, provider, output_root, timeout_seconds):
+            calls.append(envelope["agent_name"])
+            if envelope["agent_name"] != "autodata-architect":
+                raise AssertionError("builder was invoked before pre-implementation validation")
+            output_root.mkdir(parents=True)
+            evidence = output_root / "evidence"
+            evidence.mkdir()
+            (evidence / "provider-output.json").write_text(
+                json.dumps({"decision": "pass", "summary": "plan returned", "task_contract": contract}),
+                encoding="utf-8",
+            )
+            manifest_path = output_root / "run-manifest.json"
+            manifest_path.write_text(
+                json.dumps({"implementation_sha": "a" * 40, "changed_paths": [], "findings": [], "commands_run": []}),
+                encoding="utf-8",
+            )
+            return 0, manifest_path
+
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "orchestrator.run_agent", fake_run_agent
+        ):
+            code, decision_path = orchestrate_task(
+                Path.cwd(), task, "local-cli", Path(directory) / "run", 1
+            )
+            decision = json.loads(decision_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(calls, ["autodata-architect"])
+        self.assertEqual(code, 20)
+        self.assertEqual(decision["phase"], "planning")
+        self.assertIn("task contract missing field: pre_implementation", decision["contract_errors"])
+        self.assertIn("pre_implementation record is required", decision["pre_implementation_errors"])
+
     def test_all_policy_gates_have_independent_agents(self):
         required = {
             "deterministic_ci",
@@ -34,6 +104,7 @@ class OrchestratorTests(unittest.TestCase):
             "acceptance_tests": ["GET returns 200 for an entitled caller"],
             "forbidden_scope": ["web UI"],
             "compatibility": {"api": "preserve-or-version", "events": "preserve", "schema": "none"},
+            "pre_implementation": valid_pre_implementation_record(),
         }
 
         self.assertEqual(validate_task_contract(contract), [])
@@ -68,6 +139,7 @@ class OrchestratorTests(unittest.TestCase):
             "acceptance_tests": ["GET returns 200 for an entitled caller"],
             "forbidden_scope": ["web UI"],
             "compatibility": {"api": "preserve-or-version", "events": "preserve", "schema": "none"},
+            "pre_implementation": valid_pre_implementation_record(),
         }
         contract = {
             "task_id": "task-1",
@@ -78,6 +150,7 @@ class OrchestratorTests(unittest.TestCase):
             "acceptance_tests": ["GET returns 200 for an entitled caller"],
             "forbidden_scope": ["web UI"],
             "compatibility": {"api": "preserve-or-version", "events": "preserve", "schema": "none"},
+            "pre_implementation": valid_pre_implementation_record(),
         }
         implementation_sha = "b" * 40
 

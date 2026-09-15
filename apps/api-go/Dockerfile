@@ -4,6 +4,7 @@ WORKDIR /src
 COPY apps/api-go/go.mod ./apps/api-go/
 COPY apps/api-go/go.sum ./apps/api-go/
 COPY apps/api-go/*.go ./apps/api-go/
+COPY apps/api-go/dashboard ./apps/api-go/dashboard
 COPY packages/contracts/go/go.mod packages/contracts/go/contracts.go ./packages/contracts/go/
 WORKDIR /src/apps/api-go
 RUN go mod download

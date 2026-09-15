@@ -51,11 +51,32 @@ class HTTPServiceTests(unittest.TestCase):
         self.assertEqual(calls[0]["query"], "brake caliper")
         self.assertEqual(calls[0]["vehicle"]["model"], "Silverado 1500")
 
+    def test_job_plan_dispatches_natural_language_vehicle_request(self):
+        calls = []
+
+        def job_runner(serialized_request):
+            calls.append(json.loads(serialized_request))
+            return {"status": "ready", "labor": {"total_labor_hours": 3.5}}
+
+        result = dispatch_request(
+            "/v1/job-plans",
+            {
+                "vehicle": {"year": 1999, "make": "Chevrolet", "model": "Silverado 1500", "region": "US"},
+                "query": "replace alternator and starter",
+            },
+            job_runner=job_runner,
+        )
+
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(calls[0]["query"], "replace alternator and starter")
+
     def test_dispatch_rejects_unknown_routes_and_invalid_shapes(self):
         with self.assertRaises(ValueError):
             dispatch_request("/v1/unknown", {})
         with self.assertRaises(ValueError):
             dispatch_request("/v1/article-intakes", {"source_uri": "https://source.example/article"})
+        with self.assertRaises(ValueError):
+            dispatch_request("/v1/job-plans", {"vehicle": {}, "query": "starter"})
 
 
 if __name__ == "__main__":

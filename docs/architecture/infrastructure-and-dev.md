@@ -50,6 +50,17 @@ Services:
 - Payment reconciler that polls pending verified events and safely retries delayed entitlement fulfillment.
 - Optional Mailpit and OpenTelemetry-compatible services behind a development profile.
 
+### Container image provenance
+
+The Compose MinIO default is the verified stable release
+`quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z`. The Docker Hub
+`minio/minio:latest` reference is not used because the required CI runner can
+no longer pull that namespace. `AUTODATA_MINIO_IMAGE` remains an explicit
+override for a private or provider-managed registry; deployments should use a
+reviewed immutable release tag or digest rather than `latest`. This registry
+choice does not change the S3-compatible API, bucket contract, health check,
+or secret-management boundary.
+
 The Go API uses the same PostgreSQL connection pool for purchaser-facing
 projection reads and dataset-request status when `AUTODATA_PROJECTION_STORE`
 is set to `postgres`. In that mode, request creation stores the product,
@@ -146,6 +157,32 @@ docker compose -f infra/compose/compose.yaml run --rm ingestion-smoke
 
 `ingestion-smoke` runs the deterministic `ingest-fixture` dependency first. It fails with a non-zero exit and an actionable message when the migration, payment/entitlement, normalized vehicle, source object, or `dataset.viewable` event contract is not satisfied. It is safe to rerun: the fixture uses stable identifiers and idempotency keys, while published revisions remain immutable.
 
+The chatbot integration boundary has a separate, opt-in Compose verification
+service. It is deliberately independent of PostgreSQL, NATS, MinIO, the Go
+API, and all provider credentials so it can prove the request lifecycle without
+altering the default local stack:
+
+```sh
+AUTODATA_POSTGRES_PASSWORD=compose-validation-only \
+AUTODATA_MINIO_ROOT_USER=compose-validation-admin \
+AUTODATA_MINIO_ROOT_PASSWORD=compose-validation-only \
+docker compose -f infra/compose/compose.yaml --profile verification \
+  run --rm --no-deps chat-smoke
+```
+
+`chat-smoke` mounts the repository read-only and runs
+`scripts/dev/chat_smoke.py` with deterministic in-memory fake source,
+normalizer, price refresher, model, and vectorizer adapters. `network_mode:
+none` makes any accidental provider call fail locally. The report has explicit
+cold and warm assertions: raw source data is returned before normalized data;
+overlap-aware labor and a no-markup parts quote are present; stale prices carry
+their `priced_at` timestamp while refresh proceeds; the source diagram is
+linked to a reviewable vector artifact; worker events are present; and same-key
+and semantically equivalent warm requests perform zero source or model calls.
+The service is enabled only with `--profile verification`, and therefore does
+not change `docker compose up` behavior. CI runs the same command after Compose
+definition validation and before the existing fake and live Compose smokes.
+
 For a local source drop containing mixed JSON, HTML, PDF, SVG, XML, or CSV resources, inspect the normalized bundle without uploading the raw files:
 
 ```sh
@@ -172,7 +209,9 @@ The worker emits a deterministic JSON summary with bundle readiness, quality/rev
 
 Vehicle selector lists use the same persistence boundary. `AUTODATA_VEHICLE_LIST_JSON` accepts coarse and rich rows, while `AUTODATA_VEHICLE_LIST_SOURCE_URI` and `AUTODATA_SOURCE_VERSION` identify the immutable list snapshot. With `AUTODATA_SOURCE_PERSIST=1`, the worker stores the raw list in object storage, records one evidence locator per row, and upserts the canonical vehicle base/configuration graph. A later `99 Silverado 1500 2WD 5.3LT` observation therefore resolves to the existing `chevrolet-silverado-1500-1999-us` base and its `...-engine-5-3l` configuration. Rows without a region require `AUTODATA_SOURCE_REGION`; conflicting known dimensions are retained as reviewable identity observations rather than merged.
 
-Knowledge requests use a cache-first path. If the request omits `catalog`, the worker performs a bounded indexed read of active, non-duplicate `catalog_articles` for the canonical vehicle key and ranks the normalized results locally. The read is limited by `AUTODATA_KNOWLEDGE_CACHE_MAX_RECORDS` (default `200`, clamped to `1..1000`) before ranking, so a large catalog cannot turn a keyword lookup into an unbounded transfer. It only calls the configured universal source resolver after that lookup produces no matching article or procedure. An explicit empty `catalog` is reserved for deterministic fallback tests. The database reader includes stored configuration dimensions, the persisted extraction-evidence UUID, artifact key, extracted text, review state, and source watermark metadata. It resolves evidence by source snapshot plus locator and excludes rows without a persisted evidence record, linked duplicates, and source snapshots marked for takedown so every cache hit remains traceable to the ingestion and review boundary.
+The AutoAPI batch path additionally persists one `autoapi_article_fetch_jobs` row per planned vehicle when selector persistence is enabled. The row is keyed by adapter, source version, vehicle family, and source location. A selector-only vehicle is `pending` until its bundle arrives; a worker claim moves pending or retryable work to `processing`; a processed bundle is `completed` or `needs_review`; and an exception is `failed` with its checkpoint and error metadata. After the configured claim limit, a failure becomes `dead_letter` and requires explicit operator replay. Terminal states are not reopened by duplicate success or failure calls. Replaying the same source updates the existing row and does not create another fan-out job. The job table is an ingestion work ledger, not a substitute for the immutable source snapshots, normalized article records, or source-review queue.
+
+Knowledge requests use a cache-first path. If the request omits `catalog`, the worker performs a bounded indexed read of active `catalog_articles` for the canonical vehicle key and ranks the normalized results locally. Component job-plan queries add bounded title filters for the requested normalized components before applying `AUTODATA_KNOWLEDGE_CACHE_MAX_RECORDS` (default `200`, clamped to `1..1000`), so an oil- or water-pump article is not missed merely because it sorts beyond the first page of a large vehicle catalog. Unfiltered reads exclude linked duplicates; component-scoped reads use the requested title filters and `DISTINCT ON article_id` so stale duplicate-link metadata cannot hide a valid requested article. Both paths exclude taken-down snapshots and rows without persisted evidence. The worker only calls the configured universal source resolver after the indexed lookup produces no matching article or procedure. An explicit empty `catalog` is reserved for deterministic fallback tests. The database reader includes stored configuration dimensions, the persisted extraction-evidence UUID, artifact key, extracted text, review state, and source watermark metadata. It resolves evidence by source snapshot plus locator so every cache hit remains traceable to the ingestion and review boundary.
 
 To capture one HTTP(S) source resource through the same worker, replace the directory variables with `AUTODATA_SOURCE_URI=https://source.example/resource`. If authentication is required, inject `AUTODATA_SOURCE_REQUEST_HEADERS_JSON` from the deployment secret interface; keep its value out of shell history, documentation, and logs. The HTTP connector enforces `AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS` and `AUTODATA_SOURCE_MAX_BYTES` limits, defaulting to 30 seconds and 50 MiB.
 

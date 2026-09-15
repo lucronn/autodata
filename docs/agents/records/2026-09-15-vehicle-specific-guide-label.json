@@ -1,0 +1,30 @@
+{
+  "goal": "Make consumer repair guides and PDFs identify the exact selected vehicle variant",
+  "plan_ref": "docs/superpowers/plans/2026-09-15-vehicle-specific-guide-label.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/85",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/consumer-review-agent.md",
+    "docs/verification/consumer-review-runbook.md"
+  ],
+  "todo": [
+    "Add a regression proving the exact selected vehicle variant appears in guide applicability",
+    "Implement the vehicle-specific applicability formatter",
+    "Run focused and full applicable test suites",
+    "Re-run the five-case live consumer matrix and verify vehicle-specific PDF applicability",
+    "Record hashes and reconcile Issue #85 and canonical documentation"
+  ],
+  "base_sha": "5361eb66a81e2a3514e95f122086ef4efbf02735",
+  "status": "synchronized",
+  "implementation_sha": "256a42f1da5ed3a061782bd525cb7382e761738c",
+  "verification_sha": "fe606e6c8cac8b23bc5dd3c77744e7d14fae0eee",
+  "report_sha256": "be89b7f8cbcf2954ecf2f146016b8188f0fce3626056c8db37504c7b8bf4ee28",
+  "pdf_sha256": {
+    "rav4-4wd-2door-four-component": "79735a81af57e72231ff8384e8a0f31719b90f368452cb2aa2ec751a4fd69771",
+    "rav4-oil-water-pumps": "3d60d29237a1044edb2cc68d7f46f850d6a781b93554a77b9b77b12d78b15ff5",
+    "camry-starter": "c616b3549ec3b84338e55b248ab8d74257a005c0302f82ec98184cc11bb35854",
+    "forester-sohc-water-pump": "7bac6dab6248e5d221a52c82e04367af8245e2172f3da1e32a0f14abd9de218e",
+    "civic-lx-front-caliper": "2f593b554eee45007b378d4dadb708ab6e8f946d968f7562d299b8dca38abecb"
+  },
+  "updated_at": "2026-09-15T05:10:00Z"
+}

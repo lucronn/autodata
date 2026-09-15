@@ -18,6 +18,11 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
+try:
+    from .pre_implementation import validate_record
+except ImportError:  # Support direct execution: python scripts/autonomy/runner.py
+    from pre_implementation import validate_record
+
 
 SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 SECRET_RE = re.compile(
@@ -451,6 +456,15 @@ def run_agent(
     task_contract = envelope.get("task_contract", envelope.get("task_contract_ref", "not supplied"))
     if isinstance(task_contract, str) and task_contract.startswith("path:"):
         task_contract = _git_show(repo_root, actual_base_sha, task_contract.removeprefix("path:"))
+    if agent.get("role") == "implementation":
+        preflight_errors = validate_record(
+            task_contract.get("pre_implementation") if isinstance(task_contract, dict) else None,
+            repo_root,
+            actual_base_sha,
+            policy,
+        )
+        if preflight_errors:
+            raise RunnerError("pre-implementation gate blocked: " + "; ".join(preflight_errors))
 
     output_root.mkdir(parents=True, exist_ok=False)
     evidence_root = output_root / "evidence"
@@ -489,6 +503,33 @@ def run_agent(
                             },
                             "required": ["api", "events", "schema"],
                         },
+                        "pre_implementation": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "goal": {"type": "string"},
+                                "plan_ref": {"type": "string"},
+                                "issue_ref": {"type": "string"},
+                                "project_ref": {"type": "string"},
+                                "repository_doc_refs": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                                "todo": {"type": "array", "items": {"type": "string"}},
+                                "status": {"type": "string"},
+                                "updated_at": {"type": "string"},
+                            },
+                            "required": [
+                                "goal",
+                                "plan_ref",
+                                "issue_ref",
+                                "project_ref",
+                                "repository_doc_refs",
+                                "todo",
+                                "status",
+                                "updated_at",
+                            ],
+                        },
                     },
                     "required": [
                         "task_id",
@@ -499,6 +540,7 @@ def run_agent(
                         "acceptance_tests",
                         "forbidden_scope",
                         "compatibility",
+                        "pre_implementation",
                     ],
                 },
             },

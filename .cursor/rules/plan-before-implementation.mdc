@@ -1,0 +1,10 @@
+---
+description: Enforce the agent-agnostic plan, GitHub tracking, and repository documentation gate before implementation
+alwaysApply: true
+---
+
+# Plan before implementation
+
+Read `docs/agents/pre-implementation-gate.md` before changing implementation files.
+
+Follow this order: create a decision-complete plan, update the GitHub Issue and Project item, update canonical repository docs with the goal/Issue/Project references and concrete todo list, run the machine preflight, then implement. If the record is missing, stale, or not `synchronized`, stop and report a blocking preflight result. This adapter does not replace the canonical gate.

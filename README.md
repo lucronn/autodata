@@ -1,11 +1,42 @@
-![AutoData architecture preview](docs/assets/autodata-architecture-preview.jpeg)
 # AutoData
 
-AutoData is a cloud-neutral, containerized automotive data platform. It turns
-heterogeneous source resources into evidence-backed, vehicle-specific dataset
-projections that can be published quickly and enriched incrementally.
+> Turn scattered repair data into a vehicle-specific procedure, quote, and
+> evidence-backed answer.
 
-[![AutoData architecture and development platform](https://repository-images.githubusercontent.com/1354240578/bc662088-d074-4e35-872e-a0a3b12c3612)](https://github.com/lucronn/autodata)
+![AutoData turns scattered repair data into a vehicle-specific procedure, quote, and evidence-backed workspace](docs/assets/autodata-platform-overview.png)
+
+Finding the right repair answer is fragmented across manuals, generic search,
+diagnostic data, parts catalogs, and wiring diagrams. AutoData brings those
+sources together for one vehicle, preserves where the answer came from, and
+turns a plain-language request into a usable repair workflow.
+
+The result is a vehicle-specific workspace with the relevant procedure,
+labor-and-parts quote, supporting source evidence, and clear review status. A
+fast lane makes the first useful answer available quickly; a deep lane keeps
+enriching it in the background.
+
+[Architecture](docs/architecture/domain-model.md) ·
+[Local quick start](#start-the-local-stack) ·
+[Wiki](https://github.com/lucronn/autodata/wiki) ·
+[Project #8](https://github.com/users/lucronn/projects/8)
+
+## At a glance
+
+- **Vehicle-scoped:** identity, configuration, procedures, specifications,
+  diagnostics, evidence, and feedback stay attached to the requested vehicle
+  projection.
+- **Fast to useful:** the fast lane normalizes core facts and publishes an
+  immutable, viewable revision without waiting for every enrichment section.
+- **Built to deepen:** the deep lane adds documents, images, diagrams, search,
+  embeddings, and quality review independently of the first viewable result.
+- **Safe by default:** provenance, evidence, review status, entitlements, and
+  source-rights boundaries are part of the platform contract.
+
+The current verified local path is deterministic and uses PostgreSQL with
+pgvector, NATS JetStream, MinIO, fake source data, and a fake payment provider.
+It does not require cloud credentials. Generated procedures and source-derived
+results remain explicitly `UNREVIEWED` until an authorized human review changes
+their status.
 
 The repository is a modular monorepo:
 
@@ -22,6 +53,67 @@ The repository is a modular monorepo:
 - `docs/architecture` — canonical system, lifecycle, contract, and operations
   documentation.
 - `docs/github` — repository and Project operating model.
+- `docs/agents/pre-implementation-gate.md` — mandatory, agent-agnostic planning
+  and GitHub/repository synchronization gate for implementation work.
+
+For a guided introduction, start with the [GitHub Wiki](https://github.com/lucronn/autodata/wiki).
+For the authoritative technical details, use the linked documents under
+[`docs/`](docs/).
+
+## Current development slice
+
+### Illustrated DIY repair guides
+
+The chat workflow now turns a vehicle-and-job request into one consumer-ready
+guide, including the access work that makes the repair possible, removal,
+reassembly, installation, torque values, timing checks, fluid refill, and final
+leak checks. It combines the existing AutoAPI retrieval path with the
+read-only [AutoAPI Two content API](https://autoapitwo.vercel.app/docs), keeps
+provider vehicle identities separate, and places the returned diagrams beside
+the steps they explain.
+
+Complete guides expose a revision-matched PDF download from the authenticated
+chat query. If an installation page, required prerequisite, or figure is
+missing, chat shows the available material as a clearly labeled preview and
+withholds the final PDF. Generated automotive content remains
+`UNREVIEWED — human review pending`; completeness is not technician approval.
+
+For local source-backed chat runs, set
+`AUTODATA_AUTOAPITWO_BASE_URL=https://autoapitwo.vercel.app` in the ingestion
+environment. The connector uses only vehicle search, vehicle-scoped repair
+content, and returned media links; it does not use account or session routes.
+
+The current development slice is tracked in [Issue #85](https://github.com/lucronn/autodata/issues/85) and [Project #8](https://github.com/users/lucronn/projects/8). The verified local path currently supports:
+
+- natural-language component intent translation into an allowlisted vehicle-scoped query;
+- query-aware normalized-article lookup with exact and near-duplicate protection;
+- deterministic single-technician labor calculation with shared-operation overlap counted once;
+- Mercury-2 composition of an evidence-linked multi-component procedure;
+- persistence of the composed procedure as a reusable derived article;
+- warm replay from PostgreSQL without repeating the source or model call; and
+- dashboard rendering of every generated step with an explicit `UNREVIEWED` label.
+
+The RAV4 examples are automated `ready` results, not technician approval. Source evidence remains pending human review, and a genuinely uncached source request still depends on the configured AutoAPI service being available. Those are tracked separately from the completed cache, composition, and dashboard behavior.
+
+The active product slice is the [chat-first natural-language quote and
+procedure generator](https://github.com/lucronn/autodata/issues/87), tracked in
+[Project #8](https://github.com/users/lucronn/projects/8). Its target
+interaction is a single request such as `97 Toyota RAV4 brake line replacement
+procedure, and quote`; it returns the full procedure, required and recommended
+supporting work, overlap-aware labor hours, source parts prices with pricing
+dates and no markup, and live worker progress. Contracts and persistence are
+complete; natural-language intent extraction is pushed at `30d166d`, and
+read-through source retrieval/pricing is pushed at `910ba88`. Their scoped
+reviews are tracked in Issue #87. Quote composition, visuals, and the
+overlap-aware procedure engine are pushed at `48ebb77` with 26 focused tests;
+chat orchestration, API delivery, and end-to-end integration continue as the
+next work. The repository
+[pre-implementation gate](docs/agents/pre-implementation-gate.md) remains
+mandatory.
+
+The approved [design spec](docs/superpowers/specs/2026-09-11-natural-language-quote-procedure-generator-design.md)
+and [implementation plan](docs/superpowers/plans/2026-09-11-natural-language-quote-procedure-generator.md)
+are the canonical technical records for this slice.
 
 ## Start the local stack
 
@@ -46,6 +138,88 @@ The smoke command verifies the deterministic purchase, entitlement, viewable
 revision, PostgreSQL records, MinIO source object, and `dataset.viewable`
 JetStream event. The full developer workflows and recovery checks are in
 [`docs/architecture/infrastructure-and-dev.md`](docs/architecture/infrastructure-and-dev.md).
+
+To verify the chatbot's source-visible cold path and normalized warm path
+without starting the application stack, run the opt-in `verification` profile:
+
+```sh
+AUTODATA_POSTGRES_PASSWORD=compose-validation-only \
+AUTODATA_MINIO_ROOT_USER=compose-validation-admin \
+AUTODATA_MINIO_ROOT_PASSWORD=compose-validation-only \
+docker compose -f infra/compose/compose.yaml --profile verification \
+  run --rm --no-deps chat-smoke
+```
+
+`chat-smoke` uses only deterministic in-memory fake source, normalizer, price,
+model, and vectorizer adapters. Its container has no network, needs no provider
+credentials, and does not change the default Compose services. A passing JSON
+report proves that the first request exposes unnormalized source data before
+normalized publication, calculates overlap-aware labor, returns stale parts
+prices immediately with `priced_at`, refreshes them asynchronously, links a
+reviewable vector redraw to its source diagram, and makes both same-key and
+semantic warm replays with zero source/model calls.
+
+Open the local chatbot dashboard at [http://127.0.0.1:8080/dashboard/](http://127.0.0.1:8080/dashboard/)
+after the API container is running. It loads normalized vehicle selectors,
+accepts a plain-language question, and submits it to `POST /job-plans`. The
+response includes structured labor, a combined procedure, source status,
+evidence, original image URLs present in the ingested article, and an explicit
+`UNREVIEWED — human review pending` label until a reviewer approves the result.
+On a local cache miss, the ingestion service uses the configured source
+connector and materializes the returned source data for future lookups.
+
+The dashboard uses the local development identity format
+`Bearer local:demo:dataset_viewer` by default. A production identity adapter
+must replace that local header boundary; provider credentials do not belong in
+the browser bundle.
+
+For a direct smoke test of the chatbot endpoint, provide a deterministic
+vehicle-scoped catalog in the request. This exercises combined labor,
+procedure composition, image propagation, and derived-article persistence
+without making provider calls:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8080/job-plans \
+  -H 'Authorization: Bearer local:demo:dataset_viewer' \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: local-job-plan-001' \
+  -d '{"vehicle":{"year":1999,"make":"Chevrolet","model":"Silverado 1500","region":"US","drivetrain":"2WD","engine_displacement_l":5.3},"query":"replace the alternator and starter"}'
+```
+
+Omit the request's `catalog` after a successful persisted request to exercise
+the warm derived-article path. A cache miss uses
+`AUTODATA_AUTOAPI_BASE_URL` only after the indexed local lookup is empty.
+The Compose development default is the verified deployment at
+`https://autoapi-sigma.vercel.app`; set `AUTODATA_AUTOAPI_BASE_URL` explicitly
+for another local, staging, or provider-neutral connector deployment.
+The fallback first reads the vehicle's article list, selects only the articles
+relevant to the natural-language request, then fetches those articles' detail
+and labor resources. It persists the normalized article body, source images,
+labor operations, and evidence, so the next lookup uses PostgreSQL instead of
+repeating provider calls. The full catalog warm-up remains list-only; it does
+not fetch every individual article detail. The
+AutoAPI traversal command hydrates the complete available year/make/model/
+vehicle configuration and article-list catalog when the connector session is
+authorized:
+
+```sh
+AUTODATA_POSTGRES_PASSWORD=local-dev-only \
+AUTODATA_MINIO_ROOT_USER=localadmin \
+AUTODATA_MINIO_ROOT_PASSWORD=local-dev-password \
+PYTHONPATH=workers/ingestion-python/src \
+python3 scripts/dev/ingest_autoapi_service.py \
+  --base-url http://127.0.0.1:3000 --persist
+```
+
+Mercury-2 is an advisory wording layer for selected, evidence-backed source
+steps. It may translate natural-language intent into allowlisted component
+keys and compose a procedure from normalized source articles, but it cannot
+invent vehicle facts, labor values, safety instructions, tools, or evidence.
+Set `INCEPTION_API_KEY` and `INCEPTION_API_BASE_URL` through the local
+environment or a deployment secret interface; the repository and browser
+bundle never contain those values. If the adapter is unavailable, the API
+returns the validated deterministic procedure and marks the LLM layer as
+unavailable rather than fabricating content.
 
 ## Validate a heterogeneous source drop
 
@@ -133,6 +307,94 @@ configuration beneath the existing `vehicle_id` instead of creating another
 vehicle family. `AUTODATA_VEHICLE_LIST_SOURCE_URI` and
 `AUTODATA_SOURCE_VERSION` identify the list source for replay and audit.
 
+For a complete local AutoAPI export, use the batch runner. It discovers a
+vehicle bundle from each directory containing `name.json`, derives selector
+configurations from the split `name.json` and `motorvehicles.json` responses,
+and processes every other file in that directory through the universal source
+adapter. A source root containing `name.json` is treated as one vehicle; a
+catalog root containing child bundles is processed one vehicle at a time. If
+multiple discovered bundles normalize to the same vehicle family, they are
+merged into one batch and all source directories are normalized together, so
+article deduplication and provenance cover the complete drop set. A selector
+export may also arrive first, without article bundles. Pass it with
+`--selector-json`; nested `models` and `engines` are flattened into
+configuration observations, and every selector vehicle is retained as
+`pending_source` until its article bundle arrives. A selector vehicle without
+a matching source bundle is never silently skipped:
+
+```sh
+PYTHONPATH=workers/ingestion-python/src \
+python3 scripts/dev/ingest_autoapi_batch.py "sample data" \
+  --region US \
+  --source-version autoapi-local-v1
+```
+
+Selector-only catalog import (identity/configuration stage):
+
+```sh
+PYTHONPATH=workers/ingestion-python/src \
+python3 scripts/dev/ingest_autoapi_batch.py "autoapi-export" \
+  --selector-json "autoapi-export/vehicles.json" \
+  --region US \
+  --source-version autoapi-selector-v1
+```
+
+When the corresponding per-vehicle directories are added beneath the same
+source root, rerunning the command merges the selector observations with the
+bundle-derived trims and engines, then normalizes and persists each available
+article independently. Replays use the stable vehicle, source, article, and
+locator identities; near-duplicate articles remain linked to their canonical
+record for review rather than being published twice. The batch result is
+`completed` only when every planned vehicle was processed without a review or
+failure condition; `pending_source`, `needs_review`, and `failed` remain
+explicit per-vehicle and aggregate outcomes.
+
+Add `--persist` only when PostgreSQL and MinIO are available through the local
+environment. This persists the derived selector rows and each vehicle's
+source snapshots, evidence, normalized articles, duplicate links, and review
+items. The command continues across vehicle bundles and reports per-vehicle
+failure or review status. A remote AutoAPI connector must provide the same
+immutable bundle shape; this local runner does not guess undocumented remote
+endpoint paths.
+
+The companion AutoAPI repository in `/Users/dull/Documents/ChatGPT/autoapi`
+provides the verified read-only `/v1/api` connector surface. When that local
+service is running, the service-backed catalog runner traverses every exposed
+year, make, model, and vehicle ID, fetches each vehicle's name and engine
+metadata, fetches the complete article list, and passes the list response through
+the same normalizer and persistence path with bounded vehicle-level concurrency:
+
+```sh
+PYTHONPATH=workers/ingestion-python/src \
+python3 scripts/dev/ingest_autoapi_service.py \
+  --base-url http://127.0.0.1:3000 \
+  --content-source GeneralMotors \
+  --source-version autoapi-http-v1 \
+  --vehicle-concurrency 4 \
+  --retry-attempts 3 \
+  --retry-backoff-seconds 0.25
+```
+
+Add `--persist` only with the local PostgreSQL and MinIO environment configured.
+The command exits nonzero when the AutoAPI catalog traversal or any article
+list fetch is incomplete; its JSON report includes the years traversed and
+vehicle/article-list counts. The AutoAPI service's own
+runtime credentials remain in its secret-managed environment and are never
+copied into AutoData or logged by this runner.
+Vehicle bundles default to four concurrent fetches; lower that limit when the
+upstream session or local network needs a gentler request rate. The runner
+fetches the AutoAPI article list for each vehicle but intentionally does not
+request individual article-detail endpoints. Idempotent GETs retry
+transient 408, 425, 429, 500, 502, 503, and 504 responses with bounded
+exponential backoff; persistent authentication failures remain visible and
+fail the run.
+
+Each processed result includes `article_coverage`: raw candidate count, raw
+unique article IDs, normalized unique IDs, review/quarantine IDs, and an
+`unaccounted_unique_ids` list. A valid complete bundle has an empty
+`unaccounted_unique_ids` list; near-duplicate records are accounted for in the
+review set rather than silently dropped.
+
 For one target article, set `AUTODATA_ARTICLE_URI` and provide the target
 vehicle as JSON. The worker returns the normalized article records together
 with their source evidence; source credentials, if required, remain in the
@@ -179,9 +441,13 @@ normalized article with evidence. Source responses are never treated as a
 match unless the requested vehicle and query both pass the intake boundary.
 
 When `catalog` is omitted from a knowledge request, the worker first performs
-an indexed PostgreSQL lookup by canonical `vehicle_key`, excludes linked
-duplicates and taken-down snapshots, and ranks the normalized records locally.
-Only when that database lookup has no matching result does it resolve and fetch
+an indexed PostgreSQL lookup by canonical `vehicle_key` and ranks the
+normalized records locally. Component job-plan queries add bounded title
+filters before applying the result limit, so a requested oil- or water-pump
+article is not missed merely because it sorts beyond the first page of a large
+catalog. Unfiltered reads exclude linked duplicates; all reads exclude
+records without persisted evidence and source snapshots marked for takedown.
+Only when the database lookup has no matching result does it resolve and fetch
 the configured source. Supplying `catalog: []` deliberately bypasses the
 database lookup and is useful for controlled fallback tests.
 

@@ -19,7 +19,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
-from urllib.parse import urlparse
+from urllib.parse import unquote, urljoin, urlparse, urlsplit
 from xml.etree import ElementTree
 
 
@@ -210,7 +210,11 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
                     "response_messages": header.get("messages", []),
                 }
             )
-        candidates = classify_json_candidates(document)
+        candidates = classify_json_candidates(
+            document,
+            source_uri=resource.source_uri,
+            target_article_id=resource.metadata.get("target_article_id"),
+        )
         metadata.update(
             {
                 "candidate_count": len(candidates),
@@ -251,7 +255,12 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
     return _binary_artifact("quarantine", resource, {**metadata, "quarantine_reason": "unsupported_media_type"})
 
 
-def classify_json_candidates(document: Any) -> list[NormalizationCandidate]:
+def classify_json_candidates(
+    document: Any,
+    *,
+    source_uri: str = "",
+    target_article_id: Any = None,
+) -> list[NormalizationCandidate]:
     """Recognize common source records while keeping unknown JSON shapes intact."""
 
     body = document.get("body") if isinstance(document, dict) and "body" in document else document
@@ -318,6 +327,28 @@ def classify_json_candidates(document: Any) -> list[NormalizationCandidate]:
             if isinstance(article, dict):
                 article_id = str(article.get("id") or f"index-{index}")
                 candidates.append(NormalizationCandidate("article", f"article:{article_id}:{index}", article, f"body.articleDetails[{index}]"))
+
+    # AutoAPI exposes labor as a separate JSON resource. Keep it typed so the
+    # source bundle can join it to the article while preserving its evidence.
+    if "/labor/" in source_uri.casefold():
+        article_id = str(target_article_id or "").strip()
+        if not article_id:
+            article_id = unquote(urlsplit(source_uri).path.rsplit("/", 1)[-1]).strip()
+        operations = body.get("operations") if isinstance(body, dict) else body
+        if operations is None and isinstance(body, dict) and (
+            isinstance(body.get("mainOperation"), dict)
+            or isinstance(body.get("includedOperations"), list)
+        ):
+            operations = body
+        if article_id and isinstance(operations, (dict, list)):
+            candidates.append(
+                NormalizationCandidate(
+                    "article_operations",
+                    f"article-operations:{article_id}",
+                    {"article_id": article_id, "operations": operations},
+                    "body.operations" if isinstance(body, dict) and "operations" in body else "body",
+                )
+            )
 
     parts = body.get("parts") if isinstance(body, dict) else body if isinstance(body, list) else None
     if isinstance(parts, list):
@@ -587,7 +618,10 @@ def _adapt_document_resource(
     candidates = [NormalizationCandidate(
         "document_text",
         f"document-text:{resource.content_sha256}",
-        {"text": text},
+        {
+            "text": text,
+            "images": _html_media_references(resource) if resource.media_type == "text/html" else [],
+        },
         locator,
     )]
     if resource.media_type == "text/html":
@@ -853,6 +887,13 @@ def _html_text(payload: bytes) -> str:
     return re.sub(r"\s+", " ", " ".join(parser.parts)).strip()
 
 
+def _html_media_references(resource: SourceResource) -> list[dict[str, str]]:
+    parser = _ArticleHTMLParser()
+    parser.feed(resource.payload.decode("utf-8-sig"))
+    parser.close()
+    return [dict(image) for image in parser.images]
+
+
 class _ArticleHTMLParser(HTMLParser):
     """Collect low-risk HTML metadata without interpreting arbitrary markup."""
 
@@ -869,6 +910,7 @@ class _ArticleHTMLParser(HTMLParser):
         self._article_depth = 0
         self._article_ignored_depth = 0
         self._article_body_parts: list[str] = []
+        self.images: list[dict[str, str]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attributes = {
@@ -893,6 +935,16 @@ class _ArticleHTMLParser(HTMLParser):
             self._heading_parts = []
         elif normalized_tag == "script" and attributes.get("type", "").casefold() == "application/ld+json":
             self._json_ld_parts = []
+        elif normalized_tag == "img" and attributes.get("src"):
+            image = {"url": attributes["src"]}
+            if attributes.get("alt"):
+                image["alt"] = attributes["alt"]
+            self.images.append(image)
+        elif normalized_tag == "mtr-image" and attributes.get("id"):
+            image = {"image_id": attributes["id"]}
+            if attributes.get("alt"):
+                image["alt"] = attributes["alt"]
+            self.images.append(image)
 
     def handle_endtag(self, tag: str) -> None:
         normalized_tag = tag.casefold()
@@ -965,6 +1017,7 @@ def _html_article_candidates(resource: SourceResource) -> list[NormalizationCand
         ),
         "body": parser.article_body,
         "steps": None,
+        "images": parser.images,
     }
     for record in json_ld_records:
         record_types = _json_ld_types(record)
@@ -1028,6 +1081,16 @@ def _html_article_candidates(resource: SourceResource) -> list[NormalizationCand
         steps = article_values.get("steps")
         if isinstance(steps, list) and all(isinstance(step, (str, dict)) for step in steps):
             article_data["steps"] = steps
+        images = article_values.get("images")
+        if isinstance(images, list):
+            article_data["images"] = [
+                {
+                    **image,
+                    "url": urljoin(resource.source_uri, str(image["url"])),
+                }
+                for image in images
+                if isinstance(image, dict) and str(image.get("url") or "").strip()
+            ]
         candidates.append(
             NormalizationCandidate(
                 "article",
@@ -1192,6 +1255,10 @@ def _candidate_from_record(
         steps = record.get("steps")
         if isinstance(steps, list) and all(isinstance(step, (str, dict)) for step in steps):
             data["steps"] = steps
+        for source_name in ("images", "imageUrls", "image_urls", "diagrams", "media"):
+            value = record.get(source_name)
+            if value:
+                data[source_name] = value
         return NormalizationCandidate(
             "article",
             f"article:{article_id}:{locator}",

@@ -23,6 +23,14 @@ func TestGeneratedBindingsExposeSupportingContractTypes(t *testing.T) {
 	_ = KnowledgeArticle{}
 	_ = KnowledgeProcedure{}
 	_ = KnowledgeEvidence{}
+	_ = ProcedureStep{}
+	_ = VisualArtifact{}
+	_ = PriceSnapshot{}
+	_ = ChatQuote{}
+	_ = ChatAnswer{}
+	_ = ChatQuery{}
+	_ = ChatSelection{}
+	_ = WorkerProgressEvent{}
 }
 
 func TestGeneratedBindingsExposeLifecycleAndEventSubjects(t *testing.T) {
@@ -49,6 +57,24 @@ func TestGeneratedBindingsExposeLifecycleAndEventSubjects(t *testing.T) {
 	}
 	if !contains(ErrorCodeValues, "INVALID_EVIDENCE") {
 		t.Fatal("error codes must include invalid evidence")
+	}
+	if !contains(DataStateValues, "source_unnormalized") {
+		t.Fatal("data states must include source_unnormalized")
+	}
+	if !contains(AnswerStatusValues, "available") {
+		t.Fatal("answer statuses must include available")
+	}
+	for _, subject := range []string{
+		"chat.answer.updated",
+		"chat.vehicle.options",
+		"chat.worker.progress",
+		"chat.price.refresh.requested",
+		"chat.procedure.published",
+		"chat.visual.published",
+	} {
+		if !contains(EventSubjects, subject) {
+			t.Fatalf("event subjects must include %s", subject)
+		}
 	}
 }
 

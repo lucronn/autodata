@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -14,6 +16,12 @@ import (
 	"strings"
 	"time"
 )
+
+// dashboardFiles contains the small local developer dashboard. It is served
+// by the API so the browser uses the same origin and authentication boundary.
+//
+//go:embed dashboard/*
+var dashboardFiles embed.FS
 
 const dependencyTimeout = 250 * time.Millisecond
 
@@ -60,6 +68,7 @@ type Server struct {
 	knowledgeFallbackPublisher KnowledgeFallbackPublisher
 	sourceReviews              SourceReviewStore
 	ingestionClient            IngestionClient
+	chatClient                 ChatClient
 	vehicleIdentity            VehicleIdentityStore
 	metrics                    *apiMetrics
 }
@@ -117,11 +126,35 @@ func NewServerWithSourceReviewStore(readiness ReadinessChecker, auth Authenticat
 func NewServerWithIngestionClient(readiness ReadinessChecker, auth Authenticator, requests RequestStore, client IngestionClient, projections ...ProjectionStore) *Server {
 	server := NewServerWithDependencies(readiness, auth, requests, projections...)
 	server.ingestionClient = client
+	if chatClient, ok := client.(ChatClient); ok {
+		server.chatClient = chatClient
+	}
 	return server
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /dashboard", func(response http.ResponseWriter, request *http.Request) {
+		http.Redirect(response, request, "/dashboard/", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /dashboard/", func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/dashboard/" {
+			body, err := dashboardFiles.ReadFile("dashboard/index.html")
+			if err != nil {
+				http.Error(response, "dashboard unavailable", http.StatusInternalServerError)
+				return
+			}
+			response.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = response.Write(body)
+			return
+		}
+		assets, err := fs.Sub(dashboardFiles, "dashboard")
+		if err != nil {
+			http.Error(response, "dashboard unavailable", http.StatusInternalServerError)
+			return
+		}
+		http.StripPrefix("/dashboard/", http.FileServer(http.FS(assets))).ServeHTTP(response, request)
+	})
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics.handler)
@@ -132,6 +165,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /source-review-items/{id}/review", s.requireRole("data_reviewer", s.reviewSourceItem))
 	mux.Handle("POST /article-intakes", s.requireRole("ingestion_operator", s.createArticleIntake))
 	mux.Handle("POST /knowledge-queries", s.requireRole("dataset_viewer", s.createKnowledgeQuery))
+	mux.Handle("POST /job-plans", s.requireRole("dataset_viewer", s.createJobPlan))
+	mux.Handle("POST /chat/queries", s.requireRole("dataset_viewer", s.createChatQuery))
+	mux.Handle("GET /chat/queries/{id}", s.requireRole("dataset_viewer", s.getChatQuery))
+	mux.Handle("GET /chat/queries/{id}/guide.pdf", s.requireRole("dataset_viewer", s.getChatGuidePDF))
+	mux.Handle("POST /chat/queries/{id}/selections", s.requireRole("dataset_viewer", s.selectChatVehicle))
+	mux.Handle("GET /chat/queries/{id}/events", s.requireRole("dataset_viewer", s.streamChatEvents))
 	mux.Handle("GET /dataset-requests/{id}", s.requireRole("dataset_viewer", s.getDatasetRequest))
 	mux.Handle("GET /datasets/{id}", s.requireRole("dataset_viewer", s.getDataset))
 	mux.Handle("GET /datasets/{id}/sections", s.requireRole("dataset_viewer", s.getDatasetSections))
@@ -483,6 +522,8 @@ func configuredReadiness() ReadinessChecker {
 	}
 }
 
+const defaultIngestionTimeoutSeconds = 120
+
 func main() {
 	address := envOrDefault("AUTODATA_API_ADDR", ":8080")
 	requestStore, projectionStore, cleanup, err := configuredStores(context.Background())
@@ -503,12 +544,13 @@ func main() {
 		client, err := NewHTTPIngestionClient(
 			endpoint,
 			os.Getenv("AUTODATA_INGESTION_INTERNAL_TOKEN"),
-			envDurationSeconds("AUTODATA_INGESTION_TIMEOUT_SECONDS", 30),
+			envDurationSeconds("AUTODATA_INGESTION_TIMEOUT_SECONDS", defaultIngestionTimeoutSeconds),
 		)
 		if err != nil {
 			log.Fatal(fmt.Errorf("configure ingestion client: %w", err))
 		}
 		application.ingestionClient = client
+		application.chatClient = client
 	}
 	server := &http.Server{
 		Addr:              address,

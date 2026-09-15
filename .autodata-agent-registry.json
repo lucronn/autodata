@@ -99,6 +99,14 @@
       "can_deploy": []
     },
     {
+      "name": "autodata-consumer-agent",
+      "role": "consumer-review",
+      "prompt": ".cursor/agents/autodata-consumer-agent.md",
+      "can_write": ["consumer-review-reports", "github-issue-metadata"],
+      "can_merge": false,
+      "can_deploy": []
+    },
+    {
       "name": "autodata-release-agent",
       "role": "release-control",
       "prompt": ".cursor/agents/autodata-release-agent.md",
