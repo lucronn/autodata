@@ -182,6 +182,41 @@ func TestHTTPIngestionClientRetriesTransientGuidePDFResponse(t *testing.T) {
 	}
 }
 
+func TestHTTPIngestionClientRetriesTransientChatQueryResponse(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requestCount++
+		if request.URL.Path != "/v1/chat/queries/q-get" {
+			t.Fatalf("path = %q, want chat query path", request.URL.Path)
+		}
+		if requestCount == 1 {
+			response.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		_, _ = response.Write([]byte(`{"query_id":"q-get","status":"available"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPIngestionClient(server.URL, "", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body, err := client.Get(
+		context.Background(),
+		httptest.NewRequest(http.MethodGet, "/chat/queries/q-get", nil),
+		"q-get",
+	)
+	if err != nil {
+		t.Fatalf("chat query failed: %v", err)
+	}
+	if status != http.StatusOK || string(body) != `{"query_id":"q-get","status":"available"}` {
+		t.Fatalf("status/body = %d/%q, want 200/query", status, body)
+	}
+	if requestCount != 2 {
+		t.Fatalf("request count = %d, want one retry", requestCount)
+	}
+}
+
 func TestDefaultIngestionTimeoutSupportsGuidePDFGeneration(t *testing.T) {
 	if defaultIngestionTimeoutSeconds < 120 {
 		t.Fatalf("default ingestion timeout = %d seconds, want at least 120", defaultIngestionTimeoutSeconds)

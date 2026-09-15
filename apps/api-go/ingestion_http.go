@@ -17,6 +17,8 @@ import (
 const maxIngestionProxyBytes = 8 << 20
 const maxGuidePDFAttempts = 3
 const guidePDFRetryDelay = 250 * time.Millisecond
+const maxChatGetAttempts = 3
+const chatGetRetryDelay = 250 * time.Millisecond
 
 type IngestionClient interface {
 	Do(*http.Request, string, []byte, string) (int, []byte, error)
@@ -86,7 +88,20 @@ func (c *HTTPIngestionClient) Get(ctx context.Context, incoming *http.Request, q
 	if err != nil {
 		return 0, nil, err
 	}
-	return c.doChatJSON(ctx, incoming, http.MethodGet, path, nil, "")
+	for attempt := 0; attempt < maxChatGetAttempts; attempt++ {
+		status, body, requestErr := c.doChatJSON(ctx, incoming, http.MethodGet, path, nil, "")
+		if requestErr != nil || !isTransientGuidePDFStatus(status) || attempt == maxChatGetAttempts-1 {
+			return status, body, requestErr
+		}
+		timer := time.NewTimer(chatGetRetryDelay)
+		select {
+		case <-requestContext(ctx, incoming).Done():
+			timer.Stop()
+			return 0, nil, requestContext(ctx, incoming).Err()
+		case <-timer.C:
+		}
+	}
+	return 0, nil, fmt.Errorf("chat query retry limit reached")
 }
 
 func (c *HTTPIngestionClient) GuidePDF(ctx context.Context, incoming *http.Request, queryID string) (int, []byte, error) {

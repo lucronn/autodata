@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from consumer_agent import ChatHTTPClient, create_or_reuse_issue, consumer_projection, run_case, run_cases, score_response
+from consumer_agent import ChatHTTPClient, aggregate_decision, create_or_reuse_issue, consumer_projection, run_case, run_cases, score_response
 
 
 ROOT = Path(__file__).parents[2]
@@ -205,3 +205,10 @@ def test_issue_creation_reuses_stable_finding_marker():
         assert reused["action"] == "reused"
         assert reused["issue_number"] == 123
         assert any(args[1] == "create" for args in calls)
+
+
+def test_cli_decision_mapping_preserves_blocked_aggregate_state():
+    assert aggregate_decision({"pass": 2, "fail": 0, "needs_review": 0, "blocked": 2}) == "blocked"
+    assert aggregate_decision({"pass": 2, "fail": 1, "needs_review": 0, "blocked": 0}) == "fail"
+    assert aggregate_decision({"pass": 2, "fail": 0, "needs_review": 1, "blocked": 0}) == "needs_review"
+    assert aggregate_decision({"pass": 2, "fail": 0, "needs_review": 0, "blocked": 0}) == "pass"

@@ -470,6 +470,18 @@ def run_case(
     }
 
 
+def aggregate_decision(summary: Mapping[str, Any]) -> str:
+    """Return the release decision represented by aggregate case counts."""
+
+    if int(summary.get("fail", 0)) == 0 and int(summary.get("needs_review", 0)) == 0 and int(summary.get("blocked", 0)) == 0:
+        return "pass"
+    if int(summary.get("fail", 0)):
+        return "fail"
+    if int(summary.get("needs_review", 0)):
+        return "needs_review"
+    return "blocked"
+
+
 def create_or_reuse_issue(
     finding: Mapping[str, Any],
     report: Mapping[str, Any],
@@ -540,7 +552,12 @@ def run_cases(
         except ConsumerReviewError as error:
             results.append({"case": case.get("name", "case"), "message": case.get("message", ""), "response": None, "response_sha256": None, "pdf_sha256": None, "review": {"case": case.get("name", "case"), "decision": "blocked", "score": 0, "dimensions": {}, "findings": [{"finding_id": f"{case.get('name', 'case')}:transport", "severity": "high", "category": "reliability", "path": "transport", "line": 0, "message": str(error), "reproduction": str(case.get("message", "")), "blocking": True, "resolved_by": None}]}})
     decisions = [str(result["review"].get("decision")) for result in results]
-    decision = "pass" if all(item == "pass" for item in decisions) else ("fail" if "fail" in decisions else "needs_review" if "needs_review" in decisions else "blocked")
+    decision = aggregate_decision({
+        "pass": decisions.count("pass"),
+        "fail": decisions.count("fail"),
+        "needs_review": decisions.count("needs_review"),
+        "blocked": decisions.count("blocked"),
+    })
     aggregate: dict[str, Any] = {
         "run_id": run_id,
         "agent": "autodata-consumer-agent",
@@ -589,7 +606,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"agent": "autodata-consumer-agent", "decision": "blocked", "error": str(error)}, sort_keys=True))
         return 2
     decisions = report["summary"]
-    decision = "pass" if decisions["fail"] == 0 and decisions["needs_review"] == 0 and decisions["blocked"] == 0 else ("fail" if decisions["fail"] else "needs_review")
+    decision = aggregate_decision(decisions)
     print(json.dumps({"agent": report["agent"], "run_id": report["run_id"], "decision": decision, "summary": decisions, "report_path": report["report_path"], "issue_actions": report["issue_actions"]}, sort_keys=True))
     return 0 if decision == "pass" else 1
 
