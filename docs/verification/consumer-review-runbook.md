@@ -128,3 +128,15 @@ with SHA-256
 passed 6/6 dimensions with 131 steps, 89 figures, and a revision-matched PDF
 whose SHA-256 is
 `754407d8d5abda5f81865bf5136f6d603e0c4d07ee24d3af2d951e67fd8a3c32`.
+
+The full five-case matrix was then rechecked independently at implementation
+`7a4cb33ae2337bf1807144756bb5ccd735d7e480`. RAV4 4WD, RAV4 2WD, Camry,
+Forester SOHC, and Civic LX each returned `pass` with a score of 100/100,
+complete removal and installation phases, required `torque` and `check`
+language, and a revision-matched PDF. The individual reports are retained in
+`tmp/consumer-review-live/current-head/`; the five report SHA-256 values are
+`5573d0075f34621bd6b98349b959fb61791d41ee9b11918c6fa54c6e487892c1`,
+`4f94251cb2aaa89491129d4822eb97effedeb86f1d0cde09bc26636d0146334f`,
+`41c17925e79e7e156a5ebefae6e5a5ddf8fcedabd804260e862c9d1af2042392`,
+`5c016842789f3a4390755b13804ff70d4ce5d6539ef418f1928bf6be2a71c3d0`, and
+`312635f7ac5fc86f9e58f498c705a07ddabc2de8df16bad77b8e2c001cc7ed75`.

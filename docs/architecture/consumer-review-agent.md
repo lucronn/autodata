@@ -209,3 +209,17 @@ SHA-256 is
 Automated readiness does not approve the stored source evidence or procedure;
 the uncached AutoAPI session and human technician review remain explicit Issue
 #85 follow-ups.
+
+### Current-head five-case recheck
+
+Each matrix case was run independently against the live QA API at implementation
+`7a4cb33ae2337bf1807144756bb5ccd735d7e480`; all five passed all six rubric
+dimensions with no findings or issue actions.
+
+| Case | Steps | Figures | Report SHA-256 | PDF SHA-256 |
+| --- | ---: | ---: | --- | --- |
+| 1997 RAV4 2-door 4WD, four components | 131 | 89 | `5573d0075f34621bd6b98349b959fb61791d41ee9b11918c6fa54c6e487892c1` | `754407d8d5abda5f81865bf5136f6d603e0c4d07ee24d3af2d951e67fd8a3c32` |
+| 1997 RAV4 2-door 2WD, oil and water pumps | 101 | 80 | `4f94251cb2aaa89491129d4822eb97effedeb86f1d0cde09bc26636d0146334f` | `d4008dffb9c8dce162845c6a77eaa55e80e9a38ffa60ec979baf78c6bfe3c955` |
+| 2005 Toyota Camry, starter | 21 | 4 | `41c17925e79e7e156a5ebefae6e5a5ddf8fcedabd804260e862c9d1af2042392` | `8afcdccb2b29022a396956722f2d5739452cfd5e2e9c8f4b697939c9b0bc6221` |
+| 2010 Subaru Forester SOHC, water pump | 92 | 36 | `5c016842789f3a4390755b13804ff70d4ce5d6539ef418f1928bf6be2a71c3d0` | `978642687d8d95734271b21f2a3564b1ca587369e48c9d4af1abfd67fe7b72f9` |
+| 2002 Honda Civic LX, front caliper | 14 | 5 | `312635f7ac5fc86f9e58f498c705a07ddabc2de8df16bad77b8e2c001cc7ed75` | `334f412a2608f8f39f107a79e8c52ba22f20cb34d92997ec8dbd09257a6a7c03` |
