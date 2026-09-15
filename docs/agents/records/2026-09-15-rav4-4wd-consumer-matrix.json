@@ -14,7 +14,7 @@
     "Record the report path and hashes in canonical review documentation and the synchronized tracking record",
     "Keep human source-evidence review and uncached AutoAPI hydration as explicit follow-ups"
   ],
-  "base_sha": "7075c3cec1277246a82704b424fc6c449b3a03b1",
+  "base_sha": "7783cdfb0621bb9c6e7f78ffbf3ad2db861547f1",
   "status": "synchronized",
   "updated_at": "2026-09-15T05:12:00Z"
 }
