@@ -11,18 +11,19 @@
     "Enforce case-declared procedure-depth terms such as torque and final checks",
     "Run the live multi-vehicle review matrix and reconcile every finding",
     "Add bounded transient retries at the provider-backed figure-read boundary and re-run the cold matrix",
-    "Retry transient internal chat polling reads without hiding persistent failures and keep CLI status faithful to the aggregate report"
+    "Retry transient internal chat polling reads without hiding persistent failures and keep CLI status faithful to the aggregate report",
+    "Continue consumer polling across retryable 502/503/504 responses until the finite case deadline and regression-test the processing-to-available transition"
   ],
   "verification": {
-    "implementation_sha": "b7e1350",
-    "latest_local_hardening_sha": "b7e1350",
+    "implementation_sha": "8565b2b278e89a60660a390f149da5439f4fa3ed",
+    "latest_local_hardening_sha": "8565b2b278e89a60660a390f149da5439f4fa3ed",
     "latest_local_hardening_tests": "developer 70 passed, 2 subtests; autonomy 37 passed; ingestion 382 passed, 2 skipped, 12 subtests; Go API/contracts passed",
-    "fresh_live_recheck": "blocked: startup ordering, provider figure-read retry, and transient chat-poll retry are repaired and QA services are healthy, but the final current-code cold matrix returned a 502 for Camry and exceeded the consumer timeout for Forester; RAV4/Civic passed; findings remain issues 90 and 91",
-    "latest_runtime_finding": "first-use Camry/Forester chat reliability remains unresolved after bounded provider-read and public query-poll retries; later direct PDF requests can succeed but do not satisfy cold matrix acceptance",
+    "fresh_live_recheck": "blocked: QA services are healthy and the current cold matrix passed RAV4/Civic, but Camry/Forester encountered retryable public polling 502s that the runner treated as terminal; isolated traces show both queries later become available",
+    "latest_runtime_finding": "consumer polling needs bounded retry handling for transient 502/503/504 responses while a query remains processing; persistent failures must still block",
     "latest_live_recheck": {
-      "implementation_sha": "b7e1350",
-      "report_path": "tmp/consumer-review-live/post-poll-retry-cold/consumer-review-af962fddf8a4b9f08e76543a.json",
-      "report_sha256": "dd61c5323d3b89e7128c08c40e3dbde1603df326947554dd476e635cbb1f4c0b",
+      "implementation_sha": "8565b2b278e89a60660a390f149da5439f4fa3ed",
+      "report_path": "tmp/consumer-review-live/post-cooldown-cold/consumer-review-ac91ef9e5f84faf16aecc161.json",
+      "report_sha256": "daa2e5c58f814e426b28549ae83e1faf2dcd178d0ec853b094b22e6251d7172e",
       "decision": "blocked",
       "summary": {"case_count": 4, "pass": 2, "fail": 0, "needs_review": 0, "blocked": 2},
       "issue_actions": []
@@ -43,5 +44,5 @@
     "summary": {"case_count": 4, "pass": 2, "fail": 0, "needs_review": 0, "blocked": 2, "issue_actions": 0}
   },
   "status": "synchronized",
-  "updated_at": "2026-09-15T02:45:00Z"
+  "updated_at": "2026-09-15T03:20:00Z"
 }

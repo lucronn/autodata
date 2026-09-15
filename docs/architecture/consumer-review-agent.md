@@ -166,3 +166,9 @@ result.
 The runner's `--timeout` applies to both the HTTP transport and each case's
 processing poll. This keeps the documented cold-start bound authoritative for
 longer provider-backed procedures such as the Forester case.
+
+The runner also treats a retryable 502/503/504 during a processing poll as a
+bounded transport event: it backs off and polls again until the same finite
+case deadline. Persistent retryable failures, non-retryable failures, and
+deadline expiry remain blocked. This behavior is pending a focused regression
+and a fresh cold matrix at the current implementation SHA.

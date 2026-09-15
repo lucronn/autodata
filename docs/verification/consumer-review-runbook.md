@@ -73,6 +73,12 @@ The `--timeout` value is applied to both individual HTTP operations and the
 case-level processing poll. Use a finite value such as 300 seconds for a cold
 Compose stack; do not infer a timeout from the HTTP setting alone.
 
+During a processing poll, the runner may observe retryable 502/503/504
+responses from the public API. It backs off and continues polling until the
+same finite case deadline; persistent retryable failures and deadline expiry
+remain blocked. Authorization, validation, malformed-response, and other
+non-retryable failures are not retried.
+
 Latest cold verification at implementation `b7e1350` remains blocked at 2/4:
 RAV4 and Civic passed; Camry returned a 502 and Forester exceeded the bounded
 300-second consumer timeout. Retain the exact report outside the source tree

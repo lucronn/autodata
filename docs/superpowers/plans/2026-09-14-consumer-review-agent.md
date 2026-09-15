@@ -407,3 +407,13 @@ failure.
 Update the canonical contract, runbook, synchronized record, and issues #90
 and #91 with the exact implementation SHA, report SHA, service health, and
 per-case results.
+
+- [ ] **Step 6: Continue through transient poll transport errors**
+
+Treat retryable 502/503/504 responses from a GET while a query is still
+processing as bounded, retryable poll events in the consumer runner. Continue
+polling with context-free finite backoff until the case deadline, and retain a
+blocking result for a persistent error or an expired deadline. Add a focused
+regression that observes processing, a transient 502, then available; do not
+weaken the contract for authorization, validation, malformed, or non-retryable
+responses.
