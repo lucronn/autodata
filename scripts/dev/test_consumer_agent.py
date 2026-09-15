@@ -84,6 +84,31 @@ def test_score_response_marks_partial_answer_for_review():
     assert any(finding["finding_id"] == "partial:procedure:coverage" for finding in result["findings"])
 
 
+def test_score_response_fails_false_complete_replacement_without_both_phases():
+    response = _complete_response()
+    response["answer"]["procedure"]["steps"] = [response["answer"]["procedure"]["steps"][0]]
+
+    result = score_response(
+        {
+            "name": "false-complete",
+            "message": "replace starter",
+            "expected_vehicle": {"vehicle_id": "vehicle-1"},
+            "expected_components": ["starter"],
+            "min_steps": 1,
+            "min_figures": 1,
+        },
+        response,
+        pdf_response=b"%PDF-1.7 test",
+    )
+
+    assert result["decision"] == "fail"
+    assert any(
+        finding["finding_id"] == "false-complete:procedure:phases"
+        and finding["severity"] == "high"
+        for finding in result["findings"]
+    )
+
+
 def test_score_response_requires_case_declared_procedure_depth_terms():
     result = score_response(
         {

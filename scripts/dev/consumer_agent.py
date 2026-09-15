@@ -372,7 +372,8 @@ def score_response(case: Mapping[str, Any], response: Mapping[str, Any], *, pdf_
     if expected_components and not coverage_ok:
         findings.append(_finding(case, finding_id=f"{name}:procedure:coverage", severity="medium", category="quality", path="answer.procedure", message="procedure is not complete for every requested component", reproduction=reproduction))
     if "removal" not in phases or "installation" not in phases:
-        findings.append(_finding(case, finding_id=f"{name}:procedure:phases", severity="medium", category="quality", path="answer.procedure.steps", message="procedure does not expose both removal and installation phases", reproduction=reproduction))
+        phase_severity = "high" if procedure.get("content_status") == "complete" else "medium"
+        findings.append(_finding(case, finding_id=f"{name}:procedure:phases", severity=phase_severity, category="quality", path="answer.procedure.steps", message="procedure does not expose both removal and installation phases", reproduction=reproduction))
     min_steps = int(case.get("min_steps", 1))
     if len(steps) < min_steps:
         findings.append(_finding(case, finding_id=f"{name}:procedure:step-count", severity="medium", category="quality", path="answer.procedure.steps", message=f"procedure has {len(steps)} steps; expected at least {min_steps}", reproduction=reproduction))
