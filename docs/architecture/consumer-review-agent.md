@@ -41,6 +41,7 @@ does not change the guide's `UNREVIEWED` state.
 - Add the HTTP chat runner, consumer rubric, redacted response recorder, and
   stable finding-to-GitHub-issue workflow.
 - Add deterministic transport/rubric/issue-deduplication tests.
+- Enforce case-declared procedure-depth terms, including torque and final checks.
 - Run the agent against multiple live vehicle/procedure cases and preserve the
   response and review reports.
 - Reconcile confirmed findings, update the production-readiness evidence, and

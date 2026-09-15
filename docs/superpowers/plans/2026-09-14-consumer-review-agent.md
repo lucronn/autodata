@@ -15,7 +15,8 @@
 
 **Todo:** register the consumer agent; implement bounded chat transport and
 deterministic scoring; record redacted responses; deduplicate and create issue
-findings; run the live review matrix; reconcile every finding.
+findings; enforce case-declared procedure-depth terms such as torque and final
+checks; run the live review matrix; reconcile every finding.
 
 ## Global Constraints
 
@@ -90,6 +91,9 @@ Use `urllib.request` with HTTPS-or-loopback validation, finite connect/read time
 - [x] **Step 4: Implement the score dimensions**
 
 Return one score and evidence list for each of: `applicability`, `procedure_coverage`, `figures`, `safety_and_review`, `consumer_copy`, and `pdf_integrity`. Add findings with stable IDs and exact JSON paths; fail closed when required fields are missing.
+
+For procedure-depth coverage, support case-declared required terms and fail the
+coverage dimension when required torque or final-check language is absent.
 
 - [x] **Step 5: Run focused tests to verify the runner passes**
 

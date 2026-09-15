@@ -8,6 +8,7 @@
     "Register the consumer review agent and least-privilege report capability",
     "Implement bounded chat transport, redacted response recording, and deterministic scoring",
     "Create or reuse GitHub issues from stable findings without duplicates",
+    "Enforce case-declared procedure-depth terms such as torque and final checks",
     "Run the live multi-vehicle review matrix and reconcile every finding"
   ],
   "verification": {
