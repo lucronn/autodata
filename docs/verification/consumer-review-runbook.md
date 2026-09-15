@@ -149,3 +149,33 @@ PDF. The report SHA-256 is
 `c7aab0b58d2ede3c238b454bde1dee21a6848d6f6640d070966ed5e83d47239e` and the
 report is retained at
 `tmp/consumer-review-live/rav4-4wd-4door-uncached-v2/consumer-review-8aa4a17d03c034f59b436725.json`.
+
+## Final release-hardening acceptance
+
+The final local hardening sequence is recorded at implementation `87ca230`
+and documentation head `fa76df0`. The consumer agent now detects
+ellipsized/provider-reference-only procedure rows and classifies a response
+marked `complete` without both removal and installation phases as blocking
+`fail`.
+
+The fresh negative-path report is
+`tmp/consumer-review-live/negative-completeness-v2/consumer-review-0065a3f0d4368d9d841847ca.json`
+with SHA-256
+`fd7de16d67d87aa87a1088211804c598ac05caea36d96369d82f2ca4939e681d`. It
+returned `fail`, `expectation_met: true`, no PDF, and a blocking high-severity
+phase finding.
+
+The fresh positive five-case report is
+`tmp/consumer-review-live/final-positive-v3/consumer-review-404c3bef2992b3eb731861aa.json`
+with SHA-256
+`33539182a7b02eaaf3df09716bf744bef3ef8208ad817e8d8e1138db80d1b038`. RAV4
+2-door 4WD, RAV4 2-door 2WD, Camry, Forester SOHC, and Civic LX all passed at
+score 100 with zero findings and zero issue actions. Each response and PDF
+contains the exact selected vehicle applicability label; the RAV4 cover was
+visually inspected and reads `1997 Toyota Truck RAV4 2-Door 4WD L4-2.0L
+(3S-FE)`.
+
+These are local, non-production acceptance artifacts. Do not infer technician
+approval or remote README delivery from them; the former remains a human
+review item and the latter remains blocked until an explicit push is
+authorized.
