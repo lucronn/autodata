@@ -16,5 +16,13 @@
   ],
   "base_sha": "c6e1145f4fd7f2d4227b790826963e9e6511c750",
   "status": "synchronized",
-  "updated_at": "2026-09-15T17:48:39Z"
+  "implementation_sha": "4b690715d73d2b328df8534253380af08f4e0e59",
+  "verification": {
+    "pr_number": 94,
+    "pr_head_sha": "322441414c9e2792c56e7d88ef1b0463873b73fb",
+    "run_id": 35004339067,
+    "run_conclusion": "success",
+    "merge_sha": "defec080f925e97ce3bd9b785579817c572d5807"
+  },
+  "updated_at": "2026-09-15T18:02:00Z"
 }
