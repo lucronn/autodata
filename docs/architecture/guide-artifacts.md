@@ -54,6 +54,14 @@ natural-language introducer `for a` as the vehicle make. The current parser
 must normalize `for a 1999 Chevrolet Silverado 1500 2WD 5.3L` to the canonical
 Chevrolet identity before source lookup.
 
+The subsequent browser run identified a warm-read defect as well. A persisted
+combined article can contain complete nested `procedure.steps` and
+`labor.operations`, while the compatibility composer expects top-level
+operation fields. Without an explicit compatibility mapping, the UI regresses
+to a one-component placeholder and loses known labor/overlap data. The
+acceptance contract therefore requires warm composed revisions to retain every
+requested component, source-linked step, and known labor value.
+
 When source retrieval exhausts its retries without any usable answer, the
 persisted query and nested answer must both expose terminal `failed` /
 `unavailable` state. The worker stream must publish the correlated terminal
@@ -61,6 +69,9 @@ answer event so the dashboard cannot continue to show `processing ·
 normalizing`. If a provisional source-backed answer already exists, later
 normalization or composition failure keeps that answer visible and marks the
 affected work as failed; deep work never hides data that can already be shown.
+
+The warm-read compatibility path must preserve nested labor operations and
+procedure steps rather than rebuilding a partial placeholder.
 
 This follow-up is not accepted by unit tests alone. The local API and ingestion
 containers must be rebuilt from the checked-out revision, and the exact
