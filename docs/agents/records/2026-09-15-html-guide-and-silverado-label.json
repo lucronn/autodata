@@ -1,0 +1,22 @@
+{
+  "goal": "Make standalone HTML repair guides the preferred artifact and correct malformed AutoAPI Silverado vehicle labels",
+  "plan_ref": "docs/superpowers/plans/2026-09-15-html-guide-and-silverado-label.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/96",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/guide-artifacts.md",
+    "docs/architecture/consumer-repair-guides.md",
+    "docs/verification/consumer-review-runbook.md"
+  ],
+  "todo": [
+    "Add failing HTML artifact and Silverado identity regressions",
+    "Implement standalone HTML rendering with base64-embedded figures and preserve PDF compatibility",
+    "Add worker, internal HTTP, Go API, dashboard, and consumer verification support",
+    "Sanitize provider prose labels without changing valid detailed vehicle labels",
+    "Run focused and full verification and record exact implementation and CI evidence",
+    "Update Issue #96 and Project #8 with the verified delivery state"
+  ],
+  "base_sha": "b2cdc5a",
+  "status": "synchronized",
+  "updated_at": "2026-09-15T00:00:00Z"
+}
