@@ -162,3 +162,7 @@ caller cancellation and response limits, and does not mask authorization or
 validation errors. The consumer runner reports the aggregate `blocked` state
 as `blocked`, so release evidence cannot be mistaken for a softer review
 result.
+
+The runner's `--timeout` applies to both the HTTP transport and each case's
+processing poll. This keeps the documented cold-start bound authoritative for
+longer provider-backed procedures such as the Forester case.

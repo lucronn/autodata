@@ -371,14 +371,16 @@ findings remain open.
   decision.
 - Produces: bounded retries for transient 502/503/504 query reads, with
   caller cancellation preserved, and CLI output that reports the aggregate
-  `blocked` decision without relabeling it as `needs_review`.
+  `blocked` decision without relabeling it as `needs_review`. The CLI timeout
+  must bound both HTTP requests and per-case polling.
 
 - [x] **Step 1: Write failing polling and status-report tests**
 
 Assert that a transient internal query GET is retried and then returned when
 successful, while persistent transient responses remain bounded. Assert that
 the consumer CLI's reported decision equals the aggregate decision for
-`blocked`, `fail`, `needs_review`, and `pass` outcomes.
+`blocked`, `fail`, `needs_review`, and `pass` outcomes, and that its timeout is
+passed through to the per-case polling loop.
 
 - [x] **Step 2: Run focused tests to verify they fail**
 
@@ -390,7 +392,8 @@ Run `go test ./...` from `apps/api-go` and
 Retry only transient query-read statuses with context-aware backoff; do not
 retry authorization, validation, or arbitrary client errors. Preserve the
 finite response-size limit. Map the runner's printed decision directly from
-the aggregate report.
+the aggregate report. Pass the CLI timeout into each case's bounded polling
+loop instead of retaining a shorter hidden default.
 
 - [x] **Step 4: Run full and live verification**
 
