@@ -84,10 +84,16 @@ evidence and provenance metadata is not consumer content and must be removed
 from the serialized public projection before the 8 MB boundary; procedure
 steps, figure URLs, review state, and PDF revision identifiers must remain.
 
-Latest cold verification at implementation `b7e1350` remains blocked at 2/4:
-RAV4 and Civic passed; Camry returned a 502 and Forester exceeded the bounded
-300-second consumer timeout. Retain the exact report outside the source tree
-and keep issues #90 and #91 open until a new cold run passes all four cases.
+Latest cold verification at implementation `8a2a7ee` passes 4/4. The report is
+`tmp/consumer-review-live/post-public-compaction-cold-v2/consumer-review-73d119083fa152737b002ee1.json`
+with SHA-256
+`21d39bca197a429d6dbe16064cf756f825eb420765e3c9b78f0122ae54eb9272`.
+The warm replay also passes 4/4 in
+`tmp/consumer-review-live/post-public-compaction-warm/consumer-review-5188d0e5b668927d2c870249.json`
+with SHA-256
+`8c28ab0dc68158d499fc41e9b3a8902d2e0f57dbc677f90c7adbff255de8367e`.
+Issues #90 and #91 may be closed against these reports; retain the reports
+outside the source tree.
 
 The ingestion source connector also retries only allow-listed transient
 provider reads, including 502/503/504 and rate limits, with a finite capped

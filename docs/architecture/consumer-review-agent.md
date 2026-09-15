@@ -146,15 +146,19 @@ validation failures, authorization failures, oversized content, or arbitrary
 exceptions. Issues #90 and #91 remain open until a fresh cold matrix proves
 all four vehicles complete their first PDF request.
 
-The current release verification at commit `b7e1350` still reports `blocked`:
-RAV4 and Civic pass, while Camry returns a 502 during the consumer run and
-Forester exceeds the 300-second consumer window. The exact report is
-`tmp/consumer-review-live/post-poll-retry-cold/consumer-review-af962fddf8a4b9f08e76543a.json`
+The release verification at implementation `8a2a7ee` now passes cold and warm:
+`tmp/consumer-review-live/post-public-compaction-cold-v2/consumer-review-73d119083fa152737b002ee1.json`
+has SHA-256
+`21d39bca197a429d6dbe16064cf756f825eb420765e3c9b78f0122ae54eb9272`, and
+the warm replay is
+`tmp/consumer-review-live/post-public-compaction-warm/consumer-review-5188d0e5b668927d2c870249.json`
 with SHA-256
-`dd61c5323d3b89e7128c08c40e3dbde1603df326947554dd476e635cbb1f4c0b`. The
-source-read and query-poll retry regressions pass locally, and later direct
-requests can succeed, but that does not satisfy first-use matrix acceptance;
-issues #90 and #91 remain open.
+`8c28ab0dc68158d499fc41e9b3a8902d2e0f57dbc677f90c7adbff255de8367e`.
+All four cases pass with no issue actions. The PDF hashes are stable across
+cold and warm runs: RAV4 `384f036a...`, Camry `f4ef9440...`, Forester
+`5b5868b6...`, and Civic `334f412a...`. Issues #90 and #91 are resolved by
+the bounded poll retry, compact public projection, and aligned consumer
+response limit.
 
 The public API also retries only transient internal query-read responses while
 the consumer is polling a processing query. The retry is finite, preserves
@@ -171,11 +175,13 @@ The runner also treats a retryable 502/503/504 during a processing poll as a
 bounded transport event: it backs off and polls again until the same finite
 case deadline. Persistent retryable failures, non-retryable failures, and
 deadline expiry remain blocked. This behavior is pending a focused regression
-and a fresh cold matrix at the current implementation SHA.
+and a fresh cold matrix at the current implementation SHA. This verification
+is now complete at `8a2a7ee`.
 
 The latest cold matrix also exposed a public-response budget issue: durable
 Camry and Forester snapshots were approximately 21.6 MB and 19.3 MB because
 repeated evidence/provenance metadata was still present in the serialized
 answer, exceeding the API proxy's 8 MB limit. The next gated repair compacts
 that metadata at the worker public-projection boundary while retaining the
-consumer procedure, figures, review state, and PDF revision parity.
+consumer procedure, figures, review state, and PDF revision parity. The
+current cold and warm matrices confirm the compact response remains complete.

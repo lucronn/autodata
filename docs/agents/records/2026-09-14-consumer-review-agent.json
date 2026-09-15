@@ -16,17 +16,25 @@
     "Compact repeated internal evidence/provenance metadata from the public chat projection before the 8 MB proxy boundary, preserving consumer procedure and PDF fields"
   ],
   "verification": {
-    "implementation_sha": "8565b2b278e89a60660a390f149da5439f4fa3ed",
-    "latest_local_hardening_sha": "8565b2b278e89a60660a390f149da5439f4fa3ed",
-    "latest_local_hardening_tests": "developer 70 passed, 2 subtests; autonomy 37 passed; ingestion 382 passed, 2 skipped, 12 subtests; Go API/contracts passed",
-    "fresh_live_recheck": "blocked: bounded consumer poll retry now continues through transient 502s, but Camry/Forester public answers exceed the 8 MB proxy budget because repeated evidence/provenance metadata is still serialized; RAV4/Civic passed",
-    "latest_runtime_finding": "public chat projection must omit internal evidence/provenance metadata before proxy serialization while retaining consumer procedure, figures, review state, and PDF parity",
+    "implementation_sha": "8a2a7ee",
+    "latest_local_hardening_sha": "8a2a7ee",
+    "latest_local_hardening_tests": "developer 72 passed, 2 subtests; autonomy 37 passed; ingestion chat-service 21 passed and full-suite recheck pending; Go API/contracts passed",
+    "fresh_live_recheck": "pass: cold and warm four-vehicle matrices pass 4/4 after bounded consumer poll retries, compact public projection, and aligned 8 MB consumer response limit",
+    "latest_runtime_finding": "resolved: Camry and Forester complete with compact consumer-visible answers and revision-matched PDFs; no transient polling or response-size blockers remain in the verified matrix",
     "latest_live_recheck": {
-      "implementation_sha": "4f04d65",
-      "report_path": "tmp/consumer-review-live/post-consumer-poll-retry-cold/consumer-review-a7ca1650a46efe85da1d5b0a.json",
-      "report_sha256": "184643f743e344a45315fc4f079db5463192437fe1d56fb4fc21d24b5c4a8b16",
-      "decision": "blocked",
-      "summary": {"case_count": 4, "pass": 2, "fail": 0, "needs_review": 0, "blocked": 2},
+      "implementation_sha": "8a2a7ee",
+      "report_path": "tmp/consumer-review-live/post-public-compaction-cold-v2/consumer-review-73d119083fa152737b002ee1.json",
+      "report_sha256": "21d39bca197a429d6dbe16064cf756f825eb420765e3c9b78f0122ae54eb9272",
+      "decision": "pass",
+      "summary": {"case_count": 4, "pass": 4, "fail": 0, "needs_review": 0, "blocked": 0},
+      "issue_actions": []
+    },
+    "warm_live_recheck": {
+      "implementation_sha": "8a2a7ee",
+      "report_path": "tmp/consumer-review-live/post-public-compaction-warm/consumer-review-5188d0e5b668927d2c870249.json",
+      "report_sha256": "8c28ab0dc68158d499fc41e9b3a8902d2e0f57dbc677f90c7adbff255de8367e",
+      "decision": "pass",
+      "summary": {"case_count": 4, "pass": 4, "fail": 0, "needs_review": 0, "blocked": 0},
       "issue_actions": []
     },
     "retained_live_depth_recheck": "4/4 retained live responses contain all case-declared terms: torque and check",
@@ -41,8 +49,8 @@
     "negative_observed_decision": "fail",
     "negative_expectation_met": true,
     "negative_pdf_offered": false,
-    "decision": "blocked",
-    "summary": {"case_count": 4, "pass": 2, "fail": 0, "needs_review": 0, "blocked": 2, "issue_actions": 0}
+    "decision": "pass",
+    "summary": {"case_count": 4, "pass": 4, "fail": 0, "needs_review": 0, "blocked": 0, "issue_actions": 0}
   },
   "status": "synchronized",
   "updated_at": "2026-09-15T03:20:00Z"

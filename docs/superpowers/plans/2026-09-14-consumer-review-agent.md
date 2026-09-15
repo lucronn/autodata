@@ -408,7 +408,7 @@ Update the canonical contract, runbook, synchronized record, and issues #90
 and #91 with the exact implementation SHA, report SHA, service health, and
 per-case results.
 
-- [ ] **Step 6: Continue through transient poll transport errors**
+- [x] **Step 6: Continue through transient poll transport errors**
 
 Treat retryable 502/503/504 responses from a GET while a query is still
 processing as bounded, retryable poll events in the consumer runner. Continue
@@ -432,20 +432,23 @@ responses.
   figures, safety/review state, and PDF revision identifiers while omitting
   internal evidence/provenance metadata before the API proxy size limit.
 
-- [ ] **Step 1: Add a failing public-projection size/redaction regression**
+- [x] **Step 1: Add a failing public-projection size/redaction regression**
 
 Assert that repeated evidence and source metadata are omitted from the public
 answer while procedure steps, image URLs, and worker progress summaries remain
 available.
 
-- [ ] **Step 2: Implement bounded public projection**
+- [x] **Step 2: Implement bounded public projection**
 
 Remove internal provenance keys recursively from the public answer before it is
 serialized or sent through the API proxy. Keep durable source data and
 internal event behavior unchanged.
 
-- [ ] **Step 3: Verify compact answers and the live matrix**
+- [x] **Step 3: Verify compact answers and the live matrix**
 
 Run focused and full ingestion tests, rebuild the HTTP/worker services, and
 repeat the cold four-vehicle consumer matrix. Persistent transport or size
 failures remain release-blocking.
+
+Cold and warm four-vehicle matrices pass at implementation `8a2a7ee` with
+matching PDF hashes for RAV4, Camry, Forester, and Civic.
