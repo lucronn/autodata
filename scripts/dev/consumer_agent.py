@@ -48,6 +48,14 @@ class ConsumerReviewError(RuntimeError):
     """A bounded transport or response-contract failure."""
 
 
+class ConsumerHTTPError(ConsumerReviewError):
+    """An HTTP response prevented a consumer review operation."""
+
+    def __init__(self, message: str, status_code: int):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def _now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat()
 
@@ -129,7 +137,7 @@ class ChatHTTPClient:
                     raise ConsumerReviewError("chat response must be an object")
                 return dict(value)
         except HTTPError as error:
-            raise ConsumerReviewError(f"chat API returned HTTP {error.code}") from error
+            raise ConsumerHTTPError(f"chat API returned HTTP {error.code}", error.code) from error
         except (URLError, TimeoutError, OSError) as error:
             raise ConsumerReviewError("chat API request failed") from error
 
@@ -433,6 +441,7 @@ def run_case(
     response = client.create(message, idempotency_key)
     started = time.monotonic()
     selected = False
+    transient_poll_errors = 0
     while True:
         status = str(response.get("status") or "").casefold()
         if status == "awaiting_vehicle":
@@ -445,7 +454,18 @@ def run_case(
         if time.monotonic() - started >= timeout:
             raise ConsumerReviewError(f"case {name} timed out waiting for chat answer")
         time.sleep(max(0.01, poll_interval))
-        response = client.get(str(response.get("query_id")))
+        try:
+            response = client.get(str(response.get("query_id")))
+            transient_poll_errors = 0
+        except ConsumerHTTPError as error:
+            if error.status_code not in {502, 503, 504}:
+                raise
+            transient_poll_errors += 1
+            remaining = timeout - (time.monotonic() - started)
+            if remaining <= 0:
+                raise ConsumerReviewError(f"case {name} timed out after transient chat polling failures") from error
+            retry_delay = min(2.0, 0.25 * (2 ** min(transient_poll_errors - 1, 3)))
+            time.sleep(min(retry_delay, remaining))
     pdf_response = None
     answer = response.get("answer") if isinstance(response.get("answer"), Mapping) else {}
     procedure = answer.get("procedure") if isinstance(answer, Mapping) else None

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from consumer_agent import ChatHTTPClient, aggregate_decision, create_or_reuse_issue, consumer_projection, run_case, run_cases, score_response
+from consumer_agent import ChatHTTPClient, ConsumerHTTPError, aggregate_decision, create_or_reuse_issue, consumer_projection, run_case, run_cases, score_response
 
 
 ROOT = Path(__file__).parents[2]
@@ -121,6 +121,24 @@ class FakeChatClient:
 
     def pdf(self, _query_id):
         return b"%PDF-1.7 test"
+
+
+class TransientPollingClient(FakeChatClient):
+    def get(self, query_id):
+        self.polls += 1
+        if self.polls == 1:
+            raise ConsumerHTTPError("chat API returned HTTP 502", 502)
+        return _complete_response()
+
+
+def test_run_case_retries_transient_poll_error_until_answer_is_available():
+    result = run_case(
+        TransientPollingClient(),
+        {"name": "camry-starter", "message": "replace starter", "expected_vehicle": {"vehicle_id": "vehicle-1"}, "expected_components": ["starter"], "min_steps": 2, "min_figures": 2},
+        poll_interval=0.01,
+        timeout=1,
+    )
+    assert result["review"]["decision"] == "pass"
 
 
 def test_run_case_selects_vehicle_and_records_revision_hash():
