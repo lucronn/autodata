@@ -28,13 +28,13 @@ The first rebuilt browser run then exposed a warm-cache compatibility defect: th
 
 ## Concrete todo list
 
-- [ ] Add the natural-language `for a` parser regression.
-- [ ] Add the terminal source-failure answer-projection regression.
-- [ ] Implement filler handling and terminal answer-state publication.
-- [ ] Preserve complete nested labor/procedure data when a composed cache row is read through the compatibility composer.
-- [ ] Run focused and full applicable tests with diff checks.
-- [ ] Rebuild/restart the local API and worker containers from this revision.
-- [ ] Rerun the exact Silverado flow in the browser and record the observed result.
+- [x] Add the natural-language `for a` parser regression.
+- [x] Add the terminal source-failure answer-projection regression.
+- [x] Implement filler handling and terminal answer-state publication.
+- [x] Preserve complete nested labor/procedure data when a composed cache row is read through the compatibility composer.
+- [x] Run focused and full applicable tests with diff checks.
+- [x] Rebuild/restart the local API and worker containers from this revision.
+- [x] Rerun the exact Silverado flow in the browser and record the observed result.
 - [ ] Synchronize the final commit, Issue #96, Project #8, and CI evidence.
 
 ## Acceptance

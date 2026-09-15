@@ -1081,7 +1081,29 @@ def _handle_retry_result(
     if retry.get("status") == "dead_letter":
         job["next_attempt_at"] = None
         job["status"] = "dead_letter"
-        query["status"] = "failed"
+        answer = query.get("answer")
+        if _has_visible_answer(answer):
+            # A provisional source-backed answer or an already published
+            # procedure remains useful even when a later stage exhausts its
+            # retries.  Deep work must not hide data that can already be
+            # shown to the user.
+            query["status"] = "available"
+        else:
+            failed_answer = _failed_answer(query, safe_error)
+            _apply_answer(query, failed_answer)
+            publish_chat_progress(
+                query_id,
+                "answer",
+                "failed",
+                data_state="unavailable",
+                payload={
+                    "message": "No usable source data could be retrieved after retries",
+                    "answer": failed_answer,
+                    "revision_id": failed_answer.get("revision_id"),
+                },
+                idempotency_key=f"answer:failed:{attempt}",
+            )
+            query["status"] = "failed"
         _save(query)
         return
     job["status"] = "pending"
@@ -1704,7 +1726,17 @@ def _vehicle_candidates(message: str, principal: Mapping[str, Any]) -> list[Mapp
         values = [values]
     candidates = [value for value in values if isinstance(value, Mapping)] if isinstance(values, Iterable) else []
     if candidates:
-        return [dict(candidate) for candidate in candidates]
+        # A provider search can return a nearby catalog family (for example
+        # C 1500 Truck) for a request that explicitly names Silverado 1500.
+        # Do not let a non-compatible provider result suppress the safe
+        # canonical one-item fallback below; source retrieval can then use
+        # the requested identity to resolve its own provider vehicle ID.
+        try:
+            resolved = interpret_chat_message(message, tuple(candidates)).vehicle_observation
+        except Exception:  # noqa: BLE001 - candidate validation is advisory
+            resolved = {"status": "unmatched"}
+        if resolved.get("status") not in {"unmatched", "needs_review"}:
+            return [dict(candidate) for candidate in candidates]
     # A fully specified message can safely act as its own one-item candidate;
     # this keeps the default local service useful without inventing a catalog.
     try:
@@ -2120,6 +2152,49 @@ def _has_usable_answer(answer: Any) -> bool:
     return isinstance(answer, Mapping) and (
         answer.get("procedure") is not None or answer.get("quote") is not None
     )
+
+
+def _has_visible_answer(answer: Any) -> bool:
+    """Return whether a terminal worker failure still has user-visible data."""
+
+    return isinstance(answer, Mapping) and (
+        _has_usable_answer(answer) or answer.get("data_state") == "source_unnormalized"
+    )
+
+
+def _failed_answer(query: Mapping[str, Any], error: Any) -> dict[str, Any]:
+    """Build a terminal public answer without exposing provider internals."""
+
+    current = query.get("answer")
+    if isinstance(current, Mapping):
+        failed = deepcopy(dict(current))
+    else:
+        failed = _new_answer(
+            _query_vehicle(query) or {},
+            answer_status="failed",
+            data_state="unavailable",
+        )
+    warnings = failed.get("warnings")
+    if not isinstance(warnings, list):
+        warnings = []
+    warning = {
+        "message": "The vehicle-matched source could not be retrieved after the allowed retries.",
+        "status": "failed",
+    }
+    if not any(
+        isinstance(item, Mapping) and item.get("message") == warning["message"]
+        for item in warnings
+    ):
+        warnings.append(warning)
+    failed.update(
+        {
+            "answer_status": "failed",
+            "data_state": "unavailable",
+            "warnings": warnings,
+            "updated_at": _timestamp(),
+        }
+    )
+    return failed
 
 
 def _claim_query_id(claim: Any) -> str:

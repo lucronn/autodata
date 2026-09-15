@@ -159,6 +159,46 @@ def test_query_creation_is_idempotent_and_exposes_numbered_clickable_options():
     assert calls["compose"] == []
 
 
+def test_nonmatching_provider_vehicle_results_do_not_block_explicit_vehicle_fallback(monkeypatch):
+    from autodata_ingestion import autoapitwo_guide
+    from autodata_ingestion.chat_service import _vehicle_candidates
+
+    configure_chat_runtime(
+        dependencies=ChatDependencies(),
+        repository=InMemoryChatRepository(),
+        queue=InMemoryChatQueue(),
+        event_store=ProgressEventStore(),
+        allow_in_memory=True,
+    )
+    monkeypatch.delenv("AUTODATA_CHAT_VEHICLE_CANDIDATES_JSON", raising=False)
+    monkeypatch.setattr(
+        autoapitwo_guide,
+        "vehicle_candidates_from_autoapitwo",
+        lambda _message: [
+            {
+                "vehicle_id": "autoapitwo-c1500",
+                "candidate_key": "autoapitwo:34218",
+                "year": 1999,
+                "make": "Chevy",
+                "model": "C 1500 Truck",
+                "drivetrain": "2WD",
+                "engine_displacement_l": 5.3,
+            }
+        ],
+    )
+
+    candidates = _vehicle_candidates(
+        "oil pump replacement for a 1999 Chevrolet Silverado 1500 2WD 5.3L",
+        principal(),
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0]["make"] == "Chevrolet"
+    assert candidates[0]["model"] == "Silverado 1500"
+    assert candidates[0]["drivetrain"] == "2WD"
+    assert candidates[0]["engine_displacement_l"] == 5.3
+
+
 def test_typed_or_clicked_vehicle_selection_executes_the_pending_request():
     def source(_query, vehicle, _operations):
         return {
@@ -873,6 +913,8 @@ def test_due_only_retry_queue_persists_backoff_and_dead_letters():
     dead_letter = get_chat_query(created["query_id"], principal=principal())
     assert dead_letter["job_plan"]["status"] == "dead_letter"
     assert dead_letter["status"] == "failed"
+    assert dead_letter["answer"]["answer_status"] == "failed"
+    assert dead_letter["answer"]["data_state"] == "unavailable"
     assert len(attempts) == 3
 
 

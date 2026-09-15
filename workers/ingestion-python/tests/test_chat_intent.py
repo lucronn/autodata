@@ -59,6 +59,32 @@ def test_interprets_structured_brake_line_replacement_procedure_and_quote():
     assert result.clarification is None
 
 
+def test_ignores_grammatical_vehicle_introducer_before_canonical_identity():
+    module = _module()
+
+    result = module.interpret_chat_message(
+        "oil pump, water pump, timing belt, and power steering pump replacement "
+        "for a 1999 Chevrolet Silverado 1500 2WD 5.3L",
+        (
+            {
+                "vehicle_id": "silverado-1999-2wd-53",
+                "year": 1999,
+                "make": "Chevrolet",
+                "model": "Silverado 1500",
+                "drivetrain": "2WD",
+                "engine_displacement_l": 5.3,
+                "confidence": 0.99,
+            },
+        ),
+    )
+
+    assert result.vehicle_observation["status"] == "matched"
+    assert result.vehicle_observation["make"] == "Chevrolet"
+    assert result.vehicle_observation["model"] == "Silverado 1500"
+    assert result.vehicle_observation["drivetrain"] == "2WD"
+    assert result.vehicle_observation["engine_displacement_l"] == 5.3
+
+
 def test_normalizes_component_and_operation_spelling_variants():
     module = _module()
 

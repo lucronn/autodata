@@ -33,16 +33,12 @@ No source data, credentials, or user-owned runtime artifacts are part of this de
 
 ## Local verification checkpoint
 
-Implementation commit `d63ab7b` passed the applicable local checks:
+The current chat acceptance repair passed these local checks:
 
-- `426 passed, 3 skipped, 12 subtests passed` across the Python worker,
-  consumer, and contract suites.
+- `400 passed, 3 skipped, 12 subtests passed` in the Python worker suite.
 - `go test ./... -count=1` passed in `apps/api-go`.
 - `node --check apps/api-go/dashboard/app.js` passed.
 - `git diff --check` passed.
-
-The live/local Silverado chat run and HTML/PDF parity check remain a post-restart
-acceptance step; no live result is claimed by this checkpoint.
 
 ## Follow-up: natural-language source retrieval acceptance
 
@@ -72,6 +68,13 @@ affected work as failed; deep work never hides data that can already be shown.
 
 The warm-read compatibility path must preserve nested labor operations and
 procedure steps rather than rebuilding a partial placeholder.
+
+The rebuilt browser acceptance on 2026-09-15 produced query
+`f4634f2f-93e9-5c92-b523-6feb50fac5d6` and rendered `1999 Chevrolet Silverado
+1500 2WD 5.3L` with four distinct component steps and 9 known labor hours.
+The correlated Workers terminal ended after five events. The cached revision
+contained no source-priced parts, and the UI exposed that absence explicitly;
+it did not fabricate a price.
 
 This follow-up is not accepted by unit tests alone. The local API and ingestion
 containers must be rebuilt from the checked-out revision, and the exact

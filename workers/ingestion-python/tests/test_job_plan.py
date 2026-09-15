@@ -310,8 +310,15 @@ def test_persisted_combined_article_is_returned_without_replanning():
             "source_version": "fixture-v1",
             "source_article_ids": ["alternator-article", "starter-article"],
             "evidence_ids": ["evidence-alternator", "evidence-starter"],
-            "labor": {"total_labor_hours": 4.25, "overlap_hours": 0.25},
-            "procedure": {"title": "Alternator and starter service", "steps": []},
+        "labor": {
+            "total_labor_hours": 4.25,
+            "overlap_hours": 0.25,
+            "operations": [{"components": ["alternator", "starter"]}],
+        },
+        "procedure": {
+            "title": "Alternator and starter service",
+            "steps": [{"components": ["alternator", "starter"]}],
+        },
             "images": [{"url": "https://source.test/combined.png"}],
         },
     }]
@@ -323,6 +330,106 @@ def test_persisted_combined_article_is_returned_without_replanning():
     assert result["labor"]["total_labor_hours"] == 4.25
     assert result["derived_article"]["revision_id"] == "revision-2"
     assert result["images"] == [{"url": "https://source.test/combined.png"}]
+
+
+def test_incomplete_cached_combined_article_is_not_reused():
+    cached = [{
+        "kind": "article",
+        "article": {
+            "article_id": "combined:alternator+starter:partial",
+            "title": "Alternator and starter service",
+            "status": "ready",
+            "derived_components": ["alternator", "starter"],
+            "derived_revision_id": "revision-partial",
+            "source_version": "fixture-v1",
+            "labor": {
+                "total_labor_hours": 1.0,
+                "operations": [{"components": ["alternator"]}],
+            },
+            "procedure": {
+                "title": "Alternator and starter service",
+                "steps": [{"components": ["alternator"]}],
+            },
+        },
+    }]
+
+    result = _cached_derived_job_plan("replace alternator and starter", VEHICLE, cached)
+
+    assert result is None
+
+
+def test_composer_uses_nested_labor_from_persisted_composed_article():
+    composed_article = {
+        "article_id": "combined:alternator+starter:complete",
+        "title": "Alternator and starter service",
+        "derived_components": ["alternator", "starter"],
+        "source_article_ids": ["alternator-article", "starter-article"],
+        "evidence_ids": ["evidence-alternator", "evidence-starter"],
+        "steps": [
+            {"components": ["alternator", "starter"], "instruction": "Disconnect the battery."},
+            {"components": ["alternator"], "instruction": "Replace the alternator."},
+            {"components": ["starter"], "instruction": "Replace the starter."},
+        ],
+        "labor": {
+            "total_labor_hours": 4.25,
+            "overlap_hours": 0.25,
+            "operations": [
+                {
+                    "operation_id": "battery-isolation",
+                    "action": "Disconnect battery",
+                    "duration_hours": 0.25,
+                    "components": ["alternator", "starter"],
+                    "evidence_ids": ["evidence-alternator", "evidence-starter"],
+                },
+                {
+                    "operation_id": "remove-alternator",
+                    "action": "Replace alternator",
+                    "duration_hours": 1.5,
+                    "components": ["alternator"],
+                    "evidence_ids": ["evidence-alternator"],
+                },
+                {
+                    "operation_id": "remove-starter",
+                    "action": "Replace starter",
+                    "duration_hours": 2.5,
+                    "components": ["starter"],
+                    "evidence_ids": ["evidence-starter"],
+                },
+            ],
+        },
+        "procedure": {
+            "title": "Alternator and starter service",
+            "steps": [
+                {"components": ["alternator", "starter"]},
+                {"components": ["alternator"]},
+                {"components": ["starter"]},
+            ],
+        },
+    }
+
+    result = build_quote_and_procedure(
+        "replace alternator and starter",
+        VEHICLE,
+        [composed_article],
+    )
+
+    assert result["labor"]["total_hours"] == 4.25
+    assert result["labor"]["overlap_hours_removed"] == 0.25
+    assert [operation["components"] for operation in result["labor"]["operations"]] == [
+        ["alternator", "starter"],
+        ["alternator"],
+        ["starter"],
+    ]
+    assert [step["components"] for step in result["procedure"]["steps"]] == [
+        ["alternator", "starter"],
+        ["alternator"],
+        ["starter"],
+    ]
+    assert [step["instructions"] for step in result["procedure"]["steps"]] == [
+        ["Disconnect the battery."],
+        ["Replace the alternator."],
+        ["Replace the starter."],
+    ]
 
 
 def test_build_quote_separates_support_categories_and_explains_shared_labor_deduction():
