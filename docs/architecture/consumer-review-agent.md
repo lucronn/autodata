@@ -87,6 +87,24 @@ matching PDFs were hash-verified, contained no generic captions, ellipses, or
 raw provider-summary references, and representative RAV4 pages were rendered
 and visually inspected through the final installation steps.
 
+## Tracked evaluator hardening — artifact detection
+
+[Issue #85](https://github.com/lucronn/autodata/issues/85) also tracks the
+follow-up to make the evaluator detect the provider-summary defect that was
+found during manual review. The consumer agent must emit a stable finding for
+ellipsized or provider-reference-only procedure rows that have no structured
+instructions or figures, while preserving valid detailed and concise steps.
+
+Plan: ../superpowers/plans/2026-09-15-consumer-agent-artifact-detection.md
+
+Todo:
+
+- Add a regression for provider-summary detection and valid-step preservation.
+- Implement deterministic artifact findings in the consumer rubric.
+- Run the focused and full developer test suites.
+- Re-run the five-case live consumer matrix and confirm zero artifact findings.
+- Record implementation and report evidence in the issue and repository docs.
+
 The `autodata-consumer-agent` is a release-readiness evaluator for the public
 chat experience. It calls the chat HTTP boundary with real consumer prompts,
 resolves vehicle choices when required, waits for the persisted answer, and

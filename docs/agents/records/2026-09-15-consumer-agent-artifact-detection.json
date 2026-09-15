@@ -1,0 +1,20 @@
+{
+  "goal": "Make the consumer review agent detect provider-only or truncated procedure summaries and record reproducible findings",
+  "plan_ref": "docs/superpowers/plans/2026-09-15-consumer-agent-artifact-detection.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/85",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/consumer-review-agent.md",
+    "docs/verification/consumer-review-runbook.md"
+  ],
+  "todo": [
+    "Add a regression for provider-summary detection and valid-step preservation",
+    "Implement deterministic artifact findings in the consumer rubric",
+    "Run the focused and full developer test suites",
+    "Re-run the five-case live consumer matrix and confirm zero artifact findings",
+    "Record implementation and report evidence in the issue and repository docs"
+  ],
+  "base_sha": "70bf1fa",
+  "status": "synchronized",
+  "updated_at": "2026-09-15T04:20:00Z"
+}
