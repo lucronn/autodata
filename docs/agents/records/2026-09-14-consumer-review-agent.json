@@ -11,9 +11,11 @@
     "Run the live multi-vehicle review matrix and reconcile every finding"
   ],
   "verification": {
-    "implementation_sha": "5252d2b41a8c8a53e1ba59039cb987b0363c185c",
-    "report_path": "tmp/consumer-review-live/consumer-review-5f1e718e165f262cc44b8435.json",
-    "report_sha256": "7d19ff6c9f3607a978e841b393b1a7f199b8bd48646f894730bcf874159e6dd9",
+    "implementation_sha": "27fa5cd03485c30d670bfe3824b58b3743a7653b",
+    "report_path": "tmp/consumer-review-live/consumer-review-45261b9ee1e274e41ffe87ef.json",
+    "report_sha256": "840d08df0c48f2762cbe55f58374d5786331f323bd434d580413d3253b798091",
+    "visual_pdf_path": "tmp/pdfs/qa/current-rav4-fixed2.pdf",
+    "visual_pdf_sha256": "4f2da8686ada5dd6cb82df7155a2d338b65b1797616907c3cb40e909935f5a5d",
     "decision": "pass",
     "summary": {"case_count": 4, "pass": 4, "fail": 0, "needs_review": 0, "blocked": 0, "issue_actions": 0}
   },

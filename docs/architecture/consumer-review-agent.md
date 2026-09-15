@@ -52,9 +52,10 @@ The committed implementation was exercised in report-only mode through the
 chat HTTP contract, using the real chat state machine and live AutoAPI Two
 source retrieval in a loopback development adapter. The aggregate report is
 retained outside the source tree at
-`tmp/consumer-review-live/consumer-review-5f1e718e165f262cc44b8435.json`.
+`tmp/consumer-review-live/consumer-review-45261b9ee1e274e41ffe87ef.json`.
+The implementation under test is `27fa5cd03485c30d670bfe3824b58b3743a7653b`.
 Its SHA-256 is
-`7d19ff6c9f3607a978e841b393b1a7f199b8bd48646f894730bcf874159e6dd9`.
+`840d08df0c48f2762cbe55f58374d5786331f323bd434d580413d3253b798091`.
 
 | Case | Result | Steps | Figures | PDF SHA-256 |
 | --- | --- | ---: | ---: | --- |
@@ -69,4 +70,8 @@ and PDF integrity/revision parity. The report contains four passes, zero
 failures, zero `needs_review` results, zero blocked cases, and no issue
 actions. The projection check also confirmed that the recorded consumer
 responses contain no `source_`, `evidence`, `raw_html`, or `worker_stream`
-fields.
+fields. A fresh 61-page RAV4 PDF from the same run was rendered at 120 DPI;
+the first, representative middle, and final pages were visually inspected
+for clipping, readable figures, clean numbering, headers, footers, and final
+installation/check steps. Its SHA-256 is
+`4f2da8686ada5dd6cb82df7155a2d338b65b1797616907c3cb40e909935f5a5d`.
