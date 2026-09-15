@@ -1,0 +1,20 @@
+{
+  "goal": "Preserve source-authored repair procedure information when a natural-language request reuses or hydrates a composed answer",
+  "plan_ref": "docs/superpowers/plans/2026-09-15-source-fidelity-procedure-hydration.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/101",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/guide-artifacts.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Reject label-only derived procedure rows as complete cache answers",
+    "Hydrate selected AutoAPI article bodies and preserve source order and evidence",
+    "Expose honest partial or needs-review behavior when source instructions are absent",
+    "Verify the exact RAV4 request in the browser with correlated Workers progress",
+    "Synchronize the implementation commit, Issue #101, Project #8, and CI evidence"
+  ],
+  "base_sha": "3d110cca30c203ad23d7e91727f6937f1eeaa69e",
+  "status": "synchronized",
+  "updated_at": "2026-09-15T21:00:00Z"
+}
