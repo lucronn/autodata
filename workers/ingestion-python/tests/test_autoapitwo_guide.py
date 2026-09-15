@@ -82,6 +82,13 @@ class IllustratedGuideTests(unittest.TestCase):
                 "evidence_ids": ["e-installation"],
             },
             {
+                "article_id": "detailed-long-removal",
+                "component": "starter",
+                "procedure_kind": "removal",
+                "blocks": [{"kind": "text", "text": "Remove the starter after disconnecting the harness and removing the upper mounting fastener " + ("with care " * 35), "evidence_ids": ["e-long-removal"]}],
+                "evidence_ids": ["e-long-removal"],
+            },
+            {
                 "article_id": "provider-summary",
                 "component": "starter",
                 "procedure_kind": "procedure",
@@ -105,6 +112,7 @@ class IllustratedGuideTests(unittest.TestCase):
         self.assertIn("Remove the starter.", actions)
         self.assertIn("Install the starter and torque the mounting bolts.", actions)
         self.assertIn("Check charging output after installation.", actions)
+        self.assertTrue(any(action.startswith("Remove the starter after disconnecting") and len(action) > 180 for action in actions))
         self.assertFalse(any(action.endswith("...") for action in actions))
 
     def test_specific_brake_component_does_not_expand_to_generic_brakes(self):

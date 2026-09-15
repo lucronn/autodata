@@ -234,8 +234,6 @@ def _text(value: Any) -> str:
 
 def _step_action(text: str, component: str, kind: str) -> str:
     clean = _text(text)
-    if len(clean) > 180:
-        clean = clean[:177].rstrip() + "..."
     if clean:
         return clean
     verb = "Remove" if kind == "removal" else "Install"
@@ -309,7 +307,11 @@ def _is_summary_artifact(step: Mapping[str, Any]) -> bool:
     action = _text(step.get("action"))
     instructions = step.get("instructions")
     images = step.get("images")
-    return action.endswith("...") and not instructions and not images
+    if instructions or images:
+        return False
+    if action.endswith("...") or len(action) > 180:
+        return True
+    return bool(re.search(r"\b(?:figs?\w*|refer\s+to|service\s+and\s+repair)\b", action, re.IGNORECASE))
 
 
 def compose_illustrated_guide(
