@@ -14,7 +14,7 @@
     "Rebuild local API and ingestion containers and rerun the exact browser flow",
     "Synchronize the final commit, Issue #96, Project #8, and CI evidence"
   ],
-  "base_sha": "b0331288f2c10d9cc1f03ef5b85a76c0c26882ef",
+  "base_sha": "5cf1fc8d0d4d77ee65ee1e700683d040be49cfde",
   "status": "synchronized",
   "updated_at": "2026-09-15T20:25:19Z"
 }
