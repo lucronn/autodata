@@ -80,6 +80,20 @@ class IllustratedGuideTests(unittest.TestCase):
 
         self.assertEqual(guide["applicability"], vehicle["label"])
 
+    def test_applicability_fallback_adds_missing_variant_details(self):
+        vehicle = {
+            "year": 1997,
+            "make": "Toyota",
+            "model": "RAV4",
+            "body_style": "2-door",
+            "drivetrain": "4WD",
+            "engine_displacement_l": 2.0,
+        }
+
+        guide = compose_illustrated_guide("starter replacement", vehicle, [])
+
+        self.assertEqual(guide["applicability"], "1997 Toyota RAV4 2-door 4WD 2.0L")
+
     def test_ellipsized_provider_summary_is_omitted_but_concise_procedure_remains(self):
         articles = [
             {
