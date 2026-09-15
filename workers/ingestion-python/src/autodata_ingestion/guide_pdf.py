@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+import re
 from typing import Any, Mapping
 
 
@@ -52,7 +53,10 @@ def render_guide_pdf(guide: Mapping[str, Any]) -> bytes:
         if not isinstance(item, Mapping):
             continue
         sequence = item.get("sequence", index)
-        action = item.get("action") or f"Step {sequence}"
+        raw_action = item.get("action")
+        action = str(raw_action).strip() if raw_action else f"Step {sequence}"
+        if raw_action:
+            action = re.sub(rf"^\s*(?:step\s*)?{int(sequence)}\s*[.):-]\s*", "", action, flags=re.IGNORECASE)
         contents: list[Any] = [Paragraph(f"{int(sequence):02d}  {esc(action)}", step)]
         instructions = item.get("instructions", [])
         if isinstance(instructions, str):
