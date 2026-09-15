@@ -22,8 +22,8 @@ revision-matched PDF.
   and PDF revision parity.
 - [x] Record the report path and hashes in the canonical review documentation
   and synchronized tracking record.
-- [x] Keep human source-evidence review and uncached AutoAPI hydration as
-  explicit follow-ups; automated readiness is not technician approval.
+- [x] Keep human source-evidence review as an explicit follow-up; automated
+  readiness is not technician approval.
 
 ## Scope and boundaries
 
@@ -51,3 +51,10 @@ with SHA-256
 The response matched provider vehicle `41216`, passed all six dimensions,
 returned 131 steps and 89 figures, and returned a revision-matched PDF with
 SHA-256 `754407d8d5abda5f81865bf5136f6d603e0c4d07ee24d3af2d951e67fd8a3c32`.
+
+An additional 4-door 4WD checkpoint (`41218`) passed after a genuine derived
+cache miss and source retrieval through the local AutoAPI-backed QA runtime.
+Its report is
+`tmp/consumer-review-live/rav4-4wd-4door-uncached-v2/consumer-review-8aa4a17d03c034f59b436725.json`
+with SHA-256
+`c7aab0b58d2ede3c238b454bde1dee21a6848d6f6640d070966ed5e83d47239e`.

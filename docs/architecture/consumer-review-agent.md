@@ -207,8 +207,7 @@ with SHA-256
 SHA-256 is
 `754407d8d5abda5f81865bf5136f6d603e0c4d07ee24d3af2d951e67fd8a3c32`.
 Automated readiness does not approve the stored source evidence or procedure;
-the uncached AutoAPI session and human technician review remain explicit Issue
-#85 follow-ups.
+human technician review remains the explicit Issue #85 follow-up.
 
 ### Current-head five-case recheck
 
@@ -223,3 +222,14 @@ dimensions with no findings or issue actions.
 | 2005 Toyota Camry, starter | 21 | 4 | `41c17925e79e7e156a5ebefae6e5a5ddf8fcedabd804260e862c9d1af2042392` | `8afcdccb2b29022a396956722f2d5739452cfd5e2e9c8f4b697939c9b0bc6221` |
 | 2010 Subaru Forester SOHC, water pump | 92 | 36 | `5c016842789f3a4390755b13804ff70d4ce5d6539ef418f1928bf6be2a71c3d0` | `978642687d8d95734271b21f2a3564b1ca587369e48c9d4af1abfd67fe7b72f9` |
 | 2002 Honda Civic LX, front caliper | 14 | 5 | `312635f7ac5fc86f9e58f498c705a07ddabc2de8df16bad77b8e2c001cc7ed75` | `334f412a2608f8f39f107a79e8c52ba22f20cb34d92997ec8dbd09257a6a7c03` |
+
+An additional uncached-source checkpoint used the 4-door 4WD RAV4 variant
+(`41218`) through the same consumer agent. The runtime sequence was a
+derived-cache miss followed by source retrieval, source normalization, and
+procedure publication. It passed all six dimensions with 131 steps, 89
+figures, and a revision-matched PDF. The QA worker reached the local AutoAPI
+service through `host.docker.internal`; AutoAPI `/healthz`, `/readyz`, and
+`/openapi.json` returned healthy responses before the request. The report is
+`tmp/consumer-review-live/rav4-4wd-4door-uncached-v2/consumer-review-8aa4a17d03c034f59b436725.json`
+with SHA-256
+`c7aab0b58d2ede3c238b454bde1dee21a6848d6f6640d070966ed5e83d47239e`.

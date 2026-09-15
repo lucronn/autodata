@@ -140,3 +140,12 @@ language, and a revision-matched PDF. The individual reports are retained in
 `41c17925e79e7e156a5ebefae6e5a5ddf8fcedabd804260e862c9d1af2042392`,
 `5c016842789f3a4390755b13804ff70d4ce5d6539ef418f1928bf6be2a71c3d0`, and
 `312635f7ac5fc86f9e58f498c705a07ddabc2de8df16bad77b8e2c001cc7ed75`.
+
+The uncached-source checkpoint also passed for the 4-door 4WD RAV4 variant
+(`41218`). The live event sequence confirmed a derived-cache miss, source
+retrieval, normalization, and procedure publication before the consumer agent
+scored the answer. It returned 131 steps, 89 figures, and a revision-matched
+PDF. The report SHA-256 is
+`c7aab0b58d2ede3c238b454bde1dee21a6848d6f6640d070966ed5e83d47239e` and the
+report is retained at
+`tmp/consumer-review-live/rav4-4wd-4door-uncached-v2/consumer-review-8aa4a17d03c034f59b436725.json`.

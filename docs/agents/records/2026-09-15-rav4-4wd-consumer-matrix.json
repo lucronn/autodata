@@ -12,7 +12,7 @@
     "Run the case through the live dev API with bounded polling and report-only issue behavior",
     "Verify applicability, four requested components, removal and installation phases, figures, torque/check depth, consumer-copy safety, and PDF revision parity",
     "Record the report path and hashes in canonical review documentation and the synchronized tracking record",
-    "Keep human source-evidence review and uncached AutoAPI hydration as explicit follow-ups"
+    "Keep human source-evidence review as an explicit follow-up"
   ],
   "base_sha": "7783cdfb0621bb9c6e7f78ffbf3ad2db861547f1",
   "verification": {
@@ -27,7 +27,16 @@
     "figures": 89,
     "rubric_dimensions": 6,
     "human_review": "pending",
-    "uncached_autoapi_hydration": "blocked until local AutoAPI session is restored"
+    "uncached_autoapi_hydration": {
+      "status": "pass",
+      "vehicle": "1997 Toyota RAV4 4-door 4WD 2.0L",
+      "provider_vehicle_id": "41218",
+      "query_id": "dd9f6456-4b73-5c50-8b41-dbe422743a86",
+      "event_sequence": ["derived_cache_miss", "source_retrieval", "source_unnormalized", "normalized", "procedure_published"],
+      "report_path": "tmp/consumer-review-live/rav4-4wd-4door-uncached-v2/consumer-review-8aa4a17d03c034f59b436725.json",
+      "report_sha256": "c7aab0b58d2ede3c238b454bde1dee21a6848d6f6640d070966ed5e83d47239e",
+      "local_autoapi": {"healthz": 200, "readyz": "ready", "openapi_paths": 23}
+    }
   },
   "current_head_matrix": {
     "implementation_sha": "7a4cb33ae2337bf1807144756bb5ccd735d7e480",
