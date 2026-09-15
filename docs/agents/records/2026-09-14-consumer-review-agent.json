@@ -10,7 +10,8 @@
     "Create or reuse GitHub issues from stable findings without duplicates",
     "Enforce case-declared procedure-depth terms such as torque and final checks",
     "Run the live multi-vehicle review matrix and reconcile every finding",
-    "Add bounded transient retries at the provider-backed figure-read boundary and re-run the cold matrix"
+    "Add bounded transient retries at the provider-backed figure-read boundary and re-run the cold matrix",
+    "Retry transient internal chat polling reads without hiding persistent failures and keep CLI status faithful to the aggregate report"
   ],
   "verification": {
     "implementation_sha": "59d1bf18d4c0be2b509646f17b951f861e613201",
@@ -42,5 +43,5 @@
     "summary": {"case_count": 4, "pass": 2, "fail": 0, "needs_review": 0, "blocked": 2, "issue_actions": 0}
   },
   "status": "synchronized",
-  "updated_at": "2026-09-15T02:00:00Z"
+  "updated_at": "2026-09-15T02:20:00Z"
 }

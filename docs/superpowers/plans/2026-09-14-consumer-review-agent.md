@@ -352,4 +352,53 @@ first PDF request with no blocked case.
 Update the canonical contract, runbook, synchronized record, and issues #90
 and #91 with exact report hashes, PDF hashes, and container health. Close the
 findings only when the fresh cold matrix reproduces the fix; otherwise retain
-the release blocker.
+ the release blocker.
+
+### Task 9: Tolerate transient chat polling failures without hiding outages
+
+**Files:**
+- Modify: `apps/api-go/ingestion_http.go`
+- Modify: `apps/api-go/ingestion_http_test.go`
+- Modify: `scripts/dev/consumer_agent.py`
+- Modify: `scripts/dev/test_consumer_agent.py`
+- Modify: `docs/architecture/consumer-review-agent.md`
+- Modify: `docs/verification/consumer-review-runbook.md`
+
+**Interfaces:**
+- Consumes: the internal chat query GET and the consumer runner's aggregate
+  decision.
+- Produces: bounded retries for transient 502/503/504 query reads, with
+  caller cancellation preserved, and CLI output that reports the aggregate
+  `blocked` decision without relabeling it as `needs_review`.
+
+- [ ] **Step 1: Write failing polling and status-report tests**
+
+Assert that a transient internal query GET is retried and then returned when
+successful, while persistent transient responses remain bounded. Assert that
+the consumer CLI's reported decision equals the aggregate decision for
+`blocked`, `fail`, `needs_review`, and `pass` outcomes.
+
+- [ ] **Step 2: Run focused tests to verify they fail**
+
+Run `go test ./...` from `apps/api-go` and
+`PYTHONPATH=. python3 -m pytest scripts/dev/test_consumer_agent.py -q`.
+
+- [ ] **Step 3: Add bounded behavior**
+
+Retry only transient query-read statuses with context-aware backoff; do not
+retry authorization, validation, or arbitrary client errors. Preserve the
+finite response-size limit. Map the runner's printed decision directly from
+the aggregate report.
+
+- [ ] **Step 4: Run full and live verification**
+
+Rebuild the isolated API, restart the worker/HTTP process to clear in-process
+PDF cache, and execute the cold and warm four-case matrix. Confirm the report
+and CLI output agree and that transient polling does not conceal a persistent
+failure.
+
+- [ ] **Step 5: Record exact evidence**
+
+Update the canonical contract, runbook, synchronized record, and issues #90
+and #91 with the exact implementation SHA, report SHA, service health, and
+per-case results.

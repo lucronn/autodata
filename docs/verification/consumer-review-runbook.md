@@ -63,6 +63,12 @@ retain explicit deployment overrides; do not treat an unbounded wait as a
 readiness strategy. The clean matrix remains release-blocked if a first PDF
 request fails even when a later manual request succeeds.
 
+Transient 502/503/504 responses while polling a processing query are retried
+at the public API boundary with finite context-aware backoff. Persistent
+failures still surface as blocked. The consumer runner's printed decision is
+the same as the aggregate report decision; in particular, a blocked case is
+never printed as merely `needs_review`.
+
 The ingestion source connector also retries only allow-listed transient
 provider reads, including 502/503/504 and rate limits, with a finite capped
 backoff. Origin checks, vehicle scoping, response-size limits, redirects,

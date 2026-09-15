@@ -145,3 +145,10 @@ will add a finite, capped retry at that boundary; it will not retry redirects,
 validation failures, authorization failures, oversized content, or arbitrary
 exceptions. Issues #90 and #91 remain open until a fresh cold matrix proves
 all four vehicles complete their first PDF request.
+
+The public API also retries only transient internal query-read responses while
+the consumer is polling a processing query. The retry is finite, preserves
+caller cancellation and response limits, and does not mask authorization or
+validation errors. The consumer runner reports the aggregate `blocked` state
+as `blocked`, so release evidence cannot be mistaken for a softer review
+result.
