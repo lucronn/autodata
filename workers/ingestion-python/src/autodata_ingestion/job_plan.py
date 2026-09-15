@@ -1679,19 +1679,30 @@ def _compose_composed_procedure(
         )
         source_instructions: list[str] = []
         source_evidence_ids: set[str] = set()
+        source_metadata: dict[str, set[str]] = {}
         for article_id in article_ids:
             record = article_by_id.get(article_id)
             if record is None:
                 continue
             source_evidence_ids.update(_article_evidence_ids(record["article"]))
+            source_evidence_ids.update(
+                _article_procedure_evidence_ids(
+                    record["article"], str(operation.get("operation_id", ""))
+                )
+            )
             instructions = _article_procedure_instructions_for_operation(
-                record["article"], components
+                record["article"],
+                components,
+                operation_id=str(operation.get("operation_id", "")),
+                operation_action=str(operation.get("action", "")),
             )
             if not instructions:
                 missing_content_article_ids.add(article_id)
             for instruction in instructions:
                 if instruction not in source_instructions:
                     source_instructions.append(instruction)
+            for key, values in _article_procedure_metadata(record["article"]).items():
+                source_metadata.setdefault(key, set()).update(values)
         if not source_instructions:
             missing_content_article_ids.update(article_ids)
         step = {
@@ -1713,6 +1724,11 @@ def _compose_composed_procedure(
             "origin": "shared_source_step" if len(components) > 1 else "source_step",
             "requires_review": not bool(operation.get("evidence_ids")) or not source_instructions,
         }
+        for key, values in source_metadata.items():
+            if len(values) == 1:
+                step[key] = next(iter(values))
+            elif values:
+                step[f"{key}s"] = sorted(values)
         steps.append(step)
     warnings = _collect_safety_warnings(records)
     if missing_content_article_ids:
@@ -1743,7 +1759,12 @@ def _compose_composed_procedure(
     }
 
 
-def _article_procedure_instructions(article: Mapping[str, Any]) -> list[str]:
+def _article_procedure_instructions(
+    article: Mapping[str, Any],
+    *,
+    operation_action: str = "",
+    components: Iterable[str] = (),
+) -> list[str]:
     """Return source-authored instructions without inventing repair guidance."""
 
     values: list[str] = []
@@ -1762,20 +1783,24 @@ def _article_procedure_instructions(article: Mapping[str, Any]) -> list[str]:
             else:
                 value = raw_step
             text = re.sub(r"\s+", " ", str(value or "")).strip()
-            if text and text not in values:
+            if text and _is_meaningful_source_instruction(text, operation_action, components) and text not in values:
                 values.append(text)
     if values:
         return values
     body = article.get("body", article.get("content", article.get("articleBody")))
     if isinstance(body, str):
         text = re.sub(r"\s+", " ", body).strip()
-        if text:
+        if text and _is_meaningful_source_instruction(text, operation_action, components):
             return [text]
     return []
 
 
 def _article_procedure_instructions_for_operation(
-    article: Mapping[str, Any], components: Iterable[str]
+    article: Mapping[str, Any],
+    components: Iterable[str],
+    *,
+    operation_id: str = "",
+    operation_action: str = "",
 ) -> list[str]:
     """Keep structured source steps scoped to the operation they describe."""
 
@@ -1784,7 +1809,38 @@ def _article_procedure_instructions_for_operation(
         procedure = article.get("procedure")
         raw_steps = procedure.get("steps") if isinstance(procedure, Mapping) else []
     if not isinstance(raw_steps, list) or not raw_steps:
-        return _article_procedure_instructions(article)
+        return _article_procedure_instructions(
+            article, operation_action=operation_action, components=components
+        )
+
+    bound_steps = [
+        step
+        for step in raw_steps
+        if isinstance(step, Mapping) and _source_step_operation_id(step)
+    ]
+    if bound_steps:
+        operation_key = _procedure_text_key(operation_id)
+        matching_bound_steps = [
+            step
+            for step in bound_steps
+            if _procedure_text_key(_source_step_operation_id(step)) == operation_key
+        ]
+        if not matching_bound_steps:
+            return []
+        instructions: list[str] = []
+        for raw_step in matching_bound_steps:
+            text = _source_step_text(raw_step)
+            if (
+                text
+                and _is_meaningful_source_instruction(text, operation_action, components)
+                and text not in instructions
+            ):
+                instructions.append(text)
+        if instructions:
+            return instructions
+        return _article_procedure_instructions(
+            article, operation_action=operation_action, components=components
+        )
 
     scoped_steps = [
         step
@@ -1793,7 +1849,9 @@ def _article_procedure_instructions_for_operation(
         and _component_matches(step.get("components", step.get("component", [])))
     ]
     if not scoped_steps:
-        return _article_procedure_instructions(article)
+        return _article_procedure_instructions(
+            article, operation_action=operation_action, components=components
+        )
 
     requested = set(components)
     matching_scoped_steps = [
@@ -1828,9 +1886,106 @@ def _article_procedure_instructions_for_operation(
             None,
         )
         text = re.sub(r"\s+", " ", str(value or "")).strip()
-        if text and text not in instructions:
+        if (
+            text
+            and _is_meaningful_source_instruction(text, operation_action, components)
+            and text not in instructions
+        ):
             instructions.append(text)
     return instructions
+
+
+def _source_step_operation_id(step: Mapping[str, Any]) -> str:
+    for key in ("operation_id", "operationId", "operation_key", "operationKey"):
+        value = str(step.get(key, "")).strip()
+        if value:
+            return value
+    return ""
+
+
+def _source_step_text(step: Mapping[str, Any]) -> str:
+    value = next(
+        (
+            step.get(key)
+            for key in ("instruction", "description", "text", "action", "body")
+            if isinstance(step.get(key), str) and step.get(key).strip()
+        ),
+        None,
+    )
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _procedure_text_key(value: Any) -> str:
+    text = _normalize_text(value)
+    return re.sub(r"[^a-z0-9]+$", "", text)
+
+
+def _is_meaningful_source_instruction(
+    text: str, operation_action: str, components: Iterable[str]
+) -> bool:
+    """Exclude a generated operation label when it is the only source text."""
+
+    instruction_key = _procedure_text_key(text)
+    if not instruction_key:
+        return False
+    labels = {_procedure_text_key(operation_action)}
+    for component in components:
+        label = str(component).replace("_", " ").strip()
+        if label:
+            labels.update({
+                _procedure_text_key(f"Replace {label}"),
+                _procedure_text_key(f"Perform {label} work"),
+            })
+    return instruction_key not in labels
+
+
+def _article_procedure_metadata(article: Mapping[str, Any]) -> dict[str, set[str]]:
+    """Return source metadata that can be safely copied to composed steps."""
+
+    aliases = {
+        "source_uri": ("content_source_uri", "source_uri"),
+        "content_sha256": ("content_sha256", "content_hash"),
+        "source_watermark": ("content_source_version", "source_watermark", "source_version", "watermark"),
+        "source_locator": ("content_locator", "source_locator"),
+        "phase": ("phase", "procedure_phase"),
+        "section": ("section", "content_section"),
+    }
+    metadata: dict[str, set[str]] = {}
+    for output_key, keys in aliases.items():
+        values = {
+            str(article.get(key)).strip()
+            for key in keys
+            if article.get(key) not in (None, "") and str(article.get(key)).strip()
+        }
+        if values:
+            metadata[output_key] = values
+    return metadata
+
+
+def _article_procedure_evidence_ids(article: Mapping[str, Any], operation_id: str) -> set[str]:
+    """Return evidence attached directly to the source step for this operation."""
+
+    raw_steps = article.get("steps")
+    if not isinstance(raw_steps, list) or not raw_steps:
+        procedure = article.get("procedure")
+        raw_steps = procedure.get("steps") if isinstance(procedure, Mapping) else []
+    if not isinstance(raw_steps, list):
+        return set()
+    bound_steps = [
+        step
+        for step in raw_steps
+        if isinstance(step, Mapping)
+        and (
+            not _source_step_operation_id(step)
+            or _procedure_text_key(_source_step_operation_id(step))
+            == _procedure_text_key(operation_id)
+        )
+    ]
+    evidence_ids: set[str] = set()
+    for step in bound_steps:
+        evidence_ids.update(_string_ids(step.get("evidence_ids")))
+        evidence_ids.update(_string_ids(step.get("evidence_id")))
+    return evidence_ids
 
 
 def _collect_safety_warnings(records: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:

@@ -298,7 +298,7 @@ def test_returns_review_state_without_fabricating_unknown_labor():
     assert "unknown_duration:replace-alternator" in result["review_reasons"]
 
 
-def test_persisted_combined_article_is_returned_without_replanning():
+def test_persisted_combined_article_with_source_instructions_is_returned_without_replanning():
     cached = [{
         "kind": "article",
         "article": {
@@ -315,10 +315,15 @@ def test_persisted_combined_article_is_returned_without_replanning():
             "overlap_hours": 0.25,
             "operations": [{"components": ["alternator", "starter"]}],
         },
-        "procedure": {
-            "title": "Alternator and starter service",
-            "steps": [{"components": ["alternator", "starter"]}],
-        },
+            "procedure": {
+                "title": "Alternator and starter service",
+                "steps": [{
+                    "components": ["alternator", "starter"],
+                    "instructions": [
+                        "Disconnect the battery, remove the shared drive belt, and inspect the mounting area before replacing both components."
+                    ],
+                }],
+            },
             "images": [{"url": "https://source.test/combined.png"}],
         },
     }]
@@ -1241,3 +1246,139 @@ def test_title_only_article_is_partial_and_explains_missing_procedure_content():
         warning["warning_id"] == "procedure_content_unavailable"
         for warning in procedure["warnings"]
     )
+
+
+def test_multi_component_source_steps_preserve_order_and_shared_labor_lineage():
+    articles = [
+        article(
+            "oil-pump-source",
+            "oil_pump",
+            [
+                {
+                    "operation_id": "shared-access",
+                    "action": "Remove the drive belt",
+                    "duration_hours": 0.25,
+                    "evidence_ids": ["oil-shared-labor"],
+                },
+                {
+                    "operation_id": "remove-oil-pump",
+                    "action": "Replace oil pump",
+                    "duration_hours": 2.0,
+                    "evidence_ids": ["oil-labor"],
+                },
+            ],
+        )
+        | {
+            "body": "Remove the oil pan and clean the strainer before releasing the pump body.",
+            "content_source_uri": "https://source.test/oil-pump",
+            "content_sha256": "sha-oil-pump",
+            "steps": [
+                {
+                    "operation_id": "shared-access",
+                    "instruction": "Disconnect the battery before removing the drive belt.",
+                    "evidence_ids": ["oil-shared-content"],
+                },
+                {
+                    "operation_id": "remove-oil-pump",
+                    "instruction": "Remove the oil pan and clean the strainer before releasing the pump body.",
+                    "evidence_ids": ["oil-content"],
+                },
+            ],
+        },
+        article(
+            "water-pump-source",
+            "water_pump",
+            [
+                {
+                    "operation_id": "shared-access",
+                    "action": "Remove the drive belt",
+                    "duration_hours": 0.25,
+                    "evidence_ids": ["water-shared-labor"],
+                },
+                {
+                    "operation_id": "remove-water-pump",
+                    "action": "Replace water pump",
+                    "duration_hours": 2.5,
+                    "evidence_ids": ["water-labor"],
+                },
+            ],
+        )
+        | {
+            "body": "Drain the coolant, remove the bypass connection, and replace the pump seals.",
+            "content_source_uri": "https://source.test/water-pump",
+            "content_sha256": "sha-water-pump",
+            "steps": [
+                {
+                    "operation_id": "shared-access",
+                    "instruction": "Remove the drive belt once for both pump services.",
+                    "evidence_ids": ["water-shared-content"],
+                },
+                {
+                    "operation_id": "remove-water-pump",
+                    "instruction": "Drain the coolant, remove the bypass connection, and replace the pump seals.",
+                    "evidence_ids": ["water-content"],
+                },
+            ],
+        },
+    ]
+
+    result = build_quote_and_procedure(
+        "replace the oil pump and water pump",
+        VEHICLE,
+        articles,
+    )
+
+    steps = result["procedure"]["steps"]
+    assert [step["operation_id"] for step in steps] == [
+        "shared-access",
+        "remove-oil-pump",
+        "remove-water-pump",
+    ]
+    assert [step["instructions"] for step in steps] == [
+        ["Disconnect the battery before removing the drive belt.", "Remove the drive belt once for both pump services."],
+        ["Remove the oil pan and clean the strainer before releasing the pump body."],
+        ["Drain the coolant, remove the bypass connection, and replace the pump seals."],
+    ]
+    assert steps[0]["source_article_ids"] == ["oil-pump-source", "water-pump-source"]
+    assert {
+        "oil-shared-labor",
+        "oil-shared-content",
+        "water-shared-labor",
+        "water-shared-content",
+        "evidence-oil-pump-source",
+        "evidence-water-pump-source",
+    }.issubset(set(steps[0]["evidence_ids"]))
+    assert "oil-content" in steps[1]["evidence_ids"]
+    assert "water-content" in steps[2]["evidence_ids"]
+    assert steps[1]["source_uri"] == "https://source.test/oil-pump"
+    assert steps[1]["content_sha256"] == "sha-oil-pump"
+    assert steps[2]["source_uri"] == "https://source.test/water-pump"
+    assert steps[2]["content_sha256"] == "sha-water-pump"
+    assert result["labor"]["total_hours"] == 4.75
+    assert result["labor"]["overlap_hours_removed"] == 0.25
+
+
+def test_source_step_that_only_repeats_generated_operation_label_is_partial():
+    result = build_quote_and_procedure(
+        "replace the oil pump",
+        VEHICLE,
+        [
+            article(
+                "oil-pump-label-only",
+                "oil_pump",
+                [{
+                    "operation_id": "replace-oil-pump",
+                    "action": "Replace oil pump",
+                    "duration_hours": 2.0,
+                    "evidence_ids": ["oil-pump-labor"],
+                }],
+            )
+            | {"steps": [{"action": "Replace oil pump"}]},
+        ],
+    )
+
+    procedure = result["procedure"]
+    assert procedure["content_status"] == "partial"
+    assert procedure["steps"][0]["instructions"] == []
+    assert procedure["steps"][0]["action"] == "Replace oil pump"
+    assert "procedure_content_unavailable" in result["review_reasons"]

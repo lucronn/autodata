@@ -3,6 +3,7 @@
 
   const CHAT_ROUTES = {
     query: "/chat/queries",
+    queryById: (queryId) => `/chat/queries/${encodeURIComponent(queryId)}`,
     selection: (queryId) => `/chat/queries/${encodeURIComponent(queryId)}/selections`,
     events: (queryId) => `/chat/queries/${encodeURIComponent(queryId)}/events`,
     legacyJobPlan: "/job-plans",
@@ -859,6 +860,37 @@
     if (finalEvent) handleProgressEvent(finalEvent);
   }
 
+  async function refreshQueryAfterStream(queryId) {
+    // The worker can finish after the SSE connection has naturally ended. A
+    // final durable read keeps the UI from stopping at "source retrieval
+    // queued" and makes the published source instructions visible.
+    const maxAttempts = 120;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const result = await requestJSON(CHAT_ROUTES.queryById(queryId), {
+          method: "GET",
+          headers: authHeaders({ Accept: "application/json" }),
+        });
+        if (result.response.ok) {
+          state.payload = result.payload;
+          renderPayload(result.payload, result.response);
+          updateAssistantMessage(result.payload);
+          const answer = answerFrom(result.payload);
+          const dataState = dataStateFrom(result.payload, answer);
+          const answerStatus = answerStatusFrom(result.payload, answer);
+          const settled = !["processing", "normalizing", "source_unnormalized"].includes(dataState)
+            && !["processing", "pending"].includes(answerStatus);
+          if (settled) return;
+        }
+      } catch (_error) {
+        // The stream result remains visible while a transient GET is retried.
+      }
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+  }
+
   function handleProgressEvent(event) {
     if (!isObject(event)) return;
     if (event.event_id) state.lastEventId = text(event.event_id);
@@ -894,7 +926,9 @@
         return;
       }
       setWorkerStatus("Streaming", "ready");
+      const durableRefresh = refreshQueryAfterStream(queryId);
       await readEventStream(response);
+      await durableRefresh;
       if (!controller.signal.aborted) setWorkerStatus("Stream ended", "idle");
     } catch (error) {
       if (error.name !== "AbortError") setWorkerStatus("Stream unavailable", "error");
@@ -927,7 +961,7 @@
       renderPayload(payload, response);
       if (response.ok || response.status === 202) {
         addMessage("assistant", messageText(payload));
-        await openEventStream(state.queryId);
+        void openEventStream(state.queryId);
       }
     } catch (error) {
       setResultStatus("Selection failed", "error");
@@ -983,7 +1017,7 @@
         addMessage("assistant", messageText(result.payload));
         if (state.queryId) {
           setText("worker-query-id", state.queryId);
-          await openEventStream(state.queryId);
+          void openEventStream(state.queryId);
         }
       } else {
         addMessage("assistant", messageText(result.payload));

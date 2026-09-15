@@ -276,7 +276,18 @@ class IngestionWorkerTests(unittest.TestCase):
                 "derived_revision_id": "revision-1",
                 "source_version": "source-v1",
                 "labor": {"total_labor_hours": 3.9},
-                "procedure": {"title": "water pump service", "steps": []},
+                "procedure": {
+                    "title": "water pump service",
+                    "steps": [
+                        {
+                            "action": "Replace water pump",
+                            "components": ["water_pump"],
+                            "instructions": [
+                                "Remove the timing cover and replace the water pump gasket."
+                            ],
+                        }
+                    ],
+                },
             },
             "evidence": [],
         }
@@ -499,6 +510,83 @@ class IngestionWorkerTests(unittest.TestCase):
         )
         persist.assert_called_once()
         self.assertEqual(persist.call_args.args[0], values)
+
+    def test_cached_derived_article_rejects_label_only_procedure(self):
+        from autodata_ingestion.worker import _cached_derived_job_plan
+
+        vehicle = {"year": 1997, "make": "Toyota", "model": "RAV4", "region": "US"}
+        article = {
+            "derived_components": ["oil_pump", "water_pump"],
+            "source_article_ids": ["oil-1", "water-1"],
+            "labor": {
+                "operations": [
+                    {"operation_id": "oil", "action": "Replace oil pump", "components": ["oil_pump"]},
+                    {"operation_id": "water", "action": "Replace water pump", "components": ["water_pump"]},
+                ]
+            },
+            "procedure": {
+                "steps": [
+                    {"action": "Replace oil pump", "components": ["oil_pump"]},
+                    {"action": "Replace water pump", "components": ["water_pump"]},
+                ]
+            },
+        }
+
+        self.assertIsNone(
+            _cached_derived_job_plan(
+                "oil pump and water pump replacement",
+                vehicle,
+                [{"article": article}],
+            )
+        )
+
+    def test_cached_derived_article_accepts_source_instruction_text(self):
+        from autodata_ingestion.worker import _cached_derived_job_plan
+
+        vehicle = {"year": 1997, "make": "Toyota", "model": "RAV4", "region": "US"}
+        article = {
+            "article_id": "combined:rav4:oil-water:v1",
+            "derived_components": ["oil_pump", "water_pump"],
+            "source_article_ids": ["oil-1", "water-1"],
+            "status": "ready",
+            "model": "mercury-2",
+            "labor": {"operations": [
+                {"operation_id": "oil", "action": "Replace oil pump", "components": ["oil_pump"]},
+                {"operation_id": "water", "action": "Replace water pump", "components": ["water_pump"]},
+            ]},
+            "procedure": {"steps": [
+                {"action": "Replace oil pump", "components": ["oil_pump"], "instructions": ["Remove the oil pan and clean the strainer before releasing the pump body."]},
+                {"action": "Replace water pump", "components": ["water_pump"], "instructions": ["Drain coolant, remove the bypass connection, and replace the pump seals."]},
+            ]},
+        }
+
+        result = _cached_derived_job_plan(
+            "oil pump and water pump replacement",
+            vehicle,
+            [{"article": article}],
+        )
+        self.assertIsNotNone(result)
+        self.assertTrue(result["cache_hit"])
+
+    def test_derived_r_and_r_labels_require_source_hydration(self):
+        from autodata_ingestion.worker import _catalog_needs_procedure_content_hydration
+
+        catalog = [{
+            "kind": "article",
+            "article": {
+                "derived_components": ["oil_pump", "water_pump"],
+                "procedure": {"steps": [
+                    {"action": "Engine Oil Pump R&R", "components": ["oil_pump"]},
+                    {"action": "Water Pump R&R", "components": ["water_pump"]},
+                ]},
+            },
+        }]
+
+        self.assertTrue(
+            _catalog_needs_procedure_content_hydration(
+                "oil pump and water pump replacement procedure", catalog
+            )
+        )
 
     def test_configured_article_url_returns_normalized_article_and_evidence_json(self):
         from autodata_ingestion.worker import run_article_url

@@ -103,6 +103,10 @@ func TestDashboardRouteServesJavaScriptAsset(t *testing.T) {
 		"technical-only",
 		`Accept: "text/event-stream"`,
 		`headers["Last-Event-ID"]`,
+		"refreshQueryAfterStream",
+		"const durableRefresh = refreshQueryAfterStream(queryId)",
+		"void openEventStream(state.queryId)",
+		"const maxAttempts = 120",
 		"job-plans",
 	} {
 		if !strings.Contains(body, marker) {

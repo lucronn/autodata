@@ -63,18 +63,18 @@ between an action label and source-authored instruction explicit.
 
 ## Concrete todo list
 
-- [ ] Create and synchronize the GitHub Issue and Project #8 item.
-- [ ] Update the canonical guide artifact contract and this plan with the exact
+- [x] Create and synchronize the GitHub Issue and Project #8 item.
+- [x] Update the canonical guide artifact contract and this plan with the exact
   tracking references and machine-checked checkpoint record.
-- [ ] Add failing tests for label-only derived cache rows and source-body
+- [x] Add failing tests for label-only derived cache rows and source-body
   hydration.
-- [ ] Make the derived cache completeness check require source-authored
+- [x] Make the derived cache completeness check require source-authored
   instructional content for every selected operation.
-- [ ] Preserve ordered source instructions, phases, source IDs, and evidence
+- [x] Preserve ordered source instructions, phases, source IDs, and evidence
   in the composed procedure without inventing content.
-- [ ] Verify partial/needs-review behavior for missing source instruction text.
-- [ ] Run the full applicable test suites and diff checks.
-- [ ] Rebuild the local Compose ingestion service and exercise the exact browser
+- [x] Verify partial/needs-review behavior for missing source instruction text.
+- [x] Run the full applicable test suites and diff checks.
+- [x] Rebuild the local Compose ingestion service and exercise the exact browser
   request, inspecting the visible procedure and Workers terminal.
 - [ ] Push the synchronized branch, wait for required CI, and update the Issue
   and Project with exact evidence.
@@ -96,6 +96,17 @@ between an action label and source-authored instruction explicit.
   terminal is correlated to the same request.
 - User-owned `sample data/`, `output/`, and `tmp/` remain untouched and
   unstaged.
+
+## Implementation verification evidence
+
+- `PYTHONPATH=workers/ingestion-python/src python3 -m pytest -q workers/ingestion-python/tests` — `404 passed, 3 skipped, 12 subtests passed`.
+- `PYTHONPATH=workers/enrichment-python/src python3 -m pytest -q workers/enrichment-python/tests` — `46 passed, 16 subtests passed`.
+- `PYTHONPATH=workers/ingestion-python/src python3 -m pytest -q scripts/dev/test_*.py` — `77 passed, 2 subtests passed`.
+- `python3 -m pytest -q scripts/contracts` — `14 passed`.
+- `node --check apps/api-go/dashboard/app.js` and `go test ./...` in `apps/api-go` passed.
+- Rebuilt `ingestion-http`, `ingestion-worker`, and `api` from this checkout; `/healthz` and `/readyz` returned healthy.
+- Browser query `7c8fa284-b5de-556c-9639-2c1ac48fba61` selected the 1997 Toyota RAV4 4 Door 4WD 2L and visibly rendered `99` source-backed procedure steps. The first step was `Disconnect Power Steering (PS) reservoir and remove reservoir bracket.` and the rendered sequence included oil-pump removal, water-pump removal, timing-belt, torque, installation, refill, and leak-check instructions. The Workers terminal was correlated to the same query and showed the cache-miss/source-retrieval path.
+- The resulting durable query was `available` / `normalized`; a subsequent browser lookup served the normalized cache while retaining the full source-authored procedure.
 
 ## Boundaries
 

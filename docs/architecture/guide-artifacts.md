@@ -106,3 +106,16 @@ The Project #8 item is an index to that canonical plan, not a competing source
 of technical truth. Acceptance requires a rebuilt local Compose service and a
 browser run of the RAV4 multi-component request that visibly shows source
 instructions and the correlated Workers terminal.
+
+## Verification evidence
+
+The source-fidelity implementation was exercised through the live local
+dashboard after rebuilding the Compose `ingestion-http`, `ingestion-worker`,
+and API services. Query
+`7c8fa284-b5de-556c-9639-2c1ac48fba61` selected the 1997 Toyota RAV4 4 Door
+4WD 2L and rendered 99 source-authored steps, including detailed oil-pump
+and water-pump removal/reassembly instructions, timing-belt dependencies,
+tool and torque text, refilling, and leak checks. The Workers terminal showed
+the same query's cache-miss and source-retrieval events. A later lookup served
+the normalized cache while retaining those 99 steps; it did not regress to
+generic `Replace ...` labels.
