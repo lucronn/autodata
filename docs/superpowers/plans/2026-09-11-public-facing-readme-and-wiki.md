@@ -24,7 +24,10 @@
 - **GitHub Issue:** [#88 — Refresh the public README and publish a navigable Wiki](https://github.com/lucronn/autodata/issues/88)
 - **GitHub Project:** [Project #8 — AutoData Portfolio](https://github.com/users/lucronn/projects/8)
 - **Repository record:** `docs/agents/records/2026-09-11-public-facing-readme-and-wiki.json`
-- **Synchronized status:** `synchronized` at the preflight boundary; implementation remains `in progress` until the GitHub Wiki is initialized and published.
+- **Synchronized status:** `synchronized` at the preflight boundary; the
+  local README/Wiki work is complete and the four Wiki projection pages have
+  been published and read back. Remote README delivery remains pending only
+  because the branch has not been pushed.
 - **Planning checkpoint:** `94e69d60b4ca6739025a75ee07d641ed9134f005`
 - **Work items:** refresh the README opening and remove the redundant remote image; replace the rough visual with an inspected local asset; publish four Wiki projection pages sourced from `docs/`; verify documentation hygiene and synchronize the final SHA in GitHub.
 

@@ -4,6 +4,22 @@ Issue: https://github.com/lucronn/autodata/issues/89
 Project: https://github.com/users/lucronn/projects/8
 Plan: ../superpowers/plans/2026-09-14-consumer-review-agent.md
 
+## Current release status — 2026-09-15
+
+The current local implementation is `41d54acc12491222075dc44ff7906e355e35fc7c`.
+The independent five-case live consumer matrix passes 5/5, with all six
+rubric dimensions passing, no findings, and revision-matched PDFs. The cases
+cover two RAV4 variants, a Camry starter, a Forester SOHC water pump, and a
+Civic front caliper. A separate uncached 4-door RAV4 checkpoint also passed
+through the local AutoAPI-backed QA runtime and recorded the expected cache
+miss, source retrieval, normalization, and publication sequence.
+
+The implementation and automated acceptance work is complete. The only
+remaining tracked follow-up for the consumer-review slice is human technician
+review of the stored source evidence and procedure content in [Issue #85](https://github.com/lucronn/autodata/issues/85).
+README delivery in [Issue #88](https://github.com/lucronn/autodata/issues/88)
+also remains blocked until the user explicitly authorizes a GitHub push.
+
 The `autodata-consumer-agent` is a release-readiness evaluator for the public
 chat experience. It calls the chat HTTP boundary with real consumer prompts,
 resolves vehicle choices when required, waits for the persisted answer, and
@@ -35,26 +51,26 @@ Every run must produce a report with `pass`, `fail`, `blocked`, or
 implementation SHA, and issue actions. The report is not a human approval and
 does not change the guide's `UNREVIEWED` state.
 
-## Todo
+## Delivery checklist — complete
 
-- Add the registered consumer-agent prompt and its least-privilege capability.
-- Add the HTTP chat runner, consumer rubric, redacted response recorder, and
+- [x] Add the registered consumer-agent prompt and its least-privilege capability.
+- [x] Add the HTTP chat runner, consumer rubric, redacted response recorder, and
   stable finding-to-GitHub-issue workflow.
-- Add deterministic transport/rubric/issue-deduplication tests.
-- Enforce case-declared procedure-depth terms, including torque and final checks.
-- Run the agent against multiple live vehicle/procedure cases and preserve the
+- [x] Add deterministic transport/rubric/issue-deduplication tests.
+- [x] Enforce case-declared procedure-depth terms, including torque and final checks.
+- [x] Run the agent against multiple live vehicle/procedure cases and preserve the
   response and review reports.
-- Reconcile confirmed findings, update the production-readiness evidence, and
+- [x] Reconcile confirmed findings, update the production-readiness evidence, and
   close only issues whose acceptance evidence is complete.
-- Make clean Compose startup migration-safe: the ingestion worker must wait for
+- [x] Make clean Compose startup migration-safe: the ingestion worker must wait for
   the migration runner to complete successfully before it can process durable
   chat work.
-- Make a ready PDF resilient to transient internal source-image failures with
+- [x] Make a ready PDF resilient to transient internal source-image failures with
   bounded retries at the Go proxy boundary.
-- Give the internal Go-to-ingestion proxy a bounded 120-second default for
+- [x] Give the internal Go-to-ingestion proxy a bounded 120-second default for
   provider-backed guide/PDF generation; explicit deployment overrides remain
   supported.
-- Make provider-backed figure retrieval resilient on first use with bounded,
+- [x] Make provider-backed figure retrieval resilient on first use with bounded,
   serialized retries for transient source responses, while retaining strict
   origin, vehicle, size, and fail-closed validation.
 
@@ -108,7 +124,7 @@ negative report is
 with SHA-256
 `3884e26423809b5f149ba3347eb56d3cda2198dc1f4fe54634cab4aad3f2b9b7`.
 
-## Current release blocker
+## Resolved reliability checkpoints
 
 A fresh isolated Compose run on 2026-09-15 first reproduced a startup race:
 the `ingestion-worker` began before the migration runner had created

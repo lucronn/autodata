@@ -944,20 +944,25 @@ a complete procedure even though no instructional source content is present.
 
 **Concrete todo:**
 
-- [ ] Add regression fixtures for an AutoAPI article index, selected article
+- [x] Add regression fixtures for an AutoAPI article index, selected article
   detail with instructional HTML/steps, and labor response.
-- [ ] Add a warm-cache regression proving a title-only article triggers
+- [x] Add a warm-cache regression proving a title-only article triggers
   targeted hydration instead of publishing a placeholder procedure.
-- [ ] Add a composer regression proving source instructional content appears in
+- [x] Add a composer regression proving source instructional content appears in
   procedure steps and retains article/evidence provenance.
-- [ ] Implement cache completeness validation and source-content-aware
+- [x] Implement cache completeness validation and source-content-aware
   procedure composition.
-- [ ] Implement explicit partial/unavailable labeling when source content is
+- [x] Implement explicit partial/unavailable labeling when source content is
   absent.
-- [ ] Run focused red/green tests, the full worker/API suites, deterministic
+- [x] Run focused red/green tests, the full worker/API suites, deterministic
   chat smoke, and live local RAV4 verification.
-- [ ] Push the implementation and update Issue #87 and Project #8 with exact
-  SHAs and evidence.
+- [ ] Push the implementation branch. This remains intentionally unperformed
+  under the no-push boundary.
+- [x] Update Issue #87 and Project #8 with exact SHAs and evidence.
+
+The implementation and local verification items above are complete. Issue #87
+is closed; only the explicitly withheld branch push remains from this
+historical checklist.
 
 **Synchronized pre-implementation record:**
 
