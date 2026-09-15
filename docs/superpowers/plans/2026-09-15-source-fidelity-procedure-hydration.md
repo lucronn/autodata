@@ -61,7 +61,7 @@ between an action label and source-authored instruction explicit.
    and honest partial behavior when one selected article lacks instructional
    content. Rebuild the local ingestion service before the browser acceptance.
 
-## Work list
+## Concrete todo list
 
 - [ ] Create and synchronize the GitHub Issue and Project #8 item.
 - [ ] Update the canonical guide artifact contract and this plan with the exact
