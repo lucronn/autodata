@@ -115,6 +115,25 @@ aggregate report is
 consumer projection scan found no ellipsized/provider-reference-only rows, and
 the fresh PDFs matched their recorded hashes.
 
+## Tracked vehicle-applicability labeling
+
+[Issue #85](https://github.com/lucronn/autodata/issues/85) tracks the remaining
+consumer-safety presentation gap: the selected vehicle's exact variant must be
+visible in the guide and PDF applicability line. A structured response may
+retain body style, drivetrain, engine, and provider label details, but the
+downloadable artifact must not collapse that identity to only year, make, and
+model.
+
+Plan: ../superpowers/plans/2026-09-15-vehicle-specific-guide-label.md
+
+Todo:
+
+- Add a regression proving the exact selected vehicle variant appears in guide applicability.
+- Implement the vehicle-specific applicability formatter.
+- Run focused and full applicable test suites.
+- Re-run the five-case live consumer matrix and verify vehicle-specific PDF applicability.
+- Record hashes and reconcile Issue #85 and canonical documentation.
+
 The `autodata-consumer-agent` is a release-readiness evaluator for the public
 chat experience. It calls the chat HTTP boundary with real consumer prompts,
 resolves vehicle choices when required, waits for the persisted answer, and
