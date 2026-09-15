@@ -41,8 +41,9 @@ and no existing procedure, PDF, or consumer-copy contract regresses.
 
 ## Acceptance evidence
 
-Implementation commit: `256a42f` (`fix: show exact vehicle applicability`).
-Focused guide tests passed (`9 passed`). Full verification passed: developer
+Implementation commit: `256a42f` (`fix: show exact vehicle applicability`);
+fallback regression commit: `fe606e6`. Focused guide tests passed (`10
+passed`). Full verification passed: developer
 `73 passed, 2 subtests`; autonomy `37 passed`; ingestion `386 passed, 3 skipped,
 12 subtests`; Go API and shared-contract suites passed; and `git diff --check`
 passed.

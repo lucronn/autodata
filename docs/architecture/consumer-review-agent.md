@@ -134,7 +134,8 @@ Todo:
 - [x] Re-run the five-case live consumer matrix and verify vehicle-specific PDF applicability.
 - [x] Record hashes and reconcile Issue #85 and canonical documentation.
 
-Acceptance at implementation commit `256a42f`: all local suites passed,
+Acceptance at implementation commit `256a42f` with fallback regression commit
+`fe606e6`: focused guide tests passed (`10 passed`), and all local suites passed,
 including developer `73 passed, 2 subtests`, autonomy `37 passed`, ingestion
 `386 passed, 3 skipped, 12 subtests`, and both Go suites. The fresh five-case
 report-only matrix passed all cases at score 100 with zero findings and zero
