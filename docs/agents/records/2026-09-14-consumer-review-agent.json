@@ -12,8 +12,8 @@
     "Run the live multi-vehicle review matrix and reconcile every finding"
   ],
   "verification": {
-    "implementation_sha": "3175ba4dd994fff4cd752451b3791c4c0cf4df43",
-    "latest_local_hardening_sha": "5c28a0a2624cbb497759030508ffe929b5910bb5",
+    "implementation_sha": "59d1bf18d4c0be2b509646f17b951f861e613201",
+    "latest_local_hardening_sha": "59d1bf18d4c0be2b509646f17b951f861e613201",
     "latest_local_hardening_tests": "developer 69 passed, 2 subtests; autonomy 37 passed; ingestion 379 passed, 2 skipped, 12 subtests; Go API/contracts passed",
     "fresh_live_recheck": "blocked: startup ordering repaired and worker healthy, but final current-code matrix returned first-fetch PDF 502 for Camry and Forester; RAV4/Civic passed and later direct PDF retries succeeded",
     "latest_runtime_finding": "first-request provider-backed PDF generation remains unreliable for Camry and Forester after bounded proxy retries and 120-second default",
@@ -36,9 +36,9 @@
     "negative_observed_decision": "fail",
     "negative_expectation_met": true,
     "negative_pdf_offered": false,
-    "decision": "pass",
-    "summary": {"case_count": 4, "pass": 4, "fail": 0, "needs_review": 0, "blocked": 0, "issue_actions": 0}
+    "decision": "blocked",
+    "summary": {"case_count": 4, "pass": 2, "fail": 0, "needs_review": 0, "blocked": 2, "issue_actions": 0}
   },
   "status": "synchronized",
-  "updated_at": "2026-09-15T01:00:00Z"
+  "updated_at": "2026-09-15T01:35:33Z"
 }
