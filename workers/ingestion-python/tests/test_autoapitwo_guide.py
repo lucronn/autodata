@@ -112,6 +112,21 @@ class IllustratedGuideTests(unittest.TestCase):
         self.assertFalse(any(gap.startswith("missing_") for gap in guide["gaps"]))
         self.assertEqual([step["phase"] for step in guide["steps"]], ["removal", "installation"])
 
+    def test_composed_step_does_not_repeat_heading_as_first_instruction(self):
+        connector = CombinedProcedureConnector()
+        articles = retrieve_autoapitwo_articles(
+            "starter replacement",
+            {"year": 1997, "make": "Toyota", "model": "RAV4", "autoapitwo_vehicle_id": "41215"},
+            connector=connector,
+        )
+        guide = compose_illustrated_guide(
+            "starter replacement", {"year": 1997, "make": "Toyota", "model": "RAV4"}, articles
+        )
+
+        first_step = guide["steps"][0]
+        self.assertEqual(first_step["action"], "REMOVE STARTER.")
+        self.assertNotEqual(first_step["instructions"][0] if first_step["instructions"] else "", first_step["action"])
+
     def test_removal_and_replacement_title_is_a_combined_procedure(self):
         self.assertEqual(
             _actions("Water Pump >> Removal and Replacement (Service and Repair)"),

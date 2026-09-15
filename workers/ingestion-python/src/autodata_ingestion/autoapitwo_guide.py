@@ -274,7 +274,7 @@ def _article_steps(article: Mapping[str, Any]) -> list[dict[str, Any]]:
                     current_phase = "installation" if verb.group(1).casefold() in {"install", "replace"} else "removal"
             steps.append({
                 "action": _step_action(text, component, kind),
-                "instructions": [text],
+                "instructions": [],
                 "components": [component],
                 "source_article_ids": [str(article.get("article_id"))],
                 "evidence_ids": sorted(set(evidence_ids)),
@@ -295,6 +295,10 @@ def _clean_public_text(value: Any) -> str:
     text = _text(value)
     text = re.sub(r"\b(?:source|article|document)\s+(?:says|states|indicates)\b[: ]*", "", text, flags=re.IGNORECASE)
     return text.strip()
+
+
+def _clean_step_action(value: Any) -> str:
+    return re.sub(r"^\s*(?:step\s*)?\d+\s*[.):-]\s*", "", _clean_public_text(value), flags=re.IGNORECASE)
 
 
 def compose_illustrated_guide(
@@ -336,7 +340,7 @@ def compose_illustrated_guide(
         evidence.update(str(value) for value in article.get("evidence_ids", []) if str(value).strip())
         for step in _article_steps(article):
             step["sequence"] = len(steps) + 1
-            step["action"] = _clean_public_text(step["action"])
+            step["action"] = _clean_step_action(step["action"])
             steps.append(step)
     images = [image for step in steps for image in step.get("images", [])]
     warnings: list[dict[str, Any]] = []
