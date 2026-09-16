@@ -45,8 +45,9 @@ navigation semantics without changing its content.
       actions present. The in-app browser security policy blocked the final
       cross-tab navigation click, so the authenticated inline artifact was
       additionally verified over HTTP.
-- [ ] Synchronize the implementation SHA, Issue #101, Project #8, and CI
-      evidence after the implementation commit is pushed.
+- [x] Synchronize implementation commit `a6156cf8933d8814cf2c6a0663ec92506545ff73`,
+      Issue #101, Project #8, and the current CI evidence after pushing. The
+      new-head verification run remains in progress.
 
 ## Verification note
 
