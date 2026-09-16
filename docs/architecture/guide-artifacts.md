@@ -158,3 +158,10 @@ once. It must never attach the complete guide-level list to every step. Stable
 IDs and their persisted source locators remain unchanged; only presentation
 scope is reduced. This rule is tracked in [Issue #103](https://github.com/lucronn/autodata/issues/103)
 and the [evidence deduplication plan](../superpowers/plans/2026-09-16-evidence-reference-deduplication.md).
+
+The implementation was rebuilt into the local Compose `ingestion-http` service
+and checked through the live guide route. The returned HTML was HTTP 200 with
+99 step evidence blocks and one aggregate list containing 1,104 unique
+references and no aggregate duplicates; the dashboard also loaded at
+`http://127.0.0.1:8080/dashboard/`. This bounds repetition without discarding
+the persisted provenance needed for audit and detailed review.

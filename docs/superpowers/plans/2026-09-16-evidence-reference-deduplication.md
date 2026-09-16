@@ -31,15 +31,33 @@ therefore multiplied by the number of steps.
 
 ## Concrete todo
 
-- [ ] Add failing renderer tests covering guide-level evidence repeated across
+- [x] Add failing renderer tests covering guide-level evidence repeated across
       multiple steps and repeated figure references.
-- [ ] Remove guide-level evidence from per-step rendering while retaining
+- [x] Remove guide-level evidence from per-step rendering while retaining
       step/image-specific evidence.
-- [ ] Keep one deduplicated aggregate evidence section in the detailed guide.
-- [ ] Run ingestion, guide-rendering, API, and contract tests; inspect a live
+- [x] Keep one deduplicated aggregate evidence section in the detailed guide.
+- [x] Run ingestion, guide-rendering, API, and contract tests; inspect a live
       generated guide for bounded evidence output.
-- [ ] Synchronize the implementation SHA, Issue #103, Project #8, and CI
+- [x] Synchronize the implementation SHA, Issue #103, Project #8, and CI
       evidence, then push the branch.
+
+## Verification
+
+The focused renderer regression test passed, followed by the full local suites:
+
+- ingestion: `406 passed, 3 skipped, 12 subtests passed`
+- enrichment: `46 passed, 16 subtests passed`
+- developer adapters: `77 passed, 2 subtests passed`
+- contracts: `14 passed`
+- autonomy preflight: `7 passed`
+
+After rebuilding the local Compose `ingestion-http` service, an authenticated
+HTML artifact request returned HTTP 200 and rendered 99 step evidence blocks
+plus one aggregate list containing 1,104 unique references with zero aggregate
+duplicates. The dashboard loaded successfully at `http://127.0.0.1:8080/dashboard/`;
+the existing browser blob remained subject to the in-app browser's cross-tab
+security policy. The user-owned `output/`, `sample data/`, and `tmp/`
+directories were not staged.
 
 ## Acceptance criteria
 
