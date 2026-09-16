@@ -146,3 +146,15 @@ actions. An authenticated HTTP check of the HTML artifact returned 200,
 and 80 embedded image payloads. The Codex in-app browser blocked the final
 cross-tab click by its browser security policy, so that limitation is retained
 in the verification record rather than reported as a successful tab inspection.
+
+## Evidence presentation
+
+Evidence is an audit contract, not repeated prose. A generated guide may carry
+guide-level evidence for the complete source bundle, step-level evidence for a
+specific instruction, and figure-level evidence for a specific image. The
+detailed artifact must render step-level and figure-level references only with
+the step they support, then render the deduplicated guide-level evidence list
+once. It must never attach the complete guide-level list to every step. Stable
+IDs and their persisted source locators remain unchanged; only presentation
+scope is reduced. This rule is tracked in [Issue #103](https://github.com/lucronn/autodata/issues/103)
+and the [evidence deduplication plan](../superpowers/plans/2026-09-16-evidence-reference-deduplication.md).
