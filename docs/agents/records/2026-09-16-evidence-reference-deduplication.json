@@ -25,7 +25,8 @@
       "autonomy preflight: 7 passed"
     ],
     "live_html": "HTTP 200; 99 step evidence blocks; one aggregate list with 1,104 unique references and zero aggregate duplicates",
-    "dashboard": "loaded at http://127.0.0.1:8080/dashboard/"
+    "dashboard": "loaded at http://127.0.0.1:8080/dashboard/",
+    "github_ci": "Autonomous Verification run 35112725596 passed on implementation branch head"
   },
   "status": "synchronized",
   "updated_at": "2026-09-16T15:03:08Z"
