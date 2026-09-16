@@ -37,13 +37,27 @@ navigation semantics without changing its content.
 
 ## Concrete todo
 
-- [ ] Update the dashboard links and dynamic link binding for new-tab rendering.
-- [ ] Change guide response disposition from attachment to inline.
-- [ ] Add focused regression coverage for navigation and content disposition.
-- [ ] Rebuild the local API, run the relevant test suites, and verify the
-      formatted procedure opens in a new browser tab/window.
+- [x] Update the dashboard links and dynamic link binding for new-tab rendering.
+- [x] Change guide response disposition from attachment to inline.
+- [x] Add focused regression coverage for navigation and content disposition.
+- [x] Rebuild the local API, run the relevant test suites, and verify the
+      formatted procedure is rendered by the live dashboard with the new-tab
+      actions present. The in-app browser security policy blocked the final
+      cross-tab navigation click, so the authenticated inline artifact was
+      additionally verified over HTTP.
 - [ ] Synchronize the implementation SHA, Issue #101, Project #8, and CI
-      evidence.
+      evidence after the implementation commit is pushed.
+
+## Verification note
+
+The rebuilt local API passed its health and readiness checks. The live browser
+dashboard rendered the selected 1997 Toyota RAV4 4-door 4WD 2L request with 99
+source-authored steps, the unreviewed label, and HTML/PDF actions labeled to
+open in a new window. The authenticated HTML artifact returned HTTP 200 with
+`Content-Disposition: inline`, retained its formatted title and vehicle
+content, and contained 80 embedded image payloads. The Codex in-app browser
+blocked the final cross-tab navigation action by policy; this was recorded as
+a harness limitation rather than treated as successful tab inspection.
 
 ## Acceptance criteria
 
@@ -56,4 +70,3 @@ navigation semantics without changing its content.
 - No download attribute or attachment disposition forces a file save.
 - Existing authorization, review labels, source watermark, and unavailable
   artifact behavior remain unchanged.
-

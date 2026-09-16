@@ -94,7 +94,7 @@ func (s *Server) getChatGuidePDF(response http.ResponseWriter, request *http.Req
 		return
 	}
 	response.Header().Set("Content-Type", "application/pdf")
-	response.Header().Set("Content-Disposition", `attachment; filename="autodata-repair-guide.pdf"`)
+	response.Header().Set("Content-Disposition", `inline; filename="autodata-repair-guide.pdf"`)
 	response.Header().Set("Cache-Control", "private, no-store")
 	response.WriteHeader(status)
 	_, _ = response.Write(body)
@@ -117,7 +117,7 @@ func (s *Server) getChatGuideHTML(response http.ResponseWriter, request *http.Re
 		return
 	}
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
-	response.Header().Set("Content-Disposition", `attachment; filename="autodata-repair-guide.html"`)
+	response.Header().Set("Content-Disposition", `inline; filename="autodata-repair-guide.html"`)
 	response.Header().Set("Cache-Control", "private, no-store")
 	response.WriteHeader(status)
 	_, _ = response.Write(body)

@@ -179,7 +179,7 @@ def make_handler(internal_token: str = "", *, chat_runtime: Any | None = None):
                 else:
                     self.send_response(200)
                     self.send_header("Content-Type", "application/pdf")
-                    self.send_header("Content-Disposition", 'attachment; filename="autodata-repair-guide.pdf"')
+                    self.send_header("Content-Disposition", 'inline; filename="autodata-repair-guide.pdf"')
                     self.send_header("Cache-Control", "private, no-store")
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
@@ -205,7 +205,7 @@ def make_handler(internal_token: str = "", *, chat_runtime: Any | None = None):
                 else:
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.send_header("Content-Disposition", 'attachment; filename="autodata-repair-guide.html"')
+                    self.send_header("Content-Disposition", 'inline; filename="autodata-repair-guide.html"')
                     self.send_header("Cache-Control", "private, no-store")
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()

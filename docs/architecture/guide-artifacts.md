@@ -136,3 +136,13 @@ self-contained document with inline CSS and base64-embedded figures, while
 the PDF remains the revision-matched compatibility artifact. Acceptance
 requires clicking the live dashboard action and inspecting the opened,
 formatted artifact in a separate browser tab/window.
+
+The 2026-09-16 implementation was rebuilt into the local API and exercised in
+the live dashboard with query
+`f96e0394-671e-5cd7-b07f-31415b6ec967`. The dashboard rendered the selected
+1997 Toyota RAV4 4-door 4WD 2L with 99 source-authored steps and both new-window
+actions. An authenticated HTTP check of the HTML artifact returned 200,
+`Content-Disposition: inline`, the expected guide title and vehicle content,
+and 80 embedded image payloads. The Codex in-app browser blocked the final
+cross-tab click by its browser security policy, so that limitation is retained
+in the verification record rather than reported as a successful tab inspection.
