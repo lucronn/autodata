@@ -119,3 +119,20 @@ tool and torque text, refilling, and leak checks. The Workers terminal showed
 the same query's cache-miss and source-retrieval events. A later lookup served
 the normalized cache while retaining those 99 steps; it did not regress to
 generic `Replace ...` labels.
+
+## Follow-up: procedure artifact navigation and formatting
+
+The complete guide actions in the dashboard are inspection actions. They must
+open the revision-matched HTML or PDF in a new browser tab/window so the user
+can read the formatted procedure while keeping the chatbot answer available.
+They must not force a download: the dashboard links omit `download`, use
+`target="_blank"` with `rel="noopener noreferrer"`, and the authorized Go and
+ingestion guide responses use `Content-Disposition: inline`.
+
+This follow-up is tracked in [Issue #101](https://github.com/lucronn/autodata/issues/101),
+the [procedure artifact navigation plan](../superpowers/plans/2026-09-16-procedure-artifact-navigation.md),
+and Project #8. The artifact content contract is unchanged: HTML remains a
+self-contained document with inline CSS and base64-embedded figures, while
+the PDF remains the revision-matched compatibility artifact. Acceptance
+requires clicking the live dashboard action and inspecting the opened,
+formatted artifact in a separate browser tab/window.
