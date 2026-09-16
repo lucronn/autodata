@@ -1,0 +1,20 @@
+{
+  "goal": "Deduplicate and scope evidence references in generated procedure guides without changing provenance",
+  "plan_ref": "docs/superpowers/plans/2026-09-16-evidence-reference-deduplication.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/103",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/guide-artifacts.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add failing renderer tests for repeated guide-level evidence",
+    "Scope step and figure evidence to the supported procedure step",
+    "Render one deduplicated aggregate evidence section",
+    "Run renderer, worker, API, contract, and live guide verification",
+    "Synchronize the implementation SHA, Issue #103, Project #8, and CI evidence"
+  ],
+  "base_sha": "183ff01b472365ac422fb26bde6db7d2b27af69d",
+  "status": "synchronized",
+  "updated_at": "2026-09-16T08:00:00Z"
+}
