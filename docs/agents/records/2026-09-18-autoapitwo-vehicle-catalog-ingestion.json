@@ -1,0 +1,21 @@
+{
+  "goal": "Ingest the AutoAPItwo vehicle vocabulary once as the app is used and serve future selectors and natural-language vehicle linking from the durable AutoData catalog",
+  "plan_ref": "docs/superpowers/plans/2026-09-18-autoapitwo-vehicle-catalog-ingestion.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/106",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/vehicle-catalog-ingestion.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add durable catalog sync and per-scope checkpoints",
+    "Add AutoAPItwo fleet traversal and deterministic normalization",
+    "Connect selector reads to non-blocking idempotent scheduling",
+    "Extend selector data to models and engines without per-click source calls",
+    "Verify cold/warm, concurrency, retry, replay, dedupe, provenance, and browser behavior",
+    "Synchronize the implementation SHA, Issue #106, Project #8, and CI evidence"
+  ],
+  "base_sha": "762ef2008c81960abe29f0e323c01856bda8b314",
+  "status": "synchronized",
+  "updated_at": "2026-09-18T19:10:00Z"
+}
