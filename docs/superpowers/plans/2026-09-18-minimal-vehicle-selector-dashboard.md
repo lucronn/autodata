@@ -10,6 +10,10 @@
 
 **Spec:** `docs/architecture/dashboard-selector.md`
 
+**Issue:** https://github.com/lucronn/autodata/issues/105
+
+**Project:** https://github.com/users/lucronn/projects/8
+
 ## Global Constraints
 
 - Keep the dashboard to HTML, CSS, and JavaScript; do not add a frontend framework or build step.
@@ -95,6 +99,8 @@ git push origin phobos/fix-chat-source-failure
 ```
 
 ## Self-review checklist
+
+**todo:** complete the selector implementation, browser verification, and synchronized delivery record.
 
 - [ ] The page does not show a long year list before a decade is clicked.
 - [ ] The year list is limited to the selected decade.
