@@ -58,17 +58,18 @@ source/version has not completed, the request schedules one durable sync and
 returns without waiting for upstream traversal. Concurrent requests coalesce
 on the same provider/source-version/traversal-version key.
 
-The worker claims the sync with a database lock, checkpoints each year/make/
-model/engine scope, retries transient failures with bounded backoff, and
-continues independent branches after a failure. A completed source/version is
-not fetched again on selector reads. An operator can explicitly replay a
-failed or dead-lettered sync with a new attempt while retaining the previous
-source evidence.
+The worker claims the sync with a database lock and records a source-level
+checkpoint for the first catalog warm-up. The schema also has unique per-scope
+checkpoint rows so the traversal can be resumed without changing the source
+watermark. Transient failures use bounded backoff; a failed run is retryable
+and a dead-lettered run requires an explicit replay. A completed
+source/version is not fetched again on selector reads. Previous source
+evidence is retained across retries.
 
 The selector can therefore show partial years/makes/models/engines while the
 catalog is warming. Existing cached options stay usable; upstream failure does
 not erase them. Natural-language vehicle resolution uses the same local graph
-and provider mappings, so later requests do not repeat the catalog calls.
+and provider mappings, so later requests do not repeat completed catalog calls.
 
 ## State contract
 

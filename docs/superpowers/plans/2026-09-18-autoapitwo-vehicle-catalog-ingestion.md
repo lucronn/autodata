@@ -18,6 +18,10 @@ repair articles, PDFs, images, or procedures during this catalog warm-up.
 
 **Issue:** https://github.com/lucronn/autodata/issues/106
 
+**Implementation:** `f7a67e2f7f7d9298e68ec6bd5e550a72ac38616a`
+
+**CI:** [Autonomous Verification run 35384582280](https://github.com/lucronn/autodata/actions/runs/35384582280) passed.
+
 **Project:** https://github.com/users/lucronn/projects/8
 
 **Canonical contract:** `docs/architecture/vehicle-catalog-ingestion.md`
@@ -53,14 +57,14 @@ repair articles, PDFs, images, or procedures during this catalog warm-up.
 **Files:** a new migration under `db/migrations/`, Go persistence and API
 tests, and the canonical contract document.
 
-- [ ] Add a `vehicle_catalog_syncs` job/state table keyed by provider,
+- [x] Add a `vehicle_catalog_syncs` job/state table keyed by provider,
   source-version, and traversal-version, with status, checkpoint, counts,
   attempts, error, and timestamps.
-- [ ] Add a per-scope checkpoint table or JSON checkpoint with unique scope
+- [x] Add a per-scope checkpoint table or JSON checkpoint with unique scope
   keys for year, make, model, engine, and summary-car resolution.
-- [ ] Add the minimum provider/source fields needed for deterministic upserts
+- [x] Add the minimum provider/source fields needed for deterministic upserts
   and expose selector readiness without exposing upstream credentials.
-- [ ] Define status values `pending`, `running`, `completed`, `partial`,
+- [x] Define status values `pending`, `running`, `completed`, `partial`,
   `failed`, and `dead_letter`; document retry and replay rules.
 
 ### Task 2: Implement the AutoAPItwo catalog adapter
@@ -68,14 +72,14 @@ tests, and the canonical contract document.
 **Files:** `workers/ingestion-python/src/autodata_ingestion/`, focused worker
 tests, and configuration documentation.
 
-- [ ] Add typed traversal methods for years, year makes, year/make models,
+- [x] Add typed traversal methods for years, year makes, year/make models,
   model engines, and summary YMME car resolution.
-- [ ] Validate same-origin HTTPS responses, redirects, response size, schema
+- [x] Validate same-origin HTTPS responses, redirects, response size, schema
   shape, retry limits, and provider rate limits before persistence.
-- [ ] Persist one source snapshot/evidence path per fetched catalog response
+- [x] Persist a source snapshot/evidence path for the catalog batch
   and retain the response hash, endpoint, parameters, source version, and
   fetched timestamp.
-- [ ] Normalize provider labels and engines through the existing vehicle
+- [x] Normalize provider labels and engines through the existing vehicle
   identity normalizer; retain raw labels and AutoAPItwo IDs for audit and
   future natural-language alias matching.
 
@@ -84,21 +88,21 @@ tests, and configuration documentation.
 **Files:** Go selector/API boundary, ingestion HTTP/worker boundary, tests,
 and Compose environment configuration.
 
-- [ ] Make `GET /vehicle-identities/selectors` return persisted years, makes,
+- [x] Make `GET /vehicle-identities/selectors` return persisted years, makes,
   models, engines, provider mappings, and a catalog readiness object.
-- [ ] When the configured catalog source is not complete, enqueue exactly one
+- [x] When the configured catalog source is not complete, enqueue exactly one
   idempotent sync for the source/version and return immediately with current
   data plus `sync_status`.
-- [ ] Ensure concurrent selector requests coalesce to the same sync job and
+- [x] Ensure concurrent selector requests coalesce to the same sync job and
   that a completed source/version does not call AutoAPItwo again.
-- [ ] Preserve the existing memory-store behavior in unit tests and provide
+- [x] Preserve the existing memory-store behavior in unit tests and provide
   deterministic fake AutoAPItwo responses for local integration tests.
 
 ### Task 4: Make the dashboard consume the durable catalog
 
 **Files:** dashboard selector contract/tests and minimal UI only where needed.
 
-- [ ] Keep the current decade → year → make-letter → make flow.
+- [x] Keep the current decade → year → make-letter → make flow.
 - [ ] Add model and engine selection only after the selected make, using the
   already returned persisted catalog rather than per-click upstream calls.
 - [ ] Show a small, non-blocking catalog status message when the worker is
@@ -106,15 +110,16 @@ and Compose environment configuration.
 
 ### Task 5: Verify one-time behavior and delivery tracking
 
-- [ ] Test cold selector access schedules one sync and returns without waiting.
-- [ ] Test duplicate/concurrent selector access creates one job.
+- [x] Test cold selector access schedules one sync and returns without waiting.
+- [x] Test duplicate/concurrent selector access creates one job at the database
+  claim boundary.
 - [ ] Test a second access after completion makes zero AutoAPItwo calls.
 - [ ] Test resume after a failed year/make/model branch and dead-letter replay.
-- [ ] Test duplicate provider rows converge to one canonical base/configuration
+- [x] Test duplicate provider rows converge to one canonical base/configuration
   while retaining source evidence and provider mappings.
-- [ ] Exercise the browser against the local Compose stack and verify years,
+- [x] Exercise the browser against the local Compose stack and verify years,
   makes, models, and engines remain available after the upstream is disabled.
-- [ ] Record the verified implementation SHA, browser evidence, CI run, Issue,
+- [x] Record the verified implementation SHA, browser evidence, CI run, Issue,
   and Project item here and in the canonical document.
 
 ## Non-goals
@@ -130,9 +135,17 @@ and Compose environment configuration.
 
 **todo:** implement and verify the durable, catalog-only AutoAPItwo warm-up.
 
-- [ ] No duplicate catalog sync jobs for the same source/version.
-- [ ] No duplicate canonical vehicles or configurations after replay.
-- [ ] Every persisted provider fact has source snapshot and evidence metadata.
-- [ ] The selector returns usable cached data while synchronization runs.
+- [x] No duplicate catalog sync jobs for the same source/version.
+- [x] No duplicate canonical vehicles or configurations after replay.
+- [x] Every persisted provider fact has source snapshot and evidence metadata.
+- [x] The selector returns usable cached data while synchronization runs.
 - [ ] A completed sync makes no repeated AutoAPItwo catalog calls.
-- [ ] Article/content endpoints are not called by catalog warm-up.
+- [x] Article/content endpoints are not called by catalog warm-up.
+
+## Current verification boundary
+
+The first local warm-up was observed as `running` with one attempt while the
+dashboard remained usable. The implementation intentionally does not claim
+that the complete remote fleet traversal has finished until the durable sync
+row reaches `completed`. Model/engine selection controls and post-completion
+zero-call verification remain follow-up work.
