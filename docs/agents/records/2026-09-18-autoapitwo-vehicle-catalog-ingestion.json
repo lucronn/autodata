@@ -16,17 +16,17 @@
     "Synchronize the implementation SHA, Issue #106, Project #8, and CI evidence"
   ],
   "base_sha": "0b1caca983c2cbffe4a593254a50a6df42fbacd8",
-  "implementation_sha": "f7a67e2f7f7d9298e68ec6bd5e550a72ac38616a",
+  "implementation_sha": "59d36bc9aef6080b584e01808140270d7a782aa4",
   "verification": {
-    "ci_run": "https://github.com/lucronn/autodata/actions/runs/35384582280",
+    "ci_run": "https://github.com/lucronn/autodata/actions/runs/35385479339",
     "ci_conclusion": "success",
-    "local_python": "416 passed, 3 skipped, 12 subtests passed",
+    "local_python": "417 passed, 3 skipped, 12 subtests passed",
     "local_go": "go test ./... passed from apps/api-go",
     "migrations": "scripts/dev/test_migrations.py passed",
     "compose": "docker compose config passed",
     "browser": "http://127.0.0.1:8080/dashboard/ served the selector and showed persisted years while catalog_sync was warming",
-    "sync_observation": "vehicle_catalog_syncs recorded autoapitwo/autoapitwo-fleet-v1 as running with attempt_count 1"
+    "sync_observation": "vehicle_catalog_syncs recorded autoapitwo/autoapitwo-fleet-v1 as running with attempt_count 2; incremental scope persistence is active"
   },
   "status": "synchronized",
-  "updated_at": "2026-09-18T19:16:00Z"
+  "updated_at": "2026-09-18T19:24:00Z"
 }

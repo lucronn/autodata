@@ -18,9 +18,9 @@ repair articles, PDFs, images, or procedures during this catalog warm-up.
 
 **Issue:** https://github.com/lucronn/autodata/issues/106
 
-**Implementation:** `f7a67e2f7f7d9298e68ec6bd5e550a72ac38616a`
+**Implementation:** `59d36bc9aef6080b584e01808140270d7a782aa4`
 
-**CI:** [Autonomous Verification run 35384582280](https://github.com/lucronn/autodata/actions/runs/35384582280) passed.
+**CI:** [Autonomous Verification run 35385479339](https://github.com/lucronn/autodata/actions/runs/35385479339) passed.
 
 **Project:** https://github.com/users/lucronn/projects/8
 
@@ -144,8 +144,10 @@ and Compose environment configuration.
 
 ## Current verification boundary
 
-The first local warm-up was observed as `running` with one attempt while the
+The first local warm-up was observed as `running` with two attempts while the
 dashboard remained usable. The implementation intentionally does not claim
 that the complete remote fleet traversal has finished until the durable sync
 row reaches `completed`. Model/engine selection controls and post-completion
-zero-call verification remain follow-up work.
+zero-call verification remain follow-up work. The current implementation
+persists bounded batches and scope rows as traversal progresses, so partial
+catalog data is available before the full remote fleet completes.
