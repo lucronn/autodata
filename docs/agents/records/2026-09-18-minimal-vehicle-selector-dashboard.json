@@ -1,0 +1,20 @@
+{
+  "goal": "Replace the dense local dashboard with a minimal year-and-make selector flow using the existing durable vehicle selector API",
+  "plan_ref": "docs/superpowers/plans/2026-09-18-minimal-vehicle-selector-dashboard.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/105",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/dashboard-selector.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Replace the dashboard shell with decade, year, make-letter, and make controls",
+    "Use the existing vehicle identity selector response without duplicating catalog data",
+    "Add route asset contract tests and JavaScript syntax verification",
+    "Exercise the decade-to-year-to-letter-to-make flow in the local browser",
+    "Synchronize the implementation commit, Issue #105, Project #8, and CI evidence"
+  ],
+  "base_sha": "421eb499c83bd1092114d1e9bbe8f99cec3fe07c",
+  "status": "synchronized",
+  "updated_at": "2026-09-18T18:40:00Z"
+}
