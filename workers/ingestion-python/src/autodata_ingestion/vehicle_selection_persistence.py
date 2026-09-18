@@ -138,6 +138,12 @@ def persist_vehicle_selection_list(
                     reviewer_state=evidence["reviewer_state"],
                     source_watermark=source_version,
                     raw_observation=raw_value,
+                    provider_mappings=(
+                        list(raw_value.get("provider_mappings", []))
+                        if isinstance(raw_value, Mapping)
+                        and isinstance(raw_value.get("provider_mappings", []), list)
+                        else None
+                    ),
                     jsonb=Jsonb,
                 )
                 results.append(

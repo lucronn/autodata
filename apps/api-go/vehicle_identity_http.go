@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -45,6 +46,35 @@ func (s *Server) listVehicleIdentitySelectors(response http.ResponseWriter, requ
 	if err != nil {
 		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "vehicle selectors could not be read", true)
 		return
+	}
+	if s.ingestionClient != nil {
+		selectors.CatalogSync = &CatalogSyncStatus{
+			Provider:      "autoapitwo",
+			SourceVersion: "autoapitwo-fleet-v1",
+			Status:        "warming",
+		}
+		body := []byte(`{"provider":"autoapitwo","source_version":"autoapitwo-fleet-v1"}`)
+		incoming := request.Clone(context.Background())
+		go func() {
+			_, _, _ = s.ingestionClient.Do(
+				incoming,
+				"/v1/catalog-sync/ensure",
+				body,
+				"catalog-sync:autoapitwo:autoapitwo-fleet-v1",
+			)
+		}()
+	} else if len(selectors.Vehicles) == 0 {
+		selectors.CatalogSync = &CatalogSyncStatus{
+			Provider:      "autoapitwo",
+			SourceVersion: "autoapitwo-fleet-v1",
+			Status:        "not_configured",
+		}
+	} else {
+		selectors.CatalogSync = &CatalogSyncStatus{
+			Provider:      "autoapitwo",
+			SourceVersion: "autoapitwo-fleet-v1",
+			Status:        "ready",
+		}
 	}
 	writeJSON(response, http.StatusOK, selectors)
 }

@@ -67,6 +67,13 @@ type VehicleIdentitySelectors struct {
 	Trims                []string                `json:"trims"`
 	EngineDisplacementsL []float64               `json:"engine_displacements_l"`
 	Vehicles             []VehicleIdentityRecord `json:"vehicles"`
+	CatalogSync          *CatalogSyncStatus      `json:"catalog_sync,omitempty"`
+}
+
+type CatalogSyncStatus struct {
+	Provider      string `json:"provider"`
+	SourceVersion string `json:"source_version"`
+	Status        string `json:"status"`
 }
 
 type VehicleIdentityStore interface {

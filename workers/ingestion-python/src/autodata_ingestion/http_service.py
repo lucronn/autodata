@@ -18,6 +18,7 @@ def dispatch_request(
     payload: Mapping[str, object],
     *,
     article_runner: Callable[[str, str], dict[str, object]] | None = None,
+    catalog_sync_runner: Callable[[str], dict[str, object]] | None = None,
     knowledge_runner: Callable[[str], dict[str, object]] | None = None,
     job_runner: Callable[[str], dict[str, object]] | None = None,
     chat_create_runner: Callable[..., dict[str, object]] | None = None,
@@ -45,6 +46,12 @@ def dispatch_request(
         from .chat_service import configure_chat_runtime
 
         configure_chat_runtime(runtime=chat_runtime, allow_in_memory=True)
+    if request_path == "/v1/catalog-sync/ensure":
+        if catalog_sync_runner is None:
+            from .catalog_sync import ensure_catalog_sync
+
+            catalog_sync_runner = ensure_catalog_sync
+        return catalog_sync_runner(json.dumps(dict(payload), ensure_ascii=False, sort_keys=True))
     if request_path == "/v1/article-intakes":
         source_uri = str(payload.get("source_uri", "")).strip()
         vehicle = payload.get("vehicle")
