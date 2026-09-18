@@ -14,7 +14,7 @@
     "Use the resolved AutoAPITwo car ID for the current Silverado source fallback",
     "Run focused, full, Compose, browser, cache-reuse, and GitHub verification"
   ],
-  "base_sha": "d6b1f15726c5ac99f18d9420bcbf776a46f286ba",
+  "base_sha": "66150187080cb8ad06d02672742b621c1072ee4a",
   "status": "synchronized",
-  "updated_at": "2026-09-18T16:33:11Z"
+  "updated_at": "2026-09-18T16:35:00Z"
 }
