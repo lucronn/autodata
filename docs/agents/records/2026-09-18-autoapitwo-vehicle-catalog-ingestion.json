@@ -15,7 +15,7 @@
     "Verify cold/warm, concurrency, retry, replay, dedupe, provenance, and browser behavior",
     "Synchronize the implementation SHA, Issue #106, Project #8, and CI evidence"
   ],
-  "base_sha": "762ef2008c81960abe29f0e323c01856bda8b314",
+  "base_sha": "0b1caca983c2cbffe4a593254a50a6df42fbacd8",
   "status": "synchronized",
   "updated_at": "2026-09-18T19:10:00Z"
 }
