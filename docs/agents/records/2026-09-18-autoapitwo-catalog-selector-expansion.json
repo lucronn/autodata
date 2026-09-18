@@ -1,0 +1,20 @@
+{
+  "goal": "Load normalized AutoAPItwo makes, models, and engine/base configurations progressively into the compact selector after the year manifest",
+  "plan_ref": "docs/superpowers/plans/2026-09-18-autoapitwo-catalog-selector-expansion.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/107",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/pre-implementation-gate.md",
+    "docs/architecture/vehicle-catalog-ingestion.md"
+  ],
+  "todo": [
+    "Propagate durable catalog readiness and row counts through the selector API",
+    "Render model and engine/base configuration choices from normalized records",
+    "Replace the active selector row in place after each choice to minimize cursor movement",
+    "Verify AutoAPItwo traversal, persistence, local Compose behavior, browser interaction, and CI",
+    "Synchronize the exact implementation SHA, Issue #107, Project #8, and CI evidence"
+  ],
+  "base_sha": "f6f13aa445a63dafd13f258b8cef04657b2f1472",
+  "status": "synchronized",
+  "updated_at": "2026-09-18T20:05:00Z"
+}

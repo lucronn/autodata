@@ -67,8 +67,10 @@ The implementation stores the manifest in `vehicle_catalog_years`, links each
 row to an immutable `source_snapshots`/`source_artifacts` record, and exposes
 the range through the existing selector response immediately. The dashboard
 groups those years into all seven decade controls (`1960s` through `2020s`)
-on its initial load, then reveals the individual provider-backed years after a
-decade is chosen.
+on its initial load. Its compact selector replaces the active row in place:
+choosing a decade replaces decade buttons with years, choosing a year replaces
+the row with makes, and subsequent choices reveal models and engine/base
+configurations without requiring pointer travel across multiple columns.
 
 The manifest path is cache-first, idempotent, bounded, and catalog-only. It
 does not fetch repair articles, procedures, PDFs, images, or content. A
