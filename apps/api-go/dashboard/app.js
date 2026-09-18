@@ -165,7 +165,6 @@
     const years = state.years.filter((year) => decadeFor(year) === state.decade);
     years.forEach((year) => {
       const control = button(String(year), "", { year }, () => {
-        state.year = year;
         resetDownstream(2);
         state.year = year;
         renderMakes();
