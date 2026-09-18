@@ -157,7 +157,7 @@ selected-vehicle summary and Continue control were rendered.
 
 Update this plan, the canonical architecture document, the machine record, Issue #107, and its Project #8 item with the exact implementation SHA and successful CI URL. Push all intentional changes; preserve unrelated untracked directories.
 
-Implementation checkpoint: `81b43cc424d12d142349d08b752485ad4d287683`.
-CI: `https://github.com/lucronn/autodata/actions/runs/35396313029` (passed).
+Implementation checkpoint: `5c6026ee9676699ea5d85a4e696a96cda6d8c12a`.
+CI: `https://github.com/lucronn/autodata/actions/runs/35397024629` (passed).
 Issue #107 and Project #8 are synchronized to this checkpoint; the item is
 ready to close after the documentation CI for this final record update passes.
