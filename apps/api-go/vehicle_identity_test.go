@@ -48,6 +48,24 @@ func TestPostgresSelectorsSelectDurableVehicleAndConfigurationIDs(t *testing.T) 
 	}
 }
 
+func TestMergeVehicleIdentitySelectorsPreservesCatalogSync(t *testing.T) {
+	merged := mergeVehicleIdentitySelectors(
+		VehicleIdentitySelectors{},
+		VehicleIdentitySelectors{CatalogSync: &CatalogSyncStatus{
+			Provider:      "autoapitwo",
+			SourceVersion: "autoapitwo-fleet-v1",
+			Status:        "completed",
+			RowCount:      7200,
+		}},
+	)
+	if merged.CatalogSync == nil {
+		t.Fatal("catalog sync was dropped while merging selector layers")
+	}
+	if merged.CatalogSync.Status != "completed" || merged.CatalogSync.RowCount != 7200 {
+		t.Fatalf("catalog sync = %#v, want completed row_count 7200", merged.CatalogSync)
+	}
+}
+
 func TestVehicleIdentityResolveMergesCoarseAndRichRows(t *testing.T) {
 	auth := &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}
 	store := newMemoryVehicleIdentityStore()

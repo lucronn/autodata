@@ -28,8 +28,13 @@ func TestDashboardRouteServesMinimalVehicleSelector(t *testing.T) {
 		"id=\"year-list\"",
 		"id=\"make-letter-list\"",
 		"id=\"make-list\"",
+		"id=\"model-step\"",
+		"id=\"model-list\"",
+		"id=\"configuration-step\"",
+		"id=\"configuration-list\"",
+		"id=\"choice-row\"",
 		"id=\"selected-vehicle\"",
-		`/dashboard/app.js?v=vehicle-selector-v1`,
+		`/dashboard/app.js?v=vehicle-selector-v2`,
 	} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("dashboard body does not contain %q", marker)
@@ -81,11 +86,18 @@ func TestDashboardRouteServesSelectorJavaScript(t *testing.T) {
 		"renderYears",
 		"renderMakeLetters",
 		"renderMakes",
+		"renderModels",
+		"renderConfigurations",
+		"refreshSelectors",
+		"configurationLabel",
+		"showPane",
 		"groupMakesByInitial",
-		`data-decade`,
-		`data-year`,
-		`data-make-initial`,
-		`data-make`,
+		"decade",
+		"year",
+		"makeInitial",
+		"make",
+		"model",
+		"configuration",
 		"selectedVehicle",
 	} {
 		if !strings.Contains(body, marker) {
@@ -108,7 +120,7 @@ func TestDashboardRouteServesSelectorStyles(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
 	body := response.Body.String()
-	for _, marker := range []string{".selector-grid", ".choice-button", ".make-letter", "prefers-reduced-motion"} {
+	for _, marker := range []string{".selector-grid", ".choice-row", ".choice-button", ".make-letter", "prefers-reduced-motion"} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("dashboard CSS does not contain %q", marker)
 		}

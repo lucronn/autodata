@@ -79,6 +79,7 @@ type CatalogSyncStatus struct {
 	Provider      string `json:"provider"`
 	SourceVersion string `json:"source_version"`
 	Status        string `json:"status"`
+	RowCount      int    `json:"row_count"`
 }
 
 type VehicleIdentityStore interface {

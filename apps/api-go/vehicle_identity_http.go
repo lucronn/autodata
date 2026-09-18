@@ -49,10 +49,12 @@ func (s *Server) listVehicleIdentitySelectors(response http.ResponseWriter, requ
 	}
 	selectors.Years = mergeConfiguredCatalogYears(selectors.Years)
 	if s.ingestionClient != nil {
-		selectors.CatalogSync = &CatalogSyncStatus{
-			Provider:      "autoapitwo",
-			SourceVersion: "autoapitwo-fleet-v1",
-			Status:        "warming",
+		if selectors.CatalogSync == nil {
+			selectors.CatalogSync = &CatalogSyncStatus{
+				Provider:      "autoapitwo",
+				SourceVersion: "autoapitwo-fleet-v1",
+				Status:        "warming",
+			}
 		}
 		yearBody := []byte(`{"provider":"autoapitwo","source_version":"autoapitwo-fleet-v1"}`)
 		catalogBody := []byte(`{"provider":"autoapitwo","source_version":"autoapitwo-fleet-v1"}`)
@@ -74,13 +76,13 @@ func (s *Server) listVehicleIdentitySelectors(response http.ResponseWriter, requ
 				"catalog-sync:autoapitwo:autoapitwo-fleet-v1",
 			)
 		}()
-	} else if len(selectors.Vehicles) == 0 {
+	} else if selectors.CatalogSync == nil && len(selectors.Vehicles) == 0 {
 		selectors.CatalogSync = &CatalogSyncStatus{
 			Provider:      "autoapitwo",
 			SourceVersion: "autoapitwo-fleet-v1",
 			Status:        "not_configured",
 		}
-	} else {
+	} else if selectors.CatalogSync == nil {
 		selectors.CatalogSync = &CatalogSyncStatus{
 			Provider:      "autoapitwo",
 			SourceVersion: "autoapitwo-fleet-v1",

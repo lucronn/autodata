@@ -135,6 +135,37 @@ func (s *postgresVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySe
 	if err := yearRows.Err(); err != nil {
 		return VehicleIdentitySelectors{}, err
 	}
+	syncRows, err := s.pool.Query(context.Background(), `
+		SELECT status, row_count
+		FROM vehicle_catalog_syncs
+		WHERE provider = 'autoapitwo'
+		  AND source_version = 'autoapitwo-fleet-v1'
+		  AND traversal_version = 'fleet-vocabulary-v1'
+		ORDER BY updated_at DESC
+		LIMIT 1`)
+	if err != nil {
+		return VehicleIdentitySelectors{}, err
+	}
+	var catalogSync *CatalogSyncStatus
+	if syncRows.Next() {
+		var status string
+		var rowCount int
+		if err := syncRows.Scan(&status, &rowCount); err != nil {
+			syncRows.Close()
+			return VehicleIdentitySelectors{}, err
+		}
+		catalogSync = &CatalogSyncStatus{
+			Provider:      "autoapitwo",
+			SourceVersion: "autoapitwo-fleet-v1",
+			Status:        status,
+			RowCount:      rowCount,
+		}
+	}
+	if err := syncRows.Err(); err != nil {
+		syncRows.Close()
+		return VehicleIdentitySelectors{}, err
+	}
+	syncRows.Close()
 	records, _, err := normalizeVehicleIdentityRows(identityRows)
 	if err != nil {
 		return VehicleIdentitySelectors{}, err
@@ -147,6 +178,7 @@ func (s *postgresVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySe
 		Trims:                sortedStrings(trims),
 		EngineDisplacementsL: sortedFloats(engines),
 		Vehicles:             records,
+		CatalogSync:          catalogSync,
 	}, nil
 }
 
@@ -195,6 +227,10 @@ func mergeVehicleIdentitySelectors(left, right VehicleIdentitySelectors) Vehicle
 	for _, key := range vehicleKeys {
 		mergedVehicles = append(mergedVehicles, vehicles[key])
 	}
+	catalogSync := right.CatalogSync
+	if catalogSync == nil {
+		catalogSync = left.CatalogSync
+	}
 	return VehicleIdentitySelectors{
 		Makes:                sortedStrings(makes),
 		Models:               sortedStrings(models),
@@ -203,6 +239,7 @@ func mergeVehicleIdentitySelectors(left, right VehicleIdentitySelectors) Vehicle
 		Trims:                sortedStrings(trims),
 		EngineDisplacementsL: sortedFloats(engines),
 		Vehicles:             mergedVehicles,
+		CatalogSync:          catalogSync,
 	}
 }
 

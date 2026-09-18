@@ -12,26 +12,32 @@
       <header class="intro">
         <p class="eyebrow">AutoData</p>
         <h1>Choose a vehicle</h1>
-        <p id="instructions">Start with a decade, then choose a year and make.</p>
+        <p id="instructions">Choose a decade, then keep selecting in the same row.</p>
       </header>
 
       <p id="status" class="status" role="status">Loading vehicles…</p>
 
       <section class="selector-grid" aria-label="Vehicle selector">
-        <section class="step" aria-labelledby="decade-title">
-          <h2 id="decade-title">1. Decade</h2>
-          <div id="decade-list" class="choice-list" aria-live="polite"></div>
-        </section>
-
-        <section class="step" id="year-step" aria-labelledby="year-title" hidden>
-          <h2 id="year-title">2. Year</h2>
-          <div id="year-list" class="choice-list" aria-live="polite"></div>
-        </section>
-
-        <section class="step" id="make-step" aria-labelledby="make-title" hidden>
-          <h2 id="make-title">3. Make</h2>
-          <div id="make-letter-list" class="choice-list make-letters" aria-live="polite"></div>
-          <div id="make-list" class="choice-list" aria-live="polite" hidden></div>
+        <section class="step" aria-labelledby="step-title">
+          <h2 id="step-title">1. Decade</h2>
+          <div id="choice-row" class="choice-row" aria-live="polite">
+            <div id="decade-step" class="choice-pane">
+              <div id="decade-list" class="choice-list"></div>
+            </div>
+            <div id="year-step" class="choice-pane" hidden>
+              <div id="year-list" class="choice-list"></div>
+            </div>
+            <div id="make-step" class="choice-pane" hidden>
+              <div id="make-letter-list" class="choice-list make-letters"></div>
+              <div id="make-list" class="choice-list" hidden></div>
+            </div>
+            <div id="model-step" class="choice-pane" hidden>
+              <div id="model-list" class="choice-list"></div>
+            </div>
+            <div id="configuration-step" class="choice-pane" hidden>
+              <div id="configuration-list" class="choice-list"></div>
+            </div>
+          </div>
         </section>
       </section>
 
@@ -43,6 +49,6 @@
         </button>
       </section>
     </main>
-    <script src="/dashboard/app.js?v=vehicle-selector-v1" defer></script>
+    <script src="/dashboard/app.js?v=vehicle-selector-v2" defer></script>
   </body>
 </html>
