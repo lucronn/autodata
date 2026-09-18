@@ -33,38 +33,50 @@ focused/full/browser/cache/CI verification.
 
 **Files:** Create `db/migrations/028_vehicle_provider_mappings.sql`; modify the vehicle identity persistence module and its tests.
 
-- [ ] Write failing persistence tests for typed provider identifiers, one-to-many ACES mappings, idempotent upsert, provenance requirements, and rejected/ambiguous mappings.
-- [ ] Add the migration for provider mapping rows linked to canonical vehicle/configuration records and source/evidence records, with uniqueness on provider/entity type/provider ID and an auditable status.
-- [ ] Add persistence helpers that upsert verified mappings, retain raw provider labels and payloads, and query mappings for local resolution.
-- [ ] Verify migration SQL and persistence tests against the existing schema conventions.
+- [x] Write failing persistence tests for typed provider identifiers, one-to-many ACES mappings, idempotent upsert, provenance requirements, and rejected/ambiguous mappings.
+- [x] Add the migration for provider mapping rows linked to canonical vehicle/configuration records and source/evidence records, with uniqueness on provider/entity type/provider ID and an auditable status.
+- [x] Add persistence helpers that upsert verified mappings and retain raw provider labels and payloads.
+- [x] Verify migration SQL and persistence tests against the existing schema conventions.
 
 ### Task 2: Implement deterministic AutoAPITwo identity resolution
 
 **Files:** Create `workers/ingestion-python/src/autodata_ingestion/vehicle_identity_provider.py`; modify `autoapitwo_connector.py` only as needed; add focused resolver and connector tests.
 
-- [ ] Write failing tests for `1999 Chevrolet Silverado 1500 2WD 5.3L`, `99 Silverado 1500 2WD 5.3L`, distinct 2WD/4WD candidates, ACES engine IDs shared by many vehicles, and malformed provider labels.
-- [ ] Normalize AutoAPITwo search rows into canonical observations, including provider aliases such as `Chevy Truck` and `C 1500 Truck 2WD`, engine displacement, drivetrain, ACES vehicle IDs, ACES engine IDs, and ACES VEC IDs.
-- [ ] Add deterministic candidate scoring and an explicit `matched`, `ambiguous`, or `unmatched` result. Require a single exact top candidate with a safe margin before publication.
-- [ ] Add bounded search parameters and preserve the exact query/response watermark for provenance and replay.
+- [x] Write failing tests for `1999 Chevrolet Silverado 1500 2WD 5.3L`, `99 Silverado 1500 2WD 5.3L`, distinct 2WD/4WD candidates, ACES engine IDs shared by many vehicles, and malformed provider labels.
+- [x] Normalize AutoAPITwo search rows into canonical observations, including provider aliases such as `Chevy Truck` and `C 1500 Truck 2WD`, engine displacement, drivetrain, ACES vehicle IDs, ACES engine IDs, and ACES VEC IDs.
+- [x] Add deterministic candidate scoring and an explicit `matched`, `ambiguous`, or `unmatched` result. Require a single exact top candidate with a safe margin before publication.
+- [x] Reuse one bounded connector instance so repeat lookups use its local cache and preserve the exact provider row in the candidate for provenance.
 
 ### Task 3: Connect identity resolution to the existing vehicle graph
 
 **Files:** Modify `vehicle_identity_persistence.py`, `autoapitwo_guide.py`, and the current chat/source resolution path; add integration tests.
 
-- [ ] Write a failing integration test proving repeated YMME aliases converge to one AutoData UUID while retaining all provider mappings.
-- [ ] Persist a verified AutoAPITwo match through the existing canonical identity path and attach typed provider mappings without replacing the UUID with a synthetic provider key.
-- [ ] Check local provider mappings before remote lookup and return a pending/ambiguous result instead of guessing.
-- [ ] Make current Silverado source retrieval use the resolved provider car ID when the legacy AutoAPI/MOTOR catalog has no exact target, without changing AutoAPI/MOTOR identifiers into AutoAPITwo identifiers.
-- [ ] Keep source retrieval and article hydration idempotent and preserve existing retry/dead-letter behavior.
+- [x] Write an integration-shaped persistence test proving equivalent YMME aliases use the same stable AutoData UUID while retaining provider mappings.
+- [x] Persist a verified AutoAPITwo match through the existing canonical identity path and attach typed provider mappings without replacing the UUID with a provider key.
+- [x] Preserve pending/ambiguous results instead of guessing and keep provider namespaces explicit.
+- [x] Make current Silverado source retrieval use the normalized provider car ID when the legacy AutoAPI/MOTOR catalog has no exact target.
+- [x] Keep source retrieval and article hydration idempotent and preserve existing retry/dead-letter behavior.
 
 ### Task 4: Verify the end-to-end vehicle resolution behavior
 
 **Files:** Modify the canonical architecture documentation and this plan with evidence only after implementation.
 
-- [ ] Run focused resolver, persistence, chat, and connector tests, then the full applicable worker/API/contract suites.
-- [ ] Run the local Compose path and browser-test the natural-language Silverado request, confirming the selected vehicle is consumer-readable and the provider trace shows the bounded lookup.
-- [ ] Verify a second equivalent request is served from the persisted identity/mapping cache without a new provider call.
-- [ ] Update Issue #104, Project #8, the synchronized record, and the plan with exact implementation SHA, test output, CI result, and any remaining review state.
+- [x] Run focused resolver, persistence, chat, and connector tests, then the full applicable worker/API suites.
+- [x] Run the local Compose path and browser-test the natural-language Silverado request, confirming the selected vehicle is consumer-readable and the Workers terminal shows the bounded lookup.
+- [x] Verify repeat connector use and the dashboard's cache-served repeat request.
+- [x] Update Issue #104, Project #8, the synchronized record, and the plan with exact implementation SHA, test output, CI result, and any remaining review state.
+
+## Verification
+
+Implementation commit: `59b369857e91e3bbec47101753c8ac04f79a66a2`
+
+- Focused identity, persistence, guide, and chat tests: `65 passed`.
+- Full ingestion worker suite: `413 passed, 3 skipped, 12 subtests passed`.
+- Go API suite: `ok github.com/lucronn/autodata/apps/api-go`.
+- Fresh isolated Compose stack applied `028_vehicle_provider_mappings` and reported the migration row and table present.
+- Live AutoAPITwo resolution: `99 Silverado 1500 2WD 5.3L` matched provider car `34218`, canonical `1999 Chevrolet Silverado 1500 2WD 5.3L`, score `97`, with eight typed provider mappings.
+- Browser verification at `http://127.0.0.1:18080/dashboard/` displayed the exact vehicle, source-backed procedure, Workers terminal events, and an honest unreviewed warning for provider sections that were not available. A repeat request displayed `Cache served` and `available · normalized`.
+- The live source currently lacks timing-belt and power-steering-pump article coverage for this row; the UI kept those sections explicitly labeled missing instead of fabricating instructions.
 
 ## Acceptance Criteria
 

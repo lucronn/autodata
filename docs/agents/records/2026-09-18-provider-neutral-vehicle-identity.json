@@ -15,6 +15,29 @@
     "Run focused, full, Compose, browser, cache-reuse, and GitHub verification"
   ],
   "base_sha": "66150187080cb8ad06d02672742b621c1072ee4a",
+  "implementation_sha": "59b369857e91e3bbec47101753c8ac04f79a66a2",
+  "verification": {
+    "focused_tests": "65 passed",
+    "ingestion_tests": "413 passed, 3 skipped, 12 subtests passed",
+    "go_api_tests": "ok github.com/lucronn/autodata/apps/api-go",
+    "compose_migration": "vehicle_provider_mappings and 028_vehicle_provider_mappings present",
+    "live_autoapitwo": {
+      "status": "matched",
+      "query": "99 Silverado 1500 2WD 5.3L",
+      "provider_car_id": "34218",
+      "canonical_vehicle": "1999 Chevrolet Silverado 1500 2WD 5.3L",
+      "score": 97,
+      "typed_mapping_count": 8
+    },
+    "browser": {
+      "url": "http://127.0.0.1:18080/dashboard/",
+      "procedure_visible": true,
+      "workers_terminal_visible": true,
+      "repeat_request_cache_label": "Cache served",
+      "review_label": "UNREVIEWED"
+    },
+    "source_gap_behavior": "timing-belt and power-steering-pump gaps remained explicitly labeled missing"
+  },
   "status": "synchronized",
-  "updated_at": "2026-09-18T16:35:00Z"
+  "updated_at": "2026-09-18T16:47:00Z"
 }

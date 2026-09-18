@@ -102,14 +102,25 @@ must point back through the mapping to source material.
 
 ## Concrete work queue
 
-- [ ] Add the typed provider mapping schema and persistence helpers.
-- [ ] Add deterministic AutoAPITwo candidate normalization and ambiguity
+- [x] Add the typed provider mapping schema and persistence helpers.
+- [x] Add deterministic AutoAPITwo candidate normalization and ambiguity
       handling.
-- [ ] Connect mapping resolution to the existing canonical vehicle graph and
+- [x] Connect mapping resolution to the existing canonical vehicle graph and
       source fallback.
-- [ ] Verify the Silverado acceptance case, cache reuse, provenance, and
+- [x] Verify the Silverado acceptance case, cache reuse, provenance, and
       browser-visible source trace.
-- [ ] Synchronize Issue #104, Project #8, repository records, tests, and CI.
+- [x] Synchronize Issue #104, Project #8, repository records, tests, and CI.
+
+## Current implementation evidence
+
+Commit `59b369857e91e3bbec47101753c8ac04f79a66a2` adds the typed mapping
+migration and resolver. The live acceptance query matched AutoAPITwo car
+`34218` to canonical `1999 Chevrolet Silverado 1500 2WD 5.3L`, retained the
+source car plus ACES vehicle and engine mappings, and rendered a source-backed
+procedure in the local dashboard. The Workers terminal showed interpretation,
+vehicle resolution, cache lookup, and source retrieval. Repeat connector use
+was served from the bounded local cache. Missing live source sections remained
+explicitly unreviewed/missing in the consumer output.
 
 The GitHub Project remains an index and work queue. This document and the
 implementation plan are the technical source of truth for the identity
