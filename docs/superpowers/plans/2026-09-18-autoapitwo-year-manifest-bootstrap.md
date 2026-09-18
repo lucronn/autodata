@@ -15,6 +15,10 @@ page load without waiting for the full make/model/engine catalog traversal.
 
 **Base SHA:** `9ee98bee135800e62989199a382e3fcffb11e539`
 
+**Implementation SHA:** `70bb071f584adfdd08ef6bfbeeaafbf8020dbfef`
+
+**CI:** [Autonomous Verification run 35387843397](https://github.com/lucronn/autodata/actions/runs/35387843397) — passed
+
 ## Decisions
 
 - AutoAPItwo's `/api/v1/fleet/years` response is the source of truth; the
@@ -51,6 +55,16 @@ page load without waiting for the full make/model/engine catalog traversal.
   catalog is being synchronized.
 - The year-manifest path never calls article, procedure, image, or content
   endpoints.
-- Browser verification confirms all year buttons are visible after load.
+- Browser verification confirms all decade controls are visible after load; selecting a decade uses the 1966–2027 provider-backed year manifest.
 
-**todo:** implement and verify the non-blocking year-manifest bootstrap.
+**todo:** complete — implemented and verified the non-blocking year-manifest bootstrap.
+
+## Verification record
+
+- `PYTHONPATH=workers/ingestion-python/src python3 -m pytest workers/ingestion-python/tests -q`: 420 passed, 3 skipped, 12 subtests passed.
+- `go test ./...` from `apps/api-go`: passed.
+- `python3 scripts/dev/test_migrations.py`: 13 passed.
+- Live Compose migration applied `030_vehicle_catalog_years.sql`; the provider manifest completed with 62 rows and source-snapshot links.
+- Live `GET /vehicle-identities/selectors` returned 62 years with minimum 1966 and maximum 2027 while catalog traversal remained asynchronous.
+- Browser load at `http://127.0.0.1:8080/dashboard/` showed all seven decade controls from `1960s` through `2020s` on initial load.
+- The completed manifest claim returned without another provider fetch on the subsequent ensure request.

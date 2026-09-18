@@ -10,7 +10,7 @@ does not mean downloading every repair article.
 
 The work is tracked in [Project #8](https://github.com/users/lucronn/projects/8)
 and the feature plan is
-[`2026-09-18-autoapitwo-vehicle-catalog-ingestion.md`](../superpowers/plans/2026-09-18-autoapitwo-vehicle-catalog-ingestion.md).
+[`2026-09-18-autoapitwo-year-manifest-bootstrap.md`](../superpowers/plans/2026-09-18-autoapitwo-year-manifest-bootstrap.md).
 
 ## Source traversal
 
@@ -62,6 +62,13 @@ immediately, so the user sees every year on load even while AutoAPItwo makes,
 models, engines, and provider vehicle summaries are still warming. Provider
 years discovered outside that range remain eligible for persistence and
 selection.
+
+The implementation stores the manifest in `vehicle_catalog_years`, links each
+row to an immutable `source_snapshots`/`source_artifacts` record, and exposes
+the range through the existing selector response immediately. The dashboard
+groups those years into all seven decade controls (`1960s` through `2020s`)
+on its initial load, then reveals the individual provider-backed years after a
+decade is chosen.
 
 The manifest path is cache-first, idempotent, bounded, and catalog-only. It
 does not fetch repair articles, procedures, PDFs, images, or content. A
