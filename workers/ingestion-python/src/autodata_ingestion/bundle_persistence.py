@@ -121,6 +121,7 @@ def persist_source_bundle(
                 reviewer_state=vehicle_evidence.get("reviewer_state", "pending"),
                 source_watermark=_source_version(artifact_by_hash[vehicle_evidence["content_sha256"]]),
                 raw_observation=vehicle,
+                provider_mappings=vehicle.get("provider_mappings") or [],
                 jsonb=Jsonb,
             )
 

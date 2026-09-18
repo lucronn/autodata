@@ -291,8 +291,7 @@ def render_guide_html(guide: Mapping[str, Any]) -> bytes:
             for image_evidence_id in _evidence_ids(image.get("evidence_ids") or image.get("evidence_id"))
         ]
         evidence = sorted(
-            set(guide_evidence)
-            | set(_evidence_ids(item.get("evidence_ids")))
+            set(_evidence_ids(item.get("evidence_ids")))
             | set(_evidence_ids(item.get("evidence")))
             | set(image_evidence)
         )

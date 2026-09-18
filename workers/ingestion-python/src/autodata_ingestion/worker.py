@@ -453,7 +453,16 @@ def _catalog_needs_procedure_content_hydration(
             articles.append(article)
     for component in requested:
         candidates = [article for article in articles if component in _article_components(article)]
-        if not candidates or not any(_article_procedure_instructions(article) for article in candidates):
+        if not candidates:
+            return True
+        for article in candidates:
+            derived_components = article.get("derived_components")
+            if isinstance(derived_components, list):
+                if _derived_article_has_source_instructions(article, set(requested)):
+                    break
+            elif _article_procedure_instructions(article):
+                break
+        else:
             return True
     return False
 
@@ -482,6 +491,8 @@ def _cached_derived_job_plan(
             continue
         if not _derived_article_covers_requested_components(article, requested_set):
             continue
+        if not _derived_article_has_source_instructions(article, requested_set):
+            continue
         if _mercury2_regeneration_required(article):
             continue
         status = str(article.get("status") or "needs_review")
@@ -507,6 +518,76 @@ def _cached_derived_job_plan(
             "cache_hit": True,
         }
     return None
+
+
+def _derived_article_has_source_instructions(
+    article: Mapping[str, object], requested: set[str]
+) -> bool:
+    """Require source-authored procedure text before reusing a warm revision.
+
+    A composed row can have complete component and labor metadata while still
+    containing only generated operation labels. Reusing that row would hide
+    the source article body that a cold lookup could hydrate. A step action is
+    accepted as instructional only when it carries more detail than a generic
+    component verb; explicit instructions always count when they are present.
+    """
+
+    procedure = article.get("procedure")
+    if not isinstance(procedure, Mapping):
+        return False
+    steps = procedure.get("steps", ())
+    if not isinstance(steps, (list, tuple)) or not steps:
+        return False
+    covered: set[str] = set()
+    instructional: set[str] = set()
+    for step in steps:
+        if isinstance(step, str):
+            text = " ".join(step.split()).strip()
+            if text and not _is_generic_derived_action(text):
+                instructional.update(requested)
+                covered.update(requested)
+            continue
+        if not isinstance(step, Mapping):
+            continue
+        values = step.get("components", step.get("component", ()))
+        if isinstance(values, str):
+            values = [values]
+        components = {
+            str(value).strip()
+            for value in values
+            if str(value).strip()
+        } if isinstance(values, (list, tuple, set)) else set()
+        covered.update(components)
+        instructions = step.get("instructions", step.get("instruction", ()))
+        if isinstance(instructions, str):
+            instructions = [instructions]
+        for instruction in instructions if isinstance(instructions, (list, tuple)) else ():
+            text = " ".join(str(instruction or "").split()).strip()
+            if text:
+                instructional.update(components)
+    return requested.issubset(instructional) and requested.issubset(covered)
+
+
+def _is_generic_derived_action(action: str) -> bool:
+    """Identify a label-only operation without rejecting detailed source text."""
+
+    normalized = re.sub(r"[^a-z0-9]+", " ", action.casefold()).strip()
+    if not normalized:
+        return True
+    if normalized.endswith(" r r"):
+        return True
+    if re.fullmatch(
+        r"[a-z0-9]+(?: [a-z0-9]+){0,7} (?:replacement|service|repair|inspection|installation|removal)",
+        normalized,
+    ):
+        return True
+    return bool(
+        re.fullmatch(
+            r"(?:remove|install|replace|service|inspect|check|repair) "
+            r"[a-z0-9]+(?: [a-z0-9]+){0,3}",
+            normalized,
+        )
+    )
 
 
 def _derived_article_covers_requested_components(

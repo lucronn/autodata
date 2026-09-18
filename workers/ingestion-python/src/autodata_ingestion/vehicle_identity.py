@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import re
 from typing import Any, Mapping
+import uuid
 
 
 _MAKE_ALIASES = {
@@ -156,6 +157,30 @@ def build_vehicle_configuration(observation: CanonicalVehicleObservation) -> Veh
 
 def build_vehicle_aliases(observation: CanonicalVehicleObservation) -> tuple[VehicleAlias, ...]:
     return observation.aliases
+
+
+def persisted_vehicle_key(observation: CanonicalVehicleObservation) -> str:
+    """Return the stable base key shared by provider candidates and persistence."""
+
+    return "-".join(
+        (
+            _slug(observation.make),
+            _slug(observation.model),
+            str(observation.year),
+            _slug(observation.region or ""),
+        )
+    )
+
+
+def stable_vehicle_identity_id(observation: CanonicalVehicleObservation) -> str:
+    """Return the deterministic AutoData UUID, never a provider identifier."""
+
+    return str(
+        uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"autodata-vehicle-identity:vehicle:{persisted_vehicle_key(observation)}",
+        )
+    )
 
 
 def review_vehicle_candidates(
@@ -534,4 +559,6 @@ __all__ = [
     "build_vehicle_configuration",
     "canonicalize_vehicle_observation",
     "review_vehicle_candidates",
+    "persisted_vehicle_key",
+    "stable_vehicle_identity_id",
 ]

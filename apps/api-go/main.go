@@ -145,6 +145,7 @@ func (s *Server) Handler() http.Handler {
 				return
 			}
 			response.Header().Set("Content-Type", "text/html; charset=utf-8")
+			response.Header().Set("Cache-Control", "no-cache")
 			_, _ = response.Write(body)
 			return
 		}
@@ -153,6 +154,7 @@ func (s *Server) Handler() http.Handler {
 			http.Error(response, "dashboard unavailable", http.StatusInternalServerError)
 			return
 		}
+		response.Header().Set("Cache-Control", "no-cache")
 		http.StripPrefix("/dashboard/", http.FileServer(http.FS(assets))).ServeHTTP(response, request)
 	})
 	mux.HandleFunc("GET /healthz", s.health)

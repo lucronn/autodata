@@ -3,6 +3,7 @@
 
   const CHAT_ROUTES = {
     query: "/chat/queries",
+    queryById: (queryId) => `/chat/queries/${encodeURIComponent(queryId)}`,
     selection: (queryId) => `/chat/queries/${encodeURIComponent(queryId)}/selections`,
     events: (queryId) => `/chat/queries/${encodeURIComponent(queryId)}/events`,
     legacyJobPlan: "/job-plans",
@@ -18,6 +19,7 @@
     lastAssistantMessage: null,
     terminalInitialized: false,
     detailView: false,
+    guideArtifacts: new Map(),
   };
 
   const $ = (id) => document.getElementById(id);
@@ -305,6 +307,76 @@
     return { response, payload };
   }
 
+  async function fetchGuideInNewWindow(event, link) {
+    event.preventDefault();
+    try {
+      const response = await fetch(link.href, { headers: authHeaders({ Accept: "text/html, application/pdf" }) });
+      if (!response.ok) throw new Error(`Guide returned HTTP ${response.status}`);
+      const contentType = response.headers.get("content-type") || "application/octet-stream";
+      const artifact = await response.blob();
+      state.guideArtifacts.set(link.href, artifact);
+      const artifactURL = URL.createObjectURL(new Blob([artifact], { type: contentType }));
+      const guideWindow = typeof window.open === "function" ? window.open("about:blank", "_blank") : null;
+      if (guideWindow) {
+        guideWindow.document.title = "AutoData procedure guide";
+        if (contentType.toLowerCase().includes("text/html")) {
+          guideWindow.document.open();
+          guideWindow.document.write(await artifact.text());
+          guideWindow.document.close();
+        } else {
+          guideWindow.location.replace(artifactURL);
+        }
+      } else {
+        const artifactLink = document.createElement("a");
+        artifactLink.href = artifactURL;
+        artifactLink.target = "_blank";
+        artifactLink.rel = "noopener noreferrer";
+        artifactLink.hidden = true;
+        document.body.appendChild(artifactLink);
+        artifactLink.click();
+        artifactLink.remove();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(artifactURL), 60000);
+    } catch (error) {
+      setResultStatus("Complete guide unavailable", "error");
+    }
+  }
+
+  function preloadGuideArtifact(link) {
+    if (!link || state.guideArtifacts.has(link.href)) return;
+    const pending = fetch(link.href, { headers: authHeaders({ Accept: "text/html, application/pdf" }) })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Guide returned HTTP ${response.status}`);
+        return response.blob();
+      })
+      .then((artifact) => {
+        state.guideArtifacts.set(link.href, artifact);
+        return artifact;
+      })
+      .catch(() => {
+        state.guideArtifacts.delete(link.href);
+        return null;
+      });
+    state.guideArtifacts.set(link.href, pending);
+  }
+
+  function openCachedGuideInNewWindow(event, link) {
+    const artifact = state.guideArtifacts.get(link.href);
+    if (!(artifact instanceof Blob)) return false;
+    event.preventDefault();
+    const artifactURL = URL.createObjectURL(artifact);
+    const artifactLink = document.createElement("a");
+    artifactLink.href = artifactURL;
+    artifactLink.target = "_blank";
+    artifactLink.rel = "noopener noreferrer";
+    artifactLink.hidden = true;
+    document.body.appendChild(artifactLink);
+    artifactLink.click();
+    artifactLink.remove();
+    window.setTimeout(() => URL.revokeObjectURL(artifactURL), 60000);
+    return true;
+  }
+
   function resetAnswer() {
     closeEventStream();
     state.queryId = null;
@@ -483,11 +555,21 @@
     const html = isObject(answer.html) && answer.html.ready === true ? answer.html : null;
     const htmlLink = $("procedure-html");
     htmlLink.hidden = !html;
-    if (html) htmlLink.href = text(html.url);
+    if (html) {
+      htmlLink.href = text(html.url);
+      htmlLink.target = "_blank";
+      htmlLink.rel = "noopener noreferrer";
+      preloadGuideArtifact(htmlLink);
+    }
     const pdf = isObject(answer.pdf) && answer.pdf.ready === true ? answer.pdf : null;
     const pdfLink = $("procedure-pdf");
     pdfLink.hidden = !pdf;
-    if (pdf) pdfLink.href = text(pdf.url);
+    if (pdf) {
+      pdfLink.href = text(pdf.url);
+      pdfLink.target = "_blank";
+      pdfLink.rel = "noopener noreferrer";
+      preloadGuideArtifact(pdfLink);
+    }
     const review = reviewState(procedure);
     const reviewBadge = $("review-badge");
     reviewBadge.hidden = !review || text(review).toLowerCase() === "approved";
@@ -859,6 +941,37 @@
     if (finalEvent) handleProgressEvent(finalEvent);
   }
 
+  async function refreshQueryAfterStream(queryId) {
+    // The worker can finish after the SSE connection has naturally ended. A
+    // final durable read keeps the UI from stopping at "source retrieval
+    // queued" and makes the published source instructions visible.
+    const maxAttempts = 120;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const result = await requestJSON(CHAT_ROUTES.queryById(queryId), {
+          method: "GET",
+          headers: authHeaders({ Accept: "application/json" }),
+        });
+        if (result.response.ok) {
+          state.payload = result.payload;
+          renderPayload(result.payload, result.response);
+          updateAssistantMessage(result.payload);
+          const answer = answerFrom(result.payload);
+          const dataState = dataStateFrom(result.payload, answer);
+          const answerStatus = answerStatusFrom(result.payload, answer);
+          const settled = !["processing", "normalizing", "source_unnormalized"].includes(dataState)
+            && !["processing", "pending"].includes(answerStatus);
+          if (settled) return;
+        }
+      } catch (_error) {
+        // The stream result remains visible while a transient GET is retried.
+      }
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+  }
+
   function handleProgressEvent(event) {
     if (!isObject(event)) return;
     if (event.event_id) state.lastEventId = text(event.event_id);
@@ -894,7 +1007,9 @@
         return;
       }
       setWorkerStatus("Streaming", "ready");
+      const durableRefresh = refreshQueryAfterStream(queryId);
       await readEventStream(response);
+      await durableRefresh;
       if (!controller.signal.aborted) setWorkerStatus("Stream ended", "idle");
     } catch (error) {
       if (error.name !== "AbortError") setWorkerStatus("Stream unavailable", "error");
@@ -927,7 +1042,7 @@
       renderPayload(payload, response);
       if (response.ok || response.status === 202) {
         addMessage("assistant", messageText(payload));
-        await openEventStream(state.queryId);
+        void openEventStream(state.queryId);
       }
     } catch (error) {
       setResultStatus("Selection failed", "error");
@@ -983,7 +1098,7 @@
         addMessage("assistant", messageText(result.payload));
         if (state.queryId) {
           setText("worker-query-id", state.queryId);
-          await openEventStream(state.queryId);
+          void openEventStream(state.queryId);
         }
       } else {
         addMessage("assistant", messageText(result.payload));
@@ -999,6 +1114,13 @@
 
   function bind() {
     $("query-form")?.addEventListener("submit", submitQuery);
+    for (const link of document.querySelectorAll("a[data-guide-artifact]")) {
+      link.addEventListener("click", (event) => {
+        if (!link.hidden && !openCachedGuideInNewWindow(event, link)) {
+          void fetchGuideInNewWindow(event, link);
+        }
+      });
+    }
     $("detail-toggle")?.addEventListener("click", () => setDetailView(!state.detailView));
     $("query")?.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {

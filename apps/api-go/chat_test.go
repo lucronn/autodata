@@ -234,6 +234,9 @@ func TestChatGuidePDFForwardsQueryIDAndReturnsPrivatePDF(t *testing.T) {
 	if response.Header().Get("Cache-Control") != "private, no-store" {
 		t.Fatalf("cache control = %q, want private, no-store", response.Header().Get("Cache-Control"))
 	}
+	if response.Header().Get("Content-Disposition") != `inline; filename="autodata-repair-guide.pdf"` {
+		t.Fatalf("content disposition = %q", response.Header().Get("Content-Disposition"))
+	}
 }
 
 func TestChatGuideHTMLForwardsQueryIDAndReturnsPrivateHTML(t *testing.T) {
@@ -253,7 +256,7 @@ func TestChatGuideHTMLForwardsQueryIDAndReturnsPrivateHTML(t *testing.T) {
 	if response.Header().Get("Content-Type") != "text/html; charset=utf-8" {
 		t.Fatalf("content type = %q, want text/html; charset=utf-8", response.Header().Get("Content-Type"))
 	}
-	if response.Header().Get("Content-Disposition") != `attachment; filename="autodata-repair-guide.html"` {
+	if response.Header().Get("Content-Disposition") != `inline; filename="autodata-repair-guide.html"` {
 		t.Fatalf("content disposition = %q", response.Header().Get("Content-Disposition"))
 	}
 	if response.Header().Get("Cache-Control") != "private, no-store" {

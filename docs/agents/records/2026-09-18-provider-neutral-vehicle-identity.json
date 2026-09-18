@@ -1,0 +1,49 @@
+{
+  "goal": "Resolve natural-language vehicle descriptions to a stable AutoData UUID while preserving provenance-bound one-to-many AutoAPITwo and ACES mappings",
+  "plan_ref": "docs/superpowers/plans/2026-09-18-provider-neutral-vehicle-identity.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/104",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/vehicle-identity.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add typed provider mapping persistence with source and evidence provenance",
+    "Normalize AutoAPITwo and ACES identifiers into deterministic vehicle candidates",
+    "Persist verified mappings against the canonical AutoData UUID and preserve ambiguity",
+    "Use the resolved AutoAPITwo car ID for the current Silverado source fallback",
+    "Run focused, full, Compose, browser, cache-reuse, and GitHub verification"
+  ],
+  "base_sha": "66150187080cb8ad06d02672742b621c1072ee4a",
+  "implementation_sha": "59b369857e91e3bbec47101753c8ac04f79a66a2",
+  "verification": {
+    "focused_tests": "65 passed",
+    "ingestion_tests": "413 passed, 3 skipped, 12 subtests passed",
+    "go_api_tests": "ok github.com/lucronn/autodata/apps/api-go",
+    "compose_migration": "vehicle_provider_mappings and 028_vehicle_provider_mappings present",
+    "live_autoapitwo": {
+      "status": "matched",
+      "query": "99 Silverado 1500 2WD 5.3L",
+      "provider_car_id": "34218",
+      "canonical_vehicle": "1999 Chevrolet Silverado 1500 2WD 5.3L",
+      "score": 97,
+      "typed_mapping_count": 8
+    },
+    "browser": {
+      "url": "http://127.0.0.1:18080/dashboard/",
+      "procedure_visible": true,
+      "workers_terminal_visible": true,
+      "repeat_request_cache_label": "Cache served",
+      "review_label": "UNREVIEWED"
+    },
+    "source_gap_behavior": "timing-belt and power-steering-pump gaps remained explicitly labeled missing"
+  },
+  "github_ci": {
+    "run_id": "35370494978",
+    "url": "https://github.com/lucronn/autodata/actions/runs/35370494978",
+    "head_sha": "125f0a296ee413d72ddc849e8a187dfa5bb6a5d3",
+    "conclusion": "success"
+  },
+  "status": "synchronized",
+  "updated_at": "2026-09-18T16:52:00Z"
+}

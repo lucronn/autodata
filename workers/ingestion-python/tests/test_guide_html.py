@@ -77,6 +77,30 @@ def test_render_guide_html_is_deterministic_standalone_and_escapes_content():
     assert "step-evidence-1" in document
 
 
+def test_render_guide_html_scopes_evidence_to_steps_and_deduplicates_aggregate():
+    guide = complete_guide()
+    guide["evidence_ids"] = ["guide-evidence-1", "guide-evidence-2", "guide-evidence-1"]
+    guide["steps"][0]["images"][0]["evidence_ids"] = ["figure-evidence-1", "figure-evidence-1"]
+
+    document = render_guide_html(guide).decode("utf-8")
+    step_sections = [
+        section.split("\n    </li>", 1)[0]
+        for section in document.split('<li class="step">')[1:]
+    ]
+
+    assert len(step_sections) == 2
+    assert "guide-evidence-1" not in step_sections[0]
+    assert "guide-evidence-2" not in step_sections[0]
+    assert "guide-evidence-1" not in step_sections[1]
+    assert "guide-evidence-2" not in step_sections[1]
+    assert "step-evidence-1" in step_sections[0]
+    assert "figure-evidence-1" in step_sections[0]
+    assert "step-evidence-2" in step_sections[1]
+    assert document.count("guide-evidence-1") == 1
+    assert document.count("guide-evidence-2") == 1
+    assert document.count("figure-evidence-1") == 1
+
+
 def test_render_guide_html_embeds_all_images_and_filters_generic_captions():
     guide = complete_guide()
     guide["steps"][0]["images"] = [

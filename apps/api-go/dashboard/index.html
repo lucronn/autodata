@@ -128,8 +128,8 @@
               <span class="review-badge" id="review-badge" hidden>UNREVIEWED</span>
             </div>
             <p class="generation-line" id="procedure-generation">A structured procedure will appear here.</p>
-            <a class="guide-button html-button" id="procedure-html" hidden download="autodata-repair-guide.html" href="#">Download complete guide as HTML <span aria-hidden="true">↗</span></a>
-            <a class="pdf-button" id="procedure-pdf" hidden download="autodata-repair-guide.pdf" href="#">Download complete guide as PDF <span aria-hidden="true">↗</span></a>
+            <a class="guide-button html-button" id="procedure-html" data-guide-artifact="html" hidden target="_blank" rel="noopener noreferrer" href="#">Open complete guide as HTML in a new window <span aria-hidden="true">↗</span></a>
+            <a class="pdf-button" id="procedure-pdf" data-guide-artifact="pdf" hidden target="_blank" rel="noopener noreferrer" href="#">Open complete guide as PDF in a new window <span aria-hidden="true">↗</span></a>
             <p class="technical-line technical-only" id="procedure-technical-generation"></p>
             <div class="notice-list" id="procedure-warnings" hidden></div>
             <ol class="procedure-steps" id="procedure-steps">
@@ -189,6 +189,6 @@
         </details>
       </section>
     </main>
-    <script src="/dashboard/app.js" defer></script>
+    <script src="/dashboard/app.js?v=procedure-window-auth-v4" defer></script>
   </body>
 </html>

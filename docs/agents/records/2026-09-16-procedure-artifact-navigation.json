@@ -1,0 +1,20 @@
+{
+  "goal": "Open complete AutoData procedure artifacts as formatted documents in a new browser tab or window without forcing downloads",
+  "plan_ref": "docs/superpowers/plans/2026-09-16-procedure-artifact-navigation.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/101",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/guide-artifacts.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Update dashboard guide links and dynamic bindings for new-tab rendering",
+    "Return inline HTML and PDF guide responses without changing authorization or artifact content",
+    "Add focused regression coverage for navigation and content disposition",
+    "Rebuild the local API and verify the formatted procedure opens in a separate browser tab or window",
+    "Synchronize the implementation SHA, Issue #101, Project #8, and CI evidence"
+  ],
+  "base_sha": "56c604046e1a8f493035846f62ae24388f058412",
+  "status": "synchronized",
+  "updated_at": "2026-09-16T07:21:01Z"
+}

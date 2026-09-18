@@ -1,0 +1,33 @@
+{
+  "goal": "Deduplicate and scope evidence references in generated procedure guides without changing provenance",
+  "plan_ref": "docs/superpowers/plans/2026-09-16-evidence-reference-deduplication.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/103",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/guide-artifacts.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add failing renderer tests for repeated guide-level evidence",
+    "Scope step and figure evidence to the supported procedure step",
+    "Render one deduplicated aggregate evidence section",
+    "Run renderer, worker, API, contract, and live guide verification",
+    "Synchronize the implementation SHA, Issue #103, Project #8, and CI evidence"
+  ],
+  "base_sha": "183ff01b472365ac422fb26bde6db7d2b27af69d",
+  "implementation_sha": "04e12d698541ac6bca4cc28fcd2071735860f0f5",
+  "verification": {
+    "local_suites": [
+      "ingestion: 406 passed, 3 skipped, 12 subtests passed",
+      "enrichment: 46 passed, 16 subtests passed",
+      "developer adapters: 77 passed, 2 subtests passed",
+      "contracts: 14 passed",
+      "autonomy preflight: 7 passed"
+    ],
+    "live_html": "HTTP 200; 99 step evidence blocks; one aggregate list with 1,104 unique references and zero aggregate duplicates",
+    "dashboard": "loaded at http://127.0.0.1:8080/dashboard/",
+    "github_ci": "Autonomous Verification run 35112725596 passed on implementation branch head"
+  },
+  "status": "synchronized",
+  "updated_at": "2026-09-16T15:03:08Z"
+}
