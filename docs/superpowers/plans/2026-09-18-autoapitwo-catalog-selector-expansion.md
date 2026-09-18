@@ -10,6 +10,18 @@
 
 **Spec:** `docs/architecture/vehicle-catalog-ingestion.md`
 
+**Issue:** https://github.com/lucronn/autodata/issues/107
+
+**Project:** https://github.com/users/lucronn/projects/8
+
+## Concrete todo
+
+- Propagate durable catalog readiness and row counts through the selector API.
+- Render model and engine/base configuration choices from normalized records.
+- Replace the active selector row in place after each choice to minimize cursor movement.
+- Verify AutoAPItwo traversal, persistence, local Compose behavior, browser interaction, and CI.
+- Synchronize the exact implementation SHA, Issue #107, Project #8, and CI evidence.
+
 ## Global Constraints
 
 - The selector response remains cache-first and non-blocking.
