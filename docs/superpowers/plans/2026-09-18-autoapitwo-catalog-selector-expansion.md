@@ -45,20 +45,20 @@
 - Consumes: existing `VehicleIdentitySelectors` and `VehicleIdentityRecord.Configurations` JSON fields.
 - Produces: documented selector hierarchy and readiness behavior for makes, models, and engine/base configurations.
 
-- [ ] **Step 1: Write the failing dashboard contract assertions**
+- [x] **Step 1: Write the failing dashboard contract assertions**
 
   Extend the dashboard route tests so the served HTML contains `model-step`, `model-list`, `configuration-step`, and `configuration-list`, and the JavaScript contains `renderModels`, `renderConfigurations`, and `catalog_sync` polling.
 
-- [ ] **Step 2: Run the dashboard test to verify it fails**
+- [x] **Step 2: Run the dashboard test to verify it fails**
 
   Run `go test ./...` from `apps/api-go`.
   Expected: FAIL because the new hierarchy controls and render functions do not exist.
 
-- [ ] **Step 3: Record the selector contract in the canonical architecture document**
+- [x] **Step 3: Record the selector contract in the canonical architecture document**
 
   Document that models are derived from normalized vehicle identity records for the selected year/make, and engine/base choices are derived from the matching configuration records. A configuration label must remain honest when displacement is unavailable: show `Base configuration` plus known drivetrain/trim rather than inventing an engine.
 
-- [ ] **Step 4: Commit the planning checkpoint**
+- [x] **Step 4: Commit the planning checkpoint**
 
   Commit only the plan, canonical document, synchronized record, and tracking updates after the gate preflight is complete.
 
@@ -75,20 +75,20 @@
 - Consumes: `vehicle_catalog_syncs` and `vehicle_configurations` PostgreSQL rows.
 - Produces: `VehicleIdentitySelectors.CatalogSync` with provider, source version, status, and row count; selector years remain available during all sync states.
 
-- [ ] **Step 1: Write the failing readiness test**
+- [x] **Step 1: Write the failing readiness test**
 
   Update the ingestion-client capture test to assert that selector reads still schedule idempotent catalog warm-up and add a pure selector test asserting that a catalog status of `completed` is not overwritten with `warming` by the HTTP handler.
 
-- [ ] **Step 2: Run the focused Go tests to verify failure**
+- [x] **Step 2: Run the focused Go tests to verify failure**
 
   Run `go test ./...` from `apps/api-go`.
   Expected: FAIL because the selector status currently always reports `warming` whenever an ingestion client exists.
 
-- [ ] **Step 3: Implement minimal durable status propagation**
+- [x] **Step 3: Implement minimal durable status propagation**
 
   Add `row_count` to `CatalogSyncStatus`, read the `fleet-vocabulary-v1` sync row in the PostgreSQL selector store, preserve an existing durable status in the HTTP response, and continue calling the idempotent ensure route so stale/failed runs can be retried by the existing claim logic.
 
-- [ ] **Step 4: Run the focused Go tests to verify success**
+- [x] **Step 4: Run the focused Go tests to verify success**
 
   Run `go test ./...` from `apps/api-go`.
   Expected: PASS with the new status assertions and existing selector tests.
@@ -105,24 +105,24 @@
 - Consumes: selector JSON containing `years`, `vehicles`, `model`, and `configurations`.
 - Produces: interactive decade -> year -> make initial -> make -> model -> engine/base selection with no direct provider calls.
 
-- [ ] **Step 1: Add the failing UI contract assertions**
+- [x] **Step 1: Add the failing UI contract assertions**
 
   Assert the dashboard HTML contains the model and configuration steps, and assert JavaScript markers for model/configuration state, data attributes, polling, and the configuration label formatter.
 
-- [ ] **Step 2: Run the dashboard tests to verify failure**
+- [x] **Step 2: Run the dashboard tests to verify failure**
 
   Run `go test ./...` from `apps/api-go`.
   Expected: FAIL because the new steps and functions are absent.
 
-- [ ] **Step 3: Implement the minimal hierarchy**
+- [x] **Step 3: Implement the minimal hierarchy**
 
   Replace the active choice row in place after each selection: decade buttons become individual years, the year row becomes make letters/makes, then models, then engine/base configurations. Keep only the currently relevant row visible and preserve a compact breadcrumb/selection label so pointer movement remains minimal. Filter records by selected year, make, and model. Group configurations deterministically by `configuration_key`; render a label from known engine displacement, drivetrain, and trim, using `Base configuration` when no displacement is present. Reset downstream selections whenever an upstream choice changes. Extend the selected label and continue button to include model and configuration.
 
-- [ ] **Step 4: Add non-blocking refresh while catalog sync is active**
+- [x] **Step 4: Add non-blocking refresh while catalog sync is active**
 
   Store `catalog_sync` from the response. While its status is `pending`, `running`, `partial`, `failed`, or `warming`, refresh selectors at a bounded interval; stop after `completed`, `dead_letter`, or the configured refresh deadline. Preserve the current user selection when refreshed records still contain it.
 
-- [ ] **Step 5: Run the dashboard tests to verify success**
+- [x] **Step 5: Run the dashboard tests to verify success**
 
   Run `go test ./...` from `apps/api-go`.
   Expected: PASS with all static dashboard markers present.
@@ -137,18 +137,27 @@
 - Consumes: live Compose services, AutoAPItwo fleet endpoints, dashboard, and GitHub CI.
 - Produces: exact SHA, test evidence, persisted catalog counts, browser evidence, and synchronized Issue/Project state.
 
-- [ ] **Step 1: Run deterministic local checks**
+- [x] **Step 1: Run deterministic local checks**
 
   Run `PYTHONPATH=workers/ingestion-python/src python3 -m pytest workers/ingestion-python/tests -q`, `go test ./...` from `apps/api-go`, `python3 scripts/dev/test_migrations.py`, and `git diff --check`.
 
-- [ ] **Step 2: Apply migrations and rebuild the local services**
+- [x] **Step 2: Apply migrations and rebuild the local services**
 
   Run the existing Compose migration runner, rebuild `ingestion-http` and `api`, and call `GET /vehicle-identities/selectors` with the local viewer token. Verify that the response includes years, makes/models/configurations as rows arrive and that the catalog sync status changes to `completed` without duplicate provider work.
 
 - [ ] **Step 3: Verify the browser hierarchy**
 
-  Reload `http://127.0.0.1:8080/dashboard/` in the browser. Confirm decade controls appear immediately, then choose a decade/year/make/make-letter and verify model and engine/base controls are populated from the normalized response.
+Reload `http://127.0.0.1:8080/dashboard/` in the browser. Confirm decade controls appear immediately, then choose a decade/year/make/make-letter and verify model and engine/base controls are populated from the normalized response.
 
-- [ ] **Step 4: Synchronize delivery records**
+The dashboard was reloaded and the initial decade controls were observed. Full
+click-through verification remains pending because the desktop browser
+automation surface became unavailable while the Mac was locked.
 
-  Update this plan, the canonical architecture document, the machine record, Issue #107, and its Project #8 item with the exact implementation SHA and successful CI URL. Push all intentional changes; preserve unrelated untracked directories.
+- [x] **Step 4: Synchronize delivery records**
+
+Update this plan, the canonical architecture document, the machine record, Issue #107, and its Project #8 item with the exact implementation SHA and successful CI URL. Push all intentional changes; preserve unrelated untracked directories.
+
+Implementation checkpoint: `81b43cc424d12d142349d08b752485ad4d287683`.
+CI: `https://github.com/lucronn/autodata/actions/runs/35396313029` (passed).
+Issue #107 and Project #8 are synchronized to this checkpoint and remain in
+`Review` until the browser click-through can be completed after desktop unlock.

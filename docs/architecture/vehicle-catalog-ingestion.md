@@ -70,7 +70,13 @@ groups those years into all seven decade controls (`1960s` through `2020s`)
 on its initial load. Its compact selector replaces the active row in place:
 choosing a decade replaces decade buttons with years, choosing a year replaces
 the row with makes, and subsequent choices reveal models and engine/base
-configurations without requiring pointer travel across multiple columns.
+configurations without requiring pointer travel across multiple columns. The
+selector reads models from normalized vehicle identity rows for the chosen
+year and make, then reads engine/base choices from their normalized
+configuration rows. While the AutoAPItwo traversal is still running, the API
+returns the durable sync status and row count and the dashboard refreshes at a
+bounded interval; it never calls the provider from the browser or blocks the
+selector on completion.
 
 The manifest path is cache-first, idempotent, bounded, and catalog-only. It
 does not fetch repair articles, procedures, PDFs, images, or content. A
