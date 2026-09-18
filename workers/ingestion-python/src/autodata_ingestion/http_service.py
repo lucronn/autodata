@@ -19,6 +19,7 @@ def dispatch_request(
     *,
     article_runner: Callable[[str, str], dict[str, object]] | None = None,
     catalog_sync_runner: Callable[[str], dict[str, object]] | None = None,
+    catalog_years_runner: Callable[[str], dict[str, object]] | None = None,
     knowledge_runner: Callable[[str], dict[str, object]] | None = None,
     job_runner: Callable[[str], dict[str, object]] | None = None,
     chat_create_runner: Callable[..., dict[str, object]] | None = None,
@@ -52,6 +53,12 @@ def dispatch_request(
 
             catalog_sync_runner = ensure_catalog_sync
         return catalog_sync_runner(json.dumps(dict(payload), ensure_ascii=False, sort_keys=True))
+    if request_path == "/v1/catalog-years/ensure":
+        if catalog_years_runner is None:
+            from .catalog_years import ensure_catalog_years
+
+            catalog_years_runner = ensure_catalog_years
+        return catalog_years_runner(json.dumps(dict(payload), ensure_ascii=False, sort_keys=True))
     if request_path == "/v1/article-intakes":
         source_uri = str(payload.get("source_uri", "")).strip()
         vehicle = payload.get("vehicle")

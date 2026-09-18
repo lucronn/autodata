@@ -67,6 +67,11 @@ class AutoAPITwoCatalogConnector:
 
         return list(self.iter_rows())
 
+    def fetch_years(self) -> list[str]:
+        """Fetch only the provider year manifest for the lightweight bootstrap."""
+
+        return self._years()
+
     def iter_rows(self) -> Iterator[dict[str, object]]:
         """Yield normalized rows as each engine scope becomes available."""
 

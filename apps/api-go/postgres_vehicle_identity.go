@@ -114,6 +114,27 @@ func (s *postgresVehicleIdentityStore) Selectors(_ Principal) (VehicleIdentitySe
 	if err := rows.Err(); err != nil {
 		return VehicleIdentitySelectors{}, err
 	}
+	yearRows, err := s.pool.Query(context.Background(), `
+		SELECT year
+		FROM vehicle_catalog_years
+		WHERE provider = 'autoapitwo'
+		ORDER BY year`)
+	if err != nil {
+		return VehicleIdentitySelectors{}, err
+	}
+	defer yearRows.Close()
+	for yearRows.Next() {
+		var year int
+		if err := yearRows.Scan(&year); err != nil {
+			return VehicleIdentitySelectors{}, err
+		}
+		if year >= 1886 && year <= 2100 {
+			years[year] = true
+		}
+	}
+	if err := yearRows.Err(); err != nil {
+		return VehicleIdentitySelectors{}, err
+	}
 	records, _, err := normalizeVehicleIdentityRows(identityRows)
 	if err != nil {
 		return VehicleIdentitySelectors{}, err

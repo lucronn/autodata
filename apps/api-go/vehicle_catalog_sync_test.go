@@ -9,25 +9,26 @@ import (
 )
 
 type catalogSyncCapture struct {
-	called chan struct{}
-	path   string
-	body   string
-	key    string
+	calls chan catalogSyncCall
+}
+
+type catalogSyncCall struct {
+	path string
+	body string
+	key  string
 }
 
 func (c *catalogSyncCapture) Do(_ *http.Request, path string, body []byte, key string) (int, []byte, error) {
-	c.path = path
-	c.body = string(body)
-	c.key = key
+	call := catalogSyncCall{path: path, body: string(body), key: key}
 	select {
-	case c.called <- struct{}{}:
+	case c.calls <- call:
 	default:
 	}
 	return http.StatusAccepted, []byte(`{"status":"scheduled"}`), nil
 }
 
 func TestSelectorsScheduleCatalogWarmupWhenDurableCatalogIsEmpty(t *testing.T) {
-	capture := &catalogSyncCapture{called: make(chan struct{}, 1)}
+	capture := &catalogSyncCapture{calls: make(chan catalogSyncCall, 2)}
 	server := NewServerWithIngestionClient(
 		staticReadiness{},
 		&fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}},
@@ -42,19 +43,30 @@ func TestSelectorsScheduleCatalogWarmupWhenDurableCatalogIsEmpty(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
-	select {
-	case <-capture.called:
-	case <-time.After(time.Second):
-		t.Fatal("selector read did not schedule catalog warmup")
+	calls := map[string]catalogSyncCall{}
+	deadline := time.After(time.Second)
+	for len(calls) < 2 {
+		select {
+		case call := <-capture.calls:
+			calls[call.path] = call
+		case <-deadline:
+			t.Fatal("selector read did not schedule both catalog warmups")
+		}
 	}
-	if capture.path != "/v1/catalog-sync/ensure" {
-		t.Fatalf("path = %q, want /v1/catalog-sync/ensure", capture.path)
+	for _, path := range []string{"/v1/catalog-years/ensure", "/v1/catalog-sync/ensure"} {
+		call, ok := calls[path]
+		if !ok {
+			t.Fatalf("scheduled paths = %#v, missing %s", calls, path)
+		}
+		if !strings.Contains(call.body, `"provider":"autoapitwo"`) {
+			t.Fatalf("body = %s, want autoapitwo provider", call.body)
+		}
 	}
-	if !strings.Contains(capture.body, `"provider":"autoapitwo"`) {
-		t.Fatalf("body = %s, want autoapitwo provider", capture.body)
+	if calls["/v1/catalog-years/ensure"].key != "catalog-years:autoapitwo:autoapitwo-fleet-v1" {
+		t.Fatalf("year manifest idempotency key = %q", calls["/v1/catalog-years/ensure"].key)
 	}
-	if capture.key != "catalog-sync:autoapitwo:autoapitwo-fleet-v1" {
-		t.Fatalf("idempotency key = %q", capture.key)
+	if calls["/v1/catalog-sync/ensure"].key != "catalog-sync:autoapitwo:autoapitwo-fleet-v1" {
+		t.Fatalf("catalog idempotency key = %q", calls["/v1/catalog-sync/ensure"].key)
 	}
 	if !strings.Contains(response.Body.String(), `"catalog_sync"`) {
 		t.Fatalf("body = %s, want catalog_sync readiness", response.Body.String())

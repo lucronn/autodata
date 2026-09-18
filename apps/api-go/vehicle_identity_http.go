@@ -47,19 +47,30 @@ func (s *Server) listVehicleIdentitySelectors(response http.ResponseWriter, requ
 		writeAPIError(response, request, http.StatusInternalServerError, "INVALID_REQUEST", "vehicle selectors could not be read", true)
 		return
 	}
+	selectors.Years = mergeConfiguredCatalogYears(selectors.Years)
 	if s.ingestionClient != nil {
 		selectors.CatalogSync = &CatalogSyncStatus{
 			Provider:      "autoapitwo",
 			SourceVersion: "autoapitwo-fleet-v1",
 			Status:        "warming",
 		}
-		body := []byte(`{"provider":"autoapitwo","source_version":"autoapitwo-fleet-v1"}`)
+		yearBody := []byte(`{"provider":"autoapitwo","source_version":"autoapitwo-fleet-v1"}`)
+		catalogBody := []byte(`{"provider":"autoapitwo","source_version":"autoapitwo-fleet-v1"}`)
 		incoming := request.Clone(context.Background())
+		catalogIncoming := request.Clone(context.Background())
 		go func() {
 			_, _, _ = s.ingestionClient.Do(
 				incoming,
+				"/v1/catalog-years/ensure",
+				yearBody,
+				"catalog-years:autoapitwo:autoapitwo-fleet-v1",
+			)
+		}()
+		go func() {
+			_, _, _ = s.ingestionClient.Do(
+				catalogIncoming,
 				"/v1/catalog-sync/ensure",
-				body,
+				catalogBody,
 				"catalog-sync:autoapitwo:autoapitwo-fleet-v1",
 			)
 		}()

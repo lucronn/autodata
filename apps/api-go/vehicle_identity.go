@@ -14,6 +14,11 @@ var (
 	ErrVehicleIdentityConflict = errors.New("vehicle identity request conflicts with an existing request")
 )
 
+const (
+	catalogFirstYear = 1966
+	catalogLastYear  = 2027
+)
+
 type VehicleIdentityRow struct {
 	Year                   any      `json:"year"`
 	Make                   string   `json:"make"`
@@ -79,6 +84,21 @@ type CatalogSyncStatus struct {
 type VehicleIdentityStore interface {
 	Resolve(Principal, VehicleIdentityResolveInput, string) (VehicleIdentityResolveRecord, bool, error)
 	Selectors(Principal) (VehicleIdentitySelectors, error)
+}
+
+// mergeConfiguredCatalogYears keeps the selector useful immediately while
+// the provider-backed year manifest is being refreshed asynchronously.
+func mergeConfiguredCatalogYears(years []int) []int {
+	seen := make(map[int]bool, len(years)+catalogLastYear-catalogFirstYear+1)
+	for _, year := range years {
+		if year >= 1886 && year <= 2100 {
+			seen[year] = true
+		}
+	}
+	for year := catalogFirstYear; year <= catalogLastYear; year++ {
+		seen[year] = true
+	}
+	return sortedInts(seen)
 }
 
 type memoryVehicleIdentityStore struct {

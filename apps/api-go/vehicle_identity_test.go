@@ -112,6 +112,27 @@ func TestVehicleIdentitySelectorsIncludeEngineAndTrimValues(t *testing.T) {
 	}
 }
 
+func TestVehicleIdentitySelectorsIncludeConfiguredCatalogYearRange(t *testing.T) {
+	server := NewServer(staticReadiness{})
+	request := httptest.NewRequest(http.MethodGet, "/vehicle-identities/selectors", nil)
+	request.Header.Set("Authorization", "Bearer local:org-1:dataset_viewer")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("selector status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var selectors VehicleIdentitySelectors
+	if err := json.NewDecoder(response.Body).Decode(&selectors); err != nil {
+		t.Fatal(err)
+	}
+	if len(selectors.Years) != catalogLastYear-catalogFirstYear+1 {
+		t.Fatalf("years = %d, want %d", len(selectors.Years), catalogLastYear-catalogFirstYear+1)
+	}
+	if selectors.Years[0] != catalogFirstYear || selectors.Years[len(selectors.Years)-1] != catalogLastYear {
+		t.Fatalf("year range = %d-%d, want %d-%d", selectors.Years[0], selectors.Years[len(selectors.Years)-1], catalogFirstYear, catalogLastYear)
+	}
+}
+
 func TestVehicleIdentityResolveIsIdempotent(t *testing.T) {
 	server := NewServer(staticReadiness{})
 	body := `{"vehicles":[{"year":1999,"make":"Chevrolet","model":"Silverado 1500","region":"US"}]}`

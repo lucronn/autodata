@@ -12,6 +12,19 @@ from autodata_ingestion.autoapitwo_catalog import AutoAPITwoCatalogConnector  # 
 
 
 class AutoAPITwoCatalogTests(unittest.TestCase):
+    def test_fetch_years_returns_sorted_valid_provider_years(self):
+        def opener(request, **_kwargs):
+            self.assertTrue(request.full_url.endswith("/api/v1/fleet/years"))
+            return io.BytesIO(json.dumps([
+                {"year": "2027"}, {"year": "1966"}, {"year": "2027"}, {"year": "not-a-year"}
+            ]).encode("utf-8"))
+
+        connector = AutoAPITwoCatalogConnector(
+            "https://autoapitwo.test", opener=opener, retry_delay=0
+        )
+
+        self.assertEqual(connector.fetch_years(), ["1966", "2027"])
+
     def test_traverses_vocabulary_and_emits_engine_identity_rows_without_content_calls(self):
         payloads = {
             "/api/v1/fleet/years": [{"year": "1999"}],

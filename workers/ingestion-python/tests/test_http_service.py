@@ -10,6 +10,22 @@ from autodata_ingestion.http_service import _is_chat_html_path, dispatch_request
 
 
 class HTTPServiceTests(unittest.TestCase):
+    def test_catalog_years_dispatches_manifest_warmup_request(self):
+        calls = []
+
+        def catalog_years_runner(serialized_request):
+            calls.append(json.loads(serialized_request))
+            return {"status": "scheduled", "provider": "autoapitwo", "years": 62}
+
+        result = dispatch_request(
+            "/v1/catalog-years/ensure",
+            {"source_version": "autoapitwo-fleet-v1"},
+            catalog_years_runner=catalog_years_runner,
+        )
+
+        self.assertEqual(result["years"], 62)
+        self.assertEqual(calls, [{"source_version": "autoapitwo-fleet-v1"}])
+
     def test_catalog_sync_dispatches_idempotent_warmup_request(self):
         calls = []
 
