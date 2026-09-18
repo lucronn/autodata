@@ -12,6 +12,10 @@
 
 **Project:** https://github.com/users/lucronn/projects/8
 
+**todo:** Add the typed provider mapping contract, deterministic AutoAPITwo
+resolution, canonical UUID persistence, Silverado source fallback, and
+focused/full/browser/cache/CI verification.
+
 ## Global Constraints
 
 - The AutoData UUID is the only internal vehicle identifier used by domain and purchaser-facing code.
