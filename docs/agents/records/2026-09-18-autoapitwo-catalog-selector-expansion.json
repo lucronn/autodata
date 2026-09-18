@@ -20,7 +20,7 @@
   "verification": {
     "local": "go, Python, migration, JavaScript syntax, diff, Compose rebuild, and selector endpoint checks passed",
     "catalog_response": "62 years, 2741 normalized vehicle rows, 7800 catalog configurations, status running",
-    "browser": "initial decade controls loaded; full click-through pending desktop unlock"
+    "browser": "passed 1990s -> 1999 -> C -> Chevrolet -> Silverado 1500 -> 5.3L engine · 2WD; selected summary and Continue rendered"
   },
   "status": "synchronized",
   "updated_at": "2026-09-18T21:30:00Z"

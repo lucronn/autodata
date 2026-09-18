@@ -145,13 +145,13 @@
 
   Run the existing Compose migration runner, rebuild `ingestion-http` and `api`, and call `GET /vehicle-identities/selectors` with the local viewer token. Verify that the response includes years, makes/models/configurations as rows arrive and that the catalog sync status changes to `completed` without duplicate provider work.
 
-- [ ] **Step 3: Verify the browser hierarchy**
+- [x] **Step 3: Verify the browser hierarchy**
 
 Reload `http://127.0.0.1:8080/dashboard/` in the browser. Confirm decade controls appear immediately, then choose a decade/year/make/make-letter and verify model and engine/base controls are populated from the normalized response.
 
-The dashboard was reloaded and the initial decade controls were observed. Full
-click-through verification remains pending because the desktop browser
-automation surface became unavailable while the Mac was locked.
+Browser verification passed on `http://127.0.0.1:8080/dashboard/`: 1990s ->
+1999 -> C -> Chevrolet -> Silverado 1500 -> `5.3L engine · 2WD`. The
+selected-vehicle summary and Continue control were rendered.
 
 - [x] **Step 4: Synchronize delivery records**
 
@@ -159,5 +159,5 @@ Update this plan, the canonical architecture document, the machine record, Issue
 
 Implementation checkpoint: `81b43cc424d12d142349d08b752485ad4d287683`.
 CI: `https://github.com/lucronn/autodata/actions/runs/35396313029` (passed).
-Issue #107 and Project #8 are synchronized to this checkpoint and remain in
-`Review` until the browser click-through can be completed after desktop unlock.
+Issue #107 and Project #8 are synchronized to this checkpoint; the item is
+ready to close after the documentation CI for this final record update passes.
