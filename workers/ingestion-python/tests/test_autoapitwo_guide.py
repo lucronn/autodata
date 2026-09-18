@@ -77,6 +77,31 @@ class SilveradoCandidateConnector:
 
 
 class IllustratedGuideTests(unittest.TestCase):
+    def test_configured_provider_connector_is_reused_for_fast_repeat_lookups(self):
+        from autodata_ingestion import autoapitwo_guide
+
+        created = []
+
+        class Connector:
+            pass
+
+        original = autoapitwo_guide.AutoAPITwoConnector
+        original_connector = autoapitwo_guide._CONFIGURED_CONNECTOR
+        original_base = autoapitwo_guide._CONFIGURED_CONNECTOR_BASE
+        try:
+            autoapitwo_guide._CONFIGURED_CONNECTOR = None
+            autoapitwo_guide._CONFIGURED_CONNECTOR_BASE = None
+            autoapitwo_guide.AutoAPITwoConnector = lambda base: created.append(base) or Connector()
+            first = autoapitwo_guide._configured_connector()
+            second = autoapitwo_guide._configured_connector()
+        finally:
+            autoapitwo_guide.AutoAPITwoConnector = original
+            autoapitwo_guide._CONFIGURED_CONNECTOR = original_connector
+            autoapitwo_guide._CONFIGURED_CONNECTOR_BASE = original_base
+
+        self.assertIs(first, second)
+        self.assertEqual(created, ["https://autoapitwo.vercel.app"])
+
     def test_applicability_preserves_exact_selected_vehicle_label(self):
         vehicle = {
             "year": 1997,

@@ -11,9 +11,12 @@ from hashlib import sha256
 import json
 import os
 import re
+from threading import RLock
 from typing import Any, Iterable, Mapping
 
 from .autoapitwo_connector import AutoAPITwoConnector, SourceUnavailable
+from .vehicle_identity import canonicalize_vehicle_observation, stable_vehicle_identity_id
+from .vehicle_identity_provider import normalize_autoapitwo_candidate, resolve_autoapitwo_vehicle
 
 
 _COMPONENT_TERMS = {
@@ -26,11 +29,19 @@ _COMPONENT_TERMS = {
     "brakes": "brake",
 }
 
+_CONFIGURED_CONNECTOR: AutoAPITwoConnector | None = None
+_CONFIGURED_CONNECTOR_BASE: str | None = None
+_CONFIGURED_CONNECTOR_LOCK = RLock()
+
 
 def _configured_connector() -> AutoAPITwoConnector:
-    return AutoAPITwoConnector(
-        os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "https://autoapitwo.vercel.app")
-    )
+    global _CONFIGURED_CONNECTOR, _CONFIGURED_CONNECTOR_BASE
+    base_url = os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "https://autoapitwo.vercel.app")
+    with _CONFIGURED_CONNECTOR_LOCK:
+        if _CONFIGURED_CONNECTOR is None or _CONFIGURED_CONNECTOR_BASE != base_url:
+            _CONFIGURED_CONNECTOR = AutoAPITwoConnector(base_url)
+            _CONFIGURED_CONNECTOR_BASE = base_url
+        return _CONFIGURED_CONNECTOR
 
 
 def _components(query: str) -> list[str]:
@@ -60,43 +71,37 @@ def _engine_litres(value: Any) -> float | None:
 
 
 def _vehicle_candidate(raw: Mapping[str, Any], index: int) -> dict[str, Any] | None:
-    provider_id = str(raw.get("id") or "").strip()
-    if not provider_id.isdigit():
+    try:
+        normalized = normalize_autoapitwo_candidate(raw)
+    except (TypeError, ValueError):
         return None
-    description = str(raw.get("description") or "").strip()
-    model_text = str(raw.get("model") or "").strip()
-    model = re.split(r"\s+(?:(?:2|4)-Door|2WD|4WD)\b", model_text, maxsplit=1, flags=re.IGNORECASE)[0].strip()
-    if not model:
-        return None
-    body_match = re.search(r"\b(2|4)-Door\b", model_text, re.IGNORECASE)
-    drive_match = re.search(r"\b(2WD|4WD)\b", model_text, re.IGNORECASE)
-    raw_make = str(raw.get("make") or "").strip()
-    make = re.sub(r"\s+Truck$", "", raw_make, flags=re.IGNORECASE)
-    prose_make = re.fullmatch(r"For\s+(?:A|An|The)\s+(.+)", make, re.IGNORECASE)
-    if prose_make and prose_make.group(1).strip():
-        make = prose_make.group(1).strip()
-    year = _number(raw.get("year"))
-    if year is None or not make:
-        return None
-    candidate_key = f"autoapitwo:{provider_id}"
-    label = description or f"{year} {make} {model}"
-    if prose_make and description:
-        provider_prefix = re.compile(
-            rf"^\s*{year}\s+{re.escape(raw_make)}(?=\s|$)", re.IGNORECASE
-        )
-        label = provider_prefix.sub(f"{year} {make}", description, count=1)
+    provider_id = normalized["provider_car_id"]
+    observation = normalized["observation"]
+    values = observation.to_dict()
+    year = values["year"]
+    make = values["make"]
+    model = values["model"]
+    candidate_key = normalized["candidate_key"]
+    label_parts = [str(year), make, model]
+    for field in ("body_style", "drivetrain"):
+        if values.get(field):
+            label_parts.append(str(values[field]))
+    if values.get("engine_displacement_l") is not None:
+        label_parts.append(f'{values["engine_displacement_l"]:g}L')
     return {
-        "vehicle_id": f"vehicle:{sha256(candidate_key.encode()).hexdigest()[:24]}",
+        "vehicle_id": stable_vehicle_identity_id(observation),
         "candidate_key": candidate_key,
         "autoapitwo_vehicle_id": provider_id,
         "year": year,
         "make": make,
         "model": model,
-        "region": "US",
-        "body_style": body_match.group(1) + "-door" if body_match else None,
-        "drivetrain": drive_match.group(1).upper() if drive_match else None,
-        "engine_displacement_l": _engine_litres(raw.get("engine")),
-        "label": label,
+        "region": values.get("region") or "US",
+        "body_style": values.get("body_style"),
+        "drivetrain": values.get("drivetrain"),
+        "engine_displacement_l": values.get("engine_displacement_l"),
+        "label": " ".join(label_parts),
+        "provider_mappings": normalized["provider_mappings"],
+        "provider_identity": normalized,
         "confidence": 1.0,
     }
 
@@ -130,6 +135,15 @@ def vehicle_candidates_from_autoapitwo(
         if candidate and candidate["candidate_key"] not in seen:
             candidates.append(candidate)
             seen.add(candidate["candidate_key"])
+    if candidates:
+        try:
+            requested = canonicalize_vehicle_observation(search_text)
+            resolution = resolve_autoapitwo_vehicle(requested, values)
+            if resolution.status == "matched" and resolution.selected is not None:
+                selected_key = resolution.selected["candidate_key"]
+                candidates = [candidate for candidate in candidates if candidate["candidate_key"] == selected_key]
+        except (TypeError, ValueError):
+            pass
     return candidates
 
 

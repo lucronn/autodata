@@ -12,6 +12,8 @@ from .vehicle_identity import (
     VehicleReviewState,
     build_vehicle_aliases,
     canonicalize_vehicle_observation,
+    persisted_vehicle_key,
+    stable_vehicle_identity_id,
 )
 
 
@@ -60,6 +62,7 @@ def persist_vehicle_identity_resolution(
     source_watermark: str,
     raw_observation: Any | None = None,
     resolution: VehicleReviewState | None = None,
+    provider_mappings: list[dict[str, Any]] | None = None,
     jsonb: JsonAdapter = lambda value: value,
 ) -> VehicleIdentityPersistenceResult:
     """Persist one normalized vehicle identity observation and graph facts."""
@@ -69,7 +72,7 @@ def persist_vehicle_identity_resolution(
     if observation.region is None:
         raise ValueError("vehicle identity persistence requires a non-null region")
 
-    vehicle_key = _legacy_vehicle_key(observation)
+    vehicle_key = persisted_vehicle_key(observation)
     vehicle_id = _upsert_returning_id(
         cursor,
         """
@@ -84,7 +87,7 @@ def persist_vehicle_identity_resolution(
         RETURNING vehicle_id
         """,
         (
-            _stable_uuid(f"vehicle:{vehicle_key}"),
+            stable_vehicle_identity_id(observation),
             vehicle_key,
             observation.make,
             observation.model,
@@ -296,6 +299,21 @@ def persist_vehicle_identity_resolution(
         jsonb=jsonb,
     )
 
+    for mapping in provider_mappings or []:
+        persist_vehicle_provider_mapping(
+            cursor,
+            vehicle_id=vehicle_id,
+            vehicle_configuration_id=configuration_id,
+            source_snapshot_id=source_snapshot_id,
+            extraction_evidence_id=extraction_evidence_id,
+            source_locator=source_locator,
+            evidence_locator=evidence_locator,
+            default_confidence=evidence_confidence,
+            mapping=mapping,
+            reviewer_state=reviewer_state,
+            jsonb=jsonb,
+        )
+
     return VehicleIdentityPersistenceResult(
         vehicle_id=vehicle_id,
         vehicle_key=vehicle_key,
@@ -307,6 +325,73 @@ def persist_vehicle_identity_resolution(
         observation_key=observation_key,
         resolution_status=resolution_status,
         resolution_reason=resolution_reason,
+    )
+
+
+def persist_vehicle_provider_mapping(
+    cursor: Any,
+    *,
+    vehicle_id: str,
+    vehicle_configuration_id: str | None,
+    source_snapshot_id: str,
+    extraction_evidence_id: str,
+    source_locator: str,
+    evidence_locator: str,
+    default_confidence: float,
+    mapping: dict[str, Any],
+    reviewer_state: str,
+    jsonb: JsonAdapter = lambda value: value,
+) -> str:
+    """Persist one typed provider identifier without collapsing shared ACES IDs."""
+
+    _validate_reviewer_state(reviewer_state)
+    confidence = float(mapping.get("confidence", default_confidence))
+    _validate_confidence(confidence)
+    provider = str(mapping.get("provider") or "").strip()
+    entity_type = str(mapping.get("entity_type") or "").strip()
+    provider_id = str(mapping.get("provider_id") or "").strip()
+    if not provider or entity_type not in {"car", "aces_vehicle", "aces_engine", "aces_vec"} or not provider_id:
+        raise ValueError("provider mapping requires provider, supported entity_type, and provider_id")
+    mapping_key = "|".join((vehicle_id, str(vehicle_configuration_id or ""), provider, entity_type, provider_id))
+    return _upsert_returning_id(
+        cursor,
+        """
+        INSERT INTO vehicle_provider_mappings
+            (vehicle_provider_mapping_id, mapping_key, vehicle_id, vehicle_configuration_id,
+             provider, entity_type, provider_id, provider_label, source_snapshot_id,
+             extraction_evidence_id, source_locator, evidence_locator,
+             evidence_confidence, mapping_status, raw_mapping)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (mapping_key)
+        DO UPDATE SET vehicle_configuration_id = EXCLUDED.vehicle_configuration_id,
+                      provider_label = EXCLUDED.provider_label,
+                      source_snapshot_id = EXCLUDED.source_snapshot_id,
+                      extraction_evidence_id = EXCLUDED.extraction_evidence_id,
+                      source_locator = EXCLUDED.source_locator,
+                      evidence_locator = EXCLUDED.evidence_locator,
+                      evidence_confidence = EXCLUDED.evidence_confidence,
+                      mapping_status = EXCLUDED.mapping_status,
+                      raw_mapping = EXCLUDED.raw_mapping,
+                      updated_at = now()
+        RETURNING vehicle_provider_mapping_id
+        """,
+        (
+            _stable_uuid(f"vehicle-provider-mapping:{mapping_key}"),
+            mapping_key,
+            vehicle_id,
+            vehicle_configuration_id,
+            provider,
+            entity_type,
+            provider_id,
+            mapping.get("provider_label"),
+            source_snapshot_id,
+            extraction_evidence_id,
+            source_locator,
+            evidence_locator,
+            confidence,
+            "verified" if reviewer_state == "approved" else "pending" if reviewer_state == "pending" else "rejected",
+            jsonb(mapping.get("raw_mapping", mapping)),
+        ),
     )
 
 
@@ -651,5 +736,6 @@ __all__ = [
     "canonicalize_vehicle_observation",
     "persist_catalog_article_duplicate_link",
     "persist_unresolved_vehicle_identity_observation",
+    "persist_vehicle_provider_mapping",
     "persist_vehicle_identity_resolution",
 ]

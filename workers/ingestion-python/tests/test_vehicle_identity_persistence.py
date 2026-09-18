@@ -82,6 +82,74 @@ class VehicleIdentityPersistenceTests(unittest.TestCase):
         self.assertIn("INSERT INTO schema_migrations (version)", migration)
         self.assertIn("015_vehicle_identity_resolution", migration)
 
+    def test_provider_mapping_migration_allows_one_aces_id_on_many_vehicles(self):
+        migration = (ROOT / "db/migrations/028_vehicle_provider_mappings.sql").read_text()
+
+        self.assertIn("CREATE TABLE IF NOT EXISTS vehicle_provider_mappings", migration)
+        self.assertIn("provider text NOT NULL", migration)
+        self.assertIn("entity_type text NOT NULL", migration)
+        self.assertIn("provider_id text NOT NULL", migration)
+        self.assertIn("mapping_key text NOT NULL UNIQUE", migration)
+        self.assertIn("source_snapshot_id uuid NOT NULL REFERENCES source_snapshots(source_snapshot_id)", migration)
+        self.assertIn("extraction_evidence_id uuid NOT NULL REFERENCES extraction_evidence(extraction_evidence_id)", migration)
+        self.assertIn("aces_engine", migration)
+        self.assertNotIn("UNIQUE (provider, entity_type, provider_id)", migration)
+        self.assertIn("028_vehicle_provider_mappings", migration)
+
+    def test_persists_typed_provider_mappings_against_resolved_identity(self):
+        module = self._module()
+        cursor = RecordingCursor()
+        observation = module.canonicalize_vehicle_observation(
+            {
+                "year": 1999,
+                "make": "Chevrolet",
+                "model": "Silverado 1500",
+                "region": "US",
+                "drivetrain": "2WD",
+                "engine": "5.3L",
+            }
+        )
+
+        result = module.persist_vehicle_identity_resolution(
+            cursor,
+            observation,
+            source_snapshot_id="snapshot-autoapitwo",
+            extraction_evidence_id="evidence-autoapitwo",
+            source_locator="autoapitwo:search/34218",
+            evidence_locator="autoapitwo:search/34218",
+            evidence_confidence=0.99,
+            reviewer_state="approved",
+            source_watermark="sha256:provider-response",
+            provider_mappings=[
+                {
+                    "provider": "autoapitwo",
+                    "entity_type": "car",
+                    "provider_id": "34218",
+                    "provider_label": "1999 Chevy Truck C 1500 Truck 2WD V8-5.3L VIN T",
+                    "confidence": 0.99,
+                    "raw_mapping": {"id": "34218"},
+                },
+                {
+                    "provider": "autoapitwo",
+                    "entity_type": "aces_engine",
+                    "provider_id": "7910",
+                    "provider_label": "V8-5.3L 5328cc OHV MFI VIN T (LM7)",
+                    "confidence": 0.99,
+                    "raw_mapping": {"id": "7910"},
+                },
+            ],
+            jsonb=lambda value: value,
+        )
+
+        mapping_queries = [
+            (query, params)
+            for query, params in cursor.calls
+            if "INSERT INTO vehicle_provider_mappings" in " ".join(query.split())
+        ]
+        self.assertEqual(len(mapping_queries), 2)
+        self.assertTrue(all(params[2] == result.vehicle_id for _, params in mapping_queries))
+        self.assertTrue(all("ON CONFLICT (mapping_key)" in " ".join(query.split()) for query, _ in mapping_queries))
+
     def test_configuration_schema_inherits_drivetrain_from_stable_base(self):
         migration = (ROOT / "db/migrations/015_vehicle_identity_resolution.sql").read_text()
         bases = _table_definition(migration, "vehicle_identity_bases")
