@@ -53,7 +53,8 @@ class AutoAPITwoCatalogTests(unittest.TestCase):
                 "year": 1999,
                 "make": "Toyota",
                 "model": "Avalon XL",
-                "engine": "V6-3.0L (1MZ-FE)",
+                "engine": 3.0,
+                "engine_label": "V6-3.0L (1MZ-FE)",
                 "region": "US",
                 "autoapitwo_vehicle_id": "33496",
                 "provider_mappings": [
@@ -122,6 +123,18 @@ class AutoAPITwoCatalogTests(unittest.TestCase):
             "https://autoapitwo.test", opener=opener, retry_delay=0
         )
         self.assertEqual(len(list(connector.iter_rows())), 1)
+
+    def test_preserves_engine_labels_that_have_no_numeric_displacement(self):
+        from autodata_ingestion.autoapitwo_catalog import _row
+
+        row = _row(
+            "2024", "Tesla", "Model 3", "Electric",
+            {"year": "2024", "make": "Tesla", "model": "Model 3", "engine": "Electric"},
+            "/api/v1/fleet/carids/1",
+        )
+
+        self.assertIsNone(row["engine"])
+        self.assertEqual(row["engine_label"], "Electric")
 
 
 if __name__ == "__main__":

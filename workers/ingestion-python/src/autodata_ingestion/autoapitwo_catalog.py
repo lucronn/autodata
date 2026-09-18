@@ -201,11 +201,14 @@ def _row(year: str, make: str, model: str, engine: str, car: dict[str, object], 
             match = re.match(r"\s*(\d+)\s*:", str(value))
             if match:
                 mappings.append({"provider": "autoapitwo", "entity_type": entity_type, "provider_id": match.group(1)})
+    raw_engine = _text(car.get("engine")) or engine
+    engine_displacement = _engine_displacement(raw_engine)
     row = {
         "year": int(_text(car.get("year")) or year),
         "make": _text(car.get("make")) or make,
         "model": _text(car.get("model")) or model,
-        "engine": _text(car.get("engine")) or engine,
+        "engine": engine_displacement,
+        "engine_label": raw_engine,
         "region": "CA" if _is_canadian(car) else "US",
         "provider_mappings": _unique_mappings(mappings),
     }
@@ -219,6 +222,11 @@ def _row(year: str, make: str, model: str, engine: str, car: dict[str, object], 
             row["drivetrain"] = token
             break
     return row
+
+
+def _engine_displacement(value: str) -> float | None:
+    match = re.search(r"(?<!\d)(\d+(?:\.\d+)?)\s*l(?:t|iter|itre)?\b", value.casefold())
+    return float(match.group(1)) if match else None
 
 
 def _is_canadian(car: dict[str, object]) -> bool:
