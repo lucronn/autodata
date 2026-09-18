@@ -122,6 +122,8 @@ vehicle resolution, cache lookup, and source retrieval. Repeat connector use
 was served from the bounded local cache. Missing live source sections remained
 explicitly unreviewed/missing in the consumer output.
 
+Final GitHub verification passed in [run 35370494978](https://github.com/lucronn/autodata/actions/runs/35370494978) on the synchronized branch head.
+
 The GitHub Project remains an index and work queue. This document and the
 implementation plan are the technical source of truth for the identity
 contract.

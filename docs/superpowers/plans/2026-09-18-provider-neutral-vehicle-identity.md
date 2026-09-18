@@ -70,6 +70,8 @@ focused/full/browser/cache/CI verification.
 
 Implementation commit: `59b369857e91e3bbec47101753c8ac04f79a66a2`
 
+Final CI verification: [Autonomous Verification run 35370494978](https://github.com/lucronn/autodata/actions/runs/35370494978) passed on commit `125f0a296ee413d72ddc849e8a187dfa5bb6a5d3`.
+
 - Focused identity, persistence, guide, and chat tests: `65 passed`.
 - Full ingestion worker suite: `413 passed, 3 skipped, 12 subtests passed`.
 - Go API suite: `ok github.com/lucronn/autodata/apps/api-go`.

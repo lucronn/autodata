@@ -38,6 +38,12 @@
     },
     "source_gap_behavior": "timing-belt and power-steering-pump gaps remained explicitly labeled missing"
   },
+  "github_ci": {
+    "run_id": "35370494978",
+    "url": "https://github.com/lucronn/autodata/actions/runs/35370494978",
+    "head_sha": "125f0a296ee413d72ddc849e8a187dfa5bb6a5d3",
+    "conclusion": "success"
+  },
   "status": "synchronized",
-  "updated_at": "2026-09-18T16:47:00Z"
+  "updated_at": "2026-09-18T16:52:00Z"
 }
