@@ -145,6 +145,20 @@ def _record_scopes(sync_id: str, rows: list[dict[str, object]]) -> None:
                         Jsonb({"phase": "persisted", "source_locator": row.get("source_locator")}),
                     ),
                 )
+            cursor.execute(
+                """
+                UPDATE vehicle_catalog_syncs
+                SET row_count = (
+                        SELECT count(*)
+                        FROM vehicle_catalog_sync_scopes
+                        WHERE vehicle_catalog_sync_id = %s
+                    ),
+                    checkpoint = jsonb_build_object('phase', 'persisting'),
+                    updated_at = now()
+                WHERE vehicle_catalog_sync_id = %s
+                """,
+                (sync_id, sync_id),
+            )
         connection.commit()
 
 
