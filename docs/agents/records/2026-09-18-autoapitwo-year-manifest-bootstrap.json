@@ -1,0 +1,21 @@
+{
+  "goal": "Fetch and persist AutoAPItwo years once and list every year from 1966 through 2027 on initial selector load without waiting for deep catalog traversal",
+  "plan_ref": "docs/superpowers/plans/2026-09-18-autoapitwo-year-manifest-bootstrap.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/106",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/pre-implementation-gate.md",
+    "docs/architecture/vehicle-catalog-ingestion.md"
+  ],
+  "todo": [
+    "Add the durable year-manifest table and migration validation",
+    "Add bounded AutoAPItwo year-list fetch and idempotent persistence",
+    "Add catalog-years/ensure scheduling to selector reads",
+    "Return the complete 1966-2027 year range immediately on load",
+    "Verify adapter, HTTP, Go, migration, and browser behavior",
+    "Synchronize exact implementation SHA, Issue #106, Project #8, and CI evidence"
+  ],
+  "base_sha": "9ee98bee135800e62989199a382e3fcffb11e539",
+  "status": "synchronized",
+  "updated_at": "2026-09-18T19:45:00Z"
+}

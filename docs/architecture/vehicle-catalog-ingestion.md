@@ -52,6 +52,22 @@ remain reviewable observations and do not silently merge.
 
 ## One-time warm-up behavior
 
+### Year manifest bootstrap
+
+The first selector load has a lightweight bootstrap boundary before deep
+catalog traversal. AutoAPItwo's `GET /api/v1/fleet/years` manifest is fetched
+and persisted once under its provider/source-version key. The local selector
+contract exposes the configured development range of 1966 through 2027
+immediately, so the user sees every year on load even while AutoAPItwo makes,
+models, engines, and provider vehicle summaries are still warming. Provider
+years discovered outside that range remain eligible for persistence and
+selection.
+
+The manifest path is cache-first, idempotent, bounded, and catalog-only. It
+does not fetch repair articles, procedures, PDFs, images, or content. A
+completed year manifest is never requested again for the same source version;
+the deep catalog sync has its own independent idempotency key.
+
 `GET /vehicle-identities/selectors` is cache-first. It returns whatever durable
 catalog is already available and includes readiness metadata. If the configured
 source/version has not completed, the request schedules one durable sync and
