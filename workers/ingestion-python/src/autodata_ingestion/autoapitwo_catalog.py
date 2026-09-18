@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Iterator
 from copy import deepcopy
 import json
 import re
@@ -64,7 +65,12 @@ class AutoAPITwoCatalogConnector:
     def fetch_rows(self) -> list[dict[str, object]]:
         """Traverse only fleet vocabulary and return deterministic selector rows."""
 
-        rows: list[dict[str, object]] = []
+        return list(self.iter_rows())
+
+    def iter_rows(self) -> Iterator[dict[str, object]]:
+        """Yield normalized rows as each engine scope becomes available."""
+
+        seen: set[tuple[object, ...]] = set()
         for year in self._years():
             makes = self._read(f"/api/v1/fleet/years/{quote(year)}/makes")
             for make_record in self._items(makes):
@@ -92,18 +98,17 @@ class AutoAPITwoCatalogConnector:
                         car_path = _car_path(engine_record)
                         car = self._read(car_path) if car_path else dict(engine_record)
                         row = _row(year, make, model, engine, car, car_path)
-                        rows.append(row)
-        unique: dict[tuple[object, ...], dict[str, object]] = {}
-        for row in rows:
-            key = (
-                row["year"],
-                str(row["make"]).casefold(),
-                str(row["model"]).casefold(),
-                str(row.get("engine") or "").casefold(),
-                str(row.get("autoapitwo_vehicle_id") or ""),
-            )
-            unique[key] = row
-        return [unique[key] for key in sorted(unique, key=str)]
+                        key = (
+                            row["year"],
+                            str(row["make"]).casefold(),
+                            str(row["model"]).casefold(),
+                            str(row.get("engine") or "").casefold(),
+                            str(row.get("autoapitwo_vehicle_id") or ""),
+                        )
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        yield row
 
     def _years(self) -> list[str]:
         payload = self._read("/api/v1/fleet/years")

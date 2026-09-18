@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import hashlib
 import json
 import os
 from threading import Thread
@@ -59,6 +60,7 @@ def ensure_catalog_sync(serialized_request: str) -> dict[str, object]:
 
 def _run_claimed(sync_id: str, source_version: str, traversal_version: str) -> None:
     base_url = os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "https://autoapitwo.vercel.app")
+    total = 0
     try:
         connector = AutoAPITwoCatalogConnector(
             base_url,
@@ -66,31 +68,84 @@ def _run_claimed(sync_id: str, source_version: str, traversal_version: str) -> N
             retry_attempts=int(os.getenv("AUTODATA_AUTOAPITWO_RETRY_ATTEMPTS", "3")),
             retry_delay=float(os.getenv("AUTODATA_AUTOAPITWO_RETRY_DELAY_SECONDS", "0.25")),
         )
-        rows = connector.fetch_rows()
-        if not rows:
-            raise RuntimeError("AutoAPItwo catalog returned no vehicle rows")
         from .vehicle_selection_persistence import persist_vehicle_selection_list
 
-        persisted = persist_vehicle_selection_list(
-            rows,
-            source_uri=f"{base_url.rstrip('/')}/api/v1/fleet/years",
-            source_version=source_version,
-            region=os.getenv("AUTODATA_SOURCE_REGION", "US"),
-        )
+        batch: list[dict[str, object]] = []
+        for row in connector.iter_rows():
+            batch.append(row)
+            if len(batch) >= 100:
+                _persist_batch(sync_id, batch, source_version, base_url)
+                total += len(batch)
+                batch = []
+        if batch:
+            _persist_batch(sync_id, batch, source_version, base_url)
+            total += len(batch)
+        if total == 0:
+            raise RuntimeError("AutoAPItwo catalog returned no vehicle rows")
         _finish(
             sync_id,
             status="completed",
-            row_count=int(persisted.get("observation_count", len(rows))),
-            checkpoint={"phase": "persisted", "scope_count": len(rows)},
+            row_count=total,
+            checkpoint={"phase": "persisted", "scope_count": total},
         )
     except Exception as error:  # noqa: BLE001 - persisted status is the recovery boundary
         _finish(
             sync_id,
-            status="failed",
-            row_count=0,
-            checkpoint={"phase": "failed"},
+            status="partial" if total else "failed",
+            row_count=total,
+            checkpoint={"phase": "partial" if total else "failed", "scope_count": total},
             error=f"{type(error).__name__}: {error}"[:500],
         )
+
+
+def _persist_batch(
+    sync_id: str,
+    rows: list[dict[str, object]],
+    source_version: str,
+    base_url: str,
+) -> None:
+    from .vehicle_selection_persistence import persist_vehicle_selection_list
+
+    persist_vehicle_selection_list(
+        rows,
+        source_uri=f"{base_url.rstrip('/')}/api/v1/fleet/years",
+        source_version=source_version,
+        region=os.getenv("AUTODATA_SOURCE_REGION", "US"),
+    )
+    _record_scopes(sync_id, rows)
+
+
+def _record_scopes(sync_id: str, rows: list[dict[str, object]]) -> None:
+    import psycopg
+    from psycopg.types.json import Jsonb
+
+    with psycopg.connect(**_conninfo()) as connection:
+        with connection.cursor() as cursor:
+            for row in rows:
+                scope_key = ":".join(
+                    str(row.get(key, "")).strip()
+                    for key in ("year", "make", "model", "engine", "autoapitwo_vehicle_id")
+                )
+                response_hash = hashlib.sha256(
+                    json.dumps(row, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+                ).hexdigest()
+                cursor.execute(
+                    """
+                    INSERT INTO vehicle_catalog_sync_scopes
+                        (vehicle_catalog_sync_id, scope_key, status, attempt_count, response_hash, checkpoint)
+                    VALUES (%s, %s, 'completed', 1, %s, %s)
+                    ON CONFLICT (vehicle_catalog_sync_id, scope_key) DO UPDATE
+                    SET status = 'completed', response_hash = EXCLUDED.response_hash,
+                        checkpoint = EXCLUDED.checkpoint, updated_at = now()
+                    """,
+                    (
+                        sync_id,
+                        scope_key,
+                        response_hash,
+                        Jsonb({"phase": "persisted", "source_locator": row.get("source_locator")}),
+                    ),
+                )
+        connection.commit()
 
 
 def _conninfo() -> dict[str, Any]:
@@ -106,7 +161,6 @@ def _conninfo() -> dict[str, Any]:
 
 def _claim(source_version: str, traversal_version: str) -> dict[str, object]:
     import psycopg
-    from psycopg.types.json import Jsonb
 
     now = datetime.now(UTC).replace(microsecond=0)
     stale_before = now - _STALE_RUNNING_AFTER

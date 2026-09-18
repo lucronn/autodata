@@ -100,6 +100,29 @@ class AutoAPITwoCatalogTests(unittest.TestCase):
         self.assertEqual(calls.count("/api/v1/fleet/years"), 1)
         self.assertEqual(calls.count("/api/v1/fleet/years/1999/makes"), 1)
 
+    def test_iter_rows_yields_rows_incrementally(self):
+        payloads = {
+            "/api/v1/fleet/years": [{"year": "1999"}],
+            "/api/v1/fleet/years/1999/makes": [{"make": "Toyota"}],
+            "/api/v1/fleet/years/1999/makes/Toyota/models": [{"model": "Avalon XL"}],
+            "/api/v1/fleet/years/1999/makes/Toyota/models/Avalon XL/engines": [
+                {"engine": "V6-3.0L", "_embedded": {"carId": "33496"}}
+            ],
+            "/api/v1/fleet/carids/33496": {
+                "id": "33496", "year": "1999", "make": "Toyota",
+                "model": "Avalon XL", "engine": "V6-3.0L",
+            },
+        }
+
+        def opener(request, **_kwargs):
+            path = unquote(request.full_url.split("https://autoapitwo.test", 1)[1].split("?", 1)[0])
+            return io.BytesIO(json.dumps(payloads[path]).encode("utf-8"))
+
+        connector = AutoAPITwoCatalogConnector(
+            "https://autoapitwo.test", opener=opener, retry_delay=0
+        )
+        self.assertEqual(len(list(connector.iter_rows())), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
