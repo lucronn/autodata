@@ -44,7 +44,7 @@ Update `apps/api-go/dashboard_test.go` so the dashboard contract requires the se
 
 - [x] **Step 2: Run the focused route test and verify it fails**
 
-Run: `go test ./apps/api-go -run 'TestDashboardRouteServes(ChatbotShell|JavaScriptAsset|WorkerAndAnswerStyles)' -count=1`
+Run: `(cd apps/api-go && go test ./... -run 'TestDashboardRoute' -count=1)`
 
 Expected: FAIL because the current dashboard does not expose the decade/year/make selector markers.
 
@@ -62,7 +62,7 @@ Use one centered content column, consistent `gap`/`margin` values, simple border
 
 - [x] **Step 6: Run the focused route test and verify it passes**
 
-Run: `go test ./apps/api-go -run 'TestDashboardRouteServes(ChatbotShell|JavaScriptAsset|WorkerAndAnswerStyles)' -count=1`
+Run: `(cd apps/api-go && go test ./... -run 'TestDashboardRoute' -count=1)`
 
 Expected: PASS.
 
