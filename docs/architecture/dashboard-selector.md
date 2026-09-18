@@ -69,3 +69,15 @@ Before delivery, verify the route contract with Go tests and JavaScript syntax
 checks. In the local browser, confirm the transitions decade → year → letter →
 make and confirm that the selected context is visible after the make click.
 Record the exact commit, remote branch, and CI result here after verification.
+
+## Verified delivery
+
+- Commit: `8914194544afe62f5ab9b2866312fd89e4dbf476` on
+  `phobos/fix-chat-source-failure`.
+- Local verification passed: `go test ./...` from `apps/api-go`, `node --check
+  apps/api-go/dashboard/app.js`, and `git diff --check`.
+- Browser verification passed against the rebuilt local stack at
+  `http://127.0.0.1:8080/dashboard/`: 1990s → 1999 → F → Ford → selected
+  `1999 Ford`.
+- GitHub verification passed in [Autonomous Verification
+  35382320679](https://github.com/lucronn/autodata/actions/runs/35382320679).
