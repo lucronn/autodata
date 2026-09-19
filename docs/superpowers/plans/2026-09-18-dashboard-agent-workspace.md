@@ -16,13 +16,13 @@
 
 ## Concrete todo
 
-- [ ] Add selector Back behavior that restores the prior row and clears dependent choices.
-- [ ] Add the post-configuration chat and bounded worker-terminal workspace.
-- [ ] Bind chat requests to the selected canonical vehicle/configuration context.
-- [ ] Ensure cache-first lookup, AutoAPItwo fallback, source ingestion, retries, and progress summaries remain durable and idempotent.
-- [ ] Render and persist compiled overlap-aware procedures as Markdown derived-article revisions with lineage.
-- [ ] Add focused tests, run the full local suite, and exercise the real browser flow.
-- [ ] Synchronize the implementation SHA, Issue #108, Project #8, and CI evidence.
+- [x] Add selector Back behavior that restores the prior row and clears dependent choices.
+- [x] Add the post-configuration chat and bounded worker-terminal workspace.
+- [x] Bind chat requests to the selected canonical vehicle/configuration context.
+- [x] Ensure cache-first lookup, AutoAPItwo fallback, source ingestion, retries, and progress summaries remain durable and idempotent.
+- [x] Render and persist compiled overlap-aware procedures as Markdown derived-article revisions with lineage.
+- [x] Add focused tests, run the full local suite, and exercise the real browser flow.
+- [x] Synchronize the implementation SHA, Issue #108, Project #8, and CI evidence.
 
 ## Global constraints
 
@@ -112,3 +112,21 @@ The pre-implementation record is pinned to the planning checkpoint base SHA
 Project #8, the canonical architecture document, and the concrete todo list.
 Implementation files may be changed only after the machine preflight reports a
 pass for that synchronized record.
+
+## Verified delivery
+
+- Implementation commit: `7319e6c95c6e657d4620d987c46ed1bb141b0971` on
+  `phobos/fix-chat-source-failure`.
+- Local tests: `go test ./...`; `PYTHONPATH=src python3 -m pytest -q` in
+  `workers/ingestion-python` (`422 passed, 3 skipped, 12 subtests passed`);
+  `node --check apps/api-go/dashboard/app.js`; and `git diff --check`.
+- Browser smoke against the rebuilt Compose stack at
+  `http://127.0.0.1:8080/dashboard/`: verified decade → year → make letter →
+  make → model → engine/base, Back to decade, workspace opening, natural
+  language submission, AutoAPItwo fallback ingestion, bounded terminal events,
+  available result, and expanded Markdown procedure.
+- The browser request returned `AutoAPItwo returned 7 article(s); source
+  response ingested`, then normalization, composition, and publication events.
+- GitHub tracking: Issue #108 and Project #8 are the synchronized delivery
+  records. CI evidence remains pending until this implementation commit is
+  pushed and the remote workflow completes.
