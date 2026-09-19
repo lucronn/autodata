@@ -1,0 +1,22 @@
+{
+  "goal": "Add back navigation and a vehicle-bound chat/worker workspace after engine/base selection, with cache-first source fallback and Markdown procedure compilation",
+  "plan_ref": "docs/superpowers/plans/2026-09-18-dashboard-agent-workspace.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/108",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/dashboard-agent-workspace.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add selector Back behavior that restores the prior row and clears dependent choices",
+    "Add the post-configuration chat and bounded worker-terminal workspace",
+    "Bind chat requests to the selected canonical vehicle/configuration context",
+    "Ensure cache-first lookup, AutoAPItwo fallback, source ingestion, retries, and progress summaries remain durable and idempotent",
+    "Render and persist compiled overlap-aware procedures as Markdown derived-article revisions with lineage",
+    "Add focused tests, run the full local suite, and exercise the real browser flow",
+    "Synchronize the implementation SHA, Issue #108, Project #8, and CI evidence"
+  ],
+  "base_sha": "5a5cc64045ff98da0704c14daae20846c9b1922e",
+  "status": "synchronized",
+  "updated_at": "2026-09-19T02:27:00Z"
+}
