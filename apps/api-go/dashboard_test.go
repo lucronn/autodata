@@ -37,10 +37,11 @@ func TestDashboardRouteServesVehicleSelectorWorkspace(t *testing.T) {
 		"id=\"back-button\"",
 		"id=\"workspace\"",
 		"id=\"chat-log\"",
+		"id=\"chat-options\"",
 		"id=\"chat-input\"",
 		"id=\"worker-terminal\"",
 		"id=\"procedure-markdown\"",
-		`/dashboard/app.js?v=vehicle-workspace-v1`,
+		`/dashboard/app.js?v=vehicle-workspace-v2`,
 	} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("dashboard body does not contain %q", marker)
@@ -96,6 +97,10 @@ func TestDashboardRouteServesSelectorJavaScript(t *testing.T) {
 		"goBack",
 		"openWorkspace",
 		"submitChat",
+		"renderVehicleOptions",
+		"/selections",
+		"awaiting_vehicle",
+		"The result is ready below",
 		"streamChatEvents",
 		"worker-terminal",
 		"request_params",

@@ -182,6 +182,32 @@ def test_structured_vehicle_context_binds_job_without_repeating_vehicle_in_messa
     assert calls["source"] == []
 
 
+def test_selected_vehicle_context_stays_bound_for_oil_and_water_pump_job():
+    calls = install_runtime(candidates=lambda _message, _principal: ())
+    selected = {
+        "vehicle_id": "vehicle-lincoln-base",
+        "candidate_key": "lincoln-base",
+        "configuration_key": "1966-lincoln-continental-base",
+        "year": 1966,
+        "make": "Lincoln",
+        "model": "Continental",
+        "drivetrain": "4WD",
+    }
+
+    created = create_chat_query(
+        "oil and water pump procedure",
+        idempotency_key="chat-pump-context-1",
+        principal=principal(),
+        request_params={"vehicle": selected},
+    )
+
+    assert created["status"] == "processing"
+    assert created["answer"]["vehicle"]["vehicle_id"] == selected["vehicle_id"]
+    assert created["answer"]["vehicle"]["model"] == selected["model"]
+    assert created["answer"]["warnings"] == []
+    assert calls["source"] == []
+
+
 def test_nonmatching_provider_vehicle_results_do_not_block_explicit_vehicle_fallback(monkeypatch):
     from autodata_ingestion import autoapitwo_guide
     from autodata_ingestion.chat_service import _vehicle_candidates

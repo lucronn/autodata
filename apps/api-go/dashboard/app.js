@@ -9,6 +9,7 @@
     makeInitial: null, make: null, model: null, configuration: null,
     refreshStartedAt: 0, refreshTimer: null, loading: false, selectedVehicle: null,
     activeQueryId: null, eventAbort: null, terminalLines: [], terminalKeys: new Set(),
+    choicePromptQueryId: null,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -138,14 +139,43 @@
   function openWorkspace() {
     if (!state.selectedVehicle) return; $("workspace").hidden = false; $("workspace-vehicle").textContent = $("selected-label").textContent; $("instructions").textContent = "Ask for a repair result in plain language. The agent will show its work as it runs."; $("chat-input").focus(); setStatus("Repair workspace ready.", "ready");
   }
-  function closeWorkspace() { abortEvents(); $("workspace").hidden = true; $("chat-result").hidden = true; $("chat-input").value = ""; state.activeQueryId = null; setStatus("Choose an engine or base configuration.", "ready"); }
+  function closeWorkspace() { abortEvents(); $("workspace").hidden = true; $("chat-result").hidden = true; $("chat-options").hidden = true; $("chat-options").replaceChildren(); $("chat-input").value = ""; state.activeQueryId = null; state.choicePromptQueryId = null; setStatus("Choose an engine or base configuration.", "ready"); }
   function escapeHtml(value) { const element = document.createElement("span"); element.textContent = value == null ? "" : String(value); return element.innerHTML; }
   function appendChat(text, speaker = "AutoData") { const log = $("chat-log"); const empty = log.querySelector(".chat-empty"); if (empty) empty.remove(); const item = document.createElement("p"); item.className = `chat-message ${speaker.toLowerCase()}`; item.innerHTML = `<strong>${speaker}</strong> ${escapeHtml(text)}`; log.append(item); log.scrollTop = log.scrollHeight; }
+  function clearChatOptions() { const options = $("chat-options"); options.replaceChildren(); options.hidden = true; }
+  function renderVehicleOptions(query) {
+    const options = Array.isArray(query && query.vehicle_options) ? query.vehicle_options.filter((option) => option && option.clickable !== false && option.option_number && option.label) : [];
+    const container = $("chat-options"); container.replaceChildren();
+    if (!options.length) { container.hidden = true; return false; }
+    const heading = document.createElement("p"); heading.className = "chat-options-heading"; heading.textContent = "Available vehicle configurations — choose one:"; container.append(heading);
+    options.forEach((option) => {
+      const choice = button(`${option.option_number}. ${option.label}`, "chat-option", { optionNumber: option.option_number }, () => selectVehicleOption(query.query_id, option));
+      choice.setAttribute("aria-label", `Choose option ${option.option_number}: ${option.label}`); container.append(choice);
+    });
+    container.hidden = false; return true;
+  }
+  async function selectVehicleOption(queryId, option) {
+    const controls = Array.from($("chat-options").querySelectorAll("button")); controls.forEach((control) => { control.disabled = true; });
+    appendChat(`${option.option_number}. ${option.label}`, "You"); appendTerminal(`Vehicle option ${option.option_number} selected.`);
+    try {
+      const response = await fetch(`/chat/queries/${encodeURIComponent(queryId)}/selections`, { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json", "Idempotency-Key": `dashboard:${queryId}:selection:${option.option_number}` }, body: JSON.stringify(option.selection || { selection_type: "vehicle", option_number: option.option_number, vehicle_id: option.vehicle_id, candidate_key: option.candidate_key }) });
+      if (!response.ok) throw new Error(`Vehicle selection returned HTTP ${response.status}`);
+      const query = await response.json(); state.activeQueryId = queryId; clearChatOptions(); renderQuery(query); streamChatEvents(queryId); const finalQuery = await pollQuery(queryId); appendQueryCompletion(finalQuery);
+    } catch (error) { controls.forEach((control) => { control.disabled = false; }); appendTerminal(`Vehicle selection failed: ${error.message}`); appendChat("I could not apply that choice. Please try it again."); }
+  }
+  function appendQueryCompletion(query) { if (!query) return; if (query.status === "available") appendChat("The result is ready below."); else if (query.status === "failed" || query.status === "dead_letter") appendChat("The agent could not complete that request. See the worker terminal for the current status."); }
   function setTerminalStatus(text) { $("worker-status").textContent = text; }
   function appendTerminal(message, key = "") { const text = String(message || "").trim(); if (!text || (key && state.terminalKeys.has(key))) return; if (key) state.terminalKeys.add(key); state.terminalLines.push(text); state.terminalLines = state.terminalLines.slice(-80); const terminal = $("worker-terminal"); terminal.replaceChildren(); state.terminalLines.forEach((line) => { const item = document.createElement("div"); item.textContent = line; terminal.append(item); }); terminal.scrollTop = terminal.scrollHeight; }
   function eventMessage(event) { const payload = event && event.payload; return payload && payload.message ? payload.message : `${event.stage || "worker"} ${event.status || "updated"}`; }
   function renderQuery(query) {
     if (!query) return; const answer = query.answer || {}; const procedure = answer.procedure;
+    if (query.status === "awaiting_vehicle") {
+      const warning = (answer.warnings || []).map((item) => item && item.message).filter(Boolean)[0] || "Choose a vehicle configuration to continue.";
+      if (state.choicePromptQueryId !== query.query_id) { appendChat(warning); state.choicePromptQueryId = query.query_id; }
+      if (!renderVehicleOptions(query)) { appendChat("No vehicle options were returned. Please retry the request."); }
+      setTerminalStatus("awaiting choice"); return;
+    }
+    if (state.choicePromptQueryId === query.query_id) { state.choicePromptQueryId = null; clearChatOptions(); }
     if (query.status === "failed") { appendChat((answer.warnings || []).map((warning) => warning.message).join(" ") || "The agent could not complete this request."); return; }
     if (!procedure && !answer.quote) return;
     $("chat-result").hidden = false; const quote = answer.quote || {}; const hours = quote.total_hours ?? quote.total_labor_hours ?? quote.required_hours; const title = procedure && procedure.title ? procedure.title : "Requested service";
@@ -163,6 +193,7 @@
   async function pollQuery(queryId) {
     for (let attempt = 0; attempt < 120; attempt += 1) {
       const response = await fetch(`/chat/queries/${encodeURIComponent(queryId)}`, { headers: authHeaders() }); if (!response.ok) throw new Error(`Chat query returned HTTP ${response.status}`); const query = await response.json(); (query.answer && Array.isArray(query.answer.worker_stream) ? query.answer.worker_stream : []).forEach((workerEvent) => appendTerminal(workerEvent.message || eventMessage(workerEvent), workerEvent.event_id)); renderQuery(query);
+      if (query.status === "awaiting_vehicle") { setTerminalStatus("awaiting choice"); renderQuery(query); return query; }
       if (["available", "failed", "dead_letter"].includes(query.status)) { setTerminalStatus(query.status); appendTerminal(`Query ${query.status}.`); return query; }
       await new Promise((resolve) => window.setTimeout(resolve, 1200));
     }
@@ -173,7 +204,7 @@
     appendChat(message, "You"); $("chat-input").value = ""; $("chat-send").disabled = true; state.terminalLines = []; state.terminalKeys = new Set(); $("worker-terminal").replaceChildren(); setTerminalStatus("starting"); appendTerminal("Agent received the request.");
     try {
       const response = await fetch("/chat/queries", { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json", "Idempotency-Key": `dashboard:${crypto.randomUUID()}` }, body: JSON.stringify({ message, request_params: { vehicle: { year: state.year, make: state.make, model: state.model, ...state.selectedVehicle.configuration } } }) });
-      if (!response.ok) throw new Error(`Chat request returned HTTP ${response.status}`); const query = await response.json(); state.activeQueryId = query.query_id; appendTerminal(`Query ${query.query_id} accepted.`); streamChatEvents(query.query_id); await pollQuery(query.query_id); appendChat("The result is ready below.");
+      if (!response.ok) throw new Error(`Chat request returned HTTP ${response.status}`); const query = await response.json(); state.activeQueryId = query.query_id; appendTerminal(`Query ${query.query_id} accepted.`); renderQuery(query); streamChatEvents(query.query_id); const finalQuery = await pollQuery(query.query_id); appendQueryCompletion(finalQuery);
     } catch (error) { appendTerminal(`Request failed: ${error.message}`); appendChat("I could not complete that request. Try again when the worker is available."); setTerminalStatus("failed"); } finally { $("chat-send").disabled = false; }
   }
 

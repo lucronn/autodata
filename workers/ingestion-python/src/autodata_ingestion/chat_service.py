@@ -364,6 +364,8 @@ def create_chat_query(
         candidates = _vehicle_candidates(message_text, principal, request_params=params)
         intent_message = _message_with_vehicle_context(message_text, vehicle_context)
         intent = interpret_chat_message(intent_message, tuple(candidates))
+        if vehicle_context is not None:
+            intent = _bind_selected_vehicle_context(intent, vehicle_context, candidates)
         query_id = _stable_uuid("query", fingerprint)
         correlation_id = _stable_uuid("correlation", query_id)
         register_query_context(
@@ -1945,6 +1947,43 @@ def _message_with_vehicle_context(message: str, vehicle: Mapping[str, Any] | Non
     ]
     prefix = " ".join(value for value in descriptors if value)
     return f"{prefix} {message}".strip()
+
+
+def _bind_selected_vehicle_context(
+    intent: ChatIntent,
+    vehicle_context: Mapping[str, Any],
+    candidates: Iterable[Mapping[str, Any]],
+) -> ChatIntent:
+    """Keep an explicit workspace selection authoritative over job wording.
+
+    The free-text parser receives a vehicle prefix so source adapters can use
+    one consistent message, but component names such as ``oil and water pump``
+    can otherwise be consumed as part of the parsed model.  The selector has
+    already made this decision, so only the vehicle observation is rebound;
+    operation and quote/procedure intent remain parser output.
+    """
+
+    selected = dict(vehicle_context)
+    selected_id = str(
+        selected.get("vehicle_id")
+        or selected.get("vehicle_configuration_id")
+        or selected.get("candidate_key")
+        or ""
+    ).strip()
+    candidate_key = str(selected.get("candidate_key") or selected_id).strip()
+    observation = dict(intent.vehicle_observation)
+    observation.update(selected)
+    observation["status"] = "matched"
+    observation["selected_vehicle_id"] = selected_id or candidate_key
+    observation["selected_candidate_key"] = candidate_key
+    observation["candidates"] = [dict(candidate) for candidate in candidates if isinstance(candidate, Mapping)]
+    return ChatIntent(
+        vehicle_observation=observation,
+        requested_operations=intent.requested_operations,
+        quote_requested=intent.quote_requested,
+        procedure_requested=intent.procedure_requested,
+        clarification=None,
+    )
 
 
 def _environment_candidates() -> list[Mapping[str, Any]]:
