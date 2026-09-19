@@ -93,11 +93,11 @@
 - [x] **Step 1: Run complete relevant local verification.** The ingestion worker suite passed `423 passed, 3 skipped, 12 subtests passed`; `go test ./...`, dashboard JavaScript syntax, and `git diff --check` passed.
 - [x] **Step 2: Rebuild and exercise the live browser flow.** Compose services were rebuilt/restarted. The browser pump request completed with an available procedure and no fluid/configuration clarification. The live API choice path returned four options and option 1 resumed the same query with the selected vehicle.
 - [x] **Step 3: Update canonical docs and synchronized record.** This plan, the architecture contract, Issue #109, Project #8, and the gate record now reference the implementation SHA and current verification evidence.
-- [ ] **Step 4: Push and verify remote state.** Run `git status --short --branch`, `git push origin HEAD`, and `gh run list --repo lucronn/autodata --branch "$(git branch --show-current)" --limit 5`. Expected: the pushed branch contains only intentional implementation/docs changes; user-owned untracked directories remain unstaged; the relevant verification run is identified without claiming success until its conclusion is `success`.
+- [x] **Step 4: Push and verify remote state.** Branch `phobos/fix-chat-source-failure` is pushed at `754a65602fab0d6420d850209ef9295717b78751`; user-owned `output/`, `sample data/`, and `tmp/` remain untracked and unstaged; GitHub Actions run `35425663865` passed.
 
 ## Current evidence
 
 - Implementation: `6e96f491df7172595217227efdb9456c2ab56ff4`.
 - Local verification: Python `423 passed, 3 skipped, 12 subtests passed`; Go `go test ./...` passed; JavaScript syntax and diff checks passed.
 - Browser verification: `http://127.0.0.1:8080/dashboard/?fresh=final` completed the selected-vehicle pump request without a fluid/configuration question.
-- Remote CI: pending until the pushed commit's verification run concludes.
+- Remote CI: [run 35425663865](https://github.com/lucronn/autodata/actions/runs/35425663865) passed, including the live Compose fast-lane smoke.

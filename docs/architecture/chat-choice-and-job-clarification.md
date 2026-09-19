@@ -62,4 +62,4 @@ The system must never invent a fluid type to avoid a clarification. If a pump pr
 - Dashboard JavaScript syntax and `git diff --check` passed.
 - Browser: `http://127.0.0.1:8080/dashboard/?fresh=final`; selected `1997 Toyota Rav4`, submitted `oil and water pump procedure`, received an available source-backed procedure, and saw no fluid or second-configuration question.
 - Choice contract: live API resolution returned four visible candidate options for an unbound `1997 Toyota RAV4 brake line procedure`; selecting option 1 returned the same query in `processing` with `vehicle_options: []` and the selected vehicle bound.
-- Compose services were rebuilt and restarted from the implementation commit. GitHub Actions verification is tracked on Issue #109 and remains pending until the remote run concludes.
+- Compose services were rebuilt and restarted from the implementation commit. [GitHub Actions run 35425663865](https://github.com/lucronn/autodata/actions/runs/35425663865) passed, including the live Compose fast-lane smoke.

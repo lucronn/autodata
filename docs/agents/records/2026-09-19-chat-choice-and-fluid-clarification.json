@@ -20,7 +20,8 @@
     "python": "423 passed, 3 skipped, 12 subtests passed",
     "go": "go test ./... passed",
     "javascript": "node --check apps/api-go/dashboard/app.js passed",
-    "browser": "Selected 1997 Toyota Rav4 workspace completed oil and water pump procedure without fluid or second-configuration clarification; live unbound RAV4 query returned four options and option 1 resumed the same query."
+    "browser": "Selected 1997 Toyota Rav4 workspace completed oil and water pump procedure without fluid or second-configuration clarification; live unbound RAV4 query returned four options and option 1 resumed the same query.",
+    "ci": "https://github.com/lucronn/autodata/actions/runs/35425663865 passed, including live Compose fast-lane smoke"
   },
   "status": "synchronized",
   "updated_at": "2026-09-19T16:00:00Z"
