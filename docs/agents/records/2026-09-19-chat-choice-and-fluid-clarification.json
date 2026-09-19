@@ -1,0 +1,20 @@
+{
+  "goal": "Render every required chat choice with its available numbered options, bind jobs to the explicitly selected workspace vehicle, and prevent oil/water pump requests from triggering unrelated fluid clarification.",
+  "plan_ref": "docs/superpowers/plans/2026-09-19-chat-choice-and-fluid-clarification.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/109",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/chat-choice-and-job-clarification.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add backend regressions for selected vehicle binding, visible options, and pump clarification.",
+    "Bind request_params.vehicle as authoritative context while preserving parsed job operations.",
+    "Render numbered clickable options and submit selections against the pending query.",
+    "Verify pending and terminal query messaging in the live browser workspace.",
+    "Push the implementation and synchronize exact SHA, tests, browser evidence, and CI in Issue #109 and Project #8."
+  ],
+  "base_sha": "44334fa3dad77dcccd575bbf034054b109e0af44",
+  "status": "synchronized",
+  "updated_at": "2026-09-19T16:00:00Z"
+}
