@@ -41,9 +41,9 @@
 - Consumes: `create_chat_query`, `select_chat_vehicle`, `process_chat_jobs`, and existing `request_params.vehicle` input.
 - Produces: executable regressions proving selected vehicle binding, no pump/fluid clarification, and pending-option behavior.
 
-- [ ] **Step 1: Write the failing backend regressions.** Add tests that create a query with a selected vehicle and message `oil and water pump procedure`, assert `status` is not `awaiting_vehicle`, assert the answer vehicle is the selected vehicle, and assert no warning asks for fluid type or another configuration. Add a pending ambiguous-vehicle test that asserts all options have `option_number`, `label`, `clickable`, and a valid `selection`.
-- [ ] **Step 2: Run the focused tests to verify the contract failure.** Run `PYTHONPATH=workers/ingestion-python/src pytest -q workers/ingestion-python/tests/test_chat_service.py workers/ingestion-python/tests/test_chat_intent.py`. Expected: the new selected-vehicle regression fails if the parser can downgrade the workspace context, or the test exposes the current missing fluid/choice contract without changing unrelated tests.
-- [ ] **Step 3: Commit the red tests.** Run `git add workers/ingestion-python/tests/test_chat_service.py workers/ingestion-python/tests/test_chat_intent.py && git commit -m "test: pin chat choice and pump clarification behavior"`.
+- [x] **Step 1: Write the failing backend regressions.** Added selected-context and pump regression coverage plus the existing numbered-option contract assertions.
+- [x] **Step 2: Run the focused tests to verify the contract failure.** The selected-context test failed with `failed` instead of `processing` because `Continental Oil And` was parsed as the model; the dashboard asset test also failed before the choice region and selection handler existed.
+- [x] **Step 3: Commit the red tests.** The tests were kept with the implementation commit after the red/green cycle.
 
 ### Task 2: Make the selected workspace vehicle authoritative
 
@@ -56,9 +56,9 @@
 - Consumes: `_request_vehicle_context`, `_vehicle_candidates`, `interpret_chat_message`, and `ChatIntent`.
 - Produces: a matched vehicle observation preserving the explicit workspace identity while retaining parsed operations and intent flags.
 
-- [ ] **Step 1: Implement the smallest binding change.** When `request_params.vehicle` is present, construct the intent from the user message and the context candidate, then replace only the vehicle observation with a matched observation derived from the selected context. Preserve its internal and provider mappings, year, make, model, drivetrain, engine, and configuration fields. Do not add a fluid operation or a clarification for component-only pump requests.
-- [ ] **Step 2: Run focused backend tests.** Run `PYTHONPATH=workers/ingestion-python/src pytest -q workers/ingestion-python/tests/test_chat_service.py workers/ingestion-python/tests/test_chat_intent.py`. Expected: all focused tests pass, including existing ambiguous vehicle selection and structured context tests.
-- [ ] **Step 3: Commit the backend fix.** Run `git add workers/ingestion-python/src/autodata_ingestion/chat_service.py workers/ingestion-python/tests/test_chat_service.py workers/ingestion-python/tests/test_chat_intent.py && git commit -m "fix: bind chat jobs to selected vehicle context"`.
+- [x] **Step 1: Implement the smallest binding change.** `_bind_selected_vehicle_context` now makes the explicit workspace selection authoritative while preserving parsed operations and intent flags.
+- [x] **Step 2: Run focused backend tests.** Focused chat service and intent tests passed (`52 passed`); the complete ingestion worker suite passed (`423 passed, 3 skipped, 12 subtests passed`).
+- [x] **Step 3: Commit the backend fix.** The backend and dashboard implementation are committed at `6e96f491df7172595217227efdb9456c2ab56ff4`.
 
 ### Task 3: Render and submit available choices in the dashboard
 
@@ -72,11 +72,11 @@
 - Consumes: public query `vehicle_options`, `query_id`, `POST /chat/queries/{id}/selections`, `authHeaders`, and existing polling/event stream.
 - Produces: native accessible choice buttons, idempotent selection submission, and correct pending-query messaging.
 
-- [ ] **Step 1: Write the failing dashboard contract test.** Assert the dashboard asset contains a dedicated choice region, a selection handler for `/selections`, and a pending-state branch that does not claim a result is ready.
-- [ ] **Step 2: Run the dashboard test to verify it fails.** Run `go test ./apps/api-go -run Dashboard -count=1`. Expected: FAIL because the current asset has no choice region or selection handler.
-- [ ] **Step 3: Implement minimal choice rendering and selection.** Add a choice region next to the chat log. Render every `vehicle_options` item as a native button with number and label, remove stale options when the query proceeds, post the option selection to the existing endpoint, stream/poll the same query, and display an explicit unavailable/error message when options are missing. In `submitChat`, render the initial query response immediately and append “The result is ready below” only when `pollQuery` returns a terminal `available` or `failed` result.
-- [ ] **Step 4: Run focused dashboard and syntax checks.** Run `go test ./apps/api-go -run Dashboard -count=1` and `node --check apps/api-go/dashboard/app.js`. Expected: PASS with no JavaScript syntax errors.
-- [ ] **Step 5: Commit the dashboard fix.** Run `git add apps/api-go/dashboard/index.html apps/api-go/dashboard/app.js apps/api-go/dashboard/styles.css apps/api-go/dashboard_test.go && git commit -m "fix: show clickable chat choices"`.
+- [x] **Step 1: Write the failing dashboard contract test.** Added route/asset markers for the choice region, selection endpoint, awaiting state, and terminal completion copy.
+- [x] **Step 2: Run the dashboard test to verify it fails.** The initial test failed because the current asset had no choice region or selection handler.
+- [x] **Step 3: Implement minimal choice rendering and selection.** The dashboard now renders native numbered buttons, submits the existing selection payload, keeps the original query, and does not claim a result while awaiting a choice.
+- [x] **Step 4: Run focused dashboard and syntax checks.** The dashboard tests and `node --check apps/api-go/dashboard/app.js` passed.
+- [x] **Step 5: Commit the dashboard fix.** The implementation is committed at `6e96f491df7172595217227efdb9456c2ab56ff4`.
 
 ### Task 4: Verify the integrated runtime and synchronize delivery
 
@@ -90,7 +90,14 @@
 - Consumes: exact implementation SHA, local test output, Compose runtime, live browser behavior, and GitHub Actions result.
 - Produces: synchronized repository/GitHub status with reproducible evidence.
 
-- [ ] **Step 1: Run complete relevant local verification.** Run the ingestion worker suite, Go suite, JavaScript syntax check, contract checks, and `git diff --check`; record exact pass counts and intentional skips.
-- [ ] **Step 2: Rebuild and exercise the live browser flow.** Rebuild/restart the local API and ingestion services without printing secrets. Select a vehicle, submit `oil and water pump procedure`, verify no fluid/configuration clarification appears, and exercise an ambiguous query through visible numbered option buttons and a clicked selection. Capture terminal status and final query state.
-- [ ] **Step 3: Update canonical docs and synchronized record.** Record the exact implementation SHA, test commands/results, browser URL and observed behavior, and CI run URL. Set the record to `status: synchronized` only after the Issue, Project item, and docs contain the same concrete todo and evidence.
+- [x] **Step 1: Run complete relevant local verification.** The ingestion worker suite passed `423 passed, 3 skipped, 12 subtests passed`; `go test ./...`, dashboard JavaScript syntax, and `git diff --check` passed.
+- [x] **Step 2: Rebuild and exercise the live browser flow.** Compose services were rebuilt/restarted. The browser pump request completed with an available procedure and no fluid/configuration clarification. The live API choice path returned four options and option 1 resumed the same query with the selected vehicle.
+- [x] **Step 3: Update canonical docs and synchronized record.** This plan, the architecture contract, Issue #109, Project #8, and the gate record now reference the implementation SHA and current verification evidence.
 - [ ] **Step 4: Push and verify remote state.** Run `git status --short --branch`, `git push origin HEAD`, and `gh run list --repo lucronn/autodata --branch "$(git branch --show-current)" --limit 5`. Expected: the pushed branch contains only intentional implementation/docs changes; user-owned untracked directories remain unstaged; the relevant verification run is identified without claiming success until its conclusion is `success`.
+
+## Current evidence
+
+- Implementation: `6e96f491df7172595217227efdb9456c2ab56ff4`.
+- Local verification: Python `423 passed, 3 skipped, 12 subtests passed`; Go `go test ./...` passed; JavaScript syntax and diff checks passed.
+- Browser verification: `http://127.0.0.1:8080/dashboard/?fresh=final` completed the selected-vehicle pump request without a fluid/configuration question.
+- Remote CI: pending until the pushed commit's verification run concludes.

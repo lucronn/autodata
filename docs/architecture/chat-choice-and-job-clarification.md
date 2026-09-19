@@ -53,3 +53,13 @@ The system must never invent a fluid type to avoid a clarification. If a pump pr
 - A selection for another query or an unavailable option is rejected without changing the query.
 - Choice buttons use native `button` elements, visible focus styles, and labels that contain both number and option text.
 - The result view may remain hidden while a query is awaiting a choice. It must not claim that a result is ready before the query reaches a terminal result state.
+
+## Verified delivery
+
+- Implementation: `6e96f491df7172595217227efdb9456c2ab56ff4`.
+- Python worker suite: `423 passed, 3 skipped, 12 subtests passed`.
+- Go API suite: `go test ./...` passed.
+- Dashboard JavaScript syntax and `git diff --check` passed.
+- Browser: `http://127.0.0.1:8080/dashboard/?fresh=final`; selected `1997 Toyota Rav4`, submitted `oil and water pump procedure`, received an available source-backed procedure, and saw no fluid or second-configuration question.
+- Choice contract: live API resolution returned four visible candidate options for an unbound `1997 Toyota RAV4 brake line procedure`; selecting option 1 returned the same query in `processing` with `vehicle_options: []` and the selected vehicle bound.
+- Compose services were rebuilt and restarted from the implementation commit. GitHub Actions verification is tracked on Issue #109 and remains pending until the remote run concludes.
