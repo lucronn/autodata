@@ -108,7 +108,7 @@
 ## Base and gate synchronization
 
 The pre-implementation record is pinned to the planning checkpoint base SHA
-`a6cc88aed5d8ce73cf0f0c4ac446cc446801368a` and records this plan, Issue #108,
+`5404a66f6f1d08ceb1d7bd62a8d1afda80d8faee` and records this plan, Issue #108,
 Project #8, the canonical architecture document, and the concrete todo list.
 Implementation files may be changed only after the machine preflight reports a
 pass for that synchronized record.
