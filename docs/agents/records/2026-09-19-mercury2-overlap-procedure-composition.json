@@ -1,0 +1,22 @@
+{
+  "goal": "Make Mercury-2 the validated reasoning layer for combining normalized vehicle procedures while preserving deterministic source and evidence lineage and renderable image references.",
+  "plan_ref": "docs/superpowers/plans/2026-09-19-mercury2-overlap-procedure-composition.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/110",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/mercury2-procedure-composition.md",
+    "docs/architecture/dashboard-agent-workspace.md",
+    "docs/architecture/guide-artifacts.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Expand the Mercury-2 composition schema and detailed overlap, dependency, source-fidelity, labor, and image prompt.",
+    "Validate overlap groups, dependency order, source and evidence lineage, and allowed image references.",
+    "Wire chat composition to the configured Mercury-2 client with deterministic source-backed fallback.",
+    "Keep Markdown canonical with stable image references and render prepared images in self-contained HTML.",
+    "Run focused and full tests, rebuild local services, verify the browser, and record exact evidence."
+  ],
+  "status": "synchronized",
+  "base_sha": "a17b03ad08623fdceb68f35d596c4b25b8145e87",
+  "updated_at": "2026-09-19T00:00:00Z"
+}
