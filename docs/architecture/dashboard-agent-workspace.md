@@ -164,3 +164,22 @@ locally on `phobos/fix-chat-source-failure`. The rebuilt browser flow reached a
 submitted a multi-component request, showed the AutoAPItwo ingestion summary in
 the worker terminal, and rendered an available Markdown procedure. The local
 Go and Python suites, JavaScript syntax check, and whitespace check passed.
+
+## Mercury-2 overlap-aware composition
+
+Multi-component procedure generation is a separate reasoning step after the
+source articles have been normalized. The worker sends Mercury-2 the selected
+vehicle, every selected article's source-authored procedure, labor operation
+IDs, evidence records, and prepared image metadata. Mercury-2 must identify
+shared access, drain/refill, inspection, cleanup, and other overlap work;
+represent each shared operation once; and order disassembly, component work,
+reassembly, refill/bleed, adjustment, and final verification by dependency.
+
+The application remains authoritative for labor arithmetic, vehicle identity,
+source/evidence bindings, image bytes, and publication. Unknown labor hours do
+not prevent the combined procedure from being generated. An invalid or failed
+Mercury-2 response falls back to the deterministic source-bound procedure and
+marks the result for review rather than hiding a usable answer. The detailed
+prompt, response schema, and validation rules are canonical in
+`docs/architecture/mercury2-procedure-composition.md` and tracked by
+[Issue #110](https://github.com/lucronn/autodata/issues/110).

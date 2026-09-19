@@ -165,3 +165,19 @@ and checked through the live guide route. The returned HTML was HTTP 200 with
 references and no aggregate duplicates; the dashboard also loaded at
 `http://127.0.0.1:8080/dashboard/`. This bounds repetition without discarding
 the persisted provenance needed for audit and detailed review.
+
+## Mercury-2 procedure figures
+
+The combined-procedure composer may select only stable image IDs from the
+prepared source-image registry. Markdown remains the canonical persisted text
+projection and uses `artifact://<image_id>` references plus image metadata; it
+does not embed untrusted remote URLs or assume that a Markdown viewer can fetch
+provider content. The preferred consumer artifact is the existing standalone
+HTML guide, which resolves those validated IDs to prepared source bytes and
+embeds them as base64 `data:` images with captions and scoped evidence. Missing
+prepared bytes are shown as a review gap and never trigger a remote fetch.
+
+The overlap/dependency prompt, response schema, validation boundary, and
+fallback behavior are specified in
+`docs/architecture/mercury2-procedure-composition.md` and tracked by
+[Issue #110](https://github.com/lucronn/autodata/issues/110).
