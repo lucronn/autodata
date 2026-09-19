@@ -10,6 +10,10 @@
 
 **Spec:** `docs/architecture/chat-choice-and-job-clarification.md`
 
+**GitHub Issue:** https://github.com/lucronn/autodata/issues/109
+
+**GitHub Project:** https://github.com/users/lucronn/projects/8
+
 ## Global Constraints
 
 - The selected `request_params.vehicle` is authoritative for the current workspace request.
