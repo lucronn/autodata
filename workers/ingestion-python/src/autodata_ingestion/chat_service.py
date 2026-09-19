@@ -360,8 +360,10 @@ def create_chat_query(
             _authorize_query(existing, principal)
             return _public_query(existing)
 
-        candidates = _vehicle_candidates(message_text, principal)
-        intent = interpret_chat_message(message_text, tuple(candidates))
+        vehicle_context = _request_vehicle_context(params)
+        candidates = _vehicle_candidates(message_text, principal, request_params=params)
+        intent_message = _message_with_vehicle_context(message_text, vehicle_context)
+        intent = interpret_chat_message(intent_message, tuple(candidates))
         query_id = _stable_uuid("query", fingerprint)
         correlation_id = _stable_uuid("correlation", query_id)
         register_query_context(
@@ -374,6 +376,8 @@ def create_chat_query(
         )
         options = _vehicle_options(intent)
         matched_vehicle = _selected_vehicle(intent, options)
+        if matched_vehicle is not None and vehicle_context is not None:
+            matched_vehicle = {**vehicle_context, **matched_vehicle}
         ambiguous = intent.vehicle_observation.get("status") == "ambiguous"
         query: dict[str, Any] = {
             "query_id": query_id,
@@ -866,15 +870,23 @@ def _process_one_job(query_id: str) -> None:
             force_data_state="source_unnormalized",
         )
         _apply_answer(query, source_answer)
+        source_metadata = source_result.get("source")
+        autoapitwo_metadata = source_metadata.get("autoapitwo") if isinstance(source_metadata, Mapping) else None
+        source_message = "Source data is available while normalization continues"
+        if isinstance(autoapitwo_metadata, Mapping) and autoapitwo_metadata.get("mode") == "autoapitwo":
+            article_count = autoapitwo_metadata.get("article_count", 0)
+            source_message = f"AutoAPItwo returned {article_count} article(s); source response ingested"
         publish_chat_progress(
             query_id,
             "source_retrieval",
             "completed",
             data_state="source_unnormalized",
             payload={
-                "message": "Source data is available while normalization continues",
+                "message": source_message,
                 "source_uri": source_result.get("source_uri"),
                 "data_state": "source_unnormalized",
+                "source_provider": "autoapitwo" if isinstance(autoapitwo_metadata, Mapping) and autoapitwo_metadata.get("mode") == "autoapitwo" else None,
+                "article_count": len(_source_articles(source_result)),
             },
             idempotency_key="source_retrieval:completed",
         )
@@ -1295,7 +1307,13 @@ def _default_source_retriever(
         vehicle.get("drivetrain"),
         vehicle.get("engine_displacement_l", vehicle.get("engine")),
     )
-    records, source_info = _load_autoapi_job_catalog(dict(vehicle), target, query=query)
+    source_query = _message_with_vehicle_context(query, vehicle)
+    source_info: dict[str, Any] = {"mode": "autoapi_unavailable"}
+    try:
+        records, source_info = _load_autoapi_job_catalog(dict(vehicle), target, query=source_query)
+    except Exception as error:  # noqa: BLE001 - AutoAPItwo remains the primary fallback
+        records = []
+        source_info = {"mode": "autoapi_unavailable", "reason": type(error).__name__}
     articles = _source_articles({"articles": records})
     autoapitwo_info: dict[str, Any] = {"mode": "not_attempted"}
     try:
@@ -1304,7 +1322,7 @@ def _default_source_retriever(
         selected_vehicle = dict(vehicle)
         provider_id = str(selected_vehicle.get("autoapitwo_vehicle_id") or "").strip()
         if not provider_id:
-            for candidate in vehicle_candidates_from_autoapitwo(query):
+            for candidate in vehicle_candidates_from_autoapitwo(source_query):
                 if all(
                     selected_vehicle.get(key) is None
                     or str(selected_vehicle.get(key)).casefold() == str(candidate.get(key)).casefold()
@@ -1312,9 +1330,20 @@ def _default_source_retriever(
                 ):
                     selected_vehicle.update(candidate)
                     break
-        two_articles = retrieve_autoapitwo_articles(query, selected_vehicle, _operations)
+        two_articles = retrieve_autoapitwo_articles(source_query, selected_vehicle, _operations)
         articles.extend(two_articles)
-        autoapitwo_info = {"mode": "autoapitwo", "vehicle_id": selected_vehicle.get("autoapitwo_vehicle_id"), "article_count": len(two_articles)}
+        persistence = None
+        if two_articles and os.getenv("AUTODATA_SOURCE_PERSIST") == "1":
+            try:
+                persistence = _persist_autoapitwo_articles(two_articles, vehicle)
+            except Exception as persistence_error:  # noqa: BLE001 - source data remains usable
+                persistence = {"status": "persistence_failed", "reason": type(persistence_error).__name__}
+        autoapitwo_info = {
+            "mode": "autoapitwo",
+            "vehicle_id": selected_vehicle.get("autoapitwo_vehicle_id"),
+            "article_count": len(two_articles),
+            "persistence": persistence,
+        }
     except Exception as error:  # noqa: BLE001 - retain any partial first-provider answer
         autoapitwo_info = {"mode": "source_unavailable", "reason": type(error).__name__}
     if not articles:
@@ -1327,6 +1356,81 @@ def _default_source_retriever(
         "source": {**source_info, "autoapitwo": autoapitwo_info},
         "normalization_pending": True,
     }
+
+
+def _persist_autoapitwo_articles(articles: Iterable[Mapping[str, Any]], vehicle: Mapping[str, Any]) -> dict[str, Any]:
+    """Persist AutoAPItwo article responses as reusable normalized catalog rows."""
+
+    from .bundle_persistence import persist_source_bundle
+    from .source_adapters import NormalizationCandidate, SourceArtifact
+    from .source_bundle import normalize_source_bundle
+
+    region = str(vehicle.get("region") or os.getenv("AUTODATA_SOURCE_REGION", "US"))
+    artifacts: list[SourceArtifact] = []
+    for article in articles:
+        if not isinstance(article, Mapping):
+            continue
+        source_uri = str(article.get("source_uri") or "").strip()
+        if not source_uri:
+            continue
+        raw_html = article.get("raw_html")
+        raw_payload = raw_html.encode("utf-8") if isinstance(raw_html, str) else str(article.get("body") or "").encode("utf-8")
+        if not raw_payload:
+            continue
+        from hashlib import sha256
+
+        digest = sha256(raw_payload).hexdigest()
+        source_version = str(article.get("source_watermark") or digest)
+        vehicle_key = "-".join(
+            str(value).strip().casefold().replace(" ", "-")
+            for value in (vehicle.get("make"), vehicle.get("model"), vehicle.get("year"), region)
+            if value not in (None, "")
+        )
+        vehicle_candidate = NormalizationCandidate(
+            "vehicle_identity",
+            f"vehicle:{vehicle_key}",
+            {
+                "year": vehicle.get("year", vehicle.get("model_year")),
+                "make": vehicle.get("make"),
+                "model": vehicle.get("model"),
+                "region": region,
+                "body_style": vehicle.get("body_style"),
+                "drivetrain": vehicle.get("drivetrain"),
+                "trim": vehicle.get("trim"),
+                "engine_displacement_l": vehicle.get("engine_displacement_l"),
+            },
+            "vehicle",
+        )
+        article_candidate = NormalizationCandidate(
+            "article",
+            str(article.get("article_id") or f"autoapitwo:{digest}"),
+            {
+                "id": str(article.get("article_id") or f"autoapitwo:{digest}"),
+                "title": article.get("title") or article.get("source_title"),
+                "body": article.get("body") or raw_html,
+                "steps": article.get("blocks") or [],
+                "images": article.get("images") or [],
+            },
+            "article",
+        )
+        artifacts.append(
+            SourceArtifact(
+                kind="document",
+                source_uri=source_uri,
+                source_version=source_version,
+                media_type="text/html",
+                content_sha256=digest,
+                payload=raw_payload,
+                raw_payload=raw_payload,
+                metadata={"provider": "autoapitwo", "vehicle_key": vehicle_key},
+                candidates=(vehicle_candidate, article_candidate),
+            )
+        )
+    if not artifacts:
+        return {"status": "no_persistable_articles"}
+    bundle = normalize_source_bundle(artifacts, region, expected_vehicle=dict(vehicle))
+    persisted = persist_source_bundle(bundle, artifacts, adapter_name="autoapitwo")
+    return {"status": "persisted", "article_count": len(bundle.articles), **dict(persisted)}
 
 
 def _default_composer(
@@ -1431,6 +1535,12 @@ def _answer_from_result(
         reason_text = str(reason).strip()
         if reason_text and not any(str(item.get("message")) == reason_text for item in warnings):
             warnings.append({"message": reason_text, "status": "needs_review"})
+    if isinstance(procedure, Mapping) and not str(procedure.get("markdown") or "").strip():
+        from .derived_article_persistence import render_procedure_markdown
+
+        markdown_input = dict(safe)
+        markdown_input["procedure"] = procedure
+        procedure = {**procedure, "markdown": render_procedure_markdown(markdown_input)}
     answer: dict[str, Any] = {
         "answer_status": status,
         "data_state": data_state,
@@ -1705,7 +1815,22 @@ def _new_job_plan(query_id: str, intent: ChatIntent, vehicle: Mapping[str, Any] 
     }
 
 
-def _vehicle_candidates(message: str, principal: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+def _vehicle_candidates(
+    message: str,
+    principal: Mapping[str, Any],
+    request_params: Mapping[str, Any] | None = None,
+) -> list[Mapping[str, Any]]:
+    context = _request_vehicle_context(request_params)
+    if context is not None:
+        candidate = dict(context)
+        candidate["year"] = candidate.get("year", candidate.get("model_year"))
+        candidate["region"] = candidate.get("region") or os.getenv("AUTODATA_SOURCE_REGION", "US")
+        candidate["vehicle_id"] = candidate.get("vehicle_id") or _stable_uuid(
+            "vehicle", json.dumps(candidate, sort_keys=True, default=str)
+        )
+        candidate["candidate_key"] = candidate.get("candidate_key") or _vehicle_candidate_key(candidate)
+        candidate["confidence"] = 1.0
+        return [candidate]
     callback = _dependencies.vehicle_candidates
     if callback is not None:
         values = callback(message, principal)
@@ -1764,6 +1889,62 @@ def _vehicle_candidates(message: str, principal: Mapping[str, Any]) -> list[Mapp
     candidate["candidate_key"] = _vehicle_candidate_key(candidate)
     candidate["confidence"] = 1.0
     return [candidate]
+
+
+def _request_vehicle_context(request_params: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(request_params, Mapping):
+        return None
+    vehicle = request_params.get("vehicle")
+    if not isinstance(vehicle, Mapping):
+        return None
+    year = vehicle.get("year", vehicle.get("model_year"))
+    make = str(vehicle.get("make") or "").strip()
+    model = str(vehicle.get("model") or "").strip()
+    if year is None or not make or not model:
+        return None
+    context = {
+        key: value
+        for key, value in vehicle.items()
+        if key in {
+            "vehicle_id",
+            "vehicle_configuration_id",
+            "candidate_key",
+            "configuration_key",
+            "year",
+            "model_year",
+            "make",
+            "model",
+            "region",
+            "body_style",
+            "trim",
+            "drivetrain",
+            "engine",
+            "engine_displacement_l",
+        }
+        and value not in (None, "")
+    }
+    context["year"] = year
+    context["make"] = make
+    context["model"] = model
+    return context
+
+
+def _message_with_vehicle_context(message: str, vehicle: Mapping[str, Any] | None) -> str:
+    if not vehicle:
+        return message
+    descriptors = [
+        str(vehicle.get("year") or vehicle.get("model_year") or "").strip(),
+        str(vehicle.get("make") or "").strip(),
+        str(vehicle.get("model") or "").strip(),
+        str(vehicle.get("drivetrain") or "").strip(),
+        (
+            f"{vehicle.get('engine_displacement_l')}L"
+            if vehicle.get("engine_displacement_l") not in (None, "")
+            else ""
+        ),
+    ]
+    prefix = " ".join(value for value in descriptors if value)
+    return f"{prefix} {message}".strip()
 
 
 def _environment_candidates() -> list[Mapping[str, Any]]:

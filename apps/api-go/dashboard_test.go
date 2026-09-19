@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestDashboardRouteServesMinimalVehicleSelector(t *testing.T) {
+func TestDashboardRouteServesVehicleSelectorWorkspace(t *testing.T) {
 	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
 	request := httptest.NewRequest(http.MethodGet, "/dashboard/", nil)
 	response := httptest.NewRecorder()
@@ -22,7 +22,7 @@ func TestDashboardRouteServesMinimalVehicleSelector(t *testing.T) {
 	}
 	body := response.Body.String()
 	for _, marker := range []string{
-		"AutoData vehicle selector",
+		"AutoData vehicle workspace",
 		"Choose a vehicle",
 		"id=\"decade-list\"",
 		"id=\"year-list\"",
@@ -34,22 +34,16 @@ func TestDashboardRouteServesMinimalVehicleSelector(t *testing.T) {
 		"id=\"configuration-list\"",
 		"id=\"choice-row\"",
 		"id=\"selected-vehicle\"",
-		`/dashboard/app.js?v=vehicle-selector-v2`,
+		"id=\"back-button\"",
+		"id=\"workspace\"",
+		"id=\"chat-log\"",
+		"id=\"chat-input\"",
+		"id=\"worker-terminal\"",
+		"id=\"procedure-markdown\"",
+		`/dashboard/app.js?v=vehicle-workspace-v1`,
 	} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("dashboard body does not contain %q", marker)
-		}
-	}
-	for _, forbidden := range []string{
-		`id="chat-log"`,
-		`id="worker-terminal"`,
-		`id="procedure-steps"`,
-		`id="detail-toggle"`,
-		"<textarea",
-		"<select",
-	} {
-		if strings.Contains(body, forbidden) {
-			t.Fatalf("minimal dashboard still contains %q", forbidden)
 		}
 	}
 }
@@ -99,13 +93,17 @@ func TestDashboardRouteServesSelectorJavaScript(t *testing.T) {
 		"model",
 		"configuration",
 		"selectedVehicle",
+		"goBack",
+		"openWorkspace",
+		"submitChat",
+		"streamChatEvents",
+		"worker-terminal",
+		"request_params",
+		"procedure.markdown",
 	} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("dashboard JavaScript does not contain %q", marker)
 		}
-	}
-	if strings.Contains(body, "/chat/queries") {
-		t.Fatal("minimal selector dashboard must not initialize the chatbot flow")
 	}
 }
 
@@ -120,7 +118,7 @@ func TestDashboardRouteServesSelectorStyles(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
 	body := response.Body.String()
-	for _, marker := range []string{".selector-grid", ".choice-row", ".choice-button", ".make-letter", "prefers-reduced-motion"} {
+	for _, marker := range []string{".selector-grid", ".choice-row", ".choice-button", ".make-letter", ".workspace", ".chat-panel", ".worker-terminal", "prefers-reduced-motion"} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("dashboard CSS does not contain %q", marker)
 		}

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f6f4ef" />
-    <title>AutoData vehicle selector</title>
+    <title>AutoData vehicle workspace</title>
     <link rel="stylesheet" href="/dashboard/styles.css" />
   </head>
   <body>
@@ -19,7 +19,10 @@
 
       <section class="selector-grid" aria-label="Vehicle selector">
         <section class="step" aria-labelledby="step-title">
-          <h2 id="step-title">1. Decade</h2>
+          <div class="step-heading">
+            <h2 id="step-title">1. Decade</h2>
+            <button id="back-button" class="back-button" type="button" hidden>Back</button>
+          </div>
           <div id="choice-row" class="choice-row" aria-live="polite">
             <div id="decade-step" class="choice-pane">
               <div id="decade-list" class="choice-list"></div>
@@ -48,7 +51,47 @@
           Continue to repair request
         </button>
       </section>
+
+      <section id="workspace" class="workspace" aria-label="Vehicle repair workspace" hidden>
+        <div class="workspace-heading">
+          <div>
+            <p class="eyebrow">Repair workspace</p>
+            <h2 id="workspace-vehicle">—</h2>
+          </div>
+          <button id="workspace-back-button" class="back-button" type="button">Change vehicle</button>
+        </div>
+        <div class="workspace-grid">
+          <section class="chat-panel" aria-labelledby="chat-title">
+            <h2 id="chat-title">Ask AutoData</h2>
+            <div id="chat-log" class="chat-log" aria-live="polite">
+              <p class="chat-empty">Ask for a procedure, quote, diagnostic, or specification.</p>
+            </div>
+            <form id="chat-form" class="chat-form">
+              <label class="sr-only" for="chat-input">Repair request</label>
+              <textarea id="chat-input" rows="3" placeholder="Example: oil pump and water pump replacement procedure and quote"></textarea>
+              <button id="chat-send" class="continue-button" type="submit">Send request</button>
+            </form>
+          </section>
+          <section class="worker-terminal" aria-labelledby="worker-terminal-title">
+            <div class="terminal-heading">
+              <h2 id="worker-terminal-title">Agent terminal</h2>
+              <span id="worker-status" class="terminal-status">Idle</span>
+            </div>
+            <div id="worker-terminal" class="terminal-output" role="log" aria-live="polite">
+              <p>Waiting for a repair request.</p>
+            </div>
+          </section>
+        </div>
+        <section id="chat-result" class="chat-result" aria-live="polite" hidden>
+          <p class="eyebrow">Result</p>
+          <div id="chat-answer"></div>
+          <details id="procedure-details">
+            <summary>View detailed Markdown procedure</summary>
+            <pre id="procedure-markdown"></pre>
+          </details>
+        </section>
+      </section>
     </main>
-    <script src="/dashboard/app.js?v=vehicle-selector-v2" defer></script>
+    <script src="/dashboard/app.js?v=vehicle-workspace-v1" defer></script>
   </body>
 </html>

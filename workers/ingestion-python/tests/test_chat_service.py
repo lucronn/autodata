@@ -159,6 +159,29 @@ def test_query_creation_is_idempotent_and_exposes_numbered_clickable_options():
     assert calls["compose"] == []
 
 
+def test_structured_vehicle_context_binds_job_without_repeating_vehicle_in_message():
+    calls = install_runtime(candidates=lambda _message, _principal: ())
+    selected = {
+        **VEHICLE_A,
+        "model": "RAV4",
+        "configuration_key": "1997-toyota-rav4-2.0l-4wd",
+        "vehicle_configuration_id": "configuration-rav4-4wd",
+        "engine_displacement_l": 2.0,
+    }
+
+    created = create_chat_query(
+        "brake line replacement procedure and quote",
+        idempotency_key="chat-structured-vehicle-1",
+        principal=principal(),
+        request_params={"vehicle": selected},
+    )
+
+    assert created["status"] == "processing"
+    assert created["answer"]["vehicle"]["vehicle_id"] == "vehicle-rav4-4wd"
+    assert created["answer"]["vehicle"]["configuration_key"] == "1997-toyota-rav4-2.0l-4wd"
+    assert calls["source"] == []
+
+
 def test_nonmatching_provider_vehicle_results_do_not_block_explicit_vehicle_fallback(monkeypatch):
     from autodata_ingestion import autoapitwo_guide
     from autodata_ingestion.chat_service import _vehicle_candidates

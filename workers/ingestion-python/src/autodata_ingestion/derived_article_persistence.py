@@ -7,7 +7,7 @@ import hashlib
 import json
 import os
 import uuid
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 
 DERIVED_ARTICLE_CONTRACT_VERSION = 3
@@ -138,6 +138,7 @@ def _identity_labor(labor: Mapping[str, Any]) -> dict[str, Any]:
 def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, Any]) -> dict[str, Any]:
     """Insert or replay a composed article revision in PostgreSQL."""
 
+    result = _with_markdown(result)
     article_id, fingerprint = derived_article_identity(result)
     password = os.getenv("AUTODATA_POSTGRES_PASSWORD")
     if not password:
@@ -284,7 +285,7 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
                     revision_number,
                     fingerprint,
                     source_watermark,
-                    str(procedure.get("title") or article_id),
+                    str(procedure.get("markdown") or procedure.get("title") or article_id),
                     Jsonb(procedure.get("steps", [])),
                     Jsonb(result.get("labor", {})),
                     Jsonb(result.get("images", [])),
@@ -504,6 +505,116 @@ def _visual_lineage_keys(visual_artifacts: list[Any]) -> list[str]:
     return sorted(keys)
 
 
+def render_procedure_markdown(result: Mapping[str, Any]) -> str:
+    """Render a deterministic, source-backed Markdown procedure document."""
+
+    procedure = result.get("procedure", {})
+    if not isinstance(procedure, Mapping):
+        procedure = {}
+    vehicle = result.get("canonical_vehicle") or result.get("vehicle") or {}
+    if not isinstance(vehicle, Mapping):
+        vehicle = {}
+    labor = result.get("labor") or {}
+    if not isinstance(labor, Mapping):
+        labor = {}
+    quote = result.get("quote") or {}
+    if isinstance(quote, Mapping):
+        labor = labor or quote.get("labor") or quote
+    if not isinstance(labor, Mapping):
+        labor = {}
+    title = str(procedure.get("title") or result.get("title") or "Vehicle service procedure").strip()
+    vehicle_label = " ".join(
+        str(value).strip()
+        for value in (
+            vehicle.get("year", vehicle.get("model_year")),
+            vehicle.get("make"),
+            vehicle.get("model"),
+            vehicle.get("trim"),
+            vehicle.get("drivetrain"),
+        )
+        if value not in (None, "") and str(value).strip()
+    ) or "Selected vehicle"
+    total_hours = labor.get("total_labor_hours", labor.get("total_hours", labor.get("required_hours")))
+    overlap_hours = labor.get("overlap_hours_removed")
+    lines = [f"# {title}", "", "## Vehicle", f"{vehicle_label}", "", "## Quote"]
+    if total_hours not in (None, ""):
+        try:
+            lines.append(f"- **Labor:** {float(total_hours):.2f} labor hours")
+        except (TypeError, ValueError):
+            lines.append(f"- **Labor:** {total_hours} labor hours")
+    else:
+        lines.append("- **Labor:** Not available")
+    if overlap_hours not in (None, ""):
+        try:
+            lines.append(f"- **Overlap removed:** {float(overlap_hours):.2f} hours of overlap removed")
+        except (TypeError, ValueError):
+            lines.append(f"- **Overlap removed:** {overlap_hours}")
+    parts = result.get("parts") or labor.get("parts") or []
+    if isinstance(parts, list) and parts:
+        lines.append("- **Parts:** " + ", ".join(_part_label(part) for part in parts))
+    lines.extend(["", "## What this includes"])
+    components = result.get("requested_components") or (
+        quote.get("requested_components") if isinstance(quote, Mapping) else None
+    ) or result.get("selected_articles") or []
+    if isinstance(components, (list, tuple, set)) and components:
+        lines.extend(f"- {str(component)}" for component in components)
+    else:
+        lines.append("- The requested service and its source-backed supporting operations.")
+    lines.extend(["", "## Procedure"])
+    steps = procedure.get("steps", [])
+    if isinstance(steps, list) and steps:
+        for index, step in enumerate(steps, start=1):
+            if not isinstance(step, Mapping):
+                lines.append(f"{index}. {str(step).strip()}")
+                continue
+            step_title = str(step.get("title") or step.get("name") or step.get("operation") or step.get("action") or "Service step").strip()
+            instructions = step.get("instructions")
+            if isinstance(instructions, list):
+                instructions = " ".join(str(item).strip() for item in instructions if str(item).strip())
+            description = str(step.get("description") or step.get("instruction") or step.get("text") or instructions or "").strip()
+            lines.append(f"{index}. **{step_title}**")
+            if description:
+                lines.append(f"   {description}")
+    else:
+        lines.append("1. Follow the source-backed service instructions for the requested operation.")
+    lines.extend(["", "## Safety and notes"])
+    warnings = procedure.get("warnings", [])
+    if isinstance(warnings, list) and warnings:
+        for warning in warnings:
+            message = warning.get("message") if isinstance(warning, Mapping) else warning
+            if str(message).strip():
+                lines.append(f"- **Warning:** {str(message).strip()}")
+    else:
+        lines.append("- Verify the vehicle-specific instructions and required safety controls before work.")
+    lines.extend(["", "## Sources and review status"])
+    review = result.get("review_label") or procedure.get("review_label") or result.get("review_state")
+    if review:
+        lines.append(f"- **Review:** {str(review).strip()}")
+    source_ids = result.get("selected_articles", [])
+    if isinstance(source_ids, (list, tuple, set)) and source_ids:
+        lines.append("- **Source articles:** " + ", ".join(str(value) for value in source_ids))
+    watermark = result.get("source_watermark") or result.get("source_watermarks")
+    if watermark:
+        lines.append(f"- **Source watermark:** {watermark}")
+    return "\n".join(lines).strip() + "\n"
+
+
+def _part_label(part: Any) -> str:
+    if isinstance(part, Mapping):
+        name = part.get("name") or part.get("description") or part.get("part_number") or "Part"
+        price = part.get("price") or part.get("unit_price")
+        return f"{name} (${price})" if price not in (None, "") else str(name)
+    return str(part)
+
+
+def _with_markdown(result: Mapping[str, Any]) -> dict[str, Any]:
+    enriched = dict(result)
+    procedure = result.get("procedure", {})
+    if isinstance(procedure, Mapping) and not str(procedure.get("markdown") or "").strip():
+        enriched["procedure"] = {**procedure, "markdown": render_procedure_markdown(result)}
+    return enriched
+
+
 def _vehicle_key(vehicle: Mapping[str, Any]) -> str:
     parts = [str(vehicle.get(key, "")).strip().casefold().replace(" ", "-") for key in ("make", "model")]
     parts.append(str(vehicle.get("year", vehicle.get("model_year", ""))))
@@ -520,4 +631,4 @@ def _is_uuid(value: str) -> bool:
     return True
 
 
-__all__ = ["derived_article_identity", "persist_derived_article"]
+__all__ = ["derived_article_identity", "persist_derived_article", "render_procedure_markdown"]

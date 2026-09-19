@@ -11,6 +11,7 @@ from autodata_ingestion.derived_article_persistence import (  # noqa: E402
     _visual_lineage_keys,
     derived_article_identity,
     persist_derived_article,
+    render_procedure_markdown,
 )
 
 
@@ -29,6 +30,32 @@ def test_derived_article_identity_is_stable_and_does_not_use_llm_chosen_id():
     assert first == second
     assert first[0] == "combined:vehicle:alternator+starter:v1"
     assert len(first[1]) == 64
+
+
+def test_render_procedure_markdown_contains_consumer_sections_and_overlap_hours():
+    result = {
+        "canonical_vehicle": {"year": 1997, "make": "Toyota", "model": "RAV4", "drivetrain": "4WD"},
+        "procedure": {
+            "title": "Brake line and fluid service",
+            "steps": [
+                {"title": "Prepare the vehicle", "description": "Secure the vehicle and relieve pressure."},
+                {"title": "Replace the brake line", "description": "Route and tighten the replacement line."},
+            ],
+            "warnings": [{"message": "Bleed the system before returning the vehicle."}],
+        },
+        "labor": {"total_labor_hours": 3.5, "overlap_hours_removed": 0.75},
+        "selected_articles": ["brake-line", "brake-bleed"],
+        "review_label": "UNREVIEWED — human review pending",
+    }
+
+    markdown = render_procedure_markdown(result)
+
+    assert markdown.startswith("# Brake line and fluid service")
+    for section in ("## Vehicle", "## Quote", "## What this includes", "## Procedure", "## Safety and notes", "## Sources and review status"):
+        assert section in markdown
+    assert "3.50 labor hours" in markdown
+    assert "0.75 hours of overlap removed" in markdown
+    assert "brake-line" in markdown
 
 
 def test_derived_article_identity_includes_vehicle_categories_watermarks_and_visuals():
