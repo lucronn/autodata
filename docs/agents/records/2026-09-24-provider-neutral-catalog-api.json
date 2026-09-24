@@ -1,0 +1,21 @@
+{
+  "goal": "Make AutoData a provider-neutral catalog API consumed by external applications, with cache-first catalog hydration, normalized articles, and no chatbot active path.",
+  "plan_ref": "docs/superpowers/plans/2026-09-24-provider-neutral-catalog-api.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/113",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/provider-neutral-catalog-api.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add a versioned public catalog API for the cascade and normalized articles",
+    "Add source-complete catalog hydration and raw-response provenance for both providers",
+    "Extract article hydration from chat orchestration into a reusable catalog service",
+    "Enforce article normalization, fixed order, immutable originals, and local images",
+    "Replace the dashboard chat flow with direct catalog/article browsing and disable chat runtime activation",
+    "Add contract, persistence, source, and live cascade tests; verify no provider call occurs for complete cached data"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-09-24T00:00:00Z",
+  "base_sha": "8a068547fe9df395d1671f25485319a137e963bb"
+}
