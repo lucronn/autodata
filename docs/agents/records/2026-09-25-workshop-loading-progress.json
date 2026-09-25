@@ -1,0 +1,17 @@
+{
+  "goal": "Add deterministic, accessible stage and percentage progress to the AutoData workshop loading flow.",
+  "plan_ref": "docs/superpowers/plans/2026-09-25-workshop-loading-progress.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/113",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-loading-progress.md"
+  ],
+  "todo": [
+    "Add the deterministic stage model and accessible progress markup/styles.",
+    "Connect selector, article-catalog, and article-detail requests to stage and percentage updates, including bounded hydration polling.",
+    "Add focused regression coverage and verify the live workshop route with a slow/partial catalog response and a completed vehicle flow."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-09-25T16:44:38Z",
+  "base_sha": "eb02788cff9956bfa11ef235906453747ed6ce18"
+}
