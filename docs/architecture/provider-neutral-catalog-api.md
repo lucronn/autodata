@@ -5,6 +5,10 @@ selects a year, make, model, engine/base/trim, and article through versioned
 API resources. AutoData serves stored canonical records and hydrates missing or
 incomplete records from AutoAPI and AutoAPItwo.
 
+The public contract is published at `/openapi.json`; `/swagger/` serves the
+same-origin interactive Swagger UI with prefilled examples for the full
+cascade.
+
 The source boundary keeps each provider's raw response and provenance. The
 normalization boundary converts provider fields into canonical vehicle,
 configuration, article, step, and image records. The public API returns only
