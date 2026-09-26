@@ -7,6 +7,7 @@ from hashlib import sha256
 import inspect
 import json
 import os
+import re
 from copy import deepcopy
 from threading import RLock
 from typing import Any, Callable, Iterable, Mapping
@@ -178,12 +179,38 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             vehicle["make"], vehicle["model"], vehicle["model_year"], vehicle["region"],
             vehicle.get("trim"), None,
         )
-        records, metadata = _load_autoapi_job_catalog(vehicle, target, query=query)
-        matched = [
-            record for record in records
-            if str(record.get("article", {}).get("article_id", "")) in {source_article_id, str(request.get("article_id", ""))}
-            or str(record.get("article", {}).get("title", "")).casefold() == str(request.get("title", "")).casefold()
-        ]
+        primary_error = None
+        try:
+            records, metadata = _load_autoapi_job_catalog(vehicle, target, query=query)
+            matched = [
+                record for record in records
+                if str(record.get("article", {}).get("article_id", "")) in {source_article_id, str(request.get("article_id", ""))}
+                or str(record.get("article", {}).get("title", "")).casefold() == str(request.get("title", "")).casefold()
+            ]
+            if not matched:
+                primary_error = RuntimeError("primary article detail was not found")
+        except Exception as error:  # noqa: BLE001 - try the second source
+            primary_error = error
+
+        if primary_error is not None:
+            try:
+                matched, metadata = _load_autoapitwo_article_detail(request, vehicle)
+            except Exception as fallback_error:  # noqa: BLE001 - source failure is a retryable miss
+                result = {
+                    "status": "source_unavailable",
+                    "hydration_key": key,
+                    "scope": scope,
+                    "complete": False,
+                    "missing_scopes": [scope],
+                    "rows": [],
+                    "metadata": {
+                        "reason": type(fallback_error).__name__,
+                        "primary_source_reason": type(primary_error).__name__,
+                    },
+                }
+                with _HYDRATION_LOCK:
+                    _HYDRATION_RESULTS[key] = deepcopy(result)
+                return result
         result = {
             "status": "hydrated" if matched else "source_miss",
             "hydration_key": key,
@@ -196,6 +223,7 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
         with _HYDRATION_LOCK:
             _HYDRATION_RESULTS[key] = deepcopy(result)
         return result
+
 
     # Article discovery is a vehicle-scoped index read. It must not enter the
     # provider-neutral selector dispatcher: providers that only expose a full
@@ -254,24 +282,191 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
     return result
 
 
+def _load_autoapitwo_article_detail(
+    request: Mapping[str, Any], vehicle: Mapping[str, Any]
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Fetch and persist one selected AutoAPItwo article on demand."""
+
+    from dataclasses import replace
+
+    from .autoapitwo_connector import AutoAPITwoConnector
+    from .procedure_normalize import normalize_procedure_article
+    from .source_adapters import SourceResource, adapt_source_resource
+    from .source_bundle import normalize_source_bundle
+
+    connector = AutoAPITwoConnector(
+        os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "https://autoapitwo.vercel.app"),
+        timeout=float(os.getenv("AUTODATA_AUTOAPITWO_TIMEOUT_SECONDS", "25")),
+        retry_attempts=int(os.getenv("AUTODATA_AUTOAPITWO_RETRY_ATTEMPTS", "3")),
+        retry_delay=float(os.getenv("AUTODATA_AUTOAPITWO_RETRY_DELAY_SECONDS", "0.25")),
+    )
+    requested_source_id = str(request.get("source_article_id") or "").strip()
+    requested_article_id = requested_source_id.rsplit(":", 1)[-1] if requested_source_id else ""
+    requested_car_id = ""
+    source_parts = requested_source_id.split(":")
+    if len(source_parts) >= 3 and source_parts[0] == "autoapitwo" and source_parts[1].isdigit():
+        requested_car_id = source_parts[1]
+    car_ids = (requested_car_id,) if requested_car_id else _autoapitwo_car_ids(request, vehicle, connector)
+    if not car_ids:
+        raise RuntimeError("AutoAPItwo did not resolve a matching vehicle for article detail")
+
+    selected = None
+    persisted_descriptor = _lookup_autoapitwo_descriptor(
+        str(request.get("vehicle_id") or ""), requested_source_id
+    )
+    used_persisted_descriptor = persisted_descriptor is not None
+    if persisted_descriptor is not None:
+        selected = (
+            requested_car_id or str(persisted_descriptor.get("provider_vehicle_id") or ""),
+            persisted_descriptor,
+        )
+    else:
+        for car_id in car_ids:
+            catalog = connector.fetch_article_catalog(car_id)
+            for descriptor in catalog.get("articles", ()):
+                descriptor_id = str(descriptor.get("id") or "")
+                if requested_article_id and not descriptor_id.endswith(f":{requested_article_id}"):
+                    continue
+                if not requested_article_id and str(descriptor.get("title") or "").casefold() != str(request.get("title") or "").casefold():
+                    continue
+                selected = (str(car_id), dict(descriptor))
+                break
+            if selected is not None:
+                break
+    if selected is None:
+        raise RuntimeError("AutoAPItwo article was not found in the vehicle catalog")
+
+    car_id, descriptor = selected
+    raw_source = connector.read(descriptor["href"], car_id=car_id)
+    source_article = connector.article(car_id, descriptor["href"], title=descriptor.get("title"))
+    source_article["id"] = source_article.get("article_id")
+    source_article["source_original"] = raw_source
+    source_engine = _engine_number(vehicle.get("engine_displacement_l", vehicle.get("engine")))
+    source_payload = {
+        "year": int(vehicle.get("model_year", vehicle.get("year"))),
+        "make": str(vehicle["make"]),
+        "model": str(vehicle["model"]),
+        "region": str(vehicle.get("region") or "US"),
+        "engine": f"{source_engine:.1f}L" if source_engine is not None else None,
+        "articleDetails": [source_article],
+    }
+    resource = SourceResource.from_bytes(
+        descriptor["href"],
+        "autoapitwo-content-detail-v1",
+        json.dumps(source_payload, sort_keys=True, separators=(",", ":")).encode(),
+        "application/json",
+        metadata={"provider": "autoapitwo", "vehicle_id": car_id, "selected_article": True},
+    )
+    artifact = adapt_source_resource(resource)
+    bundle = normalize_source_bundle(
+        [artifact],
+        str(vehicle.get("region") or "US"),
+        expected_vehicle=dict(vehicle),
+    )
+    if bundle.vehicle is None or not bundle.articles:
+        raise RuntimeError("AutoAPItwo article did not normalize for the requested vehicle")
+    normalized_articles = tuple(normalize_procedure_article(article) for article in bundle.articles)
+    bundle = replace(bundle, articles=normalized_articles)
+    if os.getenv("AUTODATA_SOURCE_PERSIST", "1") == "1":
+        from .bundle_persistence import persist_source_bundle
+
+        persist_source_bundle(bundle, [artifact], adapter_name="autoapitwo")
+    evidence_by_id = {
+        str(item["evidence_id"]): item
+        for item in bundle.evidence
+        if item.get("evidence_id")
+    }
+    records = []
+    for article in bundle.articles:
+        records.append(
+            {
+                "kind": "article",
+                "vehicle_key": bundle.vehicle.get("vehicle_key"),
+                "vehicle_identity": dict(bundle.vehicle),
+                "article": dict(article),
+                "evidence": (
+                    [evidence_by_id[str(article["evidence_id"])] ]
+                    if article.get("evidence_id")
+                    and str(article["evidence_id"]) in evidence_by_id
+                    else []
+                ),
+            }
+        )
+    return records, {
+        "mode": "autoapitwo_article_detail",
+        "content_source": "autoapitwo",
+        "traversal": "selected_article_only",
+        "vehicle_count": 1,
+        "materialized_records": len(records),
+        "index_read_count": 0 if used_persisted_descriptor else 36,
+        "targeted_article_fetch_count": 1,
+        "targeted_labor_fetch_count": 0,
+    }
+
+
+def _lookup_autoapitwo_descriptor(vehicle_id: str, source_article_id: str) -> dict[str, Any] | None:
+    """Recover a selected catalog link from the persisted list-only snapshot."""
+
+    if not vehicle_id or not source_article_id:
+        return None
+    try:
+        import psycopg
+        from minio import Minio
+
+        host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+        with psycopg.connect(
+            host=host,
+            port=int(port_text),
+            dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
+            user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
+            password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT ss.object_key
+                    FROM catalog_articles ca
+                    JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
+                    WHERE ca.vehicle_id = %s::uuid AND ca.article_id = %s
+                    ORDER BY ca.created_at DESC
+                    LIMIT 1
+                    """,
+                    (vehicle_id, source_article_id),
+                )
+                row = cursor.fetchone()
+        if not row or not row[0]:
+            return None
+        client = Minio(
+            os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
+            access_key=os.environ["AUTODATA_S3_ACCESS_KEY"],
+            secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],
+            secure=False,
+        )
+        response = client.get_object(os.getenv("AUTODATA_SOURCE_BUCKET", "autodata-sources"), row[0])
+        try:
+            payload = json.loads(response.read())
+        finally:
+            response.close()
+            response.release_conn()
+        articles = payload.get("articleDetails") if isinstance(payload, Mapping) else None
+        if not isinstance(articles, list):
+            return None
+        for article in articles:
+            if not isinstance(article, Mapping):
+                continue
+            if str(article.get("id") or "") == source_article_id:
+                return dict(article)
+    except Exception:  # noqa: BLE001 - source search remains the fallback
+        return None
+    return None
+
 def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, Any]:
     """Persist one vehicle's article index without fetching article bodies."""
-
-    base_url = os.getenv("AUTODATA_AUTOAPI_BASE_URL", "").strip()
-    if not base_url:
-        return {
-            "status": "accepted",
-            "hydration_key": key,
-            "scope": "articles",
-            "complete": False,
-            "missing_scopes": ["articles"],
-            "rows": [],
-            "metadata": {"reason": "autoapi_not_configured"},
-        }
 
     from .article_intake import VehicleTarget
     from .worker import _load_autoapi_job_catalog
 
+    primary_error = None
     try:
         year = int(request["year"])
         make = str(request["make"]).strip()
@@ -312,16 +507,27 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
         # reads the index and persists list_only rows, but its selected-article
         # loop is entered only when a query selects one or more article IDs.
         records, metadata = _load_autoapi_job_catalog(vehicle, target, query="")
-    except Exception as error:  # noqa: BLE001 - source failure is a retryable miss
-        return {
-            "status": "source_unavailable",
-            "hydration_key": key,
-            "scope": "articles",
-            "complete": False,
-            "missing_scopes": ["articles"],
-            "rows": [],
-            "metadata": {"reason": type(error).__name__},
-        }
+    except Exception as error:  # noqa: BLE001 - try the second source
+        primary_error = error
+    if primary_error is None and not records:
+        primary_error = RuntimeError("primary article catalog was empty")
+
+    if primary_error is not None:
+        try:
+            records, metadata = _load_autoapitwo_article_catalog(request, vehicle)
+        except Exception as fallback_error:  # noqa: BLE001 - source failure is a retryable miss
+            return {
+                "status": "source_unavailable",
+                "hydration_key": key,
+                "scope": "articles",
+                "complete": False,
+                "missing_scopes": ["articles"],
+                "rows": [],
+                "metadata": {
+                    "reason": type(fallback_error).__name__,
+                    "primary_source_reason": type(primary_error).__name__,
+                },
+            }
 
     rows = [dict(record) for record in records if isinstance(record, Mapping)]
     return {
@@ -333,6 +539,206 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
         "rows": rows,
         "metadata": metadata if isinstance(metadata, Mapping) else {},
     }
+
+
+def _load_autoapitwo_article_catalog(
+    request: Mapping[str, Any], vehicle: Mapping[str, Any]
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Persist a vehicle's AutoAPItwo article index without reading content."""
+
+    from .autoapitwo_connector import AutoAPITwoConnector
+    from .source_adapters import SourceResource, adapt_source_resource
+    from .source_bundle import normalize_source_bundle
+
+    connector = AutoAPITwoConnector(
+        os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "https://autoapitwo.vercel.app"),
+        timeout=float(os.getenv("AUTODATA_AUTOAPITWO_TIMEOUT_SECONDS", "25")),
+        retry_attempts=int(os.getenv("AUTODATA_AUTOAPITWO_RETRY_ATTEMPTS", "3")),
+        retry_delay=float(os.getenv("AUTODATA_AUTOAPITWO_RETRY_DELAY_SECONDS", "0.25")),
+    )
+    car_ids = _autoapitwo_car_ids(request, vehicle, connector)
+    if not car_ids:
+        raise RuntimeError("AutoAPItwo did not resolve a matching vehicle")
+
+    records: list[dict[str, Any]] = []
+    index_reads = 0
+    source_vehicle_count = 0
+    for car_id in car_ids:
+        catalog = connector.fetch_article_catalog(car_id)
+        articles = list(catalog.get("articles", ()))
+        index_reads += int(catalog.get("index_reads", 0))
+        if not articles:
+            continue
+        source_vehicle_count += 1
+        year = int(vehicle.get("model_year", vehicle.get("year")))
+        source_uri = (
+            f"{connector.base}/api/v1/content/carids/{car_id}/components/1"
+        )
+        source_engine = vehicle.get("engine_displacement_l", vehicle.get("engine"))
+        source_engine_number = _engine_number(source_engine)
+        if source_engine_number is not None:
+            source_engine = f"{source_engine_number:.1f}L"
+        payload = {
+            "year": year,
+            "make": str(vehicle["make"]),
+            "model": str(vehicle["model"]),
+            "region": str(vehicle.get("region") or "US"),
+            "engine": source_engine,
+            "articleDetails": articles,
+        }
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        resource = SourceResource.from_bytes(
+            source_uri,
+            "autoapitwo-content-index-v1",
+            raw,
+            "application/json",
+            metadata={"provider": "autoapitwo", "vehicle_id": str(car_id)},
+        )
+        artifact = adapt_source_resource(resource)
+        bundle = normalize_source_bundle(
+            [artifact],
+            str(vehicle.get("region") or "US"),
+            expected_vehicle=dict(vehicle),
+        )
+        if bundle.vehicle is None:
+            continue
+        if os.getenv("AUTODATA_SOURCE_PERSIST", "1") == "1":
+            from .bundle_persistence import persist_source_bundle
+
+            persist_source_bundle(bundle, [artifact], adapter_name="autoapitwo")
+        evidence_by_id = {
+            str(item["evidence_id"]): item
+            for item in bundle.evidence
+            if item.get("evidence_id")
+        }
+        for article in bundle.articles:
+            records.append(
+                {
+                    "kind": "article",
+                    "vehicle_key": bundle.vehicle.get("vehicle_key"),
+                    "vehicle_identity": dict(bundle.vehicle),
+                    "article": dict(article),
+                    "evidence": (
+                        [evidence_by_id[str(article["evidence_id"])] ]
+                        if article.get("evidence_id")
+                        and str(article["evidence_id"]) in evidence_by_id
+                        else []
+                    ),
+                }
+            )
+    return records, {
+        "mode": "autoapitwo_article_index",
+        "content_source": "autoapitwo",
+        "traversal": "vehicle_article_index",
+        "vehicle_count": source_vehicle_count,
+        "materialized_records": len(records),
+        "index_read_count": index_reads,
+        "targeted_article_fetch_count": 0,
+        "targeted_labor_fetch_count": 0,
+    }
+
+
+def _autoapitwo_car_ids(
+    request: Mapping[str, Any],
+    vehicle: Mapping[str, Any],
+    connector: Any,
+) -> tuple[str, ...]:
+    supplied = request.get("autoapitwo_vehicle_ids")
+    candidates: list[Mapping[str, Any]] = []
+    if isinstance(supplied, (list, tuple)):
+        candidates.extend({"id": str(value)} for value in supplied if str(value).isdigit())
+    if not candidates:
+        vehicle_id = str(request.get("vehicle_id") or "").strip()
+        candidates.extend(_lookup_autoapitwo_car_rows(vehicle_id))
+    if not candidates:
+        year = vehicle.get("model_year", vehicle.get("year"))
+        query = f"{year} {vehicle.get('make', '')} {vehicle.get('model', '')}"
+        candidates.extend(connector.search_vehicles(query))
+
+    target_engine = _engine_number(vehicle.get("engine_displacement_l", vehicle.get("engine")))
+
+    def select(values: Iterable[Mapping[str, Any]]) -> list[str]:
+        selected: list[str] = []
+        for candidate in values:
+            if not isinstance(candidate, Mapping):
+                continue
+            candidate_id = str(candidate.get("id") or candidate.get("carId") or "").strip()
+            if not candidate_id.isdigit():
+                continue
+            if not _same_autoapitwo_vehicle(candidate, vehicle):
+                continue
+            if target_engine is not None:
+                candidate_engine = _engine_number(candidate.get("engine"))
+                if candidate_engine is None or abs(candidate_engine - target_engine) >= 0.0001:
+                    continue
+            if candidate_id not in selected:
+                selected.append(candidate_id)
+        return selected
+
+    selected = select(candidates)
+    if target_engine is not None and not selected:
+        year = vehicle.get("model_year", vehicle.get("year"))
+        query = f"{year} {vehicle.get('make', '')} {vehicle.get('model', '')}"
+        selected = select([*candidates, *connector.search_vehicles(query)])
+    return tuple(selected)
+
+
+def _lookup_autoapitwo_car_rows(vehicle_id: str) -> list[dict[str, str]]:
+    if not vehicle_id:
+        return []
+    try:
+        import psycopg
+
+        host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+        with psycopg.connect(
+            host=host,
+            port=int(port_text),
+            dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
+            user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
+            password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT provider_id
+                    FROM vehicle_provider_mappings
+                    WHERE vehicle_id = %s::uuid
+                      AND provider = 'autoapitwo'
+                      AND entity_type = 'car'
+                      AND provider_id ~ '^[0-9]+$'
+                    ORDER BY provider_id
+                    """,
+                    (vehicle_id,),
+                )
+                return [{"id": str(row[0])} for row in cursor.fetchall()]
+    except Exception:  # noqa: BLE001 - search is the source fallback
+        return []
+
+
+def _same_autoapitwo_vehicle(candidate: Mapping[str, Any], vehicle: Mapping[str, Any]) -> bool:
+    def compact(value: Any) -> str:
+        return re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+
+    year = str(candidate.get("year") or "")
+    target_year = str(vehicle.get("model_year", vehicle.get("year")) or "")
+    if year and target_year and year != target_year:
+        return False
+    candidate_make = compact(candidate.get("make"))
+    target_make = compact(vehicle.get("make"))
+    candidate_model = compact(candidate.get("model"))
+    target_model = compact(vehicle.get("model"))
+    return (
+        (not candidate_make or candidate_make == target_make)
+        and (not candidate_model or candidate_model == target_model)
+    )
+
+
+def _engine_number(value: Any) -> float | None:
+    matches = re.findall(r"\d+(?:\.\d+)?", str(value or ""))
+    if not matches:
+        return None
+    decimal_matches = [match for match in matches if "." in match]
+    return float(decimal_matches[-1] if decimal_matches else matches[0])
 
 
 def _persist_resolved_catalog_rows(

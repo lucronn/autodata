@@ -144,9 +144,10 @@ def normalize_source_bundle(
             elif candidate.kind == "part":
                 part_records.append(_normalize_part(record, artifact, candidate, quarantined))
             elif candidate.kind == "article":
+                normalized_article_id = candidate.data.get("id") or candidate.data.get("article_id") or candidate.data.get("articleId")
                 article_record = {
                     "article_key": candidate.key,
-                    "article_id": str(candidate.data.get("id")),
+                    "article_id": str(normalized_article_id),
                     "bucket": candidate.data.get("bucket"),
                     "title": candidate.data.get("title"),
                     "bulletin_number": candidate.data.get("bulletinNumber"),

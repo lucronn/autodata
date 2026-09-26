@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from hashlib import sha256
 from html.parser import HTMLParser
@@ -11,6 +12,7 @@ from threading import RLock
 import time
 from urllib.parse import quote, urljoin, urlsplit, unquote
 from urllib.request import build_opener, HTTPRedirectHandler, Request
+from typing import Any, Mapping
 
 
 class SourceUnavailable(RuntimeError):
@@ -172,6 +174,92 @@ class AutoAPITwoConnector:
         values = result.get('results', [])
         return values if isinstance(values, list) else []
 
+    def fetch_article_catalog(self, car_id, *, max_index_reads=512):
+        """Read the AutoAPItwo article index without fetching article bodies.
+
+        AutoAPItwo's component tree is useful for navigating a vehicle, but it
+        is far too expensive for catalog hydration: older vehicles can expose
+        thousands of component and information-type pages. Its search index
+        returns the same article descriptors (title, category, and detail
+        link) in one bounded request per alphanumeric query. The query set is
+        deterministic and the results are deduplicated by detail link.
+
+        Detail content is fetched only by :meth:`article` after a user selects
+        one catalog row.
+        """
+
+        car_id = str(car_id).strip()
+        if not car_id.isdigit():
+            raise ValueError("AutoAPItwo car ID must be numeric")
+        terms = tuple("abcdefghijklmnopqrstuvwxyz0123456789")
+        if len(terms) > max_index_reads:
+            raise ValueError("repair article catalog search exceeds its index read limit")
+        articles = {}
+        errors = []
+
+        def search_term(term):
+            # Each worker has its own read lock so the independent search
+            # requests can run in a small, bounded pool. This is still only
+            # the fixed index query set; no article body is fetched.
+            client = AutoAPITwoConnector(
+                self.base,
+                opener=self.opener,
+                timeout=self.timeout,
+                max_bytes=self.max_bytes,
+                cache_entries=self.cache_entries,
+                cache_ttl=self.cache_ttl,
+                retry_attempts=self.retry_attempts,
+                retry_delay=self.retry_delay,
+                retry_after_cap=self.retry_after_cap,
+            )
+            return term, client.search(car_id, term)
+
+        with ThreadPoolExecutor(max_workers=min(4, len(terms))) as pool:
+            futures = {pool.submit(search_term, term): term for term in terms}
+            for future in as_completed(futures):
+                try:
+                    _, results = future.result()
+                except Exception as error:  # noqa: BLE001 - a partial index is not complete
+                    errors.append(error)
+                    continue
+                for result in results:
+                    if not isinstance(result, Mapping):
+                        continue
+                    article_href = _self_href(result)
+                    if not article_href:
+                        continue
+                    article_url = self.safe_url(article_href, car_id)
+                    article_id = unquote(urlsplit(article_url).path.rstrip("/").rsplit("/", 1)[-1]).strip()
+                    display = str(result.get("display") or "").strip()
+                    title = str(result.get("title") or result.get("name") or "").strip()
+                    if not title and display:
+                        title = display.rsplit(">>", 1)[-1].strip()
+                    if not article_id or not title:
+                        continue
+                    category = result.get("itypeCategory")
+                    bucket = category.get("name") if isinstance(category, Mapping) else ""
+                    articles.setdefault(
+                        article_url,
+                        {
+                            "id": f"autoapitwo:{car_id}:{article_id}",
+                            "title": title,
+                            "bucket": str(bucket or "").strip(),
+                            "href": article_url,
+                            "provider": "autoapitwo",
+                            "provider_vehicle_id": car_id,
+                        },
+                    )
+        if errors:
+            raise SourceUnavailable("repair article search index is incomplete") from errors[0]
+        return {
+            "articles": tuple(articles.values()),
+            "index_reads": len(terms),
+            "component_reads": 0,
+            "information_type_reads": 0,
+            "search_terms": terms,
+            "search_error_count": len(errors),
+        }
+
     def search(self, car_id, term):
         result = self.read(f'/api/v1/content/carids/{car_id}/search/{quote(term, safe="")}', car_id=car_id)
         values = result.get('_embedded', {}).get('data', {}).get('results', [])
@@ -182,29 +270,143 @@ class AutoAPITwoConnector:
         result = self.read(url, car_id=car_id)
         if str(result.get('car', {}).get('id', '')) != str(car_id):
             raise SourceUnavailable('article vehicle does not match request')
-        article = result.get('_embedded', {}).get('data', {}).get('article', {})
+        embedded = result.get('_embedded', {}).get('data', {})
+        if not isinstance(embedded, Mapping):
+            embedded = {}
+        article = embedded.get('article', {})
+        if not isinstance(article, Mapping):
+            article = {}
         html = article.get('content')
-        if not isinstance(html, str) or not html.strip():
-            raise SourceUnavailable('repair article has no instructions')
-        parser = ArticleParser()
-        parser.feed(html)
-        parser.flush()
-        digest = sha256(html.encode()).hexdigest()
-        article_id = f'autoapitwo:{car_id}:{result.get("id", digest)}'
+        if isinstance(html, str) and html.strip():
+            parser = ArticleParser()
+            parser.feed(html)
+            parser.flush()
+            digest = sha256(html.encode()).hexdigest()
+            article_id = f'autoapitwo:{car_id}:{result.get("id", digest)}'
+            evidence_id = f'{article_id}:{digest}'
+            for index, block in enumerate(parser.blocks):
+                block['evidence_ids'] = [evidence_id]
+                block['block_id'] = f'{article_id}:block:{index}'
+                if block['kind'] == 'image':
+                    block['url'] = self.safe_url(block['url'], car_id)
+                    block['image_id'] = sha256(block['url'].encode()).hexdigest()
+            return {
+                'article_id': article_id, 'title': title or result.get('title', ''),
+                'provider': 'autoapitwo', 'provider_vehicle_id': str(car_id),
+                'vehicle': result['car'], 'source_uri': url, 'source_watermark': digest,
+                'raw_html': html, 'body': '\n'.join(b['text'] for b in parser.blocks if b['kind'] == 'text'),
+                'blocks': parser.blocks, 'images': [b for b in parser.blocks if b['kind'] == 'image'],
+                'component_links': list(dict.fromkeys(self.safe_url(link, car_id) for link in parser.links)),
+                'evidence_ids': [evidence_id],
+                'evidence': [{'evidence_id': evidence_id, 'source_uri': url, 'content_hash': digest}],
+            }
+        labor_article = self._parts_and_labor_article(car_id, url, result, embedded, title=title)
+        if labor_article is not None:
+            return labor_article
+        raise SourceUnavailable('repair article has no instructions')
+
+    def _parts_and_labor_article(self, car_id, url, result, embedded, *, title=None):
+        """Build a source article from Parts and Labor when procedure HTML is absent."""
+
+        parts = embedded.get('partsAndLabor')
+        if not isinstance(parts, Mapping):
+            return None
+        labors = parts.get('labors')
+        if not isinstance(labors, Mapping):
+            return None
+        operations = labors.get('operations')
+        if not isinstance(operations, list) or not operations:
+            return None
+        lines: list[str] = []
+        labor_hours: list[float] = []
+        for operation in operations:
+            if not isinstance(operation, Mapping):
+                continue
+            op_name = str(operation.get('operation') or 'Replace').strip() or 'Replace'
+            qualifiers = operation.get('qualifiers')
+            if not isinstance(qualifiers, list) or not qualifiers:
+                lines.append(f'{op_name}.')
+                continue
+            for qualifier in qualifiers:
+                if not isinstance(qualifier, Mapping):
+                    continue
+                name = str(qualifier.get('name') or op_name).strip() or op_name
+                labor = qualifier.get('labor') if isinstance(qualifier.get('labor'), Mapping) else {}
+                note = str(labor.get('note') or '').strip()
+                standard = labor.get('standardtime')
+                try:
+                    if standard is not None and str(standard).strip():
+                        labor_hours.append(float(standard))
+                except (TypeError, ValueError):
+                    pass
+                if note:
+                    lines.append(f'{name}. {note}'.strip())
+                else:
+                    lines.append(f'{name}.')
+                nested = qualifier.get('qualifiers')
+                if isinstance(nested, list):
+                    for child in nested:
+                        if not isinstance(child, Mapping):
+                            continue
+                        child_name = str(child.get('name') or '').strip()
+                        child_labor = child.get('labor') if isinstance(child.get('labor'), Mapping) else {}
+                        child_note = str(child_labor.get('note') or '').strip()
+                        if child_name and child_note:
+                            lines.append(f'{child_name}. {child_note}'.strip())
+                        elif child_name:
+                            lines.append(f'{child_name}.')
+        lines = [line for line in dict.fromkeys(lines) if line]
+        if not lines:
+            return None
+        body = '\n'.join(lines)
+        digest = sha256(body.encode()).hexdigest()
+        article_id = f'autoapitwo:{car_id}:labor:{result.get("id", digest)}'
         evidence_id = f'{article_id}:{digest}'
-        for index, block in enumerate(parser.blocks):
-            block['evidence_ids'] = [evidence_id]
-            block['block_id'] = f'{article_id}:block:{index}'
-            if block['kind'] == 'image':
-                block['url'] = self.safe_url(block['url'], car_id)
-                block['image_id'] = sha256(block['url'].encode()).hexdigest()
-        return {
-            'article_id': article_id, 'title': title or result.get('title', ''),
-            'provider': 'autoapitwo', 'provider_vehicle_id': str(car_id),
-            'vehicle': result['car'], 'source_uri': url, 'source_watermark': digest,
-            'raw_html': html, 'body': '\n'.join(b['text'] for b in parser.blocks if b['kind'] == 'text'),
-            'blocks': parser.blocks, 'images': [b for b in parser.blocks if b['kind'] == 'image'],
-            'component_links': list(dict.fromkeys(self.safe_url(link, car_id) for link in parser.links)),
+        blocks = [
+            {
+                'kind': 'text',
+                'text': line,
+                'evidence_ids': [evidence_id],
+                'block_id': f'{article_id}:block:{index}',
+            }
+            for index, line in enumerate(lines)
+        ]
+        payload = {
+            'article_id': article_id,
+            'title': title or result.get('title', '') or 'Parts and Labor',
+            'provider': 'autoapitwo',
+            'provider_vehicle_id': str(car_id),
+            'vehicle': result.get('car') if isinstance(result.get('car'), Mapping) else {'id': str(car_id)},
+            'source_uri': url,
+            'source_watermark': digest,
+            'raw_html': '',
+            'body': body,
+            'blocks': blocks,
+            'images': [],
+            'component_links': [],
             'evidence_ids': [evidence_id],
             'evidence': [{'evidence_id': evidence_id, 'source_uri': url, 'content_hash': digest}],
+            'bucket': 'labor',
+            'content_kind': 'parts_and_labor',
         }
+        if labor_hours:
+            payload['labor_hours'] = max(labor_hours)
+            payload['duration_hours'] = max(labor_hours)
+        return payload
+
+
+def _embedded_data(payload):
+    embedded = payload.get("_embedded") if isinstance(payload, Mapping) else None
+    data = embedded.get("data") if isinstance(embedded, Mapping) else None
+    return data if isinstance(data, Mapping) else {}
+
+
+def _embedded_items(value):
+    return [item for item in value if isinstance(item, Mapping)] if isinstance(value, list) else []
+
+
+def _self_href(value):
+    links = value.get("_links") if isinstance(value, Mapping) else None
+    self_link = links.get("self") if isinstance(links, Mapping) else None
+    href = self_link.get("href") if isinstance(self_link, Mapping) else None
+    return str(href).strip() if href else ""

@@ -3,6 +3,7 @@ import json
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from urllib.error import HTTPError
+from urllib.parse import urlsplit
 
 from autodata_ingestion.autoapitwo_connector import AutoAPITwoConnector, ArticleParser, SourceUnavailable
 
@@ -101,6 +102,42 @@ class ConnectorTests(unittest.TestCase):
         with self.assertRaises(SourceUnavailable):
             other.article('2','/api/v1/content/carids/2/a')
 
+    def test_parts_and_labor_article_builds_body_when_html_missing(self):
+        payload = {
+            'id': 'labor-9',
+            'title': 'Oil Pump',
+            'car': {'id': '13218'},
+            '_embedded': {
+                'data': {
+                    'article': {'content': ''},
+                    'partsAndLabor': {
+                        'labors': {
+                            'operations': [
+                                {
+                                    'operation': 'Replace',
+                                    'qualifiers': [
+                                        {
+                                            'name': 'Oil Pump',
+                                            'labor': {
+                                                'standardtime': '2.5',
+                                                'note': 'Includes gasket replacement.',
+                                            },
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        client = AutoAPITwoConnector(opener=lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
+        article = client.article('13218', '/api/v1/content/carids/13218/a', title='Oil Pump')
+        self.assertEqual(article['content_kind'], 'parts_and_labor')
+        self.assertIn('Includes gasket replacement', article['body'])
+        self.assertEqual(article['labor_hours'], 2.5)
+        self.assertTrue(article['blocks'])
+
     def test_oversize_rejected(self):
         client = AutoAPITwoConnector(max_bytes=2, opener=lambda *a, **k: io.BytesIO(b'large'))
         with self.assertRaises(SourceUnavailable): client.search_vehicles('test')
@@ -110,3 +147,35 @@ class ConnectorTests(unittest.TestCase):
         client = AutoAPITwoConnector(opener=lambda *a, **k: io.BytesIO(payload))
         self.assertEqual(client.search_vehicles('test'), [])
         self.assertEqual(client.search('1', 'starter'), [])
+
+    def test_article_catalog_uses_bounded_search_index_without_fetching_bodies(self):
+        calls = []
+
+        def response(payload):
+            return io.BytesIO(json.dumps(payload).encode())
+
+        def opener(req, **kwargs):
+            path = urlsplit(req.full_url).path
+            calls.append(path)
+            if '/search/' in path:
+                return response({
+                    '_embedded': {'data': {
+                        'results': [{
+                            'display': 'Engine and Cooling >> Service and Repair >> Engine Oil Pump Removal And Installation',
+                            'itypeCategory': {'name': 'Service and Repair'},
+                            '_links': {'self': {'href': '/api/v1/content/carids/1/components/72/itypes/401/nonstandards/1535667'}},
+                        }] if path.endswith('/search/a') else [],
+                    }},
+                })
+            raise AssertionError(f'unexpected catalog read: {path}')
+
+        client = AutoAPITwoConnector(opener=opener, retry_delay=0)
+        result = client.fetch_article_catalog('1')
+
+        self.assertEqual(result['index_reads'], 36)
+        self.assertEqual(result['component_reads'], 0)
+        self.assertEqual(result['information_type_reads'], 0)
+        self.assertEqual(result['articles'][0]['id'], 'autoapitwo:1:1535667')
+        self.assertEqual(result['articles'][0]['title'], 'Engine Oil Pump Removal And Installation')
+        self.assertNotIn('/api/v1/content/carids/1/nonstandards/1535667', calls)
+        self.assertTrue(all('/search/' in path for path in calls))
