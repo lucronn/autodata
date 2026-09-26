@@ -1,4 +1,5 @@
 import base64
+import json
 import sys
 import types
 import unittest
@@ -15,6 +16,29 @@ from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E4
 
 
 class SourceBundleTests(unittest.TestCase):
+    def test_duplicate_content_upgrade_retains_original_status_and_local_images(self):
+        complete = {
+            "id": "TSB-1", "title": "Brake procedure", "body": "Inspect brake.",
+            "steps": [{"action": "Inspect brake.", "images": [{"storage_key": "figures/1.png"}]}],
+            "content_status": "content_complete", "rewrite_status": "rewritten",
+            "source_original": {"body": "Provider wording", "blocks": ["first", "second"]},
+            "images": [{"storage_key": "figures/1.png", "content_type": "image/png", "alt": "Brake"}],
+        }
+        listing = {"id": "TSB-1", "title": "Brake procedure", "content_status": "list_only"}
+        for records in ([listing, complete], [complete, listing]):
+            with self.subTest(complete_first=records[0] is complete):
+                resource = SourceResource.from_bytes(
+                    "provider://articles.json", "v1",
+                    json.dumps({"body": {"articleDetails": records}}).encode(), "application/json",
+                )
+                bundle = normalize_source_bundle([adapt_source_resource(resource)], "US")
+                article = bundle.articles[0]
+                content_evidence_id = article.get("content_evidence_id", article["evidence_id"])
+                content_evidence = next(item for item in bundle.evidence if item["evidence_id"] == content_evidence_id)
+                self.assertIn("Inspect brake.", content_evidence["extracted_text"])
+                for field in ("body", "steps", "source_original", "rewrite_status", "content_status", "images"):
+                    self.assertEqual(article.get(field), complete[field], field)
+
     def test_exact_article_id_replay_merges_later_content_after_other_articles(self):
         resource = SourceResource.from_bytes(
             "provider://vehicle/articles.json",
@@ -593,6 +617,50 @@ class SourceBundleTests(unittest.TestCase):
         self.assertIsNotNone(bundle.vehicle)
         self.assertEqual(bundle.vehicle["vehicle_key"], "toyota-rav4-1997-us")
         self.assertEqual(bundle.vehicle["model"], "RAV4")
+
+    def test_provider_spacing_and_drivetrain_suffix_are_compatible_with_selected_model(self):
+        resource = SourceResource.from_bytes(
+            "http://source.test/v1/api/source/Motor/16494%3A816/name",
+            "source-v1",
+            b'{"body":"1999 Toyota 4Runner Limited 3.4L V6"}',
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle(
+            [adapt_source_resource(resource)],
+            "US",
+            expected_vehicle={
+                "year": 1999,
+                "make": "Toyota",
+                "model": "4 Runner 4wd",
+                "region": "US",
+            },
+        )
+
+        self.assertIsNotNone(bundle.vehicle)
+        self.assertEqual(bundle.vehicle["vehicle_key"], "toyota-4-runner-4wd-1999-us")
+
+    def test_provider_make_is_compatible_with_selected_truck_make_label(self):
+        resource = SourceResource.from_bytes(
+            "http://source.test/v1/api/source/Motor/16494%3A816/name",
+            "source-v1",
+            b'{"body":"1999 Toyota 4Runner Limited 3.4L V6"}',
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle(
+            [adapt_source_resource(resource)],
+            "US",
+            expected_vehicle={
+                "year": 1999,
+                "make": "Toyota Truck",
+                "model": "4 Runner 4wd",
+                "region": "US",
+            },
+        )
+
+        self.assertIsNotNone(bundle.vehicle)
+        self.assertEqual(bundle.vehicle["vehicle_key"], "toyota-truck-4-runner-4wd-1999-us")
 
 
 if __name__ == "__main__":

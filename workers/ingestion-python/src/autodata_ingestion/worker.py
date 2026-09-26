@@ -444,28 +444,43 @@ def _catalog_needs_procedure_content_hydration(
     requested = _components_from_query(query)
     if not requested:
         return False
+    # Shared access articles (timing belt for both pumps) are part of the
+    # reusable normalized set — treat them as required for a catalog hit.
+    needed = list(
+        dict.fromkeys(
+            requested
+            + (["timing_belt"] if {"oil_pump", "water_pump"} & set(requested) else [])
+        )
+    )
     articles: list[dict[str, object]] = []
     for record in catalog:
         if not isinstance(record, dict):
             continue
         article = record.get("article", record)
-        if isinstance(article, dict):
-            articles.append(article)
-    for component in requested:
+        if not isinstance(article, dict):
+            continue
+        # Combined / multi-component derived rows are ephemeral composition
+        # outputs. They must not count as the normalized individual source.
+        derived_components = article.get("derived_components")
+        if isinstance(derived_components, list) and len(derived_components) > 1:
+            continue
+        article_id = str(article.get("article_id") or "")
+        if article_id.startswith("combined:"):
+            continue
+        articles.append(article)
+    for component in needed:
         candidates = [article for article in articles if component in _article_components(article)]
         if not candidates:
             return True
         for article in candidates:
-            derived_components = article.get("derived_components")
-            if isinstance(derived_components, list):
-                if _derived_article_has_source_instructions(article, set(requested)):
-                    break
-            elif _article_procedure_instructions(article):
+            if _article_procedure_instructions(article):
+                break
+            body = str(article.get("body") or "").strip()
+            if len(body) >= 80:
                 break
         else:
             return True
     return False
-
 
 def _cached_derived_job_plan(
     query: str,
@@ -487,8 +502,9 @@ def _cached_derived_job_plan(
         if not isinstance(article, dict):
             continue
         components = article.get("derived_components")
-        if not isinstance(components, list) or set(str(value) for value in components) != requested_set:
-            continue
+        if isinstance(components, list) and components:
+            if set(str(value) for value in components) != requested_set:
+                continue
         if not _derived_article_covers_requested_components(article, requested_set):
             continue
         if not _derived_article_has_source_instructions(article, requested_set):
@@ -531,6 +547,14 @@ def _derived_article_has_source_instructions(
     accepted as instructional only when it carries more detail than a generic
     component verb; explicit instructions always count when they are present.
     """
+
+    body = " ".join(str(article.get("body") or "").split()).strip()
+    title = " ".join(str(article.get("title") or "").split()).strip()
+    if body and body.casefold() != title.casefold() and (
+        len(body) >= len(title) + 40
+        or len(re.findall(r"[a-z0-9]+", body.casefold())) >= 8
+    ):
+        return True
 
     procedure = article.get("procedure")
     if not isinstance(procedure, Mapping):
@@ -636,6 +660,54 @@ def _derived_article_covers_requested_components(
 def _mercury2_regeneration_required(article: Mapping[str, object]) -> bool:
     """Regenerate an old deterministic composition when Mercury-2 is configured."""
 
+    if isinstance(article.get("derived_components"), (list, tuple, set)):
+        from .derived_article_persistence import DERIVED_ARTICLE_CONTRACT_VERSION
+
+        try:
+            cached_contract_version = int(article.get("contract_version") or 0)
+        except (TypeError, ValueError):
+            cached_contract_version = 0
+        if cached_contract_version < DERIVED_ARTICLE_CONTRACT_VERSION:
+            return True
+
+    procedure = article.get("procedure")
+    declared_components = {
+        str(value).strip()
+        for value in article.get("derived_components", [])
+        if str(value).strip()
+    } if isinstance(article.get("derived_components"), (list, tuple, set)) else set()
+    if not declared_components and isinstance(procedure, Mapping):
+        steps = procedure.get("steps")
+        if isinstance(steps, list):
+            declared_components = {
+                str(value).strip()
+                for step in steps
+                if isinstance(step, Mapping)
+                for value in step.get("components", [])
+                if str(value).strip()
+            }
+    if len(declared_components) > 1 and isinstance(procedure, Mapping):
+        overlap_groups = procedure.get("overlap_groups")
+        steps = procedure.get("steps")
+        has_shared_step = isinstance(steps, list) and any(
+            isinstance(step, Mapping)
+            and (
+                str(step.get("operation_id", "")).startswith("shared:")
+                or len({str(value) for value in step.get("components", []) if str(value).strip()}) > 1
+            )
+            for step in steps
+        )
+        if not has_shared_step or not isinstance(overlap_groups, list) or not overlap_groups:
+            return (
+                os.getenv("AUTODATA_MERCURY2_JOB_PLANS_ENABLED") == "1"
+                and bool(os.getenv("INCEPTION_API_KEY", "").strip())
+            )
+        if _derived_procedure_has_redundant_shared_steps(article):
+            return (
+                os.getenv("AUTODATA_MERCURY2_JOB_PLANS_ENABLED") == "1"
+                and bool(os.getenv("INCEPTION_API_KEY", "").strip())
+            )
+
     if (
         os.getenv("AUTODATA_MERCURY2_JOB_PLANS_ENABLED") == "1"
         and bool(os.getenv("INCEPTION_API_KEY", "").strip())
@@ -676,6 +748,31 @@ def _derived_procedure_covers_shared_labor(article: Mapping[str, object]) -> boo
         ):
             return False
     return True
+
+
+def _derived_procedure_has_redundant_shared_steps(article: Mapping[str, object]) -> bool:
+    """Detect cached responses that emit a covered operation twice."""
+
+    procedure = article.get("procedure")
+    if not isinstance(procedure, Mapping):
+        return False
+    steps = procedure.get("steps", [])
+    if not isinstance(steps, list):
+        return False
+    shared_coverage = {
+        str(operation_id).strip()
+        for step in steps
+        if isinstance(step, Mapping)
+        and str(step.get("operation_id", "")).startswith("shared:")
+        for operation_id in step.get("covered_operation_ids", [])
+        if str(operation_id).strip()
+    }
+    return any(
+        isinstance(step, Mapping)
+        and not str(step.get("operation_id", "")).startswith("shared:")
+        and str(step.get("operation_id", "")).strip() in shared_coverage
+        for step in steps
+    )
 
 
 def _load_autoapi_job_catalog(
@@ -727,10 +824,16 @@ def _load_autoapi_job_catalog(
     targeted_labor_count = 0
     for bundle in bundles:
         artifacts = [adapt_source_resource(resource) for resource in bundle.resources]
+        expected_vehicle = dict(bundle.vehicle)
+        if not query:
+            # Catalog discovery is keyed by the user's canonical selector. The
+            # provider may use a shorter make/model label, but the normalized
+            # list rows must attach to the existing local vehicle identity.
+            expected_vehicle = dict(vehicle)
         list_normalized = normalize_source_bundle(
             artifacts,
             str(vehicle.get("region") or "US"),
-            expected_vehicle=dict(bundle.vehicle),
+            expected_vehicle=expected_vehicle,
         )
         list_records = [
             {
@@ -749,6 +852,9 @@ def _load_autoapi_job_catalog(
         if query and list_records:
             provisional = plan_job(query, vehicle, catalog=list_records)
             selected_ids = set(str(value) for value in provisional.get("selected_articles", []))
+            requested_article_id = str(vehicle.get("requested_article_id") or "").strip()
+            if requested_article_id:
+                selected_ids.add(requested_article_id)
             labor_articles = [
                 record["article"]
                 for record in list_records
@@ -770,14 +876,33 @@ def _load_autoapi_job_catalog(
                         article_id,
                         include_labor=False,
                     )
-                artifacts.extend(adapt_source_resource(resource) for resource in resources)
+                for resource in resources:
+                    if str(resource.source_uri).casefold().find("/article/") >= 0:
+                        resource = replace(
+                            resource,
+                            metadata={**resource.metadata, "target_article_id": article_id},
+                        )
+                    artifacts.append(adapt_source_resource(resource))
                 targeted_article_count += 1
                 targeted_labor_count += max(0, len(resources) - 1)
         normalized = normalize_source_bundle(
             artifacts,
             str(vehicle.get("region") or "US"),
-            expected_vehicle=dict(bundle.vehicle),
+            expected_vehicle=expected_vehicle,
         )
+        from .procedure_normalize import normalize_procedure_article
+
+        normalized_articles = []
+        for article in normalized.articles:
+            if article.get("body") or article.get("steps"):
+                article = normalize_procedure_article(article)
+            normalized_articles.append(article)
+        try:
+            normalized = replace(normalized, articles=tuple(normalized_articles))
+        except TypeError:
+            # Keep lightweight test doubles and connector adapters compatible
+            # with the immutable SourceBundle contract.
+            normalized.articles = tuple(normalized_articles)
         if os.getenv("AUTODATA_SOURCE_PERSIST") == "1":
             from .bundle_persistence import persist_source_bundle
 
@@ -867,12 +992,14 @@ def _is_labor_article(article: Mapping[str, object]) -> bool:
 
 
 _AUTOAPI_SOURCE_BY_MAKE = {
-    "buick": "GeneralMotors",
-    "cadillac": "GeneralMotors",
-    "chevrolet": "GeneralMotors",
-    "gmc": "GeneralMotors",
-    "oldsmobile": "GeneralMotors",
-    "pontiac": "GeneralMotors",
+    # Motor is the working AutoAPI content source for local chat retrieval.
+    # The older GeneralMotors source route 404s on this deployment.
+    "buick": "Motor",
+    "cadillac": "Motor",
+    "chevrolet": "Motor",
+    "gmc": "Motor",
+    "oldsmobile": "Motor",
+    "pontiac": "Motor",
     "lexus": "Motor",
     "scion": "Motor",
     "toyota": "Motor",
@@ -902,11 +1029,39 @@ def _autoapi_content_source(vehicle: dict[str, object]) -> str:
 def _same_vehicle_family(left: dict[str, object], right: dict[str, object]) -> bool:
     return (
         all(
-            str(left.get(key, "")).casefold() == str(right.get(key, "")).casefold()
+            (
+                str(left.get("year", "")).casefold()
+                == str(right.get("year", "")).casefold()
+                if key == "year"
+                else _same_make_family(left.get("make"), right.get("make"))
+            )
             for key in ("year", "make")
         )
         and _same_model_family(left.get("model"), right.get("model"))
     )
+
+
+def _same_make_family(left: object, right: object) -> bool:
+    aliases = {
+        "chevy": "chevrolet",
+        "chevytruck": "chevrolet",
+        "chevrolettruck": "chevrolet",
+        "fordtruck": "ford",
+        "gmctruck": "gmc",
+        "toyotatruck": "toyota",
+    }
+    values = []
+    for value in (left, right):
+        normalized = re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+        normalized = aliases.get(normalized, normalized)
+        if normalized.endswith("truck"):
+            normalized = normalized[:-5]
+        values.append(normalized)
+    if not values[0] or not values[1]:
+        return False
+    if values[0] == values[1]:
+        return True
+    return False
 
 
 def _same_model_family(left: object, right: object) -> bool:
@@ -914,11 +1069,17 @@ def _same_model_family(left: object, right: object) -> bool:
 
     left_model = " ".join(str(left or "").split()).casefold()
     right_model = " ".join(str(right or "").split()).casefold()
-    return (
+    if (
         left_model == right_model
         or left_model.startswith(right_model + " ")
         or right_model.startswith(left_model + " ")
-    )
+    ):
+        return True
+    left_compact = re.sub(r"[^a-z0-9]", "", left_model)
+    right_compact = re.sub(r"[^a-z0-9]", "", right_model)
+    left_compact = re.sub(r"(?:2wd|4wd|awd|fwd|rwd)$", "", left_compact)
+    right_compact = re.sub(r"(?:2wd|4wd|awd|fwd|rwd)$", "", right_compact)
+    return bool(left_compact and right_compact and (left_compact.startswith(right_compact) or right_compact.startswith(left_compact)))
 
 
 def _filter_vehicle_bundles(
@@ -936,15 +1097,43 @@ def _filter_vehicle_bundles(
     requested_drive = str(
         vehicle.get("drivetrain", vehicle.get("drive_type", ""))
     ).strip()
-    if not requested_drive:
-        return family
-    matching = tuple(
-        bundle
-        for bundle in family
-        if _normalize_vehicle_dimension(bundle.vehicle.get("drivetrain"))
-        == _normalize_vehicle_dimension(requested_drive)
+    if requested_drive:
+        matching = tuple(
+            bundle
+            for bundle in family
+            if _normalize_vehicle_dimension(bundle.vehicle.get("drivetrain"))
+            == _normalize_vehicle_dimension(requested_drive)
+        )
+        family = matching or family
+
+    requested_engine = _engine_value(
+        vehicle.get("engine_displacement_l", vehicle.get("engine"))
     )
-    return matching or family
+    requested_trim = _normalize_vehicle_dimension(vehicle.get("trim"))
+    if requested_engine is None and not requested_trim:
+        return family
+    narrowed = []
+    for bundle in family:
+        configurations = getattr(bundle, "configurations", ()) or ()
+        if not configurations:
+            continue
+        if any(
+            (requested_engine is None or _engine_value(configuration.get("engine_displacement_l")) == requested_engine)
+            and (not requested_trim or requested_trim in _normalize_vehicle_dimension(configuration.get("trim")))
+            for configuration in configurations
+            if isinstance(configuration, Mapping)
+        ):
+            narrowed.append(bundle)
+    return tuple(narrowed) or family
+
+
+def _engine_value(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return round(float(re.search(r"\d+(?:\.\d+)?", str(value)).group(0)), 4)
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def _normalize_vehicle_dimension(value: object) -> str:

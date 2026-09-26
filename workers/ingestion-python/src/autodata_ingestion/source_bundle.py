@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from typing import Any, Iterable
 
@@ -157,6 +158,18 @@ def normalize_source_bundle(
                     "source_version": artifact.source_version,
                     "content_sha256": artifact.content_sha256,
                 }
+                for field in (
+                    "provider",
+                    "content_kind",
+                    "procedure_kind",
+                    "component",
+                    "content_status",
+                    "rewrite_status",
+                    "source_original",
+                ):
+                    value = candidate.data.get(field)
+                    if value not in (None, ""):
+                        article_record[field] = deepcopy(value)
                 body = _article_body(candidate.data)
                 if body is not None:
                     article_record["body"] = body
@@ -384,7 +397,7 @@ def _normalize_vehicle(
         source_drivetrain = record.get("drivetrain")
         source_engine = record.get("engine_displacement_l")
         mismatch = (
-            make.casefold() != expected_make.casefold()
+            not _compatible_vehicle_make(make, expected_make)
             or not _compatible_vehicle_model(model, expected_model)
             or year != expected_year
             or source_region != expected_region
@@ -453,11 +466,44 @@ def _compatible_vehicle_model(source_model: object, expected_model: object) -> b
 
     source = " ".join(str(source_model or "").split()).casefold()
     expected = " ".join(str(expected_model or "").split()).casefold()
-    return (
+    if (
         source == expected
         or source.startswith(expected + " ")
         or expected.startswith(source + " ")
+    ):
+        return True
+    source_compact = re.sub(r"[^a-z0-9]", "", source)
+    expected_compact = re.sub(r"[^a-z0-9]", "", expected)
+    expected_compact = re.sub(r"(?:2wd|4wd|awd|fwd|rwd)$", "", expected_compact)
+    return bool(
+        source_compact
+        and expected_compact
+        and (
+            source_compact.startswith(expected_compact)
+            or expected_compact.startswith(source_compact)
+        )
     )
+
+
+def _compatible_vehicle_make(source_make: object, expected_make: object) -> bool:
+    """Accept provider make labels with a truck vocabulary suffix."""
+
+    aliases = {
+        "chevy": "chevrolet",
+        "chevytruck": "chevrolet",
+        "chevrolettruck": "chevrolet",
+        "fordtruck": "ford",
+        "gmctruck": "gmc",
+        "toyotatruck": "toyota",
+    }
+    values = []
+    for value in (source_make, expected_make):
+        normalized = re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+        normalized = aliases.get(normalized, normalized)
+        if normalized.endswith("truck"):
+            normalized = normalized[:-5]
+        values.append(normalized)
+    return bool(values[0] and values[1] and values[0] == values[1])
 
 
 def _resolve_article_collisions(
@@ -905,16 +951,20 @@ def _article_images(data: dict[str, Any]) -> list[dict[str, Any]]:
             image = {"url": url} if url else None
         elif isinstance(value, dict):
             url = str(value.get("url") or value.get("src") or value.get("href") or "").strip()
-            image = {"url": url} if url else None
+            storage_key = str(value.get("storage_key") or value.get("artifact_key") or "").strip()
+            image = ({"url": url} if url else {}) if url or storage_key else None
             if image is not None:
-                for key in ("alt", "title", "evidence_id", "source_uri"):
+                for key in (
+                    "alt", "title", "evidence_id", "source_uri", "storage_key",
+                    "artifact_key", "content_type", "content_sha256",
+                ):
                     if value.get(key):
                         image[key] = str(value[key]).strip()
         else:
             image = None
         if image is None:
             continue
-        identity = (image["url"], image.get("alt", image.get("title", "")))
+        identity = (image.get("storage_key") or image.get("artifact_key") or image.get("url"), image.get("alt", image.get("title", "")))
         if identity not in seen:
             seen.add(identity)
             images.append(image)
@@ -925,14 +975,28 @@ def _merge_article(target: dict[str, Any], duplicate: dict[str, Any]) -> None:
     for field in ("bucket", "title", "bulletin_number", "release_date"):
         if not target.get(field) and duplicate.get(field):
             target[field] = duplicate[field]
-    for field in ("body", "steps", "operations"):
-        if not target.get(field) and duplicate.get(field):
-            target[field] = duplicate[field]
-    if duplicate.get("images"):
+    # A detail record upgrades a listing as one coherent content snapshot.
+    # A later listing must never downgrade the reusable detail record.
+    upgrading = (
+        target.get("content_status") != "content_complete"
+        and duplicate.get("content_status") == "content_complete"
+    )
+    for field in ("body", "steps", "operations", "provider", "content_kind",
+                  "procedure_kind", "component", "content_status", "rewrite_status",
+                  "content_evidence_id", "content_locator", "content_source_uri",
+                  "content_source_version", "content_sha256"):
+        if (upgrading or not target.get(field)) and duplicate.get(field) is not None:
+            target[field] = deepcopy(duplicate[field])
+    if not target.get("source_original") and duplicate.get("source_original"):
+        target["source_original"] = deepcopy(duplicate["source_original"])
+    if upgrading:
+        target["content_evidence_id"] = duplicate.get("content_evidence_id") or duplicate["evidence_id"]
+        target["images"] = deepcopy(duplicate.get("images", []))
+    if duplicate.get("images") and target.get("content_status") != "content_complete":
         merged = target.setdefault("images", [])
-        existing = {(item.get("url"), item.get("alt", item.get("title", ""))) for item in merged}
+        existing = {(item.get("storage_key") or item.get("artifact_key") or item.get("url"), item.get("alt", item.get("title", ""))) for item in merged}
         for image in duplicate["images"]:
-            identity = (image.get("url"), image.get("alt", image.get("title", "")))
+            identity = (image.get("storage_key") or image.get("artifact_key") or image.get("url"), image.get("alt", image.get("title", "")))
             if identity not in existing:
                 merged.append(image)
                 existing.add(identity)

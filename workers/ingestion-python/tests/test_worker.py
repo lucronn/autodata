@@ -81,7 +81,7 @@ class IngestionWorkerTests(unittest.TestCase):
             )
             self.assertEqual(
                 _autoapi_content_source({"make": "Chevrolet"}),
-                "GeneralMotors",
+                "Motor",
             )
 
     def test_explicit_autoapi_content_source_wins_over_make_default(self):
@@ -202,6 +202,71 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual(by_id["starter-1"]["operations"][0]["operation_id"], "shared-belt")
         self.assertNotIn("brake-1", [call.args[1] for call in connector.fetch_article_resources.call_args_list])
 
+    def test_autoapi_article_catalog_fallback_reads_index_without_detail_fetches(self):
+        from types import SimpleNamespace
+
+        from autodata_ingestion.autoapi_connector import AutoAPIVehicleBundle
+        from autodata_ingestion.worker import _load_autoapi_job_catalog
+
+        vehicle = {
+            "vehicle_id": "v1",
+            "autoapi_vehicle_id": "v1",
+            "year": 1999,
+            "make": "Toyota",
+            "model": "RAV4",
+            "region": "US",
+        }
+        bundle = AutoAPIVehicleBundle(
+            vehicle_id="v1",
+            content_source="Motor",
+            vehicle=vehicle,
+            configurations=(),
+            resources=(),
+            article_ids=("oil-1",),
+        )
+        article = {"article_id": "oil-1", "title": "Oil pump replacement", "content_status": "list_only"}
+        normalized = SimpleNamespace(articles=(article,), evidence=())
+        with patch("autodata_ingestion.autoapi_connector.AutoAPIConnector") as connector_class:
+            connector = connector_class.return_value
+            connector.fetch_vehicle_bundle.return_value = bundle
+            with patch("autodata_ingestion.source_bundle.normalize_source_bundle", return_value=normalized):
+                with patch.dict(
+                    "os.environ",
+                    {
+                        "AUTODATA_AUTOAPI_BASE_URL": "http://127.0.0.1:3000",
+                        "AUTODATA_SOURCE_PERSIST": "0",
+                    },
+                    clear=False,
+                ):
+                    records, source_info = _load_autoapi_job_catalog(
+                        vehicle, object(), query=""
+                    )
+
+        self.assertEqual([record["article"]["article_id"] for record in records], ["oil-1"])
+        self.assertEqual(source_info["targeted_article_fetch_count"], 0)
+        connector.fetch_article_resources.assert_not_called()
+
+    def test_autoapi_article_catalog_fallback_filters_provider_variants_by_engine(self):
+        from types import SimpleNamespace
+
+        from autodata_ingestion.worker import _filter_vehicle_bundles
+
+        bundles = tuple(
+            SimpleNamespace(
+                vehicle={"year": 1999, "make": "Toyota", "model": "4Runner"},
+                configurations=({"engine_displacement_l": engine, "trim": trim},),
+            )
+            for engine, trim in ((2.7, "4RUNNERBASE"), (3.4, "4RUNNERSR5"))
+        )
+
+        result = _filter_vehicle_bundles(
+            bundles,
+            {"year": 1999, "make": "Toyota Truck", "model": "4 Runner 4wd", "engine": "2.7"},
+        )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].configurations[0]["engine_displacement_l"], 2.7)
+
     def test_autoapi_query_fallback_maps_separate_labor_row_to_procedure_row(self):
         from autodata_ingestion.autoapi_connector import AutoAPIVehicleBundle
         from autodata_ingestion.worker import _load_autoapi_job_catalog
@@ -270,6 +335,7 @@ class IngestionWorkerTests(unittest.TestCase):
                 "article_id": "combined:1997-toyota-rav4:water_pump:v1",
                 "title": "water pump service",
                 "status": "ready",
+                "contract_version": 5,
                 "derived_components": ["water_pump"],
                 "source_article_ids": ["P:1"],
                 "evidence_ids": ["evidence-1"],
@@ -549,6 +615,7 @@ class IngestionWorkerTests(unittest.TestCase):
             "derived_components": ["oil_pump", "water_pump"],
             "source_article_ids": ["oil-1", "water-1"],
             "status": "ready",
+            "contract_version": 5,
             "model": "mercury-2",
             "labor": {"operations": [
                 {"operation_id": "oil", "action": "Replace oil pump", "components": ["oil_pump"]},
@@ -568,6 +635,66 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertTrue(result["cache_hit"])
 
+    def test_cached_derived_article_accepts_persisted_markdown_body(self):
+        from autodata_ingestion.worker import _cached_derived_job_plan
+
+        vehicle = {"year": 1997, "make": "Toyota", "model": "RAV4", "region": "US"}
+        article = {
+            "article_id": "combined:rav4:oil-water:v2",
+            "title": "Oil and water pump service",
+            "body": "# Oil and water pump service\n\nDisconnect the battery. Remove the timing cover. Replace the pumps. Reassemble and verify leaks.",
+            "derived_components": ["oil_pump", "water_pump"],
+            "source_article_ids": ["oil-1", "water-1"],
+            "status": "needs_review",
+            "contract_version": 5,
+            "model": "mercury-2",
+            "labor": {"operations": [
+                {"operation_id": "oil", "action": "Replace oil pump", "components": ["oil_pump"]},
+                {"operation_id": "water", "action": "Replace water pump", "components": ["water_pump"]},
+            ]},
+            "procedure": {"steps": [
+                {"action": "Replace oil pump", "components": ["oil_pump"]},
+                {"action": "Replace water pump", "components": ["water_pump"]},
+            ]},
+        }
+
+        result = _cached_derived_job_plan(
+            "oil pump and water pump replacement",
+            vehicle,
+            [{"article": article}],
+        )
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result["cache_hit"])
+
+    def test_cached_derived_article_infers_components_from_persisted_steps(self):
+        from autodata_ingestion.worker import _cached_derived_job_plan
+
+        vehicle = {"year": 1997, "make": "Toyota", "model": "RAV4", "region": "US"}
+        article = {
+            "article_id": "combined:rav4:oil-water:v2",
+            "title": "Oil and water pump service",
+            "body": "# Oil and water pump service\n\nRemove shared covers, replace both pumps, and verify leaks.",
+            "derived_components": [],
+            "source_article_ids": ["oil-1", "water-1"],
+            "status": "needs_review",
+            "contract_version": 5,
+            "model": "mercury-2",
+            "procedure": {"steps": [
+                {"action": "Replace oil pump", "components": ["oil_pump"]},
+                {"action": "Replace water pump", "components": ["water_pump"]},
+            ]},
+        }
+
+        result = _cached_derived_job_plan(
+            "oil pump and water pump replacement",
+            vehicle,
+            [{"article": article}],
+        )
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result["cache_hit"])
+
     def test_derived_r_and_r_labels_require_source_hydration(self):
         from autodata_ingestion.worker import _catalog_needs_procedure_content_hydration
 
@@ -583,6 +710,55 @@ class IngestionWorkerTests(unittest.TestCase):
         }]
 
         self.assertTrue(
+            _catalog_needs_procedure_content_hydration(
+                "oil pump and water pump replacement procedure", catalog
+            )
+        )
+
+    def test_oil_water_catalog_requires_timing_belt_individual(self):
+        from autodata_ingestion.worker import _catalog_needs_procedure_content_hydration
+
+        body = "1. Remove the cover.\n2. Remove the pump.\n" * 5
+        catalog = [
+            {
+                "kind": "article",
+                "article": {
+                    "article_id": "oil-1",
+                    "component": "oil_pump",
+                    "title": "Oil Pump Removal",
+                    "body": body,
+                    "steps": ["Remove oil pump"],
+                },
+            },
+            {
+                "kind": "article",
+                "article": {
+                    "article_id": "water-1",
+                    "component": "water_pump",
+                    "title": "Water Pump Removal",
+                    "body": body,
+                    "steps": ["Remove water pump"],
+                },
+            },
+        ]
+        self.assertTrue(
+            _catalog_needs_procedure_content_hydration(
+                "oil pump and water pump replacement procedure", catalog
+            )
+        )
+        catalog.append(
+            {
+                "kind": "article",
+                "article": {
+                    "article_id": "timing-1",
+                    "component": "timing_belt",
+                    "title": "Timing Belt Removal",
+                    "body": body,
+                    "steps": ["Remove timing belt"],
+                },
+            }
+        )
+        self.assertFalse(
             _catalog_needs_procedure_content_hydration(
                 "oil pump and water pump replacement procedure", catalog
             )
