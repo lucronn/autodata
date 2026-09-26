@@ -40,6 +40,21 @@ class CatalogServiceTests(unittest.TestCase):
             ("52597",),
         )
 
+    def test_autoapitwo_accepts_provider_model_variants_for_normalized_model(self):
+        class Connector:
+            def search_vehicles(self, query):
+                return [
+                    {"id": "52992", "year": "2013", "make": "Honda", "model": "Crosstour 2WD", "engine": "L4-2.4L (K24Y2)"},
+                    {"id": "52998", "year": "2013", "make": "Honda", "model": "Crosstour 2WD", "engine": "V6-3.5L (J35Y1)"},
+                    {"id": "52999", "year": "2013", "make": "Honda", "model": "Crosstour 4WD", "engine": "V6-3.5L (J35Y1)"},
+                ]
+
+        vehicle = {"model_year": 2013, "make": "Honda", "model": "Crosstour"}
+        self.assertEqual(
+            _autoapitwo_car_ids({"vehicle_id": "vehicle-crosstour"}, vehicle, Connector()),
+            ("52992", "52998", "52999"),
+        )
+
     def test_complete_cache_is_returned_without_calling_provider(self):
         provider_calls = []
         service = CacheFirstCatalogService(

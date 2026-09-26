@@ -31,17 +31,43 @@ function setStatus(text, tone = 'ready', retry = null) {
   retryAction = retry;
 }
 
+function catalogProgressDetail(progress) {
+  if (!progress || typeof progress !== 'object') return '';
+  const processed = Number(progress.processed || 0).toLocaleString();
+  const total = Number(progress.total || 0).toLocaleString();
+  const title = String(progress.current_title || 'Untitled article');
+  if (progress.phase === 'indexing') return progress.detail || `Scanning article index (${processed}/${total})…`;
+  if (progress.phase === 'normalizing') {
+    return progress.detail || `Building catalog… Processing article ${processed}/${total} — ${title}`;
+  }
+  if (progress.phase === 'persisting') return progress.detail || `Saving ${total} catalog articles…`;
+  return progress.detail || '';
+}
+
 function setLoadingProgress(stageKey, options = {}) {
   const progress = loadingProgress(stageKey, options);
   const detail = options.detail || `Working on ${progress.label.toLocaleLowerCase()}…`;
   const summary = `Step ${progress.step} of ${progress.total} · ${progress.label} · ${progress.percent}%`;
+  const catalog = stageKey === 'articles' && options.catalogProgress && typeof options.catalogProgress === 'object'
+    ? options.catalogProgress
+    : null;
+  const catalogPercent = catalog ? Math.min(100, Math.max(0, Number(catalog.percent) || 0)) : 0;
+  const catalogDetail = catalogProgressDetail(catalog);
   $('loading-progress').hidden = false;
   $('loading-progress-stage').textContent = summary;
   $('loading-progress-percent').textContent = `${progress.percent}%`;
   $('loading-progress-bar').value = progress.percent;
-  $('loading-progress-bar').setAttribute('aria-valuetext', `${summary}. ${detail}`);
-  $('loading-progress-detail').textContent = detail;
-  $('activity-text').textContent = `${summary} — ${detail}`;
+  const displayDetail = catalogDetail ? `${catalogDetail} · Total progress ${progress.percent}%` : detail;
+  $('loading-progress-bar').setAttribute('aria-valuetext', `${summary}. ${displayDetail}`);
+  $('loading-progress-detail').textContent = displayDetail;
+  $('loading-progress-catalog').hidden = !catalog;
+  if (catalog) {
+    $('loading-progress-catalog-percent').textContent = `${catalogPercent}%`;
+    $('loading-progress-catalog-bar').value = catalogPercent;
+    $('loading-progress-catalog-bar').setAttribute('aria-valuetext', `${catalogPercent}% catalog progress. ${catalogDetail}`);
+    $('loading-progress-catalog-detail').textContent = catalogDetail;
+  }
+  $('activity-text').textContent = `${summary} — ${displayDetail}`;
 }
 
 function show(section) {
@@ -164,11 +190,17 @@ async function loadArticles(signal, articleID = '') {
             ...meta,
             hydrating,
             complete: result.complete === true,
+            catalogProgress: result.progress,
             detail: hydrating ? `${result.items.length} articles available; checking for more (attempt ${meta.attempt} of ${meta.attempts})…` : `${result.items.length} articles ready.`,
           });
           if (!hydrating) setStatus('Article index ready.');
         } else if (result.hydrating) {
-          setLoadingProgress('articles', { ...meta, hydrating: true, detail: `Finding this vehicle’s articles (attempt ${meta.attempt} of ${meta.attempts})…` });
+          setLoadingProgress('articles', {
+            ...meta,
+            hydrating: true,
+            catalogProgress: result.progress,
+            detail: `Finding this vehicle’s articles (attempt ${meta.attempt} of ${meta.attempts})…`,
+          });
         }
       },
     },

@@ -8,6 +8,7 @@ import inspect
 import json
 import os
 import re
+import time
 from copy import deepcopy
 from threading import RLock
 from typing import Any, Callable, Iterable, Mapping
@@ -108,6 +109,77 @@ class CacheFirstCatalogService:
 
 _HYDRATION_LOCK = RLock()
 _HYDRATION_RESULTS: dict[str, dict[str, Any]] = {}
+
+
+class _ArticleCatalogProgress:
+    """Publish throttled, durable progress for one vehicle article catalog."""
+
+    def __init__(self, request: Mapping[str, Any]):
+        self.request = request
+        self.last_published = 0.0
+        self.last_state: tuple[Any, ...] | None = None
+
+    def publish(self, payload: Mapping[str, Any], *, force: bool = False) -> None:
+        phase = str(payload.get("phase") or "starting").strip() or "starting"
+        processed = max(0, int(payload.get("processed_units") or 0))
+        total = max(0, int(payload.get("total_units") or 0))
+        title = str(payload.get("current_title") or "").strip()
+        article_id = str(payload.get("current_article_id") or "").strip()
+        detail = str(payload.get("detail") or "").strip()
+        state = (phase, processed, total, title, article_id, detail)
+        now = time.monotonic()
+        if not force and state == self.last_state:
+            return
+        if not force and now - self.last_published < 0.12:
+            return
+        _update_article_catalog_progress(
+            self.request,
+            status="running",
+            phase=phase,
+            processed_units=processed,
+            total_units=total,
+            current_article_id=article_id,
+            current_title=title,
+            detail=detail,
+        )
+        self.last_published = now
+        self.last_state = state
+
+    def start(self) -> None:
+        self.publish(
+            {
+                "phase": "resolving",
+                "detail": "Resolving the selected vehicle’s article source…",
+            },
+            force=True,
+        )
+
+    def complete(self, records: Iterable[Mapping[str, Any]]) -> None:
+        rows = [record for record in records if isinstance(record, Mapping)]
+        total = len(rows)
+        last = rows[-1].get("article", {}) if rows else {}
+        if not isinstance(last, Mapping):
+            last = {}
+        _update_article_catalog_progress(
+            self.request,
+            status="completed",
+            phase="complete",
+            processed_units=total,
+            total_units=total,
+            current_article_id=str(last.get("article_id") or ""),
+            current_title=str(last.get("title") or ""),
+            detail=f"Catalog ready — {total:,} articles indexed.",
+        )
+
+    def failed(self, detail: str) -> None:
+        _update_article_catalog_progress(
+            self.request,
+            status="failed",
+            phase="failed",
+            processed_units=0,
+            total_units=0,
+            detail=detail,
+        )
 
 
 def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
@@ -466,6 +538,8 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
     from .article_intake import VehicleTarget
     from .worker import _load_autoapi_job_catalog
 
+    progress = _ArticleCatalogProgress(request)
+    progress.start()
     primary_error = None
     try:
         year = int(request["year"])
@@ -514,8 +588,11 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
 
     if primary_error is not None:
         try:
-            records, metadata = _load_autoapitwo_article_catalog(request, vehicle)
+            records, metadata = _invoke_autoapitwo_article_catalog_loader(
+                request, vehicle, progress
+            )
         except Exception as fallback_error:  # noqa: BLE001 - source failure is a retryable miss
+            progress.failed("The article catalog source could not be read.")
             return {
                 "status": "source_unavailable",
                 "hydration_key": key,
@@ -530,6 +607,10 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
             }
 
     rows = [dict(record) for record in records if isinstance(record, Mapping)]
+    if rows:
+        progress.complete(rows)
+    else:
+        progress.failed("No articles were returned for this vehicle.")
     return {
         "status": "hydrated" if rows else "source_miss",
         "hydration_key": key,
@@ -541,8 +622,32 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
     }
 
 
+def _invoke_autoapitwo_article_catalog_loader(
+    request: Mapping[str, Any],
+    vehicle: Mapping[str, Any],
+    progress: _ArticleCatalogProgress,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Call the loader while keeping older provider test doubles compatible."""
+
+    loader = _load_autoapitwo_article_catalog
+    try:
+        parameters = inspect.signature(loader).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    accepts_progress = "progress" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    if accepts_progress:
+        return loader(request, vehicle, progress=progress)
+    return loader(request, vehicle)
+
+
 def _load_autoapitwo_article_catalog(
-    request: Mapping[str, Any], vehicle: Mapping[str, Any]
+    request: Mapping[str, Any],
+    vehicle: Mapping[str, Any],
+    *,
+    progress: _ArticleCatalogProgress | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Persist a vehicle's AutoAPItwo article index without reading content."""
 
@@ -560,15 +665,48 @@ def _load_autoapitwo_article_catalog(
     if not car_ids:
         raise RuntimeError("AutoAPItwo did not resolve a matching vehicle")
 
-    records: list[dict[str, Any]] = []
+    catalogs: list[tuple[str, list[Mapping[str, Any]]]] = []
     index_reads = 0
-    source_vehicle_count = 0
+    index_total = len(car_ids) * 36
     for car_id in car_ids:
-        catalog = connector.fetch_article_catalog(car_id)
+        car_index_start = index_reads
+
+        def on_index_progress(update: Mapping[str, Any]) -> None:
+            if progress is None:
+                return
+            completed = car_index_start + int(update.get("processed_units") or 0)
+            progress.publish(
+                {
+                    **dict(update),
+                    "processed_units": completed,
+                    "total_units": index_total,
+                }
+            )
+
+        catalog = connector.fetch_article_catalog(car_id, on_progress=on_index_progress)
         articles = list(catalog.get("articles", ()))
         index_reads += int(catalog.get("index_reads", 0))
         if not articles:
             continue
+        catalogs.append((str(car_id), articles))
+
+    total_articles = sum(len(articles) for _, articles in catalogs)
+    if progress is not None:
+        progress.publish(
+            {
+                "phase": "normalizing",
+                "processed_units": 0,
+                "total_units": total_articles,
+                "detail": f"Building catalog — 0/{total_articles:,} articles prepared…",
+            },
+            force=True,
+        )
+
+    records: list[dict[str, Any]] = []
+    bundles: list[tuple[Any, list[Any]]] = []
+    processed_articles = 0
+    source_vehicle_count = 0
+    for car_id, articles in catalogs:
         source_vehicle_count += 1
         year = int(vehicle.get("model_year", vehicle.get("year")))
         source_uri = (
@@ -602,16 +740,13 @@ def _load_autoapitwo_article_catalog(
         )
         if bundle.vehicle is None:
             continue
-        if os.getenv("AUTODATA_SOURCE_PERSIST", "1") == "1":
-            from .bundle_persistence import persist_source_bundle
-
-            persist_source_bundle(bundle, [artifact], adapter_name="autoapitwo")
         evidence_by_id = {
             str(item["evidence_id"]): item
             for item in bundle.evidence
             if item.get("evidence_id")
         }
         for article in bundle.articles:
+            processed_articles += 1
             records.append(
                 {
                     "kind": "article",
@@ -626,6 +761,38 @@ def _load_autoapitwo_article_catalog(
                     ),
                 }
             )
+            if progress is not None:
+                progress.publish(
+                    {
+                        "phase": "normalizing",
+                        "processed_units": processed_articles,
+                        "total_units": total_articles,
+                        "current_article_id": str(article.get("article_id") or ""),
+                        "current_title": str(article.get("title") or "Untitled article"),
+                        "detail": (
+                            f"Building catalog — Processing article "
+                            f"{processed_articles:,}/{total_articles:,} — "
+                            f"{article.get('title') or 'Untitled article'}"
+                        ),
+                    }
+                )
+        bundles.append((bundle, [artifact]))
+
+    if progress is not None:
+        progress.publish(
+            {
+                "phase": "persisting",
+                "processed_units": processed_articles,
+                "total_units": total_articles,
+                "detail": f"Saving {processed_articles:,} catalog articles…",
+            },
+            force=True,
+        )
+    if os.getenv("AUTODATA_SOURCE_PERSIST", "1") == "1":
+        from .bundle_persistence import persist_source_bundle
+
+        for bundle, artifacts in bundles:
+            persist_source_bundle(bundle, artifacts, adapter_name="autoapitwo")
     return records, {
         "mode": "autoapitwo_article_index",
         "content_source": "autoapitwo",
@@ -636,6 +803,91 @@ def _load_autoapitwo_article_catalog(
         "targeted_article_fetch_count": 0,
         "targeted_labor_fetch_count": 0,
     }
+
+
+def _update_article_catalog_progress(
+    request: Mapping[str, Any],
+    *,
+    status: str,
+    phase: str,
+    processed_units: int,
+    total_units: int,
+    current_article_id: str = "",
+    current_title: str = "",
+    detail: str = "",
+) -> None:
+    """Best-effort progress write; source hydration must not fail on UI telemetry."""
+
+    if os.getenv("AUTODATA_SOURCE_PERSIST", "1") != "1":
+        return
+    vehicle_id = str(request.get("vehicle_id") or "").strip()
+    year = int(request.get("year", 0) or 0)
+    make = str(request.get("make") or "").strip()
+    model = str(request.get("model") or "").strip()
+    region = str(request.get("region") or "US").strip().upper()
+    scope_key = (
+        f"articles:vehicle:{vehicle_id}"
+        if vehicle_id
+        else "|".join(("articles", str(year), make.casefold(), model.casefold(), region))
+    )
+    processed = max(0, int(processed_units))
+    total = max(0, int(total_units))
+    if status == "completed":
+        percent = 100
+    elif total:
+        percent = min(99, max(0, round(processed * 100 / total)))
+    else:
+        percent = 0
+    try:
+        import psycopg
+
+        host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+        with psycopg.connect(
+            host=host,
+            port=int(port_text),
+            dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
+            user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
+            password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO vehicle_catalog_hydration_scopes
+                        (scope_key, scope, model_year, make, model, region, vehicle_id,
+                         status, phase, processed_units, total_units,
+                         current_article_id, current_title, progress_detail, progress_percent)
+                    VALUES (%s, 'articles', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (scope_key) DO UPDATE SET
+                        status = EXCLUDED.status,
+                        phase = EXCLUDED.phase,
+                        processed_units = EXCLUDED.processed_units,
+                        total_units = EXCLUDED.total_units,
+                        current_article_id = EXCLUDED.current_article_id,
+                        current_title = EXCLUDED.current_title,
+                        progress_detail = EXCLUDED.progress_detail,
+                        progress_percent = EXCLUDED.progress_percent,
+                        updated_at = now()
+                    """,
+                    (
+                        scope_key,
+                        year,
+                        make,
+                        model,
+                        region,
+                        vehicle_id,
+                        status,
+                        phase,
+                        processed,
+                        total,
+                        current_article_id,
+                        current_title,
+                        detail,
+                        percent,
+                    ),
+                )
+            connection.commit()
+    except Exception:
+        return
 
 
 def _autoapitwo_car_ids(
@@ -719,6 +971,9 @@ def _same_autoapitwo_vehicle(candidate: Mapping[str, Any], vehicle: Mapping[str,
     def compact(value: Any) -> str:
         return re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
 
+    def words(value: Any) -> str:
+        return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+
     year = str(candidate.get("year") or "")
     target_year = str(vehicle.get("model_year", vehicle.get("year")) or "")
     if year and target_year and year != target_year:
@@ -727,9 +982,16 @@ def _same_autoapitwo_vehicle(candidate: Mapping[str, Any], vehicle: Mapping[str,
     target_make = compact(vehicle.get("make"))
     candidate_model = compact(candidate.get("model"))
     target_model = compact(vehicle.get("model"))
+    candidate_model_words = words(candidate.get("model"))
+    target_model_words = words(vehicle.get("model"))
+    model_matches = (
+        not candidate_model
+        or candidate_model == target_model
+        or candidate_model_words.startswith(f"{target_model_words} ")
+    )
     return (
         (not candidate_make or candidate_make == target_make)
-        and (not candidate_model or candidate_model == target_model)
+        and model_matches
     )
 
 

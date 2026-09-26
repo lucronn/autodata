@@ -174,7 +174,7 @@ class AutoAPITwoConnector:
         values = result.get('results', [])
         return values if isinstance(values, list) else []
 
-    def fetch_article_catalog(self, car_id, *, max_index_reads=512):
+    def fetch_article_catalog(self, car_id, *, max_index_reads=512, on_progress=None):
         """Read the AutoAPItwo article index without fetching article bodies.
 
         AutoAPItwo's component tree is useful for navigating a vehicle, but it
@@ -214,6 +214,7 @@ class AutoAPITwoConnector:
             )
             return term, client.search(car_id, term)
 
+        completed_reads = 0
         with ThreadPoolExecutor(max_workers=min(4, len(terms))) as pool:
             futures = {pool.submit(search_term, term): term for term in terms}
             for future in as_completed(futures):
@@ -221,6 +222,17 @@ class AutoAPITwoConnector:
                     _, results = future.result()
                 except Exception as error:  # noqa: BLE001 - a partial index is not complete
                     errors.append(error)
+                    completed_reads += 1
+                    if on_progress is not None:
+                        try:
+                            on_progress({
+                                "phase": "indexing",
+                                "processed_units": completed_reads,
+                                "total_units": len(terms),
+                                "detail": f"Scanning article index ({completed_reads}/{len(terms)})…",
+                            })
+                        except Exception:
+                            pass
                     continue
                 for result in results:
                     if not isinstance(result, Mapping):
@@ -249,10 +261,31 @@ class AutoAPITwoConnector:
                             "provider_vehicle_id": car_id,
                         },
                     )
+                completed_reads += 1
+                if on_progress is not None:
+                    try:
+                        on_progress({
+                            "phase": "indexing",
+                            "processed_units": completed_reads,
+                            "total_units": len(terms),
+                            "detail": f"Scanning article index ({completed_reads}/{len(terms)})…",
+                        })
+                    except Exception:
+                        pass
         if errors:
             raise SourceUnavailable("repair article search index is incomplete") from errors[0]
+        ordered_articles = tuple(
+            sorted(
+                articles.values(),
+                key=lambda item: (
+                    str(item.get("title") or "").casefold(),
+                    str(item.get("bucket") or "").casefold(),
+                    str(item.get("id") or ""),
+                ),
+            )
+        )
         return {
-            "articles": tuple(articles.values()),
+            "articles": ordered_articles,
             "index_reads": len(terms),
             "component_reads": 0,
             "information_type_reads": 0,

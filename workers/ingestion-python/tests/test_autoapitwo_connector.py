@@ -150,6 +150,7 @@ class ConnectorTests(unittest.TestCase):
 
     def test_article_catalog_uses_bounded_search_index_without_fetching_bodies(self):
         calls = []
+        progress = []
 
         def response(payload):
             return io.BytesIO(json.dumps(payload).encode())
@@ -170,7 +171,7 @@ class ConnectorTests(unittest.TestCase):
             raise AssertionError(f'unexpected catalog read: {path}')
 
         client = AutoAPITwoConnector(opener=opener, retry_delay=0)
-        result = client.fetch_article_catalog('1')
+        result = client.fetch_article_catalog('1', on_progress=progress.append)
 
         self.assertEqual(result['index_reads'], 36)
         self.assertEqual(result['component_reads'], 0)
@@ -179,3 +180,6 @@ class ConnectorTests(unittest.TestCase):
         self.assertEqual(result['articles'][0]['title'], 'Engine Oil Pump Removal And Installation')
         self.assertNotIn('/api/v1/content/carids/1/nonstandards/1535667', calls)
         self.assertTrue(all('/search/' in path for path in calls))
+        self.assertEqual(progress[-1]['processed_units'], 36)
+        self.assertEqual(progress[-1]['total_units'], 36)
+        self.assertEqual(progress[-1]['phase'], 'indexing')
