@@ -824,12 +824,11 @@ def _load_autoapi_job_catalog(
     targeted_labor_count = 0
     for bundle in bundles:
         artifacts = [adapt_source_resource(resource) for resource in bundle.resources]
-        expected_vehicle = dict(bundle.vehicle)
-        if not query:
-            # Catalog discovery is keyed by the user's canonical selector. The
-            # provider may use a shorter make/model label, but the normalized
-            # list rows must attach to the existing local vehicle identity.
-            expected_vehicle = dict(vehicle)
+        # Both catalog discovery and selected-article hydration are keyed by
+        # the user's canonical selector. The provider may use a shorter
+        # make/model label, but normalized rows must attach to the existing
+        # local vehicle identity instead of creating a provider-shaped twin.
+        expected_vehicle = dict(vehicle)
         list_normalized = normalize_source_bundle(
             artifacts,
             str(vehicle.get("region") or "US"),

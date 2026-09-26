@@ -229,7 +229,10 @@ class IngestionWorkerTests(unittest.TestCase):
         with patch("autodata_ingestion.autoapi_connector.AutoAPIConnector") as connector_class:
             connector = connector_class.return_value
             connector.fetch_vehicle_bundle.return_value = bundle
-            with patch("autodata_ingestion.source_bundle.normalize_source_bundle", return_value=normalized):
+            with patch(
+                "autodata_ingestion.source_bundle.normalize_source_bundle",
+                return_value=normalized,
+            ) as normalize_source_bundle:
                 with patch.dict(
                     "os.environ",
                     {
@@ -245,6 +248,11 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual([record["article"]["article_id"] for record in records], ["oil-1"])
         self.assertEqual(source_info["targeted_article_fetch_count"], 0)
         connector.fetch_article_resources.assert_not_called()
+
+        self.assertEqual(
+            normalize_source_bundle.call_args.kwargs["expected_vehicle"],
+            vehicle,
+        )
 
     def test_autoapi_article_catalog_fallback_filters_provider_variants_by_engine(self):
         from types import SimpleNamespace
