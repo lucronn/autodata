@@ -31,6 +31,17 @@ function setStatus(text, tone = 'ready', retry = null) {
   retryAction = retry;
 }
 
+function resetLoadingProgress() {
+  $('loading-progress').hidden = true;
+  $('loading-progress-catalog').hidden = true;
+  $('loading-progress-bar').value = 0;
+  $('loading-progress-catalog-bar').value = 0;
+  $('loading-progress-percent').textContent = '0%';
+  $('loading-progress-catalog-percent').textContent = '0%';
+  $('loading-progress-detail').textContent = '';
+  $('loading-progress-catalog-detail').textContent = '';
+}
+
 function catalogProgressDetail(progress) {
   if (!progress || typeof progress !== 'object') return '';
   const processed = Number(progress.processed || 0).toLocaleString();
@@ -109,10 +120,20 @@ function clearAfter(name) {
     $(next).replaceChildren(new Option(`Choose ${parents[next]} first`, ''));
     $(next).disabled = true;
   }
+  resetCatalogView();
+  document.title = 'AutoData — The workshop reference';
+  show('welcome');
+}
+
+function resetCatalogView() {
   vehicle = null; articles = [];
   $('search').value = '';
-  $('articles').replaceChildren(); $('article-content').replaceChildren();
-  document.title = 'AutoData — The workshop reference';
+  $('catalog-count').textContent = '';
+  $('articles').replaceChildren();
+  $('article-content').replaceChildren();
+  $('no-results').hidden = true;
+  $('show-more').hidden = true;
+  resetLoadingProgress();
   show('welcome');
 }
 
@@ -170,7 +191,11 @@ async function loadOptions(name, signal, desired = '') {
 
 async function loadArticles(signal, articleID = '') {
   vehicle = selection('configuration');
-  if (!vehicle?.vehicle_id) throw new Error('Choose an engine / trim to open its article index.');
+  if (!vehicle?.vehicle_id) {
+    resetCatalogView();
+    setStatus('Choose an engine / trim to open the article index.');
+    return;
+  }
   $('vehicle-caption').textContent = `${vehicleName()} / ${configurationLabel(vehicle)}`;
   $('catalog-count').textContent = 'Loading articles…';
   $('articles').replaceChildren(); $('no-results').hidden = true; $('show-more').hidden = true;
@@ -367,15 +392,17 @@ function restoreRoute() {
     $(name).replaceChildren(new Option(name === 'year' ? 'Loading years…' : `Choose ${parents[name]} first`, ''));
     $(name).disabled = true;
   }
-  vehicle = null; articles = []; show('welcome');
-  $('search').value = '';
+  resetCatalogView();
   document.title = 'AutoData — The workshop reference';
   const params = new URLSearchParams(location.search);
   run(async signal => {
     for (const name of names) {
       const desired = params.get(name) || '';
       await loadOptions(name, signal, desired);
-      if (!desired) return;
+      if (!desired) {
+        setStatus(`Choose ${singular[name]} to continue.`);
+        return;
+      }
     }
     $('search').value = params.get('q') || '';
     await loadArticles(signal, params.get('article') || '');
