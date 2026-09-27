@@ -244,6 +244,61 @@ function kindLabel(kind) {
   return ({ procedure: 'Procedure', repair_procedure: 'Procedure', specification: 'Specification', technical_service_bulletin: 'Bulletin', wiring_diagram: 'Wiring diagram' })[kind] || String(kind || 'Reference').replaceAll('_', ' ').replace(/^./, char => char.toUpperCase());
 }
 
+const articleCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+function displayLabel(value) {
+  return String(value || '')
+    .replaceAll('_', ' ')
+    .replaceAll('-', ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, character => character.toUpperCase());
+}
+
+const titleCategoryRules = [
+  ['Scheduled maintenance', /\b\d{3,6}\s*(?:miles?|kilometers?|km)\b|\bmaintenance\b/i],
+  ['Safety systems', /\b(?:airbag|srs|seat ?belt|occupant restraint)\b/i],
+  ['Air conditioning and heating', /\b(?:a\/c|air conditioning|evaporator|condenser|blower motor|heater|hvac)\b/i],
+  ['Brakes', /\b(?:brake|abs|anti-lock|caliper|rotor|master cylinder)\b/i],
+  ['Cooling system', /\b(?:radiator|thermostat|coolant|cooling fan|water pump)\b/i],
+  ['Transmission and drivetrain', /\b(?:transmission|clutch|torque converter|differential|axle|transfer case|driveshaft|drive shaft|4wd|4x4)\b/i],
+  ['Fuel and emissions', /\b(?:fuel|emission|oxygen sensor|catalytic|evap|injector)\b/i],
+  ['Electrical', /\b(?:electrical|battery|alternator|starter|fuse|relay|wiring|circuit|socket|sensor)\b/i],
+  ['Steering and suspension', /\b(?:steering|suspension|shock|strut|tie rod|ball joint|control arm|wheel alignment)\b/i],
+  ['Engine', /\b(?:engine|oil pump|timing|camshaft|crankshaft|valve|cylinder|piston|spark plug|ignition|throttle|accelerator|intake|exhaust)\b/i],
+  ['Body and interior', /\b(?:door|window|seat|sunvisor|dashboard|trim|mirror|hood|trunk|bumper|windshield|wiper|roof|paint|keyless)\b/i],
+  ['Specifications and reference', /\b(?:specification|specs|fluid capacity|torque|paint code|capacity|dimensions)\b/i],
+];
+
+function articleCategory(item) {
+  const component = String(item.component || '').trim();
+  if (component) return displayLabel(component);
+  const title = String(item.title || '').trim();
+  const inferred = titleCategoryRules.find(([, pattern]) => pattern.test(title));
+  if (inferred) return inferred[0];
+  const kind = kindLabel(item.kind);
+  return kind === 'Reference' ? 'Other reference' : kind;
+}
+
+function compareArticles(left, right) {
+  return articleCollator.compare(left.title || 'Untitled article', right.title || 'Untitled article')
+    || articleCollator.compare(kindLabel(left.kind), kindLabel(right.kind))
+    || articleCollator.compare(left.id || '', right.id || '');
+}
+
+function articleGroups(items) {
+  const groups = new Map();
+  for (const item of items) {
+    const label = articleCategory(item);
+    const key = label.toLocaleLowerCase();
+    if (!groups.has(key)) groups.set(key, { label, items: [] });
+    groups.get(key).items.push(item);
+  }
+  return [...groups.values()]
+    .map(group => ({ ...group, items: group.items.slice().sort(compareArticles) }))
+    .sort((left, right) => articleCollator.compare(left.label, right.label));
+}
+
 function articleURL(id) {
   const url = new URL(location.href);
   url.searchParams.set('article', id);
@@ -252,19 +307,29 @@ function articleURL(id) {
 
 function renderArticles() {
   const filtered = filterArticles(articles, $('search').value);
+  const allGroups = articleGroups(filtered);
+  const visible = filtered.slice().sort(compareArticles).slice(0, limit);
+  const groups = articleGroups(visible);
   const fragment = document.createDocumentFragment();
-  for (const item of filtered.slice(0, limit)) {
-    const li = element('li'), link = element('a');
-    link.href = articleURL(item.id);
-    link.append(element('span', item.title || 'Untitled article'), element('span', kindLabel(item.kind), 'article-type'));
-    link.addEventListener('click', event => {
-      if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault(); openArticle(item.id);
-    });
-    li.append(link); fragment.append(li);
+  for (const group of groups) {
+    const heading = element('li', undefined, 'article-category');
+    heading.append(element('h3', group.label), element('span', `${group.items.length} article${group.items.length === 1 ? '' : 's'}`, 'article-category-count'));
+    fragment.append(heading);
+    for (const item of group.items) {
+      const li = element('li'), link = element('a');
+      link.href = articleURL(item.id);
+      link.append(element('span', item.title || 'Untitled article'), element('span', kindLabel(item.kind), 'article-type'));
+      link.addEventListener('click', event => {
+        if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault(); openArticle(item.id);
+      });
+      li.append(link); fragment.append(li);
+    }
   }
   $('articles').replaceChildren(fragment);
-  $('catalog-count').textContent = $('search').value.trim() ? `${filtered.length.toLocaleString()} matching articles / ${articles.length.toLocaleString()} in this vehicle` : `${articles.length.toLocaleString()} articles. Choose one to open.`;
+  $('catalog-count').textContent = $('search').value.trim()
+    ? `${filtered.length.toLocaleString()} matching articles across ${allGroups.length.toLocaleString()} categories / ${articles.length.toLocaleString()} in this vehicle`
+    : `${articles.length.toLocaleString()} articles across ${allGroups.length.toLocaleString()} categories. Choose one to open.`;
   $('no-results').hidden = filtered.length > 0 || !articles.length;
   $('show-more').hidden = filtered.length <= limit;
   $('show-more').textContent = `Show ${Math.min(60, filtered.length - limit)} more articles`;
