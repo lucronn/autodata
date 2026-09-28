@@ -7,7 +7,7 @@ const singular = { year: 'year', make: 'make', model: 'model', configuration: 'e
 const plural = { year: 'years', make: 'makes', model: 'models', configuration: 'configurations' };
 const parents = { make: 'year', model: 'make', configuration: 'model' };
 const rows = { year: [], make: [], model: [], configuration: [] };
-let articles = [], vehicle = null, active = null, retryAction = null, limit = 60;
+let articles = [], vehicle = null, active = null, retryAction = null;
 
 function token() {
   try { return localStorage.getItem('autodata-auth-token') || 'local:demo:dataset_viewer'; }
@@ -132,7 +132,6 @@ function resetCatalogView() {
   $('articles').replaceChildren();
   $('article-content').replaceChildren();
   $('no-results').hidden = true;
-  $('show-more').hidden = true;
   resetLoadingProgress();
   show('welcome');
 }
@@ -198,7 +197,7 @@ async function loadArticles(signal, articleID = '') {
   }
   $('vehicle-caption').textContent = `${vehicleName()} / ${configurationLabel(vehicle)}`;
   $('catalog-count').textContent = 'Loading articles…';
-  $('articles').replaceChildren(); $('no-results').hidden = true; $('show-more').hidden = true;
+  $('articles').replaceChildren(); $('no-results').hidden = true;
   show('catalog');
   setStatus('Opening the vehicle’s article index…', 'loading');
   setLoadingProgress('articles', { detail: 'Requesting the vehicle article catalog…' });
@@ -210,7 +209,7 @@ async function loadArticles(signal, articleID = '') {
       onUpdate(result, meta) {
         const hydrating = Boolean(result.hydrating && !result.complete);
         if (result.items.length) {
-          articles = result.items; limit = 60; renderArticles();
+          articles = result.items; renderArticles();
           setLoadingProgress('articles', {
             ...meta,
             hydrating,
@@ -232,7 +231,7 @@ async function loadArticles(signal, articleID = '') {
   );
   signal.throwIfAborted();
   if (!Array.isArray(data.items)) throw new Error('The article index could not be read. Try again.');
-  articles = data.items; limit = 60; renderArticles();
+  articles = data.items; renderArticles();
   if (!articles.length) setStatus(data.timedOut ? 'The catalog is still preparing this vehicle. Retry to check again.' : 'No articles were returned for this vehicle. Retry or choose a different configuration.', 'error', retry);
   else setStatus(`Article index ready for ${vehicleName()}.`);
   if (articleID) await loadArticle(articleID, signal);
@@ -299,6 +298,19 @@ function articleGroups(items) {
     .sort((left, right) => articleCollator.compare(left.label, right.label));
 }
 
+function renderCategoryArticles(list, group) {
+  for (const item of group.items) {
+    const li = element('li'), link = element('a');
+    link.href = articleURL(item.id);
+    link.append(element('span', item.title || 'Untitled article'), element('span', kindLabel(item.kind), 'article-type'));
+    link.addEventListener('click', event => {
+      if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault(); openArticle(item.id);
+    });
+    li.append(link); list.append(li);
+  }
+}
+
 function articleURL(id) {
   const url = new URL(location.href);
   url.searchParams.set('article', id);
@@ -307,37 +319,31 @@ function articleURL(id) {
 
 function renderArticles() {
   const filtered = filterArticles(articles, $('search').value);
-  const allGroups = articleGroups(filtered);
-  const visible = filtered.slice().sort(compareArticles).slice(0, limit);
-  const groups = articleGroups(visible);
+  const groups = articleGroups(filtered);
   const fragment = document.createDocumentFragment();
   const hasSearch = Boolean($('search').value.trim());
   for (const group of groups) {
     const category = element('details', undefined, 'article-category');
     category.open = hasSearch;
     const summary = element('summary', undefined, 'article-category-summary');
-    summary.append(element('h3', group.label), element('span', `${group.items.length} article${group.items.length === 1 ? '' : 's'}`, 'article-category-count'));
+    summary.append(element('h3', group.label), element('span', `${group.items.length.toLocaleString()} article${group.items.length === 1 ? '' : 's'}`, 'article-category-count'));
     category.append(summary);
     const list = element('ul', undefined, 'article-list');
-    for (const item of group.items) {
-      const li = element('li'), link = element('a');
-      link.href = articleURL(item.id);
-      link.append(element('span', item.title || 'Untitled article'), element('span', kindLabel(item.kind), 'article-type'));
-      link.addEventListener('click', event => {
-        if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        event.preventDefault(); openArticle(item.id);
-      });
-      li.append(link); list.append(li);
-    }
+    if (hasSearch) renderCategoryArticles(list, group);
+    category.addEventListener('toggle', () => {
+      if (category.open) {
+        if (!list.childElementCount) renderCategoryArticles(list, group);
+      } else {
+        list.replaceChildren();
+      }
+    });
     category.append(list); fragment.append(category);
   }
   $('articles').replaceChildren(fragment);
   $('catalog-count').textContent = $('search').value.trim()
-    ? `${filtered.length.toLocaleString()} matching articles across ${allGroups.length.toLocaleString()} categories / ${articles.length.toLocaleString()} in this vehicle`
-    : `${articles.length.toLocaleString()} articles across ${allGroups.length.toLocaleString()} categories. Choose one to open.`;
+    ? `${filtered.length.toLocaleString()} matching articles across ${groups.length.toLocaleString()} categories / ${articles.length.toLocaleString()} in this vehicle`
+    : `${articles.length.toLocaleString()} articles across ${groups.length.toLocaleString()} categories. Choose a category to open.`;
   $('no-results').hidden = filtered.length > 0 || !articles.length;
-  $('show-more').hidden = filtered.length <= limit;
-  $('show-more').textContent = `Show ${Math.min(60, filtered.length - limit)} more articles`;
 }
 
 function openArticle(id) {
@@ -444,14 +450,7 @@ $('cancel').addEventListener('click', () => {
   active?.abort();
   setStatus('Loading stopped. Choose an option or try again.', 'ready', restoreRoute);
 });
-$('search').addEventListener('input', () => { limit = 60; updateURL({ replace: true }); renderArticles(); });
-$('show-more').addEventListener('click', () => {
-  const previous = limit;
-  limit += 60;
-  renderArticles();
-  const next = $('articles').querySelectorAll('a')[previous];
-  if (next) { next.closest('details').open = true; next.focus({ preventScroll: true }); }
-});
+$('search').addEventListener('input', () => { updateURL({ replace: true }); renderArticles(); });
 $('back').addEventListener('click', () => {
   active?.abort(); updateURL(); show('catalog'); renderArticles();
   document.title = `${vehicleName()} | AutoData`;
