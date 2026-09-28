@@ -126,7 +126,25 @@ export function delay(ms, signal) {
   });
 }
 
-export async function readCollection(read, { signal, onUpdate = () => {}, desired = '', attempts = 40, interval = 1500, wait = delay } = {}) {
+const DEFAULT_COLLECTION_POLL_INTERVAL_MS = 1500;
+const DEFAULT_COLLECTION_POLL_WINDOW_MS = 60_000;
+const DEFAULT_COLLECTION_POLL_ATTEMPTS = Math.ceil(
+  DEFAULT_COLLECTION_POLL_WINDOW_MS / DEFAULT_COLLECTION_POLL_INTERVAL_MS,
+);
+
+// Hydration polling is bounded to one minute. The UI reports source progress;
+// this internal polling budget is not a user-facing attempt counter.
+export async function readCollection(
+  read,
+  {
+    signal,
+    onUpdate = () => {},
+    desired = '',
+    attempts = DEFAULT_COLLECTION_POLL_ATTEMPTS,
+    interval = DEFAULT_COLLECTION_POLL_INTERVAL_MS,
+    wait = delay,
+  } = {},
+) {
   let latest;
   for (let attempt = 0; attempt < attempts; attempt++) {
     signal?.throwIfAborted();

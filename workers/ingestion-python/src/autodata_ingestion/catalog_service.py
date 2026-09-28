@@ -146,10 +146,13 @@ class _ArticleCatalogProgress:
         self.last_state = state
 
     def start(self) -> None:
+        year = str(self.request.get("year") or "selected year")
+        make = str(self.request.get("make") or "selected make")
+        model = str(self.request.get("model") or "selected model")
         self.publish(
             {
                 "phase": "resolving",
-                "detail": "Resolving the selected vehicle’s article source…",
+                "detail": f"Preparing the full article list for {year} {make} {model}…",
             },
             force=True,
         )
@@ -541,6 +544,13 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
     progress = _ArticleCatalogProgress(request)
     progress.start()
     primary_error = None
+    progress.publish(
+        {
+            "phase": "source_autoapi",
+            "detail": "Trying to retrieve the full article list from AutoAPI…",
+        },
+        force=True,
+    )
     try:
         year = int(request["year"])
         make = str(request["make"]).strip()
@@ -587,12 +597,28 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
         primary_error = RuntimeError("primary article catalog was empty")
 
     if primary_error is not None:
+        primary_detail = _source_failure_detail("AutoAPI", primary_error)
+        progress.publish(
+            {
+                "phase": "source_autoapi_failed",
+                "detail": f"{primary_detail} Trying to retrieve the full article list from AutoAPItwo…",
+            },
+            force=True,
+        )
+        progress.publish(
+            {
+                "phase": "source_autoapitwo",
+                "detail": "Trying to retrieve the full article list from AutoAPItwo…",
+            },
+            force=True,
+        )
         try:
             records, metadata = _invoke_autoapitwo_article_catalog_loader(
                 request, vehicle, progress
             )
         except Exception as fallback_error:  # noqa: BLE001 - source failure is a retryable miss
-            progress.failed("The article catalog source could not be read.")
+            fallback_detail = _source_failure_detail("AutoAPItwo", fallback_error)
+            progress.failed(f"{primary_detail} {fallback_detail}")
             return {
                 "status": "source_unavailable",
                 "hydration_key": key,
@@ -603,8 +629,19 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
                 "metadata": {
                     "reason": type(fallback_error).__name__,
                     "primary_source_reason": type(primary_error).__name__,
+                    "detail": f"{primary_detail} {fallback_detail}",
                 },
             }
+    else:
+        progress.publish(
+            {
+                "phase": "source_autoapi_complete",
+                "processed_units": len(records),
+                "total_units": len(records),
+                "detail": f"AutoAPI returned {len(records):,} article records. Saving the catalog…",
+            },
+            force=True,
+        )
 
     rows = [dict(record) for record in records if isinstance(record, Mapping)]
     if rows:
@@ -803,6 +840,53 @@ def _load_autoapitwo_article_catalog(
         "targeted_article_fetch_count": 0,
         "targeted_labor_fetch_count": 0,
     }
+
+
+def _source_failure_detail(source: str, error: BaseException) -> str:
+    """Convert provider failures into concise, actionable UI status text."""
+
+    chain: list[BaseException] = []
+    current: BaseException | None = error
+    while current is not None and current not in chain and len(chain) < 8:
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    status = next(
+        (
+            int(getattr(item, attribute))
+            for item in chain
+            for attribute in ("code", "status", "status_code")
+            if str(getattr(item, attribute, "")).isdigit()
+        ),
+        None,
+    )
+    text = " ".join(
+        str(getattr(item, "reason", "") or item).casefold()
+        for item in chain
+    )
+    if status == 429 or "rate limit" in text or "too many requests" in text:
+        reason = "rate limited"
+    elif status == 401 or "expired" in text or "authentication" in text or "unauthorized" in text:
+        reason = "authentication expired or unauthorized"
+    elif status == 403 or "forbidden" in text:
+        reason = "forbidden"
+    elif status in {408, 504} or "timed out" in text or "timeout" in text:
+        reason = "server timed out"
+    elif status is not None and status >= 500:
+        reason = "source server unavailable"
+    elif "redirect" in text:
+        reason = "unexpected redirect"
+    elif "no matching" in text or "did not resolve" in text or "no vehicle" in text:
+        reason = "returned no matching vehicle"
+    elif "empty" in text or "not found" in text or "no article" in text:
+        reason = "returned no matching articles"
+    elif "incomplete" in text and "article" in text:
+        reason = "article index was incomplete"
+    elif "source read failed" in text:
+        reason = "source read failed"
+    else:
+        reason = "request failed"
+    suffix = f" (HTTP {status})" if status is not None else ""
+    return f"{source} failed — {reason}{suffix}."
 
 
 def _update_article_catalog_progress(

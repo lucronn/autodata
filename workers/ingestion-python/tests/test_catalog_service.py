@@ -12,12 +12,27 @@ from autodata_ingestion.catalog_service import (
     CacheFirstCatalogService,
     _autoapitwo_car_ids,
     _engine_number,
+    _source_failure_detail,
     canonical_catalog_id,
     ensure_catalog_hydration,
 )
 
 
 class CatalogServiceTests(unittest.TestCase):
+    def test_source_failure_detail_names_source_and_outcome(self):
+        self.assertEqual(
+            _source_failure_detail('AutoAPI', RuntimeError('expired authentication token')),
+            'AutoAPI failed — authentication expired or unauthorized.',
+        )
+        self.assertEqual(
+            _source_failure_detail('AutoAPItwo', RuntimeError('server timed out')),
+            'AutoAPItwo failed — server timed out.',
+        )
+        self.assertEqual(
+            _source_failure_detail('AutoAPItwo', RuntimeError('AutoAPItwo did not resolve a matching vehicle')),
+            'AutoAPItwo failed — returned no matching vehicle.',
+        )
+
     def test_engine_number_prefers_displacement_in_provider_engine_label(self):
         self.assertEqual(_engine_number("L4-2.4L (K24W1)"), 2.4)
         self.assertEqual(_engine_number("V6-3.5L (J35Y2)"), 3.5)

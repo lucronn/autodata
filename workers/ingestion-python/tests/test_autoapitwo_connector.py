@@ -5,7 +5,12 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 
-from autodata_ingestion.autoapitwo_connector import AutoAPITwoConnector, ArticleParser, SourceUnavailable
+from autodata_ingestion.autoapitwo_connector import (
+    AutoAPITwoConnector,
+    ArticleParser,
+    SourceUnavailable,
+    _source_failure_reason,
+)
 
 
 class ConnectorTests(unittest.TestCase):
@@ -183,3 +188,36 @@ class ConnectorTests(unittest.TestCase):
         self.assertEqual(progress[-1]['processed_units'], 36)
         self.assertEqual(progress[-1]['total_units'], 36)
         self.assertEqual(progress[-1]['phase'], 'indexing')
+        self.assertEqual(progress[-1]['outcome'], 'succeeded')
+        self.assertIn('Article-index query', progress[-1]['detail'])
+        self.assertIn('article links returned', progress[-1]['detail'])
+
+    def test_article_catalog_failure_progress_names_failure_reason(self):
+        progress = []
+
+        def opener(req, **kwargs):
+            raise HTTPError(req.full_url, 429, 'rate limited', {}, io.BytesIO())
+
+        client = AutoAPITwoConnector(opener=opener, retry_attempts=1, retry_delay=0)
+        with self.assertRaises(SourceUnavailable):
+            client.fetch_article_catalog('1', on_progress=progress.append)
+
+        self.assertTrue(progress)
+        self.assertTrue(all(item['outcome'] == 'failed' for item in progress))
+        self.assertTrue({item['term'] for item in progress} >= {'a', 'b', 'c'})
+        self.assertTrue(all('rate limited' in item['detail'] for item in progress))
+
+    def test_source_failure_reason_classifies_common_provider_failures(self):
+        self.assertEqual(
+            _source_failure_reason(HTTPError('https://example.test', 401, 'expired token', {}, io.BytesIO())),
+            'authentication expired or unauthorized',
+        )
+        self.assertEqual(
+            _source_failure_reason(HTTPError('https://example.test', 504, 'gateway timeout', {}, io.BytesIO())),
+            'server timed out',
+        )
+        self.assertEqual(_source_failure_reason(TimeoutError('timed out')), 'server timed out')
+        self.assertEqual(
+            _source_failure_reason(SourceUnavailable('AutoAPItwo did not resolve a matching vehicle')),
+            'returned no matching vehicle',
+        )

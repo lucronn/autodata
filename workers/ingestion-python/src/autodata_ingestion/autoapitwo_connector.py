@@ -229,7 +229,9 @@ class AutoAPITwoConnector:
                                 "phase": "indexing",
                                 "processed_units": completed_reads,
                                 "total_units": len(terms),
-                                "detail": f"Scanning article index ({completed_reads}/{len(terms)})…",
+                                "term": futures[future],
+                                "outcome": "failed",
+                                "detail": f'Article-index query "{futures[future]}" failed — {_source_failure_reason(error)}.',
                             })
                         except Exception:
                             pass
@@ -268,7 +270,10 @@ class AutoAPITwoConnector:
                             "phase": "indexing",
                             "processed_units": completed_reads,
                             "total_units": len(terms),
-                            "detail": f"Scanning article index ({completed_reads}/{len(terms)})…",
+                            "term": futures[future],
+                            "outcome": "succeeded",
+                            "result_count": len(results),
+                            "detail": f'Article-index query "{futures[future]}" succeeded — {len(results)} article links returned.',
                         })
                     except Exception:
                         pass
@@ -292,6 +297,7 @@ class AutoAPITwoConnector:
             "search_terms": terms,
             "search_error_count": len(errors),
         }
+
 
     def search(self, car_id, term):
         result = self.read(f'/api/v1/content/carids/{car_id}/search/{quote(term, safe="")}', car_id=car_id)
@@ -426,6 +432,41 @@ class AutoAPITwoConnector:
             payload['labor_hours'] = max(labor_hours)
             payload['duration_hours'] = max(labor_hours)
         return payload
+
+
+def _source_failure_reason(error: BaseException) -> str:
+    chain: list[BaseException] = []
+    current: BaseException | None = error
+    while current is not None and current not in chain and len(chain) < 8:
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    status = next(
+        (
+            int(getattr(item, attribute))
+            for item in chain
+            for attribute in ("code", "status", "status_code")
+            if str(getattr(item, attribute, "")).isdigit()
+        ),
+        None,
+    )
+    text = " ".join(str(getattr(item, "reason", "") or item).casefold() for item in chain)
+    if status == 429 or "rate limit" in text or "too many requests" in text:
+        return "rate limited"
+    if status == 401 or "expired" in text or "authentication" in text or "unauthorized" in text:
+        return "authentication expired or unauthorized"
+    if status == 403 or "forbidden" in text:
+        return "forbidden"
+    if status in {408, 504} or "timed out" in text or "timeout" in text:
+        return "server timed out"
+    if status is not None and status >= 500:
+        return f"source server unavailable (HTTP {status})"
+    if "no matching" in text or "did not resolve" in text or "no vehicle" in text:
+        return "returned no matching vehicle"
+    if "incomplete" in text and "article" in text:
+        return "article index was incomplete"
+    if "source read failed" in text:
+        return "source read failed"
+    return "request failed"
 
 
 def _embedded_data(payload):

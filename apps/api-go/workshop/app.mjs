@@ -47,7 +47,7 @@ function catalogProgressDetail(progress) {
   const processed = Number(progress.processed || 0).toLocaleString();
   const total = Number(progress.total || 0).toLocaleString();
   const title = String(progress.current_title || 'Untitled article');
-  if (progress.phase === 'indexing') return progress.detail || `Scanning article index (${processed}/${total})…`;
+  if (progress.phase === 'indexing') return progress.detail || 'Retrieving the article index from AutoAPItwo…';
   if (progress.phase === 'normalizing') {
     return progress.detail || `Building catalog… Processing article ${processed}/${total} — ${title}`;
   }
@@ -168,14 +168,14 @@ async function loadOptions(name, signal, desired = '') {
     onUpdate(result, meta) {
       populate(name, result.items);
       const detail = result.hydrating && !result.complete
-        ? result.items.length ? `${result.items.length} ${plural[name]} available; checking for more (attempt ${meta.attempt} of ${meta.attempts})…` : `Finding available ${plural[name]} (attempt ${meta.attempt} of ${meta.attempts})…`
+        ? result.items.length ? `${result.items.length} ${plural[name]} currently available; checking saved catalog coverage…` : `Checking the saved ${plural[name]} catalog…`
         : `${result.items.length} ${plural[name]} ready.`;
       setLoadingProgress(name, { ...meta, hydrating: Boolean(result.hydrating && !result.complete), complete: result.complete === true, detail });
     },
   });
   signal.throwIfAborted();
   if (!data.items.length) {
-    setStatus(data.timedOut ? `Still waiting for ${plural[name]}. Retry to check again.` : `No ${plural[name]} are available for this selection. Try again or change the vehicle.`, 'error', retry);
+    setStatus(data.timedOut ? `Still waiting for the ${plural[name]} catalog. Retry to check again.` : `No ${plural[name]} are available for this selection. Try again or change the vehicle.`, 'error', retry);
   } else if (data.complete === false) {
     setStatus(`${data.items.length} ${plural[name]} available. The list may still be incomplete.`, 'ready', retry);
   } else {
@@ -205,9 +205,11 @@ async function loadArticles(signal, articleID = '') {
   const data = await readCollection(
     () => requestJSON(`/v1/catalog/vehicles/${encodeURIComponent(vehicle.vehicle_id)}/articles`, { signal, token: token(), timeout: 20000 }),
     {
-      signal, attempts: 40, interval: 1500,
+      signal,
       onUpdate(result, meta) {
         const hydrating = Boolean(result.hydrating && !result.complete);
+        const progressDetail = catalogProgressDetail(result.progress);
+        const waitingDetail = progressDetail || 'Retrieving the full article list from the configured sources…';
         if (result.items.length) {
           articles = result.items; renderArticles();
           setLoadingProgress('articles', {
@@ -215,7 +217,7 @@ async function loadArticles(signal, articleID = '') {
             hydrating,
             complete: result.complete === true,
             catalogProgress: result.progress,
-            detail: hydrating ? `${result.items.length} articles available; checking for more (attempt ${meta.attempt} of ${meta.attempts})…` : `${result.items.length} articles ready.`,
+            detail: hydrating ? `${result.items.length.toLocaleString()} articles currently available. ${waitingDetail}` : `${result.items.length.toLocaleString()} articles ready.`,
           });
           if (!hydrating) setStatus('Article index ready.');
         } else if (result.hydrating) {
@@ -223,7 +225,7 @@ async function loadArticles(signal, articleID = '') {
             ...meta,
             hydrating: true,
             catalogProgress: result.progress,
-            detail: `Finding this vehicle’s articles (attempt ${meta.attempt} of ${meta.attempts})…`,
+            detail: waitingDetail,
           });
         }
       },
@@ -232,7 +234,15 @@ async function loadArticles(signal, articleID = '') {
   signal.throwIfAborted();
   if (!Array.isArray(data.items)) throw new Error('The article index could not be read. Try again.');
   articles = data.items; renderArticles();
-  if (!articles.length) setStatus(data.timedOut ? 'The catalog is still preparing this vehicle. Retry to check again.' : 'No articles were returned for this vehicle. Retry or choose a different configuration.', 'error', retry);
+  const finalProgressDetail = catalogProgressDetail(data.progress);
+  if (!articles.length) {
+    const detail = finalProgressDetail || (data.timedOut
+      ? 'The full article list is still being retrieved from the configured sources.'
+      : 'No articles were returned for this vehicle.');
+    setStatus(`${detail} Retry to check again.`, 'error', retry);
+  } else if (data.timedOut) {
+    setStatus(`${articles.length.toLocaleString()} articles are available so far. ${finalProgressDetail || 'The full article list is still being retrieved in the background.'} Retry to check again.`, 'ready', retry);
+  }
   else setStatus(`Article index ready for ${vehicleName()}.`);
   if (articleID) await loadArticle(articleID, signal);
 }
