@@ -255,18 +255,22 @@ function displayLabel(value) {
 }
 
 const titleCategoryRules = [
-  ['Scheduled maintenance', /\b\d{3,6}\s*(?:miles?|kilometers?|km)\b|\bmaintenance\b/i],
-  ['Safety systems', /\b(?:airbag|srs|seat ?belt|occupant restraint)\b/i],
-  ['Air conditioning and heating', /\b(?:a\/c|air conditioning|evaporator|condenser|blower motor|heater|hvac)\b/i],
-  ['Brakes', /\b(?:brake|abs|anti-lock|caliper|rotor|master cylinder)\b/i],
-  ['Cooling system', /\b(?:radiator|thermostat|coolant|cooling fan|water pump)\b/i],
-  ['Transmission and drivetrain', /\b(?:transmission|clutch|torque converter|differential|axle|transfer case|driveshaft|drive shaft|4wd|4x4)\b/i],
-  ['Fuel and emissions', /\b(?:fuel|emission|oxygen sensor|catalytic|evap|injector)\b/i],
-  ['Electrical', /\b(?:electrical|battery|alternator|starter|fuse|relay|wiring|circuit|socket|sensor)\b/i],
-  ['Steering and suspension', /\b(?:steering|suspension|shock|strut|tie rod|ball joint|control arm|wheel alignment)\b/i],
-  ['Engine', /\b(?:engine|oil pump|timing|camshaft|crankshaft|valve|cylinder|piston|spark plug|ignition|throttle|accelerator|intake|exhaust)\b/i],
-  ['Body and interior', /\b(?:door|window|seat|sunvisor|dashboard|trim|mirror|hood|trunk|bumper|windshield|wiper|roof|paint|keyless)\b/i],
-  ['Specifications and reference', /\b(?:specification|specs|fluid capacity|torque|paint code|capacity|dimensions)\b/i],
+  ['Scheduled maintenance', /\b\d{3,6}\s*(?:miles?|kilometers?|km)\b|\bmaintenance\b|\b(?:routine|normal|severe) service\b/i],
+  ['Safety systems', /\b(?:airbags?|srs|supplemental restraints?|seat ?belts?|occupant restraints?|restraints?|safety)\b/i],
+  ['Parts and labor', /\bparts?\s*(?:and|&)\s*labor\b/i],
+  ['Air conditioning and heating', /\b(?:a\s*\/\s*c|air conditioning|evaporator|condenser|blower|heater|hvac|compressor|refrigerant|manifold gauge|evacuating system|charging the system)\b/i],
+  ['Brakes', /\b(?:brakes?|abs|anti-?lock|calipers?|rotors?|master cylinders?|brake pads?|brake lines?|park brake|(?:front|rear|wheel) speed sensor)\b/i],
+  ['Cooling system', /\b(?:cooling system|cooling fans?|cooling fan motors?|cooling fan relays?|radiator|thermostat|coolant|water pump)\b/i],
+  ['Transmission and drivetrain', /\b(?:transmissions?|clutch(?:es)?|torque converters?|differentials?|axles?|transfer(?: cases?)?|driveshafts?|drive shafts?|transaxles?|planetary gears?|shift solenoids?|a\/t|m\/t|atf|drivetrain|gearbox|pinion|ring gear|shift interlock|shift lock|lock-up|automatic shift schedule|valve body|magnetic clutch|propeller shaft|(?:input|output) shaft|extension housing)\b/i],
+  ['Fuel and emissions', /\b(?:fuel|emissions?|oxygen|o2|catalyst|catalytic|evap|injectors?|egr|mil on|emission control)\b/i],
+  ['Steering and suspension', /\b(?:steering|suspension|shocks?|struts?|tie rods?|ball joints?|control arms?|wheel alignment|wheel balance|power steering)\b/i],
+  ['Body and interior', /\b(?:doors?|windows?|seats?|sunvisors?|dashboard|trim|mirrors?|hood|trunks?|bumpers?|windshields?|wipers?|washers?|roof|sunroof|paint|rust|acid rain|keyless|keys?|defogger|wind noise|wind (?:turbulence|whistle)|instrument cluster|instrument panel|cruise control|radio|audio|cassette|sound systems?|clock|speaker|am[- ]?fm|am or fm|no power coming in|headlights?|horns?|lights?|locks?|body|frame|fender|interior|antitheft|arming|disarming|homelink|cigarette lighter|foamed material)\b/i],
+  ['Engine', /\b(?:engine|air induction|oil|timing|camshafts?|crankshafts?|valves?|cylinders?|pistons?|spark plugs?|ignition|throttles?|accelerators?|intake|exhaust|drive belts?|idle(?:-up)?|oil pressure|gaskets?|breathers?|engine controls?|spark control|connecting rod)\b/i],
+  ['Specifications and reference', /\b(?:specifications?|specs|service data|torque(?! converter)|fluid capacities?|capacities|dimensions|tightening|fluid levels?|fluid pressures?|clearance|pressure|volume|standard voltage|specific gravity)\b/i],
+  ['Diagnostics and service', /\b(?:dtc|p\d{4}|p codes?|trouble codes?|diagnos(?:is|tic|tics|e|ing)?|diagnostic|symptoms?|troubleshoot(?:ing)?|inspections?|test(?:ing|s)?|checks?|warning systems?|indicator checks?|how to proceed|problem symptoms?|ecu data monitor|monitor descriptions?|obd|readiness|preliminary checks?|code definition|mode \$06|normal mode)\b/i],
+  ['Electrical', /\b(?:electrical|batter(?:y|ies)|alternators?|starters?|fuses?|relays?|wiring|harness|circuits?|sockets?|sensors?|switches?|lamps?|ground|power distribution|computer data|ecm|ecu|electronic control|terminals?|speed sensor|indicator lamp|warning light|junction block|j\/b|r\/b|schematic|tachometer|magnetic switch|brush(?:es)?|mobile communications)\b/i],
+  ['General service procedures', /\b(?:adjustments?|after assembly|assemble|assembly|basic subassembly|cleaning|disassembl(?:e|y)|disposal(?: procedures?)?|general procedure|installations?|on[- ]vehicle|overhaul|preparation for disassembly|procedures?|removals?|replacement|reassembly|service and repair)\b/i],
+  ['Tools and service information', /\b(?:tools?|equipment|sst|adapter|gauge|service hints?|owner instructions?|owners instructions?|manual corrections?)\b/i],
 ];
 
 function articleCategory(item) {
@@ -276,7 +280,12 @@ function articleCategory(item) {
   const inferred = titleCategoryRules.find(([, pattern]) => pattern.test(title));
   if (inferred) return inferred[0];
   const kind = kindLabel(item.kind);
-  return kind === 'Reference' ? 'Other reference' : kind;
+  return ({
+    Reference: 'General reference',
+    Procedure: 'General service procedures',
+    Specification: 'Specifications and reference',
+    'Wiring diagram': 'Electrical',
+  })[kind] || kind;
 }
 
 function compareArticles(left, right) {
