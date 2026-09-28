@@ -311,10 +311,14 @@ function renderArticles() {
   const visible = filtered.slice().sort(compareArticles).slice(0, limit);
   const groups = articleGroups(visible);
   const fragment = document.createDocumentFragment();
+  const hasSearch = Boolean($('search').value.trim());
   for (const group of groups) {
-    const heading = element('li', undefined, 'article-category');
-    heading.append(element('h3', group.label), element('span', `${group.items.length} article${group.items.length === 1 ? '' : 's'}`, 'article-category-count'));
-    fragment.append(heading);
+    const category = element('details', undefined, 'article-category');
+    category.open = hasSearch;
+    const summary = element('summary', undefined, 'article-category-summary');
+    summary.append(element('h3', group.label), element('span', `${group.items.length} article${group.items.length === 1 ? '' : 's'}`, 'article-category-count'));
+    category.append(summary);
+    const list = element('ul', undefined, 'article-list');
     for (const item of group.items) {
       const li = element('li'), link = element('a');
       link.href = articleURL(item.id);
@@ -323,8 +327,9 @@ function renderArticles() {
         if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault(); openArticle(item.id);
       });
-      li.append(link); fragment.append(li);
+      li.append(link); list.append(li);
     }
+    category.append(list); fragment.append(category);
   }
   $('articles').replaceChildren(fragment);
   $('catalog-count').textContent = $('search').value.trim()
@@ -440,7 +445,13 @@ $('cancel').addEventListener('click', () => {
   setStatus('Loading stopped. Choose an option or try again.', 'ready', restoreRoute);
 });
 $('search').addEventListener('input', () => { limit = 60; updateURL({ replace: true }); renderArticles(); });
-$('show-more').addEventListener('click', () => { const previous = limit; limit += 60; renderArticles(); $('articles').children[previous]?.querySelector('a').focus({ preventScroll: true }); });
+$('show-more').addEventListener('click', () => {
+  const previous = limit;
+  limit += 60;
+  renderArticles();
+  const next = $('articles').querySelectorAll('a')[previous];
+  if (next) { next.closest('details').open = true; next.focus({ preventScroll: true }); }
+});
 $('back').addEventListener('click', () => {
   active?.abort(); updateURL(); show('catalog'); renderArticles();
   document.title = `${vehicleName()} | AutoData`;
