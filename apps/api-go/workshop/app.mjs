@@ -373,6 +373,35 @@ function addImage(parent, image, caption) {
   parent.append(figure);
 }
 
+function renderLegacyBlocks(parent, blocks) {
+  let list = null;
+  const flush = () => { if (list) { parent.append(list); list = null; } };
+  for (const block of blocks) {
+    if (block.type === 'step') {
+      if (!list) list = element('ol', undefined, 'procedure-steps');
+      const li = element('li');
+      li.append(element('span', `${block.number}.`, 'step-number'));
+      for (const part of block.parts || []) {
+        if (part.type === 'callout') {
+          const callout = element('aside', undefined, 'article-callout');
+          callout.append(element('strong', part.label), element('span', part.text));
+          li.append(callout);
+        } else if (part.text) li.append(element('p', part.text));
+      }
+      list.append(li);
+      continue;
+    }
+    flush();
+    if (block.type === 'heading') parent.append(element('h3', block.text, 'legacy-heading'));
+    else if (block.type === 'callout') {
+      const callout = element('aside', undefined, 'article-callout');
+      callout.append(element('strong', block.label), element('span', block.text));
+      parent.append(callout);
+    } else if (block.text) parent.append(element('p', block.text));
+  }
+  flush();
+}
+
 function renderArticle(article) {
   const presentation = articlePresentation(article);
   const images = Array.isArray(article.images) ? article.images : [];
@@ -382,7 +411,7 @@ function renderArticle(article) {
   $('reader-vehicle').textContent = vehicleName();
   $('reader-engine').textContent = configurationLabel(vehicle);
   const notes = [];
-  if (presentation.legacy) notes.push('Showing the saved article text; formatted steps are not available for this record.');
+  if (presentation.legacy) notes.push('This saved article was formatted for display from the source text; source order is preserved.');
   if (!images.length) notes.push('No illustrations are available in this saved article.');
   if (!article.complete) notes.push('This article is incomplete.');
   $('article-note').hidden = !notes.length;
@@ -396,12 +425,17 @@ function renderArticle(article) {
       if (step.heading) li.append(element('h3', step.heading));
       for (const instruction of step.instructions || []) li.append(element('p', instruction));
       for (const id of step.image_ids || []) {
-        const image = images.find(image => image.id === id);
-        addImage(li, image, `Illustration for step ${step.number ?? index + 1}`); used.add(id);
+        const image = images.find(image => image.id === id || image.image_id === id);
+        if (image) {
+          addImage(li, image, `Illustration for step ${step.number ?? index + 1}`);
+          used.add(image.id || image.image_id);
+        }
       }
       list.append(li);
     }
     content.append(list);
+  } else if (presentation.blocks.length) {
+    renderLegacyBlocks(content, presentation.blocks);
   } else if (presentation.body.trim()) {
     content.append(element('div', presentation.body, 'body-text'));
   } else {
@@ -438,7 +472,7 @@ async function loadArticle(id, signal) {
   $('article-reference').hidden = false;
   $('print').disabled = false;
   const readable = articlePresentation(data.article);
-  if (!readable.steps.length && !readable.body.trim()) setStatus('This article has no readable content yet.', 'error', () => openArticle(id));
+  if (!readable.steps.length && !readable.blocks.length && !readable.body.trim()) setStatus('This article has no readable content yet.', 'error', () => openArticle(id));
   else setStatus('Article opened.');
   $('article-title').focus({ preventScroll: true });
   $('reader').scrollIntoView({ block: 'start' });

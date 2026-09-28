@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Catalog selector reads must remain responsive while a missing scope is
@@ -221,7 +224,78 @@ func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.R
 		s.writeCatalogError(response, request, err)
 		return
 	}
+	rewriteCatalogImageURLs(&article)
 	writeJSON(response, http.StatusOK, CatalogArticleResponse{Version: "v1", Article: article})
+}
+
+const catalogImageMaxBytes = 12 << 20
+
+var catalogImageClient = &http.Client{Timeout: 20 * time.Second}
+
+// rewriteCatalogImageURLs keeps provider URLs out of the public article
+// payload. The browser loads the same-origin proxy, which also means the
+// article reader can keep provider credentials and redirects out of markup.
+func rewriteCatalogImageURLs(article *CatalogArticle) {
+	for index := range article.Images {
+		image := &article.Images[index]
+		if isCatalogImageURL(image.URL) {
+			image.URL = catalogImageProxyURL(image.URL)
+		}
+	}
+}
+
+func isCatalogImageURL(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return false
+	}
+	return strings.EqualFold(parsed.Hostname(), "autoapitwo.vercel.app")
+}
+
+func catalogImageProxyURL(source string) string {
+	return "/v1/catalog/images?src=" + url.QueryEscape(source)
+}
+
+// serveCatalogImage is deliberately limited to the provider host that the
+// ingestion pipeline records today. It is an image-only, read-only proxy, so
+// arbitrary URL fetching cannot be turned into an SSRF endpoint.
+func serveCatalogImage(response http.ResponseWriter, request *http.Request) {
+	source := strings.TrimSpace(request.URL.Query().Get("src"))
+	if !isCatalogImageURL(source) {
+		http.Error(response, "unsupported catalog image", http.StatusBadRequest)
+		return
+	}
+	upstreamRequest, err := http.NewRequestWithContext(request.Context(), http.MethodGet, source, nil)
+	if err != nil {
+		http.Error(response, "catalog image could not be requested", http.StatusBadRequest)
+		return
+	}
+	upstreamRequest.Header.Set("Accept", "image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9,*/*;q=0.1")
+	upstream, err := catalogImageClient.Do(upstreamRequest)
+	if err != nil {
+		http.Error(response, "catalog image could not be loaded", http.StatusBadGateway)
+		return
+	}
+	defer upstream.Body.Close()
+	if upstream.StatusCode < http.StatusOK || upstream.StatusCode >= http.StatusMultipleChoices {
+		http.Error(response, "catalog image could not be loaded", http.StatusBadGateway)
+		return
+	}
+	contentType := strings.ToLower(strings.TrimSpace(strings.Split(upstream.Header.Get("Content-Type"), ";")[0]))
+	if !strings.HasPrefix(contentType, "image/") {
+		http.Error(response, "catalog image returned an invalid media type", http.StatusBadGateway)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(upstream.Body, catalogImageMaxBytes+1))
+	if err != nil || len(body) > catalogImageMaxBytes {
+		http.Error(response, "catalog image is too large", http.StatusBadGateway)
+		return
+	}
+	response.Header().Set("Content-Type", contentType)
+	response.Header().Set("Cache-Control", "public, max-age=86400")
+	response.Header().Set("X-Content-Type-Options", "nosniff")
+	response.WriteHeader(http.StatusOK)
+	_, _ = response.Write(body)
 }
 
 func catalogConfigurationsIncomplete(items []CatalogConfiguration) bool {

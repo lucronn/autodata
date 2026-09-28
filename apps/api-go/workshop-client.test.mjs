@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { articlePresentation, configurationLabel, filterArticles, localImageURL, readCollection, requestJSON } from './workshop/catalog.mjs';
+import { articlePresentation, configurationLabel, filterArticles, legacyArticleBlocks, localImageURL, readCollection, requestJSON } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 test('loading progress uses fixed ordered stages and caps incomplete hydration', () => {
@@ -61,6 +61,16 @@ test('procedure order and illustrations are retained; empty legacy steps use ful
   const old = articlePresentation({ steps: [{ number: 1, instructions: [] }], body: 'Retained full text' });
   assert.equal(old.legacy, true); assert.equal(old.body, 'Retained full text'); assert.deepEqual(old.steps, []);
   assert.deepEqual(articlePresentation({ steps: [steps[0], {}], body: 'All instructions' }).steps, []);
+});
+
+test('flattened legacy article text becomes ordered readable blocks', () => {
+  const blocks = legacyArticleBlocks('SERVICE PROCEDURE 1.Remove the cover. 2.Install the gasket. NOTE: Tighten evenly.');
+  assert.deepEqual(blocks.map(block => block.type), ['heading', 'step', 'step']);
+  assert.equal(blocks[1].number, 1);
+  assert.equal(blocks[1].parts[0].text, 'Remove the cover.');
+  assert.equal(blocks[2].parts[0].text, 'Install the gasket.');
+  assert.deepEqual(blocks[2].parts[1], { type: 'callout', label: 'NOTE', text: 'Tighten evenly.' });
+  assert.deepEqual(legacyArticleBlocks('CIRCUIT DESCRIPTION If the ECU detects trouble.').map(block => block.type), ['heading', 'paragraph']);
 });
 
 test('image rendering does not contact original providers or accept script URLs', () => {

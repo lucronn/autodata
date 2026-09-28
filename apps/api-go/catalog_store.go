@@ -100,8 +100,12 @@ type CatalogArticleProgress struct {
 }
 
 type CatalogImage struct {
-	ID  string `json:"id"`
-	URL string `json:"url"`
+	ID         string `json:"id,omitempty"`
+	URL        string `json:"url,omitempty"`
+	Alt        string `json:"alt,omitempty"`
+	StorageKey string `json:"storage_key,omitempty"`
+	MediaType  string `json:"media_type,omitempty"`
+	ImageID    string `json:"image_id,omitempty"`
 }
 
 type memoryCatalogStore struct {
@@ -530,13 +534,13 @@ func (s *postgresCatalogStore) Articles(ctx context.Context, _ Principal, vehicl
 
 func (s *postgresCatalogStore) Article(ctx context.Context, _ Principal, vehicleID, articleID string) (CatalogArticle, error) {
 	var record CatalogArticle
-	var rawSteps, rawOriginal []byte
+	var rawSteps, rawImages, rawOriginal []byte
 	var sourceID, sourceVersion, sourceArticleID string
 	err := s.pool.QueryRow(ctx, `
 		SELECT ca.catalog_article_id::text, ca.article_id, COALESCE(ca.title, ''), COALESCE(ca.content_kind, ''),
 		       COALESCE(ca.component, ''), COALESCE(ca.content_status, 'list_only'),
 		       COALESCE(ca.body, ''), COALESCE(ca.steps, '[]'::jsonb),
-		       COALESCE(ca.source_original, '{}'::jsonb), ca.source_snapshot_id::text,
+		       COALESCE(ca.images, '[]'::jsonb), COALESCE(ca.source_original, '{}'::jsonb), ca.source_snapshot_id::text,
 		       COALESCE(ss.source_version, '')
 		FROM catalog_articles ca
 		JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
@@ -544,7 +548,7 @@ func (s *postgresCatalogStore) Article(ctx context.Context, _ Principal, vehicle
 		  AND (ca.catalog_article_id::text = $2 OR ca.article_id = $2)
 		ORDER BY (ca.content_status = 'content_complete') DESC,
 		         ca.created_at DESC LIMIT 1`, vehicleID, articleID).
-		Scan(&record.ID, &sourceArticleID, &record.Title, &record.Kind, &record.Component, &record.ContentStatus, &record.Body, &rawSteps, &rawOriginal, &sourceID, &sourceVersion)
+		Scan(&record.ID, &sourceArticleID, &record.Title, &record.Kind, &record.Component, &record.ContentStatus, &record.Body, &rawSteps, &rawImages, &rawOriginal, &sourceID, &sourceVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CatalogArticle{}, ErrCatalogNotFound
 	}
@@ -552,6 +556,9 @@ func (s *postgresCatalogStore) Article(ctx context.Context, _ Principal, vehicle
 		return CatalogArticle{}, err
 	}
 	if err := json.Unmarshal(rawSteps, &record.Steps); err != nil {
+		return CatalogArticle{}, err
+	}
+	if err := json.Unmarshal(rawImages, &record.Images); err != nil {
 		return CatalogArticle{}, err
 	}
 	record.VehicleID = vehicleID
