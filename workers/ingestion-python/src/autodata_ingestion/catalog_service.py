@@ -109,16 +109,20 @@ class CacheFirstCatalogService:
 
 _HYDRATION_LOCK = RLock()
 _HYDRATION_RESULTS: dict[str, dict[str, Any]] = {}
-_AUTOAPITWO_MODEL_CODES = frozenset({"jc", "la", "ld", "rt", "wd"})
+_AUTOAPITWO_MODEL_CODES = frozenset({"ds", "jc", "la", "ld", "rt", "wd"})
 _AUTOAPITWO_DRIVETRAIN_TOKENS = frozenset({"2wd", "4wd", "awd", "fwd", "rwd"})
 
 
 class _ArticleCatalogProgress:
     """Publish throttled, durable progress for one vehicle article catalog."""
 
+    _MIN_PUBLISH_INTERVAL_SECONDS = 0.5
+    _MIN_PROCESSED_DELTA = 100
+
     def __init__(self, request: Mapping[str, Any]):
         self.request = request
         self.last_published = 0.0
+        self.last_published_processed = 0
         self.last_state: tuple[Any, ...] | None = None
 
     def publish(self, payload: Mapping[str, Any], *, force: bool = False) -> None:
@@ -132,7 +136,11 @@ class _ArticleCatalogProgress:
         now = time.monotonic()
         if not force and state == self.last_state:
             return
-        if not force and now - self.last_published < 0.12:
+        if (
+            not force
+            and now - self.last_published < self._MIN_PUBLISH_INTERVAL_SECONDS
+            and processed - self.last_published_processed < self._MIN_PROCESSED_DELTA
+        ):
             return
         _update_article_catalog_progress(
             self.request,
@@ -145,6 +153,7 @@ class _ArticleCatalogProgress:
             detail=detail,
         )
         self.last_published = now
+        self.last_published_processed = processed
         self.last_state = state
 
     def start(self) -> None:
@@ -1025,14 +1034,26 @@ def _autoapitwo_search_queries(vehicle: Mapping[str, Any]) -> tuple[str, ...]:
     year = vehicle.get("model_year", vehicle.get("year"))
     make = str(vehicle.get("make") or "").strip()
     model = str(vehicle.get("model") or "").strip()
-    queries = [f"{year} {make} {model}".strip()]
     model_tokens = re.findall(r"[A-Za-z0-9]+", model)
     base_tokens = [
         token for token in model_tokens
         if token.casefold() not in _AUTOAPITWO_MODEL_CODES
     ]
-    if base_tokens and base_tokens != model_tokens:
-        queries.append(f"{year} {make} {' '.join(base_tokens)}".strip())
+
+    # Some normalized catalog rows repeat the make in the model (for example,
+    # ``Ram / Ram 1500 Ds``), while AutoAPItwo searches the model family as
+    # ``Ram 1500``. Keep the exact query first, then try the provider-shaped
+    # variants without making an unbounded series of guesses.
+    make_tokens = {token.casefold() for token in re.findall(r"[A-Za-z0-9]+", make)}
+    model_variants = [model_tokens, base_tokens]
+    if model_tokens and model_tokens[0].casefold() in make_tokens:
+        model_variants.extend((model_tokens[1:], base_tokens[1:]))
+
+    queries = [
+        f"{year} {make} {' '.join(tokens)}".strip()
+        for tokens in model_variants
+        if tokens
+    ]
     return tuple(dict.fromkeys(query for query in queries if query))
 
 
@@ -1078,6 +1099,8 @@ def _same_autoapitwo_vehicle(candidate: Mapping[str, Any], vehicle: Mapping[str,
     def normalized_make(value: Any) -> str:
         value = words(value)
         value = re.sub(r"\btruck\b", "", value).strip()
+        if value in {"dodge", "dodge ram", "dodge or ram", "ram"}:
+            return "dodge or ram"
         aliases = {"chevy": "chevrolet"}
         return " ".join(aliases.get(word, word) for word in value.split())
 

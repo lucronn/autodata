@@ -8,6 +8,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from autodata_ingestion.catalog_service import (
+    _ArticleCatalogProgress,
     CatalogRequest,
     CacheFirstCatalogService,
     _autoapitwo_car_ids,
@@ -21,6 +22,28 @@ from autodata_ingestion.catalog_service import (
 
 
 class CatalogServiceTests(unittest.TestCase):
+    def test_article_catalog_progress_throttles_durable_writes_by_count_and_time(self):
+        request = {"vehicle_id": "vehicle-1", "year": 2012, "make": "Ram", "model": "Ram 1500 Ds"}
+        payload = {
+            "phase": "normalizing",
+            "total_units": 1000,
+            "current_article_id": "article",
+            "current_title": "Article",
+        }
+        with patch("autodata_ingestion.catalog_service._update_article_catalog_progress") as update, \
+                patch("autodata_ingestion.catalog_service.time.monotonic", side_effect=[0.0, 0.1, 0.1, 0.6]):
+            progress = _ArticleCatalogProgress(request)
+            progress.publish({**payload, "processed_units": 0}, force=True)
+            progress.publish({**payload, "processed_units": 1})
+            progress.publish({**payload, "processed_units": 100})
+            progress.publish({**payload, "processed_units": 101})
+
+        self.assertEqual(update.call_count, 3)
+        self.assertEqual(
+            [call.kwargs["processed_units"] for call in update.call_args_list],
+            [0, 100, 101],
+        )
+
     def test_autoapitwo_vehicle_match_accepts_make_alias_and_inserted_model_variant(self):
         self.assertTrue(
             _same_autoapitwo_vehicle(
@@ -49,6 +72,48 @@ class CatalogServiceTests(unittest.TestCase):
         self.assertEqual(_autoapitwo_search_queries(vehicle), ("2018 Dodge Charger Ld", "2018 Dodge Charger"))
         self.assertEqual(_autoapitwo_car_ids({"vehicle_id": ""}, vehicle, Connector()), ("58065",))
         self.assertEqual(queries, ["2018 Dodge Charger Ld", "2018 Dodge Charger"])
+
+    def test_autoapitwo_matches_ram_ds_to_dodge_or_ram_provider_family(self):
+        queries = []
+
+        class Connector:
+            def search_vehicles(self, query):
+                queries.append(query)
+                if query == "2012 Ram 1500":
+                    return [
+                        {
+                            "year": "2012",
+                            "make": "Dodge or Ram Truck",
+                            "model": "RAM 1500 Truck 2WD",
+                            "engine": "V6-3.7L",
+                            "id": "50578",
+                        },
+                    ]
+                return []
+
+        vehicle = {"model_year": 2012, "make": "Ram", "model": "Ram 1500 Ds"}
+        self.assertEqual(
+            _autoapitwo_search_queries(vehicle),
+            (
+                "2012 Ram Ram 1500 Ds",
+                "2012 Ram Ram 1500",
+                "2012 Ram 1500 Ds",
+                "2012 Ram 1500",
+            ),
+        )
+        self.assertEqual(
+            _autoapitwo_car_ids({"vehicle_id": ""}, vehicle, Connector()),
+            ("50578",),
+        )
+        self.assertEqual(
+            queries,
+            [
+                "2012 Ram Ram 1500 Ds",
+                "2012 Ram Ram 1500",
+                "2012 Ram 1500 Ds",
+                "2012 Ram 1500",
+            ],
+        )
 
     def test_source_failure_detail_names_source_and_outcome(self):
         self.assertEqual(
