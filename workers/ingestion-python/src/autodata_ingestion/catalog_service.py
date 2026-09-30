@@ -1058,20 +1058,37 @@ def _same_autoapitwo_vehicle(candidate: Mapping[str, Any], vehicle: Mapping[str,
     def words(value: Any) -> str:
         return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
 
+    def normalized_make(value: Any) -> str:
+        value = words(value)
+        value = re.sub(r"\btruck\b", "", value).strip()
+        aliases = {"chevy": "chevrolet"}
+        return " ".join(aliases.get(word, word) for word in value.split())
+
+    def model_tokens_are_present(candidate_value: Any, target_value: Any) -> bool:
+        candidate_tokens = words(candidate_value).split()
+        target_tokens = words(target_value).split()
+        if not target_tokens:
+            return True
+        target_index = 0
+        for token in candidate_tokens:
+            if token == target_tokens[target_index]:
+                target_index += 1
+                if target_index == len(target_tokens):
+                    return True
+        return False
+
     year = str(candidate.get("year") or "")
     target_year = str(vehicle.get("model_year", vehicle.get("year")) or "")
     if year and target_year and year != target_year:
         return False
-    candidate_make = compact(candidate.get("make"))
-    target_make = compact(vehicle.get("make"))
+    candidate_make = normalized_make(candidate.get("make"))
+    target_make = normalized_make(vehicle.get("make"))
     candidate_model = compact(candidate.get("model"))
     target_model = compact(vehicle.get("model"))
-    candidate_model_words = words(candidate.get("model"))
-    target_model_words = words(vehicle.get("model"))
     model_matches = (
         not candidate_model
         or candidate_model == target_model
-        or candidate_model_words.startswith(f"{target_model_words} ")
+        or model_tokens_are_present(candidate.get("model"), vehicle.get("model"))
     )
     return (
         (not candidate_make or candidate_make == target_make)

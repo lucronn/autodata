@@ -12,6 +12,7 @@ from autodata_ingestion.catalog_service import (
     CacheFirstCatalogService,
     _autoapitwo_car_ids,
     _engine_number,
+    _same_autoapitwo_vehicle,
     _source_failure_detail,
     canonical_catalog_id,
     ensure_catalog_hydration,
@@ -19,6 +20,20 @@ from autodata_ingestion.catalog_service import (
 
 
 class CatalogServiceTests(unittest.TestCase):
+    def test_autoapitwo_vehicle_match_accepts_make_alias_and_inserted_model_variant(self):
+        self.assertTrue(
+            _same_autoapitwo_vehicle(
+                {"year": "2012", "make": "Chevy Truck", "model": "Express 1500 AWD"},
+                {"year": 2012, "make": "Chevrolet", "model": "Express Awd"},
+            )
+        )
+        self.assertFalse(
+            _same_autoapitwo_vehicle(
+                {"year": "2012", "make": "Chevy Truck", "model": "Express 1500 RWD"},
+                {"year": 2012, "make": "Chevrolet", "model": "Express Awd"},
+            )
+        )
+
     def test_source_failure_detail_names_source_and_outcome(self):
         self.assertEqual(
             _source_failure_detail('AutoAPI', RuntimeError('expired authentication token')),
