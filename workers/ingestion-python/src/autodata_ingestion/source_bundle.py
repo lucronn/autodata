@@ -160,11 +160,13 @@ def normalize_source_bundle(
                     "content_sha256": artifact.content_sha256,
                 }
                 for field in (
+                    "blocks",
                     "provider",
                     "content_kind",
                     "procedure_kind",
                     "component",
                     "content_status",
+                    "normalized_document",
                     "rewrite_status",
                     "source_original",
                 ):
@@ -966,7 +968,7 @@ def _article_images(data: dict[str, Any]) -> list[dict[str, Any]]:
             image = ({"url": url} if url else {}) if url or storage_key else None
             if image is not None:
                 for key in (
-                    "alt", "title", "evidence_id", "source_uri", "storage_key",
+                    "alt", "title", "image_id", "asset_id", "evidence_id", "source_uri", "storage_key",
                     "artifact_key", "content_type", "content_sha256",
                 ):
                     if value.get(key):
@@ -992,8 +994,8 @@ def _merge_article(target: dict[str, Any], duplicate: dict[str, Any]) -> None:
         target.get("content_status") != "content_complete"
         and duplicate.get("content_status") == "content_complete"
     )
-    for field in ("body", "steps", "operations", "provider", "content_kind",
-                  "procedure_kind", "component", "content_status", "rewrite_status",
+    for field in ("body", "blocks", "steps", "operations", "provider", "content_kind",
+                  "procedure_kind", "component", "content_status", "normalized_document", "rewrite_status",
                   "content_evidence_id", "content_locator", "content_source_uri",
                   "content_source_version", "content_sha256"):
         if (upgrading or not target.get(field)) and duplicate.get(field) is not None:

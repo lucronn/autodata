@@ -63,6 +63,20 @@ test('procedure order and illustrations are retained; empty legacy steps use ful
   assert.deepEqual(articlePresentation({ steps: [steps[0], {}], body: 'All instructions' }).steps, []);
 });
 
+test('ordered document blocks are preferred over compatibility steps', () => {
+  const presentation = articlePresentation({
+    steps: [{ number: 1, instructions: ['legacy projection'] }],
+    document: { blocks: [
+      { type: 'heading', text: 'REMOVAL', source_order: 1 },
+      { type: 'image', image_id: 'figure-1', source_order: 2 },
+      { type: 'paragraph', text: 'Remove the seal.', source_order: 3 },
+    ] },
+  });
+  assert.deepEqual(presentation.documentBlocks.map(block => block.type), ['heading', 'image', 'paragraph']);
+  assert.deepEqual(presentation.steps, [{ number: 1, instructions: ['legacy projection'] }]);
+  assert.deepEqual(presentation.blocks, []);
+});
+
 test('flattened legacy article text becomes ordered readable blocks', () => {
   const blocks = legacyArticleBlocks('SERVICE PROCEDURE 1.Remove the cover. 2.Install the gasket. NOTE: Tighten evenly.');
   assert.deepEqual(blocks.map(block => block.type), ['heading', 'step', 'step']);

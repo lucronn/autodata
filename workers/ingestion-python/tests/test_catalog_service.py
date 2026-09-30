@@ -13,6 +13,7 @@ from autodata_ingestion.catalog_service import (
     CacheFirstCatalogService,
     _autoapitwo_car_ids,
     _autoapitwo_search_queries,
+    _descriptor_href,
     _engine_number,
     _same_autoapitwo_vehicle,
     _source_failure_detail,
@@ -127,6 +128,24 @@ class CatalogServiceTests(unittest.TestCase):
         self.assertEqual(
             _source_failure_detail('AutoAPItwo', RuntimeError('AutoAPItwo did not resolve a matching vehicle')),
             'AutoAPItwo failed — returned no matching vehicle.',
+        )
+
+    def test_descriptor_href_accepts_persisted_article_shapes(self):
+        self.assertEqual(
+            _descriptor_href({"href": "https://source.test/direct"}),
+            "https://source.test/direct",
+        )
+        self.assertEqual(
+            _descriptor_href({"source_uri": "https://source.test/source"}),
+            "https://source.test/source",
+        )
+        self.assertEqual(
+            _descriptor_href({"_links": {"self": {"href": "https://source.test/link"}}}),
+            "https://source.test/link",
+        )
+        self.assertEqual(
+            _descriptor_href({"evidence": [{"source_uri": "https://source.test/evidence"}]}),
+            "https://source.test/evidence",
         )
 
     def test_engine_number_prefers_displacement_in_provider_engine_label(self):

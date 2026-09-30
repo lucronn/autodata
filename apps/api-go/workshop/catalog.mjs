@@ -130,14 +130,16 @@ export function legacyArticleBlocks(body) {
 
 export function articlePresentation(article) {
   const steps = Array.isArray(article.steps) ? article.steps : [];
+  const documentBlocks = Array.isArray(article.document?.blocks) ? article.document.blocks : [];
   // A partly empty legacy sequence must not silently discard its missing text.
   const usable = steps.length > 0 && steps.every(step =>
     step.heading?.trim() || step.instructions?.some(text => typeof text === 'string' && text.trim()));
   const body = String(article.body || '');
   return {
     steps: usable ? steps : [],
+    documentBlocks,
     body,
-    blocks: usable ? [] : legacyArticleBlocks(body),
+    blocks: documentBlocks.length || usable ? [] : legacyArticleBlocks(body),
     legacy: steps.length > 0 && !usable,
   };
 }

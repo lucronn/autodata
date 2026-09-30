@@ -33,12 +33,35 @@ class ArticleParser(HTMLParser):
         self._text = []
         self._skip = 0
         self._image_link = 0
+        self._table_rows = None
+        self._table_row = None
+        self._table_cell = None
+
+    @property
+    def _in_table(self):
+        return self._table_rows is not None
 
     def flush(self):
         value = re.sub(r"\s+", " ", "".join(self._text)).strip()
         self._text = []
         if value:
-            self.blocks.append({"kind": "text", "text": value})
+            if self._table_cell is not None:
+                self._table_cell.append({"kind": "text", "text": value})
+            else:
+                self.blocks.append({"kind": "text", "text": value})
+
+    def _flush_cell(self):
+        self.flush()
+        if self._table_cell is not None and self._table_row is not None:
+            self._table_row.append({"blocks": self._table_cell})
+        self._table_cell = None
+
+    def _flush_row(self):
+        self._flush_cell()
+        if self._table_row is not None and self._table_rows is not None:
+            if self._table_row:
+                self._table_rows.append(self._table_row)
+        self._table_row = None
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -46,10 +69,28 @@ class ArticleParser(HTMLParser):
             self._skip += 1
         if self._skip:
             return
+        if tag == "table":
+            self.flush()
+            self._table_rows = []
+            self._table_row = None
+            self._table_cell = None
+            return
+        if self._in_table:
+            if tag == "tr":
+                self._flush_row()
+                self._table_row = []
+                return
+            if tag in {"td", "th"}:
+                self._flush_cell()
+                if self._table_row is None:
+                    self._table_row = []
+                self._table_cell = []
+                return
+            if tag == "br":
+                self.flush()
+                return
         if tag in {"br", "p", "div", "li", "tr", "h1", "h2", "h3"}:
             self.flush()
-        if tag == "td":
-            self._text.append(" | ")
         if tag == "a":
             if attrs.get("class") == "image":
                 self._image_link += 1
@@ -57,11 +98,34 @@ class ArticleParser(HTMLParser):
                 self.links.append(attrs["href"])
         if tag == "img" and attrs.get("src"):
             self.flush()
-            self.blocks.append({"kind": "image", "url": attrs["src"], "alt": attrs.get("alt", ""), "name": attrs.get("img_name", "")})
+            image = {"kind": "image", "url": attrs["src"], "alt": attrs.get("alt", ""), "name": attrs.get("img_name", "")}
+            if self._table_cell is not None:
+                self._table_cell.append(image)
+            else:
+                self.blocks.append(image)
 
     def handle_endtag(self, tag):
         if tag in {"script", "style"} and self._skip:
             self._skip -= 1
+        if tag == "table" and self._in_table:
+            self._flush_row()
+            rows = self._table_rows or []
+            self._table_rows = None
+            self._table_row = None
+            self._table_cell = None
+            if rows:
+                self.blocks.append({"kind": "table", "rows": rows})
+            return
+        if self._in_table:
+            if tag in {"td", "th"}:
+                self._flush_cell()
+                return
+            if tag == "tr":
+                self._flush_row()
+                return
+            if tag in {"br", "div", "p"}:
+                self.flush()
+                return
         if tag == "a":
             self._image_link = 0
         if tag in {"p", "div", "li", "tr"}:
@@ -323,12 +387,17 @@ class AutoAPITwoConnector:
             digest = sha256(html.encode()).hexdigest()
             article_id = f'autoapitwo:{car_id}:{result.get("id", digest)}'
             evidence_id = f'{article_id}:{digest}'
+            image_blocks = []
             for index, block in enumerate(parser.blocks):
-                block['evidence_ids'] = [evidence_id]
-                block['block_id'] = f'{article_id}:block:{index}'
-                if block['kind'] == 'image':
-                    block['url'] = self.safe_url(block['url'], car_id)
-                    block['image_id'] = sha256(block['url'].encode()).hexdigest()
+                _annotate_article_block(
+                    block,
+                    article_id=article_id,
+                    evidence_id=evidence_id,
+                    source_index=index,
+                    car_id=car_id,
+                    connector=self,
+                    image_blocks=image_blocks,
+                )
             component_links = []
             for link in dict.fromkeys(parser.links):
                 # Provider article HTML includes document-local anchors for
@@ -348,8 +417,8 @@ class AutoAPITwoConnector:
                 'vehicle': result['car'], 'source_uri': url, 'source_watermark': digest,
                 # Keep the provider's block boundaries so the reader can
                 # render headings and paragraphs instead of one text wall.
-                'raw_html': html, 'body': '\n\n'.join(b['text'] for b in parser.blocks if b['kind'] == 'text'),
-                'blocks': parser.blocks, 'images': [b for b in parser.blocks if b['kind'] == 'image'],
+                'raw_html': html, 'body': '\n\n'.join(_article_text_blocks(parser.blocks)),
+                'blocks': parser.blocks, 'images': image_blocks,
                 'component_links': component_links,
                 'evidence_ids': [evidence_id],
                 'evidence': [{'evidence_id': evidence_id, 'source_uri': url, 'content_hash': digest}],
@@ -482,6 +551,86 @@ def _source_failure_reason(error: BaseException) -> str:
     if "source read failed" in text:
         return "source read failed"
     return "request failed"
+
+
+def _annotate_article_block(
+    block: Any,
+    *,
+    article_id: str,
+    evidence_id: str,
+    source_index: int,
+    car_id: str,
+    connector: AutoAPITwoConnector,
+    image_blocks: list[dict[str, Any]],
+    path: tuple[int, ...] = (),
+) -> None:
+    """Attach stable evidence and image identities without flattening tables."""
+
+    if not isinstance(block, dict):
+        return
+    suffix = ".".join(str(value) for value in (source_index, *path))
+    block["evidence_ids"] = [evidence_id]
+    block["block_id"] = f"{article_id}:block:{suffix}"
+    if block.get("kind") == "image":
+        block["url"] = connector.safe_url(block.get("url"), car_id)
+        block["image_id"] = sha256(block["url"].encode()).hexdigest()
+        image_blocks.append(block)
+        return
+    if block.get("kind") != "table":
+        return
+    for row_index, row in enumerate(block.get("rows") or []):
+        cells = row.get("blocks") if isinstance(row, dict) else row
+        if not isinstance(cells, list):
+            continue
+        for cell_index, cell in enumerate(cells):
+            if isinstance(cell, dict) and isinstance(cell.get("blocks"), list):
+                for child_index, cell_block in enumerate(cell["blocks"]):
+                    _annotate_article_block(
+                        cell_block,
+                        article_id=article_id,
+                        evidence_id=evidence_id,
+                        source_index=source_index,
+                        car_id=car_id,
+                        connector=connector,
+                        image_blocks=image_blocks,
+                        path=(row_index, cell_index, child_index),
+                    )
+            else:
+                _annotate_article_block(
+                    cell,
+                    article_id=article_id,
+                    evidence_id=evidence_id,
+                    source_index=source_index,
+                    car_id=car_id,
+                    connector=connector,
+                    image_blocks=image_blocks,
+                    path=(row_index, cell_index),
+                )
+
+
+def _article_text_blocks(blocks: Any):
+    """Yield readable text from top-level and table-cell source blocks."""
+
+    for block in blocks or []:
+        if not isinstance(block, Mapping):
+            continue
+        if block.get("kind") == "text" and str(block.get("text") or "").strip():
+            yield str(block["text"]).strip()
+        elif block.get("kind") == "table":
+            for row in block.get("rows") or []:
+                cells = row.get("blocks") if isinstance(row, Mapping) else row
+                if not isinstance(cells, list):
+                    continue
+                for cell in cells:
+                    cell_blocks = cell.get("blocks") if isinstance(cell, Mapping) else None
+                    if not isinstance(cell_blocks, list):
+                        cell_blocks = [cell]
+                    for cell_block in cell_blocks:
+                        if not isinstance(cell_block, Mapping) or cell_block.get("kind") != "text":
+                            continue
+                        text = str(cell_block.get("text") or "").strip()
+                        if text:
+                            yield text
 
 
 def _embedded_data(payload):

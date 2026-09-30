@@ -377,6 +377,7 @@ def _load_autoapitwo_article_detail(
 
     from .autoapitwo_connector import AutoAPITwoConnector
     from .procedure_normalize import normalize_procedure_article
+    from .procedure_images import localize_procedure_images
     from .source_adapters import SourceResource, adapt_source_resource
     from .source_bundle import normalize_source_bundle
 
@@ -451,7 +452,15 @@ def _load_autoapitwo_article_detail(
     )
     if bundle.vehicle is None or not bundle.articles:
         raise RuntimeError("AutoAPItwo article did not normalize for the requested vehicle")
-    normalized_articles = tuple(normalize_procedure_article(article) for article in bundle.articles)
+    normalized_articles = []
+    for article in bundle.articles:
+        normalized = normalize_procedure_article(article)
+        try:
+            normalized = localize_procedure_images(normalized, vehicle=vehicle)
+        except Exception:  # noqa: BLE001 - preserve readable text if object storage is unavailable
+            pass
+        normalized_articles.append(normalized)
+    normalized_articles = tuple(normalized_articles)
     bundle = replace(bundle, articles=normalized_articles)
     if os.getenv("AUTODATA_SOURCE_PERSIST", "1") == "1":
         from .bundle_persistence import persist_source_bundle
@@ -541,10 +550,34 @@ def _lookup_autoapitwo_descriptor(vehicle_id: str, source_article_id: str) -> di
             if not isinstance(article, Mapping):
                 continue
             if str(article.get("id") or "") == source_article_id:
-                return dict(article)
+                descriptor = dict(article)
+                href = _descriptor_href(descriptor)
+                if href:
+                    descriptor["href"] = href
+                    return descriptor
+                return None
     except Exception:  # noqa: BLE001 - source search remains the fallback
         return None
     return None
+
+
+def _descriptor_href(descriptor: Mapping[str, Any]) -> str:
+    """Resolve the provider detail URL from any persisted catalog shape."""
+
+    direct = descriptor.get("href") or descriptor.get("source_uri")
+    if direct:
+        return str(direct).strip()
+    links = descriptor.get("_links")
+    if isinstance(links, Mapping):
+        self_link = links.get("self")
+        if isinstance(self_link, Mapping) and self_link.get("href"):
+            return str(self_link["href"]).strip()
+    evidence = descriptor.get("evidence")
+    if isinstance(evidence, list):
+        for item in evidence:
+            if isinstance(item, Mapping) and item.get("source_uri"):
+                return str(item["source_uri"]).strip()
+    return ""
 
 def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, Any]:
     """Persist one vehicle's article index without fetching article bodies."""

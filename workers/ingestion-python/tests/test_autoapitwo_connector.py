@@ -86,6 +86,20 @@ class ConnectorTests(unittest.TestCase):
         self.assertNotIn('Click', str(parser.blocks))
         self.assertNotIn('bad()', str(parser.blocks))
 
+    def test_parser_keeps_tool_table_cells_and_images_as_ordered_structure(self):
+        parser = ArticleParser()
+        parser.feed(
+            '<h2>REMOVAL</h2><table><tr><td><img src="/tool.svg" alt="tool" /></td>'
+            '<td>8498 - Receiver<br/>Kit 8887</td></tr></table>'
+            '<ol><li>Remove the seal.</li></ol>'
+        )
+        parser.flush()
+        self.assertEqual([block["kind"] for block in parser.blocks], ["text", "table", "text"])
+        row = parser.blocks[1]["rows"][0]
+        self.assertEqual(row[1]["blocks"][0]["text"], "8498 - Receiver")
+        self.assertEqual(row[0]["blocks"][0]["kind"], "image")
+        self.assertNotIn("|", str(parser.blocks))
+
     def test_concurrent_reads_coalesce_and_do_not_share_mutable_results(self):
         calls = []
         def opener(req, **kwargs):

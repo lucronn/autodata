@@ -383,6 +383,93 @@ function addImage(parent, image, caption) {
   parent.append(figure);
 }
 
+function documentImage(images, block) {
+  const key = String(block?.image_id || block?.asset_id || '').trim();
+  return images.find(image => [image.id, image.image_id, image.asset_id, image.storage_key].some(value => value && String(value) === key)) || null;
+}
+
+function renderDocumentBlocks(parent, blocks, images) {
+  let list = null;
+  let listType = '';
+  const flush = () => { if (list) { parent.append(list); list = null; listType = ''; } };
+  const appendListItem = (type, text, number) => {
+    if (!text) return;
+    if (!list || listType !== type) {
+      flush();
+      list = element(type === 'ol' ? 'ol' : 'ul', undefined, type === 'ol' ? 'procedure-steps' : 'article-list');
+      if (type === 'ol' && Number.isInteger(number)) list.start = number;
+      listType = type;
+    }
+    const li = element('li');
+    if (type === 'ol') li.append(element('span', `${number ?? list.children.length + 1}.`, 'step-number'));
+    li.append(element('p', text));
+    list.append(li);
+  };
+  for (const block of blocks) {
+    if (!block || typeof block !== 'object') continue;
+    const type = String(block.type || 'unknown');
+    if (type === 'step') {
+      appendListItem('ol', String(block.text || '').trim(), Number.isInteger(block.number) ? block.number : undefined);
+      continue;
+    }
+    if (type === 'ordered_list' || type === 'unordered_list') {
+      const listTypeName = type === 'ordered_list' ? 'ol' : 'ul';
+      for (const item of block.items || []) appendListItem(listTypeName, String(item || '').trim());
+      continue;
+    }
+    flush();
+    if (type === 'heading') {
+      const level = Math.max(3, Math.min(6, Number(block.level) || 3));
+      parent.append(element(`h${level}`, block.text || ''));
+    } else if (type === 'paragraph' || type === 'link') {
+      if (type === 'link' && block.href && /^\/(?!\/)/.test(block.href)) {
+        const link = element('a', block.text || ''); link.href = block.href; link.target = '_blank'; link.rel = 'noreferrer'; parent.append(link);
+      } else parent.append(element('p', block.text || ''));
+    } else if (type === 'callout') {
+      const callout = element('aside', undefined, 'article-callout');
+      callout.append(element('strong', block.label || 'Note'), element('span', block.text || ''));
+      parent.append(callout);
+    } else if (type === 'image') {
+      const image = documentImage(images, block);
+      if (image) addImage(parent, image, block.alt || 'Article illustration');
+      else parent.append(element('p', block.unavailable_reason || 'This illustration is not available in the saved article.', 'image-missing'));
+    } else if (type === 'table') {
+      const table = element('table', undefined, 'article-table');
+      if (block.label) table.append(element('caption', block.label));
+      if (Array.isArray(block.columns) && block.columns.length) {
+        const head = element('thead'), row = element('tr');
+        for (const column of block.columns) row.append(element('th', column));
+        head.append(row); table.append(head);
+      }
+      const body = element('tbody');
+      for (const values of block.rows || []) {
+        const row = element('tr');
+        for (const value of values || []) {
+          const cell = element('td');
+          if (value && typeof value === 'object') {
+            if (value.text) cell.append(element('span', value.text));
+            for (const reference of value.images || []) {
+              const image = documentImage(images, reference);
+              if (image) addImage(cell, image, reference.alt || 'Article illustration');
+              else cell.append(element('p', 'This illustration is not available in the saved article.', 'image-missing'));
+            }
+          } else cell.textContent = String(value || '');
+          row.append(cell);
+        }
+        body.append(row);
+      }
+      table.append(body); parent.append(table);
+    } else if (type === 'break') {
+      parent.append(element('hr'));
+    } else if (type === 'unknown') {
+      const unknown = element('aside', undefined, 'article-callout');
+      unknown.append(element('strong', 'Source block needs review'), element('span', block.text || 'The source block was retained but has no display-specific structure.'));
+      parent.append(unknown);
+    }
+  }
+  flush();
+}
+
 function renderLegacyBlocks(parent, blocks) {
   let list = null;
   const flush = () => { if (list) { parent.append(list); list = null; } };
@@ -427,7 +514,9 @@ function renderArticle(article) {
   $('article-note').hidden = !notes.length;
   $('article-note').textContent = notes.join(' ');
   const content = $('article-content'); content.replaceChildren();
-  if (presentation.steps.length) {
+  if (presentation.documentBlocks.length) {
+    renderDocumentBlocks(content, presentation.documentBlocks, images);
+  } else if (presentation.steps.length) {
     const list = element('ol', undefined, 'procedure-steps');
     for (const [index, step] of presentation.steps.entries()) {
       const li = element('li');
@@ -451,7 +540,11 @@ function renderArticle(article) {
   } else {
     content.append(element('p', 'This record has no readable article text. Return to the index or try loading it again.'));
   }
-  const unplaced = images.filter(image => !used.has(image.id));
+  const documentImageIDs = new Set(presentation.documentBlocks.flatMap(block => {
+    if (block.type === 'image') return [block.image_id, block.asset_id];
+    return (block.rows || []).flatMap(row => (row || []).flatMap(cell => cell?.images?.flatMap(image => [image.image_id, image.asset_id]) || []));
+  }).filter(Boolean));
+  const unplaced = images.filter(image => !used.has(image.id) && !documentImageIDs.has(image.id) && !documentImageIDs.has(image.image_id) && !documentImageIDs.has(image.storage_key));
   if (unplaced.length) {
     const group = element('section'); group.append(element('h3', 'Article illustrations'));
     for (const [index, image] of unplaced.entries()) addImage(group, image, `Illustration ${index + 1}`);

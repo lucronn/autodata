@@ -198,9 +198,22 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 
 func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.Request, principal Principal) {
 	article, err := s.catalog.Article(request.Context(), principal, request.PathValue("vehicle_id"), request.PathValue("article_id"))
-	if (err != nil || !article.Complete) && s.ingestionClient != nil {
+	needsHydration := err != nil || !article.Complete || article.Document == nil
+	// A catalog index row and its hydrated detail row have different local
+	// IDs. Resolve the provider article ID before contacting a source so a
+	// previously hydrated article is served from the database on every later
+	// read instead of being fetched again through the index-row alias.
+	if needsHydration && err == nil && article.sourceArticleID != "" {
+		if cached, cacheErr := s.catalog.Article(
+			request.Context(), principal, request.PathValue("vehicle_id"), article.sourceArticleID,
+		); cacheErr == nil && cached.Complete && cached.Document != nil {
+			article = cached
+			needsHydration = false
+		}
+	}
+	if needsHydration && s.ingestionClient != nil {
 		configuration, configurationErr := s.catalog.ConfigurationByVehicle(request.Context(), principal, request.PathValue("vehicle_id"))
-		if configurationErr != nil && !errors.Is(configurationErr, ErrCatalogNotFound) {
+		if configurationErr != nil {
 			s.writeCatalogError(response, request, configurationErr)
 			return
 		}

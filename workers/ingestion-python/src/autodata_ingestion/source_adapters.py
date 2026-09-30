@@ -1270,6 +1270,14 @@ def _candidate_from_record(
         steps = record.get("steps")
         if isinstance(steps, list) and all(isinstance(step, (str, dict)) for step in steps):
             data["steps"] = steps
+        blocks = record.get("blocks")
+        if isinstance(blocks, list):
+            # Preserve the adapter's ordered source stream.  The normalizer
+            # will create the authoritative document; flattening it here
+            # would permanently lose tables and interleaved media.
+            data["blocks"] = blocks
+        if record.get("normalized_document"):
+            data["normalized_document"] = record["normalized_document"]
         source_original = record.get("source_original", record.get("sourceOriginal"))
         if source_original not in (None, ""):
             data["source_original"] = source_original

@@ -903,6 +903,17 @@ def _load_autoapi_job_catalog(
             # with the immutable SourceBundle contract.
             normalized.articles = tuple(normalized_articles)
         if os.getenv("AUTODATA_SOURCE_PERSIST") == "1":
+            from .procedure_images import localize_procedure_images
+
+            localized_articles = []
+            for article in normalized.articles:
+                try:
+                    localized_articles.append(
+                        localize_procedure_images(article, vehicle=normalized.vehicle or vehicle)
+                    )
+                except Exception:  # noqa: BLE001 - retain source text when media storage is unavailable
+                    localized_articles.append(article)
+            normalized = replace(normalized, articles=tuple(localized_articles))
             from .bundle_persistence import persist_source_bundle
 
             persist_source_bundle(normalized, artifacts, adapter_name=connector.name)

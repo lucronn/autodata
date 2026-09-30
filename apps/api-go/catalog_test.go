@@ -114,6 +114,44 @@ func TestCatalogArticleDetailKeepsSourceOrderAndHidesOriginal(t *testing.T) {
 	}
 }
 
+func TestCatalogArticleAliasUsesCachedDetailWithoutHydratingAgain(t *testing.T) {
+	store := newMemoryCatalogStore()
+	store.PutConfiguration(CatalogConfiguration{
+		ID: "cfg-1", VehicleID: "vehicle-1", Year: 2024, Make: "Acme", Model: "Roadster",
+		Region: "US", Trim: "Sport", Engine: "2.0L", Complete: true,
+	})
+	store.PutArticle(CatalogArticle{
+		ID: "catalog-row-1", VehicleID: "vehicle-1", Title: "Replace filter", Kind: "procedure",
+		ContentStatus: "list_only", sourceArticleID: "autoapitwo:car:article",
+	})
+	store.PutArticle(CatalogArticle{
+		ID: "autoapitwo:car:article", VehicleID: "vehicle-1", Title: "Replace filter", Kind: "procedure",
+		ContentStatus: "content_complete", Complete: true, sourceArticleID: "autoapitwo:car:article",
+		Document: &CatalogDocument{
+			SchemaVersion: 1, NormalizationVersion: "ordered-article-v1",
+			Blocks: []CatalogDocumentBlock{{BlockID: "block-1", SourceOrder: 1, Type: "heading", Text: "Removal"}},
+		},
+	})
+	server := catalogServer(store)
+	capture := &fakeIngestionClient{status: http.StatusAccepted}
+	server.ingestionClient = capture
+
+	response := catalogRequest(server, "/v1/catalog/vehicles/vehicle-1/articles/catalog-row-1")
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var body CatalogArticleResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Article.ID != "autoapitwo:car:article" || len(body.Article.Document.Blocks) != 1 {
+		t.Fatalf("article = %#v, want cached ordered detail", body.Article)
+	}
+	if capture.path != "" {
+		t.Fatalf("hydration request = %q, want no source call", capture.path)
+	}
+}
+
 func TestCatalogArticleSourceOriginalIsImmutableAcrossUpsert(t *testing.T) {
 	store := newMemoryCatalogStore()
 	original := json.RawMessage(`{"title":"original"}`)

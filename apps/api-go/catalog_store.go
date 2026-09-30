@@ -72,6 +72,33 @@ type CatalogStep struct {
 	ImageIDs     []string `json:"image_ids,omitempty"`
 }
 
+type CatalogDocument struct {
+	SchemaVersion        int                    `json:"schema_version"`
+	NormalizationVersion string                 `json:"normalization_version"`
+	Blocks               []CatalogDocumentBlock `json:"blocks"`
+}
+
+type CatalogDocumentBlock struct {
+	BlockID           string   `json:"block_id,omitempty"`
+	SourceOrder       int      `json:"source_order,omitempty"`
+	Type              string   `json:"type"`
+	Level             int      `json:"level,omitempty"`
+	Number            int      `json:"number,omitempty"`
+	Text              string   `json:"text,omitempty"`
+	Label             string   `json:"label,omitempty"`
+	Href              string   `json:"href,omitempty"`
+	Columns           []string `json:"columns,omitempty"`
+	Rows              [][]any  `json:"rows,omitempty"`
+	Items             []string `json:"items,omitempty"`
+	AssetID           string   `json:"asset_id,omitempty"`
+	ImageID           string   `json:"image_id,omitempty"`
+	Alt               string   `json:"alt,omitempty"`
+	Status            string   `json:"status,omitempty"`
+	UnavailableReason string   `json:"unavailable_reason,omitempty"`
+	EvidenceIDs       []string `json:"evidence_ids,omitempty"`
+	SourceLocator     string   `json:"source_locator,omitempty"`
+}
+
 type CatalogArticle struct {
 	ID              string              `json:"id"`
 	VehicleID       string              `json:"vehicle_id"`
@@ -82,6 +109,7 @@ type CatalogArticle struct {
 	Complete        bool                `json:"complete"`
 	Body            string              `json:"body,omitempty"`
 	Steps           []CatalogStep       `json:"steps,omitempty"`
+	Document        *CatalogDocument    `json:"document,omitempty"`
 	Images          []CatalogImage      `json:"images,omitempty"`
 	Provenance      []CatalogProvenance `json:"provenance,omitempty"`
 	SourceOriginal  json.RawMessage     `json:"-"`
@@ -264,6 +292,9 @@ func (s *memoryCatalogStore) Article(_ context.Context, _ Principal, vehicleID, 
 
 func publicCatalogArticle(record CatalogArticle) CatalogArticle {
 	record.Steps = orderedCatalogSteps(record.Steps)
+	if record.Document != nil {
+		record.Document.Blocks = append([]CatalogDocumentBlock(nil), record.Document.Blocks...)
+	}
 	record.SourceOriginal = nil
 	return record
 }
@@ -457,7 +488,15 @@ func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Pri
 		SELECT status, phase, processed_units, total_units, progress_percent,
 		       current_article_id, current_title, progress_detail
 		FROM vehicle_catalog_hydration_scopes
-		WHERE scope = 'articles' AND vehicle_id = $1
+		WHERE scope = 'articles' AND (
+		      vehicle_id = $1
+		      OR vehicle_id = (
+			      SELECT vc.vehicle_id::text
+			      FROM vehicle_configurations vc
+			      WHERE vc.vehicle_configuration_id::text = $1
+			      LIMIT 1
+		      )
+		)
 		ORDER BY updated_at DESC
 		LIMIT 1`, vehicleID).
 		Scan(
@@ -488,7 +527,7 @@ func (s *postgresCatalogStore) ConfigurationByVehicle(ctx context.Context, _ Pri
 		       vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
 		FROM vehicle_configurations vc
 		JOIN vehicle_identity_bases vib ON vib.vehicle_identity_base_id = vc.vehicle_identity_base_id
-		WHERE vc.vehicle_id::text = $1
+		WHERE (vc.vehicle_id::text = $1 OR vc.vehicle_configuration_id::text = $1)
 		  AND vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
 		ORDER BY vc.vehicle_configuration_id LIMIT 1`, vehicleID).
 		Scan(&record.ID, &record.VehicleID, &record.Year, &record.Make, &record.Model, &record.Region, &record.Trim, &record.Engine, &record.Complete)
@@ -507,7 +546,15 @@ func (s *postgresCatalogStore) Articles(ctx context.Context, _ Principal, vehicl
 	       COALESCE(content_kind, ''), COALESCE(component, ''),
 	       COALESCE(content_status, 'list_only')
 	FROM catalog_articles
-	WHERE vehicle_id::text = $1
+	WHERE (
+	      vehicle_id::text = $1
+	      OR EXISTS (
+		      SELECT 1
+		      FROM vehicle_configurations vc
+		      WHERE vc.vehicle_id = catalog_articles.vehicle_id
+		        AND vc.vehicle_configuration_id::text = $1
+	      )
+	)
 	  AND article_id NOT LIKE 'L:%'
 	ORDER BY article_id,
 	         (content_status = 'content_complete') DESC,
@@ -534,21 +581,30 @@ func (s *postgresCatalogStore) Articles(ctx context.Context, _ Principal, vehicl
 
 func (s *postgresCatalogStore) Article(ctx context.Context, _ Principal, vehicleID, articleID string) (CatalogArticle, error) {
 	var record CatalogArticle
-	var rawSteps, rawImages, rawOriginal []byte
+	var rawSteps, rawDocument, rawImages, rawOriginal []byte
 	var sourceID, sourceVersion, sourceArticleID string
 	err := s.pool.QueryRow(ctx, `
 		SELECT ca.catalog_article_id::text, ca.article_id, COALESCE(ca.title, ''), COALESCE(ca.content_kind, ''),
 		       COALESCE(ca.component, ''), COALESCE(ca.content_status, 'list_only'),
 		       COALESCE(ca.body, ''), COALESCE(ca.steps, '[]'::jsonb),
+		       COALESCE(ca.normalized_document, '{}'::jsonb),
 		       COALESCE(ca.images, '[]'::jsonb), COALESCE(ca.source_original, '{}'::jsonb), ca.source_snapshot_id::text,
 		       COALESCE(ss.source_version, '')
 		FROM catalog_articles ca
 		JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
-		WHERE ca.vehicle_id::text = $1
+		WHERE (
+		      ca.vehicle_id::text = $1
+		      OR EXISTS (
+			      SELECT 1
+			      FROM vehicle_configurations vc
+			      WHERE vc.vehicle_id = ca.vehicle_id
+			        AND vc.vehicle_configuration_id::text = $1
+		      )
+		)
 		  AND (ca.catalog_article_id::text = $2 OR ca.article_id = $2)
 		ORDER BY (ca.content_status = 'content_complete') DESC,
 		         ca.created_at DESC LIMIT 1`, vehicleID, articleID).
-		Scan(&record.ID, &sourceArticleID, &record.Title, &record.Kind, &record.Component, &record.ContentStatus, &record.Body, &rawSteps, &rawImages, &rawOriginal, &sourceID, &sourceVersion)
+		Scan(&record.ID, &sourceArticleID, &record.Title, &record.Kind, &record.Component, &record.ContentStatus, &record.Body, &rawSteps, &rawDocument, &rawImages, &rawOriginal, &sourceID, &sourceVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CatalogArticle{}, ErrCatalogNotFound
 	}
@@ -557,6 +613,10 @@ func (s *postgresCatalogStore) Article(ctx context.Context, _ Principal, vehicle
 	}
 	if err := json.Unmarshal(rawSteps, &record.Steps); err != nil {
 		return CatalogArticle{}, err
+	}
+	var document CatalogDocument
+	if err := json.Unmarshal(rawDocument, &document); err == nil && len(document.Blocks) > 0 {
+		record.Document = &document
 	}
 	if err := json.Unmarshal(rawImages, &record.Images); err != nil {
 		return CatalogArticle{}, err

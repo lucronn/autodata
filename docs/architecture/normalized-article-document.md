@@ -115,3 +115,15 @@ source-original retention, image placement, no provider URL leakage, valid
 table/callout rendering, stable canonical identity on repeated hydration, and
 honest partial/completed status across both providers.
 
+## Implementation evidence (2026-09-30)
+
+The live Ram 1500 DS axle article now returns 15 ordered blocks, including its
+tool table and interleaved illustrations, with no literal table-pipe artifacts.
+Its eight image references are served through the same-origin image endpoint;
+the first SVG proxy read returned HTTP 200. Re-reading the legacy list-row URL
+returned the cached complete detail without adding another detail row. A cold
+five-vehicle article sweep returned five HTTP 200 responses with readable
+content and non-empty ordered documents.
+
+Automated verification passed: 557 Python tests with 3 skips, Go tests, 13
+Workshop JavaScript tests, 13 migration tests, and `git diff --check`.
