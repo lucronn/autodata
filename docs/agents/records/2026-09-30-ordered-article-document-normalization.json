@@ -1,0 +1,22 @@
+{
+  "goal": "Preserve arbitrary source article order and structure through deterministic normalization, storage, API, and Workshop display.",
+  "plan_ref": "docs/superpowers/plans/2026-09-30-ordered-article-document-normalization.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/111",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/normalized-article-document.md",
+    "docs/architecture/contracts.md",
+    "docs/architecture/article-catalog-list-only-hydration.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add the provider-neutral ordered article document contract and schema validation",
+    "Refactor source adapters to emit ordered blocks without flattening source structure",
+    "Persist canonical article revisions, original sources, and local image assets without duplicate rows",
+    "Render ordered article blocks and strengthen content completeness validation",
+    "Run fixture, property, API, full-suite, Compose, and live browser verification"
+  ],
+  "base_sha": "d92847ee0b368423aace75e06d632ac5d366a3b5",
+  "status": "synchronized",
+  "updated_at": "2026-09-30T22:08:14Z"
+}
