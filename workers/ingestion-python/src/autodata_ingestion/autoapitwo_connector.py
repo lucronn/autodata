@@ -333,7 +333,9 @@ class AutoAPITwoConnector:
                 'article_id': article_id, 'title': title or result.get('title', ''),
                 'provider': 'autoapitwo', 'provider_vehicle_id': str(car_id),
                 'vehicle': result['car'], 'source_uri': url, 'source_watermark': digest,
-                'raw_html': html, 'body': '\n'.join(b['text'] for b in parser.blocks if b['kind'] == 'text'),
+                # Keep the provider's block boundaries so the reader can
+                # render headings and paragraphs instead of one text wall.
+                'raw_html': html, 'body': '\n\n'.join(b['text'] for b in parser.blocks if b['kind'] == 'text'),
                 'blocks': parser.blocks, 'images': [b for b in parser.blocks if b['kind'] == 'image'],
                 'component_links': list(dict.fromkeys(self.safe_url(link, car_id) for link in parser.links)),
                 'evidence_ids': [evidence_id],

@@ -853,8 +853,18 @@ def _article_body(data: dict[str, Any]) -> str | None:
     for key in ("body", "articleBody", "content"):
         value = data.get(key)
         if isinstance(value, str) and value.strip():
-            return re.sub(r"\s+", " ", value).strip()
+            return _preserve_article_blocks(value)
     return None
+
+
+def _preserve_article_blocks(value: str) -> str:
+    """Normalize whitespace without destroying source paragraph boundaries."""
+
+    text = str(value).replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def _article_steps(data: dict[str, Any]) -> list[Any] | None:

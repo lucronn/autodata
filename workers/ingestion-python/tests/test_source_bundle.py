@@ -16,6 +16,23 @@ from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E4
 
 
 class SourceBundleTests(unittest.TestCase):
+    def test_article_body_normalization_preserves_paragraph_boundaries(self):
+        resource = SourceResource.from_bytes(
+            "provider://articles.json",
+            "v1",
+            json.dumps({"body": {"articleDetails": [{
+                "id": "article-1",
+                "title": "Acceleration Type",
+                "body": "ACCELERATION TYPE\n\nRemote sensors are mounted.\n\nThey cannot be repaired.",
+            }]}}).encode(),
+            "application/json",
+        )
+        bundle = normalize_source_bundle([adapt_source_resource(resource)], "US")
+        self.assertEqual(
+            bundle.articles[0]["body"],
+            "ACCELERATION TYPE\n\nRemote sensors are mounted.\n\nThey cannot be repaired.",
+        )
+
     def test_duplicate_content_upgrade_retains_original_status_and_local_images(self):
         complete = {
             "id": "TSB-1", "title": "Brake procedure", "body": "Inspect brake.",

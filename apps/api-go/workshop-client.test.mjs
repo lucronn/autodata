@@ -73,6 +73,20 @@ test('flattened legacy article text becomes ordered readable blocks', () => {
   assert.deepEqual(legacyArticleBlocks('CIRCUIT DESCRIPTION If the ECU detects trouble.').map(block => block.type), ['heading', 'paragraph']);
 });
 
+test('article paragraph boundaries remain visible to the reader', () => {
+  const blocks = legacyArticleBlocks('ACCELERATION TYPE\n\nRemote sensors are mounted in the vehicle.\n\nThey cannot be repaired.');
+  assert.deepEqual(blocks.map(block => block.type), ['heading', 'paragraph', 'paragraph']);
+  assert.equal(blocks[1].text, 'Remote sensors are mounted in the vehicle.');
+  assert.equal(blocks[2].text, 'They cannot be repaired.');
+});
+
+test('legacy descriptions get readable paragraph breaks without changing text order', () => {
+  const body = 'First sentence explains the system. Second sentence identifies the location. Third sentence describes the connector. Fourth sentence explains the service limit.';
+  const blocks = legacyArticleBlocks(body);
+  assert.deepEqual(blocks.map(block => block.type), ['paragraph', 'paragraph']);
+  assert.equal(`${blocks[0].text} ${blocks[1].text}`, body);
+});
+
 test('image rendering does not contact original providers or accept script URLs', () => {
   assert.equal(localImageURL('/images/a.png', 'http://localhost:8080'), 'http://localhost:8080/images/a.png');
   for (const url of ['https://provider.example/a.png', '//provider.example/a.png', 'javascript:alert(1)', 'data:image/svg+xml,<svg/>', 'artifact://missing']) assert.equal(localImageURL(url, 'http://localhost:8080'), null);

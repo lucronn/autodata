@@ -16,6 +16,7 @@ function normalizedArticleText(value) {
     .replace(/\u00a0/g, ' ')
     .replace(/\r\n?/g, '\n')
     .replace(/[ \t]+/g, ' ')
+    .replace(/[ \t]*\n[ \t]*/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -41,6 +42,30 @@ function legacyParts(text) {
   return parts.length ? parts : [{ type: 'text', text: value }];
 }
 
+function readableParagraphs(text) {
+  const value = String(text || '').trim();
+  if (!value) return [];
+  const sentences = value.split(/(?<=[.!?])\s+(?=[A-Z])/).filter(Boolean);
+  if (sentences.length < 4) return [value];
+  const paragraphs = [];
+  let current = [];
+  for (const sentence of sentences) {
+    current.push(sentence.trim());
+    if (current.length >= 3 || current.join(' ').length >= 520) {
+      paragraphs.push(current.join(' '));
+      current = [];
+    }
+  }
+  if (current.length) paragraphs.push(current.join(' '));
+  return paragraphs;
+}
+
+function appendLegacyPart(blocks, part) {
+  if (part.type === 'text') {
+    for (const paragraph of readableParagraphs(part.text)) blocks.push({ type: 'paragraph', text: paragraph });
+  } else blocks.push(part);
+}
+
 function legacyLeadBlocks(text) {
   const value = normalizedArticleText(text);
   if (!value) return [];
@@ -48,6 +73,20 @@ function legacyLeadBlocks(text) {
   // Source extracts commonly put section headings directly before prose.
   // Split only all-caps phrases followed by a normal sentence; the remaining
   // text stays in exactly the same order and remains source text.
+  if (value.includes('\n')) {
+    for (const paragraph of value.split(/\n{2,}/).map(part => part.trim()).filter(Boolean)) {
+      for (const line of paragraph.split(/\n+/).map(part => part.trim()).filter(Boolean)) {
+        if (/^[A-Z][A-Z0-9/&'().,\- ]{2,119}$/.test(line) && /[A-Z]/.test(line)) {
+          blocks.push({ type: 'heading', text: line });
+          continue;
+        }
+        for (const part of legacyParts(line)) {
+          appendLegacyPart(blocks, part);
+        }
+      }
+    }
+    if (blocks.length) return blocks;
+  }
   const sectionPattern = /(?:^|\s)((?:[A-Z][A-Z0-9/&'().-]*\s+){1,}[A-Z][A-Z0-9/&'().-]*)(?=\s+[A-Z][a-z])/g;
   const headings = [...value.matchAll(sectionPattern)];
   if (!headings.length && /^[A-Z][A-Z0-9/&'(). -]+$/.test(value)) {
@@ -58,18 +97,14 @@ function legacyLeadBlocks(text) {
   for (const match of headings) {
     const before = value.slice(cursor, match.index).trim();
     if (before) {
-      for (const part of legacyParts(before)) blocks.push(part.type === 'text'
-        ? { type: 'paragraph', text: part.text }
-        : part);
+      for (const part of legacyParts(before)) appendLegacyPart(blocks, part);
     }
     blocks.push({ type: 'heading', text: match[1].trim() });
     cursor = match.index + match[0].length;
   }
   const remainder = value.slice(cursor).trim();
   if (remainder) {
-    for (const part of legacyParts(remainder)) blocks.push(part.type === 'text'
-      ? { type: 'paragraph', text: part.text }
-      : part);
+    for (const part of legacyParts(remainder)) appendLegacyPart(blocks, part);
   }
   return blocks;
 }

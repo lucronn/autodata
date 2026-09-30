@@ -107,6 +107,21 @@ class ConnectorTests(unittest.TestCase):
         with self.assertRaises(SourceUnavailable):
             other.article('2','/api/v1/content/carids/2/a')
 
+    def test_article_body_preserves_provider_block_boundaries(self):
+        payload = {
+            'id': '9',
+            'car': {'id': '1'},
+            '_embedded': {'data': {'article': {
+                'content': '<h2>ACCELERATION TYPE</h2><p>Remote sensors are mounted in the vehicle.</p><p>They cannot be repaired.</p>',
+            }}},
+        }
+        client = AutoAPITwoConnector(opener=lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
+        article = client.article('1', '/api/v1/content/carids/1/a')
+        self.assertEqual(
+            article['body'],
+            'ACCELERATION TYPE\n\nRemote sensors are mounted in the vehicle.\n\nThey cannot be repaired.',
+        )
+
     def test_parts_and_labor_article_builds_body_when_html_missing(self):
         payload = {
             'id': 'labor-9',
