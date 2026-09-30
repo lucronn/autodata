@@ -329,6 +329,19 @@ class AutoAPITwoConnector:
                 if block['kind'] == 'image':
                     block['url'] = self.safe_url(block['url'], car_id)
                     block['image_id'] = sha256(block['url'].encode()).hexdigest()
+            component_links = []
+            for link in dict.fromkeys(parser.links):
+                # Provider article HTML includes document-local anchors for
+                # tool tables and headings. They are presentation links, not
+                # source resources, and must not be sent through safe_url.
+                if not link or link.startswith('#'):
+                    continue
+                try:
+                    component_links.append(self.safe_url(link, car_id))
+                except ValueError:
+                    # A malformed or external inline link must not make an
+                    # otherwise readable repair article unavailable.
+                    continue
             return {
                 'article_id': article_id, 'title': title or result.get('title', ''),
                 'provider': 'autoapitwo', 'provider_vehicle_id': str(car_id),
@@ -337,7 +350,7 @@ class AutoAPITwoConnector:
                 # render headings and paragraphs instead of one text wall.
                 'raw_html': html, 'body': '\n\n'.join(b['text'] for b in parser.blocks if b['kind'] == 'text'),
                 'blocks': parser.blocks, 'images': [b for b in parser.blocks if b['kind'] == 'image'],
-                'component_links': list(dict.fromkeys(self.safe_url(link, car_id) for link in parser.links)),
+                'component_links': component_links,
                 'evidence_ids': [evidence_id],
                 'evidence': [{'evidence_id': evidence_id, 'source_uri': url, 'content_hash': digest}],
             }

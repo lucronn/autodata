@@ -122,6 +122,26 @@ class ConnectorTests(unittest.TestCase):
             'ACCELERATION TYPE\n\nRemote sensors are mounted in the vehicle.\n\nThey cannot be repaired.',
         )
 
+    def test_article_ignores_document_anchors_and_external_inline_links(self):
+        payload = {
+            'id': '9',
+            'car': {'id': '1'},
+            '_embedded': {'data': {'article': {
+                'content': (
+                    '<p>Remove the bearing.</p>'
+                    '<a href="#essentialToolSpan">Special tools</a>'
+                    '<a href="https://external.example/advert">Related</a>'
+                    '<a href="/api/v1/content/carids/1/components/867">Component</a>'
+                ),
+            }}},
+        }
+        client = AutoAPITwoConnector(opener=lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
+        article = client.article('1', '/api/v1/content/carids/1/a')
+        self.assertEqual(
+            article['component_links'],
+            ['https://autoapitwo.vercel.app/api/v1/content/carids/1/components/867'],
+        )
+
     def test_parts_and_labor_article_builds_body_when_html_missing(self):
         payload = {
             'id': 'labor-9',
