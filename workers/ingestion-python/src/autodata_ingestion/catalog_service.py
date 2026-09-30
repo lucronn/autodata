@@ -109,6 +109,8 @@ class CacheFirstCatalogService:
 
 _HYDRATION_LOCK = RLock()
 _HYDRATION_RESULTS: dict[str, dict[str, Any]] = {}
+_AUTOAPITWO_MODEL_CODES = frozenset({"jc", "la", "ld", "rt", "wd"})
+_AUTOAPITWO_DRIVETRAIN_TOKENS = frozenset({"2wd", "4wd", "awd", "fwd", "rwd"})
 
 
 class _ArticleCatalogProgress:
@@ -987,9 +989,8 @@ def _autoapitwo_car_ids(
         vehicle_id = str(request.get("vehicle_id") or "").strip()
         candidates.extend(_lookup_autoapitwo_car_rows(vehicle_id))
     if not candidates:
-        year = vehicle.get("model_year", vehicle.get("year"))
-        query = f"{year} {vehicle.get('make', '')} {vehicle.get('model', '')}"
-        candidates.extend(connector.search_vehicles(query))
+        for query in _autoapitwo_search_queries(vehicle):
+            candidates.extend(connector.search_vehicles(query))
 
     target_engine = _engine_number(vehicle.get("engine_displacement_l", vehicle.get("engine")))
 
@@ -1013,10 +1014,26 @@ def _autoapitwo_car_ids(
 
     selected = select(candidates)
     if target_engine is not None and not selected:
-        year = vehicle.get("model_year", vehicle.get("year"))
-        query = f"{year} {vehicle.get('make', '')} {vehicle.get('model', '')}"
-        selected = select([*candidates, *connector.search_vehicles(query)])
+        for query in _autoapitwo_search_queries(vehicle):
+            selected = select([*candidates, *connector.search_vehicles(query)])
+            if selected:
+                break
     return tuple(selected)
+
+
+def _autoapitwo_search_queries(vehicle: Mapping[str, Any]) -> tuple[str, ...]:
+    year = vehicle.get("model_year", vehicle.get("year"))
+    make = str(vehicle.get("make") or "").strip()
+    model = str(vehicle.get("model") or "").strip()
+    queries = [f"{year} {make} {model}".strip()]
+    model_tokens = re.findall(r"[A-Za-z0-9]+", model)
+    base_tokens = [
+        token for token in model_tokens
+        if token.casefold() not in _AUTOAPITWO_MODEL_CODES
+    ]
+    if base_tokens and base_tokens != model_tokens:
+        queries.append(f"{year} {make} {' '.join(base_tokens)}".strip())
+    return tuple(dict.fromkeys(query for query in queries if query))
 
 
 def _lookup_autoapitwo_car_rows(vehicle_id: str) -> list[dict[str, str]]:
@@ -1067,6 +1084,17 @@ def _same_autoapitwo_vehicle(candidate: Mapping[str, Any], vehicle: Mapping[str,
     def model_tokens_are_present(candidate_value: Any, target_value: Any) -> bool:
         candidate_tokens = words(candidate_value).split()
         target_tokens = words(target_value).split()
+        target_has_drivetrain = bool(
+            set(target_tokens) & _AUTOAPITWO_DRIVETRAIN_TOKENS
+        )
+        target_tokens = [
+            token for token in target_tokens if token not in _AUTOAPITWO_MODEL_CODES
+        ]
+        if not target_has_drivetrain:
+            candidate_tokens = [
+                token for token in candidate_tokens
+                if token not in _AUTOAPITWO_DRIVETRAIN_TOKENS
+            ]
         if not target_tokens:
             return True
         target_index = 0

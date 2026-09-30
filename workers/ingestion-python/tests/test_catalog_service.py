@@ -11,6 +11,7 @@ from autodata_ingestion.catalog_service import (
     CatalogRequest,
     CacheFirstCatalogService,
     _autoapitwo_car_ids,
+    _autoapitwo_search_queries,
     _engine_number,
     _same_autoapitwo_vehicle,
     _source_failure_detail,
@@ -33,6 +34,21 @@ class CatalogServiceTests(unittest.TestCase):
                 {"year": 2012, "make": "Chevrolet", "model": "Express Awd"},
             )
         )
+
+    def test_autoapitwo_search_falls_back_from_provider_model_code(self):
+        queries = []
+
+        class Connector:
+            def search_vehicles(self, query):
+                queries.append(query)
+                if query == "2018 Dodge Charger":
+                    return [{"year": "2018", "make": "Dodge", "model": "Charger AWD", "id": "58065"}]
+                return []
+
+        vehicle = {"model_year": 2018, "make": "Dodge", "model": "Charger Ld"}
+        self.assertEqual(_autoapitwo_search_queries(vehicle), ("2018 Dodge Charger Ld", "2018 Dodge Charger"))
+        self.assertEqual(_autoapitwo_car_ids({"vehicle_id": ""}, vehicle, Connector()), ("58065",))
+        self.assertEqual(queries, ["2018 Dodge Charger Ld", "2018 Dodge Charger"])
 
     def test_source_failure_detail_names_source_and_outcome(self):
         self.assertEqual(
