@@ -131,7 +131,7 @@ type CatalogImage struct {
 	ID         string `json:"id,omitempty"`
 	URL        string `json:"url,omitempty"`
 	Alt        string `json:"alt,omitempty"`
-	StorageKey string `json:"storage_key,omitempty"`
+	StorageKey string `json:"-"`
 	MediaType  string `json:"media_type,omitempty"`
 	ImageID    string `json:"image_id,omitempty"`
 }

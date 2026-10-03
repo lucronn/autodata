@@ -20,7 +20,7 @@ func catalogFixtureStore() *memoryCatalogStore {
 		ContentStatus: "content_complete", Complete: true,
 		Steps: []CatalogStep{{Number: 2, Heading: "Install", Instructions: []string{"B"}}, {Number: 1, Heading: "Remove", Instructions: []string{"A"}}},
 		Images: []CatalogImage{
-			{ID: "image-1", URL: "/v1/catalog/images/local.png", Alt: "Filter location"},
+			{ID: "image-1", URL: "/v1/catalog/images/local.png", Alt: "Filter location", StorageKey: "private/source-object/key"},
 			{ID: "image-2", URL: "https://autoapitwo.vercel.app/diagram.png", Alt: "Filter wiring"},
 		},
 		SourceOriginal: json.RawMessage(`{"provider":"opaque","steps":[{"n":2},{"n":1}]}`),

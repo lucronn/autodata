@@ -74,8 +74,8 @@ func TestArticleIndexDoesNotExposeSourceImagePaths(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("article index status = %d: %s", response.Code, response.Body.String())
 	}
-	if strings.Contains(response.Body.String(), "autoapitwo.vercel.app") || strings.Contains(response.Body.String(), "?src=") {
-		t.Fatalf("article index exposed a source image URL: %s", response.Body.String())
+	if strings.Contains(response.Body.String(), "autoapitwo.vercel.app") || strings.Contains(response.Body.String(), "?src=") || strings.Contains(response.Body.String(), "storage_key") || strings.Contains(response.Body.String(), "private/source-object/key") {
+		t.Fatalf("article index exposed source image data or an internal storage key: %s", response.Body.String())
 	}
 }
 
