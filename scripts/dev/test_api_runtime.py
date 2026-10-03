@@ -25,6 +25,12 @@ class APIRuntimeContractTests(unittest.TestCase):
         self.assertIn("private/source-object/key", media_test)
         self.assertIn("storage_key", media_test)
 
+    def test_api_docker_build_copies_all_embedded_web_assets(self):
+        dockerfile = self.read("apps/api-go/Dockerfile")
+
+        self.assertIn("COPY apps/api-go/dashboard ./apps/api-go/dashboard", dockerfile)
+        self.assertIn("COPY apps/api-go/workshop ./apps/api-go/workshop", dockerfile)
+
     def test_protected_workflow_runs_api_runtime_smoke_after_migrations(self):
         workflow = self.read(".github/workflows/autonomous-verification.yml")
         compose = "docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml"
