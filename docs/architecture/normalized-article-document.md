@@ -95,16 +95,18 @@ Selected-article reads must repair it from the stored source snapshot before
 falling back to an upstream provider. The repair reuses the existing provider
 parser, preserves the original snapshot and evidence, and updates the existing
 canonical article row idempotently. It must not fetch source content or invoke
-an LLM.
+an LLM. It must not call a source catalog or article-detail endpoint.
 
 A repair must retain image blocks at their parsed source positions and reuse
-already-localized assets. When an image asset is missing, the document keeps an
-unavailable image block at that position; it does not move the image to a
-detached gallery or fetch the provider image as a side effect of repair. If the
-stored source cannot produce a valid readable ordered document, the row is
-`content_partial` and the API reports the repair failure. Existing valid,
-non-empty ordered documents remain authoritative and are not rebuilt on normal
-reads. See the [legacy repair plan](../superpowers/plans/2026-10-03-repair-legacy-ordered-article-documents.md).
+already-localized assets. If an image asset is missing, only that image may be
+fetched once through the existing allowlisted image adapter and persisted
+locally; subsequent reads reuse it. If that media read fails, the document
+keeps an unavailable image block at the same source position instead of
+moving it to a detached gallery. If the stored source cannot produce a valid
+readable ordered document, the row is `content_partial` and the API reports the
+repair failure. Existing valid, non-empty ordered documents remain authoritative
+and are not rebuilt on normal reads. See the
+[legacy repair plan](../superpowers/plans/2026-10-03-repair-legacy-ordered-article-documents.md).
 
 ## Completeness and errors
 
