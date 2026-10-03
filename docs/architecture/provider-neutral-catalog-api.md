@@ -9,6 +9,13 @@ The public contract is published at `/openapi.json`; `/swagger/` serves the
 same-origin interactive Swagger UI with prefilled examples for the full
 cascade.
 
+The API binary embeds the dashboard, Workshop, OpenAPI JSON/YAML, Swagger HTML,
+and Swagger UI assets. The API container build must copy every matching asset
+into its compile stage before `go build`; verify the same-origin docs from the
+container image, not only from a host-built binary. The packaging follow-up is
+tracked in Issue #113 and
+`docs/superpowers/plans/2026-10-03-swagger-container-assets.md`.
+
 The source boundary keeps each provider's raw response and provenance. The
 normalization boundary converts provider fields into canonical vehicle,
 configuration, article, step, and image records. The public API returns only
