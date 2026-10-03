@@ -1,0 +1,22 @@
+{
+  "goal": "Hydrate missing multi-component source articles through provider-qualified AutoDBone and AutoDBtwo mappings, persist only individual normalized articles, and keep the composition ephemeral.",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-provider-qualified-composition-hydration.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/110",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/mercury2-procedure-composition.md",
+    "docs/architecture/source-connector-api-compatibility.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Trace canonical vehicle mappings from public selection into composition requests and define provider-qualified fields.",
+    "Add regressions proving AutoDBone and AutoDBtwo identifiers cannot cross provider boundaries.",
+    "Resolve requested components through both current provider catalogs and hydrate only selected details with fallback.",
+    "Persist individual normalized articles and local images idempotently; prove a warm repeat makes no detail calls and stores no combined result.",
+    "Run five new multi-component queries on distinct YMME vehicles and require readable, source-backed procedures without errors.",
+    "Run exact-SHA release gates and synchronize evidence before issue closure."
+  ],
+  "base_sha": "6f417ecd4cd99c1adb538d87978131f3c406c97c",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T08:58:27Z"
+}
