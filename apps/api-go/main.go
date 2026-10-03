@@ -20,7 +20,7 @@ import (
 // dashboardFiles contains the small local developer dashboard. It is served
 // by the API so the browser uses the same origin and authentication boundary.
 //
-//go:embed dashboard/*
+//go:embed dashboard/* workshop/*
 var dashboardFiles embed.FS
 
 const dependencyTimeout = 250 * time.Millisecond
@@ -174,11 +174,23 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics.handler)
+	mux.HandleFunc("GET /workshop", func(response http.ResponseWriter, request *http.Request) {
+		http.Redirect(response, request, "/workshop/", http.StatusMovedPermanently)
+	})
+	workshopAssets, err := fs.Sub(dashboardFiles, "workshop")
+	if err != nil {
+		panic("embedded workshop assets unavailable: " + err.Error())
+	}
+	mux.Handle("GET /workshop/", http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Cache-Control", "no-cache")
+		http.StripPrefix("/workshop/", http.FileServer(http.FS(workshopAssets))).ServeHTTP(response, request)
+	}))
 	mux.Handle("GET /v1/catalog/years", s.requireRole("dataset_viewer", s.listCatalogYears))
 	mux.Handle("GET /v1/catalog/years/{year}/makes", s.requireRole("dataset_viewer", s.listCatalogMakes))
 	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models", s.requireRole("dataset_viewer", s.listCatalogModels))
 	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models/{model}/configurations", s.requireRole("dataset_viewer", s.listCatalogConfigurations))
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles", s.requireRole("dataset_viewer", s.listCatalogArticles))
+	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source", s.requireRole("dataset_viewer", s.serveCatalogSource))
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.requireRole("dataset_viewer", s.getCatalogArticle))
 	mux.HandleFunc("GET /v1/catalog/images/{token}", func(response http.ResponseWriter, request *http.Request) {
 		serveCatalogImage(response, request, s.catalogImageKey)

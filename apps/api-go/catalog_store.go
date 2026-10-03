@@ -32,6 +32,7 @@ type CatalogStore interface {
 	ConfigurationByVehicle(context.Context, Principal, string) (CatalogConfiguration, error)
 	Articles(context.Context, Principal, string) ([]CatalogArticle, error)
 	Article(context.Context, Principal, string, string) (CatalogArticle, error)
+	ArticleSource(context.Context, Principal, string, string) (CatalogSourceContent, error)
 }
 
 type CatalogYear struct {
@@ -100,20 +101,47 @@ type CatalogDocumentBlock struct {
 }
 
 type CatalogArticle struct {
-	ID              string              `json:"id"`
-	VehicleID       string              `json:"vehicle_id"`
-	Title           string              `json:"title"`
-	Kind            string              `json:"kind,omitempty"`
-	Component       string              `json:"component,omitempty"`
-	ContentStatus   string              `json:"content_status"`
-	Complete        bool                `json:"complete"`
-	Body            string              `json:"body,omitempty"`
-	Steps           []CatalogStep       `json:"steps,omitempty"`
-	Document        *CatalogDocument    `json:"document,omitempty"`
-	Images          []CatalogImage      `json:"images,omitempty"`
-	Provenance      []CatalogProvenance `json:"provenance,omitempty"`
-	SourceOriginal  json.RawMessage     `json:"-"`
-	sourceArticleID string
+	ID                  string               `json:"id"`
+	VehicleID           string               `json:"vehicle_id"`
+	Title               string               `json:"title"`
+	Kind                string               `json:"kind,omitempty"`
+	Component           string               `json:"component,omitempty"`
+	ContentStatus       string               `json:"content_status"`
+	Complete            bool                 `json:"complete"`
+	Body                string               `json:"body,omitempty"`
+	Steps               []CatalogStep        `json:"steps,omitempty"`
+	Document            *CatalogDocument     `json:"document,omitempty"`
+	Images              []CatalogImage       `json:"images,omitempty"`
+	Provenance          []CatalogProvenance  `json:"provenance,omitempty"`
+	SourceReview        *CatalogSourceReview `json:"source_review,omitempty"`
+	SourceOriginal      json.RawMessage      `json:"-"`
+	sourceArticleID     string
+	sourceSnapshotID    string
+	sourceVersion       string
+	sourceContentSHA256 string
+	sourceURI           string
+	sourceFormat        string
+	sourceAvailable     bool
+}
+
+// CatalogSourceReview is safe metadata for the immutable source copy. The
+// source URL is always an AutoData route; the provider URI and raw payload
+// stay behind ArticleSource and the source-review renderer.
+type CatalogSourceReview struct {
+	Available     bool   `json:"available"`
+	SnapshotID    string `json:"snapshot_id,omitempty"`
+	Version       string `json:"version,omitempty"`
+	ContentSHA256 string `json:"content_sha256,omitempty"`
+	Format        string `json:"format,omitempty"`
+	URL           string `json:"url,omitempty"`
+}
+
+type CatalogSourceContent struct {
+	SnapshotID    string
+	Version       string
+	ContentSHA256 string
+	SourceURI     string
+	Original      json.RawMessage
 }
 
 type CatalogArticleProgress struct {
@@ -166,6 +194,14 @@ func (s *memoryCatalogStore) PutArticle(record CatalogArticle) {
 	}
 	record.Steps = orderedCatalogSteps(record.Steps)
 	record.SourceOriginal = append(json.RawMessage(nil), record.SourceOriginal...)
+	record.sourceAvailable = len(bytes.TrimSpace(record.SourceOriginal)) > 2
+	record.sourceFormat = catalogSourceFormat(record.SourceOriginal)
+	if record.sourceSnapshotID == "" && len(record.Provenance) > 0 {
+		record.sourceSnapshotID = record.Provenance[0].ID
+	}
+	if record.sourceVersion == "" && len(record.Provenance) > 0 {
+		record.sourceVersion = record.Provenance[0].Version
+	}
 	record.Provenance = append([]CatalogProvenance(nil), record.Provenance...)
 	s.articles[record.ID] = record
 }
@@ -288,6 +324,26 @@ func (s *memoryCatalogStore) Article(_ context.Context, _ Principal, vehicleID, 
 		return CatalogArticle{}, ErrCatalogNotFound
 	}
 	return publicCatalogArticle(record), nil
+}
+
+func (s *memoryCatalogStore) ArticleSource(_ context.Context, _ Principal, vehicleID, articleID string) (CatalogSourceContent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	lookupID := articleID
+	if alias, ok := s.articles[articleID]; ok && alias.sourceArticleID != "" {
+		lookupID = alias.sourceArticleID
+	}
+	for _, record := range s.articles {
+		if record.VehicleID != vehicleID || (record.ID != lookupID && record.sourceArticleID != lookupID) || !record.sourceAvailable {
+			continue
+		}
+		return CatalogSourceContent{
+			SnapshotID: record.sourceSnapshotID, Version: record.sourceVersion,
+			ContentSHA256: record.sourceContentSHA256, SourceURI: record.sourceURI,
+			Original: cloneCatalogRaw(record.SourceOriginal),
+		}, nil
+	}
+	return CatalogSourceContent{}, ErrCatalogNotFound
 }
 
 func publicCatalogArticle(record CatalogArticle) CatalogArticle {
@@ -582,14 +638,14 @@ func (s *postgresCatalogStore) Articles(ctx context.Context, _ Principal, vehicl
 func (s *postgresCatalogStore) Article(ctx context.Context, _ Principal, vehicleID, articleID string) (CatalogArticle, error) {
 	var record CatalogArticle
 	var rawSteps, rawDocument, rawImages, rawOriginal []byte
-	var sourceID, sourceVersion, sourceArticleID string
+	var sourceID, sourceVersion, sourceContentSHA256, sourceURI, sourceArticleID string
 	err := s.pool.QueryRow(ctx, `
 		SELECT ca.catalog_article_id::text, ca.article_id, COALESCE(ca.title, ''), COALESCE(ca.content_kind, ''),
 		       COALESCE(ca.component, ''), COALESCE(ca.content_status, 'list_only'),
 		       COALESCE(ca.body, ''), COALESCE(ca.steps, '[]'::jsonb),
 		       COALESCE(ca.normalized_document, '{}'::jsonb),
 		       COALESCE(ca.images, '[]'::jsonb), COALESCE(ca.source_original, '{}'::jsonb), ca.source_snapshot_id::text,
-		       COALESCE(ss.source_version, '')
+		       COALESCE(ss.source_version, ''), COALESCE(ss.content_sha256, ''), COALESCE(ss.source_uri, '')
 		FROM catalog_articles ca
 		JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
 		WHERE (
@@ -601,10 +657,15 @@ func (s *postgresCatalogStore) Article(ctx context.Context, _ Principal, vehicle
 			        AND vc.vehicle_configuration_id::text = $1
 		      )
 		)
-		  AND (ca.catalog_article_id::text = $2 OR ca.article_id = $2)
+		  AND (ca.catalog_article_id::text = $2 OR ca.article_id = $2 OR ca.article_id = (
+			      SELECT alias.article_id
+			      FROM catalog_articles alias
+			      WHERE alias.catalog_article_id::text = $2
+			      LIMIT 1
+		       ))
 		ORDER BY (ca.content_status = 'content_complete') DESC,
 		         ca.created_at DESC LIMIT 1`, vehicleID, articleID).
-		Scan(&record.ID, &sourceArticleID, &record.Title, &record.Kind, &record.Component, &record.ContentStatus, &record.Body, &rawSteps, &rawDocument, &rawImages, &rawOriginal, &sourceID, &sourceVersion)
+		Scan(&record.ID, &sourceArticleID, &record.Title, &record.Kind, &record.Component, &record.ContentStatus, &record.Body, &rawSteps, &rawDocument, &rawImages, &rawOriginal, &sourceID, &sourceVersion, &sourceContentSHA256, &sourceURI)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CatalogArticle{}, ErrCatalogNotFound
 	}
@@ -625,9 +686,54 @@ func (s *postgresCatalogStore) Article(ctx context.Context, _ Principal, vehicle
 	record.sourceArticleID = sourceArticleID
 	record.Complete = record.ContentStatus == "content_complete"
 	record.SourceOriginal = append(json.RawMessage(nil), rawOriginal...)
+	record.sourceSnapshotID = sourceID
+	record.sourceVersion = sourceVersion
+	record.sourceContentSHA256 = sourceContentSHA256
+	record.sourceURI = sourceURI
+	record.sourceFormat = catalogSourceFormat(rawOriginal)
+	record.sourceAvailable = len(bytes.TrimSpace(rawOriginal)) > 2
 	record.Provenance = []CatalogProvenance{{ID: sourceID, Version: sourceVersion}}
 	record.Steps = orderedCatalogSteps(record.Steps)
 	return record, nil
+}
+
+func (s *postgresCatalogStore) ArticleSource(ctx context.Context, _ Principal, vehicleID, articleID string) (CatalogSourceContent, error) {
+	var result CatalogSourceContent
+	var rawOriginal []byte
+	err := s.pool.QueryRow(ctx, `
+		SELECT ca.source_snapshot_id::text, COALESCE(ss.source_version, ''),
+		       COALESCE(ss.content_sha256, ''), COALESCE(ss.source_uri, ''),
+		       COALESCE(ca.source_original, '{}'::jsonb)
+		FROM catalog_articles ca
+		JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
+		WHERE (
+		      ca.vehicle_id::text = $1
+		      OR EXISTS (
+			      SELECT 1
+			      FROM vehicle_configurations vc
+			      WHERE vc.vehicle_id = ca.vehicle_id
+			        AND vc.vehicle_configuration_id::text = $1
+		      )
+		)
+		  AND (ca.catalog_article_id::text = $2 OR ca.article_id = $2 OR ca.article_id = (
+			      SELECT alias.article_id
+			      FROM catalog_articles alias
+			      WHERE alias.catalog_article_id::text = $2
+			      LIMIT 1
+		       ))
+		  AND jsonb_typeof(ca.source_original) = 'object'
+		  AND ca.source_original <> '{}'::jsonb
+		ORDER BY (ca.content_status = 'content_complete') DESC,
+		         ca.created_at DESC LIMIT 1`, vehicleID, articleID).
+		Scan(&result.SnapshotID, &result.Version, &result.ContentSHA256, &result.SourceURI, &rawOriginal)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return CatalogSourceContent{}, ErrCatalogNotFound
+	}
+	if err != nil {
+		return CatalogSourceContent{}, err
+	}
+	result.Original = cloneCatalogRaw(rawOriginal)
+	return result, nil
 }
 
 var _ CatalogStore = (*postgresCatalogStore)(nil)
