@@ -7,6 +7,10 @@
 ## Data lifecycle
 
 AutoData stores each vehicle-matched individual source article, its original source payload, normalized text, source/evidence references, and locally managed images. A composition request resolves the requested components to those individual records. If a required article is absent, AutoData retrieves and ingests that individual article through the catalog/source path, then uses the persisted normalized record. It must not repeat a provider detail call when that record is already available.
+When catalog traversal has multiple revisions/rows for one article identity,
+reads must prefer the row with usable normalized body/steps over a later
+list-only row; indexing the same article again must not mask already ingested
+content or trigger another provider detail request.
 
 Provider vehicle IDs are source-scoped: AutoDBone IDs may only be sent to the
 AutoDBone facade, and AutoDBtwo car IDs may only be sent to AutoDBtwo. A
