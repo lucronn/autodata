@@ -53,8 +53,19 @@ running the current implementation.
   against a copied candidate database; verify no article/catalog provider or
   LLM request occurs, each missing image is fetched at most once, the source
   snapshot remains unchanged, and a repeat repair makes no image request.
-- [ ] Update Issue #111, Project #8, and this plan with exact test and runtime
+- [x] Update Issue #111, Project #8, and this plan with exact test and runtime
   evidence; rerun the complete hosted stack checks.
+
+## Verification at implementation commit `95381f4`
+
+- Worker suite: 369 passed, 3 skipped.
+- Go API tests and `go vet ./...` passed.
+- Python compileall, Compose configuration, and `git diff --check` passed.
+- Both hosted Autonomous Verification runs passed, including the live Compose
+  fast-lane: [37108159899](https://github.com/lucronn/autodata/actions/runs/37108159899)
+  and [37108163117](https://github.com/lucronn/autodata/actions/runs/37108163117).
+- The copied-candidate database replay and Workshop verification remain open;
+  the running user database was not used or modified.
 
 ## Design constraints
 
