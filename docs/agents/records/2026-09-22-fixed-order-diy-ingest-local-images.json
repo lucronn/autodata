@@ -1,0 +1,21 @@
+{
+  "goal": "Ingest each provider article in source order, keep an immutable original copy, LLM-rewrite only step phrasing for DIY uniqueness, fetch and store images locally, and remove all step rearranging.",
+  "plan_ref": "docs/superpowers/plans/2026-09-22-fixed-order-diy-ingest-local-images.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/112",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/contracts.md",
+    "docs/architecture/dashboard-agent-workspace.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Remove compose phase sort and ingest verb phase-flips; preserve source order",
+    "Add source_original (+ rewrite_status) migration and persist/load round-trip",
+    "Fetch provider images to MinIO at ingest; store local keys on step/article images",
+    "Mercury phrase-only rewriter with fixed-order validation; wire into persist path",
+    "Unit + warm oil-pump smoke: order stable, originals stored, no provider image hosts"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-09-22T18:00:00Z",
+  "base_sha": "8a068547fe9df395d1671f25485319a137e963bb"
+}
