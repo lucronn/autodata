@@ -30,6 +30,11 @@ class APIRuntimeContractTests(unittest.TestCase):
 
         self.assertIn("COPY apps/api-go/dashboard ./apps/api-go/dashboard", dockerfile)
         self.assertIn("COPY apps/api-go/workshop ./apps/api-go/workshop", dockerfile)
+        self.assertIn(
+            "COPY apps/api-go/openapi.json apps/api-go/openapi.yaml apps/api-go/swagger.html ./apps/api-go/",
+            dockerfile,
+        )
+        self.assertIn("COPY apps/api-go/swagger-ui ./apps/api-go/swagger-ui", dockerfile)
 
     def test_protected_workflow_runs_api_runtime_smoke_after_migrations(self):
         workflow = self.read(".github/workflows/autonomous-verification.yml")
