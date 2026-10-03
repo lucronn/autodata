@@ -124,27 +124,25 @@ class AutoAPITwoCatalogConnector:
         make_filter = "" if requested_make.casefold() in {"", "unknown"} else requested_make.casefold()
         model_filter = "" if requested_model.casefold() in {"", "unknown"} else requested_model.casefold()
         rows: list[dict[str, object]] = []
-        make_payload = self._read(f"/api/v1/fleet/years/{quote(year)}/makes")
-        for make_record in self._items(make_payload):
+        makes_path = f"/api/v1/fleet/years/{quote(year)}/makes"
+        for make_record in self._read_items(makes_path):
             make = _text(make_record.get("make"))
             if not make or (make_filter and make.casefold() != make_filter):
                 continue
-            model_payload = self._read(
+            models_path = (
                 f"/api/v1/fleet/years/{quote(year)}/makes/{quote(make, safe='')}/models"
             )
-            for model_record in self._items(model_payload):
+            for model_record in self._read_items(models_path):
                 model = _text(model_record.get("model"))
                 if not model or (model_filter and model.casefold() != model_filter):
                     continue
                 if scope in {"makes", "models"}:
                     rows.append({"year": int(year), "make": make, "model": model, "region": "US"})
                     continue
-                engine_payload = self._read(
-                    "/api/v1/fleet/years/{}/makes/{}/models/{}/engines".format(
-                        quote(year, safe=""), quote(make, safe=""), quote(model, safe="")
-                    )
+                engines_path = "/api/v1/fleet/years/{}/makes/{}/models/{}/engines".format(
+                    quote(year, safe=""), quote(make, safe=""), quote(model, safe="")
                 )
-                for engine_record in self._items(engine_payload):
+                for engine_record in self._read_items(engines_path):
                     engine = _text(engine_record.get("engine"))
                     car_path = _car_path(engine_record)
                     car = self._read(car_path) if car_path else dict(engine_record)
@@ -160,26 +158,22 @@ class AutoAPITwoCatalogConnector:
 
         seen: set[tuple[object, ...]] = set()
         for year in self._years():
-            makes = self._read(f"/api/v1/fleet/years/{quote(year)}/makes")
-            for make_record in self._items(makes):
+            makes_path = f"/api/v1/fleet/years/{quote(year)}/makes"
+            for make_record in self._read_items(makes_path):
                 make = _text(make_record.get("make"))
                 if not make:
                     continue
-                models = self._read(
-                    f"/api/v1/fleet/years/{quote(year)}/makes/{quote(make, safe='')}/models"
-                )
-                for model_record in self._items(models):
+                models_path = (
+                f"/api/v1/fleet/years/{quote(year)}/makes/{quote(make, safe='')}/models"
+            )
+                for model_record in self._read_items(models_path):
                     model = _text(model_record.get("model"))
                     if not model:
                         continue
-                    engines = self._read(
-                        "/api/v1/fleet/years/{}/makes/{}/models/{}/engines".format(
-                            quote(year, safe=""),
-                            quote(make, safe=""),
-                            quote(model, safe=""),
-                        )
+                    engines_path = "/api/v1/fleet/years/{}/makes/{}/models/{}/engines".format(
+                        quote(year, safe=""), quote(make, safe=""), quote(model, safe="")
                     )
-                    for engine_record in self._items(engines):
+                    for engine_record in self._read_items(engines_path):
                         engine = _text(engine_record.get("engine"))
                         if not engine:
                             continue
@@ -199,13 +193,22 @@ class AutoAPITwoCatalogConnector:
                         yield row
 
     def _years(self) -> list[str]:
-        payload = self._read("/api/v1/fleet/years")
         values = []
-        for item in self._items(payload):
+        for item in self._read_items("/api/v1/fleet/years"):
             year = _text(item.get("year"))
             if year.isdigit() and 1886 <= int(year) <= 2100:
                 values.append(year)
         return sorted(set(values), key=int)
+
+    def _read_items(self, path: str) -> list[dict[str, object]]:
+        payload = self._read(path)
+        try:
+            return self._items(payload)
+        except CatalogSourceUnavailable:
+            parsed = urlsplit(urljoin(self.base + "/", path))
+            with self._lock:
+                self._cache.pop(parsed.geturl(), None)
+            raise
 
     def _read(self, path: str) -> object:
         parsed = urlsplit(urljoin(self.base + "/", path))
@@ -283,13 +286,26 @@ class AutoAPITwoCatalogConnector:
     @staticmethod
     def _items(payload: object) -> list[dict[str, object]]:
         if isinstance(payload, list):
-            return [item for item in payload if isinstance(item, dict)]
-        if isinstance(payload, dict):
+            items = payload
+        elif isinstance(payload, dict):
+            items = None
             for key in ("results", "items", "data"):
-                value = payload.get(key)
-                if isinstance(value, list):
-                    return [item for item in value if isinstance(item, dict)]
-        return []
+                if key in payload:
+                    value = payload[key]
+                    if isinstance(value, list):
+                        items = value
+                        break
+                    if value is not None:
+                        raise CatalogSourceUnavailable(
+                            "catalog source returned a malformed response envelope"
+                        )
+            if items is None:
+                raise CatalogSourceUnavailable("catalog source returned an unsupported response envelope")
+        else:
+            raise CatalogSourceUnavailable("catalog source returned an unsupported response shape")
+        if not all(isinstance(item, dict) for item in items):
+            raise CatalogSourceUnavailable("catalog source returned malformed catalog records")
+        return items
 
 
 def _text(value: object) -> str:
