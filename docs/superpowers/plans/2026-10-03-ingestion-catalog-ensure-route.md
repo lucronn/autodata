@@ -21,7 +21,8 @@ reach the source connectors.
 - [x] Verify catalog API/worker tests and run an isolated Compose container
   route smoke with a deterministic fake hydration service.
 - [x] Record exact local test and smoke evidence in Issue #113 and Project #8.
-- [ ] Pass hosted verification on the current PR stack head.
+- [x] Pass hosted verification on implementation commit
+  `95381f4d6ffeb5d69e7ab8bf0feb192bd030462c`.
 
 ## Local verification so far
 
@@ -31,7 +32,10 @@ reach the source connectors.
 - Go API tests and `go vet ./...` pass.
 - Python compileall and `git diff --check` pass.
 - The container smoke used a fake hydration result and made no provider calls;
-  hosted verification remains outstanding.
+  it did not read/write a database or call live sources.
+- Both hosted Autonomous Verification runs passed on the implementation commit:
+  [37108159899](https://github.com/lucronn/autodata/actions/runs/37108159899)
+  and [37108163117](https://github.com/lucronn/autodata/actions/runs/37108163117).
 
 ## Boundaries
 
