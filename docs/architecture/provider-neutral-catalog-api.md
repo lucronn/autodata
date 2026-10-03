@@ -21,5 +21,8 @@ immutable, normalized steps retain source order, optional wording rewrite is
 phrase-only, and served images reference local stored objects. Labor and
 combined procedures are not part of this API.
 
-The active product path does not require chatbot routes, chat runtime state,
-chat event streams, or chat-scoped guide URLs.
+The active product path has no chatbot routes or UI, chat event streams, chat
+worker activation, or chat-scoped guide URLs. Legacy chat implementation must
+not be registered, served, or started by the default API, dashboard, worker, or
+Compose configuration. Catalog browsing and article viewing use the direct
+provider-neutral API and remain available without a chat runtime.
