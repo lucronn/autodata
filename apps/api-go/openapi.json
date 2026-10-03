@@ -415,6 +415,174 @@
           }
         }
       }
+    },
+    "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "getStoredArticleSource",
+        "summary": "Read the stored source copy for an article",
+        "description": "Reads the immutable source snapshot already stored by AutoData. It does not call a source provider. JSON returns sanitized source content; browser navigation returns a CSP-protected HTML review page. Source image references use same-origin opaque media tokens.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VehicleId"
+          },
+          {
+            "$ref": "#/components/parameters/ArticleId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stored source copy in the representation selected by Accept.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceContentResponse"
+                },
+                "example": {
+                  "version": "v1",
+                  "source": {
+                    "available": true,
+                    "snapshot_id": "source-snapshot-1",
+                    "version": "autoapitwo-content-v1",
+                    "content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                    "format": "html",
+                    "url": "/v1/catalog/vehicles/vehicle-1/articles/article-1/source"
+                  },
+                  "content": "<html><body><h2>REMOVAL</h2><p>Remove the cover.</p></body></html>"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string",
+                  "description": "Sanitized CSP-protected HTML source review document."
+                }
+              }
+            },
+            "headers": {
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "example": "nosniff"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/CatalogUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/catalog/images/{token}": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "getOpaqueCatalogImage",
+        "summary": "Fetch a source-backed image using its opaque media token",
+        "description": "The randomized token is an AutoData-issued capability URL. It is not a provider URL or storage key. No bearer token is required for this route; tokens fail closed when unavailable or invalid.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "description": "Randomized authenticated opaque media token returned in an article or stored-source image URL.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 6000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Allowlisted image bytes.",
+            "content": {
+              "image/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Token is invalid, expired, or not allowlisted.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "catalog image not found"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream image could not be retrieved or did not return image bytes.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "catalog image could not be loaded"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stable media-reference key is not configured.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "catalog image references are unavailable"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/catalog/images": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "rejectLegacyCatalogImageReference",
+        "summary": "Reject the legacy source-bearing image route",
+        "description": "This path rejects legacy requests. The old src query parameter is intentionally not accepted because it reveals a source provider and original artifact path. Use the opaque token path instead.",
+        "deprecated": true,
+        "security": [],
+        "responses": {
+          "400": {
+            "description": "An opaque image token path is required; this endpoint never fetches a caller-supplied URL.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "opaque image reference required"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -778,6 +946,9 @@
                 "items": {
                   "$ref": "#/components/schemas/Provenance"
                 }
+              },
+              "source_review": {
+                "$ref": "#/components/schemas/SourceReview"
               }
             }
           }
@@ -952,13 +1123,11 @@
           "alt": {
             "type": "string"
           },
-          "storage_key": {
-            "type": "string"
-          },
           "media_type": {
             "type": "string"
           }
-        }
+        },
+        "description": "Public image reference. Internal object-storage keys and upstream source URLs are never returned."
       },
       "Provenance": {
         "type": "object",
@@ -1004,6 +1173,60 @@
                 "type": "string"
               }
             }
+          }
+        }
+      },
+      "SourceReview": {
+        "type": "object",
+        "required": [
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "content_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "html",
+              "json"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri-reference",
+            "description": "Same-origin URL for the stored source copy."
+          }
+        }
+      },
+      "SourceContentResponse": {
+        "type": "object",
+        "required": [
+          "version",
+          "source",
+          "content"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "example": "v1"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceReview"
+          },
+          "content": {
+            "type": "string",
+            "description": "Sanitized stored source content; HTML when source.format is html, otherwise pretty-printed JSON."
           }
         }
       }
