@@ -84,6 +84,13 @@ def load_vehicle_knowledge_catalog(
     if title_patterns and target_engine is not None:
         engine_order = "CASE WHEN vc.engine_displacement_l = %s THEN 0 ELSE 1 END, "
         params.append(target_engine)
+    content_order = ""
+    if title_patterns:
+        content_order = """CASE
+            WHEN ca.content_status = 'content_complete'
+             AND (NULLIF(BTRIM(ca.body), '') IS NOT NULL
+                  OR jsonb_array_length(COALESCE(ca.steps, '[]'::jsonb)) > 0)
+            THEN 0 ELSE 1 END, """
     params.append(limit)
     select_prefix = "SELECT DISTINCT ON (ca.article_id)" if title_patterns else "SELECT"
     duplicate_filter = "" if title_patterns else """
@@ -104,7 +111,7 @@ def load_vehicle_knowledge_catalog(
                 )
           )"""
     order_by = (
-        f"ca.article_id, {engine_order}ca.title NULLS LAST, ca.catalog_article_id"
+        f"ca.article_id, {engine_order}{content_order}ca.title NULLS LAST, ca.catalog_article_id"
         if title_patterns
         else "ca.title NULLS LAST, ca.article_id, ca.catalog_article_id"
     )
