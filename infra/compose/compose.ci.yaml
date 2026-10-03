@@ -3,7 +3,7 @@ services:
   # developer stack untouched and use a public S3-compatible implementation
   # only for the ephemeral CI fast lane.
   minio:
-    image: docker.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    image: ghcr.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
     command: ["mini", "-dir=/data", "-s3.port=9000"]
     environment:
       AWS_ACCESS_KEY_ID: ${AUTODATA_MINIO_ROOT_USER:?set AUTODATA_MINIO_ROOT_USER for local development}

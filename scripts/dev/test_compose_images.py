@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "infra" / "compose" / "compose.yaml"
 LOCAL_MINIO_IMAGE = "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z"
 CI_SEAWEED_IMAGE = (
-    "docker.io/chrislusf/seaweedfs@sha256:"
+    "ghcr.io/chrislusf/seaweedfs@sha256:"
     "4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d"
 )
 CI_COMPOSE = ROOT / "infra" / "compose" / "compose.ci.yaml"
