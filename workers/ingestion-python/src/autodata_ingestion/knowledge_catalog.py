@@ -129,30 +129,6 @@ def load_vehicle_knowledge_catalog(
             cursor.execute(sql, tuple(params))
             rows = cursor.fetchall()
             catalog = _rows_to_catalog(rows, target)
-            if os.getenv("AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED", "0") == "1":
-                try:
-                    cursor.execute(
-                        """
-                        SELECT da.article_id, da.title, dar.body, dar.steps,
-                               dar.source_watermark, dar.status,
-                               dar.derived_article_revision_id::text,
-                               dar.provenance, dar.images, dar.labor,
-                               dar.normalized_fingerprint, dar.model
-                        FROM derived_articles da
-                        JOIN derived_article_revisions dar
-                          ON dar.derived_article_id = da.derived_article_id
-                         AND dar.revision_number = da.current_revision_number
-                        JOIN vehicles v ON v.vehicle_id = da.vehicle_id
-                        WHERE v.vehicle_key = %s
-                          AND dar.status IN ('ready', 'needs_review')
-                        ORDER BY dar.published_at DESC NULLS LAST, da.article_id
-                        LIMIT %s
-                        """,
-                        (target.vehicle_key, limit),
-                    )
-                    catalog.extend(_derived_rows_to_catalog(cursor.fetchall(), target))
-                except Exception:  # noqa: BLE001 - older databases lack the optional derived cache
-                    pass
     return catalog
 
 
