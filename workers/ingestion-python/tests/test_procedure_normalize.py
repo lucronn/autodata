@@ -8,6 +8,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from autodata_ingestion.procedure_normalize import (
     article_is_content_complete,
+    is_meaningful_procedure_text,
     normalize_procedure_article,
 )
 
@@ -93,3 +94,10 @@ def test_stale_content_complete_label_does_not_make_metadata_only_steps_usable()
         }
 
         assert article_is_content_complete(article) is False
+
+
+def test_accepts_common_conditional_and_purpose_prefixed_repair_instructions():
+    assert is_meaningful_procedure_text("Remove the oil pump assembly.")
+    assert is_meaningful_procedure_text("If equipped, disconnect the sensor connector.")
+    assert is_meaningful_procedure_text("To access the pump, remove the oil pan.")
+    assert is_meaningful_procedure_text("Before installation, clean the mounting surface.")
