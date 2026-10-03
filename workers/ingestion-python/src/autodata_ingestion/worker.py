@@ -32,14 +32,6 @@ def run_once() -> dict[str, object]:
     job_plan_request = os.getenv("AUTODATA_JOB_PLAN_REQUEST_JSON", "").strip()
     if job_plan_request:
         return run_job_plan(job_plan_request)
-    chat_query_request = os.getenv("AUTODATA_CHAT_QUERY_JSON", "").strip()
-    if chat_query_request:
-        return run_chat_query(chat_query_request)
-    chat_selection_request = os.getenv("AUTODATA_CHAT_SELECTION_JSON", "").strip()
-    if chat_selection_request:
-        return run_chat_selection(chat_selection_request)
-    if os.getenv("AUTODATA_CHAT_WORKER_ENABLED") == "1":
-        return run_chat_worker_once()
     vehicle_list = os.getenv("AUTODATA_VEHICLE_LIST_JSON", "").strip()
     if vehicle_list:
         return run_vehicle_selection(vehicle_list)
@@ -1460,12 +1452,9 @@ def main() -> None:
     interval = float(os.getenv("AUTODATA_WORKER_HEARTBEAT_SECONDS", "30"))
     consumer_enabled = os.getenv("AUTODATA_FAST_CONSUMER_ENABLED") == "1"
     knowledge_consumer_enabled = os.getenv("AUTODATA_KNOWLEDGE_CONSUMER_ENABLED") == "1"
-    chat_worker_enabled = os.getenv("AUTODATA_CHAT_WORKER_ENABLED") == "1"
     if os.getenv("AUTODATA_WORKER_ONCE") == "1":
         if knowledge_consumer_enabled:
             result = run_knowledge_fallback_once()
-        elif chat_worker_enabled:
-            result = run_chat_worker_once()
         else:
             result = run_nats_once() if consumer_enabled else run_once()
         print(json.dumps(result, sort_keys=True))
@@ -1473,8 +1462,6 @@ def main() -> None:
     while True:
         if knowledge_consumer_enabled:
             result = run_knowledge_fallback_once()
-        elif chat_worker_enabled:
-            result = run_chat_worker_once()
         else:
             result = run_nats_once() if consumer_enabled else run_once()
         print(json.dumps(result, sort_keys=True), flush=True)

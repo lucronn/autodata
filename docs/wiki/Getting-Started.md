@@ -52,8 +52,8 @@ boundary are documented in the [repository README](https://github.com/lucronn/au
 ## Read the full workflow
 
 The root [README](https://github.com/lucronn/autodata#start-the-local-stack)
-contains the chatbot request example, source-drop normalization commands,
-AutoAPI connector boundary, and complete test commands. The canonical
+contains the Workshop and catalog API entry points, source-drop normalization
+commands, AutoAPI connector boundary, and complete test commands. The canonical
 [infrastructure and developer guide](https://github.com/lucronn/autodata/blob/master/docs/architecture/infrastructure-and-dev.md)
 contains recovery checks, persistence details, and secret-handling rules.
 

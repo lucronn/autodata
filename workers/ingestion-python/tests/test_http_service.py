@@ -6,14 +6,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
-from autodata_ingestion.http_service import _is_chat_html_path, dispatch_request  # noqa: E402
+from autodata_ingestion.http_service import dispatch_request  # noqa: E402
 
 
 class HTTPServiceTests(unittest.TestCase):
-    def test_html_guide_path_is_vehicle_query_scoped(self):
-        self.assertTrue(_is_chat_html_path("/v1/chat/queries/q-guide/guide.html"))
-        self.assertFalse(_is_chat_html_path("/v1/chat/queries/q-guide/guide.pdf"))
-        self.assertFalse(_is_chat_html_path("/v1/chat/queries//guide.html"))
+    def test_dispatch_rejects_retired_chat_paths(self):
+        with self.assertRaisesRegex(ValueError, "unknown ingestion service route"):
+            dispatch_request("/v1/chat/queries", {"message": "legacy request"})
 
     def test_article_intake_dispatches_vehicle_scoped_url_request(self):
         calls = []

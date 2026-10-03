@@ -18,11 +18,19 @@
 
 ## Concrete todo
 
-- [ ] Remove chatbot UI from the dashboard and replace the landing content with links to Swagger and Workshop.
-- [ ] Unregister all `/chat/*` routes and remove now-unused chat handler wiring from API startup.
-- [ ] Disable chat worker subscription, startup, and Compose defaults; ensure API/worker health and non-chat routes remain healthy.
-- [ ] Update API documentation, route tests, dashboard tests, and Compose assertions to prove chat is absent and catalog routes still work.
-- [ ] Run Go/worker/Compose verification and test the rebuilt local API's dashboard, chat-route 404, Swagger, and Workshop entry points.
+- [x] Remove chatbot UI from the dashboard and replace the landing content with links to Swagger and Workshop.
+- [x] Unregister all `/chat/*` routes and remove now-unused chat handler wiring from API startup.
+- [x] Disable chat worker subscription, startup, and Compose defaults; ensure API/worker health and non-chat routes remain healthy.
+- [x] Update API documentation, route tests, dashboard tests, and Compose assertions to prove chat is absent and catalog routes still work.
+- [x] Run Go/worker/Compose verification and test the rebuilt local API's dashboard, chat-route 404, Swagger, and Workshop entry points.
+
+## Verification evidence
+
+- Go API `go test ./...` and `go vet ./...`: passed.
+- Ingestion worker: 516 passed, 3 skipped, 19 subtests passed.
+- Development adapter suite: 56 tests passed.
+- Compose configuration validation and Python `compileall`: passed.
+- Rebuilt local API smoke: `/dashboard/`, `/swagger/`, `/openapi.json`, `/openapi.yaml`, Swagger CSS, `/workshop/`, `/healthz`, and `/readyz` returned HTTP 200; GET and POST `/chat/*` returned HTTP 404; OpenAPI contained no chat routes.
 
 ## Validation boundary
 
