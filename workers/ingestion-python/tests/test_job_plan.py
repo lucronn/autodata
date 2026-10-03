@@ -93,6 +93,33 @@ def test_procedure_only_job_plan_preserves_article_order_without_labor_output():
     assert [step["sequence"] for step in result["procedure"]["steps"]] == [1, 2, 3]
 
 
+def test_procedure_only_plan_drops_metadata_and_marks_article_without_instructions_incomplete():
+    source = {
+        "article_id": "oil-source",
+        "title": "Oil pump removal and installation",
+        "component": "oil_pump",
+        "steps": [
+            {"sequence": 1, "instruction": "7L DIESEL"},
+            {"sequence": 2, "instruction": "Remove the oil pump from the engine."},
+        ],
+        "evidence": [{"evidence_id": "source-evidence"}],
+    }
+
+    result = plan_job("replace oil pump", VEHICLE, catalog=[source], include_labor=False)
+
+    assert [step["instructions"][0] for step in result["procedure"]["steps"]] == [
+        "Remove the oil pump from the engine."
+    ]
+    assert result["status"] == "ready"
+
+    source["steps"] = [{"sequence": 1, "instruction": "7L DIESEL"}]
+    incomplete = plan_job("replace oil pump", VEHICLE, catalog=[source], include_labor=False)
+
+    assert incomplete["status"] == "needs_review"
+    assert incomplete["procedure"]["content_status"] == "partial"
+    assert incomplete["procedure"]["warnings"]
+
+
 def test_job_plan_prefers_component_replacement_over_inspection_or_specification_rows():
     result = plan_job(
         "water pump replacement",

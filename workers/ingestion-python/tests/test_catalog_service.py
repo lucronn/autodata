@@ -25,6 +25,66 @@ from autodata_ingestion.catalog_service import (
 
 
 class CatalogServiceTests(unittest.TestCase):
+    def test_repairs_valid_document_when_legacy_steps_only_contain_metadata(self):
+        from autodata_ingestion.procedure_normalize import normalize_procedure_article
+
+        source_bytes = json.dumps({
+            "year": 2012,
+            "make": "Dodge Or Ram Truck",
+            "model": "Ram 3500 Truck 2wd",
+            "region": "US",
+            "articleDetails": [{
+                "id": "212033",
+                "title": "Engine Oil Pump - Removal",
+                "blocks": [{"kind": "ordered_list", "start": 1, "items": [
+                    "Remove the oil pan bolts.",
+                    "Lower the oil pan from the engine.",
+                    "Remove the oil pump assembly.",
+                ]}],
+            }],
+        }, sort_keys=True, separators=(",", ":")).encode()
+        legacy = normalize_procedure_article({
+            "article_id": "autoapitwo:50589:212033",
+            "title": "Engine Oil Pump - Removal",
+            "component": "oil_pump",
+            "body": "REMOVAL",
+            "steps": [{"action": "REMOVAL", "instructions": []}],
+            "blocks": [{"kind": "text", "text": "REMOVAL"}],
+        })
+        legacy["content_status"] = "content_complete"
+        stored = {
+            "catalog_article_id": "00000000-0000-0000-0000-000000000003",
+            "vehicle_id": "00000000-0000-0000-0000-000000000004",
+            "article": legacy,
+            "object_key": "sources/test/snapshot",
+            "snapshot_sha256": sha256(source_bytes).hexdigest(),
+            "source_uri": "https://source.example/article/212033",
+            "source_version": "autoapitwo-content-detail-v1",
+        }
+        persisted = []
+        with patch("autodata_ingestion.catalog_service._load_stored_article_for_repair", return_value=stored), patch(
+            "autodata_ingestion.catalog_service._read_stored_article_snapshot", return_value=source_bytes
+        ), patch(
+            "autodata_ingestion.procedure_images.localize_procedure_images", side_effect=lambda article, **_kwargs: article
+        ), patch(
+            "autodata_ingestion.catalog_service._persist_stored_article_repair",
+            side_effect=lambda article_id, article, **kwargs: persisted.append(article),
+        ):
+            repaired = _repair_stored_autoapitwo_article(
+                {"vehicle_id": "configuration-2", "source_article_id": "autoapitwo:50589:212033"},
+                {"year": 2012, "model_year": 2012, "make": "Dodge Or Ram Truck", "model": "Ram 3500 Truck 2wd", "region": "US"},
+            )
+
+        self.assertIsNotNone(repaired)
+        article = repaired[0][0]["article"]
+        self.assertEqual([step["action"] for step in article["steps"]], [
+            "Remove the oil pan bolts.",
+            "Lower the oil pan from the engine.",
+            "Remove the oil pump assembly.",
+        ])
+        self.assertEqual(article["content_status"], "content_complete")
+        self.assertEqual(len(persisted), 1)
+
     def test_source_repair_uses_snapshot_order_and_matches_idless_images_by_url_hash(self):
         first_url = "https://source.example/figure-1.png"
         second_url = "https://source.example/figure-2.png"

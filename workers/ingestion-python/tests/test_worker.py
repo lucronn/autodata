@@ -94,6 +94,106 @@ class IngestionWorkerTests(unittest.TestCase):
                 "brake line replacement procedure", complete
             )
         )
+
+    def test_stale_content_complete_metadata_only_cache_requires_hydration(self):
+        from autodata_ingestion.worker import _catalog_needs_procedure_content_hydration
+
+        stale = [{
+            "kind": "article",
+            "article": {
+                "article_id": "autoapitwo:50589:210926",
+                "title": "Generator - Removal (6.7L DSL)",
+                "component": "alternator",
+                "content_status": "content_complete",
+                "body": "7L DIESEL",
+                "steps": [{"action": "7L DIESEL", "instructions": []}],
+                "source_original": {"immutable": True},
+            },
+        }]
+
+        self.assertTrue(
+            _catalog_needs_procedure_content_hydration(
+                "alternator replacement", stale
+            )
+        )
+
+    def test_job_plan_repairs_weak_cached_article_from_original_without_detail_refetch(self):
+        from autodata_ingestion.worker import _load_autodb_two_job_catalog
+
+        vehicle = {
+            "vehicle_id": "canonical-vehicle-1",
+            "year": 2012,
+            "make": "Dodge Or Ram Truck",
+            "model": "Ram 3500 Truck 2wd",
+            "region": "US",
+            "engine_displacement_l": 6.7,
+            "autoapitwo_vehicle_ids": ["50590"],
+        }
+        stale_alternator = {
+            "kind": "article",
+            "article": {
+                "article_id": "autoapitwo:50589:210926",
+                "title": "Generator - Removal (6.7L DSL)",
+                "component": "alternator",
+                "content_status": "content_complete",
+                "body": "7L DIESEL",
+                "steps": [{"action": "7L DIESEL", "instructions": []}],
+            },
+        }
+        usable_oil_pump = {
+            "kind": "article",
+            "article": {
+                "article_id": "autoapitwo:50589:212033",
+                "title": "Engine Oil Pump - Removal",
+                "component": "oil_pump",
+                "content_status": "content_complete",
+                "body": "Remove the oil pan bolts. Remove the oil pump assembly.",
+                "steps": [{"action": "Remove the oil pan bolts."}],
+            },
+        }
+        repaired = {
+            "kind": "article",
+            "vehicle_identity": vehicle,
+            "article": {
+                **stale_alternator["article"],
+                "body": "Disconnect the battery. Remove the generator fasteners. Lift out the generator.",
+                "steps": [
+                    {"action": "Disconnect the battery."},
+                    {"action": "Remove the generator fasteners."},
+                    {"action": "Lift out the generator."},
+                ],
+            },
+        }
+
+        with patch(
+            "autodata_ingestion.catalog_service._repair_stored_autoapitwo_article",
+            return_value=([repaired], {"mode": "stored_source_repair", "targeted_article_fetch_count": 0}),
+        ) as repair, patch(
+            "autodata_ingestion.catalog_service._load_autoapitwo_article_detail",
+            side_effect=AssertionError("usable immutable source must prevent a new provider detail call"),
+        ) as detail:
+            records, source = _load_autodb_two_job_catalog(
+                vehicle,
+                query="alternator and oil pump replacement",
+                existing_catalog=[stale_alternator, usable_oil_pump],
+            )
+
+        repair.assert_called_once()
+        self.assertEqual(
+            repair.call_args.args[0]["source_article_id"],
+            "autoapitwo:50589:210926",
+        )
+        detail.assert_not_called()
+        by_id = {
+            str((record.get("article") or record).get("article_id")): record
+            for record in records
+        }
+        self.assertEqual(
+            by_id["autoapitwo:50589:210926"]["article"]["steps"][0]["action"],
+            "Disconnect the battery.",
+        )
+        self.assertEqual(source["mode"], "stored_source_repair")
+        self.assertEqual(source["targeted_article_fetch_count"], 0)
     def test_autoapi_content_source_defaults_from_vehicle_make(self):
         from autodata_ingestion.worker import _autoapi_content_source
 

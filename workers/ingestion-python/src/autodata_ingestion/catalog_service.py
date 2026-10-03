@@ -546,7 +546,7 @@ def _repair_stored_autoapitwo_article(
 
     from .article_document import validate_ordered_document
     from .procedure_images import localize_procedure_images
-    from .procedure_normalize import normalize_procedure_article
+    from .procedure_normalize import article_is_content_complete, normalize_procedure_article
     from .source_adapters import SourceResource, adapt_source_resource
     from .source_bundle import normalize_source_bundle
 
@@ -559,7 +559,12 @@ def _repair_stored_autoapitwo_article(
         return None
     stored_article = stored.get("article") or {}
     document = stored_article.get("normalized_document")
-    if isinstance(document, Mapping) and document.get("blocks") and not validate_ordered_document(document):
+    if (
+        isinstance(document, Mapping)
+        and document.get("blocks")
+        and not validate_ordered_document(document)
+        and article_is_content_complete(stored_article)
+    ):
         return None
 
     expected_hash = str(stored.get("snapshot_sha256") or "").strip().lower()
@@ -624,6 +629,8 @@ def _repair_stored_autoapitwo_article(
         document = normalized.get("normalized_document")
         if validate_ordered_document(document) or not document.get("blocks"):
             raise ValueError("stored article did not produce a valid ordered document")
+        if not article_is_content_complete(normalized):
+            raise ValueError("stored article source contains no meaningful procedure instructions")
     except Exception:
         try:
             _mark_stored_article_partial(str(stored["catalog_article_id"]))
