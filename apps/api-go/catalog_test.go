@@ -113,6 +113,83 @@ func TestCatalogArticleDetailKeepsSourceOrderAndHidesOriginal(t *testing.T) {
 	if strings.Contains(response.Body.String(), "source_original") || strings.Contains(response.Body.String(), "provider") {
 		t.Fatalf("internal source fields leaked: %s", response.Body.String())
 	}
+	if !body.Article.SourceReview.Available || body.Article.SourceReview.SnapshotID != "source-1" || body.Article.SourceReview.URL != "/v1/catalog/vehicles/vehicle-1/articles/article-1/source" {
+		t.Fatalf("source review = %#v, want safe same-origin metadata", body.Article.SourceReview)
+	}
+}
+
+func TestCatalogSourceRendersStoredHTMLWithoutProviderNavigation(t *testing.T) {
+	store := newMemoryCatalogStore()
+	store.PutConfiguration(CatalogConfiguration{ID: "cfg-1", VehicleID: "vehicle-1", Year: 2024, Make: "Acme", Model: "Roadster", Complete: true})
+	store.PutArticle(CatalogArticle{
+		ID: "article-1", VehicleID: "vehicle-1", Title: "Replace filter", ContentStatus: "content_complete", Complete: true,
+		SourceOriginal: json.RawMessage(`{"_embedded":{"data":{"article":{"content":"<!doctype html><html><body><h2>REMOVAL</h2><p>Remove the cover.</p><table><tr><td><img src=\"/api/v1/content/carids/1/svgs/figure.svg\"></td></tr></table><script>alert(1)</script><a href=\"/api/v1/content/carids/1/components/2\">source link</a></body></html>"}}}}`),
+		Provenance:     []CatalogProvenance{{ID: "source-1", Version: "autoapitwo-content-detail-v1"}},
+		sourceURI:      "https://autoapitwo.vercel.app/api/v1/content/carids/1/articles/2",
+	})
+	server := catalogServer(store)
+	request := httptest.NewRequest(http.MethodGet, "/v1/catalog/vehicles/vehicle-1/articles/article-1/source", nil)
+	request.Header.Set("Authorization", "Bearer local:org-1:dataset_viewer")
+	request.Header.Set("Accept", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var body CatalogSourceContentResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Source.Format != "html" || !strings.Contains(body.Content, "REMOVAL") || !strings.Contains(body.Content, "/v1/catalog/images?src=") {
+		t.Fatalf("source response = %#v, want rendered source and local image proxy", body)
+	}
+	for _, forbidden := range []string{"<script", "autoapitwo.vercel.app/api/v1/content", `href="/api/v1/content`, `href="/v1/catalog/images?src=`} {
+		if strings.Contains(body.Content, forbidden) {
+			t.Fatalf("source content contains forbidden %q: %s", forbidden, body.Content)
+		}
+	}
+
+	htmlRequest := httptest.NewRequest(http.MethodGet, "/v1/catalog/vehicles/vehicle-1/articles/article-1/source?evidence_id=e-1", nil)
+	htmlRequest.Header.Set("Authorization", "Bearer local:org-1:dataset_viewer")
+	htmlRequest.Header.Set("Accept", "text/html")
+	htmlResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(htmlResponse, htmlRequest)
+	if htmlResponse.Code != http.StatusOK || !strings.Contains(htmlResponse.Header().Get("Content-Security-Policy"), "default-src 'none'") || !strings.Contains(htmlResponse.Body.String(), "Evidence e-1") {
+		t.Fatalf("browser source response = status %d headers %#v body %s", htmlResponse.Code, htmlResponse.Header(), htmlResponse.Body.String())
+	}
+}
+
+func TestCatalogSourceAliasResolvesStoredSnapshot(t *testing.T) {
+	store := newMemoryCatalogStore()
+	store.PutArticle(CatalogArticle{
+		ID: "catalog-row-1", VehicleID: "vehicle-1", sourceArticleID: "provider-article-1", ContentStatus: "list_only",
+	})
+	store.PutArticle(CatalogArticle{
+		ID: "provider-article-1", VehicleID: "vehicle-1", sourceArticleID: "provider-article-1", ContentStatus: "content_complete",
+		SourceOriginal: json.RawMessage(`{"title":"stored"}`), Provenance: []CatalogProvenance{{ID: "snapshot-1", Version: "v1"}},
+	})
+	content, err := store.ArticleSource(nil, Principal{}, "vehicle-1", "catalog-row-1")
+	if err != nil || content.SnapshotID != "snapshot-1" || string(content.Original) != `{"title":"stored"}` {
+		t.Fatalf("source = %#v err=%v, want alias to resolve the stored snapshot", content, err)
+	}
+}
+
+func TestCatalogSourceJSONIsEscapedForBrowserRendering(t *testing.T) {
+	store := newMemoryCatalogStore()
+	store.PutArticle(CatalogArticle{
+		ID: "article-json", VehicleID: "vehicle-1", ContentStatus: "content_complete",
+		SourceOriginal: json.RawMessage(`{"message":"<script>alert(1)</script>"}`),
+		Provenance:     []CatalogProvenance{{ID: "snapshot-json", Version: "v1"}},
+	})
+	server := catalogServer(store)
+	request := httptest.NewRequest(http.MethodGet, "/v1/catalog/vehicles/vehicle-1/articles/article-json/source", nil)
+	request.Header.Set("Authorization", "Bearer local:org-1:dataset_viewer")
+	request.Header.Set("Accept", "text/html")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), "<script>alert(1)") || !strings.Contains(response.Body.String(), `\u003cscript\u003e`) {
+		t.Fatalf("escaped source = status %d body %s", response.Code, response.Body.String())
+	}
 }
 
 func TestCatalogArticleAliasUsesCachedDetailWithoutHydratingAgain(t *testing.T) {
