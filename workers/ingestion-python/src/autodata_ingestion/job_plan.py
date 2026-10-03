@@ -99,6 +99,8 @@ def plan_job(
     else:
         labor = None
         procedure = _compose_source_article_steps(selected)
+        if procedure["content_status"] != "complete":
+            review_reasons.append("procedure_content_unavailable")
     images = _collect_images(selected.values())
     status = "ready" if not review_reasons else "needs_review"
     source_ids = [str(article.get("article_id")) for article in selected.values()]
@@ -122,6 +124,8 @@ def _compose_source_article_steps(
 ) -> dict[str, Any]:
     """Build a fallback by concatenating selected source steps in their stored order."""
 
+    from .procedure_normalize import is_meaningful_procedure_text
+
     steps: list[dict[str, Any]] = []
     missing: list[str] = []
     for component, article in selected.items():
@@ -142,7 +146,7 @@ def _compose_source_article_steps(
                 else:
                     value = raw
                 text = re.sub(r"\s+", " ", str(value or "")).strip()
-                if text:
+                if text and is_meaningful_procedure_text(text):
                     texts.append(text)
         if not texts:
             body = article.get("body", article.get("content", article.get("articleBody")))
@@ -150,7 +154,7 @@ def _compose_source_article_steps(
                 texts = [
                     re.sub(r"\s+", " ", paragraph).strip()
                     for paragraph in re.split(r"\n\s*\n|\r?\n", body)
-                    if paragraph.strip()
+                    if paragraph.strip() and is_meaningful_procedure_text(paragraph)
                 ]
         if not texts:
             missing.append(article_id)
@@ -2015,8 +2019,10 @@ def _is_meaningful_source_instruction(
 ) -> bool:
     """Exclude a generated operation label when it is the only source text."""
 
+    from .procedure_normalize import is_meaningful_procedure_text
+
     instruction_key = _procedure_text_key(text)
-    if not instruction_key:
+    if not instruction_key or not is_meaningful_procedure_text(text):
         return False
     labels = {_procedure_text_key(operation_action)}
     for component in components:

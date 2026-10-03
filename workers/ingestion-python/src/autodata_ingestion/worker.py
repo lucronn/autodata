@@ -538,6 +538,7 @@ def _catalog_needs_procedure_content_hydration(
         _article_procedure_instructions,
         _components_from_query,
     )
+    from .procedure_normalize import article_is_content_complete
 
     requested = _components_from_query(query)
     if not requested:
@@ -575,10 +576,7 @@ def _catalog_needs_procedure_content_hydration(
         if not candidates:
             return True
         for article in candidates:
-            if _article_procedure_instructions(article):
-                break
-            body = str(article.get("body") or "").strip()
-            if len(body) >= 80:
+            if article_is_content_complete(article) and _article_procedure_instructions(article):
                 break
         else:
             return True
@@ -1059,12 +1057,18 @@ def _load_autodb_two_job_catalog(
     from .catalog_service import (
         _load_autoapitwo_article_catalog,
         _load_autoapitwo_article_detail,
+        _repair_stored_autoapitwo_article,
     )
     from .job_plan import plan_job
+    from .procedure_normalize import article_is_content_complete
 
     request: dict[str, object] = {
         "vehicle_id": str(vehicle.get("vehicle_id") or ""),
         "autoapitwo_vehicle_ids": vehicle.get("autoapitwo_vehicle_ids", ()),
+        "year": vehicle.get("model_year", vehicle.get("year")),
+        "make": vehicle.get("make", ""),
+        "model": vehicle.get("model", ""),
+        "region": vehicle.get("region", "US"),
     }
     cached_records = _filter_job_plan_catalog_for_vehicle(
         vehicle,
@@ -1126,17 +1130,25 @@ def _load_autodb_two_job_catalog(
         if record is None:
             continue
         article = record.get("article", record)
-        if not isinstance(article, dict) or not (
-            article.get("body") or article.get("steps")
-        ):
-            detail_records, detail_info = _load_autoapitwo_article_detail(
-                {
-                    **request,
-                    "source_article_id": article_id,
-                    "title": article.get("title", ""),
-                },
-                vehicle,
-            )
+        if not isinstance(article, dict) or not article_is_content_complete(article):
+            detail_request = {
+                **request,
+                "source_article_id": article_id,
+                "title": article.get("title", "") if isinstance(article, dict) else "",
+            }
+            repaired = None
+            if isinstance(article, dict) and request.get("vehicle_id"):
+                try:
+                    repaired = _repair_stored_autoapitwo_article(detail_request, vehicle)
+                except Exception as error:  # noqa: BLE001 - fetch selected fresh content after a damaged snapshot
+                    source_info["stored_source_repair_error"] = _safe_job_plan_source_error(error)
+            if repaired is not None:
+                detail_records, detail_info = repaired
+            else:
+                detail_records, detail_info = _load_autoapitwo_article_detail(
+                    detail_request,
+                    vehicle,
+                )
             source_info.update(detail_info)
             detail_counts += int(detail_info.get("targeted_article_fetch_count") or 0)
             for detail_record in detail_records:
