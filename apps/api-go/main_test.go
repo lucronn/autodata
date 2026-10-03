@@ -8,6 +8,28 @@ import (
 	"testing"
 )
 
+func TestChatRoutesAreNotRegistered(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	for _, testCase := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/chat/queries"},
+		{http.MethodGet, "/chat/queries/query-1"},
+		{http.MethodPost, "/chat/queries/query-1/selections"},
+		{http.MethodGet, "/chat/queries/query-1/events"},
+		{http.MethodGet, "/chat/queries/query-1/guide.html"},
+		{http.MethodGet, "/chat/queries/query-1/guide.pdf"},
+	} {
+		request := httptest.NewRequest(testCase.method, testCase.path, nil)
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusNotFound {
+			t.Errorf("%s %s status = %d, want %d", testCase.method, testCase.path, response.Code, http.StatusNotFound)
+		}
+	}
+}
+
 type fakeReadiness struct {
 	ready bool
 }

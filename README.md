@@ -155,82 +155,22 @@ JetStream event. The full developer workflows and recovery checks are in
 [`docs/architecture/infrastructure-and-dev.md`](docs/architecture/infrastructure-and-dev.md).
 
 The API serves its catalog-media contract at `/openapi.json` and
-`/openapi.yaml`. Configure a stable `AUTODATA_IMAGE_URL_KEY` through the local
-environment or secret manager (shared by all API replicas); without a stable
-key, image URLs intentionally fail closed and are omitted from article
-responses. Provider images are fetched only during ingestion and displayed
-from AutoData's local object store.
+`/openapi.yaml`, with same-origin Swagger UI at `/swagger/`. Configure a stable
+`AUTODATA_IMAGE_URL_KEY` through the local environment or secret manager
+(shared by all API replicas); without a stable key, image URLs intentionally
+fail closed and are omitted from article responses. Provider images are fetched
+only during ingestion and displayed from AutoData's local object store.
 
-To verify the chatbot's source-visible cold path and normalized warm path
-without starting the application stack, run the opt-in `verification` profile:
+Open the local [AutoData Workshop](http://127.0.0.1:8080/workshop/) after the
+API container is running. External applications use the provider-neutral
+`/v1/catalog/years` cascade to select a vehicle, browse its article index, and
+request normalized individual article details. `/dashboard/` is a compact
+landing page linking to Workshop, Swagger, and the catalog API.
 
-```sh
-AUTODATA_POSTGRES_PASSWORD=compose-validation-only \
-AUTODATA_MINIO_ROOT_USER=compose-validation-admin \
-AUTODATA_MINIO_ROOT_PASSWORD=compose-validation-only \
-docker compose -f infra/compose/compose.yaml --profile verification \
-  run --rm --no-deps chat-smoke
-```
-
-`chat-smoke` uses only deterministic in-memory fake source, normalizer, price,
-model, and vectorizer adapters. Its container has no network, needs no provider
-credentials, and does not change the default Compose services. A passing JSON
-report proves that the first request exposes unnormalized source data before
-normalized publication, calculates overlap-aware labor, returns stale parts
-prices immediately with `priced_at`, refreshes them asynchronously, links a
-reviewable vector redraw to its source diagram, and makes both same-key and
-semantic warm replays with zero source/model calls.
-
-Open the local chatbot dashboard at [http://127.0.0.1:8080/dashboard/](http://127.0.0.1:8080/dashboard/)
-after the API container is running. It loads normalized vehicle selectors,
-accepts a plain-language question, and submits it to `POST /job-plans`. The
-response includes structured labor, a combined procedure, source status,
-evidence, original image URLs present in the ingested article, and an explicit
-`UNREVIEWED — human review pending` label until a reviewer approves the result.
-On a local cache miss, the ingestion service uses the configured source
-connector and materializes the returned source data for future lookups.
-
-The dashboard uses the local development identity format
-`Bearer local:demo:dataset_viewer` by default. A production identity adapter
-must replace that local header boundary; provider credentials do not belong in
-the browser bundle.
-
-For a direct smoke test of the chatbot endpoint, provide a deterministic
-vehicle-scoped catalog in the request. This exercises combined labor,
-procedure composition, image propagation, and derived-article persistence
-without making provider calls:
-
-```sh
-curl -sS -X POST http://127.0.0.1:8080/job-plans \
-  -H 'Authorization: Bearer local:demo:dataset_viewer' \
-  -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: local-job-plan-001' \
-  -d '{"vehicle":{"year":1999,"make":"Chevrolet","model":"Silverado 1500","region":"US","drivetrain":"2WD","engine_displacement_l":5.3},"query":"replace the alternator and starter"}'
-```
-
-Omit the request's `catalog` after a successful persisted request to exercise
-the warm derived-article path. A cache miss uses the configured Bankone and
-Banktwo connectors only after the indexed local lookup is empty. Configure
-`BANKONE_BASE_URL` and `BANKTWO_BASE_URL` independently; these intended domain
-defaults do not prove live DNS or service availability.
-The fallback first reads the vehicle's article list, selects only the articles
-relevant to the natural-language request, then fetches those articles' detail
-and labor resources. It persists the normalized article body, source images,
-labor operations, and evidence, so the next lookup uses PostgreSQL instead of
-repeating provider calls. The full catalog warm-up remains list-only; it does
-not fetch every individual article detail. Runtime source access uses the
-shared connector contract and does not require a bank service to be built into
-the AutoData stack.
-
-Mercury-2 is an advisory wording layer for selected, evidence-backed source
-steps. It may translate natural-language intent into allowlisted component
-keys and compose a procedure from normalized source articles, but it cannot
-invent vehicle facts, labor values, safety instructions, tools, or evidence.
-Set `INCEPTION_API_KEY` and `INCEPTION_API_BASE_URL` through the local
-environment or a deployment secret interface; the repository and browser
-bundle never contain those values. If the adapter is unavailable, the API
-returns the validated deterministic procedure and marks the LLM layer as
-unavailable rather than fabricating content.
+Configure `BANKONE_BASE_URL` and `BANKTWO_BASE_URL` independently; these
+intended domain defaults do not prove live DNS or service availability.
+Runtime source access uses the shared Source Connector v1 contract and does
+not require a bank service to be built into the AutoData stack.
 
 ## Validate a heterogeneous source drop
 
