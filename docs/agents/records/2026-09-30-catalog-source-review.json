@@ -1,0 +1,20 @@
+{
+  "goal": "Let reviewers open the exact stored provider snapshot alongside a normalized catalog article, with stable source references and no live provider navigation.",
+  "plan_ref": "docs/superpowers/plans/2026-09-30-catalog-source-review.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/114",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/catalog-source-review.md",
+    "docs/architecture/normalized-article-document.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Read the immutable source snapshot and publish safe metadata",
+    "Sanitize stored source HTML/JSON and route images through opaque local paths",
+    "Add the on-demand Workshop comparison panel and block-level source links",
+    "Verify the source comparison against a freshly rebuilt local stack and current browser data"
+  ],
+  "base_sha": "0c65a678037d3c58387b865f4a0b2744141623ea",
+  "status": "synchronized",
+  "updated_at": "2026-09-30T22:20:00Z"
+}
