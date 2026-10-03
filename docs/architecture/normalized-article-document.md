@@ -86,6 +86,26 @@ source snapshot. The normalized document is versioned. A new source snapshot or
 normalization version creates a new revision of the same canonical article
 identity; it does not create an unrelated list-only/detail article pair.
 
+### Repairing legacy empty documents
+
+Some legacy rows may be marked `content_complete` while the ordered document
+has no blocks, even though an immutable `source_original` and compatibility
+`body`/`steps` are present. Such a row is not complete under this contract.
+Selected-article reads must repair it from the stored source snapshot before
+falling back to an upstream provider. The repair reuses the existing provider
+parser, preserves the original snapshot and evidence, and updates the existing
+canonical article row idempotently. It must not fetch source content or invoke
+an LLM.
+
+A repair must retain image blocks at their parsed source positions and reuse
+already-localized assets. When an image asset is missing, the document keeps an
+unavailable image block at that position; it does not move the image to a
+detached gallery or fetch the provider image as a side effect of repair. If the
+stored source cannot produce a valid readable ordered document, the row is
+`content_partial` and the API reports the repair failure. Existing valid,
+non-empty ordered documents remain authoritative and are not rebuilt on normal
+reads. See the [legacy repair plan](../superpowers/plans/2026-10-03-repair-legacy-ordered-article-documents.md).
+
 ## Completeness and errors
 
 `list_only` means the catalog descriptor is available but detail has not been
