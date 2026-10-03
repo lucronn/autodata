@@ -64,3 +64,19 @@ Implementation and acceptance evidence for the current compatibility work are
 tracked in [Issue #115](https://github.com/lucronn/autodata/issues/115),
 [Project #8](https://github.com/users/lucronn/projects/8), and the
 [implementation plan](../superpowers/plans/2026-10-02-source-connector-api-compatibility.md).
+
+## Unknown response-envelope handling
+
+AutoData must distinguish an explicitly empty supported catalog response from an
+unsupported or malformed AutoDBtwo response envelope. Unknown shapes fail as a
+source error and are not cached as empty success. This follow-up is tracked in
+[Issue #115](https://github.com/lucronn/autodata/issues/115) and
+[Project #8](https://github.com/users/lucronn/projects/8), with plan
+`docs/superpowers/plans/2026-10-03-autodb-two-response-shape.md`.
+
+Todo:
+
+- Document and parse supported list response shapes.
+- Fail visibly for unknown/malformed envelopes while preserving explicit empty
+  lists.
+- Test failure and retry behavior, then verify PR #120 and descendants.
