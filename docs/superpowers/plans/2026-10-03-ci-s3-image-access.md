@@ -26,12 +26,14 @@ its old registry-access assumption is no longer valid.
 Keep the default local MinIO service unchanged. Use a CI-only Compose override
 with the public SeaweedFS single-process S3 service, pinned to the verified
 multi-platform image index
-`docker.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d`.
-Its upstream documents the single-process S3 endpoint, environment-based
-credentials and bucket creation. The image was pulled successfully, its S3
-endpoint became healthy, and the existing Python MinIO SDK successfully listed
-the bucket, uploaded, downloaded, and deleted an object using the configured
-credentials. This is a development/CI implementation of the existing S3
+`ghcr.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d`.
+The upstream publishes matching Docker Hub and GHCR image manifests; GHCR is
+selected to avoid unauthenticated Docker Hub pull quotas on shared runners. The
+upstream documents the single-process S3 endpoint, environment-based
+credentials and bucket creation. The image was pulled anonymously by digest,
+its S3 endpoint became healthy, and the existing Python MinIO SDK successfully
+listed the bucket, uploaded, downloaded, and deleted an object using the
+configured credentials. This is a development/CI implementation of the existing S3
 contract; the override uses a distinct temporary volume and does not read,
 replace, or delete the local MinIO volume. The local developer and production
 object-store configurations remain unchanged.

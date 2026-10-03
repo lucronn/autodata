@@ -54,10 +54,11 @@ Services:
 
 Local Compose continues to use its existing MinIO service and persistent volume.
 GitHub Actions adds a CI-only Compose override for a publicly pullable SeaweedFS
-S3 service, pinned by multi-platform manifest digest. The override maps the
-existing CI credentials to SeaweedFS, pre-creates the test bucket, uses a
-separate disposable data volume, and exposes the same internal S3 port expected
-by the application. It never mounts or migrates the local MinIO volume. The
+S3 service from GitHub Container Registry, pinned by multi-platform manifest
+digest. GHCR avoids unauthenticated Docker Hub pull quotas on shared runners.
+The override maps the existing CI credentials to SeaweedFS, pre-creates the
+test bucket, uses a separate disposable data volume, and exposes the same
+internal S3 port expected by the application. It never mounts or migrates the local MinIO volume. The
 reason for the CI-only override and its verification are tracked in Issue #111
 and `docs/superpowers/plans/2026-10-03-ci-s3-image-access.md`.
 
