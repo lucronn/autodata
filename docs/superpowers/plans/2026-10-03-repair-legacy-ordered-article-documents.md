@@ -53,7 +53,7 @@ running the current implementation.
   and return a concrete repair/source failure; do not claim complete content.
 - [x] Add failing-first regressions for the stored-source repair, zero upstream
   calls, order/image preservation, idempotence, and list-row alias resolution.
-- [ ] Run focused Python/Go/Workshop tests and a clean isolated Compose replay
+- [x] Run focused Python/Go/Workshop tests and a clean isolated Compose replay
   against a copied candidate database; verify no article/catalog provider or
   LLM request occurs, each missing image is fetched at most once, the source
   snapshot remains unchanged, inline image blocks survive at their parsed
@@ -131,7 +131,8 @@ original snapshot and source order.
   unavailable-media, and repeated-localization coverage.
 - Full ingestion-worker suite: 530 passed, 3 skipped, 27 subtests passed.
   Focused catalog repair/image/document tests passed; Go tests and `go vet ./...`,
-  Python compileall, Compose image tests, and `git diff --check` passed.
+  14 Workshop client tests, Python compileall, Compose image tests, and
+  `git diff --check` passed.
 - Replayed the copied PostgreSQL/MinIO dataset in the isolated Compose project.
   The API returned canonical article `2991f4ee-3e36-543c-9072-49dbb735eace`
   with 13 ordered blocks and image blocks at source positions 4, 8, and 10. The
@@ -141,5 +142,6 @@ original snapshot and source order.
   row. Candidate outbound networking was disabled, so all three unmaterialized
   images correctly remained explicitly unavailable; successful image fetching
   and local persistence are covered by isolated adapter tests.
-- Workshop browser rendering and the overall candidate-data/release gates remain
-  outstanding; this issue stays In Progress until those gates are satisfied.
+- Workshop client behavior is covered by its 14 passing tests; interactive
+  screenshot inspection was not run. The overall candidate-data/release gates
+  remain outstanding, so this issue stays In Progress until those gates pass.
