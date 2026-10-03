@@ -1,0 +1,22 @@
+{
+  "goal": "Keep AutoData's source adapters and runtime configuration compatible with the current AutoDBone and AutoDBtwo connector APIs.",
+  "plan_ref": "docs/superpowers/plans/2026-10-02-source-connector-api-compatibility.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/115",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/source-connector-api-compatibility.md",
+    "docs/agents/pre-implementation-gate.md",
+    "docs/github/operating-model.md"
+  ],
+  "todo": [
+    "Map AutoData source names to supported AutoDBone neutral aliases and route every existing adapter read through current catalog routes.",
+    "Configure the current AutoDBone service endpoint as the local default and make deployment configuration explicit.",
+    "Fetch AutoDBone signed asset references only through the configured AutoDBone origin and localize accepted image bytes in AutoData storage.",
+    "Preserve AutoDBtwo at the latest standalone connector revision and prove worker catalog, article, and binary resource paths use the HTTP service.",
+    "Add route, alias, unsupported-source, safe-error, and runtime-configuration tests and run relevant worker checks.",
+    "Verify live connector health and catalog behavior where authentication and availability permit, recording external blockers accurately."
+  ],
+  "base_sha": "faac2e53625973549b9e54677ff5240c3f55162e",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T02:19:32Z"
+}
