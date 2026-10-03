@@ -57,13 +57,20 @@ class IngestionSmokeContractTests(unittest.TestCase):
 
         self.assertIn("timeout-minutes: 20", workflow)
         self.assertIn("Run live Compose fast-lane smoke", workflow)
-        self.assertIn("docker compose -f infra/compose/compose.yaml up -d --wait postgres nats minio", workflow)
-        self.assertIn("docker compose -f infra/compose/compose.yaml run migration-runner", workflow)
-        self.assertIn("docker compose -f infra/compose/compose.yaml run --rm ingest-fixture", workflow)
-        self.assertIn("docker compose -f infra/compose/compose.yaml run --rm --no-deps ingestion-smoke", workflow)
+        self.assertIn(
+            "docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml "
+            "up -d --wait postgres nats minio",
+            workflow,
+        )
+        compose = "docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml"
+        self.assertIn(f"{compose} config --quiet", workflow)
+        self.assertIn(f"{compose} run migration-runner", workflow)
+        self.assertIn(f"{compose} run --rm ingest-fixture", workflow)
+        self.assertIn(f"{compose} run --rm --no-deps ingestion-smoke", workflow)
         self.assertIn("trap cleanup EXIT", workflow)
         self.assertIn(
-            "docker compose -f infra/compose/compose.yaml down --volumes --remove-orphans",
+            "docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml "
+            "down --volumes --remove-orphans",
             workflow,
         )
 

@@ -20,11 +20,15 @@ class APIRuntimeContractTests(unittest.TestCase):
 
     def test_protected_workflow_runs_api_runtime_smoke_after_migrations(self):
         workflow = self.read(".github/workflows/autonomous-verification.yml")
-        self.assertIn("docker compose -f infra/compose/compose.yaml up -d --wait api", workflow)
-        self.assertIn("docker compose -f infra/compose/compose.yaml run --rm api-runtime-smoke", workflow)
+        compose = "docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml"
+        self.assertIn(
+            f"{compose} up -d --wait api",
+            workflow,
+        )
+        self.assertIn(f"{compose} run --rm api-runtime-smoke", workflow)
         self.assertLess(
-            workflow.index("docker compose -f infra/compose/compose.yaml run migration-runner"),
-            workflow.index("docker compose -f infra/compose/compose.yaml up -d --wait api"),
+            workflow.index(f"{compose} run migration-runner"),
+            workflow.index(f"{compose} up -d --wait api"),
         )
 
     def test_runtime_smoke_checks_replay_ownership_and_invalid_input(self):
