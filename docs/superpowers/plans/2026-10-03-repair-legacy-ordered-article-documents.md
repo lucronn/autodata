@@ -28,24 +28,26 @@ running the current implementation.
 
 ## Concrete todo
 
-- [ ] Treat an empty or invalid ordered document as repair-needed even when a
+- [x] Treat an empty or invalid ordered document as repair-needed even when a
   legacy row is marked `content_complete`.
-- [ ] Load the existing immutable source snapshot by canonical article and
+- [x] Load the existing immutable source snapshot by canonical article and
   vehicle identity; never call AutoAPI or AutoAPItwo for article/catalog data,
   and never call an LLM for this repair.
-- [ ] Reparse the stored source through the existing provider adapter/parser,
-  retaining block order, evidence references, and image positions.
-- [ ] Reuse already-localized image assets. If a referenced image is not stored,
+- [x] Reparse the stored source through the existing provider adapter/parser
+  and verify the selected article identity; rebuild from the already-normalized
+  ordered steps and attached image references so prior DIY wording, step order,
+  and image positions remain intact.
+- [x] Reuse already-localized image assets. If a referenced image is not stored,
   fetch only that image resource once through the existing allowlisted image
   adapter, persist it locally, and serve it through an AutoData URL. A failed
   media read remains an unavailable block at its source position; never move it
   to a detached gallery.
-- [ ] Update the existing canonical article row idempotently, preserve the
+- [x] Update the existing canonical article row idempotently, preserve the
   source snapshot and byte-identical `source_original`, and avoid duplicate
   list-only/detail rows.
-- [ ] If the stored source cannot be parsed or validated, mark the row partial
+- [x] If the stored source cannot be parsed or validated, mark the row partial
   and return a concrete repair/source failure; do not claim complete content.
-- [ ] Add failing-first regressions for the stored-source repair, zero upstream
+- [x] Add failing-first regressions for the stored-source repair, zero upstream
   calls, order/image preservation, idempotence, and list-row alias resolution.
 - [ ] Run focused Python/Go/Workshop tests and a clean isolated Compose replay
   against a copied candidate database; verify no article/catalog provider or

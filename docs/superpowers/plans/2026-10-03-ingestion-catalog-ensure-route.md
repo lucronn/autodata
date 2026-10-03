@@ -13,15 +13,25 @@ reach the source connectors.
 
 ## Concrete todo
 
-- [ ] Register `POST /v1/catalog/ensure` in the ingestion HTTP route contract.
-- [ ] Dispatch the request to `ensure_catalog_hydration` with validated JSON
+- [x] Register `POST /v1/catalog/ensure` in the ingestion HTTP route contract.
+- [x] Dispatch the request to `ensure_catalog_hydration` with validated JSON
   and its idempotency key, returning the structured hydration result.
-- [ ] Add HTTP dispatcher and handler regressions proving the Go request path
+- [x] Add HTTP dispatcher and handler regressions proving the Go request path
   reaches the catalog service and malformed requests fail safely.
-- [ ] Verify catalog API/worker tests and run a clean isolated Compose catalog
-  hydration smoke through a deterministic fake source.
-- [ ] Record exact test and hosted verification evidence in Issue #113 and
-  Project #8.
+- [x] Verify catalog API/worker tests and run an isolated Compose container
+  route smoke with a deterministic fake hydration service.
+- [x] Record exact local test and smoke evidence in Issue #113 and Project #8.
+- [ ] Pass hosted verification on the current PR stack head.
+
+## Local verification so far
+
+- Worker HTTP route tests pass, including a real local HTTP request to the
+  dispatcher with one hydration-service invocation.
+- Ingestion worker suite: 367 passed, 3 skipped.
+- Go API tests and `go vet ./...` pass.
+- Python compileall and `git diff --check` pass.
+- The container smoke used a fake hydration result and made no provider calls;
+  hosted verification remains outstanding.
 
 ## Boundaries
 

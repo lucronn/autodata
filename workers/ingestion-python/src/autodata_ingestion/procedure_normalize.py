@@ -41,7 +41,14 @@ def normalize_procedure_article(article: Mapping[str, Any]) -> dict[str, Any]:
     out = deepcopy(dict(article))
     _ensure_classification(out)
     if _steps_are_consumer_shaped(out.get("steps")):
-        if not isinstance(out.get("normalized_document"), Mapping):
+        document = out.get("normalized_document")
+        blocks = document.get("blocks") if isinstance(document, Mapping) else None
+        if (
+            not isinstance(document, Mapping)
+            or not isinstance(blocks, list)
+            or not blocks
+            or validate_ordered_document(document)
+        ):
             out["normalized_document"] = document_from_steps(out)
         out.pop("blocks", None)
         out["content_status"] = _content_status_for(out)

@@ -319,6 +319,22 @@ func TestIncompleteCatalogReadHydratesOnceAndCompleteReadSkipsWorker(t *testing.
 	}
 }
 
+func TestSelectedArticleRepairFailureIsReturnedToCaller(t *testing.T) {
+	capture := &fakeIngestionClient{
+		status: http.StatusOK,
+		responseBody: []byte(`{"status":"repair_failed","metadata":{"detail":"The saved article source could not be validated or repaired."}}`),
+	}
+	server := NewServerWithCatalogStore(staticReadiness{}, HeaderAuthenticator{}, newMemoryRequestStore(), newMemoryCatalogStore())
+	server.ingestionClient = capture
+	err := server.ensureCatalogHydrated(
+		httptest.NewRequest(http.MethodGet, "/", nil),
+		map[string]any{"scope": "article", "vehicle_id": "vehicle-1", "source_article_id": "article-1"},
+	)
+	if err == nil || !strings.Contains(err.Error(), "saved article source could not be validated") {
+		t.Fatalf("repair error = %v, want worker repair detail", err)
+	}
+}
+
 func TestArticleIndexReturnsHydratingStateInsteadOfBlockingOnSource(t *testing.T) {
 	store := newMemoryCatalogStore()
 	store.PutConfiguration(CatalogConfiguration{
