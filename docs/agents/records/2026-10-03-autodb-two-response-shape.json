@@ -1,0 +1,18 @@
+{
+  "goal": "Fail visibly rather than treating unknown AutoDBtwo catalog response envelopes as empty data",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-autodb-two-response-shape.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/115",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/source-connector-api-compatibility.md"
+  ],
+  "todo": [
+    "Synchronize the follow-up to Issue #115 and Project #8",
+    "Fail clearly on unsupported or malformed catalog envelopes while preserving explicit empty lists",
+    "Verify malformed payloads are not cached and later valid reads recover",
+    "Pass worker tests and hosted verification on PR #120 and descendants"
+  ],
+  "base_sha": "0ca02a7",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T07:24:00Z"
+}
