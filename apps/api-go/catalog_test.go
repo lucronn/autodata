@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -119,6 +120,7 @@ func TestCatalogArticleDetailKeepsSourceOrderAndHidesOriginal(t *testing.T) {
 }
 
 func TestCatalogSourceRendersStoredHTMLWithoutProviderNavigation(t *testing.T) {
+	t.Setenv("AUTODATA_IMAGE_URL_KEY", testCatalogImageSecret)
 	store := newMemoryCatalogStore()
 	store.PutConfiguration(CatalogConfiguration{ID: "cfg-1", VehicleID: "vehicle-1", Year: 2024, Make: "Acme", Model: "Roadster", Complete: true})
 	store.PutArticle(CatalogArticle{
@@ -140,10 +142,10 @@ func TestCatalogSourceRendersStoredHTMLWithoutProviderNavigation(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Source.Format != "html" || !strings.Contains(body.Content, "REMOVAL") || !strings.Contains(body.Content, "/v1/catalog/images?src=") {
+	if body.Source.Format != "html" || !strings.Contains(body.Content, "REMOVAL") || !strings.Contains(body.Content, "/v1/catalog/images/") {
 		t.Fatalf("source response = %#v, want rendered source and local image proxy", body)
 	}
-	for _, forbidden := range []string{"<script", "autoapitwo.vercel.app/api/v1/content", `href="/api/v1/content`, `href="/v1/catalog/images?src=`} {
+	for _, forbidden := range []string{"<script", "autoapitwo.vercel.app", `?src=`, `href="/api/v1/content`} {
 		if strings.Contains(body.Content, forbidden) {
 			t.Fatalf("source content contains forbidden %q: %s", forbidden, body.Content)
 		}
@@ -156,6 +158,33 @@ func TestCatalogSourceRendersStoredHTMLWithoutProviderNavigation(t *testing.T) {
 	server.Handler().ServeHTTP(htmlResponse, htmlRequest)
 	if htmlResponse.Code != http.StatusOK || !strings.Contains(htmlResponse.Header().Get("Content-Security-Policy"), "default-src 'none'") || !strings.Contains(htmlResponse.Body.String(), "Evidence e-1") {
 		t.Fatalf("browser source response = status %d headers %#v body %s", htmlResponse.Code, htmlResponse.Header(), htmlResponse.Body.String())
+	}
+	if strings.Contains(htmlResponse.Body.String(), "autoapitwo.vercel.app") || strings.Contains(htmlResponse.Body.String(), "?src=") {
+		t.Fatalf("browser source response leaked a provider URL or legacy image route: %s", htmlResponse.Body.String())
+	}
+
+	imagePrefix := `src="/v1/catalog/images/`
+	start := strings.Index(body.Content, imagePrefix)
+	if start < 0 {
+		t.Fatalf("source image did not use an opaque same-origin image path: %s", body.Content)
+	}
+	start += len(`src="`)
+	end := strings.IndexByte(body.Content[start:], '"')
+	if end < 0 {
+		t.Fatalf("source image URL is malformed: %s", body.Content)
+	}
+	imagePath := body.Content[start : start+end]
+	previousClient := catalogImageClient
+	catalogImageClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Host != "autoapitwo.vercel.app" || request.URL.Path != "/api/v1/content/carids/1/svgs/figure.svg" {
+			t.Fatalf("source image upstream request = %s", request.URL)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"image/png"}}, Body: io.NopCloser(strings.NewReader("png-bytes")), Request: request}, nil
+	})}
+	t.Cleanup(func() { catalogImageClient = previousClient })
+	imageResponse := catalogRequest(server, imagePath)
+	if imageResponse.Code != http.StatusOK || imageResponse.Body.String() != "png-bytes" {
+		t.Fatalf("opaque source image request = %d %q", imageResponse.Code, imageResponse.Body.String())
 	}
 }
 
@@ -369,5 +398,11 @@ func TestIncompleteSelectorReadReturnsWhileHydrationRunsInBackground(t *testing.
 	case <-client.finished:
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("background hydration did not finish")
+	}
+}
+
+func TestCatalogSourceImageFailsClosedWithoutImageKey(t *testing.T) {
+	if path, ok := catalogSourceAssetURL("https://autoapitwo.vercel.app/article/1", "/figures/one.png", nil); ok || path != "" {
+		t.Fatalf("source image should fail closed without image key, got %q, %v", path, ok)
 	}
 }

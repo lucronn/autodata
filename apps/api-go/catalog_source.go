@@ -28,7 +28,7 @@ func (s *Server) serveCatalogSource(response http.ResponseWriter, request *http.
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	format, content, err := renderStoredCatalogSource(stored.Original, stored.SourceURI)
+	format, content, err := renderStoredCatalogSource(stored.Original, stored.SourceURI, s.catalogImageKey)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
@@ -86,13 +86,13 @@ func catalogSourceURL(vehicleID, articleID string) string {
 	return "/v1/catalog/vehicles/" + url.PathEscape(vehicleID) + "/articles/" + url.PathEscape(articleID) + "/source"
 }
 
-func renderStoredCatalogSource(raw json.RawMessage, sourceURI string) (string, string, error) {
+func renderStoredCatalogSource(raw json.RawMessage, sourceURI string, imageKey []byte) (string, string, error) {
 	var envelope map[string]any
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return "", "", err
 	}
 	if content := nestedCatalogSourceString(envelope, "_embedded", "data", "article", "content"); strings.TrimSpace(content) != "" {
-		rendered, err := sanitizeCatalogSourceHTML(content, sourceURI)
+		rendered, err := sanitizeCatalogSourceHTML(content, sourceURI, imageKey)
 		if err != nil {
 			return "", "", err
 		}
@@ -141,12 +141,12 @@ func redactCatalogSourceJSON(value any) any {
 	}
 }
 
-func sanitizeCatalogSourceHTML(raw, sourceURI string) (string, error) {
+func sanitizeCatalogSourceHTML(raw, sourceURI string, imageKey []byte) (string, error) {
 	document, err := html.Parse(strings.NewReader(raw))
 	if err != nil {
 		return "", err
 	}
-	sanitizeCatalogSourceNode(document, sourceURI)
+	sanitizeCatalogSourceNode(document, sourceURI, imageKey)
 	var output bytes.Buffer
 	if err := html.Render(&output, document); err != nil {
 		return "", err
@@ -154,7 +154,7 @@ func sanitizeCatalogSourceHTML(raw, sourceURI string) (string, error) {
 	return output.String(), nil
 }
 
-func sanitizeCatalogSourceNode(node *html.Node, sourceURI string) {
+func sanitizeCatalogSourceNode(node *html.Node, sourceURI string, imageKey []byte) {
 	for child := node.FirstChild; child != nil; {
 		next := child.NextSibling
 		if child.Type == html.ElementNode {
@@ -164,9 +164,9 @@ func sanitizeCatalogSourceNode(node *html.Node, sourceURI string) {
 				child = next
 				continue
 			}
-			sanitizeCatalogSourceAttributes(child, sourceURI)
+			sanitizeCatalogSourceAttributes(child, sourceURI, imageKey)
 		}
-		sanitizeCatalogSourceNode(child, sourceURI)
+		sanitizeCatalogSourceNode(child, sourceURI, imageKey)
 		child = next
 	}
 }
@@ -180,7 +180,7 @@ func blockedCatalogSourceTag(tag string) bool {
 	}
 }
 
-func sanitizeCatalogSourceAttributes(node *html.Node, sourceURI string) {
+func sanitizeCatalogSourceAttributes(node *html.Node, sourceURI string, imageKey []byte) {
 	attributes := make([]html.Attribute, 0, len(node.Attr))
 	for _, attribute := range node.Attr {
 		key := strings.ToLower(attribute.Key)
@@ -190,7 +190,7 @@ func sanitizeCatalogSourceAttributes(node *html.Node, sourceURI string) {
 		switch key {
 		case "src":
 			if node.Data == "img" {
-				if resolved, ok := catalogSourceAssetURL(sourceURI, attribute.Val); ok {
+				if resolved, ok := catalogSourceAssetURL(sourceURI, attribute.Val, imageKey); ok {
 					attribute.Val = resolved
 				} else {
 					continue
@@ -213,7 +213,7 @@ func sanitizeCatalogSourceAttributes(node *html.Node, sourceURI string) {
 	node.Attr = attributes
 }
 
-func catalogSourceAssetURL(sourceURI, raw string) (string, bool) {
+func catalogSourceAssetURL(sourceURI, raw string, imageKey []byte) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if strings.HasPrefix(strings.ToLower(raw), "data:image/") {
 		if strings.HasPrefix(strings.ToLower(raw), "data:image/svg") {
@@ -233,7 +233,11 @@ func catalogSourceAssetURL(sourceURI, raw string) (string, bool) {
 	if !isCatalogImageURL(resolved.String()) {
 		return "", false
 	}
-	return catalogImageProxyURL(resolved.String()), true
+	token, err := sealCatalogImageURL(resolved.String(), imageKey)
+	if err != nil {
+		return "", false
+	}
+	return "/v1/catalog/images/" + token, true
 }
 
 func writeCatalogSourceHTML(response http.ResponseWriter, review CatalogSourceReview, content, evidenceID, sourceLocator string) {
