@@ -41,6 +41,14 @@ DEFAULT_RETRY_BACKOFF_SECONDS = 0.25
 DEFAULT_SOURCE_CACHE_MAX_ENTRIES = 512
 DEFAULT_SOURCE_CACHE_TTL_SECONDS = 300.0
 
+_AUTODBONE_CATALOG_ALIASES = {
+    "generalmotors": "gm",
+    "toyota": "toyota",
+    "motor": "catalog",
+    "gm": "gm",
+    "catalog": "catalog",
+}
+
 _SHARED_SOURCE_CACHE: OrderedDict[str, tuple[Any, SourceResource]] = OrderedDict()
 _SHARED_SOURCE_INFLIGHT: dict[str, Condition] = {}
 _SHARED_SOURCE_CACHE_LOCK = RLock()
@@ -138,6 +146,14 @@ class AutoAPIConnector:
             raise ValueError("AutoAPI base URL must not contain credentials")
         if not str(content_source).strip():
             raise ValueError("AutoAPI content source is required")
+        self._content_source = str(content_source).strip()
+        self._catalog_alias = _AUTODBONE_CATALOG_ALIASES.get(
+            self._content_source.casefold()
+        )
+        if self._catalog_alias is None:
+            raise ValueError(
+                f"unsupported AutoDBone catalog source: {self._content_source}"
+            )
         if not str(default_region).strip():
             raise ValueError("AutoAPI default region is required")
         if (
@@ -154,7 +170,6 @@ class AutoAPIConnector:
         ):
             raise ValueError("AutoAPI limits must be positive")
         self._base_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
-        self._content_source = str(content_source).strip()
         self._default_region = str(default_region).strip().upper()
         self.source_version = str(source_version).strip()
         if not self.source_version:
@@ -176,6 +191,9 @@ class AutoAPIConnector:
         self._source_cache: dict[str, tuple[Any, SourceResource]] = {}
         self._required_source_cache: dict[str, dict[str, Any]] = {}
         self._source_cache_lock = RLock()
+
+    def _catalog_prefix(self) -> str:
+        return f"/v1/api/catalog/{self._catalog_alias}"
 
     def fetch_catalog(self) -> AutoAPICatalog:
         """Fetch years, makes, models, vehicle identities, and all articles."""
@@ -237,7 +255,7 @@ class AutoAPIConnector:
                     vehicles_scope = f"vehicles:{year}:{make_route_value}:{batch_index}"
                     try:
                         vehicles_payload, vehicles_resource = self._cached_get_json(
-                            f"/v1/api/source/{quote(self._content_source, safe='')}/vehicles",
+                            f"{self._catalog_prefix()}/vehicles",
                             query={"vehicleIds": ",".join(model_id_batch)},
                         )
                         catalog_resources.append(vehicles_resource)
@@ -349,7 +367,7 @@ class AutoAPIConnector:
         if not model_vehicle_ids:
             return ()
         vehicles_payload, _ = self._cached_get_json(
-            f"/v1/api/source/{quote(self._content_source, safe='')}/vehicles",
+            f"{self._catalog_prefix()}/vehicles",
             query={"vehicleIds": ",".join(model_vehicle_ids)},
         )
         targets = []
@@ -409,7 +427,7 @@ class AutoAPIConnector:
         """Fetch vehicle identity, engine configurations, article index, and details."""
 
         vehicle_id = _required_text(target, "vehicle_id")
-        source_path = f"/v1/api/source/{quote(self._content_source, safe='')}/{quote(vehicle_id, safe='') }"
+        source_path = f"{self._catalog_prefix()}/{quote(vehicle_id, safe='')}"
         resources: list[SourceResource] = []
 
         # The article index is the narrow discovery gate.  Hydrate vehicle
@@ -419,7 +437,7 @@ class AutoAPIConnector:
         resources.append(articles_resource)
         name_payload, name_resource = self._cached_get_json(f"{source_path}/name")
         resources.append(name_resource)
-        motor_payload, motor_resource = self._cached_get_json(f"{source_path}/motorvehicles")
+        motor_payload, motor_resource = self._cached_get_json(f"{source_path}/vehicle-details")
         resources.append(motor_resource)
 
         article_items = _article_items(articles_payload)
@@ -470,9 +488,8 @@ class AutoAPIConnector:
         """Read the vehicle article index without hydrating article bodies."""
 
         vehicle = quote(str(_required_text({"vehicle_id": vehicle_id}, "vehicle_id")), safe="")
-        source = quote(self._content_source, safe="")
         return self._cached_get_json(
-            f"/v1/api/source/{source}/vehicle/{vehicle}/articles/v2"
+            f"{self._catalog_prefix()}/vehicle/{vehicle}/articles/v2"
         )
 
     def fetch_parts_resource(
@@ -481,9 +498,8 @@ class AutoAPIConnector:
         """Read the provider's vehicle-scoped parts/price resource once."""
 
         vehicle = quote(str(_required_text({"vehicle_id": vehicle_id}, "vehicle_id")), safe="")
-        source = quote(self._content_source, safe="")
         return self._cached_get_json(
-            f"/v1/api/source/{source}/vehicle/{vehicle}/parts"
+            f"{self._catalog_prefix()}/vehicle/{vehicle}/parts"
         )
 
     # The plural spelling mirrors the domain interface used by callers while
@@ -505,18 +521,17 @@ class AutoAPIConnector:
         fan out to every article in a vehicle catalog.
         """
 
-        source = quote(self._content_source, safe="")
         vehicle = quote(str(vehicle_id), safe="")
         article = quote(str(article_id), safe="")
         labor_article = quote(str(labor_article_id or article_id), safe="")
         _detail_payload, detail_resource = self._cached_get_json(
-            f"/v1/api/source/{source}/vehicle/{vehicle}/article/{article}"
+            f"{self._catalog_prefix()}/vehicle/{vehicle}/article/{article}"
         )
         if not include_labor:
             return (detail_resource,)
         try:
             _labor_payload, labor_resource = self._cached_get_json(
-                f"/v1/api/source/{source}/vehicle/{vehicle}/labor/{labor_article}"
+                f"{self._catalog_prefix()}/vehicle/{vehicle}/labor/{labor_article}"
             )
         except Exception:
             # Labor is an enrichment resource. Preserve a usable article body

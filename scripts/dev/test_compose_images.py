@@ -35,6 +35,12 @@ class ComposeImageContractTests(unittest.TestCase):
         self.assertIn("!reset []", compose)
         self.assertIn("127.0.0.1:9333/cluster/status", compose)
 
+    def test_chat_runtime_is_not_active_by_default(self):
+        compose = COMPOSE.read_text()
+
+        self.assertIn("AUTODATA_CHAT_WORKER_ENABLED: ${AUTODATA_CHAT_WORKER_ENABLED:-0}", compose)
+        self.assertNotIn("AUTODATA_CHAT_RUNTIME_BACKEND:", compose)
+
 
 if __name__ == "__main__":
     unittest.main()

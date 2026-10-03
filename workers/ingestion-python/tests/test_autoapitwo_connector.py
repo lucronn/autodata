@@ -94,11 +94,44 @@ class ConnectorTests(unittest.TestCase):
             '<ol><li>Remove the seal.</li></ol>'
         )
         parser.flush()
-        self.assertEqual([block["kind"] for block in parser.blocks], ["text", "table", "text"])
+        self.assertEqual([block["kind"] for block in parser.blocks], ["text", "table", "ordered_list"])
         row = parser.blocks[1]["rows"][0]
         self.assertEqual(row[1]["blocks"][0]["text"], "8498 - Receiver")
         self.assertEqual(row[0]["blocks"][0]["kind"], "image")
+        self.assertEqual(parser.blocks[2]["items"], ["Remove the seal."])
         self.assertNotIn("|", str(parser.blocks))
+
+    def test_parser_keeps_list_numbering_when_an_illustration_splits_the_list(self):
+        parser = ArticleParser()
+        parser.feed('<ol><li>Remove the shock absorber.<img src="/shock.png" /></li><li>Remove the U-bolt.</li></ol>')
+        parser.flush()
+
+        self.assertEqual([block["kind"] for block in parser.blocks], ["ordered_list", "image", "ordered_list"])
+        self.assertEqual(parser.blocks[0]["start"], 1)
+        self.assertEqual(parser.blocks[0]["items"], ["Remove the shock absorber."])
+        self.assertEqual(parser.blocks[2]["start"], 2)
+        self.assertEqual(parser.blocks[2]["items"], ["Remove the U-bolt."])
+
+    def test_parser_keeps_numbering_across_source_lists_split_only_by_illustrations(self):
+        parser = ArticleParser()
+        parser.feed(
+            '<ol><li>Remove the axle.</li></ol><img src="/axle.png" />'
+            '<ol><li>Remove the retainer.</li></ol><img src="/retainer.png" />'
+            '<ol><li>Remove the bearing.</li></ol>'
+        )
+        parser.flush()
+
+        self.assertEqual([block["kind"] for block in parser.blocks], [
+            "ordered_list", "image", "ordered_list", "image", "ordered_list",
+        ])
+        self.assertEqual([block["start"] for block in parser.blocks if block["kind"] == "ordered_list"], [1, 2, 3])
+
+    def test_parser_restarts_numbering_after_a_non_list_source_block(self):
+        parser = ArticleParser()
+        parser.feed('<ol><li>Remove the axle.</li></ol><img src="/axle.png" /><p>Installation</p><ol><li>Install the axle.</li></ol>')
+        parser.flush()
+
+        self.assertEqual([block["start"] for block in parser.blocks if block["kind"] == "ordered_list"], [1, 1])
 
     def test_concurrent_reads_coalesce_and_do_not_share_mutable_results(self):
         calls = []

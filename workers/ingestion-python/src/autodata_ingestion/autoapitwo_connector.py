@@ -7,12 +7,15 @@ from copy import deepcopy
 from hashlib import sha256
 from html.parser import HTMLParser
 import json
+import os
 import re
 from threading import RLock
 import time
 from urllib.parse import quote, urljoin, urlsplit, unquote
 from urllib.request import build_opener, HTTPRedirectHandler, Request
 from typing import Any, Mapping
+
+from .autodbtwo_http_client import AutoDBtwoHTTPClient, AutoDBtwoRequestError
 
 
 class SourceUnavailable(RuntimeError):
@@ -33,6 +36,12 @@ class ArticleParser(HTMLParser):
         self._text = []
         self._skip = 0
         self._image_link = 0
+        self._list_kind = None
+        self._list_items = []
+        self._list_item_open = False
+        self._list_item_parts = []
+        self._list_start = 1
+        self._list_continuation_pending = False
         self._table_rows = None
         self._table_row = None
         self._table_cell = None
@@ -47,8 +56,35 @@ class ArticleParser(HTMLParser):
         if value:
             if self._table_cell is not None:
                 self._table_cell.append({"kind": "text", "text": value})
+            elif self._list_kind and self._list_item_open:
+                self._list_item_parts.append(value)
             else:
                 self.blocks.append({"kind": "text", "text": value})
+                self._list_start = 1
+                self._list_continuation_pending = False
+
+    def _finish_list_item(self):
+        if not self._list_kind or not self._list_item_open:
+            return
+        self.flush()
+        value = re.sub(r"\s+", " ", " ".join(self._list_item_parts)).strip()
+        if value:
+            self._list_items.append(value)
+        self._list_item_parts = []
+        self._list_item_open = False
+
+    def _flush_list(self):
+        if not self._list_kind:
+            return
+        self._finish_list_item()
+        if self._list_items:
+            block = {"kind": self._list_kind, "items": list(self._list_items)}
+            if self._list_kind == "ordered_list":
+                block["start"] = self._list_start
+            self.blocks.append(block)
+            self._list_start += len(self._list_items)
+            self._list_continuation_pending = True
+        self._list_items = []
 
     def _flush_cell(self):
         self.flush()
@@ -69,8 +105,13 @@ class ArticleParser(HTMLParser):
             self._skip += 1
         if self._skip:
             return
+        if self._list_continuation_pending and tag not in {"ol", "ul", "li", "a", "img"}:
+            self._list_start = 1
+            self._list_continuation_pending = False
         if tag == "table":
             self.flush()
+            self._list_start = 1
+            self._list_continuation_pending = False
             self._table_rows = []
             self._table_row = None
             self._table_cell = None
@@ -89,6 +130,22 @@ class ArticleParser(HTMLParser):
             if tag == "br":
                 self.flush()
                 return
+        if tag in {"ol", "ul"} and not self._in_table:
+            self.flush()
+            if self._list_kind:
+                self._flush_list()
+            self._list_kind = "ordered_list" if tag == "ol" else "unordered_list"
+            self._list_items = []
+            self._list_item_open = False
+            self._list_item_parts = []
+            if not self._list_continuation_pending:
+                self._list_start = 1
+            self._list_continuation_pending = False
+            return
+        if tag == "li" and self._list_kind and not self._in_table:
+            self._finish_list_item()
+            self._list_item_open = True
+            return
         if tag in {"br", "p", "div", "li", "tr", "h1", "h2", "h3"}:
             self.flush()
         if tag == "a":
@@ -101,6 +158,10 @@ class ArticleParser(HTMLParser):
             image = {"kind": "image", "url": attrs["src"], "alt": attrs.get("alt", ""), "name": attrs.get("img_name", "")}
             if self._table_cell is not None:
                 self._table_cell.append(image)
+            elif self._list_kind:
+                self._finish_list_item()
+                self._flush_list()
+                self.blocks.append(image)
             else:
                 self.blocks.append(image)
 
@@ -126,6 +187,15 @@ class ArticleParser(HTMLParser):
             if tag in {"br", "div", "p"}:
                 self.flush()
                 return
+        if tag == "li" and self._list_kind and not self._in_table:
+            self._finish_list_item()
+            return
+        if tag in {"ol", "ul"} and self._list_kind and not self._in_table:
+            self._flush_list()
+            self._list_kind = None
+            self._list_item_open = False
+            self._list_item_parts = []
+            return
         if tag == "a":
             self._image_link = 0
         if tag in {"p", "div", "li", "tr"}:
@@ -149,6 +219,7 @@ class AutoAPITwoConnector:
         retry_attempts=3,
         retry_delay=0.25,
         retry_after_cap=30.0,
+        connector_url=None,
     ):
         parsed = urlsplit(base_url)
         if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
@@ -156,6 +227,18 @@ class AutoAPITwoConnector:
         if min(timeout, max_bytes, cache_entries, cache_ttl, retry_attempts) <= 0 or retry_delay < 0 or retry_after_cap < 0:
             raise ValueError("source limits must be positive")
         self.base = base_url.rstrip("/")
+        configured_connector_url = connector_url or os.getenv("AUTODATA_AUTODBTWO_BASE_URL")
+        self._remote_client = (
+            AutoDBtwoHTTPClient(
+                configured_connector_url or "http://127.0.0.1:3001",
+                upstream_base_url=self.base,
+                opener=opener,
+                timeout=timeout,
+                max_bytes=max_bytes,
+            )
+            if configured_connector_url or opener is None
+            else None
+        )
         self.opener = opener or build_opener(_NoRedirect()).open
         self.timeout, self.max_bytes = timeout, max_bytes
         self.cache_entries, self.cache_ttl = cache_entries, cache_ttl
@@ -190,6 +273,20 @@ class AutoAPITwoConnector:
             if cached and cached[0] > time.monotonic():
                 self._cache.move_to_end(key)
                 return deepcopy(cached[1])
+            if self._remote_client is not None:
+                try:
+                    response = self._remote_client.read(
+                        url,
+                        binary=binary,
+                        car_id=str(car_id) if car_id is not None else None,
+                    )
+                    result = response.body if binary else json.loads(response.body)
+                except (AutoDBtwoRequestError, json.JSONDecodeError) as error:
+                    raise SourceUnavailable(str(error) or "AutoDBtwo source read failed") from error
+                self._cache[key] = (time.monotonic() + self.cache_ttl, result)
+                while len(self._cache) > self.cache_entries:
+                    self._cache.popitem(last=False)
+                return deepcopy(result)
             for attempt in range(self.retry_attempts):
                 cooldown = self._retry_at - time.monotonic()
                 if cooldown > 0:
@@ -275,6 +372,7 @@ class AutoAPITwoConnector:
                 retry_attempts=self.retry_attempts,
                 retry_delay=self.retry_delay,
                 retry_after_cap=self.retry_after_cap,
+                connector_url=self._remote_client.base_url if self._remote_client else None,
             )
             return term, client.search(car_id, term)
 

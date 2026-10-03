@@ -121,7 +121,10 @@ def _canonical_provider_observation(raw: Mapping[str, Any]) -> CanonicalVehicleO
         if (parsed := _parse_external_name(value)) is not None
     ]
     model_source = " ".join((model_text, description, *aces_vehicle_labels))
-    model = _canonical_model(model_source)
+    # Alias-aware full-source canonicalization finds Silverado/RAV4 from ACES
+    # labels. Prefer the explicit model field when the joined source only
+    # appends year/description noise onto that same base model.
+    model = _prefer_provider_model(model_text, model_source)
     make = _canonical_make(raw.get("make"), model_source)
     drivetrain = _match_drive(model_source)
     body_style = _match_body(model_source)
@@ -185,6 +188,24 @@ def _canonical_make(raw_make: Any, text: str) -> str:
     return value.removesuffix(" Truck").strip() or "Unknown"
 
 
+def _prefer_provider_model(model_text: str, model_source: str) -> str:
+    """Choose the cleanest provider model without losing ACES aliases."""
+
+    from_source = _canonical_model(model_source)
+    if not model_text:
+        return from_source
+    from_field = _canonical_model(model_text)
+    if from_source in {"Silverado 1500", "RAV4"}:
+        return from_source
+    if from_field and (
+        from_source == from_field
+        or from_source.casefold().startswith(from_field.casefold() + " ")
+        or len(from_source.split()) > len(from_field.split()) + 2
+    ):
+        return from_field
+    return from_source or from_field
+
+
 def _canonical_model(text: str) -> str:
     silverado = re.search(r"\bSilverado\s+1500\b", text, re.IGNORECASE)
     if silverado:
@@ -193,7 +214,10 @@ def _canonical_model(text: str) -> str:
     if rav4:
         return "RAV4"
     model = re.split(r"\s+(?:(?:2|4)-Door|2WD|4WD)\b", text, maxsplit=1, flags=re.IGNORECASE)[0]
-    model = re.sub(r"^(?:\d{4}|\d{2})\s+", "", model).strip()
+    # Only strip calendar years. Numeric model names like "2500 Series" must
+    # survive leading-token cleanup.
+    model = re.sub(r"^(?:19\d{2}|20\d{2})\s+", "", model).strip()
+    model = re.sub(r"^(?:\d{2})\s+(?=[A-Za-z])", "", model).strip()
     model = re.sub(r"\b(?:For|A|An|The|Chevy|Chevrolet|Truck)\b", " ", model, flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", model).strip() or "Unknown"
 
