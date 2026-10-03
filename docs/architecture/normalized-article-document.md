@@ -93,19 +93,25 @@ has no blocks, even though an immutable `source_original` and compatibility
 `body`/`steps` are present. Such a row is not complete under this contract.
 Selected-article reads must repair it from the stored source snapshot before
 falling back to an upstream provider. The repair reuses the existing provider
-parser to validate the selected article identity, then rebuilds the document
-from the already-normalized ordered steps and attached image references. This
-preserves prior DIY wording, step order, and image positions while keeping the
-original snapshot and evidence unchanged. The existing canonical article row
-is updated idempotently. Repair must not fetch source content or invoke an LLM,
-and must not call a source catalog or article-detail endpoint.
+parser to validate the selected article identity, then rebuilds structure from
+the reparsed ordered source blocks. Stored normalized wording may be preserved
+only where it can be matched to source text blocks monotonically and without
+ambiguity; non-empty compatibility `body` or `steps` fields do not replace the
+parsed source structure. This preserves step order and inline image positions
+while keeping the original snapshot and evidence unchanged. The existing
+canonical article row is updated idempotently. Repair must not fetch source
+content or invoke an LLM, and must not call a source catalog or article-detail
+endpoint.
 
-A repair must retain image blocks at their parsed source positions and reuse
+A repair must retain image blocks at their parsed source positions, match
+URL-derived stable image IDs to their source image records, and reuse
 already-localized assets. If an image asset is missing, only that image may be
 fetched once through the existing allowlisted image adapter and persisted
-locally; subsequent reads reuse it. If that media read fails, the document
-keeps an unavailable image block at the same source position instead of
-moving it to a detached gallery. If the stored source cannot produce a valid
+locally; subsequent reads reuse it. The ordered image block and public image
+projection must resolve to the same stored asset and same-origin URL. If that
+media read fails, the document keeps an unavailable image block at the same
+source position instead of moving it to a detached gallery. If the stored
+source cannot produce a valid
 readable ordered document, the row is `content_partial` and the API reports the
 repair failure. Existing valid, non-empty ordered documents remain authoritative
 and are not rebuilt on normal reads. See the

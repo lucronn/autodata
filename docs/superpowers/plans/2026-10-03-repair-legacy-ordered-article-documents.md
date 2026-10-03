@@ -34,14 +34,18 @@ running the current implementation.
   vehicle identity; never call AutoAPI or AutoAPItwo for article/catalog data,
   and never call an LLM for this repair.
 - [x] Reparse the stored source through the existing provider adapter/parser
-  and verify the selected article identity; rebuild from the already-normalized
-  ordered steps and attached image references so prior DIY wording, step order,
-  and image positions remain intact.
+  and verify the selected article identity; rebuild from its ordered source
+  blocks, preserving stored normalized wording only where it can be matched to
+  source text blocks monotonically and without ambiguity. Never replace parsed
+  source structure with a flattened `body`/`steps` projection merely because
+  those compatibility fields are non-empty.
 - [x] Reuse already-localized image assets. If a referenced image is not stored,
   fetch only that image resource once through the existing allowlisted image
   adapter, persist it locally, and serve it through an AutoData URL. A failed
   media read remains an unavailable block at its source position; never move it
-  to a detached gallery.
+  to a detached gallery. Match parser-generated image references (including
+  URL-derived stable IDs for sources without image IDs) to localized image
+  records and renderer-facing asset URLs.
 - [x] Update the existing canonical article row idempotently, preserve the
   source snapshot and byte-identical `source_original`, and avoid duplicate
   list-only/detail rows.
@@ -52,7 +56,9 @@ running the current implementation.
 - [ ] Run focused Python/Go/Workshop tests and a clean isolated Compose replay
   against a copied candidate database; verify no article/catalog provider or
   LLM request occurs, each missing image is fetched at most once, the source
-  snapshot remains unchanged, and a repeat repair makes no image request.
+  snapshot remains unchanged, inline image blocks survive at their parsed
+  positions with resolvable or explicit unavailable state, and a repeat repair
+  makes no image request.
 - [x] Update Issue #111, Project #8, and this plan with exact test and runtime
   evidence; rerun the complete hosted stack checks.
 
@@ -95,3 +101,21 @@ running the current implementation.
   readable failure state and no upstream retry.
 - The list-row URL resolves to the repaired complete canonical detail row and
   renders readable ordered content in Workshop.
+
+### Candidate replay follow-up
+
+A copied-database replay on PR #123 at `5784290cca71d78bcbc8f1b95c91ff3ba7cd3f36`
+reproduced a second legacy shape: the selected Ram article had one compatibility
+step and three detached image records, while reparsing its immutable snapshot
+produced thirteen ordered blocks, including three inline image blocks. The API
+returned the repaired text but the ordered document had no image blocks and the
+image projections had no renderable URLs. The parser-generated image IDs were
+URL hashes, which did not match the ID-less localized image records.
+
+This follow-up is part of the existing repair todo, not a separate workflow.
+The repair must use parsed source order as the structural authority, merge
+stored wording only through a tested, monotonic, unambiguous mapping, and
+resolve ID-less image records by their deterministic source-URL identity.
+Tests must cover multiple interleaved figures, duplicate/ambiguous text,
+missing image bytes, image fetch-once behavior, and exact preservation of the
+original snapshot and source order.
