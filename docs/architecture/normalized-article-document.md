@@ -93,9 +93,12 @@ has no blocks, even though an immutable `source_original` and compatibility
 `body`/`steps` are present. Such a row is not complete under this contract.
 Selected-article reads must repair it from the stored source snapshot before
 falling back to an upstream provider. The repair reuses the existing provider
-parser, preserves the original snapshot and evidence, and updates the existing
-canonical article row idempotently. It must not fetch source content or invoke
-an LLM. It must not call a source catalog or article-detail endpoint.
+parser to validate the selected article identity, then rebuilds the document
+from the already-normalized ordered steps and attached image references. This
+preserves prior DIY wording, step order, and image positions while keeping the
+original snapshot and evidence unchanged. The existing canonical article row
+is updated idempotently. Repair must not fetch source content or invoke an LLM,
+and must not call a source catalog or article-detail endpoint.
 
 A repair must retain image blocks at their parsed source positions and reuse
 already-localized assets. If an image asset is missing, only that image may be

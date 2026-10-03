@@ -123,12 +123,25 @@ func (s *Server) ensureCatalogHydrated(request *http.Request, payload map[string
 	if err != nil {
 		return err
 	}
-	status, _, err := s.ingestionClient.Do(request, "/v1/catalog/ensure", body, key)
+	status, responseBody, err := s.ingestionClient.Do(request, "/v1/catalog/ensure", body, key)
 	if err != nil {
 		return err
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
 		return fmt.Errorf("catalog hydration returned status %d", status)
+	}
+	var result struct {
+		Status   string `json:"status"`
+		Metadata struct {
+			Detail string `json:"detail"`
+		} `json:"metadata"`
+	}
+	if json.Unmarshal(responseBody, &result) == nil && result.Status == "repair_failed" {
+		detail := strings.TrimSpace(result.Metadata.Detail)
+		if detail == "" {
+			detail = "the saved article source could not be repaired"
+		}
+		return fmt.Errorf("catalog article repair failed: %s", detail)
 	}
 	return nil
 }

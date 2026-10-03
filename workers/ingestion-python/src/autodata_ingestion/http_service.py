@@ -19,6 +19,7 @@ def dispatch_request(
     article_runner: Callable[[str, str], dict[str, object]] | None = None,
     knowledge_runner: Callable[[str], dict[str, object]] | None = None,
     job_runner: Callable[[str], dict[str, object]] | None = None,
+    catalog_runner: Callable[[str], dict[str, object]] | None = None,
 ) -> dict[str, object]:
     """Dispatch supported internal ingestion requests without exposing internals."""
 
@@ -26,6 +27,17 @@ def dispatch_request(
         raise ValueError("request body must be an object")
     parsed_path = urlsplit(path)
     request_path = parsed_path.path
+    if request_path == "/v1/catalog/ensure":
+        scope = str(payload.get("scope", "")).strip()
+        if scope not in {"years", "makes", "models", "configurations", "articles", "article"}:
+            raise ValueError("catalog hydration scope is invalid")
+        if not str(payload.get("idempotency_key", "")).strip():
+            raise ValueError("catalog hydration idempotency_key is required")
+        if catalog_runner is None:
+            from .catalog_service import ensure_catalog_hydration
+
+            catalog_runner = ensure_catalog_hydration
+        return catalog_runner(json.dumps(dict(payload), ensure_ascii=False, sort_keys=True))
     if request_path == "/v1/article-intakes":
         source_uri = str(payload.get("source_uri", "")).strip()
         vehicle = payload.get("vehicle")
@@ -174,6 +186,8 @@ def _allowed_methods(path: str) -> str:
         "/v1/knowledge-queries",
         "/v1/job-plans",
     }:
+        return "POST, OPTIONS"
+    if path == "/v1/catalog/ensure":
         return "POST, OPTIONS"
     return "GET, POST, OPTIONS"
 

@@ -1,6 +1,7 @@
 import sys
 import unittest
 import json
+from hashlib import sha256
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -17,12 +18,116 @@ from autodata_ingestion.catalog_service import (
     _engine_number,
     _same_autoapitwo_vehicle,
     _source_failure_detail,
+    _repair_stored_autoapitwo_article,
     canonical_catalog_id,
     ensure_catalog_hydration,
 )
 
 
 class CatalogServiceTests(unittest.TestCase):
+    def test_stored_source_repair_preserves_steps_images_and_is_idempotent(self):
+        source_bytes = json.dumps({
+            "year": 2012,
+            "make": "Ram",
+            "model": "Ram 1500 DS",
+            "region": "US",
+            "articleDetails": [{"id": "210189", "title": "Axle Shaft Bearing - Removal", "body": "Original provider text."}],
+        }, sort_keys=True, separators=(",", ":")).encode()
+        legacy_article = {
+            "article_id": "autoapitwo:50582:210189",
+            "title": "Axle Shaft Bearing - Removal",
+            "body": "Disconnect the connector. Remove the bearing.",
+            "content_status": "content_complete",
+            "source_original": {"keep": "byte-identical"},
+            "steps": [
+                {"number": 1, "heading": "Disconnect the connector.", "instructions": ["Unplug the harness."], "images": []},
+                {"number": 2, "heading": "Remove the bearing.", "instructions": ["Remove the two fasteners."], "images": [{"image_id": "figure-1", "url": "https://source.example/figure.png", "alt": "Bearing location"}]},
+            ],
+            "images": [],
+            "normalized_document": {"schema_version": 1, "normalization_version": "ordered-article-v1", "blocks": []},
+        }
+        stored = {
+            "catalog_article_id": "00000000-0000-0000-0000-000000000001",
+            "vehicle_id": "00000000-0000-0000-0000-000000000002",
+            "article": legacy_article,
+            "object_key": "sources/test/snapshot",
+            "snapshot_sha256": sha256(source_bytes).hexdigest(),
+            "source_uri": "https://source.example/article/210189",
+            "source_version": "autoapitwo-content-detail-v1",
+        }
+        vehicle = {"model_year": 2012, "year": 2012, "make": "Ram", "model": "Ram 1500 DS", "region": "US"}
+        persisted = []
+
+        with patch("autodata_ingestion.catalog_service._load_stored_article_for_repair", return_value=stored), patch(
+            "autodata_ingestion.catalog_service._read_stored_article_snapshot", return_value=source_bytes
+        ) as read_snapshot, patch(
+            "autodata_ingestion.procedure_images.localize_procedure_images", side_effect=lambda article, **_kwargs: article
+        ) as localize, patch(
+            "autodata_ingestion.catalog_service._persist_stored_article_repair",
+            side_effect=lambda article_id, article, **kwargs: persisted.append((article_id, article, kwargs)),
+        ):
+            repaired = _repair_stored_autoapitwo_article(
+                {"vehicle_id": "configuration-1", "source_article_id": "autoapitwo:50582:210189"}, vehicle
+            )
+            self.assertIsNotNone(repaired)
+            article = repaired[0][0]["article"]
+            blocks = article["normalized_document"]["blocks"]
+            self.assertEqual([block["source_order"] for block in blocks], list(range(1, len(blocks) + 1)))
+            self.assertEqual(blocks[-1]["image_id"], "figure-1")
+            self.assertEqual(article["steps"], legacy_article["steps"])
+            self.assertEqual(article["source_original"], legacy_article["source_original"])
+            self.assertEqual(repaired[1]["llm_requests"], 0)
+            self.assertEqual(repaired[1]["source_article_requests"], 0)
+            self.assertEqual(localize.call_count, 1)
+            self.assertEqual(read_snapshot.call_count, 1)
+            self.assertEqual(len(persisted), 1)
+
+            repaired_row = {
+                **stored,
+                "article": {
+                    **legacy_article,
+                    "normalized_document": article["normalized_document"],
+                },
+            }
+            with patch(
+                "autodata_ingestion.catalog_service._load_stored_article_for_repair",
+                return_value=repaired_row,
+            ), patch(
+                "autodata_ingestion.catalog_service._read_stored_article_snapshot",
+                side_effect=AssertionError("valid documents need no source reread"),
+            ), patch(
+                "autodata_ingestion.catalog_service._persist_stored_article_repair",
+                side_effect=AssertionError("valid documents need no rewrite"),
+            ):
+                self.assertIsNone(
+                    _repair_stored_autoapitwo_article(
+                        {"vehicle_id": "configuration-1", "source_article_id": "autoapitwo:50582:210189"},
+                        vehicle,
+                    )
+                )
+
+    def test_corrupt_stored_snapshot_marks_existing_article_partial(self):
+        stored = {
+            "catalog_article_id": "00000000-0000-0000-0000-000000000001",
+            "snapshot_sha256": "0" * 64,
+            "article": {"normalized_document": {"blocks": []}},
+        }
+        with patch(
+            "autodata_ingestion.catalog_service._load_stored_article_for_repair",
+            return_value=stored,
+        ), patch(
+            "autodata_ingestion.catalog_service._read_stored_article_snapshot",
+            return_value=b'{"articleDetails":[]}',
+        ), patch(
+            "autodata_ingestion.catalog_service._mark_stored_article_partial"
+        ) as mark_partial:
+            with self.assertRaisesRegex(ValueError, "hash mismatch"):
+                _repair_stored_autoapitwo_article(
+                    {"vehicle_id": "configuration-1", "source_article_id": "autoapitwo:50582:210189"},
+                    {"model_year": 2012, "make": "Ram", "model": "Ram 1500 DS", "region": "US"},
+                )
+        mark_partial.assert_called_once_with("00000000-0000-0000-0000-000000000001")
+
     def test_article_catalog_progress_throttles_durable_writes_by_count_and_time(self):
         request = {"vehicle_id": "vehicle-1", "year": 2012, "make": "Ram", "model": "Ram 1500 Ds"}
         payload = {
@@ -328,6 +433,7 @@ class CatalogServiceTests(unittest.TestCase):
             "engine": "2.4",
         })
         with patch.dict(os.environ, {"AUTODATA_AUTOAPI_BASE_URL": "https://autoapi.test"}), \
+                patch("autodata_ingestion.catalog_service._load_stored_article_for_repair", return_value=None), \
                 patch("autodata_ingestion.worker._load_autoapi_job_catalog", load_catalog), \
                 patch("autodata_ingestion.catalog_service._load_autoapitwo_article_catalog", load_autoapitwo):
             result = ensure_catalog_hydration(request)
@@ -359,6 +465,7 @@ class CatalogServiceTests(unittest.TestCase):
             return ([{"article": {"article_id": "autoapitwo:52597:1535667", "title": "Oil Pump"}}], {"mode": "autoapitwo_article_detail"})
 
         with patch.dict(os.environ, {"AUTODATA_AUTOAPI_BASE_URL": "https://autoapi.test"}), \
+                patch("autodata_ingestion.catalog_service._load_stored_article_for_repair", return_value=None), \
                 patch("autodata_ingestion.worker._load_autoapi_job_catalog", load_catalog), \
                 patch("autodata_ingestion.catalog_service._load_autoapitwo_article_detail", load_detail):
             result = ensure_catalog_hydration(request)
@@ -366,6 +473,97 @@ class CatalogServiceTests(unittest.TestCase):
         self.assertEqual(result["status"], "hydrated")
         self.assertEqual(result["metadata"]["mode"], "autoapitwo_article_detail")
         self.assertEqual(result["rows"][0]["article"]["article_id"], "autoapitwo:52597:1535667")
+
+    def test_selected_article_repairs_from_stored_snapshot_before_source_connectors(self):
+        request = json.dumps({
+            "scope": "article",
+            "idempotency_key": "catalog-http-article-stored-repair-1",
+            "vehicle_id": "configuration-1",
+            "year": 2012,
+            "make": "Ram",
+            "model": "Ram 1500 DS",
+            "region": "US",
+            "source_article_id": "autoapitwo:50582:210189",
+            "title": "Axle Shaft Bearing - Removal",
+            "cache": {
+                "complete": True,
+                "rows": [{
+                    "article": {
+                        "content_status": "content_complete",
+                        "normalized_document": {
+                            "schema_version": 1,
+                            "normalization_version": "ordered-article-v1",
+                            "blocks": [],
+                        },
+                    },
+                }],
+            },
+        })
+        stored_row = {
+            "kind": "article",
+            "article": {
+                "article_id": "autoapitwo:50582:210189",
+                "content_status": "content_complete",
+                "normalized_document": {"blocks": [{"source_order": 1, "type": "step"}]},
+            },
+        }
+        stored_metadata = {
+            "mode": "stored_source_repair",
+            "source_article_requests": 0,
+            "source_catalog_requests": 0,
+            "llm_requests": 0,
+        }
+
+        with patch(
+            "autodata_ingestion.catalog_service._repair_stored_autoapitwo_article",
+            return_value=([stored_row], stored_metadata),
+            create=True,
+        ) as repair, patch(
+            "autodata_ingestion.worker._load_autoapi_job_catalog",
+            side_effect=AssertionError("stored article repair must not call AutoAPI"),
+        ), patch(
+            "autodata_ingestion.catalog_service._load_autoapitwo_article_detail",
+            side_effect=AssertionError("stored article repair must not call AutoAPItwo"),
+        ):
+            result = ensure_catalog_hydration(request)
+
+        self.assertTrue(repair.called)
+        self.assertEqual(result["status"], "hydrated")
+        self.assertTrue(result["complete"])
+        self.assertEqual(result["metadata"]["mode"], "stored_source_repair")
+        self.assertEqual(result["metadata"]["source_article_requests"], 0)
+        self.assertEqual(result["rows"][0]["article"]["article_id"], "autoapitwo:50582:210189")
+
+    def test_invalid_stored_article_source_returns_failure_without_provider_retry(self):
+        request = json.dumps({
+            "scope": "article",
+            "idempotency_key": "catalog-http-article-stored-repair-invalid-1",
+            "vehicle_id": "configuration-1",
+            "year": 2012,
+            "make": "Ram",
+            "model": "Ram 1500 DS",
+            "region": "US",
+            "source_article_id": "autoapitwo:50582:210189",
+            "title": "Axle Shaft Bearing - Removal",
+        })
+
+        with patch(
+            "autodata_ingestion.catalog_service._repair_stored_autoapitwo_article",
+            side_effect=ValueError("stored article snapshot hash mismatch"),
+        ), patch(
+            "autodata_ingestion.worker._load_autoapi_job_catalog",
+            side_effect=AssertionError("invalid stored source must not retry AutoAPI"),
+        ), patch(
+            "autodata_ingestion.catalog_service._load_autoapitwo_article_detail",
+            side_effect=AssertionError("invalid stored source must not retry AutoAPItwo"),
+        ):
+            result = ensure_catalog_hydration(request)
+
+        self.assertEqual(result["status"], "repair_failed")
+        self.assertFalse(result["complete"])
+        self.assertIn("hash check", result["metadata"]["detail"])
+        self.assertEqual(result["metadata"]["source_article_requests"], 0)
+        self.assertEqual(result["metadata"]["source_catalog_requests"], 0)
 
     def test_article_scope_does_not_fall_back_to_full_provider_snapshot(self):
         class SnapshotOnlyProvider:
