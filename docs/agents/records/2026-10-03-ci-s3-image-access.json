@@ -1,0 +1,19 @@
+{
+  "goal": "Restore hosted Compose verification for the open catalog and procedure pull requests by using a publicly pullable S3-compatible local service",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-ci-s3-image-access.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/111",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "todo": [
+    "Synchronize this plan and its concrete work items to Issue #111 and Project #8",
+    "Replace the Compose MinIO process with a pinned SeaweedFS S3-compatible service, preserving configurable credentials, data volume, and host endpoint",
+    "Update health checks, service dependencies, CI startup, developer scripts, regression tests, and canonical docs for the new endpoint and bucket setup",
+    "Run Compose config validation and the complete local S3-backed ingestion smoke using the replacement service",
+    "Push the base-PR update, rerun exact GitHub verification checks for PRs #117-#123, and synchronize evidence to Issue #111 and Project #8"
+  ],
+  "base_sha": "e77d22a73179f5e4b05d1cda3b174fcf86d0d4b3",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T06:24:32Z"
+}
