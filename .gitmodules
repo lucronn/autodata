@@ -1,0 +1,3 @@
+[submodule "services/autodbtwo"]
+	path = services/autodbtwo
+	url = https://github.com/lucronn/autodbtwo.git
