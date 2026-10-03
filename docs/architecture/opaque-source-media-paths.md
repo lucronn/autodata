@@ -49,3 +49,19 @@ source provenance remains intact.
 - Remove the source-bearing query route from the public API contract.
 - Add security-focused tests and verify public/private representation
   boundaries.
+
+## Public image representation follow-up
+
+Public `CatalogImage` responses must never serialize the internal object-storage
+key. Keep it available to server-side storage code only; clients use the
+opaque `url` field. This follow-up is tracked in
+[Issue #116](https://github.com/lucronn/autodata/issues/116) and
+[Project #8](https://github.com/users/lucronn/projects/8), with plan
+`docs/superpowers/plans/2026-10-03-public-image-storage-key.md`.
+
+Todo:
+
+- Exclude `storage_key` from public JSON serialization and OpenAPI.
+- Test article responses with a populated internal key.
+- Pass Go tests/vet, developer contract tests, and hosted verification on PR
+  #118 and descendants.
