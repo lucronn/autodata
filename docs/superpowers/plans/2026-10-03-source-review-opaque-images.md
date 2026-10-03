@@ -14,7 +14,7 @@ Keep stored-source review illustrations working with the opaque media route, wit
 
 ## Evidence and decision
 
-The source HTML sanitizer currently calls `catalogImageProxyURL`, producing `/v1/catalog/images?src=...`. PR #118 rejects that legacy route and only serves authenticated randomized `/v1/catalog/images/{token}` paths. Consequently, source-review images either fail to load or disclose provider URLs in the JSON representation. Pass the configured image key through source sanitization and seal every allowlisted resolved source image URL into an opaque path token. Fail closed when the key is unavailable.
+The source HTML sanitizer currently calls `catalogImageProxyURL`, producing `/v1/catalog/images?src=...`. PR #118 rejects that legacy route and only serves authenticated randomized `/v1/catalog/images/{token}` paths. Consequently, source-review images either fail to load or disclose provider URLs in the JSON representation. Pass the configured image key through source sanitization and seal every allowlisted resolved source image URL into an opaque path token. Reject inline `data:image` URLs and remove image elements that cannot be represented by a valid opaque token. Fail closed when the key is unavailable.
 
 ## todo
 
@@ -25,7 +25,7 @@ The source HTML sanitizer currently calls `catalogImageProxyURL`, producing `/v1
 
 ## Acceptance
 
-- Source-review HTML contains only same-origin opaque image path tokens.
+- Source-review HTML contains only same-origin opaque image path tokens; unsupported and inline data images are removed.
 - Source-review JSON does not contain provider URLs, provider paths, or the legacy `?src=` route.
-- Missing image-key configuration fails closed for source images.
+- Missing image-key configuration fails closed for source images in both JSON and browser source responses.
 - The public opaque image endpoint continues to serve the sealed allowlisted image URL.

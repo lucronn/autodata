@@ -165,10 +165,24 @@ func sanitizeCatalogSourceNode(node *html.Node, sourceURI string, imageKey []byt
 				continue
 			}
 			sanitizeCatalogSourceAttributes(child, sourceURI, imageKey)
+			if tag == "img" && !catalogSourceImageHasSource(child) {
+				node.RemoveChild(child)
+				child = next
+				continue
+			}
 		}
 		sanitizeCatalogSourceNode(child, sourceURI, imageKey)
 		child = next
 	}
+}
+
+func catalogSourceImageHasSource(node *html.Node) bool {
+	for _, attribute := range node.Attr {
+		if strings.EqualFold(attribute.Key, "src") && strings.TrimSpace(attribute.Val) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func blockedCatalogSourceTag(tag string) bool {
@@ -215,11 +229,11 @@ func sanitizeCatalogSourceAttributes(node *html.Node, sourceURI string, imageKey
 
 func catalogSourceAssetURL(sourceURI, raw string, imageKey []byte) (string, bool) {
 	raw = strings.TrimSpace(raw)
+	// Source-review images must all use the same opaque, key-protected route.
+	// Inline data URLs bypass that contract, so omit them rather than exposing
+	// unbounded source payloads or creating a reference that cannot be revoked.
 	if strings.HasPrefix(strings.ToLower(raw), "data:image/") {
-		if strings.HasPrefix(strings.ToLower(raw), "data:image/svg") {
-			return "", false
-		}
-		return raw, true
+		return "", false
 	}
 	base, err := url.Parse(sourceURI)
 	if err != nil || base.Scheme == "" || base.Hostname() == "" {
