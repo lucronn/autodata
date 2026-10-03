@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from hashlib import sha256
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
@@ -48,6 +49,55 @@ def test_localize_procedure_images_stores_local_keys_and_drops_provider_url(monk
     assert "url" not in image or not str(image.get("url") or "").startswith("https://autoapitwo")
     assert localized["steps"][0]["images"][0]["storage_key"] == image["storage_key"]
     assert stored
+
+
+def test_idless_source_images_keep_stable_identity_and_join_ordered_document(monkeypatch):
+    url = "https://source.example/figure.png"
+    expected_id = sha256(url.encode()).hexdigest()
+    monkeypatch.setattr(pi, "_fetch_urls", lambda urls, **_kwargs: {url: b"\x89PNGfixture"})
+    monkeypatch.setattr(pi, "_put_object", lambda *args: None)
+    article = {
+        "images": [{"url": url, "alt": "Bearing"}],
+        "normalized_document": {
+            "schema_version": 1,
+            "normalization_version": "ordered-article-v1",
+            "blocks": [{
+                "block_id": "article:block:0001", "source_order": 1, "type": "image",
+                "image_id": expected_id, "asset_id": expected_id, "alt": "Bearing",
+                "status": "available",
+            }],
+        },
+    }
+
+    localized = pi.localize_procedure_images(article)
+
+    image = localized["images"][0]
+    block = localized["normalized_document"]["blocks"][0]
+    assert image["image_id"] == expected_id
+    assert image["storage_key"]
+    assert block["image_id"] == expected_id
+    assert block["asset_id"] == image["storage_key"]
+    assert block["status"] == "available"
+
+
+def test_idless_image_fetch_failure_keeps_document_reference_and_reason(monkeypatch):
+    url = "https://source.example/unavailable.png"
+    expected_id = sha256(url.encode()).hexdigest()
+    monkeypatch.setattr(pi, "_fetch_urls", lambda *_args, **_kwargs: {})
+    localized = pi.localize_procedure_images({
+        "images": [{"url": url}],
+        "normalized_document": {"blocks": [{
+            "type": "image", "source_order": 1, "image_id": expected_id,
+            "asset_id": expected_id, "status": "available",
+        }]},
+    })
+    image = localized["images"][0]
+    block = localized["normalized_document"]["blocks"][0]
+    assert image["image_id"] == expected_id
+    assert image["fetch_failed"] is True
+    assert block["image_id"] == expected_id
+    assert block["status"] == "unavailable"
+    assert block["unavailable_reason"] == "image could not be materialized"
 
 
 def test_hydrate_article_image_urls_uses_artifact_refs_by_default(monkeypatch):
@@ -128,7 +178,10 @@ def test_failed_fetch_never_serves_unknown_provider_host(monkeypatch):
     monkeypatch.setattr(pi, '_fetch_urls', lambda *args, **kwargs: {})
     image = {'url': 'https://new-provider.example/figure', 'source_url': 'https://new-provider.example/figure'}
     localized = pi.localize_procedure_images({'images': [image]})
-    assert localized['images'][0] == {'fetch_failed': True}
+    assert localized['images'][0] == {
+        'fetch_failed': True,
+        'image_id': sha256(image['url'].encode()).hexdigest(),
+    }
     assert pi.resolve_local_image_url(image) == ''
     assert 'url' not in pi.hydrate_article_image_urls({'images': [image]})['images'][0]
 

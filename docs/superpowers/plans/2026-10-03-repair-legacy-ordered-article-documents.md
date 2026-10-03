@@ -33,13 +33,13 @@ running the current implementation.
 - [x] Load the existing immutable source snapshot by canonical article and
   vehicle identity; never call AutoAPI or AutoAPItwo for article/catalog data,
   and never call an LLM for this repair.
-- [ ] Reparse the stored source through the existing provider adapter/parser
+- [x] Reparse the stored source through the existing provider adapter/parser
   and verify the selected article identity; rebuild from its ordered source
   blocks, preserving stored normalized wording only where it can be matched to
   source text blocks monotonically and without ambiguity. Never replace parsed
   source structure with a flattened `body`/`steps` projection merely because
   those compatibility fields are non-empty.
-- [ ] Reuse already-localized image assets. If a referenced image is not stored,
+- [x] Reuse already-localized image assets. If a referenced image is not stored,
   fetch only that image resource once through the existing allowlisted image
   adapter, persist it locally, and serve it through an AutoData URL. A failed
   media read remains an unavailable block at its source position; never move it
@@ -51,7 +51,7 @@ running the current implementation.
   list-only/detail rows.
 - [x] If the stored source cannot be parsed or validated, mark the row partial
   and return a concrete repair/source failure; do not claim complete content.
-- [ ] Add failing-first regressions for the stored-source repair, zero upstream
+- [x] Add failing-first regressions for the stored-source repair, zero upstream
   calls, order/image preservation, idempotence, and list-row alias resolution.
 - [ ] Run focused Python/Go/Workshop tests and a clean isolated Compose replay
   against a copied candidate database; verify no article/catalog provider or
@@ -119,3 +119,27 @@ resolve ID-less image records by their deterministic source-URL identity.
 Tests must cover multiple interleaved figures, duplicate/ambiguous text,
 missing image bytes, image fetch-once behavior, and exact preservation of the
 original snapshot and source order.
+
+### Follow-up implementation verification
+
+- Added failing-first coverage showing repair used to return one flattened
+  paragraph instead of the parsed source stream. Repair now treats the verified
+  snapshot's parsed blocks as structural authority; stored wording is copied
+  only when block count and ordered block types provide a one-to-one mapping.
+- URL-derived image IDs now match ID-less article image records. Provider block
+  types also retain image associations in compatibility steps. Added success,
+  unavailable-media, and repeated-localization coverage.
+- Full ingestion-worker suite: 530 passed, 3 skipped, 27 subtests passed.
+  Focused catalog repair/image/document tests passed; Go tests and `go vet ./...`,
+  Python compileall, Compose image tests, and `git diff --check` passed.
+- Replayed the copied PostgreSQL/MinIO dataset in the isolated Compose project.
+  The API returned canonical article `2991f4ee-3e36-543c-9072-49dbb735eace`
+  with 13 ordered blocks and image blocks at source positions 4, 8, and 10. The
+  stored snapshot hash remained
+  `517b22b8ff85ab22063c0e60eefd908bc8b9a67c217e1ef8409de9705890681f`. A
+  list-row alias and a repeated read returned the same document and canonical
+  row. Candidate outbound networking was disabled, so all three unmaterialized
+  images correctly remained explicitly unavailable; successful image fetching
+  and local persistence are covered by isolated adapter tests.
+- Workshop browser rendering and the overall candidate-data/release gates remain
+  outstanding; this issue stays In Progress until those gates are satisfied.

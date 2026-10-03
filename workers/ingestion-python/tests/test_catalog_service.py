@@ -25,13 +25,84 @@ from autodata_ingestion.catalog_service import (
 
 
 class CatalogServiceTests(unittest.TestCase):
+    def test_source_repair_uses_snapshot_order_and_matches_idless_images_by_url_hash(self):
+        first_url = "https://source.example/figure-1.png"
+        second_url = "https://source.example/figure-2.png"
+        source_article = {
+            "id": "210265",
+            "title": "Axle Shaft Bearing - Removal",
+            "blocks": [
+                {"type": "heading", "text": "Removal"},
+                {"type": "text", "text": "Disconnect the connector."},
+                {"type": "image", "url": first_url, "alt": "Connector location"},
+                {"type": "text", "text": "Remove the bearing."},
+                {"type": "image", "url": second_url, "alt": "Bearing location"},
+            ],
+            "images": [{"url": first_url}, {"url": second_url}],
+        }
+        source_bytes = json.dumps({
+            "year": 2012, "make": "Ram", "model": "Ram 1500 DS", "region": "US",
+            "articleDetails": [source_article],
+        }, sort_keys=True, separators=(",", ":")).encode()
+        legacy_article = {
+            "article_id": "autoapitwo:50582:210265",
+            "title": source_article["title"],
+            "body": "Disconnect the connector. Remove the bearing.",
+            "content_status": "content_complete",
+            "source_original": {"keep": "byte-identical"},
+            "steps": [{"number": 1, "heading": "Disconnect connector and remove bearing."}],
+            "images": [],
+            "normalized_document": {"schema_version": 1, "normalization_version": "ordered-article-v1", "blocks": []},
+        }
+        stored = {
+            "catalog_article_id": "00000000-0000-0000-0000-000000000001",
+            "vehicle_id": "00000000-0000-0000-0000-000000000002",
+            "article": legacy_article,
+            "object_key": "sources/test/snapshot",
+            "snapshot_sha256": sha256(source_bytes).hexdigest(),
+            "source_uri": "https://source.example/article/210265",
+            "source_version": "autoapitwo-content-detail-v1",
+        }
+        vehicle = {"model_year": 2012, "year": 2012, "make": "Ram", "model": "Ram 1500 DS", "region": "US"}
+        persisted = []
+        with patch("autodata_ingestion.catalog_service._load_stored_article_for_repair", return_value=stored), patch(
+            "autodata_ingestion.catalog_service._read_stored_article_snapshot", return_value=source_bytes
+        ), patch(
+            "autodata_ingestion.procedure_images.localize_procedure_images", side_effect=lambda article, **_kwargs: article
+        ), patch(
+            "autodata_ingestion.catalog_service._persist_stored_article_repair",
+            side_effect=lambda article_id, article, **kwargs: persisted.append(article),
+        ):
+            repaired = _repair_stored_autoapitwo_article(
+                {"vehicle_id": "configuration-1", "source_article_id": "autoapitwo:50582:210265"}, vehicle
+            )
+
+        self.assertIsNotNone(repaired)
+        article = repaired[0][0]["article"]
+        blocks = article["normalized_document"]["blocks"]
+        self.assertEqual([block["type"] for block in blocks], ["heading", "paragraph", "image", "paragraph", "image"])
+        self.assertEqual([block["source_order"] for block in blocks], [1, 2, 3, 4, 5])
+        expected_ids = [sha256(url.encode()).hexdigest() for url in (first_url, second_url)]
+        self.assertEqual([block["image_id"] for block in blocks if block["type"] == "image"], expected_ids)
+        self.assertEqual(article["source_original"], legacy_article["source_original"])
+        self.assertTrue(article["steps"])
+        self.assertEqual(len(persisted), 1)
+
     def test_stored_source_repair_preserves_steps_images_and_is_idempotent(self):
         source_bytes = json.dumps({
             "year": 2012,
             "make": "Ram",
             "model": "Ram 1500 DS",
             "region": "US",
-            "articleDetails": [{"id": "210189", "title": "Axle Shaft Bearing - Removal", "body": "Original provider text."}],
+            "articleDetails": [{
+                "id": "210189", "title": "Axle Shaft Bearing - Removal",
+                "blocks": [
+                    {"type": "text", "text": "Disconnect the connector."},
+                    {"type": "image", "image_id": "figure-1", "url": "https://source.example/figure.png", "alt": "Bearing location"},
+                    {"type": "text", "text": "Remove the bearing."},
+                ],
+                "images": [{"image_id": "figure-1", "url": "https://source.example/figure.png", "alt": "Bearing location"}],
+            }],
         }, sort_keys=True, separators=(",", ":")).encode()
         legacy_article = {
             "article_id": "autoapitwo:50582:210189",
@@ -73,8 +144,9 @@ class CatalogServiceTests(unittest.TestCase):
             article = repaired[0][0]["article"]
             blocks = article["normalized_document"]["blocks"]
             self.assertEqual([block["source_order"] for block in blocks], list(range(1, len(blocks) + 1)))
-            self.assertEqual(blocks[-1]["image_id"], "figure-1")
-            self.assertEqual(article["steps"], legacy_article["steps"])
+            self.assertEqual(blocks[1]["image_id"], "figure-1")
+            self.assertTrue(article["steps"])
+            self.assertEqual(article["steps"][0]["images"][0]["image_id"], "figure-1")
             self.assertEqual(article["source_original"], legacy_article["source_original"])
             self.assertEqual(repaired[1]["llm_requests"], 0)
             self.assertEqual(repaired[1]["source_article_requests"], 0)

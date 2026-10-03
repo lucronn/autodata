@@ -587,12 +587,39 @@ def _repair_stored_autoapitwo_article(
         if not source_articles:
             raise ValueError("stored snapshot does not contain the selected article")
 
-        # Keep already-normalized and rewritten compatibility steps when they
-        # exist; they preserve the source order and DIY wording without an LLM.
-        article = dict(stored.get("article") or {})
-        if not article.get("steps") and not str(article.get("body") or "").strip():
-            article = dict(source_articles[0])
+        # The immutable snapshot is the structural authority: old compatibility
+        # steps may have flattened interleaved text and illustrations. Preserve
+        # stored metadata/originals, but rebuild the ordered document from the
+        # parsed source stream. Reuse rewritten wording only for an exact
+        # block-type/count match, where the mapping is unambiguous.
+        source_article = dict(source_articles[0])
+        article = dict(source_article)
+        for key in ("source_original", "content_status", "catalog_article_id"):
+            if key in stored_article:
+                article[key] = stored_article[key]
         normalized = normalize_procedure_article(article)
+        legacy_article = dict(stored_article)
+        legacy_article["normalized_document"] = {}
+        legacy_normalized = normalize_procedure_article(legacy_article)
+        source_document = normalized.get("normalized_document") or {}
+        legacy_document = legacy_normalized.get("normalized_document") or {}
+        source_blocks = source_document.get("blocks") or []
+        legacy_blocks = legacy_document.get("blocks") or []
+        text_types = {"heading", "paragraph", "step", "callout", "link"}
+        if (
+            len(source_blocks) == len(legacy_blocks)
+            and [block.get("type") for block in source_blocks]
+            == [block.get("type") for block in legacy_blocks]
+            and all(
+                block.get("type") not in text_types
+                or str(old.get("text") or "").strip()
+                for block, old in zip(source_blocks, legacy_blocks)
+            )
+        ):
+            for block, old in zip(source_blocks, legacy_blocks):
+                if block.get("type") in text_types:
+                    block["text"] = old["text"]
+        normalized["normalized_document"] = source_document
         normalized = localize_procedure_images(normalized, vehicle=vehicle)
         document = normalized.get("normalized_document")
         if validate_ordered_document(document) or not document.get("blocks"):

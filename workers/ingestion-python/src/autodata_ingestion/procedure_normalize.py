@@ -112,7 +112,8 @@ def build_consumer_steps(
     # Split before whitespace normalization erases their boundaries.
     expanded_blocks = []
     for block in blocks:
-        if isinstance(block, Mapping) and block.get("kind") != "image":
+        block_type = str(block.get("kind") or block.get("type") or "").casefold() if isinstance(block, Mapping) else ""
+        if isinstance(block, Mapping) and block_type != "image":
             lines = str(block.get("text") or "").splitlines()
             expanded_blocks.extend({**block, "text": line} for line in lines)
         else:
@@ -120,7 +121,7 @@ def build_consumer_steps(
     for block in expanded_blocks:
         if not isinstance(block, Mapping):
             continue
-        if block.get("kind") == "image":
+        if str(block.get("kind") or block.get("type") or "").casefold() == "image":
             image = {
                 key: block[key]
                 for key in ("url", "alt", "image_id", "evidence_ids", "storage_key", "source_article_ids")
