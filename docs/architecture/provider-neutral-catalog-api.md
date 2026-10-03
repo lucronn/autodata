@@ -51,3 +51,17 @@ Todo:
 - Remove internal `storage_key` from the public image schema.
 - Test that the spec contains the registered routes and passes JSON/YAML
   validation.
+
+# Internal hydration boundary
+
+The Go catalog API uses the ingestion HTTP service for cache misses through
+`POST /v1/catalog/ensure`. That internal route dispatches directly to the
+provider-neutral `ensure_catalog_hydration` service and returns its structured
+result. It is separate from public catalog routes: clients continue to call
+AutoData, while the worker resolves and persists missing selector, article
+index, or selected article data using configured source connectors.
+
+The internal handler must validate the JSON object and required idempotency
+key, preserve the existing request/result envelope, and reject unknown routes.
+Contract coverage must exercise the worker HTTP dispatcher, not only the Go
+client request builder, so a client route cannot silently remain unwired.
