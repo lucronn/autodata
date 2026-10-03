@@ -52,16 +52,15 @@ Services:
 
 ### Container image provenance
 
-The Compose MinIO default is the verified stable release
-`quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z`. The Docker Hub
-`minio/minio:latest` reference is not used because the required CI runner can
-no longer pull that namespace. `AUTODATA_MINIO_IMAGE` remains an explicit
-override for a private or provider-managed registry; deployments should use a
-reviewed immutable release tag or digest rather than `latest`. This registry
-choice does not change the S3-compatible API, bucket contract, health check,
-or secret-management boundary. The correction was delivered to protected
-`master` by PR #94 at `defec080f925e97ce3bd9b785579817c572d5807`; required
-verification run `35004339067` passed on the PR head.
+Local Compose and CI provide the S3-compatible object-storage contract through
+a pinned SeaweedFS single-process S3 image. The image is pinned by its
+multi-platform manifest digest so a moving tag cannot silently change the test
+dependency. It reads the configured S3 access and secret keys from the same
+development environment and creates the configured test bucket on startup. The
+service is a local/CI implementation only; deployed environments continue to
+select their object-storage implementation through configuration. The reason
+for this change and its verification are tracked in Issue #111 and
+`docs/superpowers/plans/2026-10-03-ci-s3-image-access.md`.
 
 The Go API uses the same PostgreSQL connection pool for purchaser-facing
 projection reads and dataset-request status when `AUTODATA_PROJECTION_STORE`
