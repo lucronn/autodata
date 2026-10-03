@@ -3,21 +3,38 @@
 from __future__ import annotations
 
 import base64
+import json
 import mimetypes
 import os
+import re
+import urllib.request
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
 from io import BytesIO
-from typing import Any, Mapping
+from typing import Any
+from urllib.error import HTTPError
 from urllib.parse import quote, urlsplit
+from urllib.request import HTTPRedirectHandler, Request
 
 from .object_storage import ensure_versioned_bucket
-
 
 PROVIDER_IMAGE_HOST_MARKERS = (
     "autoapitwo.vercel.app",
     "alldata.com",
+    "autodbone-curtt.vercel.app",
 )
+_ASSET_REFERENCE_PATH = re.compile(
+    r"^/v1/assets/reference/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$"
+)
+_MAX_SOURCE_IMAGE_BYTES = 8 * 1024 * 1024
+
+
+class _RejectRedirect(HTTPRedirectHandler):
+    """Signed source references must not forward credentials to a redirect target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def localize_procedure_images(
@@ -260,6 +277,8 @@ def _fetch_urls(urls: list[str], *, provider_id: str) -> dict[str, bytes]:
 
     def fetch_one(url: str) -> tuple[str, bytes]:
         try:
+            if _is_autodbone_asset_reference(url):
+                return url, _fetch_autodbone_asset(url)
             connector = AutoAPITwoConnector(connector_base_url)
             payload = connector.read(url, car_id=provider_id or None, binary=True)
             return url, bytes(payload or b"")
@@ -274,6 +293,78 @@ def _fetch_urls(urls: list[str], *, provider_id: str) -> dict[str, bytes]:
             if payload:
                 results[url] = payload
     return results
+
+
+def _is_autodbone_asset_reference(url: str) -> bool:
+    configured = os.getenv(
+        "AUTODATA_AUTOAPI_BASE_URL", "https://autodbone-curtt.vercel.app"
+    ).strip()
+    try:
+        source = urlsplit(configured)
+        candidate = urlsplit(url)
+        return (
+            source.scheme == "https"
+            and bool(source.netloc)
+            and not source.username
+            and not source.password
+            and candidate.scheme == source.scheme
+            and candidate.netloc.casefold() == source.netloc.casefold()
+            and not candidate.username
+            and not candidate.password
+            and not candidate.query
+            and not candidate.fragment
+            and bool(_ASSET_REFERENCE_PATH.fullmatch(candidate.path))
+        )
+    except ValueError:
+        return False
+
+
+def _fetch_autodbone_asset(url: str) -> bytes:
+    """Fetch a signed AutoDBone image from its configured origin only."""
+    if not _is_autodbone_asset_reference(url):
+        return b""
+    headers: dict[str, str] = {"Accept": "image/*"}
+    raw_headers = os.getenv("AUTODATA_SOURCE_REQUEST_HEADERS_JSON", "").strip()
+    if raw_headers:
+        try:
+            decoded = json.loads(raw_headers)
+        except (TypeError, ValueError):
+            return b""
+        if not isinstance(decoded, dict) or any(
+            not isinstance(key, str)
+            or not isinstance(value, str)
+            or not key.strip()
+            or any(char in key + value for char in "\r\n")
+            for key, value in decoded.items()
+        ):
+            return b""
+        headers.update(decoded)
+    limit = int(
+        os.getenv("AUTODATA_AUTOAPI_IMAGE_MAX_BYTES", str(_MAX_SOURCE_IMAGE_BYTES))
+    )
+    if limit <= 0 or limit > _MAX_SOURCE_IMAGE_BYTES:
+        limit = _MAX_SOURCE_IMAGE_BYTES
+    request = Request(url, headers=headers)
+    opener = urllib.request.build_opener(_RejectRedirect())
+    try:
+        with opener.open(request, timeout=20) as response:
+            if response.geturl() != url:
+                return b""
+            content_type = (
+                str(response.headers.get("Content-Type", ""))
+                .split(";", 1)[0]
+                .strip()
+                .lower()
+            )
+            if not content_type.startswith("image/"):
+                return b""
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > limit:
+                return b""
+            payload = response.read(limit + 1)
+            return payload if 0 < len(payload) <= limit else b""
+    except (HTTPError, OSError, ValueError, TimeoutError):
+        return b""
 
 
 def _store_image_bytes(source_url: str, payload: bytes) -> dict[str, Any]:
@@ -354,8 +445,14 @@ def _guess_media_type(url: str, payload: bytes) -> str:
 
 
 def _is_provider_host(url: str) -> bool:
-    host = urlsplit(url).netloc.casefold()
-    return any(marker in host for marker in PROVIDER_IMAGE_HOST_MARKERS)
+    try:
+        host = (urlsplit(url).hostname or "").casefold()
+    except ValueError:
+        return False
+    return any(
+        host == marker or host.endswith("." + marker)
+        for marker in PROVIDER_IMAGE_HOST_MARKERS
+    )
 
 
 __all__ = [
