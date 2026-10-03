@@ -52,15 +52,14 @@ Services:
 
 ### Container image provenance
 
-Local Compose and CI provide the S3-compatible object-storage contract through
-a pinned SeaweedFS single-process S3 image. The image is pinned by its
-multi-platform manifest digest so a moving tag cannot silently change the test
-dependency. It reads the configured S3 access and secret keys from the same
-development environment and creates the configured test bucket on startup. The
-service is a local/CI implementation only; deployed environments continue to
-select their object-storage implementation through configuration. The reason
-for this change and its verification are tracked in Issue #111 and
-`docs/superpowers/plans/2026-10-03-ci-s3-image-access.md`.
+Local Compose continues to use its existing MinIO service and persistent volume.
+GitHub Actions adds a CI-only Compose override for a publicly pullable SeaweedFS
+S3 service, pinned by multi-platform manifest digest. The override maps the
+existing CI credentials to SeaweedFS, pre-creates the test bucket, uses a
+separate disposable data volume, and exposes the same internal S3 port expected
+by the application. It never mounts or migrates the local MinIO volume. The
+reason for the CI-only override and its verification are tracked in Issue #111
+and `docs/superpowers/plans/2026-10-03-ci-s3-image-access.md`.
 
 The Go API uses the same PostgreSQL connection pool for purchaser-facing
 projection reads and dataset-request status when `AUTODATA_PROJECTION_STORE`
