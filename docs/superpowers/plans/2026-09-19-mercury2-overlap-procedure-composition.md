@@ -18,12 +18,12 @@
 
 ## Concrete todo
 
-- [ ] Trace public composition request from API through worker, including normalized-article lookup, missing-article ingestion, and all persistence/cache calls.
-- [ ] Remove combined-procedure storage, derived-article caching, and chat-specific dependencies from the active composition path.
-- [ ] Compose from stored individual normalized article records; keep source order and validate source/evidence/image references and vehicle scope.
-- [ ] Ensure a missing individual article follows the existing one-time source ingestion path and is reusable on a subsequent request.
-- [ ] Return deterministic source-backed output on Mercury-2 failure/invalid output; return explicit errors only when required individual source data is unavailable.
-- [ ] Add focused tests for cache-first reuse, one-time missing article ingestion, ephemeral output (no writes/cache), fallback, lineage, image references, and single/multi-article API behavior.
+- [x] Trace public composition request from API through worker, including normalized-article lookup, missing-article ingestion, and all persistence/cache calls.
+- [x] Remove combined-procedure storage, derived-article caching, and chat-specific dependencies from the active composition path.
+- [x] Compose from stored individual normalized article records; keep source order and validate source/evidence/image references and vehicle scope.
+- [x] Ensure a missing individual article follows the existing one-time source ingestion path and is reusable on a subsequent request.
+- [x] Return deterministic source-backed output on Mercury-2 failure/invalid output; return explicit errors only when required individual source data is unavailable.
+- [x] Add focused tests for cache-first reuse, one-time missing article ingestion, ephemeral output (no writes/cache), fallback, lineage, image references, and single/multi-article API behavior.
 - [ ] Run worker/API/contract suites and a local public-API smoke where available; document exact results and any external dependency limitation.
 
 ## Execution tasks
@@ -34,7 +34,7 @@ Inspect the job-plan handler, catalog/article service, worker dispatch, Mercury 
 
 ### Task 2 — Keep composition ephemeral and source-first
 
-Remove active-path reads/writes for cached or persisted derived procedures. Resolve selected normalized articles from the database; route only missing individual article detail through existing ingestion and commit that individual record before composition. Do not change catalog-list hydration into article-detail fan-out.
+Removed active job-plan shortcuts to cached combined records, the composed-result persistence call, and the knowledge-catalog read that mixed derived records into the individual article catalog. The job-plan response no longer carries a derived-article identity. Individual source ingestion remains the fallback for missing article content; catalog-list hydration remains unchanged.
 
 ### Task 3 — Compose and fail safely
 
@@ -42,7 +42,7 @@ Pass only same-vehicle normalized source articles to Mercury-2. Validate output 
 
 ### Task 4 — Verify public behavior
 
-Run focused tests, all ingestion worker tests, relevant Go API/contract tests, and a local API smoke if the configured stack is available. Verify that a repeated request makes no upstream detail call for already ingested records and that neither request creates a composed article/cache entry. Record test counts and blockers; update Issue #110 and Project #8 with evidence.
+Focused worker/job-plan/catalog tests passed (75 passed). Full ingestion-worker suite passed (515 passed, 3 skipped, 19 subtests). `git diff --check` and Python `compileall` passed. Ruff could not run because the `ruff` executable is not installed. The available Compose containers predate this implementation and were not rebuilt, so exact public-API and repeat-request smoke verification remain pending.
 
 ## Exclusions
 
