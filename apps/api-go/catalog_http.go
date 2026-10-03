@@ -190,6 +190,9 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 			})
 		}
 	}
+	for index := range items {
+		rewriteCatalogImageURLs(&items[index], s.catalogImageKey)
+	}
 	writeJSON(response, http.StatusOK, CatalogArticlesResponse{
 		Version: "v1", Items: items, Complete: len(items) > 0 && !hydrating,
 		Hydrating: hydrating, Progress: progress,
@@ -237,32 +240,56 @@ func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.R
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	rewriteCatalogImageURLs(&article)
+	rewriteCatalogImageURLs(&article, s.catalogImageKey)
 	writeJSON(response, http.StatusOK, CatalogArticleResponse{Version: "v1", Article: article})
 }
 
 const catalogImageMaxBytes = 12 << 20
 
-var catalogImageClient = &http.Client{Timeout: 20 * time.Second}
+var catalogImageClient = &http.Client{
+	Timeout:       20 * time.Second,
+	CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+}
 
 // rewriteCatalogImageURLs keeps provider URLs out of the public article
 // payload. The browser loads the same-origin proxy, which also means the
 // article reader can keep provider credentials and redirects out of markup.
-func rewriteCatalogImageURLs(article *CatalogArticle) {
+func rewriteCatalogImageURLs(article *CatalogArticle, key []byte) {
 	for index := range article.Images {
 		image := &article.Images[index]
-		if isCatalogImageURL(image.URL) {
-			image.URL = catalogImageProxyURL(image.URL)
+		source, ok := catalogImageSourceURL(image.URL)
+		if !ok || len(key) != 32 {
+			image.URL = ""
+			continue
 		}
+		token, err := sealCatalogImageURL(source, key)
+		if err != nil {
+			image.URL = ""
+			continue
+		}
+		image.URL = "/v1/catalog/images/" + token
 	}
 }
 
 func isCatalogImageURL(value string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(value))
-	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Port() != "" || parsed.Fragment != "" {
 		return false
 	}
-	return strings.EqualFold(parsed.Hostname(), "autoapitwo.vercel.app")
+	return strings.EqualFold(parsed.Host, "autoapitwo.vercel.app")
+}
+
+func catalogImageSourceURL(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if isCatalogImageURL(value) {
+		return value, true
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || parsed.Path != "/v1/catalog/images" {
+		return "", false
+	}
+	source := strings.TrimSpace(parsed.Query().Get("src"))
+	return source, isCatalogImageURL(source)
 }
 
 func catalogImageProxyURL(source string) string {
@@ -272,10 +299,14 @@ func catalogImageProxyURL(source string) string {
 // serveCatalogImage is deliberately limited to the provider host that the
 // ingestion pipeline records today. It is an image-only, read-only proxy, so
 // arbitrary URL fetching cannot be turned into an SSRF endpoint.
-func serveCatalogImage(response http.ResponseWriter, request *http.Request) {
-	source := strings.TrimSpace(request.URL.Query().Get("src"))
-	if !isCatalogImageURL(source) {
-		http.Error(response, "unsupported catalog image", http.StatusBadRequest)
+func serveCatalogImage(response http.ResponseWriter, request *http.Request, key []byte) {
+	if len(key) != 32 {
+		http.Error(response, "catalog image references are unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	source, err := openCatalogImageURL(request.PathValue("token"), key)
+	if err != nil || !isCatalogImageURL(source) {
+		http.Error(response, "catalog image not found", http.StatusNotFound)
 		return
 	}
 	upstreamRequest, err := http.NewRequestWithContext(request.Context(), http.MethodGet, source, nil)
@@ -305,7 +336,8 @@ func serveCatalogImage(response http.ResponseWriter, request *http.Request) {
 		return
 	}
 	response.Header().Set("Content-Type", contentType)
-	response.Header().Set("Cache-Control", "public, max-age=86400")
+	response.Header().Set("Cache-Control", "private, max-age=300")
+	response.Header().Set("Referrer-Policy", "no-referrer")
 	response.Header().Set("X-Content-Type-Options", "nosniff")
 	response.WriteHeader(http.StatusOK)
 	_, _ = response.Write(body)

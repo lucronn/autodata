@@ -71,6 +71,7 @@ type Server struct {
 	chatClient                 ChatClient
 	vehicleIdentity            VehicleIdentityStore
 	catalog                    CatalogStore
+	catalogImageKey            []byte
 	metrics                    *apiMetrics
 }
 
@@ -99,6 +100,7 @@ func NewServerWithDependenciesAndPublisher(readiness ReadinessChecker, auth Auth
 		sourceReviews:              newMemorySourceReviewStore(),
 		vehicleIdentity:            newMemoryVehicleIdentityStore(),
 		catalog:                    newMemoryCatalogStore(),
+		catalogImageKey:            configuredCatalogImageKey(),
 		metrics:                    new(apiMetrics),
 	}
 }
@@ -178,7 +180,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models/{model}/configurations", s.requireRole("dataset_viewer", s.listCatalogConfigurations))
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles", s.requireRole("dataset_viewer", s.listCatalogArticles))
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.requireRole("dataset_viewer", s.getCatalogArticle))
-	mux.HandleFunc("GET /v1/catalog/images", serveCatalogImage)
+	mux.HandleFunc("GET /v1/catalog/images/{token}", func(response http.ResponseWriter, request *http.Request) {
+		serveCatalogImage(response, request, s.catalogImageKey)
+	})
+	mux.HandleFunc("GET /v1/catalog/images", func(response http.ResponseWriter, _ *http.Request) {
+		http.Error(response, "opaque image reference required", http.StatusBadRequest)
+	})
 	mux.Handle("POST /dataset-requests", s.requireRole("dataset_viewer", s.createDatasetRequest))
 	mux.Handle("POST /vehicle-identities/resolve", s.requireRole("dataset_viewer", s.resolveVehicleIdentity))
 	mux.Handle("GET /vehicle-identities/selectors", s.requireRole("dataset_viewer", s.listVehicleIdentitySelectors))

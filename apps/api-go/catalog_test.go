@@ -92,6 +92,7 @@ func TestCatalogMakesDeduplicateProviderLabelVariants(t *testing.T) {
 }
 
 func TestCatalogArticleDetailKeepsSourceOrderAndHidesOriginal(t *testing.T) {
+	t.Setenv("AUTODATA_IMAGE_URL_KEY", testCatalogImageSecret)
 	response := catalogRequest(catalogServer(catalogFixtureStore()), "/v1/catalog/vehicles/vehicle-1/articles/article-1")
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
@@ -106,7 +107,7 @@ func TestCatalogArticleDetailKeepsSourceOrderAndHidesOriginal(t *testing.T) {
 	if len(body.Article.Images) != 2 || body.Article.Images[0].Alt != "Filter location" {
 		t.Fatalf("images = %#v, want the article illustrations", body.Article.Images)
 	}
-	if !strings.HasPrefix(body.Article.Images[1].URL, "/v1/catalog/images?src=") || strings.Contains(body.Article.Images[1].URL, "autoapitwo.vercel.app/diagram.png") {
+	if !strings.HasPrefix(body.Article.Images[1].URL, "/v1/catalog/images/") || strings.Contains(body.Article.Images[1].URL, "autoapitwo.vercel.app/diagram.png") {
 		t.Fatalf("provider image leaked or was not proxied: %#v", body.Article.Images[1])
 	}
 	if strings.Contains(response.Body.String(), "source_original") || strings.Contains(response.Body.String(), "provider") {
