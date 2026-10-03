@@ -2,7 +2,7 @@
 
 **Goal:** Return a unified, vehicle-matched procedure for a multi-component request using already normalized individual articles as the source of truth.
 
-**Tracked delivery:** [Issue #110](https://github.com/lucronn/autodata/issues/110), [AutoData Portfolio Project](https://github.com/users/lucronn/projects/8), the [composition plan](../superpowers/plans/2026-09-19-mercury2-overlap-procedure-composition.md), and the [provider-qualified hydration follow-up](../superpowers/plans/2026-10-03-provider-qualified-composition-hydration.md).
+**Tracked delivery:** [Issue #110](https://github.com/lucronn/autodata/issues/110), [AutoData Portfolio Project](https://github.com/users/lucronn/projects/8), the [composition plan](../superpowers/plans/2026-09-19-mercury2-overlap-procedure-composition.md), the [provider-qualified hydration follow-up](../superpowers/plans/2026-10-03-provider-qualified-composition-hydration.md), and the [procedure-content quality gate](../superpowers/plans/2026-10-03-procedure-content-quality-gate.md).
 
 ## Data lifecycle
 
@@ -22,6 +22,18 @@ valid selected article from the other source from being used. Never infer a
 provider identity from an unqualified numeric ID.
 
 Mercury-2 receives the selected normalized individual articles and returns one unified procedure in the synchronous API response. The composed result is ephemeral: do not insert it into the article/catalog tables, derived-revision storage, review queue, reusable cache, or source-ingestion records. Labor is disabled for this work; it must not gate retrieval or composition, and composition must not fabricate labor values.
+
+Cache readiness is content-based, not status-label-based. Each selected
+individual source article must provide meaningful source-authored procedure
+instructions for its requested component. Headings, section labels, metadata,
+and empty steps do not make an article complete. Apply this validation when
+ingesting, persisting, reading cached rows, composing, and projecting article
+responses. Repair weak legacy rows from their immutable original source when
+possible, otherwise fetch only that selected article; if usable content remains
+unavailable, return an explicit incomplete/source failure rather than a ready
+procedure. Preserve the source original and lineage, localize images, and expose
+images through opaque same-origin routes. The combined procedure stays
+ephemeral.
 
 ## Composition contract
 
