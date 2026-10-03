@@ -1,0 +1,18 @@
+{
+  "goal": "Make the source-review API image compile from a clean Docker context by packaging all files embedded by the Go binary",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-source-review-container-assets.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/114",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/catalog-source-review.md"
+  ],
+  "todo": [
+    "Synchronize this plan and work item to Issue #114 and Project #8",
+    "Copy apps/api-go/workshop into the API Docker build stage alongside dashboard",
+    "Prove a clean no-cache API image build and pass Go tests and vet",
+    "Pass the hosted Compose fast lane on PR #119 and every stacked descendant"
+  ],
+  "base_sha": "6dd63948cae8cb8a9fd88946482121889589547b",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T06:38:24Z"
+}
