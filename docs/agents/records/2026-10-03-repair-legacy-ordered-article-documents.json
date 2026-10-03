@@ -1,0 +1,21 @@
+{
+  "goal": "Repair legacy complete catalog articles with empty ordered documents from their immutable stored source without upstream or LLM calls",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-repair-legacy-ordered-article-documents.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/111",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/normalized-article-document.md",
+    "docs/agents/pre-implementation-gate.md",
+    "docs/github/operating-model.md"
+  ],
+  "todo": [
+    "Detect and repair empty or invalid normalized document blocks on selected legacy article reads",
+    "Reparse the immutable stored source snapshot without provider or LLM calls",
+    "Preserve order, evidence, image positions, and existing localized media while updating the canonical row idempotently",
+    "Fail as content_partial when stored source cannot be reconstructed and add source-backed regression coverage",
+    "Verify isolated candidate database replay, list-row alias resolution, and no duplicate rows"
+  ],
+  "base_sha": "bbd7294a88c32461b439e9c9a214b906dcc59dcd",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T07:35:40Z"
+}
