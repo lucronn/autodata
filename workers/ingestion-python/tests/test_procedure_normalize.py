@@ -78,7 +78,12 @@ def test_expands_provider_ordered_list_items_into_separate_ordered_procedure_ste
 
 
 def test_stale_content_complete_label_does_not_make_metadata_only_steps_usable():
-    for label in ("7L DIESEL", "7L", "5.7 L"):
+    for label in (
+        "7L DIESEL",
+        "7L",
+        "5.7 L",
+        "The oil pump is located inside the oil pan.",
+    ):
         article = {
             "content_status": "content_complete",
             "title": "Generator - Removal",

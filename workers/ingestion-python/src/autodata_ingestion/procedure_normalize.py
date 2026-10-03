@@ -228,7 +228,7 @@ def article_is_content_complete(article: Mapping[str, Any]) -> bool:
 
 
 def is_meaningful_procedure_text(value: Any) -> bool:
-    """Reject metadata and section labels that cannot serve as instructions."""
+    """Accept source text that reads like an instruction, not metadata or prose."""
 
     text = re.sub(r"\s+", " ", str(value or "")).strip()
     key = re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip()
@@ -248,7 +248,24 @@ def is_meaningful_procedure_text(value: Any) -> bool:
         text.casefold(),
     ):
         return False
-    return True
+    # A long descriptive paragraph can mention a component and still contain
+    # no usable replacement instruction. Source procedures are normally
+    # imperative steps; only accept an action verb at the start (optionally
+    # following a short conditional or purpose clause).
+    action = (
+        r"disconnect|reconnect|remove|reinstall|install|replace|loosen|"
+        r"tighten|torque|connect|raise|lower|support|drain|refill|clean|"
+        r"inspect|align|apply|route|secure|attach|detach|turn|rotate|press|"
+        r"pull|push|slide|lift|separate|release|depress|bleed|prime|check|"
+        r"verify|measure|adjust|set|lubricate|transfer|mark|cut|grind|"
+        r"solder|use|place|position|install|ensure|make|refer|depress"
+    )
+    prefix = (
+        r"(?:\d+\s*[.)]\s*)?"
+        r"(?:(?:if|when|before|after)\b[^,;]{1,100}[,;:]\s*)?"
+        r"(?:(?:to|using)\b[^,;]{1,100}[,;:]\s*)?"
+    )
+    return re.match(prefix + rf"(?:{action})\b", text, flags=re.IGNORECASE) is not None
 
 
 def _ensure_classification(article: dict[str, Any]) -> None:
