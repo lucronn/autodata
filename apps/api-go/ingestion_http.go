@@ -16,12 +16,6 @@ import (
 )
 
 const maxIngestionProxyBytes = 8 << 20
-const maxGuideHTMLBytes = 32 << 20
-const maxGuidePDFAttempts = 3
-const maxGuideHTMLAttempts = 3
-const guidePDFRetryDelay = 250 * time.Millisecond
-const maxChatGetAttempts = 3
-const chatGetRetryDelay = 250 * time.Millisecond
 
 type IngestionClient interface {
 	Do(*http.Request, string, []byte, string) (int, []byte, error)
@@ -53,171 +47,6 @@ func (c *HTTPIngestionClient) Do(incoming *http.Request, path string, body []byt
 		return 0, nil, fmt.Errorf("ingestion client is not configured")
 	}
 	outgoing, err := c.newInternalRequest(requestContext(nil, incoming), incoming, http.MethodPost, path, bytes.NewReader(body), idempotencyKey)
-	if err != nil {
-		return 0, nil, err
-	}
-	result, err := c.client.Do(outgoing)
-	if err != nil {
-		return 0, nil, err
-	}
-	defer result.Body.Close()
-	responseBody, err := io.ReadAll(io.LimitReader(result.Body, maxIngestionProxyBytes+1))
-	if err != nil {
-		return 0, nil, err
-	}
-	if len(responseBody) > maxIngestionProxyBytes {
-		return 0, nil, fmt.Errorf("ingestion response exceeds the configured limit")
-	}
-	return result.StatusCode, responseBody, nil
-}
-
-// Create, Select, Get, and Events implement ChatClient. The context is
-// attached to every internal request so a disconnected public caller cancels
-// work at the upstream boundary as well.
-func (c *HTTPIngestionClient) Create(ctx context.Context, incoming *http.Request, body []byte, idempotencyKey string) (int, []byte, error) {
-	return c.doChatJSON(ctx, incoming, http.MethodPost, "/v1/chat/queries", body, idempotencyKey)
-}
-
-func (c *HTTPIngestionClient) Select(ctx context.Context, incoming *http.Request, queryID string, body []byte, idempotencyKey string) (int, []byte, error) {
-	path, err := chatInternalPath(queryID, "selections")
-	if err != nil {
-		return 0, nil, err
-	}
-	return c.doChatJSON(ctx, incoming, http.MethodPost, path, body, idempotencyKey)
-}
-
-func (c *HTTPIngestionClient) Get(ctx context.Context, incoming *http.Request, queryID string) (int, []byte, error) {
-	path, err := chatInternalPath(queryID, "")
-	if err != nil {
-		return 0, nil, err
-	}
-	for attempt := 0; attempt < maxChatGetAttempts; attempt++ {
-		status, body, requestErr := c.doChatJSON(ctx, incoming, http.MethodGet, path, nil, "")
-		if requestErr != nil || !isTransientGuidePDFStatus(status) || attempt == maxChatGetAttempts-1 {
-			return status, body, requestErr
-		}
-		timer := time.NewTimer(chatGetRetryDelay)
-		select {
-		case <-requestContext(ctx, incoming).Done():
-			timer.Stop()
-			return 0, nil, requestContext(ctx, incoming).Err()
-		case <-timer.C:
-		}
-	}
-	return 0, nil, fmt.Errorf("chat query retry limit reached")
-}
-
-func (c *HTTPIngestionClient) GuidePDF(ctx context.Context, incoming *http.Request, queryID string) (int, []byte, error) {
-	path, err := chatInternalPath(queryID, "guide.pdf")
-	if err != nil {
-		return 0, nil, err
-	}
-	for attempt := 0; attempt < maxGuidePDFAttempts; attempt++ {
-		outgoing, err := c.newInternalRequest(requestContext(ctx, incoming), incoming, http.MethodGet, path, nil, "")
-		if err != nil {
-			return 0, nil, err
-		}
-		outgoing.Header.Set("Accept", "application/pdf")
-		result, err := c.client.Do(outgoing)
-		if err != nil {
-			return 0, nil, err
-		}
-		body, readErr := io.ReadAll(io.LimitReader(result.Body, maxIngestionProxyBytes+1))
-		result.Body.Close()
-		if readErr != nil || len(body) > maxIngestionProxyBytes {
-			return 0, nil, fmt.Errorf("guide PDF exceeds the configured limit")
-		}
-		if !isTransientGuidePDFStatus(result.StatusCode) || attempt == maxGuidePDFAttempts-1 {
-			return result.StatusCode, body, nil
-		}
-		timer := time.NewTimer(guidePDFRetryDelay)
-		select {
-		case <-requestContext(ctx, incoming).Done():
-			timer.Stop()
-			return 0, nil, requestContext(ctx, incoming).Err()
-		case <-timer.C:
-		}
-	}
-	return 0, nil, fmt.Errorf("guide PDF retry limit reached")
-}
-
-func (c *HTTPIngestionClient) GuideHTML(ctx context.Context, incoming *http.Request, queryID string) (int, []byte, error) {
-	path, err := chatInternalPath(queryID, "guide.html")
-	if err != nil {
-		return 0, nil, err
-	}
-	for attempt := 0; attempt < maxGuideHTMLAttempts; attempt++ {
-		outgoing, err := c.newInternalRequest(requestContext(ctx, incoming), incoming, http.MethodGet, path, nil, "")
-		if err != nil {
-			return 0, nil, err
-		}
-		outgoing.Header.Set("Accept", "text/html")
-		result, err := c.client.Do(outgoing)
-		if err != nil {
-			return 0, nil, err
-		}
-		body, readErr := io.ReadAll(io.LimitReader(result.Body, maxGuideHTMLBytes+1))
-		result.Body.Close()
-		if readErr != nil || len(body) > maxGuideHTMLBytes {
-			return 0, nil, fmt.Errorf("guide HTML exceeds the configured limit")
-		}
-		if !isTransientGuidePDFStatus(result.StatusCode) || attempt == maxGuideHTMLAttempts-1 {
-			return result.StatusCode, body, nil
-		}
-		timer := time.NewTimer(guidePDFRetryDelay)
-		select {
-		case <-requestContext(ctx, incoming).Done():
-			timer.Stop()
-			return 0, nil, requestContext(ctx, incoming).Err()
-		case <-timer.C:
-		}
-	}
-	return 0, nil, fmt.Errorf("guide HTML retry limit reached")
-}
-
-func isTransientGuidePDFStatus(status int) bool {
-	return status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
-}
-
-func (c *HTTPIngestionClient) Events(ctx context.Context, incoming *http.Request, queryID, lastEventID string) (io.ReadCloser, error) {
-	if c == nil || c.client == nil {
-		return nil, fmt.Errorf("ingestion client is not configured")
-	}
-	if len(lastEventID) > 256 {
-		return nil, fmt.Errorf("Last-Event-ID is too long")
-	}
-	path, err := chatInternalPath(queryID, "events")
-	if err != nil {
-		return nil, err
-	}
-	outgoing, err := c.newInternalRequest(requestContext(ctx, incoming), incoming, http.MethodGet, path, nil, "")
-	if err != nil {
-		return nil, err
-	}
-	outgoing.Header.Set("Accept", "text/event-stream")
-	if strings.TrimSpace(lastEventID) != "" {
-		outgoing.Header.Set("Last-Event-ID", strings.TrimSpace(lastEventID))
-	}
-	result, err := c.client.Do(outgoing)
-	if err != nil {
-		return nil, err
-	}
-	if result.StatusCode < http.StatusOK || result.StatusCode >= http.StatusMultipleChoices {
-		_ = result.Body.Close()
-		return nil, fmt.Errorf("chat event stream returned status %d", result.StatusCode)
-	}
-	return result.Body, nil
-}
-
-func (c *HTTPIngestionClient) doChatJSON(ctx context.Context, incoming *http.Request, method, path string, body []byte, idempotencyKey string) (int, []byte, error) {
-	if c == nil || c.client == nil {
-		return 0, nil, fmt.Errorf("ingestion client is not configured")
-	}
-	var reader io.Reader
-	if body != nil {
-		reader = bytes.NewReader(body)
-	}
-	outgoing, err := c.newInternalRequest(requestContext(ctx, incoming), incoming, method, path, reader, idempotencyKey)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -277,24 +106,6 @@ func requestContext(ctx context.Context, incoming *http.Request) context.Context
 		return incoming.Context()
 	}
 	return context.Background()
-}
-
-func chatInternalPath(queryID, suffix string) (string, error) {
-	value := strings.TrimSpace(queryID)
-	if value == "" || len(value) > 256 || strings.ContainsAny(value, "/?#") {
-		return "", fmt.Errorf("chat query ID is invalid")
-	}
-	for _, character := range value {
-		if character < 0x20 || character == 0x7f {
-			return "", fmt.Errorf("chat query ID is invalid")
-		}
-	}
-	return "/v1/chat/queries/" + url.PathEscape(value) + func() string {
-		if suffix == "" {
-			return ""
-		}
-		return "/" + suffix
-	}(), nil
 }
 
 func (s *Server) createArticleIntake(response http.ResponseWriter, request *http.Request, _ Principal) {

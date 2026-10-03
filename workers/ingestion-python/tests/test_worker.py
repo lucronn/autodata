@@ -15,6 +15,29 @@ from autodata_ingestion.source_adapters import SourceResource  # noqa: E402
 
 
 class IngestionWorkerTests(unittest.TestCase):
+    def test_default_worker_does_not_activate_chat_environment_requests(self):
+        from autodata_ingestion.worker import run_once
+
+        with patch.dict(
+            "os.environ",
+            {
+                "AUTODATA_CHAT_QUERY_JSON": '{"message":"legacy chat request"}',
+                "AUTODATA_CHAT_SELECTION_JSON": '{"query_id":"legacy"}',
+                "AUTODATA_CHAT_WORKER_ENABLED": "1",
+                "AUTODATA_SOURCE_DIRECTORY": "",
+                "AUTODATA_SOURCE_URI": "",
+                "AUTODATA_FAST_EVENT_JSON": "",
+                "AUTODATA_ARTICLE_URI": "",
+                "AUTODATA_KNOWLEDGE_REQUEST_JSON": "",
+                "AUTODATA_JOB_PLAN_REQUEST_JSON": "",
+                "AUTODATA_VEHICLE_LIST_JSON": "",
+            },
+            clear=True,
+        ):
+            result = run_once()
+
+        self.assertEqual(result["status"], "idle")
+
     def test_labor_article_match_uses_component_when_titles_use_different_operations(self):
         from autodata_ingestion.worker import _match_labor_article_id
 
