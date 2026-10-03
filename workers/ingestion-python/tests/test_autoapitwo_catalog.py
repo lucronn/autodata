@@ -9,10 +9,42 @@ import hashlib
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
-from autodata_ingestion.autoapitwo_catalog import AutoAPITwoCatalogConnector  # noqa: E402
+from autodata_ingestion.autoapitwo_catalog import (  # noqa: E402
+    AutoAPITwoCatalogConnector,
+    CatalogSourceUnavailable,
+)
 
 
 class AutoAPITwoCatalogTests(unittest.TestCase):
+    def test_explicit_empty_catalog_lists_are_valid_for_supported_shapes(self):
+        for payload in ([], {"results": []}, {"items": []}, {"data": []}):
+            with self.subTest(payload=payload):
+                self.assertEqual(AutoAPITwoCatalogConnector._items(payload), [])
+
+    def test_unknown_or_malformed_catalog_shapes_are_not_reported_as_empty(self):
+        payloads = ({"unknown": []}, {"data": {"unexpected": []}}, [{"year": "1999"}, None], None)
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                with self.assertRaises(CatalogSourceUnavailable):
+                    AutoAPITwoCatalogConnector._items(payload)
+
+    def test_malformed_catalog_envelope_is_not_cached_and_valid_retry_recovers(self):
+        responses = iter([{"unexpected": []}, [{"year": "1999"}]])
+        calls = []
+
+        def opener(request, **_kwargs):
+            calls.append(request.full_url)
+            return io.BytesIO(json.dumps(next(responses)).encode("utf-8"))
+
+        connector = AutoAPITwoCatalogConnector(
+            "https://autoapitwo.test", opener=opener, retry_delay=0
+        )
+        path = "/api/v1/fleet/years"
+        with self.assertRaises(CatalogSourceUnavailable):
+            connector._read_items(path)
+        self.assertEqual(connector._read_items(path), [{"year": "1999"}])
+        self.assertEqual(len(calls), 2)
+
     def test_catalog_adapter_uses_autodbtwo_and_preserves_upstream_response_bytes(self):
         payload = b'[{"year":"2012"}]'
         source_uri = "https://autoapitwo.test/api/v1/fleet/years"
