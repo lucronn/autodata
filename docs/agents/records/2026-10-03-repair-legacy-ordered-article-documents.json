@@ -10,12 +10,12 @@
   ],
   "todo": [
     "Detect and repair empty or invalid normalized document blocks on selected legacy article reads",
-    "Reparse the immutable stored source snapshot without provider article/catalog or LLM calls",
-    "Preserve order/evidence and reuse localized media; fetch and persist each missing image at most once while updating the canonical row idempotently",
+    "Reparse the immutable stored source snapshot without provider article/catalog or LLM calls; use parsed blocks as structural authority and preserve stored wording only through an unambiguous monotonic mapping",
+    "Match URL-derived image IDs to localized image records, preserve figures at source positions, and expose a renderable same-origin URL or explicit unavailable state",
     "Fail as content_partial when stored source cannot be reconstructed and add source-backed regression coverage",
-    "Verify isolated candidate database replay, list-row alias resolution, and no duplicate rows"
+    "Verify copied candidate database replay, list-row alias resolution, ordered inline images, renderer-facing image URLs, zero article/catalog/LLM calls, and no duplicate rows"
   ],
-  "base_sha": "d9458c6ebd03615b833941de5938957aa3197af2",
+  "base_sha": "09c71cceec0858ce88532d3393cde0823b78c79d",
   "status": "synchronized",
-  "updated_at": "2026-10-03T07:38:46Z"
+  "updated_at": "2026-10-03T08:20:00Z"
 }
