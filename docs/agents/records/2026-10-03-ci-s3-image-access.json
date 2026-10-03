@@ -12,7 +12,7 @@
     "Run merged Compose validation and the full CI-shaped S3-backed ingestion smoke",
     "Pass required GitHub verification on exact PR heads #117-#123 and synchronize evidence"
   ],
-  "base_sha": "9aaa9c227c963951579aac8a8afb27b03aea20e2",
+  "base_sha": "2f2bcb943d9b6def8a4f8c38a776975ff9c730ef",
   "status": "synchronized",
-  "updated_at": "2026-10-03T06:26:00Z"
+  "updated_at": "2026-10-03T06:33:00Z"
 }
