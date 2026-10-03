@@ -518,7 +518,7 @@ components:
       properties:
         version: { type: string, example: v1 }
         source: { $ref: '#/components/schemas/SourceReview' }
-        content: { type: string, description: Sanitized stored source content; HTML when source.format is html, otherwise pretty-printed JSON. }
+        content: { type: string, description: "Sanitized stored source content; HTML when source.format is html, otherwise pretty-printed JSON." }
     Image:
       type: object
       description: Public image reference. Internal object-storage keys and upstream source URLs are never returned.
