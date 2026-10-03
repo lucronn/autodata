@@ -33,3 +33,21 @@ worker activation, or chat-scoped guide URLs. Legacy chat implementation must
 not be registered, served, or started by the default API, dashboard, worker, or
 Compose configuration. Catalog browsing and article viewing use the direct
 provider-neutral API and remain available without a chat runtime.
+
+## OpenAPI source and image coverage
+
+The published contract must include the stored-source review endpoint and the
+opaque image-token endpoint, with their response representations and error
+behavior. It must not expose the internal image storage key. This follow-up is
+tracked in [Issue #113](https://github.com/lucronn/autodata/issues/113), with
+[Issue #116](https://github.com/lucronn/autodata/issues/116) tracking image
+path privacy, and Project #8. Plan:
+`docs/superpowers/plans/2026-10-03-openapi-source-media-contract.md`.
+
+Todo:
+
+- Document source review JSON and HTML responses plus authentication.
+- Document same-origin opaque image paths and the rejected legacy query route.
+- Remove internal `storage_key` from the public image schema.
+- Test that the spec contains the registered routes and passes JSON/YAML
+  validation.
