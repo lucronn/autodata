@@ -53,16 +53,18 @@ the AutoDBone neutral facade. These failures are not procedure acceptance.
   components and falling back across providers on a miss/error. Mixed-provider
   merges retain already usable records from either source.
 - [ ] Persist normalized individual articles and local images idempotently;
-  prove a warm repeat performs no provider detail calls and writes no combined
-  article.
+  prefer a complete normalized row over a same-identity list-only row, prove a
+  warm repeat performs no provider detail calls, and prove no combined article
+  is written.
 - [ ] Add structured source diagnostics that preserve useful failure classes
   without exposing upstream URLs, credentials, or source identifiers publicly.
 - [ ] Run worker/API/connector contract tests and five newly selected,
   multi-component requests for distinct YMME vehicles; require every response
   to contain readable, source-backed procedure steps without errors. Worker
-  tests pass (542 passed, 3 skipped, 27 subtests). Candidate replay: 1/5
-  returned readable procedures; 4/5 failed AutoDBtwo resolution in this runtime,
-  so the end-to-end acceptance gate remains open.
+  tests pass (542 passed, 3 skipped, 27 subtests). Five cold candidate requests
+  now return readable source-backed procedures, but the warm replay still calls
+  AutoDBtwo for 2/5 requests because duplicate list-only rows can win over
+  content-complete rows. The cache acceptance gate remains open.
 - [ ] Run applicable release gates and record exact-SHA evidence; do not close
   the Issue before the release gate is satisfied.
 
@@ -89,11 +91,19 @@ Provider failures are accurately reported, and no combined procedure is stored.
 
 - Candidate worker suite: `pytest -q workers/ingestion-python/tests` — 542
   passed, 3 skipped, 27 subtests passed.
-- Candidate multi-YMME replay: 1/5 successful; four requests reported AutoDBtwo
-  source resolution failures. These are not accepted as procedure passes. The
-  isolated candidate could not reach the same prepared source state as the
-  earlier local replay, so repeat the five-case run in a verified candidate
-  environment before closing this issue.
+- Five newly sampled cold YMME requests passed through AutoDBtwo: 2013 Honda
+  Odyssey 3.5L, 2013 Honda Pilot 3.5L, 2012 Ram 3500 6.7L, 2013 Honda Accord
+  Coupe 2.4L, and 2013 Honda Crosstour 3.5L. Each selected two source article
+  IDs, returned respectively 26, 29, 2, 69, and 20 readable source-referenced
+  steps, emitted no labor, and returned no error.
+- Warm repeat: 3/5 used `normalized_cache`; Odyssey and Ram 3500 used the
+  AutoDBtwo detail path again. Database inspection found both `content_complete`
+  and later `list_only` rows for the same article identity. The query-aware
+  catalog ordering prioritizes engine match but does not yet prefer complete
+  content. Fix this before declaring persistence/reuse acceptance.
+- The first failed candidate attempt was due to Docker DNS using the container's
+  full name instead of the connector's trusted `autodbtwo` alias; the isolated
+  network was corrected, and the cold five-case run then passed.
 - Independent review caught and the implementation fixed a mixed-provider
   merge that could drop a usable AutoDBone article when AutoDBtwo supplied a
   different requested component. Regression coverage passes.
