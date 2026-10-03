@@ -39,6 +39,14 @@ The Workshop loads source content only when the reviewer opens the source panel.
 
 Source review is for comparison and traceability. It does not rewrite normalized content, reorder blocks, create a combined procedure, or make a new provider call.
 
+## Container packaging
+
+The API binary embeds both `dashboard/` and `workshop/` at compile time. The
+API Docker build stage must copy both directories before `go build`; a clean
+container build is the packaging check for this same-origin UI contract. The
+source-review follow-up and its hosted-runner evidence are tracked in Issue
+#114 and `docs/superpowers/plans/2026-10-03-source-review-container-assets.md`.
+
 ## Verification evidence
 
 The implementation passed `go test ./...`, `go vet ./...`, `node --test workshop-client.test.mjs` (14 tests), and `git diff --check`. The local Compose API was rebuilt and restarted. A live authenticated Ram 1500 DS axle article request returned safe source metadata and a same-origin source URL; its on-demand source response rendered the stored HTML and image through AutoData routes, with scripts removed and CSP applied. The Workshop rendered the stored source copy beside the normalized article and exposed the evidence-bearing source reference.
