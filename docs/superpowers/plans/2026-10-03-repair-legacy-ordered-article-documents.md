@@ -33,13 +33,13 @@ running the current implementation.
 - [x] Load the existing immutable source snapshot by canonical article and
   vehicle identity; never call AutoAPI or AutoAPItwo for article/catalog data,
   and never call an LLM for this repair.
-- [x] Reparse the stored source through the existing provider adapter/parser
+- [ ] Reparse the stored source through the existing provider adapter/parser
   and verify the selected article identity; rebuild from its ordered source
   blocks, preserving stored normalized wording only where it can be matched to
   source text blocks monotonically and without ambiguity. Never replace parsed
   source structure with a flattened `body`/`steps` projection merely because
   those compatibility fields are non-empty.
-- [x] Reuse already-localized image assets. If a referenced image is not stored,
+- [ ] Reuse already-localized image assets. If a referenced image is not stored,
   fetch only that image resource once through the existing allowlisted image
   adapter, persist it locally, and serve it through an AutoData URL. A failed
   media read remains an unavailable block at its source position; never move it
@@ -51,7 +51,7 @@ running the current implementation.
   list-only/detail rows.
 - [x] If the stored source cannot be parsed or validated, mark the row partial
   and return a concrete repair/source failure; do not claim complete content.
-- [x] Add failing-first regressions for the stored-source repair, zero upstream
+- [ ] Add failing-first regressions for the stored-source repair, zero upstream
   calls, order/image preservation, idempotence, and list-row alias resolution.
 - [ ] Run focused Python/Go/Workshop tests and a clean isolated Compose replay
   against a copied candidate database; verify no article/catalog provider or
