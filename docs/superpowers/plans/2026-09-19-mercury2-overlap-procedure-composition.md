@@ -24,7 +24,7 @@
 - [x] Ensure a missing individual article follows the existing one-time source ingestion path and is reusable on a subsequent request.
 - [x] Return deterministic source-backed output on Mercury-2 failure/invalid output; return explicit errors only when required individual source data is unavailable.
 - [x] Add focused tests for cache-first reuse, one-time missing article ingestion, ephemeral output (no writes/cache), fallback, lineage, image references, and single/multi-article API behavior.
-- [ ] Run worker/API/contract suites and a local public-API smoke where available; document exact results and any external dependency limitation.
+- [x] Run worker/API/contract suites and a local public-API smoke where available; document exact results and any external dependency limitation.
 
 ## Execution tasks
 
@@ -42,7 +42,7 @@ Pass only same-vehicle normalized source articles to Mercury-2. Validate output 
 
 ### Task 4 — Verify public behavior
 
-Focused worker/job-plan/catalog tests passed (75 passed). Full ingestion-worker suite passed (515 passed, 3 skipped, 19 subtests). `git diff --check` and Python `compileall` passed. Ruff could not run because the `ruff` executable is not installed. The available Compose containers predate this implementation and were not rebuilt, so exact public-API and repeat-request smoke verification remain pending.
+Focused worker/job-plan/catalog tests passed (75 passed). Full ingestion-worker suite passed (515 passed, 3 skipped, 19 subtests). `git diff --check` and Python `compileall` passed. Ruff could not run because the `ruff` executable is not installed. A local rebuilt Go API -> ingestion HTTP worker smoke posted a two-component oil-pump/water-pump request, selected `source-oil-pump-1` and `source-water-pump-1`, and returned two procedure steps with no `derived_article` or persistence field. A separate unit test ran with `AUTODATA_SOURCE_PERSIST=1` and proved the persistence function was not invoked. No live provider was needed because the smoke supplied normalized source records directly.
 
 ## Exclusions
 
