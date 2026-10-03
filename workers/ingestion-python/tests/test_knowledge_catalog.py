@@ -155,6 +155,12 @@ class KnowledgeCatalogTests(unittest.TestCase):
             "CASE WHEN vc.engine_displacement_l = %s THEN 0 ELSE 1 END",
             cursor.query,
         )
+        self.assertIn("ca.content_status = 'content_complete'", cursor.query)
+        self.assertIn("NULLIF(BTRIM(ca.body), '') IS NOT NULL", cursor.query)
+        self.assertLess(
+            cursor.query.index("CASE WHEN vc.engine_displacement_l"),
+            cursor.query.index("ca.content_status = 'content_complete'"),
+        )
 
     def test_cache_limit_is_configurable_but_bounded(self):
         from autodata_ingestion.knowledge_catalog import _knowledge_cache_limit

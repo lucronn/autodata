@@ -318,6 +318,61 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertIn("autodbone:alternator-1", result["selected_articles"])
         self.assertIn("autoapitwo:52992:water-pump-1", result["selected_articles"])
 
+    def test_autodbone_article_id_is_never_sent_to_autodbtwo(self):
+        from autodata_ingestion.worker import _load_autodb_two_job_catalog
+
+        vehicle = {
+            "vehicle_id": "canonical-vehicle-1",
+            "year": 2013,
+            "make": "Honda",
+            "model": "Crosstour 2wd",
+            "engine_displacement_l": 2.4,
+            "autoapitwo_vehicle_ids": ["52992"],
+            "provider": "autodbone",
+            "provider_vehicle_id": "autodbone-private-vehicle-id",
+        }
+        autodbone_article = {
+            "article": {
+                "article_id": "autodbone:procedure:ALT-1",
+                "title": "Alternator Replacement",
+                "component": "alternator",
+                "steps": ["Remove alternator."],
+                "body": "Remove alternator.",
+            }
+        }
+        autodbtwo_index = {
+            "article": {
+                "article_id": "autoapitwo:52992:WP-1",
+                "title": "Water Pump Replacement",
+                "component": "water_pump",
+            }
+        }
+        hydrated = {
+            "article": {
+                **autodbtwo_index["article"],
+                "steps": ["Remove water pump.", "Install water pump."],
+                "body": "Remove water pump. Install water pump.",
+            }
+        }
+        with patch(
+            "autodata_ingestion.catalog_service._load_autoapitwo_article_detail",
+            return_value=([hydrated], {"targeted_article_fetch_count": 1}),
+        ) as detail:
+            records, _source_info = _load_autodb_two_job_catalog(
+                vehicle,
+                query="alternator and water pump replacement",
+                existing_catalog=[autodbone_article, autodbtwo_index],
+            )
+
+        detail_request = detail.call_args.args[0]
+        self.assertEqual(detail_request["source_article_id"], "autoapitwo:52992:WP-1")
+        self.assertNotIn("provider_vehicle_id", detail_request)
+        self.assertNotIn("autodbone-private-vehicle-id", repr(detail_request))
+        self.assertIn("autodbone:procedure:ALT-1", [
+            str((record.get("article") or record).get("article_id"))
+            for record in records
+        ])
+
     def test_job_plan_catalog_excludes_other_engine_and_drivetrain_variants(self):
         from autodata_ingestion.worker import _filter_job_plan_catalog_for_vehicle
 
