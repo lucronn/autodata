@@ -1,0 +1,21 @@
+{
+  "goal": "Hydrate missing multi-component source articles through provider-qualified AutoDBone and AutoDBtwo mappings, prefer stored normalized article content on warm reads, persist only individual normalized articles, and keep the composition ephemeral.",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-provider-qualified-composition-hydration.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/110",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/mercury2-procedure-composition.md",
+    "docs/architecture/source-connector-api-compatibility.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Keep provider vehicle/article IDs scoped to their owning source and preserve valid articles across mixed-source fallback.",
+    "Prefer stored content-complete normalized rows over same-identity list-only rows so warm reads make zero provider detail calls.",
+    "Prove individual article persistence is idempotent and the unified response creates no combined article or derived revision.",
+    "Repeat five distinct-YMME source-backed multi-component queries and verify cold and warm behavior on the exact candidate SHA.",
+    "Run exact-SHA release gates and synchronize evidence before closing Issue 110."
+  ],
+  "base_sha": "dad7fbbcd996ca77b1214bf112e504a5c51c82e0",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T09:57:14Z"
+}
