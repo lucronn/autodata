@@ -306,6 +306,7 @@ def test_persisted_combined_article_with_source_instructions_is_returned_without
             "title": "Alternator and starter service",
             "status": "ready",
             "derived_components": ["alternator", "starter"],
+            "contract_version": 3,
             "derived_revision_id": "revision-2",
             "source_version": "fixture-v1",
             "source_article_ids": ["alternator-article", "starter-article"],
