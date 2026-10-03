@@ -1,3 +1,4 @@
+import json
 import unittest
 from pathlib import Path
 
@@ -35,6 +36,29 @@ class APIRuntimeContractTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn("COPY apps/api-go/swagger-ui ./apps/api-go/swagger-ui", dockerfile)
+
+    def test_openapi_documents_all_source_media_routes_without_storage_keys(self):
+        spec = json.loads(self.read("apps/api-go/openapi.json"))
+        router = self.read("apps/api-go/main.go")
+        expected = {
+            "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source",
+            "/v1/catalog/images/{token}",
+            "/v1/catalog/images",
+        }
+        for route in expected:
+            self.assertIn(route, spec["paths"])
+            self.assertIn(f'"GET {route}"', router)
+        image_properties = spec["components"]["schemas"]["Image"]["properties"]
+        self.assertNotIn("storage_key", image_properties)
+        source_responses = spec["paths"][
+            "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source"
+        ]["get"]["responses"]["200"]["content"]
+        self.assertIn("application/json", source_responses)
+        self.assertIn("text/html", source_responses)
+        self.assertIn("security", spec["paths"]["/v1/catalog/images/{token}"]["get"])
+        openapi_yaml = self.read("apps/api-go/openapi.yaml")
+        self.assertNotIn("storage_key", openapi_yaml)
+        self.assertIn("image/*:", openapi_yaml)
 
     def test_protected_workflow_runs_api_runtime_smoke_after_migrations(self):
         workflow = self.read(".github/workflows/autonomous-verification.yml")
