@@ -402,7 +402,35 @@ func TestIncompleteSelectorReadReturnsWhileHydrationRunsInBackground(t *testing.
 }
 
 func TestCatalogSourceImageFailsClosedWithoutImageKey(t *testing.T) {
-	if path, ok := catalogSourceAssetURL("https://autoapitwo.vercel.app/article/1", "/figures/one.png", nil); ok || path != "" {
-		t.Fatalf("source image should fail closed without image key, got %q, %v", path, ok)
+	for _, raw := range []string{"/figures/one.png", "data:image/png;base64,AA=="} {
+		if path, ok := catalogSourceAssetURL("https://autoapitwo.vercel.app/article/1", raw, nil); ok || path != "" {
+			t.Fatalf("source image %q should fail closed without image key, got %q, %v", raw, path, ok)
+		}
+	}
+}
+
+func TestCatalogSourceOmitsInlineDataImagesFromJSONAndHTML(t *testing.T) {
+	store := newMemoryCatalogStore()
+	store.PutConfiguration(CatalogConfiguration{ID: "cfg-1", VehicleID: "vehicle-1", Year: 2024, Make: "Acme", Model: "Roadster", Complete: true})
+	store.PutArticle(CatalogArticle{
+		ID: "article-1", VehicleID: "vehicle-1", Title: "Replace filter", ContentStatus: "content_complete", Complete: true,
+		SourceOriginal: json.RawMessage(`{"_embedded":{"data":{"article":{"content":"<html><body><h2>Removal</h2><img src=\"data:image/png;base64,AA==\"></body></html>"}}}}`),
+		Provenance:     []CatalogProvenance{{ID: "source-1", Version: "autoapitwo-content-detail-v1"}},
+		sourceURI:      "https://autoapitwo.vercel.app/api/v1/content/carids/1/articles/2",
+	})
+	server := catalogServer(store)
+	t.Setenv("AUTODATA_IMAGE_URL_KEY", "")
+	for _, accept := range []string{"application/json", "text/html"} {
+		request := httptest.NewRequest(http.MethodGet, "/v1/catalog/vehicles/vehicle-1/articles/article-1/source", nil)
+		request.Header.Set("Authorization", "Bearer local:org-1:dataset_viewer")
+		request.Header.Set("Accept", accept)
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("source response for Accept %q = %d: %s", accept, response.Code, response.Body.String())
+		}
+		if strings.Contains(response.Body.String(), "data:image/") || strings.Contains(response.Body.String(), "<img") {
+			t.Fatalf("source response for Accept %q kept inline image without image key: %s", accept, response.Body.String())
+		}
 	}
 }
