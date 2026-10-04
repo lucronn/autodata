@@ -80,3 +80,7 @@ Todo:
 - Fail visibly for unknown/malformed envelopes while preserving explicit empty
   lists.
 - Test failure and retry behavior, then verify PR #120 and descendants.
+
+## Provider integrity release follow-up
+
+The [provider integrity plan](../superpowers/plans/2026-10-03-provider-integrity-follow-up.md) is tracked in Issue #115 and Project #8. Todo: pass approved request headers to every worker-created AutoDBone connector; report per-provider failure without false completeness; retain raw source hashes and replay references; require rights and retention evidence before publication; prove protected access from the deployed worker. Authenticated Vercel CLI access alone does not satisfy the worker-runtime gate.

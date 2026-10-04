@@ -4,6 +4,10 @@
 
 **Tracked delivery:** [Issue #110](https://github.com/lucronn/autodata/issues/110), [AutoData Portfolio Project](https://github.com/users/lucronn/projects/8), the [composition plan](../superpowers/plans/2026-09-19-mercury2-overlap-procedure-composition.md), the [provider-qualified hydration follow-up](../superpowers/plans/2026-10-03-provider-qualified-composition-hydration.md), and the [procedure-content quality gate](../superpowers/plans/2026-10-03-procedure-content-quality-gate.md).
 
+## Provider integrity release follow-up
+
+The [provider integrity plan](../superpowers/plans/2026-10-03-provider-integrity-follow-up.md) is tracked in Issue #110 and Project #8. Todo: qualify article identity by provider through stored reads and composition; preserve provider failure and missing scopes; test same numeric article ID from two sources; prove five fresh cold/warm vehicle requests before closure. A partial provider response must not be labeled complete.
+
 ## Data lifecycle
 
 AutoData stores each vehicle-matched individual source article, its original source payload, normalized text, source/evidence references, and locally managed images. A composition request resolves the requested components to those individual records. If a required article is absent, AutoData retrieves and ingests that individual article through the catalog/source path, then uses the persisted normalized record. It must not repeat a provider detail call when that record is already available.
