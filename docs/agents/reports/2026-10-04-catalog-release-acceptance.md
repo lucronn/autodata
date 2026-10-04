@@ -1,6 +1,6 @@
 # Catalog release acceptance report
 
-**Candidate:** implementation in progress on `phobos/complete-catalog-release` (base `a8dbaa95f07faa0b5faa3d3a915ef6eb139c5299`).
+**Candidate:** `34d1b129f9f8e4e619b23ddce18761bdc61ee4d9` on `phobos/complete-catalog-release`.
 **PR:** https://github.com/lucronn/autodata/pull/125 (draft)
 **Project:** https://github.com/users/lucronn/projects/8
 **Decision:** do not merge or close Issues #110–#116; procedure/runtime and hosted release gates remain incomplete.
