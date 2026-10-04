@@ -139,6 +139,13 @@ revision, PostgreSQL records, MinIO source object, and `dataset.viewable`
 JetStream event. The full developer workflows and recovery checks are in
 [`docs/architecture/infrastructure-and-dev.md`](docs/architecture/infrastructure-and-dev.md).
 
+The API serves its catalog-media contract at `/openapi.json` and
+`/openapi.yaml`. Configure a stable `AUTODATA_IMAGE_URL_KEY` through the local
+environment or secret manager (shared by all API replicas); without a stable
+key, image URLs intentionally fail closed and are omitted from article
+responses. Provider images are fetched only during ingestion and displayed
+from AutoData's local object store.
+
 To verify the chatbot's source-visible cold path and normalized warm path
 without starting the application stack, run the opt-in `verification` profile:
 

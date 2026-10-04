@@ -20,7 +20,7 @@ import (
 // dashboardFiles contains the small local developer dashboard. It is served
 // by the API so the browser uses the same origin and authentication boundary.
 //
-//go:embed dashboard/* workshop/*
+//go:embed dashboard/* workshop/* openapi.json openapi.yaml
 var dashboardFiles embed.FS
 
 const dependencyTimeout = 250 * time.Millisecond
@@ -72,6 +72,7 @@ type Server struct {
 	vehicleIdentity            VehicleIdentityStore
 	catalog                    CatalogStore
 	catalogImageKey            []byte
+	catalogImageReader         catalogImageObjectReader
 	metrics                    *apiMetrics
 }
 
@@ -101,6 +102,7 @@ func NewServerWithDependenciesAndPublisher(readiness ReadinessChecker, auth Auth
 		vehicleIdentity:            newMemoryVehicleIdentityStore(),
 		catalog:                    newMemoryCatalogStore(),
 		catalogImageKey:            configuredCatalogImageKey(),
+		catalogImageReader:         configuredCatalogImageReader(),
 		metrics:                    new(apiMetrics),
 	}
 }
@@ -148,6 +150,26 @@ func NewServerWithIngestionClient(readiness ReadinessChecker, auth Authenticator
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /openapi.json", func(response http.ResponseWriter, _ *http.Request) {
+		body, err := dashboardFiles.ReadFile("openapi.json")
+		if err != nil {
+			http.Error(response, "OpenAPI document unavailable", http.StatusInternalServerError)
+			return
+		}
+		response.Header().Set("Content-Type", "application/json; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-cache")
+		_, _ = response.Write(body)
+	})
+	mux.HandleFunc("GET /openapi.yaml", func(response http.ResponseWriter, _ *http.Request) {
+		body, err := dashboardFiles.ReadFile("openapi.yaml")
+		if err != nil {
+			http.Error(response, "OpenAPI document unavailable", http.StatusInternalServerError)
+			return
+		}
+		response.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-cache")
+		_, _ = response.Write(body)
+	})
 	mux.HandleFunc("GET /dashboard", func(response http.ResponseWriter, request *http.Request) {
 		http.Redirect(response, request, "/dashboard/", http.StatusMovedPermanently)
 	})
@@ -193,7 +215,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source", s.requireRole("dataset_viewer", s.serveCatalogSource))
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.requireRole("dataset_viewer", s.getCatalogArticle))
 	mux.HandleFunc("GET /v1/catalog/images/{token}", func(response http.ResponseWriter, request *http.Request) {
-		serveCatalogImage(response, request, s.catalogImageKey)
+		serveCatalogImage(response, request, s.catalogImageKey, s.catalogImageReader)
 	})
 	mux.HandleFunc("GET /v1/catalog/images", func(response http.ResponseWriter, _ *http.Request) {
 		http.Error(response, "opaque image reference required", http.StatusBadRequest)

@@ -3,14 +3,11 @@ package main
 import (
 	"context"
 	"errors"
-	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 // Catalog selector reads must remain responsive while a missing scope is
@@ -247,23 +244,16 @@ func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.R
 
 const catalogImageMaxBytes = 12 << 20
 
-var catalogImageClient = &http.Client{
-	Timeout:       20 * time.Second,
-	CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
-}
-
-// rewriteCatalogImageURLs keeps provider URLs out of the public article
-// payload. The browser loads the same-origin proxy, which also means the
-// article reader can keep provider credentials and redirects out of markup.
+// rewriteCatalogImageURLs exposes only references to already-localized
+// objects. A source URL without a stored object key is not displayable.
 func rewriteCatalogImageURLs(article *CatalogArticle, key []byte) {
 	for index := range article.Images {
 		image := &article.Images[index]
-		source, ok := catalogImageSourceURL(image.URL)
-		if !ok || len(key) != 32 {
+		if !localCatalogImageKeyPattern.MatchString(image.StorageKey) || len(key) != 32 {
 			image.URL = ""
 			continue
 		}
-		token, err := sealCatalogImageURL(source, key)
+		token, err := sealCatalogImageReference(image.StorageKey, key)
 		if err != nil {
 			image.URL = ""
 			continue
@@ -272,68 +262,26 @@ func rewriteCatalogImageURLs(article *CatalogArticle, key []byte) {
 	}
 }
 
-func isCatalogImageURL(value string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(value))
-	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Port() != "" || parsed.Fragment != "" {
-		return false
-	}
-	return strings.EqualFold(parsed.Host, "autoapitwo.vercel.app")
-}
-
-func catalogImageSourceURL(value string) (string, bool) {
-	value = strings.TrimSpace(value)
-	if isCatalogImageURL(value) {
-		return value, true
-	}
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.IsAbs() || parsed.Host != "" || parsed.Path != "/v1/catalog/images" {
-		return "", false
-	}
-	source := strings.TrimSpace(parsed.Query().Get("src"))
-	return source, isCatalogImageURL(source)
-}
-
-func catalogImageProxyURL(source string) string {
-	return "/v1/catalog/images?src=" + url.QueryEscape(source)
-}
-
-// serveCatalogImage is deliberately limited to the provider host that the
-// ingestion pipeline records today. It is an image-only, read-only proxy, so
-// arbitrary URL fetching cannot be turned into an SSRF endpoint.
-func serveCatalogImage(response http.ResponseWriter, request *http.Request, key []byte) {
+// serveCatalogImage reads only from the configured local object store. It
+// never fetches an upstream provider URL.
+func serveCatalogImage(response http.ResponseWriter, request *http.Request, key []byte, reader catalogImageObjectReader) {
 	if len(key) != 32 {
 		http.Error(response, "catalog image references are unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	source, err := openCatalogImageURL(request.PathValue("token"), key)
-	if err != nil || !isCatalogImageURL(source) {
+	objectKey, err := openCatalogImageReference(request.PathValue("token"), key)
+	if err != nil || !localCatalogImageKeyPattern.MatchString(objectKey) {
 		http.Error(response, "catalog image not found", http.StatusNotFound)
 		return
 	}
-	upstreamRequest, err := http.NewRequestWithContext(request.Context(), http.MethodGet, source, nil)
-	if err != nil {
-		http.Error(response, "catalog image could not be requested", http.StatusBadRequest)
+	if reader == nil {
+		http.Error(response, "catalog image storage is unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	upstreamRequest.Header.Set("Accept", "image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9,*/*;q=0.1")
-	upstream, err := catalogImageClient.Do(upstreamRequest)
-	if err != nil {
-		http.Error(response, "catalog image could not be loaded", http.StatusBadGateway)
-		return
-	}
-	defer upstream.Body.Close()
-	if upstream.StatusCode < http.StatusOK || upstream.StatusCode >= http.StatusMultipleChoices {
-		http.Error(response, "catalog image could not be loaded", http.StatusBadGateway)
-		return
-	}
-	contentType := strings.ToLower(strings.TrimSpace(strings.Split(upstream.Header.Get("Content-Type"), ";")[0]))
-	if !strings.HasPrefix(contentType, "image/") {
-		http.Error(response, "catalog image returned an invalid media type", http.StatusBadGateway)
-		return
-	}
-	body, err := io.ReadAll(io.LimitReader(upstream.Body, catalogImageMaxBytes+1))
-	if err != nil || len(body) > catalogImageMaxBytes {
-		http.Error(response, "catalog image is too large", http.StatusBadGateway)
+	body, contentType, err := reader.ReadImage(request.Context(), objectKey)
+	contentType = strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	if err != nil || len(body) == 0 || len(body) > catalogImageMaxBytes || !strings.HasPrefix(contentType, "image/") {
+		http.Error(response, "catalog image not found", http.StatusNotFound)
 		return
 	}
 	response.Header().Set("Content-Type", contentType)
