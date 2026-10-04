@@ -9,11 +9,11 @@
   "todo": [
     "Add authenticated vehicle-bound catalog composition endpoint and OpenAPI JSON/YAML contract",
     "Prove source-backed ephemeral composition and truthful failure with provider-qualified cold hydration",
-    "Configure and verify approved AutoDBone worker access without weakening Vercel Deployment Protection",
+    "Configure and verify protected AutoDBone access for the isolated local worker only; Kubernetes and deployed-worker changes are out of scope",
     "Pass three newly randomized distinct YMME and procedure cold/warm cases with readable instructions and local images",
     "Pass exact-SHA hosted and independent release gates before closing Issue 110"
   ],
-  "base_sha": "3cc906dc6024c39407bccfd5839e55891e649ec2",
+  "base_sha": "dce29dd6787921b20a4fd29d4fd32d8e4aedf9fd",
   "status": "synchronized",
-  "updated_at": "2026-10-04T07:53:48Z"
+  "updated_at": "2026-10-04T09:24:14Z"
 }
