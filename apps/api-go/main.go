@@ -238,7 +238,7 @@ func (s *Server) Handler() http.Handler {
 		serveCatalogImage(response, request, s.catalogImageKey)
 	})
 	mux.HandleFunc("GET /v1/catalog/images", func(response http.ResponseWriter, _ *http.Request) {
-		http.Error(response, "opaque image reference required", http.StatusBadRequest)
+		http.Error(response, "catalog image not found", http.StatusNotFound)
 	})
 	mux.Handle("POST /dataset-requests", s.requireRole("dataset_viewer", s.createDatasetRequest))
 	mux.Handle("POST /vehicle-identities/resolve", s.requireRole("dataset_viewer", s.resolveVehicleIdentity))
@@ -602,6 +602,10 @@ func configuredReadiness() ReadinessChecker {
 const defaultIngestionTimeoutSeconds = 120
 
 func main() {
+	authenticator, err := configuredAuthenticator()
+	if err != nil {
+		log.Fatal(fmt.Errorf("configure API authentication: %w", err))
+	}
 	address := envOrDefault("AUTODATA_API_ADDR", ":8080")
 	requestStore, projectionStore, cleanup, err := configuredStores(context.Background())
 	if err != nil {
@@ -612,7 +616,7 @@ func main() {
 	if err != nil {
 		log.Fatal(fmt.Errorf("configure knowledge fallback publisher: %w", err))
 	}
-	application := NewServerWithDependenciesAndPublisher(configuredReadiness(), HeaderAuthenticator{}, requestStore, publisher, projectionStore)
+	application := NewServerWithDependenciesAndPublisher(configuredReadiness(), authenticator, requestStore, publisher, projectionStore)
 	if durableProjections, ok := projectionStore.(*postgresProjectionStore); ok {
 		application.vehicleIdentity = newLayeredVehicleIdentityStore(durableProjections.pool)
 		application.catalog = newPostgresCatalogStore(durableProjections.pool)

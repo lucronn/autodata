@@ -68,6 +68,8 @@ services:
       dockerfile: apps/api-go/Dockerfile
     environment:
       AUTODATA_API_ADDR: ":8080"
+      AUTODATA_AUTH_MODE: ${AUTODATA_AUTH_MODE:-local}
+      AUTODATA_SERVICE_KEYS_JSON: ${AUTODATA_SERVICE_KEYS_JSON-}
       AUTODATA_DB_ADDRESS: "postgres:5432"
       AUTODATA_POSTGRES_DB: ${AUTODATA_POSTGRES_DB:-autodata}
       AUTODATA_POSTGRES_USER: ${AUTODATA_POSTGRES_USER:-autodata}
@@ -75,11 +77,14 @@ services:
       AUTODATA_PROJECTION_STORE: "postgres"
       AUTODATA_NATS_ADDRESS: "nats:4222"
       AUTODATA_S3_ADDRESS: "minio:9000"
+      AUTODATA_S3_ACCESS_KEY: ${AUTODATA_MINIO_ROOT_USER:?set AUTODATA_MINIO_ROOT_USER for local development}
+      AUTODATA_S3_SECRET_KEY: ${AUTODATA_MINIO_ROOT_PASSWORD:?set AUTODATA_MINIO_ROOT_PASSWORD for local development}
+      AUTODATA_SOURCE_BUCKET: "autodata-sources"
       AUTODATA_INGESTION_URL: "http://ingestion-http:8081"
       AUTODATA_INGESTION_INTERNAL_TOKEN: ${AUTODATA_INGESTION_INTERNAL_TOKEN-}
       AUTODATA_IMAGE_URL_KEY: ${AUTODATA_IMAGE_URL_KEY-}
     ports:
-      - "${AUTODATA_API_PORT:-8080}:8080"
+      - "127.0.0.1:${AUTODATA_API_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy

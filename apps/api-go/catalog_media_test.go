@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
-	"io"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 )
@@ -44,27 +47,55 @@ func TestCatalogImageReferenceIsOpaqueUniqueAndAuthenticated(t *testing.T) {
 	}
 }
 
-func TestCatalogImageProjectionConvertsLegacySourceQueryToOpaquePath(t *testing.T) {
+func TestCatalogImageProjectionDropsUnlocalizedProviderURL(t *testing.T) {
 	article := CatalogArticle{Images: []CatalogImage{
 		{ID: "image-1", URL: "/v1/catalog/images?src=https%3A%2F%2Fautoapitwo.vercel.app%2Ffig%2Fbrake.png"},
 		{ID: "image-2", URL: "https://autoapitwo.vercel.app/fig/brake.png"},
 	}}
 	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
 	rewriteCatalogImageURLs(&article, key)
-	if len(article.Images) != 2 || !strings.HasPrefix(article.Images[0].URL, "/v1/catalog/images/") || !strings.HasPrefix(article.Images[1].URL, "/v1/catalog/images/") {
-		t.Fatalf("images were not projected to opaque paths: %#v", article.Images)
+	for _, image := range article.Images {
+		if image.URL != "" {
+			t.Fatalf("unlocalized provider image must be omitted: %#v", article.Images)
+		}
 	}
-	if article.Images[0].URL == article.Images[1].URL {
-		t.Fatal("each public image reference must be independently unique")
-	}
-	serialized := article.Images[0].URL + article.Images[1].URL
-	if strings.Contains(serialized, "src=") || strings.Contains(serialized, "autoapitwo") || strings.Contains(serialized, "brake.png") {
-		t.Fatalf("public image paths reveal source details: %s", serialized)
-	}
-	article.Images[0].URL = "/v1/catalog/images?src=https%3A%2F%2Fevil.example%2Fsecret.png"
+}
+
+func TestCatalogImageProjectionUsesStoredObjectKeyInsteadOfProviderURL(t *testing.T) {
+	article := CatalogArticle{Images: []CatalogImage{{
+		ID:         "image-1",
+		URL:        "https://autoapitwo.vercel.app/fig/brake.png",
+		StorageKey: "procedure-images/abc123",
+	}}}
+	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
 	rewriteCatalogImageURLs(&article, key)
-	if article.Images[0].URL != "" {
-		t.Fatalf("non-allowlisted source should not produce a public image URL: %#v", article.Images[0])
+	if !strings.HasPrefix(article.Images[0].URL, "/v1/catalog/images/") {
+		t.Fatalf("stored image was not projected to an opaque path: %#v", article.Images[0])
+	}
+	if strings.Contains(article.Images[0].URL, "autoapitwo") || strings.Contains(article.Images[0].URL, "procedure-images") {
+		t.Fatalf("stored image path leaked provider or object key: %q", article.Images[0].URL)
+	}
+	token := strings.TrimPrefix(article.Images[0].URL, "/v1/catalog/images/")
+	opened, err := openCatalogImageStorageKey(token, key)
+	if err != nil || opened != "procedure-images/abc123" {
+		t.Fatalf("openCatalogImageStorageKey() = %q, %v", opened, err)
+	}
+}
+
+func TestCatalogImageDecodesInternalStorageKeyWithoutPublishingIt(t *testing.T) {
+	var image CatalogImage
+	if err := json.Unmarshal([]byte(`{"id":"image-1","storage_key":"procedure-images/abc123","media_type":"image/png"}`), &image); err != nil {
+		t.Fatal(err)
+	}
+	if image.StorageKey != "procedure-images/abc123" || image.MediaType != "image/png" {
+		t.Fatalf("decoded image = %#v", image)
+	}
+	encoded, err := json.Marshal(image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "storage_key") || strings.Contains(string(encoded), "procedure-images") {
+		t.Fatalf("internal storage key was published: %s", encoded)
 	}
 }
 
@@ -89,27 +120,85 @@ func TestOpaqueCatalogImageEndpointServesAllowlistedImageAndRejectsLegacyURL(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	previousClient := catalogImageClient
-	catalogImageClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.String() != source {
-			t.Fatalf("upstream URL = %q, want allowlisted URL", request.URL)
-		}
-		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"image/png"}}, Body: io.NopCloser(strings.NewReader("png-bytes")), Request: request}, nil
-	})}
-	t.Cleanup(func() { catalogImageClient = previousClient })
-
 	response := catalogRequest(server, "/v1/catalog/images/"+token)
-	if response.Code != http.StatusOK || response.Body.String() != "png-bytes" || response.Header().Get("Content-Type") != "image/png" {
-		t.Fatalf("opaque image response = %d %q %#v", response.Code, response.Body.String(), response.Header())
-	}
-	if response.Header().Get("Referrer-Policy") != "no-referrer" {
-		t.Fatalf("missing referrer policy: %#v", response.Header())
+	if response.Code != http.StatusNotFound || strings.Contains(response.Body.String(), source) {
+		t.Fatalf("legacy provider token response = %d %q", response.Code, response.Body.String())
 	}
 
 	legacy := catalogRequest(server, "/v1/catalog/images?src="+url.QueryEscape(source))
 	if legacy.Code == http.StatusOK || strings.Contains(legacy.Body.String(), source) {
 		t.Fatalf("legacy source-bearing URL was accepted or echoed: %d %s", legacy.Code, legacy.Body.String())
+	}
+}
+
+func TestOpaqueCatalogImageEndpointServesStoredObjectWithoutProviderFetch(t *testing.T) {
+	secret := testCatalogImageSecret
+	t.Setenv("AUTODATA_IMAGE_URL_KEY", secret)
+	server := catalogServer(catalogFixtureStore())
+	key := deriveCatalogImageReferenceKey(secret)
+	token, err := sealCatalogImageStorageKey("procedure-images/abc123", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousReader := catalogImageObjectReader
+	catalogImageObjectReader = func(_ context.Context, storageKey string) (catalogImageObject, error) {
+		if storageKey != "procedure-images/abc123" {
+			t.Fatalf("storage key = %q", storageKey)
+		}
+		return catalogImageObject{Body: []byte("png-bytes"), ContentType: "image/png"}, nil
+	}
+	previousClient := catalogImageClient
+	catalogImageClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("stored image path must not call a provider")
+		return nil, nil
+	})}
+	t.Cleanup(func() {
+		catalogImageObjectReader = previousReader
+		catalogImageClient = previousClient
+	})
+
+	response := catalogRequest(server, "/v1/catalog/images/"+token)
+	if response.Code != http.StatusOK || response.Body.String() != "png-bytes" || response.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("stored image response = %d %q %#v", response.Code, response.Body.String(), response.Header())
+	}
+}
+
+func TestOpaqueCatalogImageEndpointFailsSafelyForMissingStoredObject(t *testing.T) {
+	t.Setenv("AUTODATA_IMAGE_URL_KEY", testCatalogImageSecret)
+	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
+	token, err := sealCatalogImageStorageKey("procedure-images/missing", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousReader := catalogImageObjectReader
+	catalogImageObjectReader = func(context.Context, string) (catalogImageObject, error) {
+		return catalogImageObject{}, os.ErrNotExist
+	}
+	t.Cleanup(func() { catalogImageObjectReader = previousReader })
+
+	response := catalogRequest(catalogServer(catalogFixtureStore()), "/v1/catalog/images/"+token)
+	if response.Code != http.StatusNotFound || strings.Contains(response.Body.String(), "procedure-images") {
+		t.Fatalf("missing stored image response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCatalogImageObjectReaderReadsFromConfiguredAutoDataStorage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/autodata-sources/procedure-images/abc123" {
+			t.Fatalf("object storage path = %q", request.URL.Path)
+		}
+		response.Header().Set("Content-Type", "image/png")
+		_, _ = response.Write([]byte("png-bytes"))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("AUTODATA_S3_URL", server.URL)
+	t.Setenv("AUTODATA_SOURCE_BUCKET", "autodata-sources")
+	t.Setenv("AUTODATA_S3_ACCESS_KEY", "")
+	t.Setenv("AUTODATA_S3_SECRET_KEY", "")
+
+	object, err := readCatalogImageObject(context.Background(), "procedure-images/abc123")
+	if err != nil || string(object.Body) != "png-bytes" || object.ContentType != "image/png" {
+		t.Fatalf("readCatalogImageObject() = %#v, %v", object, err)
 	}
 }
 

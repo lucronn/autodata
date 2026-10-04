@@ -14,7 +14,7 @@ from hashlib import sha256
 from io import BytesIO
 from typing import Any
 from urllib.error import HTTPError
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request
 
 from .object_storage import ensure_versioned_bucket
@@ -84,8 +84,7 @@ def localize_procedure_images(
             # on the materialized article image so both records join reliably.
             record["image_id"] = sha256(url.encode()).hexdigest()
         if str(record.get("storage_key") or "").strip():
-            if not (url.startswith("data:image/") or url.startswith("/v1/catalog/images?src=")):
-                record.pop("url", None)
+            record.pop("url", None)
             record.pop("fetch_failed", None)
             return record
         local = stored.get(url)
@@ -99,11 +98,10 @@ def localize_procedure_images(
         record.update(local)
         if image_id:
             record["image_id"] = image_id
-        # The API serves this same-origin route and keeps the provider URL out
-        # of the public payload.  The object-store key remains authoritative;
-        # the proxy is a compatibility fallback until the API's object-store
-        # reader is enabled in every deployment.
-        record["url"] = f"/v1/catalog/images?src={quote(url, safe='')}"
+        # The object-store key is authoritative. The API mints the opaque
+        # same-origin URL at projection time, so ingestion never persists a
+        # provider-bearing or source-bearing public URL.
+        record.pop("url", None)
         record.pop("fetch_failed", None)
         return record
 

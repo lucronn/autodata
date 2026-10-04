@@ -164,6 +164,28 @@ type CatalogImage struct {
 	ImageID    string `json:"image_id,omitempty"`
 }
 
+// UnmarshalJSON accepts the private persistence field while the json tag on
+// StorageKey keeps it out of every public projection.
+func (image *CatalogImage) UnmarshalJSON(data []byte) error {
+	type catalogImageInput struct {
+		ID         string `json:"id,omitempty"`
+		URL        string `json:"url,omitempty"`
+		Alt        string `json:"alt,omitempty"`
+		StorageKey string `json:"storage_key,omitempty"`
+		MediaType  string `json:"media_type,omitempty"`
+		ImageID    string `json:"image_id,omitempty"`
+	}
+	var input catalogImageInput
+	if err := json.Unmarshal(data, &input); err != nil {
+		return err
+	}
+	*image = CatalogImage{
+		ID: input.ID, URL: input.URL, Alt: input.Alt, StorageKey: input.StorageKey,
+		MediaType: input.MediaType, ImageID: input.ImageID,
+	}
+	return nil
+}
+
 type memoryCatalogStore struct {
 	mu             sync.RWMutex
 	configurations map[string]CatalogConfiguration

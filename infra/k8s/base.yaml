@@ -6,6 +6,7 @@ metadata:
     app.kubernetes.io/part-of: autodata
 data:
   AUTODATA_DB_ADDRESS: postgres.example.internal:5432
+  AUTODATA_AUTH_MODE: service_key
   AUTODATA_POSTGRES_DB: autodata
   AUTODATA_POSTGRES_USER: autodata
   AUTODATA_PROJECTION_STORE: postgres
@@ -252,6 +253,24 @@ spec:
                 secretKeyRef:
                   name: autodata-runtime-secrets
                   key: AUTODATA_INGESTION_INTERNAL_TOKEN
+            - name: AUTODATA_SERVICE_KEYS_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: autodata-runtime-secrets
+                  key: AUTODATA_SERVICE_KEYS_JSON
+                  optional: false
+            - name: AUTODATA_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: autodata-runtime-secrets
+                  key: AUTODATA_S3_ACCESS_KEY
+                  optional: false
+            - name: AUTODATA_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: autodata-runtime-secrets
+                  key: AUTODATA_S3_SECRET_KEY
+                  optional: false
           readinessProbe:
             httpGet:
               path: /readyz

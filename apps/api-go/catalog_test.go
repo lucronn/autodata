@@ -107,8 +107,8 @@ func TestCatalogArticleDetailKeepsSourceOrderAndHidesOriginal(t *testing.T) {
 	if len(body.Article.Images) != 2 || body.Article.Images[0].Alt != "Filter location" {
 		t.Fatalf("images = %#v, want the article illustrations", body.Article.Images)
 	}
-	if !strings.HasPrefix(body.Article.Images[1].URL, "/v1/catalog/images/") || strings.Contains(body.Article.Images[1].URL, "autoapitwo.vercel.app/diagram.png") {
-		t.Fatalf("provider image leaked or was not proxied: %#v", body.Article.Images[1])
+	if body.Article.Images[0].URL == "" || body.Article.Images[1].URL != "" || strings.Contains(response.Body.String(), "autoapitwo.vercel.app/diagram.png") {
+		t.Fatalf("stored image was not projected and unlocalized provider image was not omitted: %#v", body.Article.Images)
 	}
 	if strings.Contains(response.Body.String(), "source_original") || strings.Contains(response.Body.String(), "provider") {
 		t.Fatalf("internal source fields leaked: %s", response.Body.String())

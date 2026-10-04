@@ -46,7 +46,8 @@ def test_localize_procedure_images_stores_local_keys_and_drops_provider_url(monk
     image = localized["images"][0]
     assert image["storage_key"].startswith("procedure-images/")
     assert image["content_sha256"]
-    assert "url" not in image or not str(image.get("url") or "").startswith("https://autoapitwo")
+    assert "url" not in image
+    assert "?src=" not in str(image.get("url") or "")
     assert localized["steps"][0]["images"][0]["storage_key"] == image["storage_key"]
     assert stored
 
