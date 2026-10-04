@@ -70,6 +70,7 @@ type Server struct {
 	ingestionClient            IngestionClient
 	chatClient                 ChatClient
 	vehicleIdentity            VehicleIdentityStore
+	catalog                    CatalogStore
 	metrics                    *apiMetrics
 }
 
@@ -97,8 +98,19 @@ func NewServerWithDependenciesAndPublisher(readiness ReadinessChecker, auth Auth
 		knowledgeFallbackPublisher: publisher,
 		sourceReviews:              newMemorySourceReviewStore(),
 		vehicleIdentity:            newMemoryVehicleIdentityStore(),
+		catalog:                    newMemoryCatalogStore(),
 		metrics:                    new(apiMetrics),
 	}
+}
+
+// NewServerWithCatalogStore injects the normalized catalog persistence
+// boundary while keeping handlers independent from the database adapter.
+func NewServerWithCatalogStore(readiness ReadinessChecker, auth Authenticator, requests RequestStore, catalog CatalogStore, projections ...ProjectionStore) *Server {
+	server := NewServerWithDependencies(readiness, auth, requests, projections...)
+	if catalog != nil {
+		server.catalog = catalog
+	}
+	return server
 }
 
 // NewServerWithVehicleIdentityStore injects the canonical identity persistence
@@ -160,6 +172,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics.handler)
+	mux.Handle("GET /v1/catalog/years", s.requireRole("dataset_viewer", s.listCatalogYears))
+	mux.Handle("GET /v1/catalog/years/{year}/makes", s.requireRole("dataset_viewer", s.listCatalogMakes))
+	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models", s.requireRole("dataset_viewer", s.listCatalogModels))
+	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models/{model}/configurations", s.requireRole("dataset_viewer", s.listCatalogConfigurations))
+	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles", s.requireRole("dataset_viewer", s.listCatalogArticles))
+	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.requireRole("dataset_viewer", s.getCatalogArticle))
+	mux.HandleFunc("GET /v1/catalog/images", serveCatalogImage)
 	mux.Handle("POST /dataset-requests", s.requireRole("dataset_viewer", s.createDatasetRequest))
 	mux.Handle("POST /vehicle-identities/resolve", s.requireRole("dataset_viewer", s.resolveVehicleIdentity))
 	mux.Handle("GET /vehicle-identities/selectors", s.requireRole("dataset_viewer", s.listVehicleIdentitySelectors))
@@ -541,6 +560,7 @@ func main() {
 	application := NewServerWithDependenciesAndPublisher(configuredReadiness(), HeaderAuthenticator{}, requestStore, publisher, projectionStore)
 	if durableProjections, ok := projectionStore.(*postgresProjectionStore); ok {
 		application.vehicleIdentity = newLayeredVehicleIdentityStore(durableProjections.pool)
+		application.catalog = newPostgresCatalogStore(durableProjections.pool)
 		application.sourceReviews = newPostgresSourceReviewStore(durableProjections.pool)
 	}
 	if endpoint := strings.TrimSpace(os.Getenv("AUTODATA_INGESTION_URL")); endpoint != "" {

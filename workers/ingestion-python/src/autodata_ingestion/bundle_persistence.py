@@ -452,24 +452,129 @@ def _persist_catalog_articles(
                  images, normalized_fingerprint, source_snapshot_id, source_locator,
                  evidence_locator, evidence_confidence, vehicle_configuration_id,
                  content_source_snapshot_id, content_source_locator,
-                 content_extraction_evidence_id, operations)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 content_extraction_evidence_id, operations,
+                 provider, content_kind, procedure_kind, component, content_status,
+                 source_original, rewrite_status, normalized_document,
+                 normalization_version, canonical_article_key)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (vehicle_id, article_id, source_snapshot_id, source_locator)
-            DO UPDATE SET bucket = EXCLUDED.bucket,
-                          title = EXCLUDED.title,
-                          bulletin_number = EXCLUDED.bulletin_number,
-                          release_date = EXCLUDED.release_date,
-                          sort_order = EXCLUDED.sort_order,
-                          body = EXCLUDED.body,
-                          steps = EXCLUDED.steps,
-                          images = EXCLUDED.images,
-                          operations = EXCLUDED.operations,
-                          normalized_fingerprint = EXCLUDED.normalized_fingerprint,
+            DO UPDATE SET bucket = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.bucket
+                              ELSE EXCLUDED.bucket
+                          END,
+                          title = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.title
+                              ELSE EXCLUDED.title
+                          END,
+                          bulletin_number = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.bulletin_number
+                              ELSE EXCLUDED.bulletin_number
+                          END,
+                          release_date = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.release_date
+                              ELSE EXCLUDED.release_date
+                          END,
+                          sort_order = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.sort_order
+                              ELSE EXCLUDED.sort_order
+                          END,
+                          body = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.body
+                              ELSE EXCLUDED.body
+                          END,
+                          steps = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.steps
+                              ELSE EXCLUDED.steps
+                          END,
+                          images = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.images
+                              ELSE EXCLUDED.images
+                          END,
+                          operations = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.operations
+                              ELSE EXCLUDED.operations
+                          END,
+                          provider = COALESCE(EXCLUDED.provider, catalog_articles.provider),
+                          content_kind = COALESCE(EXCLUDED.content_kind, catalog_articles.content_kind),
+                          procedure_kind = COALESCE(EXCLUDED.procedure_kind, catalog_articles.procedure_kind),
+                          component = COALESCE(EXCLUDED.component, catalog_articles.component),
+                          content_status = CASE
+                              WHEN EXCLUDED.content_status = 'content_complete'
+                                THEN EXCLUDED.content_status
+                              WHEN catalog_articles.content_status = 'content_complete'
+                                THEN catalog_articles.content_status
+                              ELSE EXCLUDED.content_status
+                          END,
+                          source_original = CASE
+                              WHEN catalog_articles.source_original = '{}'::jsonb
+                                THEN EXCLUDED.source_original
+                              ELSE catalog_articles.source_original
+                          END,
+                          rewrite_status = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.rewrite_status
+                              ELSE EXCLUDED.rewrite_status
+                          END,
+                          normalized_document = CASE
+                              WHEN EXCLUDED.content_status = 'content_complete'
+                                THEN EXCLUDED.normalized_document
+                              WHEN catalog_articles.normalized_document->'blocks' = '[]'::jsonb
+                                THEN EXCLUDED.normalized_document
+                              ELSE catalog_articles.normalized_document
+                          END,
+                          normalization_version = COALESCE(
+                              EXCLUDED.normalization_version,
+                              catalog_articles.normalization_version
+                          ),
+                          canonical_article_key = COALESCE(
+                              catalog_articles.canonical_article_key,
+                              EXCLUDED.canonical_article_key
+                          ),
+                          normalized_fingerprint = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.normalized_fingerprint
+                              ELSE EXCLUDED.normalized_fingerprint
+                          END,
                           evidence_locator = EXCLUDED.evidence_locator,
                           evidence_confidence = EXCLUDED.evidence_confidence,
-                          content_source_snapshot_id = EXCLUDED.content_source_snapshot_id,
-                          content_source_locator = EXCLUDED.content_source_locator,
-                          content_extraction_evidence_id = EXCLUDED.content_extraction_evidence_id,
+                          content_source_snapshot_id = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.content_source_snapshot_id
+                              ELSE EXCLUDED.content_source_snapshot_id
+                          END,
+                          content_source_locator = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.content_source_locator
+                              ELSE EXCLUDED.content_source_locator
+                          END,
+                          content_extraction_evidence_id = CASE
+                              WHEN catalog_articles.content_status = 'content_complete'
+                               AND EXCLUDED.content_status <> 'content_complete'
+                                THEN catalog_articles.content_extraction_evidence_id
+                              ELSE EXCLUDED.content_extraction_evidence_id
+                          END,
                           vehicle_configuration_id = COALESCE(
                               EXCLUDED.vehicle_configuration_id,
                               catalog_articles.vehicle_configuration_id
@@ -500,6 +605,19 @@ def _persist_catalog_articles(
                 article.get("content_locator") or content_evidence["locator"],
                 content_evidence_id,
                 jsonb(article.get("operations", [])),
+                article.get("provider"),
+                article.get("content_kind"),
+                article.get("procedure_kind"),
+                article.get("component"),
+                str(article.get("content_status") or "list_only"),
+                jsonb(article.get("source_original") or {}),
+                str(article.get("rewrite_status") or "pending"),
+                jsonb(article.get("normalized_document") or {}),
+                str(article.get("normalization_version") or "ordered-article-v1"),
+                str(
+                    article.get("canonical_article_key")
+                    or f"{article.get('provider') or 'unknown'}:{article.get('article_id')}"
+                ),
             ),
         )
         canonical_article_id = exact_duplicate_id or near_duplicate_id

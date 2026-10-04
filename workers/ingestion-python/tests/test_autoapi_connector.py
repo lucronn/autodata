@@ -12,6 +12,8 @@ from autodata_ingestion.autoapi_batch import execute_autoapi_batch  # noqa: E402
 from autodata_ingestion.autoapi_connector import (  # noqa: E402
     AutoAPIConnector,
     _selector_rows,
+    _make_matches,
+    _model_matches,
     fetch_required_source_resources,
 )
 
@@ -37,6 +39,35 @@ class FakeResponse:
 
 
 class AutoAPIConnectorTests(unittest.TestCase):
+    def test_model_family_match_handles_provider_spacing_trim_and_drivetrain_labels(self):
+        self.assertTrue(_model_matches({"modelName": "4Runner Base"}, "4 Runner 4wd"))
+        self.assertTrue(_model_matches({"modelName": "4Runner SR5"}, "4 Runner 4wd"))
+        self.assertTrue(_model_matches({"modelName": "RAV4"}, "RAV 4 2WD"))
+        self.assertFalse(_model_matches({"modelName": "Camry"}, "4 Runner 4wd"))
+
+    def test_make_family_match_handles_truck_suffixes(self):
+        self.assertTrue(_make_matches("Toyota", "Toyota Truck"))
+        self.assertTrue(_make_matches("Chevrolet", "Chevy Truck"))
+        self.assertFalse(_make_matches("Honda", "Toyota Truck"))
+
+    def test_catalog_snapshot_exposes_raw_response_provenance(self):
+        responses = {
+            "/v1/api/years": {"header": {}, "body": [1999]},
+            "/v1/api/year/1999/makes": {"header": {}, "body": []},
+        }
+
+        def opener(request, timeout):
+            del timeout
+            return FakeResponse(responses[urlsplit(request.full_url).path])
+
+        connector = AutoAPIConnector("http://127.0.0.1:3000", opener=opener)
+        snapshot = connector.fetch_catalog_snapshot()
+
+        self.assertTrue(snapshot["complete"])
+        self.assertEqual(snapshot["rows"], ())
+        self.assertEqual(snapshot["provenance"][0]["provider"], "autoapi")
+        self.assertEqual(snapshot["provenance"][0]["source_uri"], "http://127.0.0.1:3000/v1/api/years")
+
     def test_provider_part_rows_become_canonical_no_markup_price_snapshots(self):
         responses = {
             "/v1/api/source/Motor/vehicle/price-v1/articles/v2": {

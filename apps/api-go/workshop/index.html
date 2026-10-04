@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f8f9f5">
+  <title>AutoData — The workshop reference</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23234bd8' d='M0 0h32v32H0z'/%3E%3Cpath fill='white' d='m7 25 7-18h4l7 18h-5l-1-4h-6l-1 4zm7-8h4l-2-6z'/%3E%3C/svg%3E">
+  <link rel="preload" href="/workshop/fonts/InstrumentSans.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="/workshop/styles.css">
+  <script type="module" src="/workshop/app.mjs"></script>
+</head>
+<body>
+  <a class="skip-link" href="#vehicle-picker">Skip to vehicle selection</a>
+  <div class="page">
+    <header class="site-header">
+      <a class="wordmark" href="/workshop/" aria-label="AutoData home"><span class="brand-symbol" aria-hidden="true">a<span>↗</span></span>AutoData<span class="brand-note"> / workshop</span></a>
+      <nav aria-label="Site"><a href="/swagger/">API docs <span aria-hidden="true">↗</span></a></nav>
+    </header>
+
+    <main>
+      <section class="masthead" aria-labelledby="page-title">
+        <div><h1 id="page-title">The workshop<br>reference<span class="full-stop">.</span></h1><p>Find your vehicle. Get to work.</p></div>
+        <div class="mechanism" aria-hidden="true">
+          <svg viewBox="0 0 270 210" fill="none">
+            <path class="guide" d="M20 105h235M140 12v187M46 181l178-151"/>
+            <g class="wheel">
+              <circle cx="140" cy="105" r="74"/><circle cx="140" cy="105" r="65"/>
+              <circle cx="140" cy="105" r="29"/><circle cx="140" cy="105" r="13"/>
+              <path d="m133 32-5 42m24-41 1 43m53 6-42 6m45 13-40 8m-33 69-1-43m24 40-12-40m-70-43 39 6m-44 14 44-3"/>
+              <circle cx="140" cy="61" r="4"/><circle cx="182" cy="119" r="4"/><circle cx="114" cy="141" r="4"/>
+            </g>
+            <path d="M37 68v74m-6-74h12m-12 74h12M83 191h113m-113-6v12m113-12v12"/>
+            <path class="pointer" d="m203 49 35-24h20M199 51l9-2-5-7"/>
+            <circle cx="140" cy="105" r="3" fill="currentColor"/>
+          </svg>
+          <span class="drawing-caption">A little knowledge. A lot of possibility.</span>
+        </div>
+      </section>
+
+      <section id="vehicle-picker" class="vehicle-picker" aria-labelledby="picker-title">
+        <div class="section-heading"><h2 id="picker-title">Start with your vehicle</h2><span class="region-note">U.S. catalog</span></div>
+        <div class="selectors">
+          <label><span><small>1</small> Year</span><select id="year" disabled><option value="">Loading years…</option></select></label>
+          <label><span><small>2</small> Make</span><select id="make" disabled><option value="">Choose year first</option></select></label>
+          <label><span><small>3</small> Model</span><select id="model" disabled><option value="">Choose make first</option></select></label>
+          <label><span><small>4</small> Engine / trim</span><select id="configuration" disabled><option value="">Choose model first</option></select></label>
+        </div>
+      </section>
+
+      <div id="activity" class="activity" role="status" aria-live="polite">
+        <span id="activity-dot" class="activity-dot"></span><span id="activity-text">Opening the vehicle index…</span>
+        <button id="retry" class="text-button" type="button" hidden>Try again</button>
+        <button id="cancel" class="text-button" type="button" hidden>Cancel</button>
+      </div>
+      <div id="loading-progress" class="loading-progress" role="group" aria-label="Loading progress" hidden>
+        <div class="loading-progress-heading"><span id="loading-progress-stage">Step 1 of 6 · Years · 0%</span><strong id="loading-progress-percent">0%</strong></div>
+        <progress id="loading-progress-bar" max="100" value="0" aria-label="Loading progress" aria-valuetext="Step 1 of 6, Years, 0 percent"></progress>
+        <p id="loading-progress-detail">Requesting the years catalog…</p>
+        <div id="loading-progress-catalog" class="loading-progress-catalog" hidden>
+          <div class="loading-progress-subheading"><span>Catalog work</span><strong id="loading-progress-catalog-percent">0%</strong></div>
+          <progress id="loading-progress-catalog-bar" max="100" value="0" aria-label="Article catalog progress"></progress>
+          <p id="loading-progress-catalog-detail"></p>
+        </div>
+      </div>
+
+      <section id="welcome" class="welcome" aria-labelledby="welcome-title">
+        <div class="index-glyph" aria-hidden="true"><span></span><span></span><span></span><i>↳</i></div>
+        <div><h2 id="welcome-title">Your manual starts here.</h2><p>Choose a year, make, model, and engine above to open the vehicle’s article index.</p></div>
+        <span class="welcome-note">Less searching.<br>More fixing.</span>
+      </section>
+
+      <section id="catalog" class="catalog" aria-labelledby="catalog-title" hidden>
+        <div class="catalog-header">
+          <div><p id="vehicle-caption" class="caption"></p><h2 id="catalog-title" tabindex="-1">Article index</h2><p id="catalog-count" class="catalog-count"></p></div>
+          <label class="search-label" for="search">Find an article<input id="search" type="search" placeholder="Try “oil pump”" autocomplete="off"></label>
+        </div>
+        <div class="list-heading" aria-hidden="true"><span>Article</span><span>Type</span></div>
+        <div id="articles" class="article-groups"></div>
+        <p id="no-results" class="empty-results" hidden>No articles match this search. Try a component name or a shorter phrase.</p>
+      </section>
+
+      <section id="reader" class="reader" aria-labelledby="article-title" hidden>
+        <nav class="reader-nav" aria-label="Article"><button id="back" class="text-button" type="button">← Back to article index</button><button id="print" class="text-button" type="button">Print / save PDF</button></nav>
+        <div class="document">
+          <aside class="document-margin"><span class="document-label">Workshop<br>reference</span><p id="reader-vehicle"></p><p id="reader-engine"></p><div class="document-mark" aria-hidden="true">↳</div></aside>
+          <article>
+            <p id="article-kind" class="caption"></p><h2 id="article-title" tabindex="-1"></h2>
+            <p id="article-note" class="article-note" hidden></p>
+            <div id="article-content" class="article-content"></div>
+            <details id="article-reference" class="reference"><summary>Article reference</summary><dl id="reference-data"></dl></details>
+          </article>
+        </div>
+      </section>
+      <noscript><p class="noscript">Enable JavaScript to choose a vehicle and read its articles.</p></noscript>
+    </main>
+    <footer><span>AutoData. Keep good information close.</span><a href="#page-title">Back to top ↑</a></footer>
+  </div>
+</body>
+</html>

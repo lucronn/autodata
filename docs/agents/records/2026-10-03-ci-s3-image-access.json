@@ -1,0 +1,18 @@
+{
+  "goal": "Restore hosted Compose verification for the open catalog and procedure pull requests by using a publicly pullable S3-compatible local service",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-ci-s3-image-access.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/111",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "todo": [
+    "Keep local MinIO, its persistent volume, application defaults, and production configuration unchanged",
+    "Add a CI-only Compose override with a digest-pinned public S3-compatible service, compatible credentials, matching internal port, isolated test volume, and health check",
+    "Run merged Compose validation and the full CI-shaped S3-backed ingestion smoke",
+    "Pass required GitHub verification on exact PR heads #117-#123 and synchronize evidence"
+  ],
+  "base_sha": "2f2bcb943d9b6def8a4f8c38a776975ff9c730ef",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T06:33:00Z"
+}

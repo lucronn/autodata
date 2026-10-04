@@ -1,0 +1,19 @@
+{
+  "goal": "Publish a comprehensive OpenAPI contract and same-origin Swagger UI for the provider-neutral AutoData catalog API.",
+  "plan_ref": "docs/superpowers/plans/2026-09-24-openapi-swagger-catalog-api.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/113",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/provider-neutral-catalog-api.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add the checked-in OpenAPI document with schemas, security, parameters, responses, and prefilled cascade/article examples",
+    "Serve the document and Swagger UI from the API same-origin public surface",
+    "Add tests for the document route, UI route, and contract markers",
+    "Verify the live document parses and documented examples match live catalog endpoints"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-09-24T00:00:00Z",
+  "base_sha": "78b96a4"
+}

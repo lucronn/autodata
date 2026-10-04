@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -298,6 +299,46 @@ func chatInternalPath(queryID, suffix string) (string, error) {
 
 func (s *Server) createArticleIntake(response http.ResponseWriter, request *http.Request, _ Principal) {
 	s.proxyIngestionRequest(response, request, "/v1/article-intakes")
+}
+
+// ensureCatalogHydrated asks the ingestion boundary to fill a catalog scope
+// only after the local read has established that the scope is missing or
+// explicitly incomplete. Repeated reads share a deterministic idempotency key.
+func (s *Server) ensureCatalogHydrated(request *http.Request, payload map[string]any) error {
+	if s.ingestionClient == nil {
+		return nil
+	}
+	key, body, err := catalogHydrationRequest(payload)
+	if err != nil {
+		return err
+	}
+	status, _, err := s.ingestionClient.Do(request, "/v1/catalog/ensure", body, key)
+	if err != nil {
+		return err
+	}
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		return fmt.Errorf("catalog hydration returned status %d", status)
+	}
+	return nil
+}
+
+func catalogHydrationRequest(payload map[string]any) (string, []byte, error) {
+	keyPayload, err := json.Marshal(payload)
+	if err != nil {
+		return "", nil, err
+	}
+	digest := sha256.Sum256(keyPayload)
+	key := fmt.Sprintf("catalog-hydration:%x", digest[:12])
+	bodyPayload := make(map[string]any, len(payload)+1)
+	for name, value := range payload {
+		bodyPayload[name] = value
+	}
+	bodyPayload["idempotency_key"] = key
+	body, err := json.Marshal(bodyPayload)
+	if err != nil {
+		return "", nil, err
+	}
+	return key, body, nil
 }
 
 func (s *Server) createKnowledgeQuery(response http.ResponseWriter, request *http.Request, _ Principal) {
