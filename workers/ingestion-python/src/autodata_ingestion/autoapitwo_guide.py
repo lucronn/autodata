@@ -27,6 +27,9 @@ _COMPONENT_TERMS = {
     "alternator": "alternator",
     "starter": "starter",
     "brakes": "brake",
+    "brake_pads": "brake pad",
+    "brake_rotor": "brake rotor",
+    "brake_caliper": "brake caliper",
 }
 
 _CONFIGURED_CONNECTOR: AutoAPITwoConnector | None = None
@@ -182,16 +185,152 @@ def _actions(display: str) -> list[str]:
     actions = list(dict.fromkeys(match.group(1) for match in matches))
     if len(actions) > 1:
         return ["removal_and_installation"]
-    return actions
+    if actions:
+        return actions
+    # Provider titles often say "Replacement" instead of removal/installation.
+    if re.search(r"\breplacement\b", terminal) or re.search(r"\breplace\b", terminal):
+        return ["replace"]
+    # Older vehicles often expose only Parts and Labor pages for a component.
+    if "parts and labor" in terminal or "parts and labor" in normalized:
+        return ["replace"]
+    return []
+
+
+def _is_procedure_result(display: str) -> bool:
+    normalized = display.casefold()
+    return "service and repair" in normalized or "parts and labor" in normalized
+
+
+def _is_service_procedure(display: str) -> bool:
+    return "service and repair" in display.casefold()
+
+
+def _is_parts_and_labor(display: str) -> bool:
+    return "parts and labor" in display.casefold()
 
 
 def _result_component(display: str, requested: Iterable[str]) -> str | None:
     lowered = display.casefold()
     for component in requested:
         term = _COMPONENT_TERMS.get(component, component.replace("_", " "))
-        if term in lowered:
+        aliases = {term, term.rstrip("s"), f"{term}s"}
+        if component == "brake_rotor":
+            aliases.update({"brake rotor", "brake rotors", "brake rotor/disc", "rotor/disc"})
+        if component == "brake_pads":
+            aliases.update({"brake pad", "brake pads"})
+        if component.startswith("brake_") and "brake" not in lowered:
+            continue
+        if any(alias in lowered for alias in sorted(aliases, key=len, reverse=True)):
             return component
     return None
+
+
+def _merge_procedure_pair(removal: Mapping[str, Any], installation: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize split removal/installation pages into one component procedure."""
+
+    component = str(removal.get("component") or installation.get("component") or "service")
+    term = _COMPONENT_TERMS.get(component, component.replace("_", " ")).title()
+    removal_blocks = list(removal.get("blocks") or [])
+    installation_blocks = list(installation.get("blocks") or [])
+    if not removal_blocks and removal.get("body"):
+        removal_blocks = [{"kind": "text", "text": removal.get("body")}]
+    if not installation_blocks and installation.get("body"):
+        installation_blocks = [{"kind": "text", "text": installation.get("body")}]
+    blocks: list[dict[str, Any]] = []
+    if removal_blocks:
+        blocks.append({"kind": "text", "text": "REMOVAL"})
+        blocks.extend(dict(block) for block in removal_blocks if isinstance(block, Mapping))
+    if installation_blocks:
+        blocks.append({"kind": "text", "text": "INSTALLATION"})
+        blocks.extend(dict(block) for block in installation_blocks if isinstance(block, Mapping))
+    body_parts = [str(removal.get("body") or "").strip(), str(installation.get("body") or "").strip()]
+    body = "\n\n".join(part for part in body_parts if part)
+    evidence_ids = list(
+        dict.fromkeys(
+            [
+                *[str(value) for value in removal.get("evidence_ids", []) if str(value).strip()],
+                *[str(value) for value in installation.get("evidence_ids", []) if str(value).strip()],
+            ]
+        )
+    )
+    images = []
+    for source in (removal, installation):
+        for image in source.get("images", []) or []:
+            if isinstance(image, Mapping):
+                images.append(dict(image))
+    removal_id = str(removal.get("article_id") or "").strip()
+    installation_id = str(installation.get("article_id") or "").strip()
+    article_id = (
+        f"merged:{removal_id}:{installation_id}"
+        if removal_id and installation_id
+        else removal_id or installation_id or f"merged:{component}"
+    )
+    return {
+        **dict(removal),
+        "article_id": article_id,
+        "title": f"{term} Removal and Installation",
+        "procedure_kind": "removal_and_installation",
+        "component": component,
+        "body": body,
+        "blocks": blocks,
+        "images": images,
+        "evidence_ids": evidence_ids,
+        "merged_from_article_ids": [value for value in (removal_id, installation_id) if value],
+        "content_kind": "procedure",
+    }
+
+
+def _normalize_component_procedures(articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep one normalized procedure per component for multi-component composition.
+
+    Prefer Service and Repair procedure pages. When the provider splits removal
+    and installation, merge them into one component procedure. Parts and Labor
+    is only retained when no procedure page exists for that component.
+    """
+
+    by_component: dict[str, list[dict[str, Any]]] = {}
+    for article in articles:
+        component = str(article.get("component") or "").strip() or "service"
+        by_component.setdefault(component, []).append(article)
+
+    normalized: list[dict[str, Any]] = []
+    for component, group in by_component.items():
+        service = [
+            article
+            for article in group
+            if str(article.get("content_kind") or "") != "parts_and_labor"
+            and not _is_parts_and_labor(str(article.get("source_title") or article.get("title") or ""))
+        ]
+        labor = [article for article in group if article not in service]
+        candidates = service or labor
+        if not candidates:
+            continue
+        combined = next(
+            (
+                article
+                for article in candidates
+                if str(article.get("procedure_kind")) == "removal_and_installation"
+            ),
+            None,
+        )
+        if combined is not None:
+            article = dict(combined)
+            article.setdefault("content_kind", "procedure")
+            normalized.append(article)
+            continue
+        removal = next((article for article in candidates if str(article.get("procedure_kind")) == "removal"), None)
+        installation = next(
+            (article for article in candidates if str(article.get("procedure_kind")) == "installation"), None
+        )
+        if removal is not None and installation is not None:
+            normalized.append(_merge_procedure_pair(removal, installation))
+            continue
+        best = max(candidates, key=lambda article: len(str(article.get("body") or "")))
+        article = dict(best)
+        if article.get("content_kind") != "parts_and_labor":
+            article.setdefault("content_kind", "procedure")
+        normalized.append(article)
+    return normalized
 
 
 def retrieve_autoapitwo_articles(
@@ -200,8 +339,9 @@ def retrieve_autoapitwo_articles(
     operations: Iterable[Mapping[str, Any]] = (),
     *,
     connector: AutoAPITwoConnector | None = None,
+    only_components: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Retrieve bounded removal/installation/specification pages for one car."""
+    """Retrieve bounded procedure pages and normalize to one article per component."""
 
     provider_id = str(vehicle.get("autoapitwo_vehicle_id") or "").strip()
     if not provider_id.isdigit():
@@ -210,6 +350,11 @@ def retrieve_autoapitwo_articles(
     # Both pumps on the RAV4 share timing-belt access. Asking for it here lets
     # the completeness checker expose the prerequisite instead of hiding it.
     terms_components = list(dict.fromkeys(requested + (["timing_belt"] if {"oil_pump", "water_pump"} & set(requested) else [])))
+    if only_components is not None:
+        allowed = {str(component).strip() for component in only_components if str(component).strip()}
+        terms_components = [component for component in terms_components if component in allowed]
+    if not terms_components:
+        return []
     client = connector or _configured_connector()
     selected: dict[str, tuple[str, str, str, str]] = {}
     for component in terms_components:
@@ -218,22 +363,30 @@ def retrieve_autoapitwo_articles(
             results = client.search(provider_id, term)
         except Exception:
             continue
-        for result in results:
-            if not isinstance(result, Mapping):
-                continue
+        ranked = sorted(
+            (result for result in results if isinstance(result, Mapping)),
+            key=lambda result: (
+                0 if _is_service_procedure(_display(result)) else 1,
+                0 if not _is_parts_and_labor(_display(result)) else 1,
+            ),
+        )
+        for result in ranked:
             display = _display(result)
             href = _href(result)
-            if not href or "service and repair" not in display.casefold():
+            if not href or not _is_procedure_result(display):
                 continue
             found_component = _result_component(display, (component,))
             actions = _actions(display)
             if found_component is None or not actions:
                 continue
+            if _is_parts_and_labor(display) and any(
+                key.startswith(f"{found_component}:") and not _is_parts_and_labor(value[1])
+                for key, value in selected.items()
+            ):
+                continue
             action = actions[0]
             key = f"{found_component}:{href}"
             selected.setdefault(key, (href, display, found_component, action))
-            # Torque/specification pages are fetched from the same search but
-            # are treated as supporting facts when they are returned inline.
             if len(selected) >= 16:
                 break
     articles: list[dict[str, Any]] = []
@@ -248,8 +401,10 @@ def retrieve_autoapitwo_articles(
             "procedure_kind": action,
             "source_title": display,
         })
+        if article.get("content_kind") != "parts_and_labor":
+            article.setdefault("content_kind", "procedure")
         articles.append(article)
-    return articles
+    return _normalize_component_procedures(articles)
 
 
 def _text(value: Any) -> str:
@@ -300,52 +455,13 @@ def _step_action(text: str, component: str, kind: str) -> str:
 
 
 def _article_steps(article: Mapping[str, Any]) -> list[dict[str, Any]]:
-    component = str(article.get("component") or "service")
-    kind = str(article.get("procedure_kind") or "procedure")
-    blocks = article.get("blocks")
-    if not isinstance(blocks, list):
-        blocks = [{"kind": "text", "text": article.get("body", "")}]
-    pending_images: list[dict[str, Any]] = []
-    steps: list[dict[str, Any]] = []
-    current_phase = "removal" if kind == "removal_and_installation" else kind
-    for block in blocks:
-        if not isinstance(block, Mapping):
-            continue
-        if block.get("kind") == "image":
-            image = {key: block[key] for key in ("url", "alt", "image_id", "evidence_ids") if block.get(key)}
-            if image.get("url"):
-                pending_images.append(image)
-            continue
-        text = _text(block.get("text"))
-        if not text:
-            continue
-        evidence_ids = [str(value) for value in block.get("evidence_ids", article.get("evidence_ids", [])) if str(value).strip()]
-        # The provider separates each HTML line into a block. Keep numbered
-        # source steps together so torque lines and lettered substeps remain
-        # readable detail under one consumer-facing step.
-        starts_step = bool(re.match(r"^\d+[.)]\s", text)) or not steps
-        if starts_step:
-            if kind == "removal_and_installation":
-                verb = re.match(r"^\d+[.)]\s*(remove|install|replace)\b", text, re.IGNORECASE)
-                if verb:
-                    current_phase = "installation" if verb.group(1).casefold() in {"install", "replace"} else "removal"
-            steps.append({
-                "action": _step_action(text, component, kind),
-                "instructions": [],
-                "components": [component],
-                "source_article_ids": [str(article.get("article_id"))],
-                "evidence_ids": sorted(set(evidence_ids)),
-                "images": pending_images,
-                "phase": current_phase,
-            })
-            pending_images = []
-        else:
-            current = steps[-1]
-            current["instructions"].append(text)
-            current["evidence_ids"] = sorted(set(current.get("evidence_ids", [])) | set(evidence_ids))
-    if pending_images and steps:
-        steps[-1]["images"].extend(pending_images)
-    return steps
+    from .procedure_normalize import build_consumer_steps, normalize_procedure_article
+
+    normalized = normalize_procedure_article(article)
+    steps = normalized.get("steps")
+    if isinstance(steps, list) and steps:
+        return [dict(step) for step in steps if isinstance(step, Mapping)]
+    return build_consumer_steps(normalized, normalized.get("blocks"))
 
 
 def _clean_public_text(value: Any) -> str:
@@ -398,11 +514,14 @@ def compose_illustrated_guide(
         if (component, "installation") not in present:
             gaps.append(f"missing_installation:{component}")
     order = {"timing_belt": 0, **{component: index + 1 for index, component in enumerate(requested)}}
+    # Fixed component list order only. Within a component, keep removal before
+    # installation when articles are split, but never globally regroup all
+    # removals ahead of all installations across components.
     ordered_articles = sorted(
         all_articles,
         key=lambda article: (
-            0 if str(article.get("procedure_kind")) in {"removal", "removal_and_installation"} else 1,
             order.get(str(article.get("component")), 99),
+            0 if str(article.get("procedure_kind")) in {"removal", "removal_and_installation"} else 1,
             str(article.get("article_id", "")),
         ),
     )
@@ -416,6 +535,11 @@ def compose_illustrated_guide(
                 continue
             step["sequence"] = len(steps) + 1
             steps.append(step)
+    # Preserve source order within and across articles. Do not re-sort by phase;
+    # that previously moved install-section "Remove ..." lines and inverted
+    # multi-component dependency order (e.g. reinstalling a belt before a pump).
+    for sequence, step in enumerate(steps, 1):
+        step["sequence"] = sequence
     images = [image for step in steps for image in step.get("images", [])]
     warnings: list[dict[str, Any]] = []
     for article in all_articles:

@@ -39,6 +39,71 @@ class FakeResponse:
 
 
 class AutoAPIConnectorTests(unittest.TestCase):
+    def test_source_reads_use_autodbone_neutral_catalog_routes(self):
+        responses = {
+            "/v1/api/catalog/gm/vehicle/vehicle-1/articles/v2": {
+                "header": {}, "body": {"articleDetails": [{"id": "article-1"}]}
+            },
+            "/v1/api/catalog/gm/vehicle/vehicle-1/parts": {
+                "header": {}, "body": {"parts": []}
+            },
+            "/v1/api/catalog/gm/vehicle/vehicle-1/article/article-1": {
+                "header": {}, "body": {"documentId": "article-1"}
+            },
+            "/v1/api/catalog/gm/vehicle/vehicle-1/labor/article-1": {
+                "header": {}, "body": {"operations": []}
+            },
+        }
+        requests = []
+
+        def opener(request, timeout):
+            del timeout
+            path = urlsplit(request.full_url).path
+            requests.append(path)
+            return FakeResponse(responses[path])
+
+        connector = AutoAPIConnector("http://127.0.0.1:3000", content_source="GeneralMotors", opener=opener)
+
+        connector.fetch_article_list("vehicle-1")
+        connector.fetch_parts_resource("vehicle-1")
+        connector.fetch_article_resources("vehicle-1", "article-1")
+
+        self.assertEqual(requests, list(responses))
+
+    def test_source_names_map_only_to_supported_neutral_catalog_aliases(self):
+        expected = {
+            "GeneralMotors": "gm",
+            "Toyota": "toyota",
+            "Motor": "catalog",
+            "gm": "gm",
+            "catalog": "catalog",
+        }
+        for source_name, alias in expected.items():
+            with self.subTest(source_name=source_name):
+                requests = []
+
+                def opener(request, timeout):
+                    del timeout
+                    requests.append(urlsplit(request.full_url).path)
+                    return FakeResponse({"header": {}, "body": {"articleDetails": []}})
+
+                connector = AutoAPIConnector(
+                    "http://127.0.0.1:3000", content_source=source_name, opener=opener
+                )
+                connector.fetch_article_list("vehicle-1")
+                self.assertEqual(
+                    requests,
+                    [f"/v1/api/catalog/{alias}/vehicle/vehicle-1/articles/v2"],
+                )
+
+    def test_unknown_source_name_fails_instead_of_using_an_unmapped_catalog(self):
+        with self.assertRaisesRegex(ValueError, "unsupported AutoDBone catalog source"):
+            AutoAPIConnector(
+                "http://127.0.0.1:3000",
+                content_source="UnknownProvider",
+                opener=lambda *_args, **_kwargs: self.fail("must not make a request"),
+            )
+
     def test_model_family_match_handles_provider_spacing_trim_and_drivetrain_labels(self):
         self.assertTrue(_model_matches({"modelName": "4Runner Base"}, "4 Runner 4wd"))
         self.assertTrue(_model_matches({"modelName": "4Runner SR5"}, "4 Runner 4wd"))
@@ -70,19 +135,19 @@ class AutoAPIConnectorTests(unittest.TestCase):
 
     def test_provider_part_rows_become_canonical_no_markup_price_snapshots(self):
         responses = {
-            "/v1/api/source/Motor/vehicle/price-v1/articles/v2": {
+            "/v1/api/catalog/catalog/vehicle/price-v1/articles/v2": {
                 "header": {},
                 "body": {"articleDetails": [{"id": "a1", "title": "Brake service"}]},
             },
-            "/v1/api/source/Motor/vehicle/price-v1/article/a1": {
+            "/v1/api/catalog/catalog/vehicle/price-v1/article/a1": {
                 "header": {},
                 "body": {"documentId": "a1", "html": "<p>Brake</p>"},
             },
-            "/v1/api/source/Motor/vehicle/price-v1/labor/a1": {
+            "/v1/api/catalog/catalog/vehicle/price-v1/labor/a1": {
                 "header": {},
                 "body": {"operations": [{"operationId": "brake", "hours": 1.0}]},
             },
-            "/v1/api/source/Motor/vehicle/price-v1/parts": {
+            "/v1/api/catalog/catalog/vehicle/price-v1/parts": {
                 "header": {},
                 "body": [
                     {
@@ -127,7 +192,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
 
     def test_helper_rejects_incomplete_authoritative_article_index(self):
         responses = {
-            "/v1/api/source/Motor/vehicle/count-v1/articles/v2": {
+            "/v1/api/catalog/catalog/vehicle/count-v1/articles/v2": {
                 "header": {},
                 "body": {
                     "filterTabs": [{"name": "All", "articlesCount": 2}],
@@ -150,7 +215,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
 
     def test_cross_request_source_cache_reuses_selector_and_resource_reads(self):
         responses = {
-            "/v1/api/source/Cross/vehicle/cache-v1/articles/v2": {
+            "/v1/api/catalog/catalog/vehicle/cache-v1/articles/v2": {
                 "header": {},
                 "body": {
                     "articleDetails": [
@@ -159,19 +224,19 @@ class AutoAPIConnectorTests(unittest.TestCase):
                     ]
                 },
             },
-            "/v1/api/source/Cross/vehicle/cache-v1/article/a1": {
+            "/v1/api/catalog/catalog/vehicle/cache-v1/article/a1": {
                 "header": {},
                 "body": {"documentId": "a1", "html": "<p>Brake</p>"},
             },
-            "/v1/api/source/Cross/vehicle/cache-v1/labor/a1": {
+            "/v1/api/catalog/catalog/vehicle/cache-v1/labor/a1": {
                 "header": {},
                 "body": {"operations": [{"operationId": "brake", "hours": 1.0}]},
             },
-            "/v1/api/source/Cross/vehicle/cache-v1/article/a2": {
+            "/v1/api/catalog/catalog/vehicle/cache-v1/article/a2": {
                 "header": {},
                 "body": {"documentId": "a2", "html": "<p>Engine</p>"},
             },
-            "/v1/api/source/Cross/vehicle/cache-v1/labor/a2": {
+            "/v1/api/catalog/catalog/vehicle/cache-v1/labor/a2": {
                 "header": {},
                 "body": {"operations": [{"operationId": "engine", "hours": 1.0}]},
             },
@@ -185,10 +250,10 @@ class AutoAPIConnectorTests(unittest.TestCase):
             return FakeResponse(responses[path])
 
         first = AutoAPIConnector(
-            "http://127.0.0.1:3017", content_source="Cross", opener=opener
+            "http://127.0.0.1:3017", content_source="Motor", opener=opener
         )
         second = AutoAPIConnector(
-            "http://127.0.0.1:3017", content_source="Cross", opener=opener
+            "http://127.0.0.1:3017", content_source="Motor", opener=opener
         )
         vehicle = {"vehicle_id": "cache-v1"}
         operations = [{"article_id": "a1"}, {"article_id": "a2"}]
@@ -199,17 +264,17 @@ class AutoAPIConnectorTests(unittest.TestCase):
         self.assertEqual(
             requests,
             [
-                "/v1/api/source/Cross/vehicle/cache-v1/articles/v2",
-                "/v1/api/source/Cross/vehicle/cache-v1/article/a1",
-                "/v1/api/source/Cross/vehicle/cache-v1/labor/a1",
-                "/v1/api/source/Cross/vehicle/cache-v1/article/a2",
-                "/v1/api/source/Cross/vehicle/cache-v1/labor/a2",
+                "/v1/api/catalog/catalog/vehicle/cache-v1/articles/v2",
+                "/v1/api/catalog/catalog/vehicle/cache-v1/article/a1",
+                "/v1/api/catalog/catalog/vehicle/cache-v1/labor/a1",
+                "/v1/api/catalog/catalog/vehicle/cache-v1/article/a2",
+                "/v1/api/catalog/catalog/vehicle/cache-v1/labor/a2",
             ],
         )
 
     def test_shared_source_cache_expires_when_ttl_is_zero(self):
         response = {
-            "/v1/api/source/Ttl/vehicle/ttl-v1/articles/v2": {
+            "/v1/api/catalog/catalog/vehicle/ttl-v1/articles/v2": {
                 "header": {},
                 "body": {"articleDetails": [{"id": "a1", "title": "Brake service"}]},
             }
@@ -224,13 +289,13 @@ class AutoAPIConnectorTests(unittest.TestCase):
 
         first = AutoAPIConnector(
             "http://127.0.0.1:3018",
-            content_source="Ttl",
+            content_source="Motor",
             source_cache_ttl_seconds=0,
             opener=opener,
         )
         second = AutoAPIConnector(
             "http://127.0.0.1:3018",
-            content_source="Ttl",
+            content_source="Motor",
             source_cache_ttl_seconds=0,
             opener=opener,
         )
@@ -241,14 +306,14 @@ class AutoAPIConnectorTests(unittest.TestCase):
         self.assertEqual(
             requests,
             [
-                "/v1/api/source/Ttl/vehicle/ttl-v1/articles/v2",
-                "/v1/api/source/Ttl/vehicle/ttl-v1/articles/v2",
+                "/v1/api/catalog/catalog/vehicle/ttl-v1/articles/v2",
+                "/v1/api/catalog/catalog/vehicle/ttl-v1/articles/v2",
             ],
         )
 
     def test_read_through_fetches_only_requested_resources_after_article_list(self):
         responses = {
-            "/v1/api/source/Motor/vehicle/v1/articles/v2": {
+            "/v1/api/catalog/catalog/vehicle/v1/articles/v2": {
                 "header": {},
                 "body": {
                     "articleDetails": [
@@ -257,15 +322,15 @@ class AutoAPIConnectorTests(unittest.TestCase):
                     ]
                 },
             },
-            "/v1/api/source/Motor/vehicle/v1/article/a1": {
+            "/v1/api/catalog/catalog/vehicle/v1/article/a1": {
                 "header": {},
                 "body": {"documentId": "a1", "html": "<p>Brake line</p>"},
             },
-            "/v1/api/source/Motor/vehicle/v1/labor/a1": {
+            "/v1/api/catalog/catalog/vehicle/v1/labor/a1": {
                 "header": {},
                 "body": {"operations": [{"operationId": "line", "hours": 1.5}]},
             },
-            "/v1/api/source/Motor/vehicle/v1/parts": {
+            "/v1/api/catalog/catalog/vehicle/v1/parts": {
                 "header": {},
                 "body": [
                     {"partNumber": "P1", "partDescription": "Brake fluid", "price": "$18.99"},
@@ -294,10 +359,10 @@ class AutoAPIConnectorTests(unittest.TestCase):
         self.assertEqual(
             requests,
             [
-                "/v1/api/source/Motor/vehicle/v1/articles/v2",
-                "/v1/api/source/Motor/vehicle/v1/article/a1",
-                "/v1/api/source/Motor/vehicle/v1/labor/a1",
-                "/v1/api/source/Motor/vehicle/v1/parts",
+                "/v1/api/catalog/catalog/vehicle/v1/articles/v2",
+                "/v1/api/catalog/catalog/vehicle/v1/article/a1",
+                "/v1/api/catalog/catalog/vehicle/v1/labor/a1",
+                "/v1/api/catalog/catalog/vehicle/v1/parts",
             ],
         )
         self.assertEqual(result["requested_article_ids"], ("a1",))
@@ -335,7 +400,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
                     {"modelId": "camry", "modelName": "Camry", "vehicles": [{"vehicleId": "camry-1"}]},
                 ],
             },
-            "/v1/api/source/Toyota/vehicles?vehicleIds=rav4-4wd%2Crav4-2wd": {
+            "/v1/api/catalog/toyota/vehicles?vehicleIds=rav4-4wd%2Crav4-2wd": {
                 "header": {},
                 "body": [
                     {"vehicleId": "rav4-4wd", "vehicleName": "1997 Toyota RAV4 4WD"},
@@ -370,10 +435,10 @@ class AutoAPIConnectorTests(unittest.TestCase):
 
     def test_fetches_only_one_requested_article_body_and_labor_resource(self):
         responses = {
-            "/v1/api/source/GeneralMotors/vehicle/v1/article/a1": {
+            "/v1/api/catalog/gm/vehicle/v1/article/a1": {
                 "header": {}, "body": {"documentId": "a1", "html": "<h2>Alternator</h2>"}
             },
-            "/v1/api/source/GeneralMotors/vehicle/v1/labor/a1": {
+            "/v1/api/catalog/gm/vehicle/v1/labor/a1": {
                 "header": {}, "body": {"operations": [{"operationId": "remove", "hours": 1.5}]}
             },
         }
@@ -391,13 +456,13 @@ class AutoAPIConnectorTests(unittest.TestCase):
 
         self.assertEqual(len(resources), 2)
         self.assertEqual(requests, [
-            "/v1/api/source/GeneralMotors/vehicle/v1/article/a1",
-            "/v1/api/source/GeneralMotors/vehicle/v1/labor/a1",
+            "/v1/api/catalog/gm/vehicle/v1/article/a1",
+            "/v1/api/catalog/gm/vehicle/v1/labor/a1",
         ])
 
     def test_article_body_survives_when_optional_labor_resource_is_unavailable(self):
         responses = {
-            "/v1/api/source/Motor/vehicle/v1/article/P%3A1": {
+            "/v1/api/catalog/catalog/vehicle/v1/article/P%3A1": {
                 "header": {},
                 "body": {"documentId": "P:1", "html": "<p>Remove the line and inspect the fittings.</p>"},
             },
@@ -418,18 +483,18 @@ class AutoAPIConnectorTests(unittest.TestCase):
 
         self.assertEqual(len(resources), 1)
         self.assertEqual(resources[0].source_uri.rsplit("/", 1)[-1], "P%3A1")
-        self.assertEqual(requests[0], "/v1/api/source/Motor/vehicle/v1/article/P%3A1")
+        self.assertEqual(requests[0], "/v1/api/catalog/catalog/vehicle/v1/article/P%3A1")
         self.assertEqual(
             requests[1:],
-            ["/v1/api/source/Motor/vehicle/v1/labor/P%3A1"] * 3,
+            ["/v1/api/catalog/catalog/vehicle/v1/labor/P%3A1"] * 3,
         )
 
     def test_fetches_labor_by_separate_provider_id_and_targets_procedure(self):
         responses = {
-            "/v1/api/source/Motor/vehicle/v1/article/P%3A1": {
+            "/v1/api/catalog/catalog/vehicle/v1/article/P%3A1": {
                 "header": {}, "body": {"documentId": "P:1", "html": "<h2>Water pump</h2>"}
             },
-            "/v1/api/source/Motor/vehicle/v1/labor/L%3A2": {
+            "/v1/api/catalog/catalog/vehicle/v1/labor/L%3A2": {
                 "header": {}, "body": {"operations": [{"operationId": "pump", "hours": 2.0}]}
             },
         }
@@ -446,14 +511,14 @@ class AutoAPIConnectorTests(unittest.TestCase):
         resources = connector.fetch_article_resources("v1", "P:1", labor_article_id="L:2")
 
         self.assertEqual(requests, [
-            "/v1/api/source/Motor/vehicle/v1/article/P%3A1",
-            "/v1/api/source/Motor/vehicle/v1/labor/L%3A2",
+            "/v1/api/catalog/catalog/vehicle/v1/article/P%3A1",
+            "/v1/api/catalog/catalog/vehicle/v1/labor/L%3A2",
         ])
         self.assertEqual(resources[1].metadata["target_article_id"], "P:1")
 
     def test_fetches_article_detail_without_guessing_a_labor_id(self):
         responses = {
-            "/v1/api/source/Motor/vehicle/v1/article/P%3A1": {
+            "/v1/api/catalog/catalog/vehicle/v1/article/P%3A1": {
                 "header": {}, "body": {"documentId": "P:1", "html": "<p>Inspect the line.</p>"}
             },
         }
@@ -471,7 +536,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
 
         self.assertEqual(len(resources), 1)
         self.assertEqual(requests, [
-            "/v1/api/source/Motor/vehicle/v1/article/P%3A1",
+            "/v1/api/catalog/catalog/vehicle/v1/article/P%3A1",
         ])
 
     def test_discovers_catalog_and_fetches_every_article_as_source_resources(self):
@@ -491,7 +556,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
                     }
                 ],
             },
-            "/v1/api/source/GeneralMotors/vehicles?vehicleIds=v1": {
+            "/v1/api/catalog/gm/vehicles?vehicleIds=v1": {
                 "header": {},
                 "body": [
                     {
@@ -500,11 +565,11 @@ class AutoAPIConnectorTests(unittest.TestCase):
                     }
                 ],
             },
-            "/v1/api/source/GeneralMotors/v1/name": {
+            "/v1/api/catalog/gm/v1/name": {
                 "header": {},
                 "body": "1999 Chevrolet Silverado 1500 - 2WD",
             },
-            "/v1/api/source/GeneralMotors/v1/motorvehicles": {
+            "/v1/api/catalog/gm/v1/vehicle-details": {
                 "header": {},
                 "body": [
                     {
@@ -514,7 +579,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
                     }
                 ],
             },
-            "/v1/api/source/GeneralMotors/vehicle/v1/articles/v2": {
+            "/v1/api/catalog/gm/vehicle/v1/articles/v2": {
                 "header": {},
                 "body": {
                     "filterTabs": [{"name": "All", "articlesCount": 2}],
@@ -524,11 +589,11 @@ class AutoAPIConnectorTests(unittest.TestCase):
                     ]
                 },
             },
-            "/v1/api/source/GeneralMotors/vehicle/v1/article/a1": {
+            "/v1/api/catalog/gm/vehicle/v1/article/a1": {
                 "header": {},
                 "body": {"documentId": "a1", "html": "<p>Brake</p>"},
             },
-            "/v1/api/source/GeneralMotors/vehicle/v1/article/a2": {
+            "/v1/api/catalog/gm/vehicle/v1/article/a2": {
                 "header": {},
                 "body": {"documentId": "a2", "html": "<p>Engine</p>"},
             },
@@ -579,15 +644,15 @@ class AutoAPIConnectorTests(unittest.TestCase):
 
     def test_rejects_truncated_article_index(self):
         responses = {
-            "/v1/api/source/GeneralMotors/v1/name": {
+            "/v1/api/catalog/gm/v1/name": {
                 "header": {},
                 "body": "1999 Chevrolet Silverado 1500 - 2WD",
             },
-            "/v1/api/source/GeneralMotors/v1/motorvehicles": {
+            "/v1/api/catalog/gm/v1/vehicle-details": {
                 "header": {},
                 "body": [],
             },
-            "/v1/api/source/GeneralMotors/vehicle/v1/articles/v2": {
+            "/v1/api/catalog/gm/vehicle/v1/articles/v2": {
                 "header": {},
                 "body": {
                     "filterTabs": [{"name": "All", "articlesCount": 2}],
@@ -642,7 +707,7 @@ class AutoAPIConnectorTests(unittest.TestCase):
                 "header": {},
                 "body": [{"id": "v1", "modelName": "Silverado 1500"}],
             },
-            "/v1/api/source/GeneralMotors/vehicles?vehicleIds=v1": {
+            "/v1/api/catalog/gm/vehicles?vehicleIds=v1": {
                 "header": {},
                 "body": [],
             },
