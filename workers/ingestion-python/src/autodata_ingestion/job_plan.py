@@ -214,6 +214,13 @@ def _flatten_articles(catalog: Iterable[Mapping[str, Any]]) -> list[dict[str, An
         article.setdefault("evidence", record.get("evidence", []))
         if not article.get("article_id") and record.get("id"):
             article["article_id"] = record["id"]
+        provider = article.get("provider") or record.get("provider")
+        if provider and article.get("article_id"):
+            from .source_adapters import qualify_article_id
+
+            article.setdefault("provider_article_id", article["article_id"])
+            article["article_id"] = qualify_article_id(article["article_id"], provider)
+            article["provider"] = provider
         for key in (
             "supporting_for",
             "supports",

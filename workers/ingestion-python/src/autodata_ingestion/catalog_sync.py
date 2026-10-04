@@ -218,6 +218,7 @@ def _record_scopes(sync_id: str, rows: list[dict[str, object]]) -> None:
                 response_hash = hashlib.sha256(
                     json.dumps(row, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
                 ).hexdigest()
+                replay_key = f"catalog-scope:autoapitwo:{source_version}:{scope_key}"
                 cursor.execute(
                     """
                     INSERT INTO vehicle_catalog_sync_scopes
@@ -231,7 +232,14 @@ def _record_scopes(sync_id: str, rows: list[dict[str, object]]) -> None:
                         sync_id,
                         scope_key,
                         response_hash,
-                        Jsonb({"phase": "persisted", "source_locator": row.get("source_locator")}),
+                        Jsonb(
+                            {
+                                "phase": "persisted",
+                                "source_locator": row.get("source_locator"),
+                                "response_hash": response_hash,
+                                "replay_key": replay_key,
+                            }
+                        ),
                     ),
                 )
             cursor.execute(

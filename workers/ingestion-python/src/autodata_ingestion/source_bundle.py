@@ -10,7 +10,13 @@ from dataclasses import asdict, dataclass
 from typing import Any, Iterable
 
 from .article_identity import canonicalize_article_identity
-from .source_adapters import NormalizationCandidate, SourceArtifact
+from .source_adapters import (
+    NormalizationCandidate,
+    SourceArtifact,
+    qualify_article_id,
+    source_provider,
+    source_snapshot_id,
+)
 from .vehicle_identity import canonicalize_vehicle_observation
 
 
@@ -144,10 +150,22 @@ def normalize_source_bundle(
             elif candidate.kind == "part":
                 part_records.append(_normalize_part(record, artifact, candidate, quarantined))
             elif candidate.kind == "article":
-                normalized_article_id = candidate.data.get("id") or candidate.data.get("article_id") or candidate.data.get("articleId")
+                provider = source_provider({**artifact.metadata, **candidate.data})
+                provider_article_id = (
+                    candidate.data.get("provider_article_id")
+                    or candidate.data.get("id")
+                    or candidate.data.get("article_id")
+                    or candidate.data.get("articleId")
+                )
+                normalized_article_id = qualify_article_id(provider_article_id, provider)
                 article_record = {
-                    "article_key": candidate.key,
+                    "article_key": (
+                        f"article:{normalized_article_id}:{candidate.locator}"
+                        if normalized_article_id
+                        else candidate.key
+                    ),
                     "article_id": str(normalized_article_id),
+                    "provider_article_id": str(provider_article_id or ""),
                     "bucket": candidate.data.get("bucket"),
                     "title": candidate.data.get("title"),
                     "bulletin_number": candidate.data.get("bulletinNumber"),
@@ -158,7 +176,15 @@ def normalize_source_bundle(
                     "source_uri": artifact.source_uri,
                     "source_version": artifact.source_version,
                     "content_sha256": artifact.content_sha256,
+                    "source_snapshot_id": source_snapshot_id(artifact.content_sha256),
+                    "source_artifact_key": artifact.object_key,
+                    "replay_key": (
+                        f"article:{provider or 'source'}:{normalized_article_id}:"
+                        f"{artifact.content_sha256}:{candidate.locator}"
+                    ),
                 }
+                if provider:
+                    article_record["provider"] = provider
                 for field in (
                     "blocks",
                     "provider",
@@ -184,7 +210,8 @@ def normalize_source_bundle(
                     article_record["images"] = images
                 article_records.append(article_record)
             elif candidate.kind == "article_operations":
-                article_id = str(candidate.data.get("article_id") or "").strip()
+                provider = source_provider({**artifact.metadata, **candidate.data})
+                article_id = qualify_article_id(candidate.data.get("article_id"), provider)
                 operations = _article_operations(
                     candidate.data.get("operations"), evidence_item["evidence_id"]
                 )
@@ -561,6 +588,7 @@ def _resolve_article_collisions(
                     accepted[index]
                     for index in candidate_indices
                     if not _article_roles_differ(accepted[index], record)
+                    and _same_article_provider(accepted[index], record)
                     and _similar_article(accepted[index], record)
                 ),
                 None,
@@ -802,7 +830,9 @@ def _article_roles_differ(left: dict[str, Any], right: dict[str, Any]) -> bool:
     """Keep a provider procedure and its labor row as distinct source records."""
 
     def role(record: dict[str, Any]) -> str:
-        article_id = str(record.get("article_id") or "").casefold()
+        article_id = str(
+            record.get("provider_article_id") or record.get("article_id") or ""
+        ).casefold()
         bucket = str(record.get("bucket") or "").casefold()
         if article_id.startswith("p:"):
             return "procedure"
@@ -811,6 +841,14 @@ def _article_roles_differ(left: dict[str, Any], right: dict[str, Any]) -> bool:
         return "article"
 
     return role(left) != role(right)
+
+
+def _same_article_provider(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    """Do not quarantine equivalent source records from different providers."""
+
+    left_provider = str(left.get("provider") or "").strip().casefold()
+    right_provider = str(right.get("provider") or "").strip().casefold()
+    return not left_provider or not right_provider or left_provider == right_provider
 
 
 def _similar_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
@@ -1097,7 +1135,11 @@ def _evidence(artifact: SourceArtifact, candidate: NormalizationCandidate) -> di
     return {
         "evidence_id": evidence_id,
         "source_uri": artifact.source_uri,
+        "source_version": artifact.source_version,
         "content_sha256": artifact.content_sha256,
+        "source_snapshot_id": source_snapshot_id(artifact.content_sha256),
+        "artifact_key": artifact.object_key,
+        "provider": source_provider(artifact.metadata) or None,
         "locator": candidate.locator,
         "candidate_key": candidate.key,
         "extracted_text": extracted_text,

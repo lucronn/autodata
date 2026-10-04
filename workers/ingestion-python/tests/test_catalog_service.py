@@ -594,7 +594,11 @@ class CatalogServiceTests(unittest.TestCase):
             raise RuntimeError("AutoAPI vehicle lookup failed")
 
         def load_detail(request, vehicle):
-            return ([{"article": {"article_id": "autoapitwo:52597:1535667", "title": "Oil Pump"}}], {"mode": "autoapitwo_article_detail"})
+            return ([{"article": {
+                "article_id": "autoapitwo:52597:1535667",
+                "title": "Oil Pump",
+                "steps": ["Remove the oil pump."],
+            }}], {"mode": "autoapitwo_article_detail"})
 
         with patch.dict(os.environ, {"AUTODATA_AUTOAPI_BASE_URL": "https://autoapi.test"}), \
                 patch("autodata_ingestion.catalog_service._load_stored_article_for_repair", return_value=None), \

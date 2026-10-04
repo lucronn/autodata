@@ -39,6 +39,7 @@ class CatalogResult:
     missing_scopes: tuple[str, ...] = ()
     provenance: tuple[dict[str, Any], ...] = ()
     cache_hit: bool = False
+    provider_failures: tuple[dict[str, Any], ...] = ()
 
 
 def canonical_catalog_id(row: Mapping[str, Any]) -> str:
@@ -76,16 +77,25 @@ class CacheFirstCatalogService:
         rows: list[dict[str, Any]] = []
         missing = set(_missing_scopes(cached))
         provenance: list[dict[str, Any]] = []
+        provider_failures: list[dict[str, Any]] = []
         complete = False
         if isinstance(cached, Mapping):
             rows.extend(_canonical_rows(cached.get("rows", cached.get("records", []))))
             provenance.extend(_provenance(cached.get("provenance", ())))
 
         for provider in self._providers:
+            provider_name = _provider_name(provider)
             try:
                 payload = _call_provider(provider, request)
             except Exception as error:  # noqa: BLE001 - one source may be unavailable while another is usable
                 missing.add("provider")
+                provider_failures.append(
+                    {
+                        "provider": provider_name,
+                        "status": "failed",
+                        "reason": _provider_failure_reason(error),
+                    }
+                )
                 continue
             normalized_rows = _canonical_rows(payload.get("rows", payload.get("records", ())))
             rows = _merge_rows(rows, normalized_rows)
@@ -93,14 +103,15 @@ class CacheFirstCatalogService:
             missing.update(_missing_scopes(payload))
             if bool(payload.get("complete")) and not _missing_scopes(payload):
                 complete = True
-        if complete:
+        if complete and not provider_failures:
             missing.clear()
 
         result = CatalogResult(
             rows=tuple(rows),
-            complete=complete,
+            complete=complete and not provider_failures,
             missing_scopes=tuple(sorted(missing)),
             provenance=tuple(_dedupe_provenance(provenance)),
+            provider_failures=tuple(provider_failures),
         )
         if self._cache_writer is not None:
             self._cache_writer(result)
@@ -313,13 +324,28 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             ]
             if not matched:
                 primary_error = RuntimeError("primary article detail was not found")
+            else:
+                readable_matches = [
+                    record for record in matched if _record_has_meaningful_article_content(record)
+                ]
+                if not readable_matches:
+                    primary_error = RuntimeError("primary article detail had no readable instructions")
+                else:
+                    matched = readable_matches
         except Exception as error:  # noqa: BLE001 - try the second source
             primary_error = error
 
         if primary_error is not None:
+            provider_failures = [_provider_failure("autodbone", primary_error)]
             try:
                 matched, metadata = _load_autoapitwo_article_detail(request, vehicle)
+                matched = [
+                    record for record in matched if _record_has_meaningful_article_content(record)
+                ]
+                if not matched:
+                    raise RuntimeError("fallback article detail had no readable instructions")
             except Exception as fallback_error:  # noqa: BLE001 - source failure is a retryable miss
+                provider_failures.append(_provider_failure("autodbtwo", fallback_error))
                 result = {
                     "status": "source_unavailable",
                     "hydration_key": key,
@@ -330,11 +356,15 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
                     "metadata": {
                         "reason": type(fallback_error).__name__,
                         "primary_source_reason": type(primary_error).__name__,
+                        "provider_failures": provider_failures,
                     },
                 }
                 with _HYDRATION_LOCK:
                     _HYDRATION_RESULTS[key] = deepcopy(result)
                 return result
+        metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
+        if primary_error is not None:
+            metadata["provider_failures"] = provider_failures
         result = {
             "status": "hydrated" if matched else "source_miss",
             "hydration_key": key,
@@ -398,6 +428,7 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             "missing_scopes": list(resolved.missing_scopes),
             "rows": list(resolved.rows),
             "provenance": list(resolved.provenance),
+            "provider_failures": list(resolved.provider_failures),
             "persistence": persistence,
             "coverage": coverage,
         }
@@ -410,6 +441,10 @@ def _load_autoapitwo_article_detail(
     request: Mapping[str, Any], vehicle: Mapping[str, Any]
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Fetch and persist one selected AutoAPItwo article on demand."""
+
+    requested_source_id = str(request.get("source_article_id") or "").strip()
+    if requested_source_id.casefold().startswith(("autoapi:", "autodbone:")):
+        raise ValueError("article ID belongs to AutoDBone and cannot be sent to AutoDBtwo")
 
     from dataclasses import replace
 
@@ -426,7 +461,6 @@ def _load_autoapitwo_article_detail(
         retry_attempts=int(os.getenv("AUTODATA_AUTOAPITWO_RETRY_ATTEMPTS", "3")),
         retry_delay=float(os.getenv("AUTODATA_AUTOAPITWO_RETRY_DELAY_SECONDS", "0.25")),
     )
-    requested_source_id = str(request.get("source_article_id") or "").strip()
     requested_article_id = requested_source_id.rsplit(":", 1)[-1] if requested_source_id else ""
     requested_car_id = ""
     source_parts = requested_source_id.split(":")
@@ -552,6 +586,8 @@ def _repair_stored_autoapitwo_article(
 
     vehicle_id = str(request.get("vehicle_id") or "").strip()
     source_article_id = str(request.get("source_article_id") or "").strip()
+    if source_article_id.casefold().startswith(("autoapi:", "autodbone:")):
+        return None
     if not vehicle_id or not source_article_id:
         return None
     stored = _load_stored_article_for_repair(vehicle_id, source_article_id)
@@ -983,7 +1019,9 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
     if primary_error is None and not records:
         primary_error = RuntimeError("primary article catalog was empty")
 
+    provider_failures: list[dict[str, Any]] = []
     if primary_error is not None:
+        provider_failures.append(_provider_failure("autodbone", primary_error))
         primary_detail = _source_failure_detail("AutoAPI", primary_error)
         progress.publish(
             {
@@ -1004,6 +1042,7 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
                 request, vehicle, progress
             )
         except Exception as fallback_error:  # noqa: BLE001 - source failure is a retryable miss
+            provider_failures.append(_provider_failure("autodbtwo", fallback_error))
             fallback_detail = _source_failure_detail("AutoAPItwo", fallback_error)
             progress.failed(f"{primary_detail} {fallback_detail}")
             return {
@@ -1017,6 +1056,7 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
                     "reason": type(fallback_error).__name__,
                     "primary_source_reason": type(primary_error).__name__,
                     "detail": f"{primary_detail} {fallback_detail}",
+                    "provider_failures": provider_failures,
                 },
             }
     else:
@@ -1031,6 +1071,9 @@ def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, 
         )
 
     rows = [dict(record) for record in records if isinstance(record, Mapping)]
+    metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
+    if provider_failures:
+        metadata["provider_failures"] = provider_failures
     if rows:
         progress.complete(rows)
     else:
@@ -1598,9 +1641,14 @@ def _configured_catalog_providers() -> tuple[Any, ...]:
     providers: list[Any] = []
     autoapi_base = os.getenv("AUTODATA_AUTOAPI_BASE_URL", "").strip()
     if autoapi_base:
-        from .autoapi_connector import AutoAPIConnector
+        from .autoapi_connector import AutoAPIConnector, configured_source_request_headers
 
-        providers.append(AutoAPIConnector(autoapi_base))
+        providers.append(
+            AutoAPIConnector(
+                autoapi_base,
+                request_headers=configured_source_request_headers(),
+            )
+        )
     autoapitwo_base = os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "").strip()
     if autoapitwo_base:
         from .autoapitwo_catalog import AutoAPITwoCatalogConnector
@@ -1646,7 +1694,12 @@ def _call_with_optional_request(method: Callable[..., Any], request: CatalogRequ
 
 
 def _is_complete(payload: Mapping[str, Any] | None) -> bool:
-    return isinstance(payload, Mapping) and payload.get("complete") is True and not _missing_scopes(payload)
+    return (
+        isinstance(payload, Mapping)
+        and payload.get("complete") is True
+        and not _missing_scopes(payload)
+        and not _provider_failures(payload.get("provider_failures", ()))
+    )
 
 
 def _result_from_payload(payload: Mapping[str, Any], *, cache_hit: bool) -> CatalogResult:
@@ -1656,7 +1709,69 @@ def _result_from_payload(payload: Mapping[str, Any], *, cache_hit: bool) -> Cata
         complete=True,
         provenance=tuple(_dedupe_provenance(_provenance(payload.get("provenance", ())))),
         cache_hit=cache_hit,
+        provider_failures=tuple(_provider_failures(payload.get("provider_failures", ()))),
     )
+
+
+def _provider_name(provider: Any) -> str:
+    value = str(getattr(provider, "name", "") or "").strip()
+    if value:
+        return value
+    if callable(provider) and getattr(provider, "__name__", ""):
+        return str(provider.__name__)
+    return provider.__class__.__name__
+
+
+def _provider_failure_reason(error: BaseException) -> str:
+    """Classify a provider failure without retaining URLs, headers, or secrets."""
+
+    text = " ".join(str(error).split()).casefold()
+    if "401" in text or "unauthorized" in text:
+        return "source rejected authentication"
+    if "403" in text or "forbidden" in text:
+        return "source access denied"
+    if "404" in text or "not found" in text:
+        return "no matching source resource"
+    if "429" in text or "rate limit" in text:
+        return "source rate limited the request"
+    if any(code in text for code in ("502", "503", "504")) or "timeout" in text:
+        return "source temporarily unavailable"
+    return "source request failed"
+
+
+def _provider_failure(provider: str, error: BaseException) -> dict[str, str]:
+    return {
+        "provider": provider,
+        "status": "failed",
+        "reason": _provider_failure_reason(error),
+    }
+
+
+def _record_has_meaningful_article_content(record: Mapping[str, Any]) -> bool:
+    """Reject metadata-only article rows at the selected-detail boundary."""
+
+    from .procedure_normalize import article_is_content_complete
+
+    article = record.get("article", record)
+    return isinstance(article, Mapping) and article_is_content_complete(article)
+
+
+def _provider_failures(values: Any) -> list[dict[str, Any]]:
+    if isinstance(values, Mapping):
+        values = (values,)
+    if not isinstance(values, Iterable) or isinstance(values, (str, bytes)):
+        return []
+    result = []
+    for value in values:
+        if isinstance(value, Mapping):
+            result.append(
+                {
+                    "provider": str(value.get("provider") or "unknown"),
+                    "status": str(value.get("status") or "failed"),
+                    "reason": str(value.get("reason") or "source request failed"),
+                }
+            )
+    return result
 
 
 def _canonical_rows(values: Any) -> list[dict[str, Any]]:

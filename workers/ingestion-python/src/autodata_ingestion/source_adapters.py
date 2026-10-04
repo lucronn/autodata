@@ -16,7 +16,7 @@ import io
 import json
 import mimetypes
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 from urllib.parse import unquote, urljoin, urlparse, urlsplit
@@ -29,6 +29,48 @@ _DOCUMENT_TYPES = {"text/html", "application/pdf", "text/plain"}
 _DIAGRAM_TYPES = {"image/svg+xml"}
 _IMAGE_TYPES = {"image/bmp", "image/jpeg", "image/png", "image/tiff", "image/webp"}
 _GENERIC_MEDIA_TYPES = {"application/octet-stream", "binary/octet-stream", "text/plain"}
+
+
+def source_provider(metadata: Mapping[str, Any] | None) -> str:
+    """Return a stable provider label without treating arbitrary connectors as providers."""
+
+    values = metadata or {}
+    for key in ("provider", "source_provider", "connector"):
+        value = str(values.get(key) or "").strip().casefold()
+        if not value:
+            continue
+        if value in {"autoapi", "autodbone"}:
+            return value
+        if value in {"autoapitwo", "autodbtwo"}:
+            return value
+    return ""
+
+
+def qualify_article_id(article_id: Any, provider: Any = None) -> str:
+    """Namespace a provider identifier while preserving already-qualified IDs."""
+
+    raw = str(article_id or "").strip()
+    provider_name = source_provider({"provider": provider})
+    if not raw or not provider_name:
+        return raw
+    if raw.split(":", 1)[0].casefold() in {
+        "autoapi", "autodbone", "autoapitwo", "autodbtwo"
+    }:
+        return raw
+    return f"{provider_name}:{raw}"
+
+
+def source_snapshot_id(content_sha256: Any) -> str:
+    """Return the deterministic replay reference used by source persistence."""
+
+    import uuid
+
+    return str(
+        uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"autodata-bundle:source-snapshot:{str(content_sha256).strip()}",
+        )
+    )
 
 
 class SourceConnector(Protocol):
@@ -223,6 +265,7 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
         )
         embedded_candidates, embedded_metadata = _adapt_embedded_json_resources(resource, document)
         candidates.extend(embedded_candidates)
+        candidates = _qualify_article_candidates(candidates, resource.metadata)
         metadata.update(embedded_metadata)
         metadata["candidate_count"] = len(candidates)
         metadata["extraction_status"] = "candidate_ready" if candidates else "needs_review"
@@ -371,6 +414,30 @@ def classify_json_candidates(
         if "html" in body or "pdf" in body:
             candidates.append(NormalizationCandidate("document", f"document:{document_id}", body, "body"))
     return candidates
+
+
+def _qualify_article_candidates(
+    candidates: Iterable[NormalizationCandidate], metadata: Mapping[str, Any]
+) -> list[NormalizationCandidate]:
+    """Make provider identity visible to downstream coverage and persistence."""
+
+    provider = source_provider(metadata)
+    if not provider:
+        return list(candidates)
+    normalized: list[NormalizationCandidate] = []
+    for candidate in candidates:
+        if candidate.kind != "article":
+            normalized.append(candidate)
+            continue
+        data = dict(candidate.data)
+        raw_id = data.get("provider_article_id") or data.get("id") or data.get("article_id")
+        data["provider_article_id"] = str(raw_id or "")
+        data["provider"] = provider
+        data["id"] = qualify_article_id(raw_id, provider)
+        normalized.append(
+            NormalizationCandidate(candidate.kind, candidate.key, data, candidate.locator)
+        )
+    return normalized
 
 
 def _adapt_embedded_json_resources(

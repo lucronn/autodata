@@ -522,8 +522,9 @@ class AutoAPIConnector:
         """
 
         vehicle = quote(str(vehicle_id), safe="")
-        article = quote(str(article_id), safe="")
-        labor_article = quote(str(labor_article_id or article_id), safe="")
+        article = quote(_provider_article_id_for_request(article_id), safe="")
+        labor = labor_article_id or article_id
+        labor_article = quote(_provider_article_id_for_request(labor), safe="")
         _detail_payload, detail_resource = self._cached_get_json(
             f"{self._catalog_prefix()}/vehicle/{vehicle}/article/{article}"
         )
@@ -701,6 +702,7 @@ class AutoAPIConnector:
             media_type="application/json",
             locator=uri,
             metadata={
+                "provider": "autodbone",
                 "connector": self.name,
                 "http_status": status,
                 "retrieved_at": retrieved_at,
@@ -799,7 +801,8 @@ def fetch_required_source_resources(
                 )
             ]
         for article_id in dict.fromkeys(article_ids):
-            if article_id not in article_by_id:
+            provider_article_id = _provider_article_id_for_request(article_id)
+            if provider_article_id not in article_by_id:
                 missing_article_ids.append(article_id)
                 continue
             if article_id not in requested_article_ids:
@@ -812,7 +815,7 @@ def fetch_required_source_resources(
             )
             if labor_id is None:
                 title = _normalized_text(
-                    _first_text(article_by_id[article_id], "title", "name") or ""
+                    _first_text(article_by_id[provider_article_id], "title", "name") or ""
                 )
                 labor_id = labor_by_title.get(title)
             if labor_id:
@@ -1502,6 +1505,33 @@ def _request_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
             raise ValueError("AutoAPI request headers must not contain newlines")
         result[name] = content
     return result
+
+
+def _provider_article_id_for_request(article_id: Any) -> str:
+    """Remove only this connector's namespace before constructing its URL."""
+
+    value = str(article_id or "").strip()
+    prefix = value.split(":", 1)[0].casefold()
+    if prefix in {"autoapi", "autodbone"}:
+        return value.split(":", 1)[1]
+    return value
+
+
+def configured_source_request_headers() -> dict[str, str]:
+    """Read approved source headers without logging or exposing their values."""
+
+    import os
+
+    raw_headers = os.getenv("AUTODATA_SOURCE_REQUEST_HEADERS_JSON", "").strip()
+    if not raw_headers:
+        return {}
+    try:
+        headers = json.loads(raw_headers)
+    except json.JSONDecodeError as error:
+        raise ValueError("AUTODATA_SOURCE_REQUEST_HEADERS_JSON must be valid JSON") from error
+    if not isinstance(headers, Mapping) or any(not isinstance(value, str) for value in headers.values()):
+        raise ValueError("AUTODATA_SOURCE_REQUEST_HEADERS_JSON must be an object of string values")
+    return _request_headers({str(key): value for key, value in headers.items()})
 
 
 def _opener_namespace(opener: Callable[..., Any]) -> str:

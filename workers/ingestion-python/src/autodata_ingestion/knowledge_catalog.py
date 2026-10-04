@@ -8,6 +8,7 @@ from copy import deepcopy
 from typing import Any
 
 from .article_intake import VehicleTarget
+from .source_adapters import qualify_article_id
 
 
 DEFAULT_KNOWLEDGE_CACHE_LIMIT = 200
@@ -135,7 +136,7 @@ def load_vehicle_knowledge_catalog(
                cee.extracted_text,
                cee.confidence,
                cee.reviewer_state,
-               ca.images, ca.operations
+               ca.images, ca.operations, ca.provider
         FROM catalog_articles ca
         JOIN vehicles v ON v.vehicle_id = ca.vehicle_id
         JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
@@ -231,11 +232,15 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
         # optional content-provenance join columns.
         images = row[36] if len(row) > 36 else row[27] if len(row) == 28 else []
         operations = row[37] if len(row) > 37 else row[28] if len(row) == 29 else []
+        provider = row[38] if len(row) > 38 else None
+        provider_article_id = str(article_id)
+        qualified_article_id = qualify_article_id(article_id, provider)
         content_locator = content_source_locator or source_locator or evidence_locator or "catalog"
         content_uri = content_source_uri or source_uri
         content_version = content_source_version or source_version
         article = {
-            "article_id": str(article_id),
+            "article_id": qualified_article_id,
+            "provider_article_id": provider_article_id,
             "article_key": f"catalog:{catalog_article_id}",
             "bucket": bucket,
             "title": title,
@@ -248,6 +253,8 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
             "source_version": source_version,
             "content_locator": content_locator,
         }
+        if provider:
+            article["provider"] = str(provider)
         if images:
             article["images"] = images
         if operations:

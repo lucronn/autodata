@@ -889,6 +889,7 @@ def _load_autoapi_job_catalog(
     if not base_url:
         return [], {"mode": "source_unavailable", "reason": "autoapi_not_configured"}
     from .autoapi_connector import AutoAPIConnector
+    from .autoapi_connector import configured_source_request_headers
     from .source_adapters import adapt_source_resource
     from .source_bundle import normalize_source_bundle
     from .job_plan import plan_job
@@ -902,6 +903,7 @@ def _load_autoapi_job_catalog(
         vehicle_max_concurrency=int(os.getenv("AUTODATA_AUTOAPI_VEHICLE_CONCURRENCY", "4")),
         retry_attempts=int(os.getenv("AUTODATA_AUTOAPI_RETRY_ATTEMPTS", "3")),
         retry_backoff_seconds=float(os.getenv("AUTODATA_AUTOAPI_RETRY_BACKOFF_SECONDS", "0.25")),
+        request_headers=configured_source_request_headers(),
     )
     provider = str(vehicle.get("provider") or vehicle.get("provider_name") or "").strip().casefold()
     provider_vehicle_id = str(
@@ -931,6 +933,7 @@ def _load_autoapi_job_catalog(
     records: list[dict[str, object]] = []
     targeted_article_count = 0
     targeted_labor_count = 0
+    provider_id_rejections: list[dict[str, str]] = []
     for bundle in bundles:
         artifacts = [adapt_source_resource(resource) for resource in bundle.resources]
         # Both catalog discovery and selected-article hydration are keyed by
@@ -964,7 +967,17 @@ def _load_autoapi_job_catalog(
             selected_ids = set(str(value) for value in provisional.get("selected_articles", []))
             requested_article_id = str(vehicle.get("requested_article_id") or "").strip()
             if requested_article_id:
-                selected_ids.add(requested_article_id)
+                requested_provider = requested_article_id.split(":", 1)[0].casefold()
+                if requested_provider in {"autoapitwo", "autodbtwo"}:
+                    provider_id_rejections.append(
+                        {
+                            "article_id": requested_article_id,
+                            "provider": requested_provider,
+                            "reason": "article belongs to AutoDBtwo",
+                        }
+                    )
+                else:
+                    selected_ids.add(requested_article_id)
             for article_id in sorted(selected_ids):
                 selected_article = next(
                     (record["article"] for record in list_records if str(record["article"].get("article_id")) == article_id),
@@ -1043,6 +1056,7 @@ def _load_autoapi_job_catalog(
         "materialized_records": len(records),
         "targeted_article_fetch_count": targeted_article_count,
         "targeted_labor_fetch_count": targeted_labor_count,
+        "provider_id_rejections": provider_id_rejections,
     }
 
 
@@ -1167,6 +1181,8 @@ def _merge_job_plan_catalogs(
 ) -> list[dict[str, object]]:
     """Keep list rows while replacing them with hydrated records of the same identity."""
 
+    from .source_adapters import qualify_article_id
+
     by_id: dict[str, dict[str, object]] = {}
     for record in (*preferred, *hydrated):
         if not isinstance(record, dict):
@@ -1175,6 +1191,14 @@ def _merge_job_plan_catalogs(
         if not isinstance(article, dict):
             continue
         article_id = str(article.get("article_id") or article.get("id") or "")
+        provider = article.get("provider") or record.get("provider")
+        if provider and article_id:
+            article = dict(article)
+            article.setdefault("provider_article_id", article_id)
+            article["article_id"] = qualify_article_id(article_id, provider)
+            article["provider"] = provider
+            record = {**record, "article": article}
+            article_id = str(article["article_id"])
         if article_id:
             by_id[article_id] = dict(record)
     return list(by_id.values())
@@ -1589,16 +1613,9 @@ def _handle_fast_request(request: object) -> dict[str, str | int | list[str]]:
 
 
 def _source_request_headers() -> dict[str, str]:
-    raw_headers = os.getenv("AUTODATA_SOURCE_REQUEST_HEADERS_JSON", "").strip()
-    if not raw_headers:
-        return {}
-    try:
-        headers = json.loads(raw_headers)
-    except json.JSONDecodeError as error:
-        raise ValueError("AUTODATA_SOURCE_REQUEST_HEADERS_JSON must be valid JSON") from error
-    if not isinstance(headers, dict) or any(not isinstance(value, str) for value in headers.values()):
-        raise ValueError("AUTODATA_SOURCE_REQUEST_HEADERS_JSON must be an object of string values")
-    return {str(key): value for key, value in headers.items()}
+    from .autoapi_connector import configured_source_request_headers
+
+    return configured_source_request_headers()
 
 
 def _run_connector(
