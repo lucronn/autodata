@@ -377,6 +377,7 @@ def _load_autoapitwo_article_detail(
 
     from .autoapitwo_connector import AutoAPITwoConnector
     from .procedure_normalize import normalize_procedure_article
+    from .procedure_rewrite import rewrite_procedure_article
     from .procedure_images import localize_procedure_images
     from .source_adapters import SourceResource, adapt_source_resource
     from .source_bundle import normalize_source_bundle
@@ -455,6 +456,7 @@ def _load_autoapitwo_article_detail(
     normalized_articles = []
     for article in bundle.articles:
         normalized = normalize_procedure_article(article)
+        normalized = rewrite_procedure_article(normalized, vehicle=vehicle)
         try:
             normalized = localize_procedure_images(normalized, vehicle=vehicle)
         except Exception:  # noqa: BLE001 - preserve readable text if object storage is unavailable

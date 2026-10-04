@@ -895,6 +895,12 @@ def _load_autoapi_job_catalog(
         for article in normalized.articles:
             if article.get("body") or article.get("steps"):
                 article = normalize_procedure_article(article)
+                from .procedure_rewrite import rewrite_procedure_article
+
+                article = rewrite_procedure_article(
+                    article,
+                    vehicle=normalized.vehicle or vehicle,
+                )
             normalized_articles.append(article)
         try:
             normalized = replace(normalized, articles=tuple(normalized_articles))
