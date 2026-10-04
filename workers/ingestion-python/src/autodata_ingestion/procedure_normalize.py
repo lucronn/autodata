@@ -9,6 +9,7 @@ from typing import Any, Mapping
 from .article_document import (
     build_ordered_document,
     document_from_steps,
+    validate_content_evidence,
     validate_ordered_document,
 )
 
@@ -62,6 +63,7 @@ def normalize_procedure_article(article: Mapping[str, Any]) -> dict[str, Any]:
         elif isinstance(steps_field, list) and steps_field and _steps_are_consumer_shaped(steps_field):
             out["steps"] = list(steps_field)
             out.pop("blocks", None)
+            out["normalized_document"] = document_from_steps(out)
             out["content_status"] = _content_status_for(out)
             return out
         elif isinstance(steps_field, list) and all(isinstance(step, str) for step in steps_field):
@@ -209,6 +211,12 @@ def article_is_content_complete(article: Mapping[str, Any]) -> bool:
     ``content_status`` is persisted metadata and may describe an older
     normalization revision. It cannot override the actual saved instructions.
     """
+
+    if "normalized_document" in article:
+        document = article.get("normalized_document")
+        evidence_errors = validate_content_evidence(document, article)
+        if evidence_errors:
+            return False
 
     steps = article.get("steps")
     if isinstance(steps, list) and steps:

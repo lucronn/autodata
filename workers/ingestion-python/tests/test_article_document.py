@@ -50,3 +50,47 @@ def test_document_validation_rejects_reordered_or_unresolved_blocks():
     errors = validate_ordered_document(document)
     assert "block 1 has invalid source_order" in errors
     assert "block 1 has no image status" in errors
+
+
+def test_document_validation_requires_evidence_for_each_retained_block():
+    document = build_ordered_document(
+        {"article_id": "article-2", "evidence_ids": ["e-source"]},
+        [
+            {"kind": "text", "text": "Remove the seal.", "evidence_ids": ["e-source"]},
+            {"kind": "callout", "label": "Warning", "text": "Wear eye protection.", "evidence_ids": []},
+            {"kind": "image", "url": "https://source.test/seal.svg", "evidence_ids": ["e-source"]},
+        ],
+    )
+
+    assert [block["source_order"] for block in document["blocks"]] == [1, 2, 3]
+    assert document["blocks"][1]["evidence_ids"] == []
+    assert "block 2 has no evidence_ids" in validate_ordered_document(document)
+
+
+def test_document_builder_retains_unknown_rows_without_inventing_evidence():
+    document = build_ordered_document(
+        {"article_id": "article-3"},
+        [
+            {"kind": "widget", "text": "Unsupported source material"},
+            {"kind": "heading", "text": ""},
+            {"kind": "text", "text": "Remove the seal."},
+        ],
+    )
+
+    assert len(document["blocks"]) == 3
+    assert [block["source_order"] for block in document["blocks"]] == [1, 2, 3]
+    assert [block["type"] for block in document["blocks"]] == ["unknown", "unknown", "paragraph"]
+    assert all(block["evidence_ids"] == [] for block in document["blocks"])
+
+
+def test_structural_break_does_not_require_content_evidence():
+    document = build_ordered_document(
+        {"article_id": "article-4", "evidence_ids": ["e-source"]},
+        [
+            {"kind": "text", "text": "Remove the seal.", "evidence_ids": ["e-source"]},
+            {"kind": "break", "evidence_ids": []},
+            {"kind": "text", "text": "Install the seal.", "evidence_ids": ["e-source"]},
+        ],
+    )
+
+    assert validate_ordered_document(document) == []

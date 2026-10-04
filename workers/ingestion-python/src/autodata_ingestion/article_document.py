@@ -81,6 +81,8 @@ def build_ordered_document(
             text = _clean_text(raw.get("text") or raw.get("label"))
             if text:
                 output.append(_base_block(article, source_index, "heading", text=text, level=_level(raw), evidence_ids=evidence_ids))
+            else:
+                output.append(_unknown_block(article, source_index, raw))
             continue
         if kind in {"break", "hr", "separator"}:
             output.append(_base_block(article, source_index, "break", evidence_ids=evidence_ids))
@@ -98,6 +100,12 @@ def build_ordered_document(
                         evidence_ids=evidence_ids,
                     )
                 )
+            else:
+                output.append(_unknown_block(article, source_index, raw))
+            continue
+
+        if kind not in {"text", "paragraph", "p", "step", "instruction"}:
+            output.append(_unknown_block(article, source_index, raw))
             continue
 
         text = _clean_text(raw.get("text") or raw.get("value"))
@@ -123,11 +131,15 @@ def build_ordered_document(
             output.append(_base_block(article, source_index, "paragraph", text=text, evidence_ids=evidence_ids))
 
     # Source order is an invariant.  Do not sort or deduplicate this list.
-    return {
+    document = {
         "schema_version": SCHEMA_VERSION,
         "normalization_version": NORMALIZATION_VERSION,
         "blocks": output,
     }
+    article_evidence_ids = _evidence_ids(article, {})
+    if article_evidence_ids:
+        document["evidence_ids"] = article_evidence_ids
+    return document
 
 
 def document_from_steps(article: Mapping[str, Any]) -> dict[str, Any]:
@@ -140,6 +152,7 @@ def document_from_steps(article: Mapping[str, Any]) -> dict[str, Any]:
             if text:
                 blocks.append({"kind": "text", "text": text})
             continue
+        evidence_ids = _evidence_ids(step, article)
         heading = _clean_text(step.get("heading") or step.get("action"))
         instructions = [
             _clean_text(value)
@@ -147,9 +160,13 @@ def document_from_steps(article: Mapping[str, Any]) -> dict[str, Any]:
             if _clean_text(value)
         ]
         if heading:
-            blocks.append({"kind": "text", "text": f"{step.get('number') or index}. {heading}"})
+            blocks.append({
+                "kind": "text",
+                "text": f"{step.get('number') or index}. {heading}",
+                "evidence_ids": evidence_ids,
+            })
         for instruction in instructions:
-            blocks.append({"kind": "text", "text": instruction})
+            blocks.append({"kind": "text", "text": instruction, "evidence_ids": evidence_ids})
         for image in step.get("images") or []:
             if isinstance(image, Mapping):
                 blocks.append({"kind": "image", **dict(image)})
@@ -188,7 +205,75 @@ def validate_ordered_document(document: Any) -> list[str]:
             errors.append(f"block {expected_order} has no table rows")
         if block_type == "image" and block.get("status") not in {"available", "unavailable"}:
             errors.append(f"block {expected_order} has no image status")
+        evidence_ids = block.get("evidence_ids")
+        if (
+            block_type != "break"
+            and (not isinstance(evidence_ids, list) or not any(str(value).strip() for value in evidence_ids))
+        ):
+            errors.append(f"block {expected_order} has no evidence_ids")
         expected_order += 1
+    return errors
+
+
+def validate_content_evidence(
+    document: Any,
+    article: Mapping[str, Any] | None = None,
+) -> list[str]:
+    """Validate block evidence without manufacturing provenance identifiers."""
+
+    errors = validate_ordered_document(document)
+    if errors or not isinstance(document, Mapping):
+        return errors
+
+    blocks = document.get("blocks")
+    if not isinstance(blocks, list):
+        return errors
+    article = article if isinstance(article, Mapping) else {}
+    known_ids = set(_evidence_ids(article, {}))
+    document_evidence_ids = document.get("evidence_ids")
+    if isinstance(document_evidence_ids, list):
+        document_evidence_ids = {
+            str(value).strip() for value in document_evidence_ids if str(value).strip()
+        }
+        if known_ids and not document_evidence_ids.issubset(known_ids):
+            errors.append("document evidence_ids do not match article evidence")
+    evidence_records = article.get("evidence")
+    if isinstance(evidence_records, Mapping):
+        evidence_records = [evidence_records]
+    if isinstance(evidence_records, (list, tuple)):
+        source_snapshot_ids = {
+            str(article.get(key)).strip()
+            for key in ("source_snapshot_id", "content_source_snapshot_id")
+            if str(article.get(key) or "").strip()
+        }
+        for record in evidence_records:
+            if not isinstance(record, Mapping):
+                continue
+            evidence_id = str(record.get("evidence_id") or record.get("id") or "").strip()
+            if evidence_id:
+                known_ids.add(evidence_id)
+            record_snapshot_id = str(record.get("source_snapshot_id") or "").strip()
+            if source_snapshot_ids and record_snapshot_id and record_snapshot_id not in source_snapshot_ids:
+                errors.append(f"evidence {evidence_id or '<unknown>'} has a different source snapshot")
+
+    content_blocks = [block for block in blocks if isinstance(block, Mapping) and block.get("type") != "break"]
+    if content_blocks and not known_ids:
+        errors.append("article has no resolvable evidence_ids")
+
+    for index, block in enumerate(blocks, 1):
+        if not isinstance(block, Mapping):
+            continue
+        if block.get("type") == "unknown":
+            errors.append(f"block {index} retains unknown content")
+        if block.get("type") == "break":
+            continue
+        evidence_ids = {
+            str(value).strip()
+            for value in block.get("evidence_ids", [])
+            if str(value).strip()
+        }
+        if known_ids and not evidence_ids.issubset(known_ids):
+            errors.append(f"block {index} has unresolved evidence_ids")
     return errors
 
 
@@ -298,9 +383,10 @@ def _unknown_block(article: Mapping[str, Any], source_order: int, raw: Any) -> d
     if isinstance(raw, Mapping):
         text = _clean_text(raw.get("text") or raw.get("value"))
         locator = _clean_text(raw.get("locator") or raw.get("source_locator"))
+        evidence_ids = _evidence_ids(raw, {})
     else:
-        text, locator = _clean_text(raw), ""
-    return _base_block(article, source_order, "unknown", text=text, source_locator=locator, review_reason="unrecognized source block", evidence_ids=[])
+        text, locator, evidence_ids = _clean_text(raw), "", []
+    return _base_block(article, source_order, "unknown", text=text, source_locator=locator, review_reason="unrecognized source block", evidence_ids=evidence_ids)
 
 
 def _blocks_from_steps(steps: Any) -> list[dict[str, Any]] | None:
@@ -319,7 +405,18 @@ def _blocks_from_steps(steps: Any) -> list[dict[str, Any]] | None:
 
 
 def _evidence_ids(raw: Mapping[str, Any], article: Mapping[str, Any]) -> list[str]:
-    values = raw.get("evidence_ids", article.get("evidence_ids", []))
+    if "evidence_ids" in raw:
+        values = raw.get("evidence_ids")
+    elif raw.get("evidence_id"):
+        values = [raw.get("evidence_id")]
+    elif "evidence_ids" in article:
+        values = article.get("evidence_ids")
+    else:
+        values = [
+            article.get(key)
+            for key in ("evidence_id", "content_evidence_id")
+            if article.get(key)
+        ]
     if not isinstance(values, list):
         values = [values]
     return sorted({str(value).strip() for value in values if str(value).strip()})
@@ -362,5 +459,6 @@ __all__ = [
     "build_ordered_document",
     "document_from_steps",
     "empty_document",
+    "validate_content_evidence",
     "validate_ordered_document",
 ]

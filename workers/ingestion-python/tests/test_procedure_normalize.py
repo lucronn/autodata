@@ -11,6 +11,7 @@ from autodata_ingestion.procedure_normalize import (
     is_meaningful_procedure_text,
     normalize_procedure_article,
 )
+from autodata_ingestion.article_document import build_ordered_document
 
 
 def test_rebuilds_empty_ordered_document_from_legacy_steps_in_place_order():
@@ -58,14 +59,15 @@ def test_expands_provider_ordered_list_items_into_separate_ordered_procedure_ste
         "title": "Engine Oil Pump - Removal",
         "component": "oil_pump",
         "procedure_kind": "removal",
+        "evidence_ids": ["e-oil-pump"],
         "blocks": [
-            {"kind": "text", "text": "7L DIESEL"},
-            {"kind": "text", "text": "REMOVAL"},
+            {"kind": "text", "text": "7L DIESEL", "evidence_ids": ["e-oil-pump"]},
+            {"kind": "text", "text": "REMOVAL", "evidence_ids": ["e-oil-pump"]},
             {"kind": "ordered_list", "start": 1, "items": [
                 "Disconnect the negative battery cable.",
                 "Remove the oil pan bolts in sequence.",
                 "Lift out the oil pump assembly.",
-            ]},
+            ], "evidence_ids": ["e-oil-pump"]},
         ],
         "source_original": {"retained": True},
     })
@@ -76,6 +78,113 @@ def test_expands_provider_ordered_list_items_into_separate_ordered_procedure_ste
         "Lift out the oil pump assembly.",
     ]
     assert normalized["content_status"] == "content_complete"
+
+
+def test_missing_block_evidence_keeps_article_incomplete_and_preserves_order():
+    normalized = normalize_procedure_article({
+        "article_id": "autoapitwo:example:mixed",
+        "title": "Oil Pump - Removal",
+        "component": "oil_pump",
+        "procedure_kind": "removal",
+        "evidence_ids": ["e-source"],
+        "blocks": [
+            {"kind": "text", "text": "Remove the oil pump.", "evidence_ids": ["e-source"]},
+            {"kind": "table", "rows": [["Tool", "8498"]], "evidence_ids": []},
+            {"kind": "callout", "text": "Wear eye protection.", "evidence_ids": ["e-source"]},
+            {"kind": "image", "url": "https://source.test/pump.svg", "evidence_ids": ["e-source"]},
+        ],
+    })
+
+    assert normalized["content_status"] == "list_only"
+    assert [block["source_order"] for block in normalized["normalized_document"]["blocks"]] == [1, 2, 3, 4]
+    assert normalized["normalized_document"]["blocks"][1]["evidence_ids"] == []
+
+
+def test_unknown_retained_block_and_unresolved_evidence_cannot_be_complete():
+    normalized = normalize_procedure_article({
+        "article_id": "autoapitwo:example:unknown",
+        "title": "Starter - Removal",
+        "component": "starter",
+        "procedure_kind": "removal",
+        "evidence_ids": ["e-source"],
+        "blocks": [
+            {"kind": "text", "text": "Remove the starter.", "evidence_ids": ["e-not-from-article"]},
+            {"kind": "widget", "text": "Review this source row.", "evidence_ids": ["e-source"]},
+        ],
+    })
+
+    assert normalized["content_status"] == "list_only"
+    assert [block["source_order"] for block in normalized["normalized_document"]["blocks"]] == [1, 2]
+
+
+def test_block_evidence_without_article_evidence_cannot_be_complete():
+    normalized = normalize_procedure_article({
+        "article_id": "autoapitwo:example:unresolved",
+        "title": "Starter - Removal",
+        "component": "starter",
+        "procedure_kind": "removal",
+        "blocks": [
+            {"kind": "text", "text": "Remove the starter.", "evidence_ids": ["e-not-resolvable"]},
+        ],
+    })
+
+    assert normalized["content_status"] == "list_only"
+
+
+def test_prior_complete_status_and_source_original_do_not_bypass_unresolved_evidence():
+    article = {
+        "article_id": "autoapitwo:example:legacy",
+        "content_status": "content_complete",
+        "source_original": {"immutable": True},
+        "steps": [{"action": "Remove the starter.", "instructions": []}],
+        "normalized_document": build_ordered_document(
+            {"article_id": "autoapitwo:example:legacy"},
+            [{"kind": "text", "text": "Remove the starter.", "evidence_ids": ["e-block"]}],
+        ),
+    }
+
+    assert article_is_content_complete(article) is False
+
+
+def test_normalized_document_ids_do_not_self_certify_projection_reads():
+    document = build_ordered_document(
+        {"article_id": "autoapitwo:example:projected", "evidence_id": "e-source"},
+        [{"kind": "text", "text": "Remove the starter.", "evidence_ids": ["e-source"]}],
+    )
+    projected_article = {
+        "article_id": "autoapitwo:example:projected",
+        "content_status": "content_complete",
+        "source_original": {"immutable": True},
+        "steps": [{"action": "Remove the starter.", "instructions": []}],
+        "normalized_document": document,
+    }
+
+    assert document["evidence_ids"] == ["e-source"]
+    assert article_is_content_complete(projected_article) is False
+
+
+def test_complete_mixed_document_requires_evidence_and_matching_source_snapshot():
+    article = {
+        "article_id": "autoapitwo:example:complete",
+        "title": "Starter - Removal",
+        "component": "starter",
+        "procedure_kind": "removal",
+        "source_snapshot_id": "snapshot-1",
+        "evidence": [{"evidence_id": "e-source", "source_snapshot_id": "snapshot-1"}],
+        "evidence_ids": ["e-source"],
+        "blocks": [
+            {"kind": "heading", "text": "REMOVAL", "evidence_ids": ["e-source"]},
+            {"kind": "table", "rows": [["Tool", "8498"]], "evidence_ids": ["e-source"]},
+            {"kind": "callout", "text": "Wear eye protection.", "evidence_ids": ["e-source"]},
+            {"kind": "text", "text": "Remove the starter.", "evidence_ids": ["e-source"]},
+            {"kind": "image", "url": "https://source.test/starter.svg", "evidence_ids": ["e-source"]},
+        ],
+    }
+
+    normalized = normalize_procedure_article(article)
+
+    assert normalized["content_status"] == "content_complete"
+    assert article_is_content_complete(normalized) is True
 
 
 def test_stale_content_complete_label_does_not_make_metadata_only_steps_usable():

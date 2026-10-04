@@ -218,6 +218,7 @@ class CatalogServiceTests(unittest.TestCase):
                 **stored,
                 "article": {
                     **legacy_article,
+                    **article,
                     "normalized_document": article["normalized_document"],
                 },
             }
