@@ -4,11 +4,16 @@
 
 **Tracked delivery:** [Issue #110](https://github.com/lucronn/autodata/issues/110), [AutoData Portfolio Project](https://github.com/users/lucronn/projects/8), the [composition plan](../superpowers/plans/2026-09-19-mercury2-overlap-procedure-composition.md), the [provider-qualified hydration follow-up](../superpowers/plans/2026-10-03-provider-qualified-composition-hydration.md), and the [procedure-content quality gate](../superpowers/plans/2026-10-03-procedure-content-quality-gate.md).
 
-The approved delivery surface is a standalone public API operation (currently
-the `/job-plans` boundary where it satisfies the request contract), proxied by
-the Go API to the ingestion worker. Keep request validation, authorization,
-vehicle resolution, source diagnostics, and response semantics independent of
-chat. Track current API contract and three-case cold/warm acceptance in
+The approved delivery surface is the standalone
+`POST /v1/catalog/vehicles/{vehicle_id}/compositions` operation. The Go API
+resolves the canonical catalog vehicle, accepts only a non-empty `query` and
+required `Idempotency-Key`, then forwards the normalized job plan to the
+ingestion worker. Vehicle identity cannot be overridden in the request body.
+The public projection emits only same-origin opaque references for localized
+images and removes provider URLs, object keys, source snapshots, and internal
+visual metadata. Keep request validation, authorization, vehicle resolution,
+source diagnostics, and response semantics independent of chat. Track current
+API contract and three-case cold/warm acceptance in
 [`2026-10-04-standalone-procedure-composition-api.md`](../superpowers/plans/2026-10-04-standalone-procedure-composition-api.md).
 
 ## Provider integrity release follow-up

@@ -427,7 +427,13 @@ def _collect_images(articles: Iterable[Mapping[str, Any]]) -> list[dict[str, Any
                 if not url or url in seen:
                     continue
                 seen.add(url)
-                images.append({"url": url, "alt": str(item.get("alt") or item.get("title") or article.get("title") or "Source diagram"), "article_id": article_id, **({"evidence_id": str(item["evidence_id"])} if item.get("evidence_id") else {})})
+                images.append({
+                    "url": url,
+                    "alt": str(item.get("alt") or item.get("title") or article.get("title") or "Source diagram"),
+                    "article_id": article_id,
+                    **({"storage_key": str(item["storage_key"])} if item.get("storage_key") else {}),
+                    **({"evidence_id": str(item["evidence_id"])} if item.get("evidence_id") else {}),
+                })
     for article in articles:
         article_id = str(article.get("article_id", ""))
         for evidence in article.get("evidence", []) if isinstance(article.get("evidence", []), list) else []:

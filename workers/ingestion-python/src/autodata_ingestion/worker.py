@@ -903,7 +903,7 @@ def _load_autoapi_job_catalog(
         vehicle_max_concurrency=int(os.getenv("AUTODATA_AUTOAPI_VEHICLE_CONCURRENCY", "4")),
         retry_attempts=int(os.getenv("AUTODATA_AUTOAPI_RETRY_ATTEMPTS", "3")),
         retry_backoff_seconds=float(os.getenv("AUTODATA_AUTOAPI_RETRY_BACKOFF_SECONDS", "0.25")),
-        request_headers=configured_source_request_headers(),
+        request_headers=configured_source_request_headers(base_url),
     )
     provider = str(vehicle.get("provider") or vehicle.get("provider_name") or "").strip().casefold()
     provider_vehicle_id = str(

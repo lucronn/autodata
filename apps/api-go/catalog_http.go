@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -51,6 +54,152 @@ type CatalogArticlesResponse struct {
 type CatalogArticleResponse struct {
 	Version string         `json:"version"`
 	Article CatalogArticle `json:"article"`
+}
+
+type catalogCompositionRequest struct {
+	Query string `json:"query"`
+}
+
+type catalogCompositionVehicle struct {
+	VehicleID       string `json:"vehicle_id"`
+	ConfigurationID string `json:"configuration_id"`
+	Year            int    `json:"year"`
+	Make            string `json:"make"`
+	Model           string `json:"model"`
+	Region          string `json:"region,omitempty"`
+	Trim            string `json:"trim,omitempty"`
+	Engine          string `json:"engine,omitempty"`
+}
+
+type catalogCompositionJobPlan struct {
+	Vehicle catalogCompositionVehicle `json:"vehicle"`
+	Query   string                    `json:"query"`
+}
+
+// composeCatalogProcedure binds the composition request to the canonical
+// catalog vehicle and forwards it through the existing job-plan worker path.
+func (s *Server) composeCatalogProcedure(response http.ResponseWriter, request *http.Request, principal Principal) {
+	body, err := io.ReadAll(io.LimitReader(request.Body, maxIngestionProxyBytes+1))
+	if err != nil || len(body) > maxIngestionProxyBytes {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "composition request is invalid or too large", false)
+		return
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	var input catalogCompositionRequest
+	if err := decoder.Decode(&input); err != nil || decoder.Decode(&struct{}{}) != io.EOF || strings.TrimSpace(input.Query) == "" {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "composition requires only a non-empty query; vehicle identity comes from the catalog path", false)
+		return
+	}
+	configuration, err := s.catalog.ConfigurationByVehicle(request.Context(), principal, request.PathValue("vehicle_id"))
+	if err != nil {
+		s.writeCatalogError(response, request, err)
+		return
+	}
+	jobPlan := catalogCompositionJobPlan{
+		Vehicle: catalogCompositionVehicle{
+			VehicleID: configuration.VehicleID, ConfigurationID: configuration.ID,
+			Year: configuration.Year, Make: configuration.Make, Model: configuration.Model,
+			Region: configuration.Region, Trim: configuration.Trim, Engine: configuration.Engine,
+		},
+		Query: strings.TrimSpace(input.Query),
+	}
+	workerBody, err := json.Marshal(jobPlan)
+	if err != nil {
+		writeAPIError(response, request, http.StatusInternalServerError, "INTERNAL_ERROR", "composition request could not be encoded", false)
+		return
+	}
+	request.Body = io.NopCloser(bytes.NewReader(workerBody))
+	request.ContentLength = int64(len(workerBody))
+	if strings.TrimSpace(request.Header.Get("Idempotency-Key")) == "" {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "Idempotency-Key is required", false)
+		return
+	}
+	if s.ingestionClient == nil {
+		writeAPIError(response, request, http.StatusServiceUnavailable, "INGESTION_UNAVAILABLE", "ingestion service is not configured", true)
+		return
+	}
+	status, responseBody, err := s.ingestionClient.Do(request, "/v1/job-plans", workerBody, request.Header.Get("Idempotency-Key"))
+	if err != nil {
+		writeAPIError(response, request, http.StatusBadGateway, "INGESTION_UNAVAILABLE", "ingestion service request failed", true)
+		return
+	}
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		writeAPIError(response, request, status, "COMPOSITION_UNAVAILABLE", "a source-backed procedure could not be produced for this vehicle", status >= http.StatusInternalServerError)
+		return
+	}
+	// Public composition responses must not expose provider URLs, storage keys,
+	// raw source snapshots, or internal artifact references.
+	var result map[string]any
+	if err := json.Unmarshal(responseBody, &result); err != nil || result == nil {
+		writeAPIError(response, request, http.StatusBadGateway, "INVALID_INGESTION_RESPONSE", "composition service returned an invalid response", false)
+		return
+	}
+	projectCompositionResponse(result, s.catalogImageKey)
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		writeAPIError(response, request, http.StatusBadGateway, "INVALID_INGESTION_RESPONSE", "composition response could not be encoded", false)
+		return
+	}
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(status)
+	_, _ = response.Write(encoded)
+}
+
+func projectCompositionResponse(value any, imageKey []byte) {
+	switch current := value.(type) {
+	case map[string]any:
+		for key, nested := range current {
+			switch key {
+			case "source_visual_refs", "derived_visual_refs", "source_watermarks", "source_original", "source_snapshot", "visual_artifacts", "source_uri", "source_url", "storage_key", "artifact_key":
+				delete(current, key)
+			case "images":
+				if images, ok := nested.([]any); ok {
+					current[key] = projectCompositionImageList(images, imageKey)
+				}
+			}
+			if retained, exists := current[key]; exists {
+				projectCompositionResponse(retained, imageKey)
+			}
+		}
+	case []any:
+		for _, nested := range current {
+			projectCompositionResponse(nested, imageKey)
+		}
+	}
+}
+
+func projectCompositionImageList(images []any, imageKey []byte) []any {
+	projected := make([]any, 0, len(images))
+	for _, raw := range images {
+		image, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		imageURL, _ := image["url"].(string)
+		tokenPath := strings.TrimPrefix(imageURL, "/v1/catalog/images/")
+		if tokenPath != imageURL && tokenPath != "" && !strings.ContainsAny(tokenPath, "/?#") && !strings.Contains(tokenPath, "..") {
+			// Existing opaque same-origin references are already safe.
+		} else {
+			storageKey, _ := image["storage_key"].(string)
+			if len(imageKey) != 32 || strings.TrimSpace(storageKey) == "" {
+				continue
+			}
+			token, err := sealCatalogImageStorageKey(strings.TrimSpace(storageKey), imageKey)
+			if err != nil {
+				continue
+			}
+			imageURL = "/v1/catalog/images/" + token
+		}
+		image["url"] = imageURL
+		for key := range image {
+			if key != "url" && key != "alt" && key != "article_id" && key != "evidence_id" {
+				delete(image, key)
+			}
+		}
+		projected = append(projected, image)
+	}
+	return projected
 }
 
 func (s *Server) listCatalogYears(response http.ResponseWriter, request *http.Request, principal Principal) {

@@ -1,40 +1,36 @@
 # Catalog release acceptance report
 
-**Candidate:** `98928cc492ba51a4c9f142d056bbb66b4db883a8`
+**Candidate:** implementation in progress on `phobos/complete-catalog-release` (base `a8dbaa95f07faa0b5faa3d3a915ef6eb139c5299`).
 **PR:** https://github.com/lucronn/autodata/pull/125 (draft)
 **Project:** https://github.com/users/lucronn/projects/8
-**Decision:** blocked; keep the PR draft and Issues #110–#116 open.
+**Decision:** do not merge or close Issues #110–#116; procedure/runtime and hosted release gates remain incomplete.
 
-## Implemented
+## Completed in this candidate
 
-- #110/#115: provider-qualified article identity, truthful per-provider failures, worker source headers, and no completeness for empty instructions.
-- #111: content-complete articles require resolvable evidence on every retained content block; unknown blocks remain incomplete.
-- #112/#116: article images use opaque references to AutoData object storage; provider URL image fetches are disabled; storage keys are excluded from public projections and schemas. SVG and other active image formats are rejected.
-- #113: normal API startup uses verified expiring service keys; unsigned local identity is explicit development mode; local Compose API is loopback-bound; Kubernetes service keys and image-reader credentials are API-only Secret references.
-- #114: recursive stored-source redaction and local-image-only HTML projection; OpenAPI JSON/YAML describe the source and image routes.
+- Added authenticated `POST /v1/catalog/vehicles/{vehicle_id}/compositions`; the path vehicle is canonical, body accepts only a non-empty query, and `Idempotency-Key` is required.
+- Routed through the existing Go-to-ingestion job-plan boundary and documented the operation in OpenAPI JSON/YAML.
+- Added response projection that strips provider URLs, object keys, source snapshots, and internal visual metadata; localized image storage keys become opaque same-origin image paths.
+- Added provider-host-scoped Vercel protection-bypass header configuration for the ingestion worker, with Compose/Kubernetes secret references. Vercel Deployment Protection was not disabled.
 
 ## Verification
 
-- Hosted Autonomous Verification passed on `d3f7ff06d21e9ef13f3cd750e112ec786bc9f5ef` and `d891fb82be2fb7169337927d931363e377d7e4ed`; verification for final candidate `98928cc` is running.
-- Go API: `go test ./... -count=1` and `go vet ./...` passed after the raster-only media checks.
-- Ingestion worker: `566 passed, 3 skipped, 27 subtests passed`.
-- Focused catalog image tests: `14 passed`; Kubernetes manifest tests: `5 passed`.
-- Compose config validation passed with synthetic local-only values.
-- Isolated Compose candidate `autodata-release-candidate` started; `/healthz`, `/readyz`, `/openapi.json`, `/openapi.yaml`, `/swagger`, and `/workshop` returned HTTP 200. The running API code matches the candidate; the later commits only tightened Kubernetes secret/TLS configuration and added acceptance notes.
-- All seven synchronized pre-implementation records passed the machine validator against their pinned checkpoints.
-- Five cold catalog attempts for the same oil-pump + water-pump request (2013 Honda Crosstour, 2018 Dodge Charger AWD, 1997 Toyota RAV4, 2012 Ram 1500 DS, 2013 Honda Accord Coupe) each returned HTTP 200 with `complete=false`, `hydrating=true`, and zero configurations. A direct RAV4 hydration recorded an AutoDBone authentication failure (`source rejected authentication`); AutoDBtwo returned selector provenance but no persistable configuration rows. No distinct procedure article was retrieved. Passing vehicle/procedure acceptance: **0/5**.
-- The previous release-manifest draft was rejected by `scripts/autonomy/validate_run.py`: required gate decisions/reports, evidence completeness, provenance coverage, and valid base SHA were missing. No passing run manifest is claimed.
+- Go API: `go test ./... -count=1` and `go vet ./...` passed.
+- Ingestion worker: `568 passed, 3 skipped, 27 subtests passed`.
+- Kubernetes manifest and Compose image contracts: 9 tests passed; Compose config validation passed with synthetic local-only values.
+- `git diff --check` passed.
+- In the isolated ingestion container, an authenticated request to the current protected AutoDBone deployment's `/v1/api/years` returned HTTP 200. The worker's configured default hostname was stale; this probe used the currently live deployment hostname. No production runtime secret was installed.
+- Three distinct cold/warm worker cases were attempted: 2005 Toyota Camry starter, 1997 Toyota RAV4 oil/water pumps, and 2002 Honda Civic front caliper. None passes acceptance:
+  - Camry: `needs_review`, zero steps on cold and warm; one selected source ID (fingerprint `c6e07e6d0d4b`).
+  - RAV4: cold and warm both raised `RuntimeError` because no usable vehicle-matched source procedure was available.
+  - Civic: `needs_review`, two steps on both passes (fingerprint `64a408bb9c15`); no torque/check terms and zero returned images.
+- No passing cold/warm sample, complete DIY procedure, or localized composition image has been demonstrated. These are failures, not accepted tests.
+- No Kubernetes context is configured, so the actual deployment's runtime secret store could not be updated or verified. Hosted checks and independent release review have not run for this implementation candidate.
 
 ## Remaining blockers
 
-1. #110 has no active non-chat composition route. The retired `/chat/queries` endpoint returns 404. The product path depends on whether multi-component composition should be a standalone catalog API or be canceled with chatbot work.
-2. #115 needs approved protected AutoDBone worker access or an internal connector deployment. Authenticated Vercel CLI access is not worker-runtime proof; no bypass credential or protection setting was changed.
-3. #110/#111/#112/#115 need real source-backed cold/warm article tests with diverse vehicles and procedures, readable ordered instructions, evidence, and working local images.
-4. The final PR SHA `98928cc` still requires hosted checks and independent review. Source-rights and provenance release gates are not complete.
+1. Configure the protected-source credential and current AutoDBone origin in the actual AutoData worker runtime; verify from that runtime without weakening Vercel Deployment Protection.
+2. Repair provider identity/catalog selection and procedure completeness until three newly randomized, distinct vehicle/procedure cold/warm pairs provide complete source-backed instructions, stable warm reuse, and working localized images.
+3. Prove no composition/derived-article writes or cache entries on those exact cold/warm runs.
+4. Run hosted checks on the exact final candidate and obtain independent contract, data-quality, and security review plus a validator-passing release manifest.
 
-## Actions before release
-
-- Resolve the Issue #110 product path.
-- Provide approved worker-side access to the protected source, then run fresh cold and warm acceptance against the final SHA.
-- Complete source-rights/provenance, schema, reliability, security, and independent-review reports in a validator-passing run manifest.
-- Merge only after every required gate passes with zero critical/high findings.
+Issue #110 remains open. Do not merge PR #125 or close Issues #110–#116 based on this report.

@@ -21,6 +21,34 @@ from autodata_ingestion.worker import _load_autoapi_job_catalog  # noqa: E402
 
 
 class ProviderIntegrityTests(unittest.TestCase):
+    def test_autoapi_protection_bypass_is_loaded_as_a_worker_header(self):
+        from autodata_ingestion.autoapi_connector import configured_source_request_headers
+
+        with patch.dict(
+            os.environ,
+            {
+                "AUTODATA_AUTOAPI_VERCEL_PROTECTION_BYPASS": "synthetic-vercel-bypass",
+                "AUTODATA_SOURCE_REQUEST_HEADERS_JSON": "{}",
+            },
+            clear=False,
+        ):
+            headers = configured_source_request_headers("https://autodbone-curtt.vercel.app")
+
+        self.assertEqual(
+            headers,
+            {"x-vercel-protection-bypass": "synthetic-vercel-bypass"},
+        )
+
+        with patch.dict(
+            os.environ,
+            {"AUTODATA_AUTOAPI_VERCEL_PROTECTION_BYPASS": "synthetic-vercel-bypass"},
+            clear=False,
+        ):
+            self.assertNotIn(
+                "x-vercel-protection-bypass",
+                configured_source_request_headers("https://untrusted.example"),
+            )
+
     def test_same_raw_article_id_from_two_providers_keeps_two_qualified_articles(self):
         payloads = (
             ("autodbone", "AutoDBone procedure", "Remove the alternator."),

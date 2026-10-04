@@ -3,7 +3,7 @@
   "info": {
     "title": "AutoData Provider-Neutral Catalog API",
     "version": "1.0.0",
-    "description": "Read-only catalog API for external applications. AutoData resolves the vehicle cascade from its normalized database and hydrates missing scopes from configured sources. Article responses contain ordered normalized documents; immutable source originals remain internal.",
+    "description": "Catalog API for external applications. AutoData resolves the vehicle cascade and articles from its normalized database, hydrates missing scopes from configured sources, and returns source-backed vehicle-scoped procedure compositions. Article responses contain ordered normalized documents; immutable source originals remain internal.",
     "contact": {
       "name": "AutoData"
     }
@@ -238,6 +238,80 @@
           },
           "500": {
             "$ref": "#/components/responses/CatalogUnavailable"
+          }
+        }
+      }
+    },
+    "/v1/catalog/vehicles/{vehicle_id}/compositions": {
+      "post": {
+        "tags": ["Catalog"],
+        "operationId": "composeVehicleProcedures",
+        "summary": "Compose a vehicle-scoped multi-component procedure",
+        "description": "Composes selected normalized source articles for the catalog vehicle. Missing individual articles may be ingested and persisted, but the combined result is response-only and is never stored as an article. Vehicle identity is resolved from the path; the body cannot override it.",
+        "parameters": [
+          { "$ref": "#/components/parameters/VehicleId" },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["query"],
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Natural-language repair request identifying the components to compose"
+                  }
+                }
+              },
+              "example": { "query": "Replace the oil pump and water pump" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Source-backed composition or an explicit needs-review result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["worker", "lane", "status", "requested_components", "selected_articles", "review_reasons", "procedure", "images", "source"],
+                  "properties": {
+                    "worker": { "type": "string", "example": "ingestion" },
+                    "lane": { "type": "string", "example": "fast" },
+                    "status": { "type": "string", "enum": ["ready", "needs_review"] },
+                    "requested_components": { "type": "array", "items": { "type": "string" } },
+                    "selected_articles": { "type": "array", "items": { "type": "string" } },
+                    "review_reasons": { "type": "array", "items": { "type": "string" } },
+                    "procedure": { "type": "object", "additionalProperties": true },
+                    "images": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+                    "source": { "type": "object", "additionalProperties": true }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/InvalidRequest" },
+          "500": { "$ref": "#/components/responses/CatalogUnavailable" },
+          "502": {
+            "description": "Ingestion worker is unavailable",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/APIError" }
+              }
+            }
           }
         }
       }

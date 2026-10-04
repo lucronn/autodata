@@ -1646,7 +1646,7 @@ def _configured_catalog_providers() -> tuple[Any, ...]:
         providers.append(
             AutoAPIConnector(
                 autoapi_base,
-                request_headers=configured_source_request_headers(),
+                request_headers=configured_source_request_headers(autoapi_base),
             )
         )
     autoapitwo_base = os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "").strip()

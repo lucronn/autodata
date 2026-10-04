@@ -9,6 +9,7 @@ ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from autodata_ingestion.job_plan import (  # noqa: E402
+    _collect_images,
     build_quote_and_procedure,
     compose_procedure_revision,
     compose_procedure_with_llm,
@@ -1318,6 +1319,24 @@ def test_public_builder_vectorizes_source_images_and_returns_linked_refs():
     assert result["source_visual_refs"] == [artifact["source_ref"]]
     assert result["derived_visual_refs"] == [artifact["derived_ref"]]
     assert result["status"] == "needs_review"
+
+
+def test_collect_images_preserves_local_storage_key_for_public_opaque_projection():
+    images = _collect_images([{
+        "article_id": "article-1",
+        "images": [{
+            "url": "s3://internal-bucket/procedure-images/figure-1",
+            "storage_key": "procedure-images/figure-1",
+            "alt": "Pump location",
+        }],
+    }])
+
+    assert images == [{
+        "url": "s3://internal-bucket/procedure-images/figure-1",
+        "storage_key": "procedure-images/figure-1",
+        "alt": "Pump location",
+        "article_id": "article-1",
+    }]
 
 
 def test_nonfinite_or_conflicting_parts_force_review_without_nonfinite_subtotal():

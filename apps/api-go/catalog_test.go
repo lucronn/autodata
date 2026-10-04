@@ -118,6 +118,103 @@ func TestCatalogArticleDetailKeepsSourceOrderAndHidesOriginal(t *testing.T) {
 	}
 }
 
+func TestCatalogCompositionBindsRequestToCanonicalPathVehicle(t *testing.T) {
+	t.Setenv("AUTODATA_IMAGE_URL_KEY", testCatalogImageSecret)
+	imageKey := deriveCatalogImageReferenceKey(testCatalogImageSecret)
+	client := &fakeIngestionClient{status: http.StatusOK, responseBody: []byte(`{"status":"ready","images":[{"url":"https://provider.example/diagram.png","artifact_key":"private/key","alt":"External"},{"url":"/v1/catalog/images/opaque-token","alt":"Local"},{"url":"s3://private/bucket.png","storage_key":"procedure-images/composition-figure","alt":"Stored"}],"procedure":{"steps":[{"number":1,"instructions":["Remove the component."]}],"images":[{"url":"s3://bucket/private.png"}]},"source_watermarks":{"private":"details"},"visual_artifacts":[{"source_uri":"private"}]}`)}
+	server := catalogServer(catalogFixtureStore())
+	server.ingestionClient = client
+	request := httptest.NewRequest(http.MethodPost, "/v1/catalog/vehicles/vehicle-1/compositions", strings.NewReader(`{"query":"replace oil pump and water pump"}`))
+	request.Header.Set("Idempotency-Key", "composition-1")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var forwarded struct {
+		Vehicle map[string]any `json:"vehicle"`
+		Query   string         `json:"query"`
+	}
+	if err := json.Unmarshal(client.body, &forwarded); err != nil {
+		t.Fatal(err)
+	}
+	if client.path != "/v1/job-plans" || client.idempotencyKey != "composition-1" || forwarded.Query != "replace oil pump and water pump" {
+		t.Fatalf("forwarded path/key/query = %q/%q/%q", client.path, client.idempotencyKey, forwarded.Query)
+	}
+	if forwarded.Vehicle["vehicle_id"] != "vehicle-1" || forwarded.Vehicle["year"] != float64(2024) || forwarded.Vehicle["make"] != "Acme" || forwarded.Vehicle["model"] != "Roadster" {
+		t.Fatalf("worker vehicle = %#v; want canonical catalog configuration", forwarded.Vehicle)
+	}
+	var projected map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &projected); err != nil {
+		t.Fatal(err)
+	}
+	encoded := response.Body.String()
+	for _, forbidden := range []string{"provider.example", "s3://", "artifact_key", "private/key", "source_watermarks", "visual_artifacts"} {
+		if strings.Contains(encoded, forbidden) {
+			t.Fatalf("internal or provider data leaked (%q): %s", forbidden, encoded)
+		}
+	}
+	publicImages, ok := projected["images"].([]any)
+	if !ok || len(publicImages) != 2 || publicImages[0].(map[string]any)["url"] != "/v1/catalog/images/opaque-token" {
+		t.Fatalf("projected images = %#v; want safe existing and localized images", projected["images"])
+	}
+	storedImage := publicImages[1].(map[string]any)
+	if strings.Contains(response.Body.String(), "procedure-images/") || strings.Contains(response.Body.String(), "storage_key") {
+		t.Fatalf("storage key leaked: %s", response.Body.String())
+	}
+	const imagePrefix = "/v1/catalog/images/"
+	token, ok := storedImage["url"].(string)
+	if !ok || !strings.HasPrefix(token, imagePrefix) {
+		t.Fatalf("stored image URL = %#v; want opaque same-origin reference", storedImage["url"])
+	}
+	if key, err := openCatalogImageStorageKey(strings.TrimPrefix(token, imagePrefix), imageKey); err != nil || key != "procedure-images/composition-figure" {
+		t.Fatalf("stored image token resolved to %q, %v", key, err)
+	}
+}
+
+func TestCatalogCompositionRejectsVehicleOverrideAndMissingIdempotency(t *testing.T) {
+	client := &fakeIngestionClient{status: http.StatusOK}
+	server := catalogServer(catalogFixtureStore())
+	server.ingestionClient = client
+	for _, testCase := range []struct {
+		name   string
+		body   string
+		key    string
+		status int
+	}{
+		{name: "vehicle override", body: `{"query":"starter","vehicle":{"year":2000,"make":"Other","model":"Car"}}`, key: "override", status: http.StatusUnprocessableEntity},
+		{name: "missing query", body: `{}`, key: "missing-query", status: http.StatusUnprocessableEntity},
+		{name: "missing idempotency", body: `{"query":"starter"}`, status: http.StatusUnprocessableEntity},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/v1/catalog/vehicles/vehicle-1/compositions", strings.NewReader(testCase.body))
+			if testCase.key != "" {
+				request.Header.Set("Idempotency-Key", testCase.key)
+			}
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, request)
+			if response.Code != testCase.status {
+				t.Fatalf("status = %d, want %d: %s", response.Code, testCase.status, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestCatalogCompositionRequiresDatasetViewer(t *testing.T) {
+	client := &fakeIngestionClient{status: http.StatusOK}
+	server := NewServerWithCatalogStore(staticReadiness{}, &fakeAuthenticator{
+		principal: Principal{OrganizationID: "org-1", Roles: []string{"data_reviewer"}},
+	}, newMemoryRequestStore(), catalogFixtureStore())
+	server.ingestionClient = client
+	request := httptest.NewRequest(http.MethodPost, "/v1/catalog/vehicles/vehicle-1/compositions", strings.NewReader(`{"query":"starter"}`))
+	request.Header.Set("Idempotency-Key", "composition-role")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}
+
 func TestCatalogSourceRendersStoredHTMLWithoutProviderNavigation(t *testing.T) {
 	t.Setenv("AUTODATA_IMAGE_URL_KEY", testCatalogImageSecret)
 	imageKey := deriveCatalogImageReferenceKey(testCatalogImageSecret)
@@ -303,7 +400,7 @@ func TestIncompleteCatalogReadHydratesOnceAndCompleteReadSkipsWorker(t *testing.
 
 func TestSelectedArticleRepairFailureIsReturnedToCaller(t *testing.T) {
 	capture := &fakeIngestionClient{
-		status: http.StatusOK,
+		status:       http.StatusOK,
 		responseBody: []byte(`{"status":"repair_failed","metadata":{"detail":"The saved article source could not be validated or repaired."}}`),
 	}
 	server := NewServerWithCatalogStore(staticReadiness{}, HeaderAuthenticator{}, newMemoryRequestStore(), newMemoryCatalogStore())

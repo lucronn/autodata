@@ -30,13 +30,13 @@ the unified composition only in the synchronous response.
 
 ## Concrete todo
 
-- [ ] Trace the existing `/job-plans` public route, Go proxy, worker handler,
+- [x] Trace the existing `/job-plans` public route, Go proxy, worker handler,
   and compose path; document whether it already meets the standalone contract.
-- [ ] Add `POST /v1/catalog/vehicles/{vehicle_id}/compositions`, resolve the
+- [x] Add `POST /v1/catalog/vehicles/{vehicle_id}/compositions`, resolve the
   canonical vehicle through the catalog store, reject conflicting vehicle
   fields in the body, proxy through the existing Go-to-worker boundary, and
   document it in OpenAPI JSON/YAML without chat-specific dependencies.
-- [ ] Add API/worker contract tests for validation, auth, cold hydration,
+- [x] Add API/worker contract tests for validation, auth, cold hydration,
   provider-qualified identities, truthful failure, and ephemeral composition.
 - [ ] Configure approved AutoDBone access for the actual worker runtime while
   preserving Deployment Protection; verify a real worker-originated request.

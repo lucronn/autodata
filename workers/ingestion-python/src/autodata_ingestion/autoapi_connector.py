@@ -1517,8 +1517,13 @@ def _provider_article_id_for_request(article_id: Any) -> str:
     return value
 
 
-def configured_source_request_headers() -> dict[str, str]:
-    """Read approved source headers without logging or exposing their values."""
+def configured_source_request_headers(base_url: str = "") -> dict[str, str]:
+    """Read approved source headers without logging or exposing their values.
+
+    The Vercel automation bypass is attached only to this project's Vercel
+    deployment hosts; it must never follow a configurable provider URL to an
+    unrelated destination.
+    """
 
     import os
 
@@ -1531,7 +1536,12 @@ def configured_source_request_headers() -> dict[str, str]:
         raise ValueError("AUTODATA_SOURCE_REQUEST_HEADERS_JSON must be valid JSON") from error
     if not isinstance(headers, Mapping) or any(not isinstance(value, str) for value in headers.values()):
         raise ValueError("AUTODATA_SOURCE_REQUEST_HEADERS_JSON must be an object of string values")
-    return _request_headers({str(key): value for key, value in headers.items()})
+    result = _request_headers({str(key): value for key, value in headers.items()})
+    bypass = os.getenv("AUTODATA_AUTOAPI_VERCEL_PROTECTION_BYPASS", "").strip()
+    host = urlsplit(base_url).hostname or ""
+    if bypass and re.fullmatch(r"autodbone(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?-curtt\.vercel\.app", host.casefold()):
+        result["x-vercel-protection-bypass"] = bypass
+    return result
 
 
 def _opener_namespace(opener: Callable[..., Any]) -> str:

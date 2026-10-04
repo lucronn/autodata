@@ -24,6 +24,7 @@ func TestCatalogOpenAPIContractDocumentsSafeSourceAndOpaqueMedia(t *testing.T) {
 		t.Fatal("openapi.json paths are missing")
 	}
 	for _, path := range []string{
+		"/v1/catalog/vehicles/{vehicle_id}/compositions",
 		"/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source",
 		"/v1/catalog/images/{token}",
 		"/v1/catalog/images",
@@ -31,6 +32,10 @@ func TestCatalogOpenAPIContractDocumentsSafeSourceAndOpaqueMedia(t *testing.T) {
 		if _, ok := paths[path]; !ok {
 			t.Fatalf("OpenAPI is missing registered path %q", path)
 		}
+	}
+	compositionPost, ok := paths["/v1/catalog/vehicles/{vehicle_id}/compositions"].(map[string]any)["post"].(map[string]any)
+	if !ok || compositionPost["operationId"] != "composeVehicleProcedures" {
+		t.Fatal("OpenAPI composition operation is missing or has an unexpected operationId")
 	}
 
 	sourceGet := paths["/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source"].(map[string]any)["get"].(map[string]any)
@@ -65,6 +70,7 @@ func TestCatalogOpenAPIContractDocumentsSafeSourceAndOpaqueMedia(t *testing.T) {
 	}
 	yaml := string(yamlSpec)
 	for _, required := range []string{
+		"/v1/catalog/vehicles/{vehicle_id}/compositions:",
 		"/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source:",
 		"/v1/catalog/images/{token}:",
 		"/v1/catalog/images:",
