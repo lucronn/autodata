@@ -1,0 +1,17 @@
+{
+  "goal": "Require evidence-backed ordered blocks before publication",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-ordered-document-publication-gate.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/111",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/normalized-article-document.md"
+  ],
+  "todo": [
+    "Validate retained block evidence and structure",
+    "Fail closed on false content-complete status",
+    "Test mixed documents and verify real articles at exact release SHA"
+  ],
+  "base_sha": "f4a93e1ff0fd8e134b066287c6ee7d92eec5c551",
+  "status": "synchronized",
+  "updated_at": "2026-10-04T03:00:00Z"
+}
