@@ -50,6 +50,14 @@ class Connection:
 
 
 class KnowledgeCatalogTests(unittest.TestCase):
+    def test_alternator_cache_query_includes_generator_synonym(self):
+        from autodata_ingestion.knowledge_catalog import _query_article_patterns
+
+        self.assertEqual(
+            _query_article_patterns("alternator replacement"),
+            ["%alternator%", "%generator%"],
+        )
+
     def test_loads_active_article_and_procedure_with_vehicle_configuration(self):
         cursor = Cursor(
             [
@@ -109,11 +117,50 @@ class KnowledgeCatalogTests(unittest.TestCase):
         self.assertEqual(result[0]["evidence"][0]["artifact_key"], "sources/tsb-42.html")
         self.assertEqual(result[0]["evidence"][0]["reviewer_state"], "pending")
         self.assertEqual(result[1]["procedure"]["procedure_id"], "procedure:TSB-42")
-        self.assertEqual(cursor.params, (target.vehicle_key, 200))
+        self.assertEqual(cursor.params, (target.vehicle_key, 5.3, 200))
         self.assertIn("JOIN extraction_evidence", cursor.query)
         self.assertIn("NOT EXISTS", cursor.query)
+        self.assertIn("JOIN catalog_articles canonical", cursor.query)
+        self.assertIn("links.link_state = 'duplicate'", cursor.query)
+        self.assertIn("canonical.article_id = ca.article_id", cursor.query)
+        self.assertIn("canonical.canonical_article_key = ca.canonical_article_key", cursor.query)
         self.assertIn("takedown_status = 'active'", cursor.query)
         self.assertIn("LIMIT %s", cursor.query)
+        self.assertIn("vc.engine_displacement_l IS NULL", cursor.query)
+
+    def test_component_query_keeps_the_selected_engine_configuration(self):
+        cursor = Cursor([])
+        connection = Connection(cursor)
+        fake_psycopg = types.ModuleType("psycopg")
+        fake_psycopg.connect = lambda **_kwargs: connection
+        target = VehicleTarget(
+            "Toyota Truck",
+            "Tacoma Extra Cab 4wd",
+            1999,
+            "US",
+            drivetrain="4wd",
+            engine_displacement_l=3.4,
+        )
+
+        with patch.dict(sys.modules, {"psycopg": fake_psycopg}):
+            with patch.dict("os.environ", {"AUTODATA_POSTGRES_PASSWORD": "test-only"}):
+                load_vehicle_knowledge_catalog(target, query="brakes and oil pump replacement")
+
+        self.assertEqual(
+            cursor.params,
+            (target.vehicle_key, "%brake%", "%oil pump%", 3.4, 3.4, 200),
+        )
+        self.assertIn("ABS(vc.engine_displacement_l - %s) < 0.05", cursor.query)
+        self.assertIn(
+            "CASE WHEN vc.engine_displacement_l = %s THEN 0 ELSE 1 END",
+            cursor.query,
+        )
+        self.assertIn("ca.content_status = 'content_complete'", cursor.query)
+        self.assertIn("NULLIF(BTRIM(ca.body), '') IS NOT NULL", cursor.query)
+        self.assertLess(
+            cursor.query.index("CASE WHEN vc.engine_displacement_l"),
+            cursor.query.index("ca.content_status = 'content_complete'"),
+        )
 
     def test_cache_limit_is_configurable_but_bounded(self):
         from autodata_ingestion.knowledge_catalog import _knowledge_cache_limit

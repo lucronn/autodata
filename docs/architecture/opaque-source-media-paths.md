@@ -65,3 +65,9 @@ Todo:
 - Test article responses with a populated internal key.
 - Pass Go tests/vet, developer contract tests, and hosted verification on PR
   #118 and descendants.
+
+The public OpenAPI image schema must describe only consumer-visible media
+references and metadata; it must not expose `storage_key` or any source-bearing
+query parameter. The stored-source and opaque image routes are documented in
+`docs/superpowers/plans/2026-10-03-openapi-source-media-contract.md`, tracked
+by Issues #113/#116 and Project #8.

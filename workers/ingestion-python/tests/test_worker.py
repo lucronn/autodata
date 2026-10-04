@@ -15,6 +15,29 @@ from autodata_ingestion.source_adapters import SourceResource  # noqa: E402
 
 
 class IngestionWorkerTests(unittest.TestCase):
+    def test_default_worker_does_not_activate_chat_environment_requests(self):
+        from autodata_ingestion.worker import run_once
+
+        with patch.dict(
+            "os.environ",
+            {
+                "AUTODATA_CHAT_QUERY_JSON": '{"message":"legacy chat request"}',
+                "AUTODATA_CHAT_SELECTION_JSON": '{"query_id":"legacy"}',
+                "AUTODATA_CHAT_WORKER_ENABLED": "1",
+                "AUTODATA_SOURCE_DIRECTORY": "",
+                "AUTODATA_SOURCE_URI": "",
+                "AUTODATA_FAST_EVENT_JSON": "",
+                "AUTODATA_ARTICLE_URI": "",
+                "AUTODATA_KNOWLEDGE_REQUEST_JSON": "",
+                "AUTODATA_JOB_PLAN_REQUEST_JSON": "",
+                "AUTODATA_VEHICLE_LIST_JSON": "",
+            },
+            clear=True,
+        ):
+            result = run_once()
+
+        self.assertEqual(result["status"], "idle")
+
     def test_labor_article_match_uses_component_when_titles_use_different_operations(self):
         from autodata_ingestion.worker import _match_labor_article_id
 
@@ -71,6 +94,106 @@ class IngestionWorkerTests(unittest.TestCase):
                 "brake line replacement procedure", complete
             )
         )
+
+    def test_stale_content_complete_metadata_only_cache_requires_hydration(self):
+        from autodata_ingestion.worker import _catalog_needs_procedure_content_hydration
+
+        stale = [{
+            "kind": "article",
+            "article": {
+                "article_id": "autoapitwo:50589:210926",
+                "title": "Generator - Removal (6.7L DSL)",
+                "component": "alternator",
+                "content_status": "content_complete",
+                "body": "7L DIESEL",
+                "steps": [{"action": "7L DIESEL", "instructions": []}],
+                "source_original": {"immutable": True},
+            },
+        }]
+
+        self.assertTrue(
+            _catalog_needs_procedure_content_hydration(
+                "alternator replacement", stale
+            )
+        )
+
+    def test_job_plan_repairs_weak_cached_article_from_original_without_detail_refetch(self):
+        from autodata_ingestion.worker import _load_autodb_two_job_catalog
+
+        vehicle = {
+            "vehicle_id": "canonical-vehicle-1",
+            "year": 2012,
+            "make": "Dodge Or Ram Truck",
+            "model": "Ram 3500 Truck 2wd",
+            "region": "US",
+            "engine_displacement_l": 6.7,
+            "autoapitwo_vehicle_ids": ["50590"],
+        }
+        stale_alternator = {
+            "kind": "article",
+            "article": {
+                "article_id": "autoapitwo:50589:210926",
+                "title": "Generator - Removal (6.7L DSL)",
+                "component": "alternator",
+                "content_status": "content_complete",
+                "body": "7L DIESEL",
+                "steps": [{"action": "7L DIESEL", "instructions": []}],
+            },
+        }
+        usable_oil_pump = {
+            "kind": "article",
+            "article": {
+                "article_id": "autoapitwo:50589:212033",
+                "title": "Engine Oil Pump - Removal",
+                "component": "oil_pump",
+                "content_status": "content_complete",
+                "body": "Remove the oil pan bolts. Remove the oil pump assembly.",
+                "steps": [{"action": "Remove the oil pan bolts."}],
+            },
+        }
+        repaired = {
+            "kind": "article",
+            "vehicle_identity": vehicle,
+            "article": {
+                **stale_alternator["article"],
+                "body": "Disconnect the battery. Remove the generator fasteners. Lift out the generator.",
+                "steps": [
+                    {"action": "Disconnect the battery."},
+                    {"action": "Remove the generator fasteners."},
+                    {"action": "Lift out the generator."},
+                ],
+            },
+        }
+
+        with patch(
+            "autodata_ingestion.catalog_service._repair_stored_autoapitwo_article",
+            return_value=([repaired], {"mode": "stored_source_repair", "targeted_article_fetch_count": 0}),
+        ) as repair, patch(
+            "autodata_ingestion.catalog_service._load_autoapitwo_article_detail",
+            side_effect=AssertionError("usable immutable source must prevent a new provider detail call"),
+        ) as detail:
+            records, source = _load_autodb_two_job_catalog(
+                vehicle,
+                query="alternator and oil pump replacement",
+                existing_catalog=[stale_alternator, usable_oil_pump],
+            )
+
+        repair.assert_called_once()
+        self.assertEqual(
+            repair.call_args.args[0]["source_article_id"],
+            "autoapitwo:50589:210926",
+        )
+        detail.assert_not_called()
+        by_id = {
+            str((record.get("article") or record).get("article_id")): record
+            for record in records
+        }
+        self.assertEqual(
+            by_id["autoapitwo:50589:210926"]["article"]["steps"][0]["action"],
+            "Disconnect the battery.",
+        )
+        self.assertEqual(source["mode"], "stored_source_repair")
+        self.assertEqual(source["targeted_article_fetch_count"], 0)
     def test_autoapi_content_source_defaults_from_vehicle_make(self):
         from autodata_ingestion.worker import _autoapi_content_source
 
@@ -110,6 +233,12 @@ class IngestionWorkerTests(unittest.TestCase):
             "article": {
                 "article_id": "oil-1",
                 "title": "Oil pump replacement",
+                "body": "Remove the pan. Replace the oil pump. Install the pan.",
+                "steps": [
+                    "Remove the pan.",
+                    "Replace the oil pump.",
+                    "Install the pan.",
+                ],
                 "operations": [{"operation_id": "oil", "action": "Replace oil pump", "duration_hours": 2.0}],
                 "evidence": [{"evidence_id": "oil-evidence"}],
             },
@@ -117,7 +246,7 @@ class IngestionWorkerTests(unittest.TestCase):
         with patch(
             "autodata_ingestion.knowledge_catalog.load_vehicle_knowledge_catalog",
             return_value=cached_catalog,
-        ), patch(
+        ) as load_local_index, patch(
             "autodata_ingestion.worker._load_autoapi_job_catalog",
             return_value=(hydrated_catalog, {"mode": "autoapi_fallback", "targeted_article_fetch_count": 1}),
         ) as fallback:
@@ -129,10 +258,341 @@ class IngestionWorkerTests(unittest.TestCase):
                 result = run_job_plan(json.dumps({"vehicle": vehicle, "query": "oil pump replacement"}))
 
         fallback.assert_called_once()
+        load_local_index.assert_called_once()
+        self.assertEqual(
+            load_local_index.call_args.kwargs["query"], "oil pump replacement"
+        )
         self.assertEqual(result["status"], "ready")
         self.assertEqual(result["selected_articles"], ["oil-1"])
+        self.assertNotIn("labor", result)
+        self.assertEqual(
+            [step["instructions"][0] for step in result["procedure"]["steps"]],
+            ["Remove the pan.", "Replace the oil pump.", "Install the pan."],
+        )
 
-    def test_autoapi_query_fallback_hydrates_only_selected_articles_and_labor(self):
+    def test_job_plan_passes_catalog_evidence_into_mercury_composition(self):
+        from autodata_ingestion.worker import run_job_plan
+
+        captured = {}
+        catalog = [{
+            "kind": "article",
+            "article": {
+                "article_id": "alternator-article",
+                "title": "Alternator Removal/Installation",
+                "component": "alternator",
+                "body": "Disconnect the battery, remove the alternator, and install it.",
+                "steps": ["Disconnect the battery", "Remove the alternator", "Install the alternator"],
+            },
+            "evidence": [{"evidence_id": "alternator-evidence", "locator": "body.steps"}],
+        }]
+
+        def capture_composition(_client, _query, _vehicle, selected_articles, _labor, fallback):
+            captured["articles"] = selected_articles
+            return fallback
+
+        with patch(
+            "autodata_ingestion.knowledge_catalog.load_vehicle_knowledge_catalog",
+            return_value=catalog,
+        ), patch(
+            "autodata_ingestion.job_plan.compose_procedure_with_llm",
+            side_effect=capture_composition,
+        ), patch(
+            "autodata_ingestion.mercury2.Mercury2Client.from_environment",
+            return_value=object(),
+        ), patch.dict(
+            "os.environ",
+            {
+                "AUTODATA_MERCURY2_JOB_PLANS_ENABLED": "1",
+                "AUTODATA_AUTOAPI_BASE_URL": "",
+            },
+            clear=False,
+        ):
+            result = run_job_plan(json.dumps({
+                "vehicle": {"year": 2013, "make": "Honda", "model": "Crosstour 2wd", "region": "US"},
+                "query": "replace the alternator",
+            }))
+
+        self.assertEqual(result["llm_status"], "generated")
+        self.assertEqual(
+            captured["articles"][0]["evidence"],
+            [{"evidence_id": "alternator-evidence", "locator": "body.steps"}],
+        )
+
+    def test_autodbone_never_receives_an_autodbtwo_vehicle_id(self):
+        from autodata_ingestion.autoapi_connector import AutoAPIVehicleBundle
+        from autodata_ingestion.worker import _load_autoapi_job_catalog
+
+        vehicle = {
+            "year": 2013,
+            "make": "Honda",
+            "model": "Crosstour 2wd",
+            "region": "US",
+            "provider": "autodbtwo",
+            "provider_vehicle_id": "52992",
+        }
+        bundle = AutoAPIVehicleBundle(
+            vehicle_id="autodbone-resolved-id",
+            content_source="Motor",
+            vehicle=vehicle,
+            configurations=(),
+            resources=(),
+            article_ids=(),
+        )
+        with patch("autodata_ingestion.autoapi_connector.AutoAPIConnector") as connector_class:
+            connector = connector_class.return_value
+            connector.find_vehicle_targets.return_value = [
+                {"vehicle_id": "autodbone-resolved-id"}
+            ]
+            connector.fetch_vehicle_bundle.return_value = bundle
+            with patch.dict(
+                "os.environ",
+                {"AUTODATA_AUTOAPI_BASE_URL": "https://autodbone.example"},
+                clear=False,
+            ):
+                _load_autoapi_job_catalog(vehicle, object(), query="alternator")
+
+        connector.find_vehicle_targets.assert_called_once_with(
+            2013, "Honda", "Crosstour 2wd"
+        )
+        connector.fetch_vehicle_bundle.assert_called_once_with(
+            {"vehicle_id": "autodbone-resolved-id"}
+        )
+
+    def test_autodb_two_hydration_preserves_articles_already_loaded_from_autodbone(self):
+        from autodata_ingestion.worker import run_job_plan
+
+        vehicle = {
+            "vehicle_id": "configuration-1",
+            "year": 2013,
+            "make": "Honda",
+            "model": "Crosstour 2wd",
+            "region": "US",
+        }
+        alternator = {
+            "article": {
+                "article_id": "autodbone:alternator-1",
+                "title": "Alternator Replacement",
+                "component": "alternator",
+                "steps": ["Disconnect battery.", "Remove alternator."],
+                "body": "Disconnect battery. Remove alternator.",
+            }
+        }
+        pump_index = {
+            "article": {
+                "article_id": "autodbone:water-pump-index",
+                "title": "Water Pump Replacement",
+                "component": "water_pump",
+            }
+        }
+        water_pump = {
+            "article": {
+                "article_id": "autoapitwo:52992:water-pump-1",
+                "title": "Water Pump Replacement",
+                "component": "water_pump",
+                "steps": ["Remove pump.", "Install pump."],
+                "body": "Remove pump. Install pump.",
+            }
+        }
+        local = [alternator, pump_index]
+        with patch(
+            "autodata_ingestion.knowledge_catalog.load_vehicle_knowledge_catalog",
+            return_value=local,
+        ), patch(
+            "autodata_ingestion.worker._load_autoapi_job_catalog",
+            return_value=(local, {"mode": "autoapi_fallback"}),
+        ), patch(
+            "autodata_ingestion.worker._load_autodb_two_job_catalog",
+            return_value=([water_pump], {"mode": "autodb_two_fallback"}),
+        ) as two_provider:
+            with patch.dict(
+                "os.environ",
+                {"AUTODATA_MERCURY2_JOB_PLANS_ENABLED": "0"},
+                clear=False,
+            ):
+                result = run_job_plan(json.dumps({
+                    "vehicle": vehicle,
+                    "query": "alternator and water pump replacement",
+                }))
+
+        self.assertEqual(two_provider.call_args.kwargs["existing_catalog"], local)
+        self.assertIn("autodbone:alternator-1", result["selected_articles"])
+        self.assertIn("autoapitwo:52992:water-pump-1", result["selected_articles"])
+
+    def test_autodbone_article_id_is_never_sent_to_autodbtwo(self):
+        from autodata_ingestion.worker import _load_autodb_two_job_catalog
+
+        vehicle = {
+            "vehicle_id": "canonical-vehicle-1",
+            "year": 2013,
+            "make": "Honda",
+            "model": "Crosstour 2wd",
+            "engine_displacement_l": 2.4,
+            "autoapitwo_vehicle_ids": ["52992"],
+            "provider": "autodbone",
+            "provider_vehicle_id": "autodbone-private-vehicle-id",
+        }
+        autodbone_article = {
+            "article": {
+                "article_id": "autodbone:procedure:ALT-1",
+                "title": "Alternator Replacement",
+                "component": "alternator",
+                "steps": ["Remove alternator."],
+                "body": "Remove alternator.",
+            }
+        }
+        autodbtwo_index = {
+            "article": {
+                "article_id": "autoapitwo:52992:WP-1",
+                "title": "Water Pump Replacement",
+                "component": "water_pump",
+            }
+        }
+        hydrated = {
+            "article": {
+                **autodbtwo_index["article"],
+                "steps": ["Remove water pump.", "Install water pump."],
+                "body": "Remove water pump. Install water pump.",
+            }
+        }
+        with patch(
+            "autodata_ingestion.catalog_service._load_autoapitwo_article_detail",
+            return_value=([hydrated], {"targeted_article_fetch_count": 1}),
+        ) as detail:
+            records, _source_info = _load_autodb_two_job_catalog(
+                vehicle,
+                query="alternator and water pump replacement",
+                existing_catalog=[autodbone_article, autodbtwo_index],
+            )
+
+        detail_request = detail.call_args.args[0]
+        self.assertEqual(detail_request["source_article_id"], "autoapitwo:52992:WP-1")
+        self.assertNotIn("provider_vehicle_id", detail_request)
+        self.assertNotIn("autodbone-private-vehicle-id", repr(detail_request))
+        self.assertIn("autodbone:procedure:ALT-1", [
+            str((record.get("article") or record).get("article_id"))
+            for record in records
+        ])
+
+    def test_job_plan_catalog_excludes_other_engine_and_drivetrain_variants(self):
+        from autodata_ingestion.worker import _filter_job_plan_catalog_for_vehicle
+
+        vehicle = {
+            "engine_displacement_l": "2.4L",
+            "drivetrain": "2WD",
+        }
+        catalog = [
+            {
+                "vehicle_identity": {
+                    "engine_displacement_l": 2.4,
+                    "drivetrain": "2WD",
+                },
+                "article": {"article_id": "autoapitwo:52992:1", "title": "Alternator Removal"},
+            },
+            {
+                "vehicle_identity": {
+                    "engine_displacement_l": 3.5,
+                    "drivetrain": "2WD",
+                },
+                "article": {"article_id": "autoapitwo:52998:1", "title": "Alternator Removal"},
+            },
+            {
+                "vehicle_identity": {
+                    "engine_displacement_l": 2.4,
+                    "drivetrain": "4WD",
+                },
+                "article": {"article_id": "autoapitwo:52992:2", "title": "Water Pump Replacement"},
+            },
+        ]
+
+        result = _filter_job_plan_catalog_for_vehicle(vehicle, catalog)
+
+        self.assertEqual(
+            [record["article"]["article_id"] for record in result],
+            ["autoapitwo:52992:1"],
+        )
+
+    def test_job_plan_falls_back_to_selected_autodbtwo_articles_after_autodbone_failure(self):
+        from autodata_ingestion.worker import run_job_plan
+
+        vehicle = {
+            "vehicle_id": "configuration-1",
+            "year": 2013,
+            "make": "Honda",
+            "model": "Crosstour 2wd",
+            "region": "US",
+        }
+        cached_catalog = [
+            {
+                "kind": "article",
+                "article": {
+                    "article_id": "autoapitwo:52992:alternator-1",
+                    "title": "Alternator Replacement",
+                    "component": "alternator",
+                },
+            },
+            {
+                "kind": "article",
+                "article": {
+                    "article_id": "autoapitwo:52992:water-pump-1",
+                    "title": "Water Pump Replacement",
+                    "component": "water_pump",
+                },
+            },
+        ]
+        hydrated = [
+            {
+                **record,
+                "article": {
+                    **record["article"],
+                    "steps": ["Remove the component.", "Install the replacement."],
+                    "body": "Remove the component. Install the replacement.",
+                },
+            }
+            for record in cached_catalog
+        ]
+        with patch(
+            "autodata_ingestion.knowledge_catalog.load_vehicle_knowledge_catalog",
+            return_value=cached_catalog,
+        ), patch(
+            "autodata_ingestion.worker._load_autoapi_job_catalog",
+            side_effect=RuntimeError("AutoDBone source unavailable"),
+        ), patch(
+            "autodata_ingestion.catalog_service._load_autoapitwo_article_detail",
+            side_effect=[
+                ([hydrated[0]], {"mode": "autoapitwo_article_detail"}),
+                ([hydrated[1]], {"mode": "autoapitwo_article_detail"}),
+            ],
+        ) as autodbtwo_detail:
+            with patch.dict(
+                "os.environ",
+                {
+                    "AUTODATA_MERCURY2_JOB_PLANS_ENABLED": "0",
+                    "AUTODATA_SOURCE_PERSIST": "1",
+                },
+                clear=False,
+            ):
+                result = run_job_plan(
+                    json.dumps(
+                        {
+                            "vehicle": vehicle,
+                            "query": "alternator and water pump replacement",
+                        }
+                    )
+                )
+
+        self.assertEqual(result["status"], "ready")
+        self.assertNotIn("labor", result)
+        self.assertCountEqual(
+            result["selected_articles"],
+            [
+                "autoapitwo:52992:alternator-1",
+                "autoapitwo:52992:water-pump-1",
+            ],
+        )
+        self.assertEqual(autodbtwo_detail.call_count, 2)
+        self.assertTrue(all(step.get("instructions") for step in result["procedure"]["steps"]))
+
+    def test_autoapi_query_fallback_hydrates_only_selected_articles_without_labor(self):
         from autodata_ingestion.autoapi_connector import AutoAPIVehicleBundle
         from autodata_ingestion.worker import _load_autoapi_job_catalog
 
@@ -181,7 +641,7 @@ class IngestionWorkerTests(unittest.TestCase):
             connector = connector_class.return_value
             connector.fetch_vehicle_bundle.return_value = bundle
             connector.fetch_article_resources.side_effect = (
-                lambda _vehicle_id, article_id, **_kwargs: details[article_id]
+                lambda _vehicle_id, article_id, **_kwargs: details[article_id][:1]
             )
             with patch.dict(
                 "os.environ",
@@ -196,10 +656,17 @@ class IngestionWorkerTests(unittest.TestCase):
                 )
 
         self.assertEqual(source_info["targeted_article_fetch_count"], 2)
+        self.assertEqual(source_info["targeted_labor_fetch_count"], 0)
         self.assertEqual(connector.fetch_article_resources.call_count, 2)
         by_id = {record["article"]["article_id"]: record["article"] for record in records}
-        self.assertEqual(by_id["alt-1"]["operations"][1]["duration_hours"], 1.5)
-        self.assertEqual(by_id["starter-1"]["operations"][0]["operation_id"], "shared-belt")
+        self.assertTrue(by_id["alt-1"]["steps"])
+        self.assertTrue(by_id["starter-1"]["steps"])
+        self.assertTrue(
+            all(
+                call.kwargs.get("include_labor") is False
+                for call in connector.fetch_article_resources.call_args_list
+            )
+        )
         self.assertNotIn("brake-1", [call.args[1] for call in connector.fetch_article_resources.call_args_list])
 
     def test_autoapi_article_catalog_fallback_reads_index_without_detail_fetches(self):
@@ -275,7 +742,7 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].configurations[0]["engine_displacement_l"], 2.7)
 
-    def test_autoapi_query_fallback_maps_separate_labor_row_to_procedure_row(self):
+    def test_autoapi_query_fallback_does_not_fetch_separate_labor_row(self):
         from autodata_ingestion.autoapi_connector import AutoAPIVehicleBundle
         from autodata_ingestion.worker import _load_autoapi_job_catalog
 
@@ -318,7 +785,9 @@ class IngestionWorkerTests(unittest.TestCase):
         with patch("autodata_ingestion.autoapi_connector.AutoAPIConnector") as connector_class:
             connector = connector_class.return_value
             connector.fetch_vehicle_bundle.return_value = bundle
-            connector.fetch_article_resources.side_effect = lambda _vehicle_id, article_id, labor_article_id=None: details[article_id]
+            connector.fetch_article_resources.side_effect = (
+                lambda _vehicle_id, article_id, **_kwargs: details[article_id][:1]
+            )
             with patch.dict(
                 "os.environ",
                 {"AUTODATA_AUTOAPI_BASE_URL": "http://127.0.0.1:3000", "AUTODATA_SOURCE_PERSIST": "0"},
@@ -328,9 +797,11 @@ class IngestionWorkerTests(unittest.TestCase):
                     vehicle, object(), query="water pump replacement"
                 )
 
-        connector.fetch_article_resources.assert_called_once_with("v1", "P:1", labor_article_id="L:2")
+        connector.fetch_article_resources.assert_called_once_with(
+            "v1", "P:1", include_labor=False
+        )
         article = next(record["article"] for record in records if record["article"]["article_id"] == "P:1")
-        self.assertEqual(article["operations"][0]["operation_id"], "pump")
+        self.assertNotIn("operations", article)
 
     def test_job_plan_ignores_persisted_composition_and_never_persists_new_composition(self):
         from autodata_ingestion.worker import run_job_plan

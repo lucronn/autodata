@@ -9,6 +9,13 @@ The public contract is published at `/openapi.json`; `/swagger/` serves the
 same-origin interactive Swagger UI with prefilled examples for the full
 cascade.
 
+The API binary embeds the dashboard, Workshop, OpenAPI JSON/YAML, Swagger HTML,
+and Swagger UI assets. The API container build must copy every matching asset
+into its compile stage before `go build`; verify the same-origin docs from the
+container image, not only from a host-built binary. The packaging follow-up is
+tracked in Issue #113 and
+`docs/superpowers/plans/2026-10-03-swagger-container-assets.md`.
+
 The source boundary keeps each provider's raw response and provenance. The
 normalization boundary converts provider fields into canonical vehicle,
 configuration, article, step, and image records. The public API returns only
@@ -21,5 +28,40 @@ immutable, normalized steps retain source order, optional wording rewrite is
 phrase-only, and served images reference local stored objects. Labor and
 combined procedures are not part of this API.
 
-The active product path does not require chatbot routes, chat runtime state,
-chat event streams, or chat-scoped guide URLs.
+The active product path has no chatbot routes or UI, chat event streams, chat
+worker activation, or chat-scoped guide URLs. Legacy chat implementation must
+not be registered, served, or started by the default API, dashboard, worker, or
+Compose configuration. Catalog browsing and article viewing use the direct
+provider-neutral API and remain available without a chat runtime.
+
+## OpenAPI source and image coverage
+
+The published contract must include the stored-source review endpoint and the
+opaque image-token endpoint, with their response representations and error
+behavior. It must not expose the internal image storage key. This follow-up is
+tracked in [Issue #113](https://github.com/lucronn/autodata/issues/113), with
+[Issue #116](https://github.com/lucronn/autodata/issues/116) tracking image
+path privacy, and Project #8. Plan:
+`docs/superpowers/plans/2026-10-03-openapi-source-media-contract.md`.
+
+Todo:
+
+- Document source review JSON and HTML responses plus authentication.
+- Document same-origin opaque image paths and the rejected legacy query route.
+- Remove internal `storage_key` from the public image schema.
+- Test that the spec contains the registered routes and passes JSON/YAML
+  validation.
+
+# Internal hydration boundary
+
+The Go catalog API uses the ingestion HTTP service for cache misses through
+`POST /v1/catalog/ensure`. That internal route dispatches directly to the
+provider-neutral `ensure_catalog_hydration` service and returns its structured
+result. It is separate from public catalog routes: clients continue to call
+AutoData, while the worker resolves and persists missing selector, article
+index, or selected article data using configured source connectors.
+
+The internal handler must validate the JSON object and required idempotency
+key, preserve the existing request/result envelope, and reject unknown routes.
+Contract coverage must exercise the worker HTTP dispatcher, not only the Go
+client request builder, so a client route cannot silently remain unwired.

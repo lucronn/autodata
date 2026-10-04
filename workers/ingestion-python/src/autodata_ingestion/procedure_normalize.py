@@ -41,7 +41,14 @@ def normalize_procedure_article(article: Mapping[str, Any]) -> dict[str, Any]:
     out = deepcopy(dict(article))
     _ensure_classification(out)
     if _steps_are_consumer_shaped(out.get("steps")):
-        if not isinstance(out.get("normalized_document"), Mapping):
+        document = out.get("normalized_document")
+        blocks = document.get("blocks") if isinstance(document, Mapping) else None
+        if (
+            not isinstance(document, Mapping)
+            or not isinstance(blocks, list)
+            or not blocks
+            or validate_ordered_document(document)
+        ):
             out["normalized_document"] = document_from_steps(out)
         out.pop("blocks", None)
         out["content_status"] = _content_status_for(out)
@@ -105,7 +112,24 @@ def build_consumer_steps(
     # Split before whitespace normalization erases their boundaries.
     expanded_blocks = []
     for block in blocks:
-        if isinstance(block, Mapping) and block.get("kind") != "image":
+        block_type = str(block.get("kind") or block.get("type") or "").casefold() if isinstance(block, Mapping) else ""
+        if isinstance(block, Mapping) and block_type == "ordered_list":
+            items = block.get("items")
+            if isinstance(items, list):
+                try:
+                    start = max(1, int(block.get("start") or 1))
+                except (TypeError, ValueError):
+                    start = 1
+                for offset, item in enumerate(items):
+                    text = _text(item.get("text") if isinstance(item, Mapping) else item)
+                    if text:
+                        expanded_blocks.append({
+                            "kind": "text",
+                            "text": f"{start + offset}. {text}",
+                            "evidence_ids": block.get("evidence_ids", []),
+                        })
+                continue
+        if isinstance(block, Mapping) and block_type != "image":
             lines = str(block.get("text") or "").splitlines()
             expanded_blocks.extend({**block, "text": line} for line in lines)
         else:
@@ -113,7 +137,7 @@ def build_consumer_steps(
     for block in expanded_blocks:
         if not isinstance(block, Mapping):
             continue
-        if block.get("kind") == "image":
+        if str(block.get("kind") or block.get("type") or "").casefold() == "image":
             image = {
                 key: block[key]
                 for key in ("url", "alt", "image_id", "evidence_ids", "storage_key", "source_article_ids")
@@ -142,6 +166,8 @@ def build_consumer_steps(
             section_start = True
             continue
         if heading_key in heading_keys:
+            continue
+        if not is_meaningful_procedure_text(text):
             continue
         evidence_ids = [
             str(value)
@@ -178,18 +204,68 @@ def build_consumer_steps(
 
 
 def article_is_content_complete(article: Mapping[str, Any]) -> bool:
-    """True when the article may be served from catalog without re-fetch."""
+    """True only when the stored text contains meaningful procedure content.
 
-    status = str(article.get("content_status") or "").casefold()
-    if status == CONTENT_STATUS_COMPLETE:
-        return True
-    if status == CONTENT_STATUS_LIST_ONLY:
-        return False
+    ``content_status`` is persisted metadata and may describe an older
+    normalization revision. It cannot override the actual saved instructions.
+    """
+
     steps = article.get("steps")
-    if _steps_are_consumer_shaped(steps) and steps:
-        return True
-    body = str(article.get("body") or "").strip()
-    return len(body) >= 80
+    if isinstance(steps, list) and steps:
+        for step in steps:
+            if isinstance(step, Mapping):
+                candidates = [step.get("action"), *(step.get("instructions") or [])]
+            else:
+                candidates = [step]
+            if any(is_meaningful_procedure_text(value) for value in candidates):
+                return True
+        return False
+    body = str(article.get("body") or "")
+    return any(
+        is_meaningful_procedure_text(sentence)
+        for sentence in re.split(r"[\n.!?]+", body)
+    )
+
+
+def is_meaningful_procedure_text(value: Any) -> bool:
+    """Accept source text that reads like an instruction, not metadata or prose."""
+
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    key = re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip()
+    if not key or key in {
+        "removal", "removals", "removal procedure", "removal procedures",
+        "installation", "installations", "installation procedure",
+        "installation procedures", "procedure", "procedures", "overview",
+        "general information", "7l diesel",
+    }:
+        return False
+    # Bare engine displacement labels (for example "7L" or "5.7L Diesel")
+    # often arrive as the only extracted text when a provider page is missing
+    # its procedure body. They identify an application, not an action.
+    if re.fullmatch(
+        r"\d+(?:\.\d+)?\s*(?:l|liter|liters|litre|litres)"
+        r"(?:\s+(?:diesel|gas|gasoline|petrol|hybrid))?",
+        text.casefold(),
+    ):
+        return False
+    # A long descriptive paragraph can mention a component and still contain
+    # no usable replacement instruction. Source procedures are normally
+    # imperative steps; only accept an action verb at the start (optionally
+    # following a short conditional or purpose clause).
+    action = (
+        r"disconnect|reconnect|remove|reinstall|install|replace|loosen|"
+        r"tighten|torque|connect|raise|lower|support|drain|refill|clean|"
+        r"inspect|align|apply|route|secure|attach|detach|turn|rotate|press|"
+        r"pull|push|slide|lift|separate|release|depress|bleed|prime|check|"
+        r"verify|measure|adjust|set|lubricate|transfer|mark|cut|grind|"
+        r"solder|use|place|position|install|ensure|make|refer|depress"
+    )
+    prefix = (
+        r"(?:\d+\s*[.)]\s*)?"
+        r"(?:(?:if|when|before|after)\b[^,;]{1,100}[,;:]\s*)?"
+        r"(?:(?:to|using)\b[^,;]{1,100}[,;:]\s*)?"
+    )
+    return re.match(prefix + rf"(?:{action})\b", text, flags=re.IGNORECASE) is not None
 
 
 def _ensure_classification(article: dict[str, Any]) -> None:
@@ -219,34 +295,11 @@ def _ensure_classification(article: dict[str, Any]) -> None:
 
 
 def _content_status_for(article: Mapping[str, Any]) -> str:
-    document = article.get("normalized_document")
-    if isinstance(document, Mapping):
-        errors = validate_ordered_document(document)
-        blocks = document.get("blocks")
-        if errors or not isinstance(blocks, list):
-            return CONTENT_STATUS_LIST_ONLY
-        readable = any(
-            isinstance(block, Mapping)
-            and (
-                str(block.get("text") or "").strip()
-                or str(block.get("type") or "") in {"image", "table", "ordered_list", "unordered_list"}
-            )
-            for block in blocks
-        )
-        structural_content = any(
-            isinstance(block, Mapping)
-            and str(block.get("type") or "") in {"step", "table", "image", "ordered_list", "unordered_list", "callout"}
-            for block in blocks
-        )
-        if readable and (structural_content or len(str(article.get("body") or "").strip()) >= 80):
-            return CONTENT_STATUS_COMPLETE
-    steps = article.get("steps")
-    if _steps_are_consumer_shaped(steps) and steps:
-        return CONTENT_STATUS_COMPLETE
-    body = str(article.get("body") or "").strip()
-    if len(body) >= 80:
-        return CONTENT_STATUS_COMPLETE
-    return CONTENT_STATUS_LIST_ONLY
+    return (
+        CONTENT_STATUS_COMPLETE
+        if article_is_content_complete(article)
+        else CONTENT_STATUS_LIST_ONLY
+    )
 
 
 def _steps_are_consumer_shaped(steps: Any) -> bool:
@@ -296,6 +349,7 @@ __all__ = [
     "CONTENT_STATUS_COMPLETE",
     "CONTENT_STATUS_LIST_ONLY",
     "article_is_content_complete",
+    "is_meaningful_procedure_text",
     "build_consumer_steps",
     "normalize_procedure_article",
 ]

@@ -112,7 +112,6 @@ services:
       AUTODATA_S3_SECRET_KEY: ${AUTODATA_MINIO_ROOT_PASSWORD:?set AUTODATA_MINIO_ROOT_PASSWORD for local development}
       AUTODATA_SOURCE_BUCKET: "autodata-sources"
       AUTODATA_SOURCE_REQUEST_HEADERS_JSON: ${AUTODATA_SOURCE_REQUEST_HEADERS_JSON-}
-      AUTODATA_CHAT_WORKER_ENABLED: ${AUTODATA_CHAT_WORKER_ENABLED:-0}
       AUTODATA_EMBEDDING_MODE: ${AUTODATA_EMBEDDING_MODE:-deterministic-fake}
       AUTODATA_SOURCE_PERSIST: ${AUTODATA_SOURCE_PERSIST:-1}
       AUTODATA_FAST_CONSUMER_ENABLED: ${AUTODATA_FAST_CONSUMER_ENABLED:-0}
@@ -301,17 +300,6 @@ services:
     environment:
       AUTODATA_FAKE_PAYMENT_SIGNING_SECRET: local-fixture-signing-key
     command: ["python", "scripts/dev/fake_integrations_smoke.py"]
-
-  chat-smoke:
-    image: ${AUTODATA_PYTHON_IMAGE:-python:3.14-slim}
-    profiles: ["verification"]
-    working_dir: /workspace
-    volumes:
-      - ../..:/workspace:ro
-    environment:
-      AUTODATA_CHAT_SMOKE_MODE: deterministic
-    network_mode: none
-    command: ["python", "scripts/dev/chat_smoke.py"]
 
   ingest-fixture:
     build:

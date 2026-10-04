@@ -388,7 +388,16 @@ def _normalize_vehicle(
         expected_region = expected.region if expected is not None and expected.region else str(expected_vehicle.get("region", normalized_region)).strip().upper()
         source_region = str(record.get("region", normalized_region)).strip().upper()
         try:
-            expected_year = int(expected_vehicle.get("year"))
+            expected_year = (
+                expected.year
+                if expected is not None
+                else int(
+                    expected_vehicle.get(
+                        "year",
+                        expected_vehicle.get("model_year", expected_vehicle.get("modelYear")),
+                    )
+                )
+            )
         except (TypeError, ValueError):
             expected_year = None
         expected_trim = expected.trim if expected is not None else str(expected_vehicle.get("trim", "")).strip() or None

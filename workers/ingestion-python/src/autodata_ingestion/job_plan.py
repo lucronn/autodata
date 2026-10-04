@@ -19,6 +19,7 @@ from typing import Any, Iterable, Mapping
 _ALIASES = {
     "alt": "alternator",
     "alternator": "alternator",
+    "generator": "alternator",
     "starter": "starter",
     "battery": "battery",
     "brake": "brakes",
@@ -49,6 +50,7 @@ def plan_job(
     *,
     catalog: Iterable[Mapping[str, Any]],
     source_info: Mapping[str, Any] | None = None,
+    include_labor: bool = True,
 ) -> dict[str, Any]:
     """Build a stable job-plan response from normalized article records."""
 
@@ -58,16 +60,18 @@ def plan_job(
         raise ValueError("job vehicle must include make and model")
     components = _components_from_query(query)
     if not components:
-        return {
+        result = {
             "status": "needs_review",
             "vehicle": dict(vehicle),
             "requested_components": [],
             "review_reasons": ["no_component_detected"],
-            "labor": _empty_labor(),
             "procedure": _empty_procedure("No component detected"),
             "images": [],
             "source": dict(source_info or {"mode": "normalized_cache"}),
         }
+        if include_labor:
+            result["labor"] = _empty_labor()
+        return result
 
     articles = _flatten_articles(catalog)
     selected: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -77,28 +81,118 @@ def plan_job(
             article for article in articles
             if component in _article_components(article)
         ]
-        candidates.sort(key=lambda item: (-_article_score(item, component), str(item.get("article_id", ""))))
+        candidates.sort(
+            key=lambda item: (
+                -_article_score(item, component, query=query),
+                str(item.get("article_id", "")),
+            )
+        )
         if not candidates:
             review_reasons.append(f"missing_article:{component}")
             continue
         selected[component] = candidates[0]
 
-    labor, labor_reasons = _calculate_labor(selected)
-    review_reasons.extend(labor_reasons)
-    procedure = _compose_procedure(selected, labor["operations"])
+    if include_labor:
+        labor, labor_reasons = _calculate_labor(selected)
+        review_reasons.extend(labor_reasons)
+        procedure = _compose_procedure(selected, labor["operations"])
+    else:
+        labor = None
+        procedure = _compose_source_article_steps(selected)
+        if procedure["content_status"] != "complete":
+            review_reasons.append("procedure_content_unavailable")
     images = _collect_images(selected.values())
     status = "ready" if not review_reasons else "needs_review"
     source_ids = [str(article.get("article_id")) for article in selected.values()]
-    return {
+    result = {
         "status": status,
         "vehicle": dict(vehicle),
         "requested_components": components,
         "selected_articles": source_ids,
         "review_reasons": sorted(set(review_reasons)),
-        "labor": labor,
         "procedure": {**procedure, "requires_review": bool(review_reasons)},
         "images": images,
         "source": dict(source_info or {"mode": "normalized_cache"}),
+    }
+    if include_labor:
+        result["labor"] = labor
+    return result
+
+
+def _compose_source_article_steps(
+    selected: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Build a fallback by concatenating selected source steps in their stored order."""
+
+    from .procedure_normalize import is_meaningful_procedure_text
+
+    steps: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for component, article in selected.items():
+        article_id = str(article.get("article_id") or article.get("id") or "").strip()
+        raw_steps = article.get("steps")
+        texts: list[str] = []
+        if isinstance(raw_steps, list):
+            for raw in raw_steps:
+                if isinstance(raw, Mapping):
+                    value = next(
+                        (
+                            raw.get(key)
+                            for key in ("instruction", "description", "text", "action", "body")
+                            if isinstance(raw.get(key), str) and raw.get(key).strip()
+                        ),
+                        "",
+                    )
+                else:
+                    value = raw
+                text = re.sub(r"\s+", " ", str(value or "")).strip()
+                if text and is_meaningful_procedure_text(text):
+                    texts.append(text)
+        if not texts:
+            body = article.get("body", article.get("content", article.get("articleBody")))
+            if isinstance(body, str):
+                texts = [
+                    re.sub(r"\s+", " ", paragraph).strip()
+                    for paragraph in re.split(r"\n\s*\n|\r?\n", body)
+                    if paragraph.strip() and is_meaningful_procedure_text(paragraph)
+                ]
+        if not texts:
+            missing.append(article_id)
+            continue
+        evidence_ids = _article_evidence_ids(article)
+        for local_sequence, text in enumerate(texts, 1):
+            steps.append(
+                {
+                    "sequence": len(steps) + 1,
+                    "operation_id": f"source-step:{article_id}:{local_sequence}",
+                    "action": f"{component.replace('_', ' ')} procedure step",
+                    "components": [component],
+                    "source_article_ids": [article_id] if article_id else [],
+                    "evidence_ids": evidence_ids,
+                    "instructions": [text],
+                    "origin": "source_step",
+                    "requires_review": not bool(evidence_ids),
+                }
+            )
+    warnings = []
+    if missing:
+        warnings.append(
+            {
+                "warning_id": "procedure_content_unavailable",
+                "message": "Readable instructions were unavailable for one or more selected source articles.",
+                "source_article_ids": missing,
+                "evidence_ids": [],
+                "requires_review": True,
+            }
+        )
+    return {
+        "title": " and ".join(f"{component.replace('_', ' ')} service" for component in selected),
+        "steps": steps,
+        "warnings": warnings,
+        "content_status": "partial" if missing else "complete",
+        "review_state": "UNREVIEWED",
+        "review_label": "UNREVIEWED — human review pending",
+        "generation": "deterministic",
     }
 
 
@@ -219,7 +313,9 @@ def _component_values(value: Any) -> list[Any]:
     return [value]
 
 
-def _article_score(article: Mapping[str, Any], component: str) -> int:
+def _article_score(
+    article: Mapping[str, Any], component: str, *, query: str = ""
+) -> int:
     score = 0
     if str(article.get("component", "")).casefold() == component:
         score += 100
@@ -229,6 +325,22 @@ def _article_score(article: Mapping[str, Any], component: str) -> int:
         score += 10
     if _article_evidence_ids(article):
         score += 5
+    title = str(article.get("title") or "").casefold()
+    title_tokens = set(re.findall(r"[a-z0-9]+", title))
+    if "replacement" in title_tokens or (
+        {"removal", "installation"}.issubset(title_tokens)
+        or {"remove", "install"}.issubset(title_tokens)
+    ):
+        score += 40
+    if any(
+        token in title_tokens
+        for token in ("inspection", "specification", "specifications", "description", "testing")
+    ):
+        score -= 30
+    requested = set(re.findall(r"[a-z0-9]+", str(query).casefold()))
+    if requested & {"replace", "replacement", "remove", "removal", "install", "installation"}:
+        if "replacement" in title_tokens or "removal" in title_tokens or "installation" in title_tokens:
+            score += 10
     article_id = str(article.get("article_id", "")).casefold()
     bucket = str(article.get("bucket", "")).casefold()
     if article_id.startswith("p:"):
@@ -1907,8 +2019,10 @@ def _is_meaningful_source_instruction(
 ) -> bool:
     """Exclude a generated operation label when it is the only source text."""
 
+    from .procedure_normalize import is_meaningful_procedure_text
+
     instruction_key = _procedure_text_key(text)
-    if not instruction_key:
+    if not instruction_key or not is_meaningful_procedure_text(text):
         return False
     labels = {_procedure_text_key(operation_action)}
     for component in components:
@@ -2297,7 +2411,9 @@ def _validate_llm_procedure(
     excluded_operation_ids = {value.strip() for value in raw_excluded}
     if "requires_review" in response and not isinstance(response["requires_review"], bool):
         raise ValueError("Mercury-2 procedure requires_review must be a boolean")
-    operation_provenance = _operation_provenance(labor, articles_by_id)
+    operation_provenance = _operation_provenance(
+        labor, articles_by_id, deterministic_procedure
+    )
     known_operation_ids = set(operation_provenance)
     if not excluded_operation_ids.issubset(known_operation_ids):
         raise ValueError("Mercury-2 procedure excludes an unsupported labor operation")
@@ -2380,7 +2496,10 @@ def _validate_llm_procedure(
             raise ValueError(f"Mercury-2 procedure step {index} has an unsupported category")
         if category != expected["category"]:
             raise ValueError(f"Mercury-2 procedure step {index} has invalid category provenance")
-        if _normalize_text(action) != _normalize_text(expected["action"]):
+        if (
+            not expected.get("rewrite_allowed", False)
+            and _normalize_text(action) != _normalize_text(expected["action"])
+        ):
             raise ValueError(f"Mercury-2 procedure step {index} has invalid action provenance")
         if set(components) != set(expected["components"]):
             raise ValueError(f"Mercury-2 procedure step {index} has invalid component provenance")
@@ -2404,7 +2523,7 @@ def _validate_llm_procedure(
     missing_operation_ids = known_operation_ids - represented_operation_ids - excluded_operation_ids
     if missing_operation_ids:
         raise ValueError(
-            f"Mercury-2 procedure omits labor operations: {sorted(missing_operation_ids)}"
+            f"Mercury-2 procedure omits source procedure operations: {sorted(missing_operation_ids)}"
         )
     expected_warnings = {
         str(warning.get("warning_id")): warning
@@ -2456,11 +2575,16 @@ def _string_list(value: Any, label: str, index: int) -> list[str]:
 
 
 def _operation_provenance(
-    labor: Mapping[str, Any], articles_by_id: Mapping[str, Mapping[str, Any]]
+    labor: Mapping[str, Any],
+    articles_by_id: Mapping[str, Mapping[str, Any]],
+    deterministic_procedure: Mapping[str, Any],
 ) -> dict[str, dict[str, Any]]:
     operations = labor.get("operations", [])
     if not isinstance(operations, list):
         operations = []
+    procedure_steps = deterministic_procedure.get("steps", [])
+    if isinstance(procedure_steps, list):
+        operations = [*operations, *procedure_steps]
     provenance: dict[str, dict[str, Any]] = {}
     for raw_operation in operations:
         if not isinstance(raw_operation, Mapping):
@@ -2494,6 +2618,18 @@ def _operation_provenance(
                     action = source_action
                 source_components = _component_matches(source_operation.get("components"))
                 normalized_components.update(source_components or _article_components(article))
+        if raw_operation.get("origin") == "source_step":
+            source_bound = bool(source_article_ids and evidence_ids)
+            for article_id in source_article_ids:
+                article = articles_by_id.get(article_id)
+                if article is None or not operation_id.startswith(f"source-step:{article_id}:"):
+                    source_bound = False
+                    break
+                article_evidence = set(_article_evidence_ids(article))
+                if not article_evidence or not evidence_ids.issubset(article_evidence):
+                    source_bound = False
+                    break
+            matched_source_operation = matched_source_operation or source_bound
         if not matched_source_operation and len(source_article_ids) > 1 and evidence_ids:
             # A shared overlap operation may be synthesized across multiple
             # articles.  It is source-bound when its evidence is present in
@@ -2518,13 +2654,21 @@ def _operation_provenance(
         if not action:
             action = operation_id.replace("-", " ")
         instructions: list[str] = []
-        for article_id in sorted(source_article_ids):
-            article = articles_by_id.get(article_id)
-            if not article:
-                continue
-            for instruction in _article_procedure_instructions(article):
-                if instruction not in instructions:
-                    instructions.append(instruction)
+        raw_instructions = raw_operation.get("instructions", [])
+        if raw_operation.get("origin") == "source_step" and isinstance(raw_instructions, list):
+            instructions.extend(
+                instruction.strip()
+                for instruction in raw_instructions
+                if isinstance(instruction, str) and instruction.strip()
+            )
+        if not instructions:
+            for article_id in sorted(source_article_ids):
+                article = articles_by_id.get(article_id)
+                if not article:
+                    continue
+                for instruction in _article_procedure_instructions(article):
+                    if instruction not in instructions:
+                        instructions.append(instruction)
         provenance[operation_id] = {
             "operation_id": operation_id,
             "action": action,
@@ -2534,6 +2678,10 @@ def _operation_provenance(
             "evidence_ids": sorted(evidence_ids),
             "instructions": instructions,
             "source_bound": matched_source_operation,
+            "rewrite_allowed": (
+                raw_operation.get("origin") == "source_step"
+                and operation_id.startswith("source-step:")
+            ),
         }
     return provenance
 

@@ -635,6 +635,35 @@ class SourceBundleTests(unittest.TestCase):
         self.assertEqual(bundle.vehicle["vehicle_key"], "toyota-rav4-1997-us")
         self.assertEqual(bundle.vehicle["model"], "RAV4")
 
+    def test_expected_vehicle_model_year_alias_is_accepted(self):
+        resource = SourceResource.from_bytes(
+            "https://source.test/v1/article/alternator",
+            "source-v1",
+            (
+                b'{"year":2013,"make":"Honda","model":"Crosstour 2wd",'
+                b'"engine":"2.4L","articleDetails":[{"id":"alternator",'
+                b'"title":"Alternator Removal/Installation",'
+                b'"body":"Remove and install the alternator."}]}'
+            ),
+            "application/json",
+        )
+
+        bundle = normalize_source_bundle(
+            [adapt_source_resource(resource)],
+            "US",
+            expected_vehicle={
+                "model_year": 2013,
+                "make": "Honda",
+                "model": "Crosstour 2wd",
+                "region": "US",
+                "engine_displacement_l": 2.4,
+            },
+        )
+
+        self.assertIsNotNone(bundle.vehicle)
+        self.assertEqual(bundle.vehicle["model_year"], 2013)
+        self.assertEqual(len(bundle.articles), 1)
+
     def test_provider_spacing_and_drivetrain_suffix_are_compatible_with_selected_model(self):
         resource = SourceResource.from_bytes(
             "http://source.test/v1/api/source/Motor/16494%3A816/name",

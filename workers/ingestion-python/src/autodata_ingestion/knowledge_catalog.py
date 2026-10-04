@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from copy import deepcopy
 from typing import Any
 
@@ -26,10 +27,15 @@ def _query_article_patterns(query: str) -> list[str]:
     }
     patterns: list[str] = []
     for component in _components_from_query(query):
-        term = title_terms.get(component, component.replace("_", " "))
-        pattern = f"%{term}%"
-        if pattern not in patterns:
-            patterns.append(pattern)
+        terms = (
+            ["alternator", "generator"]
+            if component == "alternator"
+            else [title_terms.get(component, component.replace("_", " "))]
+        )
+        for term in terms:
+            pattern = f"%{term}%"
+            if pattern not in patterns:
+                patterns.append(pattern)
     return patterns
 
 
@@ -69,16 +75,43 @@ def load_vehicle_knowledge_catalog(
     if title_patterns:
         title_filter = "\n          AND (" + " OR ".join("ca.title ILIKE %s" for _ in title_patterns) + ")"
         params.extend(title_patterns)
+    target_engine = _engine_displacement_number(target.engine_displacement_l)
+    configuration_filter = ""
+    if target_engine is not None:
+        configuration_filter = "\n          AND (vc.engine_displacement_l IS NULL OR ABS(vc.engine_displacement_l - %s) < 0.05)"
+        params.append(target_engine)
+    engine_order = ""
+    if title_patterns and target_engine is not None:
+        engine_order = "CASE WHEN vc.engine_displacement_l = %s THEN 0 ELSE 1 END, "
+        params.append(target_engine)
+    content_order = ""
+    if title_patterns:
+        content_order = """CASE
+            WHEN ca.content_status = 'content_complete'
+             AND (NULLIF(BTRIM(ca.body), '') IS NOT NULL
+                  OR jsonb_array_length(COALESCE(ca.steps, '[]'::jsonb)) > 0)
+            THEN 0 ELSE 1 END, """
     params.append(limit)
     select_prefix = "SELECT DISTINCT ON (ca.article_id)" if title_patterns else "SELECT"
     duplicate_filter = "" if title_patterns else """
           AND NOT EXISTS (
               SELECT 1
               FROM catalog_article_vehicle_links links
+              JOIN catalog_articles canonical
+                ON canonical.catalog_article_id = links.canonical_catalog_article_id
               WHERE links.duplicate_catalog_article_id = ca.catalog_article_id
+                AND links.vehicle_id = ca.vehicle_id
+                AND links.link_state = 'duplicate'
+                AND (
+                    canonical.article_id = ca.article_id
+                    OR (
+                        NULLIF(ca.canonical_article_key, '') IS NOT NULL
+                        AND canonical.canonical_article_key = ca.canonical_article_key
+                    )
+                )
           )"""
     order_by = (
-        "ca.article_id, ca.title NULLS LAST, ca.catalog_article_id"
+        f"ca.article_id, {engine_order}{content_order}ca.title NULLS LAST, ca.catalog_article_id"
         if title_patterns
         else "ca.title NULLS LAST, ca.article_id, ca.catalog_article_id"
     )
@@ -118,7 +151,7 @@ def load_vehicle_knowledge_catalog(
           ON css.source_snapshot_id = ca.content_source_snapshot_id
         LEFT JOIN extraction_evidence cee
           ON cee.extraction_evidence_id = ca.content_extraction_evidence_id
-        WHERE v.vehicle_key = %s{title_filter}
+        WHERE v.vehicle_key = %s{title_filter}{configuration_filter}
           {duplicate_filter}
           AND ss.takedown_status = 'active'
         ORDER BY {order_by}
@@ -130,6 +163,11 @@ def load_vehicle_knowledge_catalog(
             rows = cursor.fetchall()
             catalog = _rows_to_catalog(rows, target)
     return catalog
+
+
+def _engine_displacement_number(value: object) -> float | None:
+    match = re.search(r"\d+(?:\.\d+)?", str(value or ""))
+    return float(match.group(0)) if match else None
 
 
 def _knowledge_cache_limit() -> int:

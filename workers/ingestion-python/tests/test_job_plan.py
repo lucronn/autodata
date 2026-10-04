@@ -61,6 +61,95 @@ def test_job_plan_uses_individual_articles_and_ignores_legacy_composition_rows()
     assert all(step.get("operation_id") != "invented" for step in result["procedure"]["steps"])
 
 
+def test_procedure_only_job_plan_preserves_article_order_without_labor_output():
+    source = {
+        "article_id": "oil-source",
+        "title": "Oil pump removal and installation",
+        "component": "oil_pump",
+        "steps": [
+            {"sequence": 1, "instruction": "Disconnect the battery."},
+            {"sequence": 2, "instruction": "Remove the oil pan."},
+            {"sequence": 3, "instruction": "Replace the oil pump."},
+        ],
+        "operations": [
+            {"operation_id": "oil", "action": "Replace oil pump", "duration_hours": 3.5}
+        ],
+        "evidence": [{"evidence_id": "source-evidence"}],
+    }
+
+    result = plan_job(
+        "replace oil pump",
+        VEHICLE,
+        catalog=[source],
+        include_labor=False,
+    )
+
+    assert "labor" not in result
+    assert [step["instructions"][0] for step in result["procedure"]["steps"]] == [
+        "Disconnect the battery.",
+        "Remove the oil pan.",
+        "Replace the oil pump.",
+    ]
+    assert [step["sequence"] for step in result["procedure"]["steps"]] == [1, 2, 3]
+
+
+def test_procedure_only_plan_drops_metadata_and_marks_article_without_instructions_incomplete():
+    source = {
+        "article_id": "oil-source",
+        "title": "Oil pump removal and installation",
+        "component": "oil_pump",
+        "steps": [
+            {"sequence": 1, "instruction": "7L DIESEL"},
+            {"sequence": 2, "instruction": "Remove the oil pump from the engine."},
+        ],
+        "evidence": [{"evidence_id": "source-evidence"}],
+    }
+
+    result = plan_job("replace oil pump", VEHICLE, catalog=[source], include_labor=False)
+
+    assert [step["instructions"][0] for step in result["procedure"]["steps"]] == [
+        "Remove the oil pump from the engine."
+    ]
+    assert result["status"] == "ready"
+
+    source["steps"] = [{"sequence": 1, "instruction": "7L DIESEL"}]
+    incomplete = plan_job("replace oil pump", VEHICLE, catalog=[source], include_labor=False)
+
+    assert incomplete["status"] == "needs_review"
+    assert incomplete["procedure"]["content_status"] == "partial"
+    assert incomplete["procedure"]["warnings"]
+
+
+def test_job_plan_prefers_component_replacement_over_inspection_or_specification_rows():
+    result = plan_job(
+        "water pump replacement",
+        VEHICLE,
+        catalog=[
+            {
+                "article_id": "autoapitwo:1:inspection",
+                "title": "Water Pump Inspection",
+                "component": "water_pump",
+                "steps": ["Inspect the water pump."],
+            },
+            {
+                "article_id": "autoapitwo:1:replacement",
+                "title": "Water Pump Replacement",
+                "component": "water_pump",
+                "steps": ["Remove and replace the water pump."],
+            },
+            {
+                "article_id": "autoapitwo:1:specification",
+                "title": "Water Pump Specifications",
+                "component": "water_pump",
+                "steps": ["Review the water pump specifications."],
+            },
+        ],
+        include_labor=False,
+    )
+
+    assert result["selected_articles"] == ["autoapitwo:1:replacement"]
+
+
 def test_combines_component_labor_once_for_shared_operation_and_keeps_images():
     articles = [
         article(
@@ -167,6 +256,24 @@ def test_recognizes_multiword_pump_and_belt_components_from_natural_language():
         "timing-belt-article",
         "power-steering-pump-article",
     ]
+
+
+def test_generator_procedure_can_satisfy_an_alternator_request():
+    result = plan_job(
+        "replace the alternator",
+        VEHICLE,
+        catalog=[{
+            "article_id": "generator-removal",
+            "title": "Generator Removal (5.7L)",
+            "body": "Disconnect the generator and remove its mounting fasteners.",
+            "steps": ["Disconnect the generator", "Remove the generator"],
+            "evidence_ids": ["generator-evidence"],
+        }],
+        include_labor=False,
+    )
+
+    assert result["status"] == "ready"
+    assert result["selected_articles"] == ["generator-removal"]
 
 
 def test_shared_provider_bucket_does_not_assign_one_article_to_every_component():
@@ -305,6 +412,57 @@ def test_mercury_composition_accepts_labor_evidence_on_source_steps():
 
     assert result["generation"] == "mercury-2"
     assert result["steps"][0]["evidence_ids"] == ["labor-evidence"]
+
+
+def test_mercury_composition_accepts_ordered_source_steps_without_labor():
+    class FakeMercury:
+        def complete_json(self, _prompt):
+            return {
+                "title": "Oil pump procedure",
+                "steps": [{
+                    "operation_id": "source-step:oil-article:1",
+                    "action": "Remove the oil pan.",
+                    "components": ["oil_pump"],
+                    "category": "required",
+                    "source_article_ids": ["oil-article"],
+                    "evidence_ids": ["oil-evidence"],
+                    "instructions": ["Remove the oil pan."],
+                }],
+                "warnings": [],
+                "requires_review": True,
+            }
+
+    result = compose_procedure_with_llm(
+        FakeMercury(),
+        "replace the oil pump",
+        VEHICLE,
+        [{
+            "article_id": "oil-article",
+            "title": "Oil pump replacement",
+            "component": "oil_pump",
+            "steps": ["Remove the oil pan."],
+            "evidence": [{"evidence_id": "oil-evidence"}],
+        }],
+        {},
+        {
+            "title": "Oil pump procedure",
+            "steps": [{
+                "operation_id": "source-step:oil-article:1",
+                "action": "oil pump procedure step",
+                "components": ["oil_pump"],
+                "category": "required",
+                "source_article_ids": ["oil-article"],
+                "evidence_ids": ["oil-evidence"],
+                "instructions": ["Remove the oil pan."],
+                "origin": "source_step",
+            }],
+            "warnings": [],
+            "requires_review": True,
+        },
+    )
+
+    assert result["generation"] == "mercury-2"
+    assert result["steps"][0]["operation_id"] == "source-step:oil-article:1"
 
 
 def test_returns_review_state_without_fabricating_unknown_labor():

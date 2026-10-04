@@ -78,6 +78,11 @@ def localize_procedure_images(
         record = dict(image)
         record.pop("source_url", None)
         url = str(record.get("url") or "").strip()
+        if url and not str(record.get("image_id") or "").strip():
+            # article_document derives image-block identities from the exact
+            # source URL when the provider supplies no ID. Reuse that identity
+            # on the materialized article image so both records join reliably.
+            record["image_id"] = sha256(url.encode()).hexdigest()
         if str(record.get("storage_key") or "").strip():
             if not (url.startswith("data:image/") or url.startswith("/v1/catalog/images?src=")):
                 record.pop("url", None)
@@ -123,7 +128,7 @@ def localize_procedure_images(
                 ]
             rewritten_steps.append(step_out)
         out["steps"] = rewritten_steps
-    _rewrite_document_images(out, images)
+    _rewrite_document_images(out, _collect_image_records(out))
     return out
 
 
@@ -226,6 +231,9 @@ def _rewrite_document_images(article: dict[str, Any], original_images: list[dict
         for key in (image.get("image_id"), image.get("asset_id"), image.get("url"), image.get("storage_key")):
             if key:
                 by_ref[str(key)] = image
+        source_url = str(image.get("url") or "").strip()
+        if source_url:
+            by_ref.setdefault(sha256(source_url.encode()).hexdigest(), image)
 
     def rewrite(block: Any) -> None:
         if not isinstance(block, dict):

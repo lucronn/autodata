@@ -2,13 +2,38 @@
 
 **Goal:** Return a unified, vehicle-matched procedure for a multi-component request using already normalized individual articles as the source of truth.
 
-**Tracked delivery:** [Issue #110](https://github.com/lucronn/autodata/issues/110), [AutoData Portfolio Project](https://github.com/users/lucronn/projects/8), and the [implementation plan](../superpowers/plans/2026-09-19-mercury2-overlap-procedure-composition.md).
+**Tracked delivery:** [Issue #110](https://github.com/lucronn/autodata/issues/110), [AutoData Portfolio Project](https://github.com/users/lucronn/projects/8), the [composition plan](../superpowers/plans/2026-09-19-mercury2-overlap-procedure-composition.md), the [provider-qualified hydration follow-up](../superpowers/plans/2026-10-03-provider-qualified-composition-hydration.md), and the [procedure-content quality gate](../superpowers/plans/2026-10-03-procedure-content-quality-gate.md).
 
 ## Data lifecycle
 
 AutoData stores each vehicle-matched individual source article, its original source payload, normalized text, source/evidence references, and locally managed images. A composition request resolves the requested components to those individual records. If a required article is absent, AutoData retrieves and ingests that individual article through the catalog/source path, then uses the persisted normalized record. It must not repeat a provider detail call when that record is already available.
+When catalog traversal has multiple revisions/rows for one article identity,
+reads must prefer the row with usable normalized body/steps over a later
+list-only row; indexing the same article again must not mask already ingested
+content or trigger another provider detail request.
+
+Provider vehicle IDs are source-scoped: AutoDBone IDs may only be sent to the
+AutoDBone facade, and AutoDBtwo car IDs may only be sent to AutoDBtwo. A
+composition request resolves provider mappings independently from the
+canonical vehicle identity. On a cold article miss, it searches current
+provider catalogs and hydrates only selected component details through their
+own connector contracts. A failure or miss from one source must not prevent a
+valid selected article from the other source from being used. Never infer a
+provider identity from an unqualified numeric ID.
 
 Mercury-2 receives the selected normalized individual articles and returns one unified procedure in the synchronous API response. The composed result is ephemeral: do not insert it into the article/catalog tables, derived-revision storage, review queue, reusable cache, or source-ingestion records. Labor is disabled for this work; it must not gate retrieval or composition, and composition must not fabricate labor values.
+
+Cache readiness is content-based, not status-label-based. Each selected
+individual source article must provide meaningful source-authored procedure
+instructions for its requested component. Headings, section labels, metadata,
+and empty steps do not make an article complete. Apply this validation when
+ingesting, persisting, reading cached rows, composing, and projecting article
+responses. Repair weak legacy rows from their immutable original source when
+possible, otherwise fetch only that selected article; if usable content remains
+unavailable, return an explicit incomplete/source failure rather than a ready
+procedure. Preserve the source original and lineage, localize images, and expose
+images through opaque same-origin routes. The combined procedure stays
+ephemeral.
 
 ## Composition contract
 

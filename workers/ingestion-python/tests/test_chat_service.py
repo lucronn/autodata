@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import http.client
 import json
+import http.client
 import sys
 import threading
 import uuid
@@ -420,34 +420,12 @@ def test_invalid_selection_does_not_start_source_work():
     assert calls["source"] == []
 
 
-def test_http_dispatch_exposes_chat_json_and_replay_routes():
-    install_runtime(candidates=lambda _message, _principal: (VEHICLE_A,))
-    payload = {
-        "message": "1997 Toyota RAV4 brake line replacement",
-        "idempotency_key": "http-chat-1",
-        "principal": principal(),
-    }
-
-    created = dispatch_request("/v1/chat/queries", payload)
-    query_id = created["query_id"]
-    selected = dispatch_request(
-        f"/v1/chat/queries/{query_id}/selections",
-        {"selection_type": "vehicle", "option_number": 1},
-        principal=principal(),
-    )
-    fetched = dispatch_request(f"/v1/chat/queries/{query_id}", {}, principal=principal())
-    events = dispatch_request(f"/v1/chat/queries/{query_id}/events", {}, principal=principal())
-    replayed_events = dispatch_request(
-        f"/v1/chat/queries/{query_id}/events?last_event_id={events['events'][0]['event_id']}",
-        {},
-        principal=principal(),
-    )
-
-    assert selected["query_id"] == query_id
-    assert fetched["query_id"] == query_id
-    assert events["query_id"] == query_id
-    assert events["events"]
-    assert replayed_events["events"] == events["events"][1:]
+def test_http_dispatch_rejects_retired_chat_routes():
+    with pytest.raises(ValueError, match="unknown ingestion service route"):
+        dispatch_request(
+            "/v1/chat/queries",
+            {"message": "1997 Toyota RAV4 brake line replacement", "idempotency_key": "retired"},
+        )
 
 
 def test_worker_chat_entry_point_uses_the_same_idempotent_service():
@@ -511,22 +489,13 @@ def test_http_and_worker_can_share_an_explicit_runtime_boundary():
         allow_in_memory=True,
     )
 
-    created = dispatch_request(
-        "/v1/chat/queries",
-        {
-            "message": "1997 Toyota RAV4 brake line replacement",
-            "idempotency_key": "chat-shared-runtime-1",
-            "principal": principal(),
-        },
-        chat_runtime=runtime,
+    created = create_chat_query(
+        "1997 Toyota RAV4 brake line replacement",
+        idempotency_key="chat-shared-runtime-1",
+        principal=principal(),
     )
     worker_result = run_chat_worker_once(runtime=runtime)
-    fetched = dispatch_request(
-        f"/v1/chat/queries/{created['query_id']}",
-        {},
-        principal=principal(),
-        chat_runtime=runtime,
-    )
+    fetched = get_chat_query(created["query_id"], principal=principal())
 
     assert worker_result["status"] == "completed"
     assert fetched["query_id"] == created["query_id"]
@@ -954,14 +923,7 @@ def test_price_refresh_retry_is_due_only_and_never_blocks_available_answer():
     assert attempts == ["price", "price", "price"]
 
 
-def test_http_chat_get_auth_methods_errors_and_idempotency_header_conflicts(monkeypatch):
-    install_runtime(candidates=lambda _message, _principal: (VEHICLE_A,))
-    owner = principal()
-    created = create_chat_query(
-        "1997 Toyota RAV4 brake line replacement",
-        idempotency_key="chat-http-auth-1",
-        principal=owner,
-    )
+def test_chat_http_routes_are_removed():
     from http.server import ThreadingHTTPServer
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler("internal-token"))
@@ -976,92 +938,25 @@ def test_http_chat_get_auth_methods_errors_and_idempotency_header_conflicts(monk
             connection.close()
             return response.status, response.getheader("Allow"), data
 
-        status, _allow, _data = request("GET", f"/v1/chat/queries/{created['query_id']}")
-        assert status == 401
-        monkeypatch.setattr(
-            "autodata_ingestion.chat_service.render_chat_guide_pdf",
-            lambda _query_id, *, principal: b"%PDF-test",
-        )
-        status, _allow, _data = request("GET", f"/v1/chat/queries/{created['query_id']}/guide.pdf")
-        assert status == 401
-        status, _allow, data = request(
-            "GET",
-            f"/v1/chat/queries/{created['query_id']}/guide.pdf",
-            headers={
-                "X-Autodata-Internal-Token": "internal-token",
-                "X-Autodata-Owner-Id": owner["owner_id"],
-                "X-Autodata-Organization-Id": owner["organization_id"],
-            },
-        )
-        assert status == 200
-        assert data == b"%PDF-test"
-        status, _allow, _data = request(
-            "GET",
-            f"/v1/chat/queries/{created['query_id']}",
-            headers={"X-Autodata-Internal-Token": "internal-token"},
-        )
-        assert status == 403
-        status, _allow, data = request(
-            "GET",
-            f"/v1/chat/queries/{created['query_id']}",
-            headers={
-                "X-Autodata-Internal-Token": "internal-token",
-                "X-Autodata-Owner-Id": owner["owner_id"],
-                "X-Autodata-Organization-Id": owner["organization_id"],
-            },
-        )
-        assert status == 200
-        assert json.loads(data)["query_id"] == created["query_id"]
-        status, allow, _data = request(
-            "PUT",
-            f"/v1/chat/queries/{created['query_id']}",
-            headers={"X-Autodata-Internal-Token": "internal-token"},
-        )
-        assert status == 405
-        assert "GET" in (allow or "")
-        status, allow, _data = request(
-            "OPTIONS",
-            f"/v1/chat/queries/{created['query_id']}",
-            headers={"X-Autodata-Internal-Token": "internal-token"},
-        )
-        assert status == 204
-        assert allow == "GET, OPTIONS"
-        status, allow, _data = request(
-            "POST",
-            f"/v1/chat/queries/{created['query_id']}",
-            body="{}",
-            headers={
-                "Content-Type": "application/json",
-                "Content-Length": "2",
-                "X-Autodata-Internal-Token": "internal-token",
-            },
-        )
-        assert status == 405
-        assert allow == "GET, OPTIONS"
-        status, _allow, _data = request(
-            "POST",
-            "/v1/chat/queries",
-            body=json.dumps({"message": ""}),
-            headers={
-                "Content-Type": "application/json",
-                "Content-Length": str(len(json.dumps({"message": ""}))),
-                "X-Autodata-Internal-Token": "internal-token",
-            },
-        )
-        assert status == 422
-        body = {"message": "1997 Toyota RAV4 brake line replacement", "idempotency_key": "body-key", "principal": owner}
-        status, _allow, _data = request(
-            "POST",
-            "/v1/chat/queries",
-            body=json.dumps(body),
-            headers={
-                "Content-Type": "application/json",
-                "Content-Length": str(len(json.dumps(body))),
-                "Idempotency-Key": "header-key",
-                "X-Autodata-Internal-Token": "internal-token",
-            },
-        )
-        assert status == 409
+        for method, path in (
+            ("POST", "/v1/chat/queries"),
+            ("GET", "/v1/chat/queries/query-1"),
+            ("GET", "/v1/chat/queries/query-1/events"),
+            ("GET", "/v1/chat/queries/query-1/guide.html"),
+            ("GET", "/v1/chat/queries/query-1/guide.pdf"),
+            ("POST", "/v1/chat/queries/query-1/selections"),
+        ):
+            status, _allow, _data = request(
+                method,
+                path,
+                body="{}" if method == "POST" else None,
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Length": "2" if method == "POST" else "0",
+                    "X-Autodata-Internal-Token": "internal-token",
+                },
+            )
+            assert status == 404
     finally:
         server.shutdown()
         server.server_close()

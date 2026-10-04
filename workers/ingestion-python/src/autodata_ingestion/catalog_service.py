@@ -224,7 +224,9 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
     cached = request.get("cache")
     if not isinstance(cached, Mapping):
         cached = {"complete": False, "missing_scopes": [scope], "rows": []}
-    if _is_complete(cached):
+    if _is_complete(cached) and not (
+        scope == "article" and _cached_article_requires_repair(cached)
+    ):
         resolved = _result_from_payload(cached, cache_hit=True)
         result = {
             "status": "cache_hit",
@@ -265,6 +267,42 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             vehicle["make"], vehicle["model"], vehicle["model_year"], vehicle["region"],
             vehicle.get("trim"), None,
         )
+        try:
+            repaired = _repair_stored_autoapitwo_article(request, vehicle)
+        except Exception as repair_error:  # noqa: BLE001 - stored corruption must not trigger source refetch
+            result = {
+                "status": "repair_failed",
+                "hydration_key": key,
+                "scope": scope,
+                "complete": False,
+                "missing_scopes": [scope],
+                "rows": [],
+                "metadata": {
+                    "mode": "stored_source_repair",
+                    "reason": type(repair_error).__name__,
+                    "detail": _stored_article_repair_failure(repair_error),
+                    "source_article_requests": 0,
+                    "source_catalog_requests": 0,
+                    "llm_requests": 0,
+                },
+            }
+            with _HYDRATION_LOCK:
+                _HYDRATION_RESULTS[key] = deepcopy(result)
+            return result
+        if repaired is not None:
+            matched, metadata = repaired
+            result = {
+                "status": "hydrated" if matched else "repair_failed",
+                "hydration_key": key,
+                "scope": scope,
+                "complete": bool(matched),
+                "missing_scopes": [] if matched else [scope],
+                "rows": matched,
+                "metadata": metadata,
+            }
+            with _HYDRATION_LOCK:
+                _HYDRATION_RESULTS[key] = deepcopy(result)
+            return result
         primary_error = None
         try:
             records, metadata = _load_autoapi_job_catalog(vehicle, target, query=query)
@@ -499,6 +537,309 @@ def _load_autoapitwo_article_detail(
         "targeted_article_fetch_count": 1,
         "targeted_labor_fetch_count": 0,
     }
+
+
+def _repair_stored_autoapitwo_article(
+    request: Mapping[str, Any], vehicle: Mapping[str, Any]
+) -> tuple[list[dict[str, Any]], dict[str, Any]] | None:
+    """Rebuild a legacy empty ordered document from its immutable saved source."""
+
+    from .article_document import validate_ordered_document
+    from .procedure_images import localize_procedure_images
+    from .procedure_normalize import article_is_content_complete, normalize_procedure_article
+    from .source_adapters import SourceResource, adapt_source_resource
+    from .source_bundle import normalize_source_bundle
+
+    vehicle_id = str(request.get("vehicle_id") or "").strip()
+    source_article_id = str(request.get("source_article_id") or "").strip()
+    if not vehicle_id or not source_article_id:
+        return None
+    stored = _load_stored_article_for_repair(vehicle_id, source_article_id)
+    if stored is None:
+        return None
+    stored_article = stored.get("article") or {}
+    document = stored_article.get("normalized_document")
+    if (
+        isinstance(document, Mapping)
+        and document.get("blocks")
+        and not validate_ordered_document(document)
+        and article_is_content_complete(stored_article)
+    ):
+        return None
+
+    expected_hash = str(stored.get("snapshot_sha256") or "").strip().lower()
+    try:
+        raw_source = _read_stored_article_snapshot(stored)
+        if not expected_hash or sha256(raw_source).hexdigest() != expected_hash:
+            raise ValueError("stored article snapshot hash mismatch")
+        resource = SourceResource.from_bytes(
+            str(stored.get("source_uri") or "stored://article"),
+            str(stored.get("source_version") or "stored-article-snapshot"),
+            raw_source,
+            "application/json",
+            locator=str(stored.get("content_locator") or stored.get("source_locator") or ""),
+            metadata={"provider": "autoapitwo", "target_article_id": source_article_id},
+        )
+        artifact = adapt_source_resource(resource)
+        source_bundle = normalize_source_bundle(
+            [artifact], str(vehicle.get("region") or "US"), expected_vehicle=dict(vehicle)
+        )
+        requested_suffix = source_article_id.rsplit(":", 1)[-1]
+        source_articles = [
+            article for article in source_bundle.articles
+            if str(article.get("article_id") or "").rsplit(":", 1)[-1] == requested_suffix
+        ]
+        if not source_articles:
+            raise ValueError("stored snapshot does not contain the selected article")
+
+        # The immutable snapshot is the structural authority: old compatibility
+        # steps may have flattened interleaved text and illustrations. Preserve
+        # stored metadata/originals, but rebuild the ordered document from the
+        # parsed source stream. Reuse rewritten wording only for an exact
+        # block-type/count match, where the mapping is unambiguous.
+        source_article = dict(source_articles[0])
+        article = dict(source_article)
+        for key in ("source_original", "content_status", "catalog_article_id"):
+            if key in stored_article:
+                article[key] = stored_article[key]
+        normalized = normalize_procedure_article(article)
+        legacy_article = dict(stored_article)
+        legacy_article["normalized_document"] = {}
+        legacy_normalized = normalize_procedure_article(legacy_article)
+        source_document = normalized.get("normalized_document") or {}
+        legacy_document = legacy_normalized.get("normalized_document") or {}
+        source_blocks = source_document.get("blocks") or []
+        legacy_blocks = legacy_document.get("blocks") or []
+        text_types = {"heading", "paragraph", "step", "callout", "link"}
+        if (
+            len(source_blocks) == len(legacy_blocks)
+            and [block.get("type") for block in source_blocks]
+            == [block.get("type") for block in legacy_blocks]
+            and all(
+                block.get("type") not in text_types
+                or str(old.get("text") or "").strip()
+                for block, old in zip(source_blocks, legacy_blocks)
+            )
+        ):
+            for block, old in zip(source_blocks, legacy_blocks):
+                if block.get("type") in text_types:
+                    block["text"] = old["text"]
+        normalized["normalized_document"] = source_document
+        normalized = localize_procedure_images(normalized, vehicle=vehicle)
+        document = normalized.get("normalized_document")
+        if validate_ordered_document(document) or not document.get("blocks"):
+            raise ValueError("stored article did not produce a valid ordered document")
+        if not article_is_content_complete(normalized):
+            raise ValueError("stored article source contains no meaningful procedure instructions")
+    except Exception:
+        try:
+            _mark_stored_article_partial(str(stored["catalog_article_id"]))
+        except Exception:
+            pass
+        raise
+    _persist_stored_article_repair(
+        str(stored["catalog_article_id"]), normalized,
+        expected_document=stored_article.get("normalized_document"),
+    )
+    normalized["content_status"] = "content_complete"
+    record = {
+        "kind": "article",
+        "vehicle_key": str(stored.get("vehicle_id") or ""),
+        "vehicle_identity": dict(vehicle),
+        "article": normalized,
+        "evidence": [],
+    }
+    return [record], {
+        "mode": "stored_source_repair",
+        "source_article_requests": 0,
+        "source_catalog_requests": 0,
+        "llm_requests": 0,
+        "source_snapshot_sha256": expected_hash,
+    }
+
+
+def _load_stored_article_for_repair(vehicle_id: str, source_article_id: str) -> dict[str, Any] | None:
+    import psycopg
+
+    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    with psycopg.connect(
+        host=host,
+        port=int(port_text),
+        dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
+        user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
+        password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ca.catalog_article_id::text, ca.vehicle_id::text,
+                       ca.article_id, ca.title, ca.body, ca.steps, ca.images,
+                       ca.source_original, ca.normalized_document, ca.content_status,
+                       ca.source_locator, ca.content_source_locator,
+                       ss.object_key, ss.content_sha256, ss.source_uri, ss.source_version
+                FROM catalog_articles ca
+                JOIN source_snapshots ss ON ss.source_snapshot_id =
+                    COALESCE(ca.content_source_snapshot_id, ca.source_snapshot_id)
+                WHERE (ca.vehicle_id = %s::uuid OR ca.vehicle_configuration_id = %s::uuid)
+                  AND ca.article_id IN (%s, %s)
+                  AND ca.provider = 'autoapitwo'
+                  AND ca.content_status = 'content_complete'
+                ORDER BY (ca.normalized_document->'blocks' = '[]'::jsonb) DESC,
+                         ca.created_at DESC
+                LIMIT 1
+                """,
+                (
+                    vehicle_id, vehicle_id, source_article_id,
+                    source_article_id.rsplit(":", 1)[-1],
+                ),
+            )
+            row = cursor.fetchone()
+    if row is None:
+        return None
+    (
+        catalog_article_id, canonical_vehicle_id, article_id, title, body, steps,
+        images, source_original, normalized_document, content_status,
+        source_locator, content_locator, object_key, snapshot_sha256, source_uri,
+        source_version,
+    ) = row
+    return {
+        "catalog_article_id": str(catalog_article_id),
+        "vehicle_id": str(canonical_vehicle_id),
+        "article": {
+            "article_id": article_id,
+            "title": title,
+            "body": body or "",
+            "steps": steps or [],
+            "images": images or [],
+            "source_original": source_original or {},
+            "normalized_document": normalized_document,
+            "content_status": content_status,
+        },
+        "source_locator": source_locator,
+        "content_locator": content_locator,
+        "object_key": object_key,
+        "snapshot_sha256": snapshot_sha256,
+        "source_uri": source_uri,
+        "source_version": source_version,
+    }
+
+
+def _read_stored_article_snapshot(stored: Mapping[str, Any]) -> bytes:
+    from minio import Minio
+
+    client = Minio(
+        os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
+        access_key=os.environ["AUTODATA_S3_ACCESS_KEY"],
+        secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],
+        secure=False,
+    )
+    response = client.get_object(
+        os.getenv("AUTODATA_SOURCE_BUCKET", "autodata-sources"),
+        str(stored["object_key"]),
+    )
+    try:
+        payload = response.read(50 * 1024 * 1024 + 1)
+    finally:
+        response.close()
+        response.release_conn()
+    if not payload or len(payload) > 50 * 1024 * 1024:
+        raise ValueError("stored article snapshot is empty or exceeds the size limit")
+    return payload
+
+
+def _persist_stored_article_repair(
+    catalog_article_id: str,
+    article: Mapping[str, Any],
+    *,
+    expected_document: Mapping[str, Any] | None,
+) -> None:
+    import psycopg
+
+    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    with psycopg.connect(
+        host=host,
+        port=int(port_text),
+        dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
+        user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
+        password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE catalog_articles
+                SET normalized_document = %s::jsonb,
+                    steps = %s::jsonb,
+                    images = %s::jsonb,
+                    body = %s,
+                    content_status = 'content_complete'
+                WHERE catalog_article_id = %s::uuid
+                  AND content_status = 'content_complete'
+                  AND normalized_document IS NOT DISTINCT FROM
+                      NULLIF(%s::jsonb, 'null'::jsonb)
+                """,
+                (
+                    json.dumps(article.get("normalized_document") or {}),
+                    json.dumps(article.get("steps") or []),
+                    json.dumps(article.get("images") or []),
+                    str(article.get("body") or ""),
+                    catalog_article_id,
+                    json.dumps(expected_document),
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise RuntimeError("stored article changed during repair")
+
+
+def _mark_stored_article_partial(catalog_article_id: str) -> None:
+    import psycopg
+
+    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    with psycopg.connect(
+        host=host,
+        port=int(port_text),
+        dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
+        user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
+        password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE catalog_articles SET content_status = 'content_partial'
+                   WHERE catalog_article_id = %s::uuid AND content_status = 'content_complete'""",
+                (catalog_article_id,),
+            )
+
+
+def _cached_article_requires_repair(payload: Mapping[str, Any]) -> bool:
+    rows = payload.get("rows", payload.get("records", ()))
+    if isinstance(rows, Mapping):
+        rows = rows.get("rows", rows.get("records", ()))
+    if not isinstance(rows, Iterable) or isinstance(rows, (str, bytes, Mapping)):
+        return False
+    from .article_document import validate_ordered_document
+
+    found_article = False
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        article = row.get("article") if isinstance(row.get("article"), Mapping) else row
+        found_article = True
+        document = article.get("normalized_document")
+        if not isinstance(document, Mapping) or not document.get("blocks") or validate_ordered_document(document):
+            return True
+    return not found_article
+
+
+def _stored_article_repair_failure(error: BaseException) -> str:
+    text = str(error).casefold()
+    if "hash mismatch" in text:
+        return "The saved article source failed its content hash check."
+    if "does not contain" in text or "not found" in text:
+        return "The saved source does not contain the selected article."
+    if "ordered document" in text or "procedure" in text:
+        return "The saved procedure did not produce a valid ordered document."
+    if "snapshot" in text or "json source" in text or "invalid" in text:
+        return "The saved article source is missing or could not be parsed."
+    return "The saved article source could not be repaired safely."
 
 
 def _lookup_autoapitwo_descriptor(vehicle_id: str, source_article_id: str) -> dict[str, Any] | None:
