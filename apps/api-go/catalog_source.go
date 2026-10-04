@@ -19,6 +19,10 @@ type CatalogSourceContentResponse struct {
 }
 
 var unsafeCatalogSourceStyle = regexp.MustCompile(`(?i)(?:url\s*\([^)]*\)|expression\s*\(|behavior\s*:|-moz-binding\s*:)`)
+var catalogSourceExternalURL = regexp.MustCompile(`(?i)(?:https?://|//)[^\s"'<>]+`)
+var catalogSourceSignedReference = regexp.MustCompile(`(?i)(?:^|[?&])(?:x-amz-[^=]+|awsaccesskeyid|signature|expires|sig|token)=`)
+var catalogSourceBearerSecret = regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}`)
+var catalogSourceNamedSecret = regexp.MustCompile(`(?i)\b(?:authorization|access[_ -]?token|refresh[_ -]?token|id[_ -]?token|api[_ -]?key|secret|password|credential|token)\s*[:=]\s*["']?[A-Za-z0-9._~+/=-]{6,}`)
 
 func (s *Server) serveCatalogSource(response http.ResponseWriter, request *http.Request, principal Principal) {
 	vehicleID := request.PathValue("vehicle_id")
@@ -67,7 +71,7 @@ func sourceReviewForArticle(article CatalogArticle, vehicleID, articleID string)
 }
 
 func catalogSourceFormat(raw json.RawMessage) string {
-	var envelope map[string]any
+	var envelope any
 	if err := json.Unmarshal(raw, &envelope); err == nil && strings.TrimSpace(nestedCatalogSourceString(envelope, "_embedded", "data", "article", "content")) != "" {
 		return "html"
 	}
@@ -87,7 +91,7 @@ func catalogSourceURL(vehicleID, articleID string) string {
 }
 
 func renderStoredCatalogSource(raw json.RawMessage, sourceURI string, imageKey []byte) (string, string, error) {
-	var envelope map[string]any
+	var envelope any
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return "", "", err
 	}
@@ -105,40 +109,92 @@ func renderStoredCatalogSource(raw json.RawMessage, sourceURI string, imageKey [
 	return "json", string(pretty), nil
 }
 
-func nestedCatalogSourceString(value map[string]any, path ...string) string {
+func nestedCatalogSourceString(value any, path ...string) string {
+	text, _ := nestedCatalogSourceValue(value, path...).(string)
+	return text
+}
+
+func nestedCatalogSourceValue(value any, path ...string) any {
 	var current any = value
 	for _, key := range path {
 		object, ok := current.(map[string]any)
 		if !ok {
-			return ""
+			return nil
 		}
-		current = object[key]
+		var found bool
+		current, found = object[key]
+		if !found {
+			return nil
+		}
 	}
-	text, _ := current.(string)
-	return text
+	return current
 }
 
 func redactCatalogSourceJSON(value any) any {
+	projected, ok := projectCatalogSourceJSON(value)
+	if !ok {
+		return nil
+	}
+	return projected
+}
+
+func projectCatalogSourceJSON(value any) (any, bool) {
 	switch typed := value.(type) {
 	case map[string]any:
 		result := make(map[string]any, len(typed))
 		for key, child := range typed {
-			lower := strings.ToLower(key)
-			if lower == "_links" || lower == "links" || lower == "href" || lower == "source_uri" || lower == "object_key" {
+			if unsafeCatalogSourceJSONKey(key) {
 				continue
 			}
-			result[key] = redactCatalogSourceJSON(child)
+			projected, ok := projectCatalogSourceJSON(child)
+			if ok {
+				result[key] = projected
+			}
 		}
-		return result
+		return result, true
 	case []any:
-		result := make([]any, len(typed))
-		for index, child := range typed {
-			result[index] = redactCatalogSourceJSON(child)
+		result := make([]any, 0, len(typed))
+		for _, child := range typed {
+			projected, ok := projectCatalogSourceJSON(child)
+			if ok {
+				result = append(result, projected)
+			}
 		}
-		return result
+		return result, true
+	case string:
+		redacted := redactCatalogSourceText(typed)
+		if strings.TrimSpace(redacted) == "" && strings.TrimSpace(typed) != "" {
+			return nil, false
+		}
+		return redacted, true
 	default:
-		return value
+		return value, true
 	}
+}
+
+func unsafeCatalogSourceJSONKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	normalized = strings.NewReplacer("-", "_", " ", "_").Replace(normalized)
+	if normalized == "_links" || normalized == "links" || normalized == "link" || normalized == "href" || normalized == "src" || normalized == "srcset" || normalized == "uri" || normalized == "url" || normalized == "request" || normalized == "response" || normalized == "navigation" || normalized == "object_key" || normalized == "source_uri" || normalized == "source_url" || normalized == "source_locator" || normalized == "provider_path" {
+		return true
+	}
+	for _, fragment := range []string{"authorization", "authentication", "credential", "password", "secret", "cookie", "header", "signed", "signature", "access_token", "refresh_token", "id_token", "apikey", "session_token", "private_key", "expires", "expiry"} {
+		if strings.Contains(normalized, fragment) {
+			return true
+		}
+	}
+	compact := strings.ReplaceAll(normalized, "_", "")
+	if strings.Contains(compact, "token") || strings.Contains(compact, "apikey") {
+		return true
+	}
+	return strings.Contains(normalized, "redirect") || strings.Contains(normalized, "callback") || strings.Contains(normalized, "provider_url") || strings.Contains(normalized, "provider_uri") || strings.HasSuffix(normalized, "_url") || strings.HasSuffix(normalized, "_uri") || strings.HasSuffix(normalized, "_href") || strings.HasSuffix(normalized, "_link") || normalized == "next" || normalized == "previous" || normalized == "prev" || normalized == "self" || normalized == "canonical"
+}
+
+func redactCatalogSourceText(value string) string {
+	if catalogSourceSignedReference.MatchString(value) || catalogSourceBearerSecret.MatchString(value) || catalogSourceNamedSecret.MatchString(value) {
+		return "[redacted]"
+	}
+	return catalogSourceExternalURL.ReplaceAllString(value, "[redacted-url]")
 }
 
 func sanitizeCatalogSourceHTML(raw, sourceURI string, imageKey []byte) (string, error) {
@@ -157,6 +213,9 @@ func sanitizeCatalogSourceHTML(raw, sourceURI string, imageKey []byte) (string, 
 func sanitizeCatalogSourceNode(node *html.Node, sourceURI string, imageKey []byte) {
 	for child := node.FirstChild; child != nil; {
 		next := child.NextSibling
+		if child.Type == html.TextNode {
+			child.Data = redactCatalogSourceText(child.Data)
+		}
 		if child.Type == html.ElementNode {
 			tag := strings.ToLower(child.Data)
 			if blockedCatalogSourceTag(tag) {
@@ -221,34 +280,29 @@ func sanitizeCatalogSourceAttributes(node *html.Node, sourceURI string, imageKey
 			if unsafeCatalogSourceStyle.MatchString(attribute.Val) {
 				continue
 			}
+		default:
+			attribute.Val = redactCatalogSourceText(attribute.Val)
 		}
 		attributes = append(attributes, attribute)
 	}
 	node.Attr = attributes
 }
 
-func catalogSourceAssetURL(sourceURI, raw string, imageKey []byte) (string, bool) {
+func catalogSourceAssetURL(_ string, raw string, imageKey []byte) (string, bool) {
 	raw = strings.TrimSpace(raw)
-	// Source-review images must all use the same opaque, key-protected route.
-	// Inline data URLs bypass that contract, so omit them rather than exposing
-	// unbounded source payloads or creating a reference that cannot be revoked.
-	if strings.HasPrefix(strings.ToLower(raw), "data:image/") {
-		return "", false
-	}
-	base, err := url.Parse(sourceURI)
-	if err != nil || base.Scheme == "" || base.Hostname() == "" {
-		return "", false
-	}
+	// Source review may only retain a reference that the localized media worker
+	// already minted for an AutoData storage object. Never turn a provider URL
+	// or source-relative path into a token: the media route resolves storage
+	// tokens through object storage and cannot serve provider-URL tokens.
 	parsed, err := url.Parse(raw)
-	if err != nil {
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || parsed.RawQuery != "" || parsed.Fragment != "" || !strings.HasPrefix(parsed.Path, "/v1/catalog/images/") {
 		return "", false
 	}
-	resolved := base.ResolveReference(parsed)
-	if !isCatalogImageURL(resolved.String()) {
+	token := strings.TrimPrefix(parsed.Path, "/v1/catalog/images/")
+	if token == "" || strings.Contains(token, "/") {
 		return "", false
 	}
-	token, err := sealCatalogImageURL(resolved.String(), imageKey)
-	if err != nil {
+	if _, err := openCatalogImageStorageKey(token, imageKey); err != nil {
 		return "", false
 	}
 	return "/v1/catalog/images/" + token, true
@@ -259,12 +313,12 @@ func writeCatalogSourceHTML(response http.ResponseWriter, review CatalogSourceRe
 	response.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
 	response.Header().Set("X-Content-Type-Options", "nosniff")
 	response.Header().Set("Cache-Control", "private, max-age=60")
-	metadata := []string{"Stored source copy", "Snapshot " + review.SnapshotID, "Version " + review.Version}
+	metadata := []string{"Stored source copy", "Snapshot " + redactCatalogSourceText(review.SnapshotID), "Version " + redactCatalogSourceText(review.Version)}
 	if evidenceID != "" {
-		metadata = append(metadata, "Evidence "+evidenceID)
+		metadata = append(metadata, "Evidence "+redactCatalogSourceText(evidenceID))
 	}
 	if sourceLocator != "" {
-		metadata = append(metadata, "Locator "+sourceLocator)
+		metadata = append(metadata, "Locator "+redactCatalogSourceText(sourceLocator))
 	}
 	body := content
 	if review.Format == "json" {

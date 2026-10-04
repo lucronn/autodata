@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -121,11 +120,17 @@ func TestCatalogArticleDetailKeepsSourceOrderAndHidesOriginal(t *testing.T) {
 
 func TestCatalogSourceRendersStoredHTMLWithoutProviderNavigation(t *testing.T) {
 	t.Setenv("AUTODATA_IMAGE_URL_KEY", testCatalogImageSecret)
+	imageKey := deriveCatalogImageReferenceKey(testCatalogImageSecret)
+	localToken, err := sealCatalogImageStorageKey("procedure-images/source-figure", imageKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceHTML := strings.Replace(`{"_embedded":{"data":{"article":{"content":"<!doctype html><html><body><h2>REMOVAL</h2><p>Remove the cover.</p><table><tr><td><img src=\"/api/v1/content/carids/1/svgs/figure.svg\"></td></tr></table><script>alert(1)</script><a href=\"/api/v1/content/carids/1/components/2\">source link</a></body></html>"}}}}`, "/api/v1/content/carids/1/svgs/figure.svg", "/v1/catalog/images/"+localToken, 1)
 	store := newMemoryCatalogStore()
 	store.PutConfiguration(CatalogConfiguration{ID: "cfg-1", VehicleID: "vehicle-1", Year: 2024, Make: "Acme", Model: "Roadster", Complete: true})
 	store.PutArticle(CatalogArticle{
 		ID: "article-1", VehicleID: "vehicle-1", Title: "Replace filter", ContentStatus: "content_complete", Complete: true,
-		SourceOriginal: json.RawMessage(`{"_embedded":{"data":{"article":{"content":"<!doctype html><html><body><h2>REMOVAL</h2><p>Remove the cover.</p><table><tr><td><img src=\"/api/v1/content/carids/1/svgs/figure.svg\"></td></tr></table><script>alert(1)</script><a href=\"/api/v1/content/carids/1/components/2\">source link</a></body></html>"}}}}`),
+		SourceOriginal: json.RawMessage(sourceHTML),
 		Provenance:     []CatalogProvenance{{ID: "source-1", Version: "autoapitwo-content-detail-v1"}},
 		sourceURI:      "https://autoapitwo.vercel.app/api/v1/content/carids/1/articles/2",
 	})
@@ -142,7 +147,7 @@ func TestCatalogSourceRendersStoredHTMLWithoutProviderNavigation(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Source.Format != "html" || !strings.Contains(body.Content, "REMOVAL") || !strings.Contains(body.Content, "/v1/catalog/images/") {
+	if body.Source.Format != "html" || !strings.Contains(body.Content, "REMOVAL") || !strings.Contains(body.Content, "/v1/catalog/images/"+localToken) {
 		t.Fatalf("source response = %#v, want rendered source and local image proxy", body)
 	}
 	for _, forbidden := range []string{"<script", "autoapitwo.vercel.app", `?src=`, `href="/api/v1/content`} {
@@ -163,29 +168,6 @@ func TestCatalogSourceRendersStoredHTMLWithoutProviderNavigation(t *testing.T) {
 		t.Fatalf("browser source response leaked a provider URL or legacy image route: %s", htmlResponse.Body.String())
 	}
 
-	imagePrefix := `src="/v1/catalog/images/`
-	start := strings.Index(body.Content, imagePrefix)
-	if start < 0 {
-		t.Fatalf("source image did not use an opaque same-origin image path: %s", body.Content)
-	}
-	start += len(`src="`)
-	end := strings.IndexByte(body.Content[start:], '"')
-	if end < 0 {
-		t.Fatalf("source image URL is malformed: %s", body.Content)
-	}
-	imagePath := body.Content[start : start+end]
-	previousClient := catalogImageClient
-	catalogImageClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Host != "autoapitwo.vercel.app" || request.URL.Path != "/api/v1/content/carids/1/svgs/figure.svg" {
-			t.Fatalf("source image upstream request = %s", request.URL)
-		}
-		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"image/png"}}, Body: io.NopCloser(strings.NewReader("png-bytes")), Request: request}, nil
-	})}
-	t.Cleanup(func() { catalogImageClient = previousClient })
-	imageResponse := catalogRequest(server, imagePath)
-	if imageResponse.Code != http.StatusOK || imageResponse.Body.String() != "png-bytes" {
-		t.Fatalf("opaque source image request = %d %q", imageResponse.Code, imageResponse.Body.String())
-	}
 }
 
 func TestCatalogSourceAliasResolvesStoredSnapshot(t *testing.T) {

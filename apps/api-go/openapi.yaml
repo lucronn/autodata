@@ -205,7 +205,7 @@ paths:
                         alt: Oil pump location
                   images:
                     - id: image-1
-                      url: /v1/catalog/images/image-1
+                      url: /v1/catalog/images/IiIiIiIiIiIiIiIiHwuS-wx8k9Ql3htAjUd6PVg2n76mnd0I-cZlfDg9aebtUBIpKO8j5A
                   provenance:
                     - id: source-snapshot-1
                       version: autoapi-http-v1
@@ -218,7 +218,7 @@ paths:
       tags: [Catalog]
       operationId: getStoredArticleSource
       summary: Read the stored source copy for an article
-      description: Reads the immutable source snapshot already stored by AutoData. It does not call a source provider. JSON returns sanitized source content; browser navigation returns a CSP-protected HTML review page. Source image references use same-origin opaque media tokens.
+      description: Reads the immutable source snapshot already stored by AutoData. It does not call a source provider. JSON returns sanitized source content; browser navigation returns a CSP-protected HTML review page. Source images use already-localized same-origin opaque media tokens or are omitted.
       parameters:
         - $ref: '#/components/parameters/VehicleId'
         - $ref: '#/components/parameters/ArticleId'
@@ -248,14 +248,14 @@ paths:
       tags: [Catalog]
       operationId: getOpaqueCatalogImage
       summary: Fetch a source-backed image using its opaque media token
-      description: The randomized token is an AutoData-issued capability URL. It is not a provider URL or storage key. No bearer token is required for this route; tokens fail closed when unavailable or invalid.
+      description: The randomized token is an AutoData-issued capability URL for an already-localized object-storage asset. It is not a provider URL or public storage key. No bearer token is required for this route; tokens fail closed when unavailable or invalid.
       security: []
       parameters:
         - name: token
           in: path
           required: true
           description: Randomized authenticated opaque media token returned in an article or stored-source image URL.
-          schema: { type: string, minLength: 1, maxLength: 6000 }
+          schema: { type: string, pattern: '^[A-Za-z0-9_-]+$', minLength: 1, maxLength: 6000, example: IiIiIiIiIiIiIiIiHwuS-wx8k9Ql3htAjUd6PVg2n76mnd0I-cZlfDg9aebtUBIpKO8j5A }
       responses:
         '200':
           description: Allowlisted image bytes.
