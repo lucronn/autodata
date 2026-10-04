@@ -1,4 +1,4 @@
-import { articlePresentation, configurationLabel, filterArticles, localImageURL, readCollection, requestJSON } from './catalog.mjs';
+import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './catalog.mjs';
 import { loadingProgress } from './progress.mjs';
 
 const $ = id => document.getElementById(id);
@@ -8,6 +8,7 @@ const plural = { year: 'years', make: 'makes', model: 'models', configuration: '
 const parents = { make: 'year', model: 'make', configuration: 'model' };
 const rows = { year: [], make: [], model: [], configuration: [] };
 let articles = [], vehicle = null, active = null, retryAction = null;
+let sourceReviewLoadedURL = '';
 
 function token() {
   try { return localStorage.getItem('autodata-auth-token') || 'local:demo:dataset_viewer'; }
@@ -383,16 +384,33 @@ function addImage(parent, image, caption) {
   parent.append(figure);
 }
 
+function appendSourceReference(parent, block, sourceReview, seen = null) {
+  if (!sourceReview || !hasSourceReference(block)) return;
+  const href = sourceReferenceURL(sourceReview, block);
+  if (!href) return;
+  if (seen?.has(href)) return;
+  seen?.add(href);
+  const link = element('a', 'Source ↗', 'source-reference');
+  link.href = '#source-review';
+  link.dataset.sourceUrl = href;
+  link.addEventListener('click', event => {
+    event.preventDefault();
+    void revealSourceReview(href);
+  });
+  parent.append(link);
+}
+
 function documentImage(images, block) {
   const key = String(block?.image_id || block?.asset_id || '').trim();
   return images.find(image => [image.id, image.image_id, image.asset_id, image.storage_key].some(value => value && String(value) === key)) || null;
 }
 
-function renderDocumentBlocks(parent, blocks, images) {
+function renderDocumentBlocks(parent, blocks, images, sourceReview) {
   let list = null;
   let listType = '';
+  const sourceReferenceSeen = new Set();
   const flush = () => { if (list) { parent.append(list); list = null; listType = ''; } };
-  const appendListItem = (type, text, number) => {
+  const appendListItem = (type, text, number, block) => {
     if (!text) return;
     if (!list || listType !== type) {
       flush();
@@ -403,36 +421,43 @@ function renderDocumentBlocks(parent, blocks, images) {
     const li = element('li');
     if (type === 'ol') li.append(element('span', `${number ?? list.children.length + 1}.`, 'step-number'));
     li.append(element('p', text));
+    appendSourceReference(li, block, sourceReview, sourceReferenceSeen);
     list.append(li);
   };
   for (const block of blocks) {
     if (!block || typeof block !== 'object') continue;
     const type = String(block.type || 'unknown');
     if (type === 'step') {
-      appendListItem('ol', String(block.text || '').trim(), Number.isInteger(block.number) ? block.number : undefined);
+      appendListItem('ol', String(block.text || '').trim(), Number.isInteger(block.number) ? block.number : undefined, block);
       continue;
     }
     if (type === 'ordered_list' || type === 'unordered_list') {
       const listTypeName = type === 'ordered_list' ? 'ol' : 'ul';
       for (const item of block.items || []) appendListItem(listTypeName, String(item || '').trim());
+      flush();
+      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
       continue;
     }
     flush();
     if (type === 'heading') {
       const level = Math.max(3, Math.min(6, Number(block.level) || 3));
       parent.append(element(`h${level}`, block.text || ''));
+      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
     } else if (type === 'paragraph' || type === 'link') {
       if (type === 'link' && block.href && /^\/(?!\/)/.test(block.href)) {
         const link = element('a', block.text || ''); link.href = block.href; link.target = '_blank'; link.rel = 'noreferrer'; parent.append(link);
       } else parent.append(element('p', block.text || ''));
+      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
     } else if (type === 'callout') {
       const callout = element('aside', undefined, 'article-callout');
       callout.append(element('strong', block.label || 'Note'), element('span', block.text || ''));
       parent.append(callout);
+      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
     } else if (type === 'image') {
       const image = documentImage(images, block);
       if (image) addImage(parent, image, block.alt || 'Article illustration');
       else parent.append(element('p', block.unavailable_reason || 'This illustration is not available in the saved article.', 'image-missing'));
+      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
     } else if (type === 'table') {
       const table = element('table', undefined, 'article-table');
       if (block.label) table.append(element('caption', block.label));
@@ -459,12 +484,14 @@ function renderDocumentBlocks(parent, blocks, images) {
         body.append(row);
       }
       table.append(body); parent.append(table);
+      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
     } else if (type === 'break') {
       parent.append(element('hr'));
     } else if (type === 'unknown') {
       const unknown = element('aside', undefined, 'article-callout');
       unknown.append(element('strong', 'Source block needs review'), element('span', block.text || 'The source block was retained but has no display-specific structure.'));
       parent.append(unknown);
+      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
     }
   }
   flush();
@@ -515,9 +542,10 @@ function renderArticle(article) {
   $('article-note').textContent = notes.join(' ');
   const content = $('article-content'); content.replaceChildren();
   if (presentation.documentBlocks.length) {
-    renderDocumentBlocks(content, presentation.documentBlocks, images);
+    renderDocumentBlocks(content, presentation.documentBlocks, images, article.source_review);
   } else if (presentation.steps.length) {
     const list = element('ol', undefined, 'procedure-steps');
+    const sourceReferenceSeen = new Set();
     for (const [index, step] of presentation.steps.entries()) {
       const li = element('li');
       li.append(element('span', `${step.number ?? index + 1}.`, 'step-number'));
@@ -530,6 +558,7 @@ function renderArticle(article) {
           used.add(image.id || image.image_id);
         }
       }
+      appendSourceReference(li, step, article.source_review, sourceReferenceSeen);
       list.append(li);
     }
     content.append(list);
@@ -554,12 +583,94 @@ function renderArticle(article) {
   for (const [label, value] of [['Article ID', article.id], ['Vehicle ID', article.vehicle_id], ['Saved content', article.complete ? 'Available' : 'Incomplete']]) {
     $('reference-data').append(element('dt', label), element('dd', String(value || 'Unavailable')));
   }
+  renderSourceReview(article);
   $('article-reference').open = false;
   document.title = `${article.title || 'Article'} | ${vehicleName()} | AutoData`;
 }
 
+function resetSourceReview() {
+  sourceReviewLoadedURL = '';
+  $('source-review').hidden = true;
+  $('source-review-meta').textContent = '';
+  $('source-review-link').href = '#source-review';
+  delete $('source-review-link').dataset.sourceUrl;
+  $('source-review-link').onclick = null;
+  $('source-review-frame').hidden = true;
+  $('source-review-frame').removeAttribute('srcdoc');
+  $('source-review-load').hidden = false;
+  $('source-review-load').disabled = false;
+  $('source-review-load').textContent = 'Load beside article';
+}
+
+function renderSourceReview(article) {
+  resetSourceReview();
+  const review = article?.source_review;
+  if (!review?.available || !review.url) return;
+  $('source-review').hidden = false;
+  $('source-review-link').href = '#source-review';
+  $('source-review-link').dataset.sourceUrl = review.url;
+  $('source-review-link').onclick = event => {
+    event.preventDefault();
+    void revealSourceReview(review.url);
+  };
+  $('source-review-meta').textContent = [
+    review.format ? review.format.toUpperCase() : 'Stored source',
+    review.version,
+    review.snapshot_id ? `Snapshot ${review.snapshot_id}` : '',
+    review.content_sha256 ? `SHA-256 ${review.content_sha256.slice(0, 12)}…` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+async function loadSourceReview(sourceURL = '') {
+  const url = sourceURL || $('source-review-link').dataset.sourceUrl || '';
+  if (!url) return;
+  if (sourceReviewLoadedURL === url) {
+    $('source-review-frame').hidden = false;
+    return;
+  }
+  $('source-review-load').disabled = true;
+  $('source-review-load').textContent = 'Loading stored source…';
+  try {
+    const data = await requestJSON(url, { token: token(), timeout: 20000 });
+    if (data.source?.url) {
+      const requested = new URL(url, location.origin);
+      const returned = new URL(data.source.url, location.origin);
+      if (requested.origin !== returned.origin || requested.pathname !== returned.pathname) {
+        throw new Error('The stored source reference changed. Reload the article and try again.');
+      }
+    }
+    const frame = $('source-review-frame');
+    const content = String(data.content || '');
+    frame.srcdoc = data.source?.format === 'json'
+      ? `<pre>${escapeMarkup(content)}</pre>`
+      : content || '<p>No stored source content is available.</p>';
+    frame.hidden = false;
+    sourceReviewLoadedURL = url;
+    $('source-review-load').textContent = 'Reload stored source';
+  } catch (error) {
+    $('source-review-meta').textContent = `Stored source could not be loaded: ${error.message || 'unknown error'}`;
+    $('source-review-load').textContent = 'Try again';
+  } finally {
+    $('source-review-load').disabled = false;
+  }
+}
+
+async function revealSourceReview(url) {
+  $('article-reference').hidden = false;
+  $('article-reference').open = true;
+  await loadSourceReview(url);
+  $('source-review').scrollIntoView({ block: 'start' });
+}
+
+function escapeMarkup(value) {
+  const node = document.createElement('span');
+  node.textContent = value;
+  return node.innerHTML;
+}
+
 async function loadArticle(id, signal) {
   show('reader');
+  resetSourceReview();
   $('article-title').textContent = articles.find(article => article.id === id)?.title || 'Opening article…';
   $('article-content').replaceChildren(); $('article-note').hidden = true; $('article-reference').hidden = true;
   $('article-kind').textContent = 'Loading article';
@@ -597,6 +708,7 @@ $('cancel').addEventListener('click', () => {
   setStatus('Loading stopped. Choose an option or try again.', 'ready', restoreRoute);
 });
 $('search').addEventListener('input', () => { updateURL({ replace: true }); renderArticles(); });
+$('source-review-load').addEventListener('click', () => { void loadSourceReview(); });
 $('back').addEventListener('click', () => {
   active?.abort(); updateURL(); show('catalog'); renderArticles();
   document.title = `${vehicleName()} | AutoData`;

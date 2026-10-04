@@ -241,6 +241,7 @@ func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.R
 		return
 	}
 	rewriteCatalogImageURLs(&article, s.catalogImageKey)
+	article.SourceReview = sourceReviewForArticle(article, request.PathValue("vehicle_id"), article.ID)
 	writeJSON(response, http.StatusOK, CatalogArticleResponse{Version: "v1", Article: article})
 }
 

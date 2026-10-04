@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { articlePresentation, configurationLabel, filterArticles, legacyArticleBlocks, localImageURL, readCollection, requestJSON } from './workshop/catalog.mjs';
+import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 test('loading progress uses fixed ordered stages and caps incomplete hydration', () => {
@@ -105,6 +105,15 @@ test('image rendering does not contact original providers or accept script URLs'
   assert.equal(localImageURL('/images/a.png', 'http://localhost:8080'), 'http://localhost:8080/images/a.png');
   for (const url of ['https://provider.example/a.png', '//provider.example/a.png', 'javascript:alert(1)', 'data:image/svg+xml,<svg/>', 'artifact://missing']) assert.equal(localImageURL(url, 'http://localhost:8080'), null);
   assert.equal(localImageURL('data:image/png;base64,YQ==', 'http://localhost:8080'), 'data:image/png;base64,YQ==');
+});
+
+test('source references stay same-origin and retain evidence locator context', () => {
+  const review = { url: '/v1/catalog/vehicles/v/articles/a/source' };
+  const block = { evidence_ids: ['e-7'], source_locator: 'body[3]' };
+  assert.equal(hasSourceReference(block), true);
+  assert.equal(sourceReferenceURL(review, block), '/v1/catalog/vehicles/v/articles/a/source?evidence_id=e-7&source_locator=body%5B3%5D');
+  assert.equal(sourceReferenceURL(review, { text: 'no evidence' }), null);
+  assert.equal(sourceReferenceURL({ url: 'https://provider.example/source' }, block), null);
 });
 
 test('search matches all words without changing catalog order or IDs', () => {

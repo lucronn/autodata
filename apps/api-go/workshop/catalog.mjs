@@ -11,6 +11,26 @@ export function filterArticles(items, query) {
   });
 }
 
+export function sourceReferenceURL(sourceReview, block) {
+  if (!sourceReview?.url || (!Array.isArray(block?.evidence_ids) && !String(block?.source_locator || '').trim())) return null;
+  try {
+    const origin = globalThis.location?.origin || 'http://localhost';
+    const url = new URL(sourceReview.url, origin);
+    if (url.origin !== origin) return null;
+    const evidenceID = Array.isArray(block.evidence_ids) ? String(block.evidence_ids.find(Boolean) || '') : '';
+    const locator = String(block.source_locator || '').trim();
+    if (evidenceID) url.searchParams.set('evidence_id', evidenceID);
+    if (locator) url.searchParams.set('source_locator', locator);
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+export function hasSourceReference(block) {
+  return Boolean(Array.isArray(block?.evidence_ids) && block.evidence_ids.some(Boolean)) || Boolean(String(block?.source_locator || '').trim());
+}
+
 function normalizedArticleText(value) {
   return String(value || '')
     .replace(/\u00a0/g, ' ')
