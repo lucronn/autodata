@@ -1,12 +1,19 @@
 # Ephemeral Multi-Component Procedure Composition
 
-**Goal:** Return a unified, vehicle-matched procedure for a multi-component request using already normalized individual articles as the source of truth.
+**Goal:** Return a unified, vehicle-matched procedure for a multi-component request through AutoData's standalone catalog/job-plan API, using normalized individual articles as the source of truth. Chatbot UI and chat routes are not part of this capability.
 
 **Tracked delivery:** [Issue #110](https://github.com/lucronn/autodata/issues/110), [AutoData Portfolio Project](https://github.com/users/lucronn/projects/8), the [composition plan](../superpowers/plans/2026-09-19-mercury2-overlap-procedure-composition.md), the [provider-qualified hydration follow-up](../superpowers/plans/2026-10-03-provider-qualified-composition-hydration.md), and the [procedure-content quality gate](../superpowers/plans/2026-10-03-procedure-content-quality-gate.md).
 
+The approved delivery surface is a standalone public API operation (currently
+the `/job-plans` boundary where it satisfies the request contract), proxied by
+the Go API to the ingestion worker. Keep request validation, authorization,
+vehicle resolution, source diagnostics, and response semantics independent of
+chat. Track current API contract and three-case cold/warm acceptance in
+[`2026-10-04-standalone-procedure-composition-api.md`](../superpowers/plans/2026-10-04-standalone-procedure-composition-api.md).
+
 ## Provider integrity release follow-up
 
-The [provider integrity plan](../superpowers/plans/2026-10-03-provider-integrity-follow-up.md) is tracked in Issue #110 and Project #8. Todo: qualify article identity by provider through stored reads and composition; preserve provider failure and missing scopes; test same numeric article ID from two sources; prove five fresh cold/warm vehicle requests before closure. A partial provider response must not be labeled complete.
+The [provider integrity plan](../superpowers/plans/2026-10-03-provider-integrity-follow-up.md) is tracked in Issue #110 and Project #8. Todo: qualify article identity by provider through stored reads and composition; preserve provider failure and missing scopes; test same numeric article ID from two sources; prove three newly sampled cold/warm vehicle-procedure requests before closure. A partial provider response must not be labeled complete.
 
 ## Data lifecycle
 
