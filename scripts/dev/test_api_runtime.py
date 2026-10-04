@@ -18,6 +18,13 @@ class APIRuntimeContractTests(unittest.TestCase):
         self.assertIn("scripts/dev/api_runtime_smoke.py", compose)
         self.assertIn("api:\n        condition: service_healthy", compose)
 
+    def test_catalog_image_storage_key_is_internal_only(self):
+        store = self.read("apps/api-go/catalog_store.go")
+        self.assertIn('StorageKey string `json:"-"`', store)
+        media_test = self.read("apps/api-go/catalog_media_test.go")
+        self.assertIn("private/source-object/key", media_test)
+        self.assertIn("storage_key", media_test)
+
     def test_protected_workflow_runs_api_runtime_smoke_after_migrations(self):
         workflow = self.read(".github/workflows/autonomous-verification.yml")
         compose = "docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml"

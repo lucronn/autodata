@@ -1,0 +1,18 @@
+{
+  "goal": "Keep internal image storage keys out of public catalog article responses",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-public-image-storage-key.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/116",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/opaque-source-media-paths.md"
+  ],
+  "todo": [
+    "Synchronize this follow-up to Issue #116 and Project #8",
+    "Exclude internal storage_key from public JSON and OpenAPI",
+    "Add article endpoint regression with a populated internal storage key",
+    "Pass Go tests/vet and hosted checks on PR #118 and descendants"
+  ],
+  "base_sha": "f45826d",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T07:12:00Z"
+}

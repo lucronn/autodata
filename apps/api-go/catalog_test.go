@@ -20,7 +20,7 @@ func catalogFixtureStore() *memoryCatalogStore {
 		ContentStatus: "content_complete", Complete: true,
 		Steps: []CatalogStep{{Number: 2, Heading: "Install", Instructions: []string{"B"}}, {Number: 1, Heading: "Remove", Instructions: []string{"A"}}},
 		Images: []CatalogImage{
-			{ID: "image-1", URL: "/v1/catalog/images/local.png", Alt: "Filter location"},
+			{ID: "image-1", URL: "/v1/catalog/images/local.png", Alt: "Filter location", StorageKey: "private/source-object/key"},
 			{ID: "image-2", URL: "https://autoapitwo.vercel.app/diagram.png", Alt: "Filter wiring"},
 		},
 		SourceOriginal: json.RawMessage(`{"provider":"opaque","steps":[{"n":2},{"n":1}]}`),
@@ -92,6 +92,7 @@ func TestCatalogMakesDeduplicateProviderLabelVariants(t *testing.T) {
 }
 
 func TestCatalogArticleDetailKeepsSourceOrderAndHidesOriginal(t *testing.T) {
+	t.Setenv("AUTODATA_IMAGE_URL_KEY", testCatalogImageSecret)
 	response := catalogRequest(catalogServer(catalogFixtureStore()), "/v1/catalog/vehicles/vehicle-1/articles/article-1")
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
@@ -106,7 +107,7 @@ func TestCatalogArticleDetailKeepsSourceOrderAndHidesOriginal(t *testing.T) {
 	if len(body.Article.Images) != 2 || body.Article.Images[0].Alt != "Filter location" {
 		t.Fatalf("images = %#v, want the article illustrations", body.Article.Images)
 	}
-	if !strings.HasPrefix(body.Article.Images[1].URL, "/v1/catalog/images?src=") || strings.Contains(body.Article.Images[1].URL, "autoapitwo.vercel.app/diagram.png") {
+	if !strings.HasPrefix(body.Article.Images[1].URL, "/v1/catalog/images/") || strings.Contains(body.Article.Images[1].URL, "autoapitwo.vercel.app/diagram.png") {
 		t.Fatalf("provider image leaked or was not proxied: %#v", body.Article.Images[1])
 	}
 	if strings.Contains(response.Body.String(), "source_original") || strings.Contains(response.Body.String(), "provider") {
