@@ -34,6 +34,24 @@ not be registered, served, or started by the default API, dashboard, worker, or
 Compose configuration. Catalog browsing and article viewing use the direct
 provider-neutral API and remain available without a chat runtime.
 
+## Release authentication boundary
+
+The normal API process requires verified, secret-managed service identities
+with a subject, organization, allowed roles, and expiration. Unsigned
+`local:` bearer identities are available only in explicitly selected local
+development mode; production startup fails closed without a configured
+verifier. Local Compose binds the API port to loopback. Catalog records remain
+globally normalized, with the authenticated catalog role governing reads.
+The release follow-up is tracked by [Issue #113](https://github.com/lucronn/autodata/issues/113),
+[Project #8](https://github.com/users/lucronn/projects/8), and
+`docs/superpowers/plans/2026-10-03-catalog-release-hardening.md`.
+
+Todo:
+
+- Verify service keys, expiry, roles, and organization before catalog access.
+- Confine local development tokens to an explicit local mode.
+- Check normal startup, secret delivery, and negative authentication cases.
+
 ## OpenAPI source and image coverage
 
 The published contract must include the stored-source review endpoint and the

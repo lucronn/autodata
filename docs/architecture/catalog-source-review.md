@@ -39,6 +39,24 @@ The Workshop loads source content only when the reviewer opens the source panel.
 
 Source review is for comparison and traceability. It does not rewrite normalized content, reorder blocks, create a combined procedure, or make a new provider call.
 
+## Release JSON redaction follow-up
+
+The JSON review representation is a safe projection of the immutable original,
+not an unrestricted copy of provider fields. It recursively removes credential
+and request-header fields, signed references, and provider navigation while
+retaining safe article content. The original snapshot stays private. Stored
+source illustrations resolve to localized AutoData assets or are omitted if
+no safe local asset exists. This work is tracked by
+[Issue #114](https://github.com/lucronn/autodata/issues/114),
+[Project #8](https://github.com/users/lucronn/projects/8), and
+`docs/superpowers/plans/2026-10-03-catalog-release-hardening.md`.
+
+Todo:
+
+- Redact synthetic credential and signed-URL fixtures from JSON and HTML.
+- Verify source-review images use stored local assets and no provider fetch.
+- Keep normalized source order and the immutable stored original intact.
+
 ## Container packaging
 
 The API binary embeds both `dashboard/` and `workshop/` at compile time. The

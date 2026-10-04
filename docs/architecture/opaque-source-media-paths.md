@@ -71,3 +71,22 @@ references and metadata; it must not expose `storage_key` or any source-bearing
 query parameter. The stored-source and opaque image routes are documented in
 `docs/superpowers/plans/2026-10-03-openapi-source-media-contract.md`, tracked
 by Issues #113/#116 and Project #8.
+
+## Stored-asset release follow-up
+
+The final opaque image path resolves to a locally stored AutoData asset; serving
+an article or source-review image must not fetch AutoAPItwo or another provider
+at display time. Missing stored assets are explicit unavailable images. The
+public image token must hide both the source URL and internal object key.
+OpenAPI JSON/YAML must document the actual opaque route without a fake usable
+token example. This work is tracked by
+[Issue #112](https://github.com/lucronn/autodata/issues/112),
+[Issue #116](https://github.com/lucronn/autodata/issues/116),
+[Project #8](https://github.com/users/lucronn/projects/8), and
+`docs/superpowers/plans/2026-10-03-catalog-release-hardening.md`.
+
+Todo:
+
+- Read stored images through the AutoData object-storage boundary.
+- Remove provider-fetching image fallback from public article/source responses.
+- Verify image HTTP responses and OpenAPI JSON/YAML on the release candidate.
