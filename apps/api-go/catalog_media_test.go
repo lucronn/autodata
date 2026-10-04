@@ -182,6 +182,24 @@ func TestOpaqueCatalogImageEndpointFailsSafelyForMissingStoredObject(t *testing.
 	}
 }
 
+func TestOpaqueCatalogImageEndpointRejectsActiveImageContent(t *testing.T) {
+	t.Setenv("AUTODATA_IMAGE_URL_KEY", testCatalogImageSecret)
+	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
+	token, err := sealCatalogImageStorageKey("procedure-images/unsafe", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousReader := catalogImageObjectReader
+	catalogImageObjectReader = func(context.Context, string) (catalogImageObject, error) {
+		return catalogImageObject{Body: []byte("<svg onload='alert(1)'/>"), ContentType: "image/svg+xml"}, nil
+	}
+	t.Cleanup(func() { catalogImageObjectReader = previousReader })
+	response := catalogRequest(catalogServer(catalogFixtureStore()), "/v1/catalog/images/"+token)
+	if response.Code != http.StatusNotFound || strings.Contains(response.Body.String(), "<svg") {
+		t.Fatalf("active image response = %d %q", response.Code, response.Body.String())
+	}
+}
+
 func TestCatalogImageObjectReaderReadsFromConfiguredAutoDataStorage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/autodata-sources/procedure-images/abc123" {
@@ -199,6 +217,37 @@ func TestCatalogImageObjectReaderReadsFromConfiguredAutoDataStorage(t *testing.T
 	object, err := readCatalogImageObject(context.Background(), "procedure-images/abc123")
 	if err != nil || string(object.Body) != "png-bytes" || object.ContentType != "image/png" {
 		t.Fatalf("readCatalogImageObject() = %#v, %v", object, err)
+	}
+}
+
+func TestCatalogImageObjectReaderRejectsSVGFromStorage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "image/svg+xml")
+		_, _ = response.Write([]byte("<svg/>"))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("AUTODATA_S3_URL", server.URL)
+	t.Setenv("AUTODATA_S3_ACCESS_KEY", "")
+	t.Setenv("AUTODATA_S3_SECRET_KEY", "")
+	if _, err := readCatalogImageObject(context.Background(), "procedure-images/unsafe"); err == nil {
+		t.Fatal("SVG stored object must not be served as same-origin catalog media")
+	}
+}
+
+func TestCatalogImageObjectReaderSignsConfiguredHost(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Host == "" || !strings.Contains(request.Header.Get("Authorization"), "SignedHeaders=host;x-amz-content-sha256;x-amz-date") {
+			t.Fatal("object request omitted canonical host or S3 signature")
+		}
+		response.Header().Set("Content-Type", "image/png")
+		_, _ = response.Write([]byte("png-bytes"))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("AUTODATA_S3_URL", server.URL)
+	t.Setenv("AUTODATA_S3_ACCESS_KEY", "synthetic-access")
+	t.Setenv("AUTODATA_S3_SECRET_KEY", "synthetic-secret")
+	if _, err := readCatalogImageObject(context.Background(), "procedure-images/signed"); err != nil {
+		t.Fatal(err)
 	}
 }
 

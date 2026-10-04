@@ -304,11 +304,12 @@ func serveCatalogImage(response http.ResponseWriter, request *http.Request, key 
 	token := request.PathValue("token")
 	if storageKey, err := openCatalogImageStorageKey(token, key); err == nil {
 		stored, err := catalogImageObjectReader(request.Context(), storageKey)
-		if err != nil || !strings.HasPrefix(strings.ToLower(stored.ContentType), "image/") || len(stored.Body) == 0 || len(stored.Body) > catalogImageMaxBytes {
+		if err != nil || !safeCatalogImageContentType(strings.ToLower(stored.ContentType)) || len(stored.Body) == 0 || len(stored.Body) > catalogImageMaxBytes {
 			http.Error(response, "catalog image not found", http.StatusNotFound)
 			return
 		}
 		response.Header().Set("Content-Type", stored.ContentType)
+		response.Header().Set("Content-Security-Policy", "sandbox")
 		response.Header().Set("Cache-Control", "private, max-age=300")
 		response.Header().Set("Referrer-Policy", "no-referrer")
 		response.Header().Set("X-Content-Type-Options", "nosniff")

@@ -65,7 +65,7 @@ func readCatalogImageObject(ctx context.Context, storageKey string) (catalogImag
 		return catalogImageObject{}, fmt.Errorf("object storage returned status %d", response.StatusCode)
 	}
 	contentType := strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0]))
-	if !strings.HasPrefix(contentType, "image/") {
+	if !safeCatalogImageContentType(contentType) {
 		return catalogImageObject{}, errors.New("stored catalog image has an invalid media type")
 	}
 	if response.ContentLength > catalogImageMaxBytes {
@@ -79,6 +79,15 @@ func readCatalogImageObject(ctx context.Context, storageKey string) (catalogImag
 		return catalogImageObject{}, errors.New("stored catalog image is empty or too large")
 	}
 	return catalogImageObject{Body: body, ContentType: contentType}, nil
+}
+
+func safeCatalogImageContentType(contentType string) bool {
+	switch contentType {
+	case "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp":
+		return true
+	default:
+		return false
+	}
 }
 
 func catalogObjectStorageEndpoint() (*url.URL, error) {

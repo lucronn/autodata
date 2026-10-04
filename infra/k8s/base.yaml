@@ -240,9 +240,19 @@ spec:
           envFrom:
             - configMapRef:
                 name: autodata-config
-            - secretRef:
-                name: autodata-runtime-secrets
           env:
+            - name: AUTODATA_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: autodata-runtime-secrets
+                  key: AUTODATA_POSTGRES_PASSWORD
+                  optional: false
+            - name: AUTODATA_IMAGE_URL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: autodata-runtime-secrets
+                  key: AUTODATA_IMAGE_URL_KEY
+                  optional: false
             - name: AUTODATA_INGESTION_URL
               valueFrom:
                 configMapKeyRef:
@@ -256,19 +266,19 @@ spec:
             - name: AUTODATA_SERVICE_KEYS_JSON
               valueFrom:
                 secretKeyRef:
-                  name: autodata-runtime-secrets
+                  name: autodata-api-service-keys
                   key: AUTODATA_SERVICE_KEYS_JSON
                   optional: false
             - name: AUTODATA_S3_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: autodata-runtime-secrets
+                  name: autodata-api-image-reader
                   key: AUTODATA_S3_ACCESS_KEY
                   optional: false
             - name: AUTODATA_S3_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: autodata-runtime-secrets
+                  name: autodata-api-image-reader
                   key: AUTODATA_S3_SECRET_KEY
                   optional: false
           readinessProbe:
