@@ -1,0 +1,19 @@
+{
+  "goal": "Expose provider-qualified multi-component procedure composition through a standalone catalog API and verify three random cold/warm vehicle-procedure cases",
+  "plan_ref": "docs/superpowers/plans/2026-10-04-standalone-procedure-composition-api.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/110",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/mercury2-procedure-composition.md"
+  ],
+  "todo": [
+    "Add authenticated vehicle-bound catalog composition endpoint and OpenAPI JSON/YAML contract",
+    "Prove source-backed ephemeral composition and truthful failure with provider-qualified cold hydration",
+    "Configure and verify approved AutoDBone worker access without weakening Vercel Deployment Protection",
+    "Pass three newly randomized distinct YMME and procedure cold/warm cases with readable instructions and local images",
+    "Pass exact-SHA hosted and independent release gates before closing Issue 110"
+  ],
+  "base_sha": "3cc906dc6024c39407bccfd5839e55891e649ec2",
+  "status": "synchronized",
+  "updated_at": "2026-10-04T07:53:48Z"
+}
