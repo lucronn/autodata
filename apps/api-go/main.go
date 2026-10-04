@@ -20,7 +20,7 @@ import (
 // dashboardFiles contains the small local developer dashboard. It is served
 // by the API so the browser uses the same origin and authentication boundary.
 //
-//go:embed dashboard/* workshop/*
+//go:embed dashboard/* workshop/* openapi.json openapi.yaml
 var dashboardFiles embed.FS
 
 const dependencyTimeout = 250 * time.Millisecond
@@ -150,6 +150,26 @@ func NewServerWithIngestionClient(readiness ReadinessChecker, auth Authenticator
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /openapi.json", func(response http.ResponseWriter, _ *http.Request) {
+		body, err := dashboardFiles.ReadFile("openapi.json")
+		if err != nil {
+			http.Error(response, "OpenAPI document unavailable", http.StatusInternalServerError)
+			return
+		}
+		response.Header().Set("Content-Type", "application/json; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-cache")
+		_, _ = response.Write(body)
+	})
+	mux.HandleFunc("GET /openapi.yaml", func(response http.ResponseWriter, _ *http.Request) {
+		body, err := dashboardFiles.ReadFile("openapi.yaml")
+		if err != nil {
+			http.Error(response, "OpenAPI document unavailable", http.StatusInternalServerError)
+			return
+		}
+		response.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-cache")
+		_, _ = response.Write(body)
+	})
 	mux.HandleFunc("GET /dashboard", func(response http.ResponseWriter, request *http.Request) {
 		http.Redirect(response, request, "/dashboard/", http.StatusMovedPermanently)
 	})

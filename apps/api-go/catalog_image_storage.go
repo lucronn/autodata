@@ -33,8 +33,9 @@ func configuredCatalogImageReader() catalogImageObjectReader {
 		return nil
 	}
 	client, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
-		Secure: strings.EqualFold(os.Getenv("AUTODATA_S3_SECURE"), "true"),
+		Creds:        credentials.NewStaticV4(accessKey, secretKey, ""),
+		Secure:       strings.EqualFold(os.Getenv("AUTODATA_S3_SECURE"), "true"),
+		BucketLookup: minio.BucketLookupPath,
 	})
 	if err != nil {
 		return nil

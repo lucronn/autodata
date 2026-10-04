@@ -6,6 +6,7 @@ COPY apps/api-go/go.sum ./apps/api-go/
 COPY apps/api-go/*.go ./apps/api-go/
 COPY apps/api-go/dashboard ./apps/api-go/dashboard
 COPY apps/api-go/workshop ./apps/api-go/workshop
+COPY apps/api-go/openapi.json apps/api-go/openapi.yaml ./apps/api-go/
 COPY packages/contracts/go/go.mod packages/contracts/go/contracts.go ./packages/contracts/go/
 WORKDIR /src/apps/api-go
 RUN go mod download

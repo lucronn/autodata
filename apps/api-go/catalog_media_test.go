@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -81,6 +83,57 @@ func TestCatalogImageStorageKeyLoadsPrivatelyAndNeverSerializes(t *testing.T) {
 	}
 	if strings.Contains(string(encoded), "storage_key") || strings.Contains(string(encoded), "procedure-images/") {
 		t.Fatalf("internal object key leaked in public JSON: %s", encoded)
+	}
+}
+
+func TestOpenAPIMediaContractIsServedAndRedactsStorageKeys(t *testing.T) {
+	jsonSpec, err := os.ReadFile("openapi.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(jsonSpec, &document); err != nil {
+		t.Fatalf("invalid OpenAPI JSON: %v", err)
+	}
+	paths := document["paths"].(map[string]any)
+	for _, path := range []string{
+		"/v1/catalog/vehicles/{vehicle_id}/articles",
+		"/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}",
+		"/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source",
+		"/v1/catalog/images/{token}",
+		"/v1/catalog/images",
+	} {
+		if _, ok := paths[path]; !ok {
+			t.Fatalf("OpenAPI path missing: %s", path)
+		}
+	}
+	if strings.Contains(string(jsonSpec), "storage_key") || strings.Contains(string(jsonSpec), "autoapitwo.vercel.app") {
+		t.Fatal("OpenAPI exposes a private storage key or provider host")
+	}
+	yamlSpec, err := os.ReadFile("openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, marker := range []string{"openapi: 3.0.3", "/v1/catalog/images/{token}:", "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source:", "CatalogImage:", "storage keys are deliberately not part of this schema"} {
+		if !strings.Contains(string(yamlSpec), marker) {
+			t.Fatalf("OpenAPI YAML missing %q", marker)
+		}
+	}
+	if strings.Contains(string(yamlSpec), "storage_key") || strings.Contains(string(yamlSpec), "autoapitwo.vercel.app") {
+		t.Fatal("OpenAPI YAML exposes a private storage key or provider host")
+	}
+
+	server := catalogServer(catalogFixtureStore())
+	for _, testCase := range []struct{ path, contentType string }{
+		{"/openapi.json", "application/json; charset=utf-8"},
+		{"/openapi.yaml", "application/yaml; charset=utf-8"},
+	} {
+		request := httptest.NewRequest(http.MethodGet, testCase.path, nil)
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusOK || response.Header().Get("Content-Type") != testCase.contentType {
+			t.Fatalf("%s response = %d content-type %q", testCase.path, response.Code, response.Header().Get("Content-Type"))
+		}
 	}
 }
 

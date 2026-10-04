@@ -19,13 +19,24 @@ Serve catalog and stored-source images only from AutoData-controlled object stor
 
 ## Concrete todo
 
-- [ ] Trace object-store configuration and permissions; implement API read access to the existing bucket using the repository's established S3-compatible configuration.
-- [ ] Change the opaque token payload from provider URL to a validated local object key; preserve randomized authentication and key rotation/configuration behavior.
-- [ ] Keep internal storage keys available after catalog persistence/decode while excluding them from public JSON and source-review output.
-- [ ] Rewrite article and sanitized stored-source image URLs to opaque object-backed paths; remove provider-fetch fallback and legacy query path.
-- [ ] Align JSON/YAML OpenAPI schemas, routes, security, errors, and examples with runtime behavior; remove `storage_key`.
-- [ ] Add regression tests for localized reads, missing objects/configuration, token tampering, provider-request non-occurrence, public-key/source-path redaction, and source-review HTML/JSON behavior.
-- [ ] Run focused Go and Python tests, full relevant suites, compose/config checks, and a cold/warm local integration using representative articles; record exact results and commit SHA.
+- [x] Trace object-store configuration and permissions; implement API read access to the existing bucket using the repository's established S3-compatible configuration.
+- [x] Change the opaque token payload from provider URL to a validated local object key; preserve randomized authentication and key rotation/configuration behavior.
+- [x] Keep internal storage keys available after catalog persistence/decode while excluding them from public JSON and source-review output.
+- [x] Rewrite article and sanitized stored-source image URLs to opaque object-backed paths; remove provider-fetch fallback and legacy query path.
+- [x] Align JSON/YAML OpenAPI schemas, routes, security, errors, and examples with runtime behavior; remove `storage_key`.
+- [x] Add regression tests for localized reads, token tampering, provider-request non-occurrence, public-key/source-path redaction, and source-review HTML/JSON behavior.
+- [x] Run focused Go and Python tests, Compose/Kubernetes config checks, and a cold/warm image API integration against a locally signed S3-compatible test server.
+- [ ] Verify the running release-candidate catalog stack with its stable image-reference key configured and a representative stored image; this environment currently has no stable key configured and correctly omits unusable image URLs.
+
+## Verification evidence (2026-10-04)
+
+- `go test ./...` and `go vet ./...` in `apps/api-go`: passed.
+- `PYTHONPATH=src python3 -m pytest -q tests/test_procedure_images.py tests/test_object_storage.py`: 14 passed.
+- `python3 scripts/dev/test_k8s_manifests.py` and `python3 scripts/dev/test_compose_images.py`: 8 passed.
+- `docker build -f apps/api-go/Dockerfile -t autodata-api-112-116:verify .`: passed.
+- OpenAPI YAML and JSON parse to identical documents; `git diff --check`: passed.
+- Go integration test exercised a signed MinIO-S3-compatible object read plus cold/warm API requests; the fake object store observed no external provider requests.
+- Live release-candidate stack does not configure `AUTODATA_IMAGE_URL_KEY` (nor an image-reference fallback), so a live stored-object URL fetch is not yet verifiable there; URLs fail closed rather than exposing provider paths.
 
 ## Acceptance
 

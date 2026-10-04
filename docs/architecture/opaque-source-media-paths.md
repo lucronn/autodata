@@ -85,7 +85,12 @@ emits tokens only for validated `procedure-images/<sha256>` keys, and reads
 those objects from the configured MinIO/S3 bucket. The prior source-URL proxy
 has been removed. Stored-source HTML currently omits images because the stored
 snapshot does not yet carry a verified source-URL-to-local-object mapping.
-OpenAPI JSON/YAML alignment and live cold/warm object-store verification remain
-release follow-ups. Local verification: Go API tests and vet pass; 42 focused
-Python image/rewrite tests pass; Compose config validation passes with
-throwaway required-value placeholders.
+OpenAPI JSON/YAML now document article projections, stored-source reads, local
+image reads, and legacy-route rejection; both are served by the API and embedded
+in its container. Local verification: Go API tests and vet pass, including a
+MinIO SDK round-trip against a signed S3-compatible HTTP test server; 42
+focused Python image/rewrite tests pass; JSON/YAML equivalence, Compose config,
+container build, and `git diff --check` pass. The running release-candidate
+stack has no stable image-reference key configured, so it fails closed and
+cannot serve its existing local image objects until that environment is
+configured.
