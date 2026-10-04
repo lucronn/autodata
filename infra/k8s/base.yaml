@@ -164,12 +164,6 @@ spec:
             - secretRef:
                 name: autodata-runtime-secrets
           env:
-            - name: AUTODATA_AUTOAPI_VERCEL_PROTECTION_BYPASS
-              valueFrom:
-                secretKeyRef:
-                  name: autodata-runtime-secrets
-                  key: AUTODATA_AUTOAPI_VERCEL_PROTECTION_BYPASS
-                  optional: true
             - name: AUTODATA_SOURCE_PERSIST
               value: "1"
           readinessProbe:
