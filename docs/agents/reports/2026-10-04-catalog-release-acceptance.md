@@ -1,6 +1,6 @@
 # Catalog release acceptance report
 
-**Candidate:** `34d1b129f9f8e4e619b23ddce18761bdc61ee4d9` on `phobos/complete-catalog-release`.
+**Candidate:** `70b24d590ed1738696dabc1398defc8a165ee3e8` on `phobos/complete-catalog-release` (composition implementation: `34d1b129f9f8e4e619b23ddce18761bdc61ee4d9`).
 **PR:** https://github.com/lucronn/autodata/pull/125 (draft)
 **Project:** https://github.com/users/lucronn/projects/8
 **Decision:** do not merge or close Issues #110–#116; procedure/runtime and hosted release gates remain incomplete.
@@ -24,7 +24,9 @@
   - RAV4: cold and warm both raised `RuntimeError` because no usable vehicle-matched source procedure was available.
   - Civic: `needs_review`, two steps on both passes (fingerprint `64a408bb9c15`); no torque/check terms and zero returned images.
 - No passing cold/warm sample, complete DIY procedure, or localized composition image has been demonstrated. These are failures, not accepted tests.
-- No Kubernetes context is configured, so the actual deployment's runtime secret store could not be updated or verified. Hosted checks and independent release review have not run for this implementation candidate.
+- No Kubernetes context is configured, so the actual deployment's runtime secret store could not be updated or verified. No independent release review has run.
+- Both hosted Autonomous Verification policy/evidence checks passed on candidate `70b24d590ed1738696dabc1398defc8a165ee3e8`; these are not application test or independent review results.
+- PRs #117–#125 remain drafts with no recorded review decision. #125 is a large stacked integration (over 100 changed files), and the new composition endpoint depends on the catalog foundation; there is no independently mergeable safe subset from this branch while its dependent procedure acceptance fails.
 
 ## Remaining blockers
 
