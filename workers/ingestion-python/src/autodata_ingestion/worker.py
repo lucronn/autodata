@@ -271,9 +271,6 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
             raise ValueError("job plan vehicle requires year")
         target = _vehicle_target_from_mapping(vehicle, year)
         catalog = load_vehicle_knowledge_catalog(target, query=query)
-        cached_derived = _cached_derived_job_plan(query, vehicle, catalog)
-        if cached_derived is not None:
-            return {"worker": "ingestion", "lane": "fast", **cached_derived}
         if not catalog or _catalog_needs_job_plan_hydration(query, catalog):
             fallback_catalog, fallback_info = _load_autoapi_job_catalog(
                 vehicle, target, query=query
@@ -282,10 +279,6 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
             source_info.update(fallback_info)
     if not isinstance(catalog, (list, tuple)):
         raise ValueError("job plan catalog must be an array")
-
-    cached_derived = _cached_derived_job_plan(query, vehicle, catalog)
-    if cached_derived is not None:
-        return {"worker": "ingestion", "lane": "fast", **cached_derived}
 
     result = plan_job(query, vehicle, catalog=catalog, source_info=source_info)
     if os.getenv("AUTODATA_MERCURY2_JOB_PLANS_ENABLED") == "1" and result.get("selected_articles"):
@@ -314,10 +307,9 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
             result["llm_status"] = "unavailable"
             result["llm_error"] = str(error)
             result["procedure"]["generation"] = "deterministic_fallback"
-    if os.getenv("AUTODATA_SOURCE_PERSIST") == "1" and result.get("selected_articles"):
-        from .derived_article_persistence import persist_derived_article
-
-        result["derived_article_persistence"] = persist_derived_article(result, vehicle=vehicle)
+    # The composed multi-component procedure is a response projection only.
+    # Individual source articles may be persisted during catalog hydration,
+    # but the composition must never be written as a derived article/revision.
     return {"worker": "ingestion", "lane": "fast", **result}
 
 

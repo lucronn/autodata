@@ -332,7 +332,7 @@ class IngestionWorkerTests(unittest.TestCase):
         article = next(record["article"] for record in records if record["article"]["article_id"] == "P:1")
         self.assertEqual(article["operations"][0]["operation_id"], "pump")
 
-    def test_job_plan_returns_persisted_derived_article_before_source_fallback(self):
+    def test_job_plan_ignores_persisted_composition_and_never_persists_new_composition(self):
         from autodata_ingestion.worker import run_job_plan
 
         vehicle = {"year": 1997, "make": "Toyota", "model": "RAV4", "region": "US"}
@@ -365,16 +365,36 @@ class IngestionWorkerTests(unittest.TestCase):
             },
             "evidence": [],
         }
+        source_catalog = [{
+            "kind": "article",
+            "article": {
+                "article_id": "water-pump-source-1",
+                "title": "Water pump replacement",
+                "component": "water_pump",
+                "body": "Remove the water pump and install a replacement using the source procedure.",
+                "operations": [{"operation_id": "water-pump", "action": "Replace water pump"}],
+                "procedure": {"steps": [{
+                    "action": "Replace water pump",
+                    "components": ["water_pump"],
+                    "instructions": ["Remove the water pump and install a replacement using the source procedure."],
+                }]},
+            },
+        }]
         with patch("autodata_ingestion.knowledge_catalog.load_vehicle_knowledge_catalog", return_value=[derived]), patch(
             "autodata_ingestion.worker._load_autoapi_job_catalog",
-            side_effect=AssertionError("cache hit must not call AutoAPI"),
-        ):
-            with patch.dict("os.environ", {"AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED": "1"}, clear=False):
+            return_value=(source_catalog, {"mode": "autoapi_fallback", "targeted_article_fetch_count": 1}),
+        ) as source_fetch, patch(
+            "autodata_ingestion.derived_article_persistence.persist_derived_article",
+            side_effect=AssertionError("the composed response must never be persisted"),
+        ) as persist_composition:
+            with patch.dict("os.environ", {"AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED": "1", "AUTODATA_SOURCE_PERSIST": "1"}, clear=False):
                 result = run_job_plan(json.dumps({"vehicle": vehicle, "query": "water pump replacement"}))
 
-        self.assertEqual(result["source"]["mode"], "derived_article_cache")
-        self.assertTrue(result["cache_hit"])
-        self.assertEqual(result["labor"]["total_labor_hours"], 3.9)
+        source_fetch.assert_called_once()
+        persist_composition.assert_not_called()
+        self.assertEqual(result["selected_articles"], ["water-pump-source-1"])
+        self.assertNotIn("derived_article_persistence", result)
+        self.assertFalse(result.get("cache_hit", False))
 
     def test_autoapi_job_fallback_uses_targeted_ymme_resolution(self):
         from types import SimpleNamespace

@@ -89,12 +89,6 @@ def plan_job(
     images = _collect_images(selected.values())
     status = "ready" if not review_reasons else "needs_review"
     source_ids = [str(article.get("article_id")) for article in selected.values()]
-    evidence_ids = sorted({
-        str(evidence_id)
-        for article in selected.values()
-        for evidence_id in _article_evidence_ids(article)
-    })
-    derived_fingerprint = _fingerprint(vehicle, components, source_ids, labor, procedure)
     return {
         "status": status,
         "vehicle": dict(vehicle),
@@ -105,15 +99,6 @@ def plan_job(
         "procedure": {**procedure, "requires_review": bool(review_reasons)},
         "images": images,
         "source": dict(source_info or {"mode": "normalized_cache"}),
-        "derived_article": {
-            "article_id": f"combined:{_vehicle_slug(vehicle)}:{'+'.join(components)}:v1",
-            "revision_id": f"revision:{derived_fingerprint[:24]}",
-            "title": procedure["title"],
-            "status": status,
-            "fingerprint": derived_fingerprint,
-            "source_article_ids": source_ids,
-            "evidence_ids": evidence_ids,
-        },
     }
 
 
@@ -130,6 +115,8 @@ def _flatten_articles(catalog: Iterable[Mapping[str, Any]]) -> list[dict[str, An
         if not isinstance(raw, Mapping):
             continue
         article = dict(raw)
+        if article.get("derived_components") or str(article.get("article_id", "")).startswith("combined:"):
+            continue
         article.setdefault("evidence", record.get("evidence", []))
         if not article.get("article_id") and record.get("id"):
             article["article_id"] = record["id"]
@@ -675,11 +662,6 @@ def _empty_procedure(title: str) -> dict[str, Any]:
 
 def _vehicle_slug(vehicle: Mapping[str, Any]) -> str:
     return re.sub(r"[^a-z0-9]+", "-", "-".join(str(vehicle.get(key, "")) for key in ("year", "make", "model" )).casefold()).strip("-")
-
-
-def _fingerprint(vehicle: Mapping[str, Any], components: list[str], source_ids: list[str], labor: Mapping[str, Any], procedure: Mapping[str, Any]) -> str:
-    payload = repr((dict(vehicle), components, source_ids, labor, procedure)).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
 
 
 def build_quote_and_procedure(

@@ -40,6 +40,27 @@ def article(article_id, component, operations, *, images=None):
     }
 
 
+def test_job_plan_uses_individual_articles_and_ignores_legacy_composition_rows():
+    legacy_composition = {
+        "article_id": "combined:vehicle:oil_pump+water_pump:v1",
+        "title": "Oil pump and water pump replacement",
+        "derived_components": ["oil_pump", "water_pump"],
+        "component": "oil_pump water_pump",
+        "operations": [{"operation_id": "invented", "action": "Use stale combined article"}],
+    }
+    oil = article("oil-source", "oil_pump", [{"operation_id": "oil", "action": "Replace oil pump"}])
+    water = article("water-source", "water_pump", [{"operation_id": "water", "action": "Replace water pump"}])
+
+    result = plan_job(
+        "replace oil pump and water pump",
+        VEHICLE,
+        catalog=[legacy_composition, oil, water],
+    )
+
+    assert result["selected_articles"] == ["oil-source", "water-source"]
+    assert all(step.get("operation_id") != "invented" for step in result["procedure"]["steps"])
+
+
 def test_combines_component_labor_once_for_shared_operation_and_keeps_images():
     articles = [
         article(
@@ -364,7 +385,7 @@ def test_incomplete_cached_combined_article_is_not_reused():
     assert result is None
 
 
-def test_composer_uses_nested_labor_from_persisted_composed_article():
+def test_composer_ignores_persisted_composed_article_as_a_source():
     composed_article = {
         "article_id": "combined:alternator+starter:complete",
         "title": "Alternator and starter service",
@@ -419,23 +440,10 @@ def test_composer_uses_nested_labor_from_persisted_composed_article():
         [composed_article],
     )
 
-    assert result["labor"]["total_hours"] == 4.25
-    assert result["labor"]["overlap_hours_removed"] == 0.25
-    assert [operation["components"] for operation in result["labor"]["operations"]] == [
-        ["alternator", "starter"],
-        ["alternator"],
-        ["starter"],
-    ]
-    assert [step["components"] for step in result["procedure"]["steps"]] == [
-        ["alternator", "starter"],
-        ["alternator"],
-        ["starter"],
-    ]
-    assert [step["instructions"] for step in result["procedure"]["steps"]] == [
-        ["Disconnect the battery."],
-        ["Replace the alternator."],
-        ["Replace the starter."],
-    ]
+    assert result["labor"]["total_hours"] == 0.0
+    assert result["selected_articles"] == []
+    assert result["labor"]["operations"] == []
+    assert result["procedure"]["steps"] == []
 
 
 def test_build_quote_separates_support_categories_and_explains_shared_labor_deduction():
