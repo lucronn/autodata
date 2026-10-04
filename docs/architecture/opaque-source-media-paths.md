@@ -1,6 +1,6 @@
 # Opaque Source-Derived Media Paths
 
-**Status:** planned for implementation under
+**Status:** implementation in progress under
 [Issue #116](https://github.com/lucronn/autodata/issues/116) and
 [Project #8](https://github.com/users/lucronn/projects/8).
 
@@ -79,3 +79,13 @@ Issues #112 and #116 share the active plan
 The former provider-URL proxy behavior is superseded: tokens resolve only to
 objects already stored by ingestion, including images rendered in stored-source
 review. A display request never contacts a provider.
+
+The current implementation retains persisted `storage_key` values internally,
+emits tokens only for validated `procedure-images/<sha256>` keys, and reads
+those objects from the configured MinIO/S3 bucket. The prior source-URL proxy
+has been removed. Stored-source HTML currently omits images because the stored
+snapshot does not yet carry a verified source-URL-to-local-object mapping.
+OpenAPI JSON/YAML alignment and live cold/warm object-store verification remain
+release follow-ups. Local verification: Go API tests and vet pass; 42 focused
+Python image/rewrite tests pass; Compose config validation passes with
+throwaway required-value placeholders.

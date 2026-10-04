@@ -228,30 +228,11 @@ func sanitizeCatalogSourceAttributes(node *html.Node, sourceURI string, imageKey
 }
 
 func catalogSourceAssetURL(sourceURI, raw string, imageKey []byte) (string, bool) {
-	raw = strings.TrimSpace(raw)
-	// Source-review images must all use the same opaque, key-protected route.
-	// Inline data URLs bypass that contract, so omit them rather than exposing
-	// unbounded source payloads or creating a reference that cannot be revoked.
-	if strings.HasPrefix(strings.ToLower(raw), "data:image/") {
-		return "", false
-	}
-	base, err := url.Parse(sourceURI)
-	if err != nil || base.Scheme == "" || base.Hostname() == "" {
-		return "", false
-	}
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return "", false
-	}
-	resolved := base.ResolveReference(parsed)
-	if !isCatalogImageURL(resolved.String()) {
-		return "", false
-	}
-	token, err := sealCatalogImageURL(resolved.String(), imageKey)
-	if err != nil {
-		return "", false
-	}
-	return "/v1/catalog/images/" + token, true
+	// Source snapshots currently do not retain an authoritative mapping from
+	// each source URL to its localized object key. Never mint a token from the
+	// source URL; omit it until that mapping is available.
+	_, _, _ = sourceURI, raw, imageKey
+	return "", false
 }
 
 func writeCatalogSourceHTML(response http.ResponseWriter, review CatalogSourceReview, content, evidenceID, sourceLocator string) {

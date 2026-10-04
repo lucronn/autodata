@@ -72,6 +72,7 @@ type Server struct {
 	vehicleIdentity            VehicleIdentityStore
 	catalog                    CatalogStore
 	catalogImageKey            []byte
+	catalogImageReader         catalogImageObjectReader
 	metrics                    *apiMetrics
 }
 
@@ -101,6 +102,7 @@ func NewServerWithDependenciesAndPublisher(readiness ReadinessChecker, auth Auth
 		vehicleIdentity:            newMemoryVehicleIdentityStore(),
 		catalog:                    newMemoryCatalogStore(),
 		catalogImageKey:            configuredCatalogImageKey(),
+		catalogImageReader:         configuredCatalogImageReader(),
 		metrics:                    new(apiMetrics),
 	}
 }
@@ -193,7 +195,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source", s.requireRole("dataset_viewer", s.serveCatalogSource))
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.requireRole("dataset_viewer", s.getCatalogArticle))
 	mux.HandleFunc("GET /v1/catalog/images/{token}", func(response http.ResponseWriter, request *http.Request) {
-		serveCatalogImage(response, request, s.catalogImageKey)
+		serveCatalogImage(response, request, s.catalogImageKey, s.catalogImageReader)
 	})
 	mux.HandleFunc("GET /v1/catalog/images", func(response http.ResponseWriter, _ *http.Request) {
 		http.Error(response, "opaque image reference required", http.StatusBadRequest)
