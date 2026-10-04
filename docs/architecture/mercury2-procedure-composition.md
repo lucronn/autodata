@@ -15,6 +15,9 @@ visual metadata. Keep request validation, authorization, vehicle resolution,
 source diagnostics, and response semantics independent of chat. Track current
 API contract and three-case cold/warm acceptance in
 [`2026-10-04-standalone-procedure-composition-api.md`](../superpowers/plans/2026-10-04-standalone-procedure-composition-api.md).
+For this delivery, validate using the isolated local worker/API stack; do not
+require Kubernetes access, deployed-worker secret changes, or a production
+deployment.
 
 ## Provider integrity release follow-up
 

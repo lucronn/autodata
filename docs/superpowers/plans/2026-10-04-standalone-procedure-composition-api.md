@@ -24,9 +24,11 @@ the unified composition only in the synchronous response.
   no provider detail calls and no new article/composition writes.
 - The combined procedure is ephemeral. Chat-specific persistence, cache, review,
   and event paths are not used.
-- Keep Vercel Deployment Protection enabled. Use only a supported, least-
-  privilege worker identity or an internal connector deployment; never put
-  secrets in source, logs, issue comments, or test reports.
+- Kubernetes and deployed-worker secret configuration are explicitly out of
+  scope; validate through the isolated local worker and local API stack.
+- Keep Vercel Deployment Protection enabled. Supply its approved bypass only
+  to the local worker process through environment configuration; never commit
+  or print secrets, or place them in issue comments or reports.
 
 ## Concrete todo
 
@@ -38,8 +40,9 @@ the unified composition only in the synchronous response.
   document it in OpenAPI JSON/YAML without chat-specific dependencies.
 - [x] Add API/worker contract tests for validation, auth, cold hydration,
   provider-qualified identities, truthful failure, and ephemeral composition.
-- [ ] Configure approved AutoDBone access for the actual worker runtime while
-  preserving Deployment Protection; verify a real worker-originated request.
+- [ ] Configure the isolated local worker to use the current AutoDBone
+  deployment origin and its protected-source header; verify a real
+  worker-originated request. Do not configure or require Kubernetes.
 - [ ] Run three newly randomized, distinct YMME + procedure cold/warm pairs.
   Record redacted request IDs, source article identities/hashes, readable-step
   checks, image checks, provider detail-call counts, and persistence deltas.
@@ -50,19 +53,21 @@ the unified composition only in the synchronous response.
 ## Acceptance
 
 The documented standalone API returns a source-backed multi-component
-procedure for three newly sampled distinct vehicle/procedure cases. Each cold
+procedure for three newly sampled distinct vehicle/procedure cases from the
+isolated local stack. Each cold
 and warm result satisfies the invariants above; unavailable sources produce an
 explicit incomplete/error response, never an empty or falsely complete result.
-The worker can reach AutoDBone through the approved protected/internal path.
-Exact-SHA hosted and independent gates pass. No chatbot capability is required.
+The isolated local worker can reach AutoDBone through the approved protected
+path. No Kubernetes or production deployment change is required. Exact-SHA
+hosted and independent gates pass. No chatbot capability is required.
 
 ## Implementation sequence
 
 1. Synchronize this plan, Issue #110, Project #8, and the canonical contract at
    a planning checkpoint; pin the implementation base and pass preflight.
 2. Implement only missing standalone API/worker contract pieces with tests.
-3. Establish least-privilege protected worker access without disabling Vercel
-   Deployment Protection.
+3. Verify the isolated local worker's protected-source access without changing
+   Vercel Deployment Protection or any deployed runtime.
 4. Exercise three new random cold/warm vehicle-procedure pairs; repair every
    semantic failure before recording acceptance.
 5. Run exact-SHA hosted and independent gates, then update issue/project/report.

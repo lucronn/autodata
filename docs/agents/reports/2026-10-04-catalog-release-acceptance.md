@@ -10,7 +10,7 @@
 - Added authenticated `POST /v1/catalog/vehicles/{vehicle_id}/compositions`; the path vehicle is canonical, body accepts only a non-empty query, and `Idempotency-Key` is required.
 - Routed through the existing Go-to-ingestion job-plan boundary and documented the operation in OpenAPI JSON/YAML.
 - Added response projection that strips provider URLs, object keys, source snapshots, and internal visual metadata; localized image storage keys become opaque same-origin image paths.
-- Added provider-host-scoped Vercel protection-bypass header configuration for the ingestion worker, with Compose/Kubernetes secret references. Vercel Deployment Protection was not disabled.
+- Added provider-host-scoped Vercel protection-bypass header configuration for the ingestion worker. Vercel Deployment Protection was not disabled; secret use is local-runtime configuration only for this task.
 
 ## Verification
 
@@ -24,13 +24,13 @@
   - RAV4: cold and warm both raised `RuntimeError` because no usable vehicle-matched source procedure was available.
   - Civic: `needs_review`, two steps on both passes (fingerprint `64a408bb9c15`); no torque/check terms and zero returned images.
 - No passing cold/warm sample, complete DIY procedure, or localized composition image has been demonstrated. These are failures, not accepted tests.
-- No Kubernetes context is configured, so the actual deployment's runtime secret store could not be updated or verified. No independent release review has run.
+- Kubernetes and deployed-worker configuration are out of scope for this task; no production deployment or secret store was changed. No independent release review has run.
 - Both hosted Autonomous Verification policy/evidence checks passed on candidate `70b24d590ed1738696dabc1398defc8a165ee3e8`; these are not application test or independent review results.
 - PRs #117–#125 remain drafts with no recorded review decision. #125 is a large stacked integration (over 100 changed files), and the new composition endpoint depends on the catalog foundation; there is no independently mergeable safe subset from this branch while its dependent procedure acceptance fails.
 
 ## Remaining blockers
 
-1. Configure the protected-source credential and current AutoDBone origin in the actual AutoData worker runtime; verify from that runtime without weakening Vercel Deployment Protection.
+1. Configure the isolated local worker with the current AutoDBone origin and protected-source header; do not require or change Kubernetes/deployed runtime state.
 2. Repair provider identity/catalog selection and procedure completeness until three newly randomized, distinct vehicle/procedure cold/warm pairs provide complete source-backed instructions, stable warm reuse, and working localized images.
 3. Prove no composition/derived-article writes or cache entries on those exact cold/warm runs.
 4. Run hosted checks on the exact final candidate and obtain independent contract, data-quality, and security review plus a validator-passing release manifest.
