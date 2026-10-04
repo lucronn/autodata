@@ -5,6 +5,10 @@
 **Implementation plan:**
 `docs/superpowers/plans/2026-09-30-ordered-article-document-normalization.md`
 
+## Publication integrity follow-up
+
+The [ordered-document publication gate](../superpowers/plans/2026-10-03-ordered-document-publication-gate.md) is tracked in Issue #111 and Project #8. Todo: require every retained block in a content-complete article to have valid source evidence, keep unknown or unsupported content incomplete for review, and verify order, images, and duplicate identity on real articles at the exact release SHA. Stored status alone is insufficient to claim completeness.
+
 ## Purpose
 
 AutoData receives repair articles in different provider formats. The source
