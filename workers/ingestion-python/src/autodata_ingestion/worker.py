@@ -32,14 +32,6 @@ def run_once() -> dict[str, object]:
     job_plan_request = os.getenv("AUTODATA_JOB_PLAN_REQUEST_JSON", "").strip()
     if job_plan_request:
         return run_job_plan(job_plan_request)
-    chat_query_request = os.getenv("AUTODATA_CHAT_QUERY_JSON", "").strip()
-    if chat_query_request:
-        return run_chat_query(chat_query_request)
-    chat_selection_request = os.getenv("AUTODATA_CHAT_SELECTION_JSON", "").strip()
-    if chat_selection_request:
-        return run_chat_selection(chat_selection_request)
-    if os.getenv("AUTODATA_CHAT_WORKER_ENABLED") == "1":
-        return run_chat_worker_once()
     vehicle_list = os.getenv("AUTODATA_VEHICLE_LIST_JSON", "").strip()
     if vehicle_list:
         return run_vehicle_selection(vehicle_list)
@@ -270,28 +262,69 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
         if year is None:
             raise ValueError("job plan vehicle requires year")
         target = _vehicle_target_from_mapping(vehicle, year)
-        catalog = load_vehicle_knowledge_catalog(target, query=query)
-        cached_derived = _cached_derived_job_plan(query, vehicle, catalog)
-        if cached_derived is not None:
-            return {"worker": "ingestion", "lane": "fast", **cached_derived}
+        # Search the already-ingested vehicle index locally by component terms
+        # before making any provider call. The bounded title filter uses the
+        # requested component names, not the query's operation wording, so
+        # titles like "Removal/Installation" still match "replacement".
+        catalog = _filter_job_plan_catalog_for_vehicle(
+            vehicle, load_vehicle_knowledge_catalog(target, query=query)
+        )
         if not catalog or _catalog_needs_job_plan_hydration(query, catalog):
-            fallback_catalog, fallback_info = _load_autoapi_job_catalog(
-                vehicle, target, query=query
-            )
-            catalog = fallback_catalog
-            source_info.update(fallback_info)
+            local_catalog = list(catalog or [])
+            autoapi_error: Exception | None = None
+            try:
+                fallback_catalog, fallback_info = _load_autoapi_job_catalog(
+                    vehicle, target, query=query
+                )
+                catalog = _merge_job_plan_catalogs(local_catalog, fallback_catalog)
+                source_info.update(fallback_info)
+            except Exception as error:  # noqa: BLE001 - use the independent provider adapter
+                autoapi_error = error
+                source_info.update(
+                    {
+                        "autoapi_status": "unavailable",
+                        "autoapi_error": _safe_job_plan_source_error(error),
+                    }
+                )
+            if _catalog_needs_job_plan_hydration(query, catalog):
+                try:
+                    fallback_catalog, fallback_info = _load_autodb_two_job_catalog(
+                        vehicle, query=query, existing_catalog=catalog
+                    )
+                    catalog = _merge_job_plan_catalogs(catalog, fallback_catalog)
+                    source_info.update(fallback_info)
+                except Exception as error:  # noqa: BLE001 - preserve both provider outcomes
+                    source_info.update(
+                        {
+                            "autodb_two_status": "unavailable",
+                            "autodb_two_error": _safe_job_plan_source_error(error),
+                        }
+                    )
+                    if not catalog:
+                        raise RuntimeError(
+                            "no usable normalized procedure articles; "
+                            f"AutoDBone: {source_info.get('autoapi_error', 'no matching articles')}; "
+                            f"AutoDBtwo: {source_info['autodb_two_error']}"
+                        ) from (autoapi_error or error)
+            if _catalog_needs_job_plan_hydration(query, catalog):
+                raise RuntimeError(
+                    "required vehicle-matched procedure articles are unavailable; "
+                    f"AutoDBone: {source_info.get('autoapi_error', source_info.get('mode', 'no matching article'))}; "
+                    f"AutoDBtwo: {source_info.get('autodb_two_error', 'no usable selected article')}"
+                )
     if not isinstance(catalog, (list, tuple)):
         raise ValueError("job plan catalog must be an array")
 
-    cached_derived = _cached_derived_job_plan(query, vehicle, catalog)
-    if cached_derived is not None:
-        return {"worker": "ingestion", "lane": "fast", **cached_derived}
-
-    result = plan_job(query, vehicle, catalog=catalog, source_info=source_info)
+    result = plan_job(
+        query, vehicle, catalog=catalog, source_info=source_info, include_labor=False
+    )
     if os.getenv("AUTODATA_MERCURY2_JOB_PLANS_ENABLED") == "1" and result.get("selected_articles"):
         selected_ids = set(str(value) for value in result["selected_articles"])
         selected_articles = [
-            record.get("article", record)
+            {
+                **record.get("article", record),
+                "evidence": record.get("evidence") or record.get("article", record).get("evidence", []),
+            }
             for record in catalog
             if isinstance(record, dict)
             and isinstance(record.get("article", record), dict)
@@ -306,7 +339,7 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
                 query,
                 vehicle,
                 selected_articles,
-                result["labor"],
+                result.get("labor", {}),
                 result["procedure"],
             )
             result["llm_status"] = "generated"
@@ -314,10 +347,9 @@ def run_job_plan(serialized_request: str) -> dict[str, object]:
             result["llm_status"] = "unavailable"
             result["llm_error"] = str(error)
             result["procedure"]["generation"] = "deterministic_fallback"
-    if os.getenv("AUTODATA_SOURCE_PERSIST") == "1" and result.get("selected_articles"):
-        from .derived_article_persistence import persist_derived_article
-
-        result["derived_article_persistence"] = persist_derived_article(result, vehicle=vehicle)
+    # The composed multi-component procedure is a response projection only.
+    # Individual source articles may be persisted during catalog hydration,
+    # but the composition must never be written as a derived article/revision.
     return {"worker": "ingestion", "lane": "fast", **result}
 
 
@@ -423,11 +455,77 @@ def _catalog_needs_job_plan_hydration(
 
     if not _components_from_query(query):
         return False
-    preview = plan_job(query, {"make": "catalog", "model": "catalog"}, catalog=catalog)
-    return any(
-        str(reason).startswith(("missing_article:", "unknown_duration:"))
-        for reason in preview.get("review_reasons", [])
+    preview = plan_job(
+        query,
+        {"make": "catalog", "model": "catalog"},
+        catalog=catalog,
+        include_labor=False,
     )
+    return any(
+        str(reason).startswith("missing_article:")
+        for reason in preview.get("review_reasons", [])
+    ) or _catalog_needs_procedure_content_hydration(query, catalog)
+
+
+def _filter_job_plan_catalog_for_vehicle(
+    vehicle: Mapping[str, object],
+    catalog: list[dict[str, object]] | tuple[dict[str, object], ...],
+) -> list[dict[str, object]]:
+    """Drop provider article rows that belong to a different selected configuration."""
+
+    target_engine = _job_plan_engine_number(
+        vehicle.get("engine_displacement_l", vehicle.get("engine"))
+    )
+    target_drive = _job_plan_drive_key(
+        vehicle.get("drivetrain", vehicle.get("driveType"))
+    )
+    filtered: list[dict[str, object]] = []
+    for record in catalog:
+        if not isinstance(record, dict):
+            continue
+        article = record.get("article", record)
+        identity = record.get("vehicle_identity")
+        if not isinstance(identity, Mapping) and isinstance(article, Mapping):
+            identity = article.get("vehicle_identity")
+        identity = identity if isinstance(identity, Mapping) else {}
+        candidate_engine = _job_plan_engine_number(
+            identity.get("engine_displacement_l", identity.get("engine"))
+        )
+        candidate_drive = _job_plan_drive_key(
+            identity.get("drivetrain", identity.get("driveType"))
+        )
+        if (
+            target_engine is not None
+            and candidate_engine is not None
+            and abs(target_engine - candidate_engine) > 0.05
+        ):
+            continue
+        if target_drive and candidate_drive and target_drive != candidate_drive:
+            continue
+        filtered.append(record)
+    return filtered
+
+
+def _job_plan_engine_number(value: object) -> float | None:
+    match = re.search(r"\d+(?:\.\d+)?", str(value or ""))
+    return float(match.group(0)) if match else None
+
+
+def _job_plan_drive_key(value: object) -> str:
+    text = " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
+    if not text:
+        return ""
+    if "4wd" in text or "4x4" in text or "four wheel" in text or "4 wheel" in text:
+        return "4wd"
+    if "awd" in text or "all wheel" in text:
+        return "awd"
+    if "2wd" in text or "2 wheel" in text:
+        return "2wd"
+    if "rwd" in text or "rear wheel" in text:
+        return "rwd"
+    if "fwd" in text or "front wheel" in text:
+        return "fwd"
+    return ""
 
 
 def _catalog_needs_procedure_content_hydration(
@@ -440,32 +538,49 @@ def _catalog_needs_procedure_content_hydration(
         _article_procedure_instructions,
         _components_from_query,
     )
+    from .procedure_normalize import article_is_content_complete
 
     requested = _components_from_query(query)
     if not requested:
         return False
+    # The separate timing-belt article is a shared requirement only when the
+    # request explicitly combines both pumps.
+    needed = list(
+        dict.fromkeys(
+            requested
+            + (
+                ["timing_belt"]
+                if {"oil_pump", "water_pump"}.issubset(set(requested))
+                else []
+            )
+        )
+    )
     articles: list[dict[str, object]] = []
     for record in catalog:
         if not isinstance(record, dict):
             continue
         article = record.get("article", record)
-        if isinstance(article, dict):
-            articles.append(article)
-    for component in requested:
+        if not isinstance(article, dict):
+            continue
+        # Combined / multi-component derived rows are ephemeral composition
+        # outputs. They must not count as the normalized individual source.
+        derived_components = article.get("derived_components")
+        if isinstance(derived_components, list) and len(derived_components) > 1:
+            continue
+        article_id = str(article.get("article_id") or "")
+        if article_id.startswith("combined:"):
+            continue
+        articles.append(article)
+    for component in needed:
         candidates = [article for article in articles if component in _article_components(article)]
         if not candidates:
             return True
         for article in candidates:
-            derived_components = article.get("derived_components")
-            if isinstance(derived_components, list):
-                if _derived_article_has_source_instructions(article, set(requested)):
-                    break
-            elif _article_procedure_instructions(article):
+            if article_is_content_complete(article) and _article_procedure_instructions(article):
                 break
         else:
             return True
     return False
-
 
 def _cached_derived_job_plan(
     query: str,
@@ -487,8 +602,9 @@ def _cached_derived_job_plan(
         if not isinstance(article, dict):
             continue
         components = article.get("derived_components")
-        if not isinstance(components, list) or set(str(value) for value in components) != requested_set:
-            continue
+        if isinstance(components, list) and components:
+            if set(str(value) for value in components) != requested_set:
+                continue
         if not _derived_article_covers_requested_components(article, requested_set):
             continue
         if not _derived_article_has_source_instructions(article, requested_set):
@@ -531,6 +647,14 @@ def _derived_article_has_source_instructions(
     accepted as instructional only when it carries more detail than a generic
     component verb; explicit instructions always count when they are present.
     """
+
+    body = " ".join(str(article.get("body") or "").split()).strip()
+    title = " ".join(str(article.get("title") or "").split()).strip()
+    if body and body.casefold() != title.casefold() and (
+        len(body) >= len(title) + 40
+        or len(re.findall(r"[a-z0-9]+", body.casefold())) >= 8
+    ):
+        return True
 
     procedure = article.get("procedure")
     if not isinstance(procedure, Mapping):
@@ -636,6 +760,54 @@ def _derived_article_covers_requested_components(
 def _mercury2_regeneration_required(article: Mapping[str, object]) -> bool:
     """Regenerate an old deterministic composition when Mercury-2 is configured."""
 
+    if isinstance(article.get("derived_components"), (list, tuple, set)):
+        from .derived_article_persistence import DERIVED_ARTICLE_CONTRACT_VERSION
+
+        try:
+            cached_contract_version = int(article.get("contract_version") or 0)
+        except (TypeError, ValueError):
+            cached_contract_version = 0
+        if cached_contract_version < DERIVED_ARTICLE_CONTRACT_VERSION:
+            return True
+
+    procedure = article.get("procedure")
+    declared_components = {
+        str(value).strip()
+        for value in article.get("derived_components", [])
+        if str(value).strip()
+    } if isinstance(article.get("derived_components"), (list, tuple, set)) else set()
+    if not declared_components and isinstance(procedure, Mapping):
+        steps = procedure.get("steps")
+        if isinstance(steps, list):
+            declared_components = {
+                str(value).strip()
+                for step in steps
+                if isinstance(step, Mapping)
+                for value in step.get("components", [])
+                if str(value).strip()
+            }
+    if len(declared_components) > 1 and isinstance(procedure, Mapping):
+        overlap_groups = procedure.get("overlap_groups")
+        steps = procedure.get("steps")
+        has_shared_step = isinstance(steps, list) and any(
+            isinstance(step, Mapping)
+            and (
+                str(step.get("operation_id", "")).startswith("shared:")
+                or len({str(value) for value in step.get("components", []) if str(value).strip()}) > 1
+            )
+            for step in steps
+        )
+        if not has_shared_step or not isinstance(overlap_groups, list) or not overlap_groups:
+            return (
+                os.getenv("AUTODATA_MERCURY2_JOB_PLANS_ENABLED") == "1"
+                and bool(os.getenv("INCEPTION_API_KEY", "").strip())
+            )
+        if _derived_procedure_has_redundant_shared_steps(article):
+            return (
+                os.getenv("AUTODATA_MERCURY2_JOB_PLANS_ENABLED") == "1"
+                and bool(os.getenv("INCEPTION_API_KEY", "").strip())
+            )
+
     if (
         os.getenv("AUTODATA_MERCURY2_JOB_PLANS_ENABLED") == "1"
         and bool(os.getenv("INCEPTION_API_KEY", "").strip())
@@ -678,6 +850,31 @@ def _derived_procedure_covers_shared_labor(article: Mapping[str, object]) -> boo
     return True
 
 
+def _derived_procedure_has_redundant_shared_steps(article: Mapping[str, object]) -> bool:
+    """Detect cached responses that emit a covered operation twice."""
+
+    procedure = article.get("procedure")
+    if not isinstance(procedure, Mapping):
+        return False
+    steps = procedure.get("steps", [])
+    if not isinstance(steps, list):
+        return False
+    shared_coverage = {
+        str(operation_id).strip()
+        for step in steps
+        if isinstance(step, Mapping)
+        and str(step.get("operation_id", "")).startswith("shared:")
+        for operation_id in step.get("covered_operation_ids", [])
+        if str(operation_id).strip()
+    }
+    return any(
+        isinstance(step, Mapping)
+        and not str(step.get("operation_id", "")).startswith("shared:")
+        and str(step.get("operation_id", "")).strip() in shared_coverage
+        for step in steps
+    )
+
+
 def _load_autoapi_job_catalog(
     vehicle: dict[str, object], target: object, *, query: str = ""
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
@@ -692,6 +889,7 @@ def _load_autoapi_job_catalog(
     if not base_url:
         return [], {"mode": "source_unavailable", "reason": "autoapi_not_configured"}
     from .autoapi_connector import AutoAPIConnector
+    from .autoapi_connector import configured_source_request_headers
     from .source_adapters import adapt_source_resource
     from .source_bundle import normalize_source_bundle
     from .job_plan import plan_job
@@ -705,8 +903,18 @@ def _load_autoapi_job_catalog(
         vehicle_max_concurrency=int(os.getenv("AUTODATA_AUTOAPI_VEHICLE_CONCURRENCY", "4")),
         retry_attempts=int(os.getenv("AUTODATA_AUTOAPI_RETRY_ATTEMPTS", "3")),
         retry_backoff_seconds=float(os.getenv("AUTODATA_AUTOAPI_RETRY_BACKOFF_SECONDS", "0.25")),
+        request_headers=configured_source_request_headers(base_url),
     )
-    provider_vehicle_id = str(vehicle.get("autoapi_vehicle_id") or vehicle.get("provider_vehicle_id") or "").strip()
+    provider = str(vehicle.get("provider") or vehicle.get("provider_name") or "").strip().casefold()
+    provider_vehicle_id = str(
+        vehicle.get("autoapi_vehicle_id")
+        or (
+            vehicle.get("provider_vehicle_id")
+            if provider in {"autoapi", "autodbone"}
+            else ""
+        )
+        or ""
+    ).strip()
     if provider_vehicle_id:
         bundle = connector.fetch_vehicle_bundle({"vehicle_id": provider_vehicle_id, **vehicle})
         bundles = (bundle,)
@@ -725,12 +933,18 @@ def _load_autoapi_job_catalog(
     records: list[dict[str, object]] = []
     targeted_article_count = 0
     targeted_labor_count = 0
+    provider_id_rejections: list[dict[str, str]] = []
     for bundle in bundles:
         artifacts = [adapt_source_resource(resource) for resource in bundle.resources]
+        # Both catalog discovery and selected-article hydration are keyed by
+        # the user's canonical selector. The provider may use a shorter
+        # make/model label, but normalized rows must attach to the existing
+        # local vehicle identity instead of creating a provider-shaped twin.
+        expected_vehicle = dict(vehicle)
         list_normalized = normalize_source_bundle(
             artifacts,
             str(vehicle.get("region") or "US"),
-            expected_vehicle=dict(bundle.vehicle),
+            expected_vehicle=expected_vehicle,
         )
         list_records = [
             {
@@ -747,38 +961,77 @@ def _load_autoapi_job_catalog(
         # labor endpoints so future local reads have the complete normalized
         # article instead of repeatedly calling the source.
         if query and list_records:
-            provisional = plan_job(query, vehicle, catalog=list_records)
+            provisional = plan_job(
+                query, vehicle, catalog=list_records, include_labor=False
+            )
             selected_ids = set(str(value) for value in provisional.get("selected_articles", []))
-            labor_articles = [
-                record["article"]
-                for record in list_records
-                if _is_labor_article(record["article"])
-            ]
+            requested_article_id = str(vehicle.get("requested_article_id") or "").strip()
+            if requested_article_id:
+                requested_provider = requested_article_id.split(":", 1)[0].casefold()
+                if requested_provider in {"autoapitwo", "autodbtwo"}:
+                    provider_id_rejections.append(
+                        {
+                            "article_id": requested_article_id,
+                            "provider": requested_provider,
+                            "reason": "article belongs to AutoDBtwo",
+                        }
+                    )
+                else:
+                    selected_ids.add(requested_article_id)
             for article_id in sorted(selected_ids):
                 selected_article = next(
                     (record["article"] for record in list_records if str(record["article"].get("article_id")) == article_id),
                     {},
                 )
-                labor_article_id = _match_labor_article_id(selected_article, labor_articles)
-                if labor_article_id and labor_article_id != article_id:
-                    resources = connector.fetch_article_resources(
-                        bundle.vehicle_id, article_id, labor_article_id=labor_article_id
-                    )
-                else:
-                    resources = connector.fetch_article_resources(
-                        bundle.vehicle_id,
-                        article_id,
-                        include_labor=False,
-                    )
-                artifacts.extend(adapt_source_resource(resource) for resource in resources)
+                resources = connector.fetch_article_resources(
+                    bundle.vehicle_id,
+                    article_id,
+                    include_labor=False,
+                )
+                for resource in resources:
+                    if str(resource.source_uri).casefold().find("/article/") >= 0:
+                        resource = replace(
+                            resource,
+                            metadata={**resource.metadata, "target_article_id": article_id},
+                        )
+                    artifacts.append(adapt_source_resource(resource))
                 targeted_article_count += 1
-                targeted_labor_count += max(0, len(resources) - 1)
         normalized = normalize_source_bundle(
             artifacts,
             str(vehicle.get("region") or "US"),
-            expected_vehicle=dict(bundle.vehicle),
+            expected_vehicle=expected_vehicle,
         )
+        from .procedure_normalize import normalize_procedure_article
+
+        normalized_articles = []
+        for article in normalized.articles:
+            if article.get("body") or article.get("steps"):
+                article = normalize_procedure_article(article)
+                from .procedure_rewrite import rewrite_procedure_article
+
+                article = rewrite_procedure_article(
+                    article,
+                    vehicle=normalized.vehicle or vehicle,
+                )
+            normalized_articles.append(article)
+        try:
+            normalized = replace(normalized, articles=tuple(normalized_articles))
+        except TypeError:
+            # Keep lightweight test doubles and connector adapters compatible
+            # with the immutable SourceBundle contract.
+            normalized.articles = tuple(normalized_articles)
         if os.getenv("AUTODATA_SOURCE_PERSIST") == "1":
+            from .procedure_images import localize_procedure_images
+
+            localized_articles = []
+            for article in normalized.articles:
+                try:
+                    localized_articles.append(
+                        localize_procedure_images(article, vehicle=normalized.vehicle or vehicle)
+                    )
+                except Exception:  # noqa: BLE001 - retain source text when media storage is unavailable
+                    localized_articles.append(article)
+            normalized = replace(normalized, articles=tuple(localized_articles))
             from .bundle_persistence import persist_source_bundle
 
             persist_source_bundle(normalized, artifacts, adapter_name=connector.name)
@@ -803,7 +1056,170 @@ def _load_autoapi_job_catalog(
         "materialized_records": len(records),
         "targeted_article_fetch_count": targeted_article_count,
         "targeted_labor_fetch_count": targeted_labor_count,
+        "provider_id_rejections": provider_id_rejections,
     }
+
+
+def _load_autodb_two_job_catalog(
+    vehicle: dict[str, object],
+    *,
+    query: str,
+    existing_catalog: list[dict[str, object]] | tuple[dict[str, object], ...],
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    """Hydrate only selected AutoDBtwo article details after a local/AutoDBone miss."""
+
+    from .catalog_service import (
+        _load_autoapitwo_article_catalog,
+        _load_autoapitwo_article_detail,
+        _repair_stored_autoapitwo_article,
+    )
+    from .job_plan import plan_job
+    from .procedure_normalize import article_is_content_complete
+
+    request: dict[str, object] = {
+        "vehicle_id": str(vehicle.get("vehicle_id") or ""),
+        "autoapitwo_vehicle_ids": vehicle.get("autoapitwo_vehicle_ids", ()),
+        "year": vehicle.get("model_year", vehicle.get("year")),
+        "make": vehicle.get("make", ""),
+        "model": vehicle.get("model", ""),
+        "region": vehicle.get("region", "US"),
+    }
+    cached_records = _filter_job_plan_catalog_for_vehicle(
+        vehicle,
+        [
+        dict(record)
+        for record in existing_catalog
+        if isinstance(record, dict)
+        and isinstance(record.get("article", record), dict)
+        ],
+    )
+    has_provider_index = any(
+        str((record.get("article") or record).get("article_id") or "").startswith(
+            "autoapitwo:"
+        )
+        for record in cached_records
+    )
+    source_info: dict[str, object] = {
+        "mode": "autodb_two_fallback",
+        "content_source": "autodb_two",
+        "traversal": "selected_article_only",
+        "targeted_article_fetch_count": 0,
+    }
+    catalog = cached_records
+    if not has_provider_index:
+        index_records, index_info = _load_autoapitwo_article_catalog(request, vehicle)
+        catalog = _filter_job_plan_catalog_for_vehicle(
+            vehicle, [*catalog, *index_records]
+        )
+        source_info.update(index_info)
+
+    provider_catalog = [
+        record
+        for record in catalog
+        if str((record.get("article") or record).get("article_id") or "").startswith(
+            "autoapitwo:"
+        )
+    ]
+    if not provider_catalog:
+        raise RuntimeError("AutoDBtwo has no selected-vehicle article index")
+    selected_ids = set(
+        str(article_id)
+        for article_id in plan_job(
+            query, vehicle, catalog=provider_catalog, include_labor=False
+        ).get("selected_articles", [])
+    )
+    by_id: dict[str, dict[str, object]] = {}
+    for record in catalog:
+        article = record.get("article", record)
+        if isinstance(article, dict):
+            article_id = str(article.get("article_id") or "")
+            if article_id:
+                by_id[article_id] = record
+
+    detail_counts = 0
+    for article_id in sorted(selected_ids):
+        if not article_id.startswith("autoapitwo:"):
+            continue
+        record = by_id.get(article_id)
+        if record is None:
+            continue
+        article = record.get("article", record)
+        if not isinstance(article, dict) or not article_is_content_complete(article):
+            detail_request = {
+                **request,
+                "source_article_id": article_id,
+                "title": article.get("title", "") if isinstance(article, dict) else "",
+            }
+            repaired = None
+            if isinstance(article, dict) and request.get("vehicle_id"):
+                try:
+                    repaired = _repair_stored_autoapitwo_article(detail_request, vehicle)
+                except Exception as error:  # noqa: BLE001 - fetch selected fresh content after a damaged snapshot
+                    source_info["stored_source_repair_error"] = _safe_job_plan_source_error(error)
+            if repaired is not None:
+                detail_records, detail_info = repaired
+            else:
+                detail_records, detail_info = _load_autoapitwo_article_detail(
+                    detail_request,
+                    vehicle,
+                )
+            source_info.update(detail_info)
+            detail_counts += int(detail_info.get("targeted_article_fetch_count") or 0)
+            for detail_record in detail_records:
+                detail_article = detail_record.get("article", detail_record)
+                if isinstance(detail_article, dict):
+                    by_id[str(detail_article.get("article_id") or "")] = detail_record
+
+    source_info["targeted_article_fetch_count"] = detail_counts
+    source_info["materialized_records"] = len(by_id)
+    return list(by_id.values()), source_info
+
+
+def _merge_job_plan_catalogs(
+    preferred: list[dict[str, object]] | tuple[dict[str, object], ...],
+    hydrated: list[dict[str, object]] | tuple[dict[str, object], ...],
+) -> list[dict[str, object]]:
+    """Keep list rows while replacing them with hydrated records of the same identity."""
+
+    from .source_adapters import qualify_article_id
+
+    by_id: dict[str, dict[str, object]] = {}
+    for record in (*preferred, *hydrated):
+        if not isinstance(record, dict):
+            continue
+        article = record.get("article", record)
+        if not isinstance(article, dict):
+            continue
+        article_id = str(article.get("article_id") or article.get("id") or "")
+        provider = article.get("provider") or record.get("provider")
+        if provider and article_id:
+            article = dict(article)
+            article.setdefault("provider_article_id", article_id)
+            article["article_id"] = qualify_article_id(article_id, provider)
+            article["provider"] = provider
+            record = {**record, "article": article}
+            article_id = str(article["article_id"])
+        if article_id:
+            by_id[article_id] = dict(record)
+    return list(by_id.values())
+
+
+def _safe_job_plan_source_error(error: Exception) -> str:
+    """Expose a short failure class without returning upstream URLs or secrets."""
+
+    name = type(error).__name__
+    message = " ".join(str(error).split())
+    if "401" in message or "unauthorized" in message.casefold():
+        return "source rejected authentication"
+    if "403" in message or "forbidden" in message.casefold():
+        return "source access denied"
+    if "404" in message or "not found" in message.casefold():
+        return "no matching source resource"
+    if "429" in message or "rate limit" in message.casefold():
+        return "source rate limited the request"
+    if any(code in message for code in ("502", "503", "504")) or "timeout" in message.casefold():
+        return "source temporarily unavailable"
+    return f"{name}: source request failed"
 
 
 def _article_lookup_title(article: Mapping[str, object]) -> str:
@@ -867,12 +1283,14 @@ def _is_labor_article(article: Mapping[str, object]) -> bool:
 
 
 _AUTOAPI_SOURCE_BY_MAKE = {
-    "buick": "GeneralMotors",
-    "cadillac": "GeneralMotors",
-    "chevrolet": "GeneralMotors",
-    "gmc": "GeneralMotors",
-    "oldsmobile": "GeneralMotors",
-    "pontiac": "GeneralMotors",
+    # Motor is the working AutoAPI content source for local chat retrieval.
+    # The older GeneralMotors source route 404s on this deployment.
+    "buick": "Motor",
+    "cadillac": "Motor",
+    "chevrolet": "Motor",
+    "gmc": "Motor",
+    "oldsmobile": "Motor",
+    "pontiac": "Motor",
     "lexus": "Motor",
     "scion": "Motor",
     "toyota": "Motor",
@@ -902,11 +1320,39 @@ def _autoapi_content_source(vehicle: dict[str, object]) -> str:
 def _same_vehicle_family(left: dict[str, object], right: dict[str, object]) -> bool:
     return (
         all(
-            str(left.get(key, "")).casefold() == str(right.get(key, "")).casefold()
+            (
+                str(left.get("year", "")).casefold()
+                == str(right.get("year", "")).casefold()
+                if key == "year"
+                else _same_make_family(left.get("make"), right.get("make"))
+            )
             for key in ("year", "make")
         )
         and _same_model_family(left.get("model"), right.get("model"))
     )
+
+
+def _same_make_family(left: object, right: object) -> bool:
+    aliases = {
+        "chevy": "chevrolet",
+        "chevytruck": "chevrolet",
+        "chevrolettruck": "chevrolet",
+        "fordtruck": "ford",
+        "gmctruck": "gmc",
+        "toyotatruck": "toyota",
+    }
+    values = []
+    for value in (left, right):
+        normalized = re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+        normalized = aliases.get(normalized, normalized)
+        if normalized.endswith("truck"):
+            normalized = normalized[:-5]
+        values.append(normalized)
+    if not values[0] or not values[1]:
+        return False
+    if values[0] == values[1]:
+        return True
+    return False
 
 
 def _same_model_family(left: object, right: object) -> bool:
@@ -914,11 +1360,17 @@ def _same_model_family(left: object, right: object) -> bool:
 
     left_model = " ".join(str(left or "").split()).casefold()
     right_model = " ".join(str(right or "").split()).casefold()
-    return (
+    if (
         left_model == right_model
         or left_model.startswith(right_model + " ")
         or right_model.startswith(left_model + " ")
-    )
+    ):
+        return True
+    left_compact = re.sub(r"[^a-z0-9]", "", left_model)
+    right_compact = re.sub(r"[^a-z0-9]", "", right_model)
+    left_compact = re.sub(r"(?:2wd|4wd|awd|fwd|rwd)$", "", left_compact)
+    right_compact = re.sub(r"(?:2wd|4wd|awd|fwd|rwd)$", "", right_compact)
+    return bool(left_compact and right_compact and (left_compact.startswith(right_compact) or right_compact.startswith(left_compact)))
 
 
 def _filter_vehicle_bundles(
@@ -936,15 +1388,43 @@ def _filter_vehicle_bundles(
     requested_drive = str(
         vehicle.get("drivetrain", vehicle.get("drive_type", ""))
     ).strip()
-    if not requested_drive:
-        return family
-    matching = tuple(
-        bundle
-        for bundle in family
-        if _normalize_vehicle_dimension(bundle.vehicle.get("drivetrain"))
-        == _normalize_vehicle_dimension(requested_drive)
+    if requested_drive:
+        matching = tuple(
+            bundle
+            for bundle in family
+            if _normalize_vehicle_dimension(bundle.vehicle.get("drivetrain"))
+            == _normalize_vehicle_dimension(requested_drive)
+        )
+        family = matching or family
+
+    requested_engine = _engine_value(
+        vehicle.get("engine_displacement_l", vehicle.get("engine"))
     )
-    return matching or family
+    requested_trim = _normalize_vehicle_dimension(vehicle.get("trim"))
+    if requested_engine is None and not requested_trim:
+        return family
+    narrowed = []
+    for bundle in family:
+        configurations = getattr(bundle, "configurations", ()) or ()
+        if not configurations:
+            continue
+        if any(
+            (requested_engine is None or _engine_value(configuration.get("engine_displacement_l")) == requested_engine)
+            and (not requested_trim or requested_trim in _normalize_vehicle_dimension(configuration.get("trim")))
+            for configuration in configurations
+            if isinstance(configuration, Mapping)
+        ):
+            narrowed.append(bundle)
+    return tuple(narrowed) or family
+
+
+def _engine_value(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return round(float(re.search(r"\d+(?:\.\d+)?", str(value)).group(0)), 4)
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def _normalize_vehicle_dimension(value: object) -> str:
@@ -1133,16 +1613,9 @@ def _handle_fast_request(request: object) -> dict[str, str | int | list[str]]:
 
 
 def _source_request_headers() -> dict[str, str]:
-    raw_headers = os.getenv("AUTODATA_SOURCE_REQUEST_HEADERS_JSON", "").strip()
-    if not raw_headers:
-        return {}
-    try:
-        headers = json.loads(raw_headers)
-    except json.JSONDecodeError as error:
-        raise ValueError("AUTODATA_SOURCE_REQUEST_HEADERS_JSON must be valid JSON") from error
-    if not isinstance(headers, dict) or any(not isinstance(value, str) for value in headers.values()):
-        raise ValueError("AUTODATA_SOURCE_REQUEST_HEADERS_JSON must be an object of string values")
-    return {str(key): value for key, value in headers.items()}
+    from .autoapi_connector import configured_source_request_headers
+
+    return configured_source_request_headers()
 
 
 def _run_connector(
@@ -1263,12 +1736,9 @@ def main() -> None:
     interval = float(os.getenv("AUTODATA_WORKER_HEARTBEAT_SECONDS", "30"))
     consumer_enabled = os.getenv("AUTODATA_FAST_CONSUMER_ENABLED") == "1"
     knowledge_consumer_enabled = os.getenv("AUTODATA_KNOWLEDGE_CONSUMER_ENABLED") == "1"
-    chat_worker_enabled = os.getenv("AUTODATA_CHAT_WORKER_ENABLED") == "1"
     if os.getenv("AUTODATA_WORKER_ONCE") == "1":
         if knowledge_consumer_enabled:
             result = run_knowledge_fallback_once()
-        elif chat_worker_enabled:
-            result = run_chat_worker_once()
         else:
             result = run_nats_once() if consumer_enabled else run_once()
         print(json.dumps(result, sort_keys=True))
@@ -1276,8 +1746,6 @@ def main() -> None:
     while True:
         if knowledge_consumer_enabled:
             result = run_knowledge_fallback_once()
-        elif chat_worker_enabled:
-            result = run_chat_worker_once()
         else:
             result = run_nats_once() if consumer_enabled else run_once()
         print(json.dumps(result, sort_keys=True), flush=True)

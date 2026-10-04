@@ -1,0 +1,21 @@
+{
+  "goal": "Remove chatbot UI, routes, and runtime activation from AutoData's default product path while retaining the provider-neutral catalog and Workshop.",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-disable-chat-active-path.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/113",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/provider-neutral-catalog-api.md",
+    "docs/agents/pre-implementation-gate.md",
+    "docs/github/operating-model.md"
+  ],
+  "todo": [
+    "Remove chatbot dashboard UI and replace it with direct Swagger and Workshop navigation.",
+    "Unregister all chat API routes and remove unused chat handler startup wiring.",
+    "Disable chat worker subscriptions, Compose defaults, and runtime activation.",
+    "Add tests proving chat routes/UI/worker activation are absent and catalog paths still work.",
+    "Rebuild and verify local dashboard, chat-route 404, Swagger, Workshop, and health endpoints."
+  ],
+  "base_sha": "d1c0641",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T15:10:00Z"
+}

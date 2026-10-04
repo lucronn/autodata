@@ -52,16 +52,15 @@ Services:
 
 ### Container image provenance
 
-The Compose MinIO default is the verified stable release
-`quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z`. The Docker Hub
-`minio/minio:latest` reference is not used because the required CI runner can
-no longer pull that namespace. `AUTODATA_MINIO_IMAGE` remains an explicit
-override for a private or provider-managed registry; deployments should use a
-reviewed immutable release tag or digest rather than `latest`. This registry
-choice does not change the S3-compatible API, bucket contract, health check,
-or secret-management boundary. The correction was delivered to protected
-`master` by PR #94 at `defec080f925e97ce3bd9b785579817c572d5807`; required
-verification run `35004339067` passed on the PR head.
+Local Compose continues to use its existing MinIO service and persistent volume.
+GitHub Actions adds a CI-only Compose override for a publicly pullable SeaweedFS
+S3 service from GitHub Container Registry, pinned by multi-platform manifest
+digest. GHCR avoids unauthenticated Docker Hub pull quotas on shared runners.
+The override maps the existing CI credentials to SeaweedFS, pre-creates the
+test bucket, uses a separate disposable data volume, and exposes the same
+internal S3 port expected by the application. It never mounts or migrates the local MinIO volume. The
+reason for the CI-only override and its verification are tracked in Issue #111
+and `docs/superpowers/plans/2026-10-03-ci-s3-image-access.md`.
 
 The Go API uses the same PostgreSQL connection pool for purchaser-facing
 projection reads and dataset-request status when `AUTODATA_PROJECTION_STORE`
@@ -159,31 +158,7 @@ docker compose -f infra/compose/compose.yaml run --rm ingestion-smoke
 
 `ingestion-smoke` runs the deterministic `ingest-fixture` dependency first. It fails with a non-zero exit and an actionable message when the migration, payment/entitlement, normalized vehicle, source object, or `dataset.viewable` event contract is not satisfied. It is safe to rerun: the fixture uses stable identifiers and idempotency keys, while published revisions remain immutable.
 
-The chatbot integration boundary has a separate, opt-in Compose verification
-service. It is deliberately independent of PostgreSQL, NATS, MinIO, the Go
-API, and all provider credentials so it can prove the request lifecycle without
-altering the default local stack:
-
-```sh
-AUTODATA_POSTGRES_PASSWORD=compose-validation-only \
-AUTODATA_MINIO_ROOT_USER=compose-validation-admin \
-AUTODATA_MINIO_ROOT_PASSWORD=compose-validation-only \
-docker compose -f infra/compose/compose.yaml --profile verification \
-  run --rm --no-deps chat-smoke
-```
-
-`chat-smoke` mounts the repository read-only and runs
-`scripts/dev/chat_smoke.py` with deterministic in-memory fake source,
-normalizer, price refresher, model, and vectorizer adapters. `network_mode:
-none` makes any accidental provider call fail locally. The report has explicit
-cold and warm assertions: raw source data is returned before normalized data;
-overlap-aware labor and a no-markup parts quote are present; stale prices carry
-their `priced_at` timestamp while refresh proceeds; the source diagram is
-linked to a reviewable vector artifact; worker events are present; and same-key
-and semantically equivalent warm requests perform zero source or model calls.
-The service is enabled only with `--profile verification`, and therefore does
-not change `docker compose up` behavior. CI runs the same command after Compose
-definition validation and before the existing fake and live Compose smokes.
+The active product UI is the provider-neutral Workshop at `/workshop/`. The `/dashboard/` page is a small landing page; there is no chat worker or chat smoke service in the default stack.
 
 For a local source drop containing mixed JSON, HTML, PDF, SVG, XML, or CSV resources, inspect the normalized bundle without uploading the raw files:
 
@@ -394,7 +369,7 @@ The deployment design is provider-neutral and Kubernetes-compatible:
 
 The platform keeps cloud-specific adapters behind interfaces for ingress, secrets, object storage, managed PostgreSQL, and observability. Docker Compose remains the contract for local parity; Kubernetes manifests are the contract for deployable topology, not a requirement to operate Kubernetes during development.
 
-The initial deployable baseline is `infra/k8s/base.yaml`. It contains the API Service and two-replica rolling Deployment, a private `autodata-ingestion-http` Service and independently scalable gateway Deployment, independently scalable ingestion, enrichment, and payment-reconciler Deployments, a one-shot migration Job, and an API PodDisruptionBudget. The manifest references the externally managed `autodata-runtime-secrets` Secret and deliberately does not define or embed secret values. The `autodata-config` endpoint values and image references are provider-neutral defaults that must be replaced by an environment overlay before a cluster apply. Migration images are built and published as release artifacts; the migration Job is run and verified before API rollout. The API communicates with the gateway through the cluster DNS name `http://autodata-ingestion-http:8081`; no gateway port is exposed through a load balancer or ingress.
+The initial deployable baseline is `infra/k8s/base.yaml`. It contains the API Service and two-replica rolling Deployment, a private `autodata-ingestion-http` Service and independently scalable gateway Deployment, independently scalable ingestion, enrichment, and payment-reconciler Deployments, a one-shot migration Job, and an API PodDisruptionBudget. The manifest references externally managed Secrets and deliberately does not define or embed secret values. The API imports only named database and ingestion secrets from `autodata-runtime-secrets`; its service-key set belongs in API-only `autodata-api-service-keys`, and object-read credentials belong in API-only `autodata-api-image-reader`. Keep these API-only Secrets out of worker pod templates, and grant the image-reader key access only to the required source bucket and image prefix. Kubernetes object-storage traffic must use TLS. The `autodata-config` endpoint values and image references are provider-neutral defaults that must be replaced by an environment overlay before a cluster apply. Migration images are built and published as release artifacts; the migration Job is run and verified before API rollout. The API communicates with the gateway through the cluster DNS name `http://autodata-ingestion-http:8081`; no gateway port is exposed through a load balancer or ingress.
 
 Validate the manifest structure locally with `python scripts/dev/test_k8s_manifests.py`. A cluster-specific deployment pipeline may additionally run `kubectl apply --dry-run=server` against the target cluster and then apply the same reviewed manifest plus its environment overlay. The repository does not assume a Kubernetes context is available on a developer workstation.
 

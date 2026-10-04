@@ -1,0 +1,18 @@
+{
+  "goal": "Render stored source illustrations through opaque image tokens without provider path disclosure",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-source-review-opaque-images.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/114",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/catalog-source-review.md"
+  ],
+  "todo": [
+    "Synchronize the follow-up to Issue #114 and Project #8",
+    "Generate opaque image tokens for sanitized source HTML and fail closed without the image key",
+    "Add source JSON/HTML leakage and opaque image endpoint regression tests",
+    "Run Go tests/vet and hosted Compose verification on PR #119 and every descendant"
+  ],
+  "base_sha": "e4e7c4f",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T06:54:00Z"
+}

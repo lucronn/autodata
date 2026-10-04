@@ -61,6 +61,13 @@ class KubernetesManifestTests(unittest.TestCase):
         deployment = self.by_key[("Deployment", "autodata-api")]
         self.assertIn("AUTODATA_INGESTION_URL", deployment)
         self.assertIn("AUTODATA_INGESTION_INTERNAL_TOKEN", deployment)
+        self.assertIn("autodata-api-service-keys", deployment)
+        self.assertIn("autodata-api-image-reader", deployment)
+        self.assertNotIn("            - secretRef:", deployment)
+
+    def test_object_storage_uses_tls_in_kubernetes(self):
+        config = self.by_key[("ConfigMap", "autodata-config")]
+        self.assertIn('AUTODATA_S3_SECURE: "true"', config)
 
     def test_workers_are_independently_scalable_and_migration_is_one_shot(self):
         for name in (

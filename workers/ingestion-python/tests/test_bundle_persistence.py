@@ -128,9 +128,9 @@ class BundlePersistenceTests(unittest.TestCase):
         ):
             self.assertIn(column, compact_query)
         self.assertIn("ON CONFLICT (vehicle_id, article_id, source_snapshot_id, source_locator)", compact_query)
-        self.assertIn("body = EXCLUDED.body", compact_query)
-        self.assertIn("steps = EXCLUDED.steps", compact_query)
-        self.assertIn("normalized_fingerprint = EXCLUDED.normalized_fingerprint", compact_query)
+        self.assertIn("THEN catalog_articles.body ELSE EXCLUDED.body END", compact_query)
+        self.assertIn("THEN catalog_articles.steps ELSE EXCLUDED.steps END", compact_query)
+        self.assertIn("THEN catalog_articles.normalized_fingerprint ELSE EXCLUDED.normalized_fingerprint END", compact_query)
         self.assertIn(
             "vehicle_configuration_id = COALESCE( EXCLUDED.vehicle_configuration_id, catalog_articles.vehicle_configuration_id )",
             compact_query,

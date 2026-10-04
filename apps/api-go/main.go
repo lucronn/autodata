@@ -17,10 +17,10 @@ import (
 	"time"
 )
 
-// dashboardFiles contains the small local developer dashboard. It is served
-// by the API so the browser uses the same origin and authentication boundary.
+// dashboardFiles embeds the Workshop, API explorer, and small landing page so
+// local users can access the complete catalog experience from one origin.
 //
-//go:embed dashboard/*
+//go:embed dashboard/* workshop/* openapi.yaml openapi.json swagger.html swagger-ui/*
 var dashboardFiles embed.FS
 
 const dependencyTimeout = 250 * time.Millisecond
@@ -68,8 +68,9 @@ type Server struct {
 	knowledgeFallbackPublisher KnowledgeFallbackPublisher
 	sourceReviews              SourceReviewStore
 	ingestionClient            IngestionClient
-	chatClient                 ChatClient
 	vehicleIdentity            VehicleIdentityStore
+	catalog                    CatalogStore
+	catalogImageKey            []byte
 	metrics                    *apiMetrics
 }
 
@@ -97,8 +98,20 @@ func NewServerWithDependenciesAndPublisher(readiness ReadinessChecker, auth Auth
 		knowledgeFallbackPublisher: publisher,
 		sourceReviews:              newMemorySourceReviewStore(),
 		vehicleIdentity:            newMemoryVehicleIdentityStore(),
+		catalog:                    newMemoryCatalogStore(),
+		catalogImageKey:            configuredCatalogImageKey(),
 		metrics:                    new(apiMetrics),
 	}
+}
+
+// NewServerWithCatalogStore injects the normalized catalog persistence
+// boundary while keeping handlers independent from the database adapter.
+func NewServerWithCatalogStore(readiness ReadinessChecker, auth Authenticator, requests RequestStore, catalog CatalogStore, projections ...ProjectionStore) *Server {
+	server := NewServerWithDependencies(readiness, auth, requests, projections...)
+	if catalog != nil {
+		server.catalog = catalog
+	}
+	return server
 }
 
 // NewServerWithVehicleIdentityStore injects the canonical identity persistence
@@ -126,14 +139,57 @@ func NewServerWithSourceReviewStore(readiness ReadinessChecker, auth Authenticat
 func NewServerWithIngestionClient(readiness ReadinessChecker, auth Authenticator, requests RequestStore, client IngestionClient, projections ...ProjectionStore) *Server {
 	server := NewServerWithDependencies(readiness, auth, requests, projections...)
 	server.ingestionClient = client
-	if chatClient, ok := client.(ChatClient); ok {
-		server.chatClient = chatClient
-	}
 	return server
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", func(response http.ResponseWriter, request *http.Request) {
+		http.Redirect(response, request, "/dashboard/", http.StatusFound)
+	})
+	mux.HandleFunc("GET /openapi.json", func(response http.ResponseWriter, _ *http.Request) {
+		body, err := dashboardFiles.ReadFile("openapi.json")
+		if err != nil {
+			http.Error(response, "OpenAPI document unavailable", http.StatusInternalServerError)
+			return
+		}
+		response.Header().Set("Content-Type", "application/json; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-cache")
+		_, _ = response.Write(body)
+	})
+	mux.HandleFunc("GET /openapi.yaml", func(response http.ResponseWriter, _ *http.Request) {
+		body, err := dashboardFiles.ReadFile("openapi.yaml")
+		if err != nil {
+			http.Error(response, "OpenAPI document unavailable", http.StatusInternalServerError)
+			return
+		}
+		response.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-cache")
+		_, _ = response.Write(body)
+	})
+	mux.HandleFunc("GET /swagger", func(response http.ResponseWriter, request *http.Request) {
+		http.Redirect(response, request, "/swagger/", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /swagger/", func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/swagger/" {
+			body, err := dashboardFiles.ReadFile("swagger.html")
+			if err != nil {
+				http.Error(response, "Swagger UI unavailable", http.StatusInternalServerError)
+				return
+			}
+			response.Header().Set("Content-Type", "text/html; charset=utf-8")
+			response.Header().Set("Cache-Control", "no-cache")
+			_, _ = response.Write(body)
+			return
+		}
+		assets, err := fs.Sub(dashboardFiles, "swagger-ui")
+		if err != nil {
+			http.Error(response, "Swagger UI unavailable", http.StatusInternalServerError)
+			return
+		}
+		response.Header().Set("Cache-Control", "public, max-age=3600")
+		http.StripPrefix("/swagger/", http.FileServer(http.FS(assets))).ServeHTTP(response, request)
+	})
 	mux.HandleFunc("GET /dashboard", func(response http.ResponseWriter, request *http.Request) {
 		http.Redirect(response, request, "/dashboard/", http.StatusMovedPermanently)
 	})
@@ -160,6 +216,31 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics.handler)
+	mux.HandleFunc("GET /workshop", func(response http.ResponseWriter, request *http.Request) {
+		http.Redirect(response, request, "/workshop/", http.StatusMovedPermanently)
+	})
+	workshopAssets, err := fs.Sub(dashboardFiles, "workshop")
+	if err != nil {
+		panic("embedded workshop assets unavailable: " + err.Error())
+	}
+	mux.Handle("GET /workshop/", http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Cache-Control", "no-cache")
+		http.StripPrefix("/workshop/", http.FileServer(http.FS(workshopAssets))).ServeHTTP(response, request)
+	}))
+	mux.Handle("GET /v1/catalog/years", s.requireRole("dataset_viewer", s.listCatalogYears))
+	mux.Handle("GET /v1/catalog/years/{year}/makes", s.requireRole("dataset_viewer", s.listCatalogMakes))
+	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models", s.requireRole("dataset_viewer", s.listCatalogModels))
+	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models/{model}/configurations", s.requireRole("dataset_viewer", s.listCatalogConfigurations))
+	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles", s.requireRole("dataset_viewer", s.listCatalogArticles))
+	mux.Handle("POST /v1/catalog/vehicles/{vehicle_id}/compositions", s.requireRole("dataset_viewer", s.composeCatalogProcedure))
+	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source", s.requireRole("dataset_viewer", s.serveCatalogSource))
+	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.requireRole("dataset_viewer", s.getCatalogArticle))
+	mux.HandleFunc("GET /v1/catalog/images/{token}", func(response http.ResponseWriter, request *http.Request) {
+		serveCatalogImage(response, request, s.catalogImageKey)
+	})
+	mux.HandleFunc("GET /v1/catalog/images", func(response http.ResponseWriter, _ *http.Request) {
+		http.Error(response, "catalog image not found", http.StatusNotFound)
+	})
 	mux.Handle("POST /dataset-requests", s.requireRole("dataset_viewer", s.createDatasetRequest))
 	mux.Handle("POST /vehicle-identities/resolve", s.requireRole("dataset_viewer", s.resolveVehicleIdentity))
 	mux.Handle("GET /vehicle-identities/selectors", s.requireRole("dataset_viewer", s.listVehicleIdentitySelectors))
@@ -168,12 +249,6 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /article-intakes", s.requireRole("ingestion_operator", s.createArticleIntake))
 	mux.Handle("POST /knowledge-queries", s.requireRole("dataset_viewer", s.createKnowledgeQuery))
 	mux.Handle("POST /job-plans", s.requireRole("dataset_viewer", s.createJobPlan))
-	mux.Handle("POST /chat/queries", s.requireRole("dataset_viewer", s.createChatQuery))
-	mux.Handle("GET /chat/queries/{id}", s.requireRole("dataset_viewer", s.getChatQuery))
-	mux.Handle("GET /chat/queries/{id}/guide.pdf", s.requireRole("dataset_viewer", s.getChatGuidePDF))
-	mux.Handle("GET /chat/queries/{id}/guide.html", s.requireRole("dataset_viewer", s.getChatGuideHTML))
-	mux.Handle("POST /chat/queries/{id}/selections", s.requireRole("dataset_viewer", s.selectChatVehicle))
-	mux.Handle("GET /chat/queries/{id}/events", s.requireRole("dataset_viewer", s.streamChatEvents))
 	mux.Handle("GET /dataset-requests/{id}", s.requireRole("dataset_viewer", s.getDatasetRequest))
 	mux.Handle("GET /datasets/{id}", s.requireRole("dataset_viewer", s.getDataset))
 	mux.Handle("GET /datasets/{id}/sections", s.requireRole("dataset_viewer", s.getDatasetSections))
@@ -528,6 +603,10 @@ func configuredReadiness() ReadinessChecker {
 const defaultIngestionTimeoutSeconds = 120
 
 func main() {
+	authenticator, err := configuredAuthenticator()
+	if err != nil {
+		log.Fatal(fmt.Errorf("configure API authentication: %w", err))
+	}
 	address := envOrDefault("AUTODATA_API_ADDR", ":8080")
 	requestStore, projectionStore, cleanup, err := configuredStores(context.Background())
 	if err != nil {
@@ -538,9 +617,10 @@ func main() {
 	if err != nil {
 		log.Fatal(fmt.Errorf("configure knowledge fallback publisher: %w", err))
 	}
-	application := NewServerWithDependenciesAndPublisher(configuredReadiness(), HeaderAuthenticator{}, requestStore, publisher, projectionStore)
+	application := NewServerWithDependenciesAndPublisher(configuredReadiness(), authenticator, requestStore, publisher, projectionStore)
 	if durableProjections, ok := projectionStore.(*postgresProjectionStore); ok {
 		application.vehicleIdentity = newLayeredVehicleIdentityStore(durableProjections.pool)
+		application.catalog = newPostgresCatalogStore(durableProjections.pool)
 		application.sourceReviews = newPostgresSourceReviewStore(durableProjections.pool)
 	}
 	if endpoint := strings.TrimSpace(os.Getenv("AUTODATA_INGESTION_URL")); endpoint != "" {
@@ -553,7 +633,6 @@ func main() {
 			log.Fatal(fmt.Errorf("configure ingestion client: %w", err))
 		}
 		application.ingestionClient = client
-		application.chatClient = client
 	}
 	server := &http.Server{
 		Addr:              address,

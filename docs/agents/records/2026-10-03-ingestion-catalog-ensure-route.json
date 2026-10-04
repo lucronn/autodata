@@ -1,0 +1,19 @@
+{
+  "goal": "Wire the Go catalog hydration endpoint to the ingestion worker catalog service",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-ingestion-catalog-ensure-route.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/113",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/provider-neutral-catalog-api.md",
+    "docs/agents/pre-implementation-gate.md",
+    "docs/github/operating-model.md"
+  ],
+  "todo": [
+    "Register POST /v1/catalog/ensure in the ingestion worker HTTP contract",
+    "Dispatch validated requests to ensure_catalog_hydration and preserve the response envelope",
+    "Add worker HTTP tests and verify the Go-to-worker catalog hydration route with a fake source"
+  ],
+  "base_sha": "9fdfde9828d106fcfd765670259fe920307b99fb",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T07:47:31Z"
+}

@@ -3,6 +3,7 @@ import unittest
 from autodata_ingestion.autoapitwo_guide import (
     _actions,
     _components,
+    _result_component,
     compose_illustrated_guide,
     retrieve_autoapitwo_articles,
     vehicle_candidates_from_autoapitwo,
@@ -210,6 +211,12 @@ class IllustratedGuideTests(unittest.TestCase):
             {"year": 1997, "make": "Toyota", "model": "RAV4", "autoapitwo_vehicle_id": "41215"},
             connector=FakeConnector(),
         )
+        # One normalized procedure per component (oil, water, timing prerequisite).
+        self.assertEqual(
+            sorted(article["component"] for article in articles),
+            ["oil_pump", "timing_belt", "water_pump"],
+        )
+        self.assertTrue(all(article.get("procedure_kind") == "removal_and_installation" for article in articles))
         guide = compose_illustrated_guide("oil pump and water pump replacement", {"year": 1997, "make": "Toyota", "model": "RAV4"}, articles)
         self.assertEqual(guide["content_status"], "complete")
         self.assertTrue(guide["pdf_ready"])
@@ -241,7 +248,66 @@ class IllustratedGuideTests(unittest.TestCase):
         self.assertEqual(len(articles), 1)
         self.assertEqual(guide["content_status"], "complete")
         self.assertFalse(any(gap.startswith("missing_") for gap in guide["gaps"]))
-        self.assertEqual([step["phase"] for step in guide["steps"]], ["removal", "installation"])
+        actions = [step["action"] for step in guide["steps"]]
+        self.assertEqual(len(actions), 2)
+        self.assertIn("REMOVE STARTER", actions[0].upper())
+        self.assertIn("INSTALL STARTER", actions[1].upper())
+        # Without REMOVAL/INSTALLATION headings, phase stays at the article default;
+        # source step order is still preserved.
+        self.assertEqual([step["action"] for step in guide["steps"]], actions)
+
+    def test_multi_component_guide_keeps_source_order_per_component_and_skips_source_headings(self):
+        articles = [
+            {
+                "article_id": "oil-combined",
+                "title": "Oil Pump",
+                "component": "oil_pump",
+                "procedure_kind": "removal_and_installation",
+                "blocks": [
+                    {"kind": "text", "text": "OIL PUMP"},
+                    {"kind": "text", "text": "REMOVAL"},
+                    {"kind": "text", "text": "1. Remove RH engine under cover."},
+                    {"kind": "text", "text": "2. Remove oil pump."},
+                    {"kind": "text", "text": "INSTALLATION"},
+                    {"kind": "text", "text": "3. Install oil pump."},
+                ],
+            },
+            {
+                "article_id": "water-removal",
+                "title": "Water Pump Removal",
+                "component": "water_pump",
+                "procedure_kind": "removal",
+                "blocks": [{"kind": "text", "text": "1. Remove water pump."}],
+            },
+            {
+                "article_id": "water-installation",
+                "title": "Water Pump Installation",
+                "component": "water_pump",
+                "procedure_kind": "installation",
+                "blocks": [{"kind": "text", "text": "1. Install water pump."}],
+            },
+        ]
+
+        guide = compose_illustrated_guide(
+            "oil pump and water pump replacement",
+            {"year": 1997, "make": "Toyota", "model": "RAV4"},
+            articles,
+        )
+
+        actions = [step["action"] for step in guide["steps"]]
+        components = [
+            (step.get("components") or [None])[0] for step in guide["steps"]
+        ]
+        self.assertNotIn("OIL PUMP", actions)
+        self.assertNotIn("REMOVAL", actions)
+        self.assertNotIn("INSTALLATION", actions)
+        # Whole articles concatenate in component order; oil install stays with oil.
+        self.assertLess(actions.index("Install oil pump."), actions.index("Remove water pump."))
+        oil_indexes = [i for i, component in enumerate(components) if component == "oil_pump"]
+        water_indexes = [i for i, component in enumerate(components) if component == "water_pump"]
+        self.assertEqual(oil_indexes, list(range(min(oil_indexes), max(oil_indexes) + 1)))
+        self.assertEqual(water_indexes, list(range(min(water_indexes), max(water_indexes) + 1)))
+        self.assertLess(max(oil_indexes), min(water_indexes))
 
     def test_composed_step_does_not_repeat_heading_as_first_instruction(self):
         connector = CombinedProcedureConnector()
@@ -262,4 +328,25 @@ class IllustratedGuideTests(unittest.TestCase):
         self.assertEqual(
             _actions("Water Pump >> Removal and Replacement (Service and Repair)"),
             ["removal_and_installation"],
+        )
+
+    def test_replacement_titles_and_singular_brake_pages_are_procedure_hits(self):
+        self.assertEqual(
+            _actions("Brake Pad >> Procedures (Service and Repair) >> Brake Pads Replacement - Front"),
+            ["replace"],
+        )
+        self.assertEqual(
+            _actions("Brake Rotor/Disc >> Procedures (Service and Repair) >> Brake Rotor Replacement"),
+            ["replace"],
+        )
+        self.assertEqual(
+            _result_component("Brake Pad >> Parts and Labor", ("brake_pads",)),
+            "brake_pads",
+        )
+        self.assertEqual(
+            _result_component(
+                "Brake Rotor/Disc >> Procedures (Service and Repair) >> Brake Rotor Replacement - Front",
+                ("brake_rotor",),
+            ),
+            "brake_rotor",
         )

@@ -1,0 +1,19 @@
+{
+  "goal": "Publish an accurate OpenAPI contract for all catalog source and opaque image routes without internal storage keys",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-openapi-source-media-contract.md",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/provider-neutral-catalog-api.md",
+    "docs/architecture/opaque-source-media-paths.md"
+  ],
+  "todo": [
+    "Synchronize the follow-up to Issues #113 and #116 and Project #8",
+    "Document source review JSON/HTML responses, authentication and errors",
+    "Document opaque image paths and legacy route rejection; remove storage_key from public schemas",
+    "Validate OpenAPI files and hosted PR #123 verification"
+  ],
+  "base_sha": "c32b742",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T07:32:00Z",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/113"
+}

@@ -41,6 +41,14 @@ DEFAULT_RETRY_BACKOFF_SECONDS = 0.25
 DEFAULT_SOURCE_CACHE_MAX_ENTRIES = 512
 DEFAULT_SOURCE_CACHE_TTL_SECONDS = 300.0
 
+_AUTODBONE_CATALOG_ALIASES = {
+    "generalmotors": "gm",
+    "toyota": "toyota",
+    "motor": "catalog",
+    "gm": "gm",
+    "catalog": "catalog",
+}
+
 _SHARED_SOURCE_CACHE: OrderedDict[str, tuple[Any, SourceResource]] = OrderedDict()
 _SHARED_SOURCE_INFLIGHT: dict[str, Condition] = {}
 _SHARED_SOURCE_CACHE_LOCK = RLock()
@@ -67,6 +75,30 @@ class AutoAPICatalog:
     selection_rows: tuple[dict[str, Any], ...]
     vehicles: tuple[AutoAPIVehicleBundle, ...]
     errors: tuple[dict[str, str], ...] = ()
+    complete: bool = True
+    resources: tuple[SourceResource, ...] = ()
+
+    @property
+    def provenance(self) -> tuple[dict[str, Any], ...]:
+        resources = self.resources or tuple(
+            resource for bundle in self.vehicles for resource in bundle.resources
+        )
+        seen: set[tuple[str, str]] = set()
+        result = []
+        for resource in resources:
+            key = (resource.source_uri, resource.content_sha256)
+            if key not in seen:
+                seen.add(key)
+                result.append(_resource_provenance(resource))
+        return tuple(result)
+
+    def to_provider_response(self) -> dict[str, Any]:
+        return {
+            "rows": self.selection_rows,
+            "complete": self.complete and not self.errors,
+            "missing_scopes": tuple(error["scope"] for error in self.errors),
+            "provenance": self.provenance,
+        }
 
     def to_batches(self) -> tuple[Any, ...]:
         """Convert fetched provider bundles into the shared batch executor."""
@@ -114,6 +146,14 @@ class AutoAPIConnector:
             raise ValueError("AutoAPI base URL must not contain credentials")
         if not str(content_source).strip():
             raise ValueError("AutoAPI content source is required")
+        self._content_source = str(content_source).strip()
+        self._catalog_alias = _AUTODBONE_CATALOG_ALIASES.get(
+            self._content_source.casefold()
+        )
+        if self._catalog_alias is None:
+            raise ValueError(
+                f"unsupported AutoDBone catalog source: {self._content_source}"
+            )
         if not str(default_region).strip():
             raise ValueError("AutoAPI default region is required")
         if (
@@ -130,7 +170,6 @@ class AutoAPIConnector:
         ):
             raise ValueError("AutoAPI limits must be positive")
         self._base_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
-        self._content_source = str(content_source).strip()
         self._default_region = str(default_region).strip().upper()
         self.source_version = str(source_version).strip()
         if not self.source_version:
@@ -153,19 +192,25 @@ class AutoAPIConnector:
         self._required_source_cache: dict[str, dict[str, Any]] = {}
         self._source_cache_lock = RLock()
 
+    def _catalog_prefix(self) -> str:
+        return f"/v1/api/catalog/{self._catalog_alias}"
+
     def fetch_catalog(self) -> AutoAPICatalog:
         """Fetch years, makes, models, vehicle identities, and all articles."""
 
-        years_payload, _ = self._cached_get_json("/v1/api/years")
+        catalog_resources: list[SourceResource] = []
+        years_payload, years_resource = self._cached_get_json("/v1/api/years")
+        catalog_resources.append(years_resource)
         years = tuple(sorted({_year_value(item) for item in _items(years_payload)}))
         vehicle_targets: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
         for year in years:
             makes_scope = f"makes:{year}"
             try:
-                makes_payload, _ = self._cached_get_json(
+                makes_payload, makes_resource = self._cached_get_json(
                     f"/v1/api/year/{quote(str(year), safe='')}/makes"
                 )
+                catalog_resources.append(makes_resource)
             except Exception as error:  # noqa: BLE001 - retain other years
                 errors.append({"scope": makes_scope, "error": _safe_error(error)})
                 continue
@@ -178,11 +223,12 @@ class AutoAPIConnector:
                 make_route_value = make_name
                 models_scope = f"models:{year}:{make_route_value}"
                 try:
-                    models_payload, _ = self._cached_get_json(
+                    models_payload, models_resource = self._cached_get_json(
                         "/v1/api/year/{}/make/{}/models".format(
                             quote(str(year), safe=""), quote(make_route_value, safe="")
                         )
                     )
+                    catalog_resources.append(models_resource)
                 except Exception as error:  # noqa: BLE001 - retain other makes
                     errors.append({"scope": models_scope, "error": _safe_error(error)})
                     continue
@@ -208,10 +254,11 @@ class AutoAPIConnector:
                 ):
                     vehicles_scope = f"vehicles:{year}:{make_route_value}:{batch_index}"
                     try:
-                        vehicles_payload, _ = self._cached_get_json(
-                            f"/v1/api/source/{quote(self._content_source, safe='')}/vehicles",
+                        vehicles_payload, vehicles_resource = self._cached_get_json(
+                            f"{self._catalog_prefix()}/vehicles",
                             query={"vehicleIds": ",".join(model_id_batch)},
                         )
+                        catalog_resources.append(vehicles_resource)
                     except Exception as error:  # noqa: BLE001 - retain other makes
                         errors.append({"scope": vehicles_scope, "error": _safe_error(error)})
                         continue
@@ -261,7 +308,19 @@ class AutoAPIConnector:
             for bundle in bundles
             for row in _rows_for_bundle(bundle)
         )
-        return AutoAPICatalog(years, selection_rows, bundles, tuple(errors))
+        return AutoAPICatalog(
+            years,
+            selection_rows,
+            bundles,
+            tuple(errors),
+            complete=not errors,
+            resources=tuple(catalog_resources + [resource for bundle in bundles for resource in bundle.resources]),
+        )
+
+    def fetch_catalog_snapshot(self) -> dict[str, Any]:
+        """Return the provider-neutral catalog response with raw provenance."""
+
+        return self.fetch_catalog().to_provider_response()
 
     def find_vehicle_targets(
         self, year: int, make: str, model: str
@@ -281,8 +340,10 @@ class AutoAPIConnector:
             (
                 item
                 for item in _items(makes_payload)
-                if (_first_text(item, "makeName", "name", "make") or "").casefold()
-                == requested_make
+                if _make_matches(
+                    _first_text(item, "makeName", "name", "make") or "",
+                    requested_make,
+                )
             ),
             None,
         )
@@ -306,7 +367,7 @@ class AutoAPIConnector:
         if not model_vehicle_ids:
             return ()
         vehicles_payload, _ = self._cached_get_json(
-            f"/v1/api/source/{quote(self._content_source, safe='')}/vehicles",
+            f"{self._catalog_prefix()}/vehicles",
             query={"vehicleIds": ",".join(model_vehicle_ids)},
         )
         targets = []
@@ -328,11 +389,45 @@ class AutoAPIConnector:
             )
         return _dedupe_vehicle_targets(targets)
 
+    def fetch_catalog_scope(self, request: Any) -> dict[str, Any]:
+        """Read only the AutoAPI selector scope requested by the API."""
+
+        scope = str(getattr(request, "scope", "catalog")).strip()
+        if scope not in {"makes", "models", "configurations"}:
+            return self.fetch_catalog_snapshot().to_provider_response()
+        year = int(getattr(request, "year"))
+        requested_make = _first_text({"make": getattr(request, "make", "")}, "make")
+        requested_model = _first_text({"model": getattr(request, "model", "")}, "model")
+        make_filter = "" if requested_make.casefold() in {"", "unknown"} else requested_make.casefold()
+        model_filter = "" if requested_model.casefold() in {"", "unknown"} else requested_model.casefold()
+        resources: list[SourceResource] = []
+        rows: list[dict[str, Any]] = []
+        makes_payload, makes_resource = self._cached_get_json(f"/v1/api/year/{year}/makes")
+        resources.append(makes_resource)
+        for make_record in _items(makes_payload):
+            make = _first_text(make_record, "makeName", "name", "make")
+            if not make or (make_filter and make.casefold() != make_filter):
+                continue
+            models_payload, models_resource = self._cached_get_json(
+                f"/v1/api/year/{year}/make/{quote(make, safe='')}/models"
+            )
+            resources.append(models_resource)
+            for model_record in _items(models_payload):
+                model = _first_text(model_record, "modelName", "model", "name")
+                if not model or (model_filter and model.casefold() != model_filter):
+                    continue
+                rows.append({"year": year, "make": make, "model": model, "region": self._default_region})
+        return {
+            "rows": rows,
+            "complete": True,
+            "provenance": [_resource_provenance(resource) for resource in resources],
+        }
+
     def fetch_vehicle_bundle(self, target: Mapping[str, Any]) -> AutoAPIVehicleBundle:
         """Fetch vehicle identity, engine configurations, article index, and details."""
 
         vehicle_id = _required_text(target, "vehicle_id")
-        source_path = f"/v1/api/source/{quote(self._content_source, safe='')}/{quote(vehicle_id, safe='') }"
+        source_path = f"{self._catalog_prefix()}/{quote(vehicle_id, safe='')}"
         resources: list[SourceResource] = []
 
         # The article index is the narrow discovery gate.  Hydrate vehicle
@@ -342,7 +437,7 @@ class AutoAPIConnector:
         resources.append(articles_resource)
         name_payload, name_resource = self._cached_get_json(f"{source_path}/name")
         resources.append(name_resource)
-        motor_payload, motor_resource = self._cached_get_json(f"{source_path}/motorvehicles")
+        motor_payload, motor_resource = self._cached_get_json(f"{source_path}/vehicle-details")
         resources.append(motor_resource)
 
         article_items = _article_items(articles_payload)
@@ -393,9 +488,8 @@ class AutoAPIConnector:
         """Read the vehicle article index without hydrating article bodies."""
 
         vehicle = quote(str(_required_text({"vehicle_id": vehicle_id}, "vehicle_id")), safe="")
-        source = quote(self._content_source, safe="")
         return self._cached_get_json(
-            f"/v1/api/source/{source}/vehicle/{vehicle}/articles/v2"
+            f"{self._catalog_prefix()}/vehicle/{vehicle}/articles/v2"
         )
 
     def fetch_parts_resource(
@@ -404,9 +498,8 @@ class AutoAPIConnector:
         """Read the provider's vehicle-scoped parts/price resource once."""
 
         vehicle = quote(str(_required_text({"vehicle_id": vehicle_id}, "vehicle_id")), safe="")
-        source = quote(self._content_source, safe="")
         return self._cached_get_json(
-            f"/v1/api/source/{source}/vehicle/{vehicle}/parts"
+            f"{self._catalog_prefix()}/vehicle/{vehicle}/parts"
         )
 
     # The plural spelling mirrors the domain interface used by callers while
@@ -428,18 +521,18 @@ class AutoAPIConnector:
         fan out to every article in a vehicle catalog.
         """
 
-        source = quote(self._content_source, safe="")
         vehicle = quote(str(vehicle_id), safe="")
-        article = quote(str(article_id), safe="")
-        labor_article = quote(str(labor_article_id or article_id), safe="")
+        article = quote(_provider_article_id_for_request(article_id), safe="")
+        labor = labor_article_id or article_id
+        labor_article = quote(_provider_article_id_for_request(labor), safe="")
         _detail_payload, detail_resource = self._cached_get_json(
-            f"/v1/api/source/{source}/vehicle/{vehicle}/article/{article}"
+            f"{self._catalog_prefix()}/vehicle/{vehicle}/article/{article}"
         )
         if not include_labor:
             return (detail_resource,)
         try:
             _labor_payload, labor_resource = self._cached_get_json(
-                f"/v1/api/source/{source}/vehicle/{vehicle}/labor/{labor_article}"
+                f"{self._catalog_prefix()}/vehicle/{vehicle}/labor/{labor_article}"
             )
         except Exception:
             # Labor is an enrichment resource. Preserve a usable article body
@@ -609,6 +702,7 @@ class AutoAPIConnector:
             media_type="application/json",
             locator=uri,
             metadata={
+                "provider": "autodbone",
                 "connector": self.name,
                 "http_status": status,
                 "retrieved_at": retrieved_at,
@@ -707,7 +801,8 @@ def fetch_required_source_resources(
                 )
             ]
         for article_id in dict.fromkeys(article_ids):
-            if article_id not in article_by_id:
+            provider_article_id = _provider_article_id_for_request(article_id)
+            if provider_article_id not in article_by_id:
                 missing_article_ids.append(article_id)
                 continue
             if article_id not in requested_article_ids:
@@ -720,7 +815,7 @@ def fetch_required_source_resources(
             )
             if labor_id is None:
                 title = _normalized_text(
-                    _first_text(article_by_id[article_id], "title", "name") or ""
+                    _first_text(article_by_id[provider_article_id], "title", "name") or ""
                 )
                 labor_id = labor_by_title.get(title)
             if labor_id:
@@ -1197,6 +1292,17 @@ def _source_object_key(resource: SourceResource) -> str:
     return f"sources/{resource.content_sha256[:16]}/{resource.content_sha256}"
 
 
+def _resource_provenance(resource: SourceResource) -> dict[str, Any]:
+    return {
+        "provider": "autoapi",
+        "source_uri": resource.source_uri,
+        "source_version": resource.source_version,
+        "content_sha256": resource.content_sha256,
+        "retrieved_at": resource.metadata.get("retrieved_at"),
+        "metadata": dict(resource.metadata),
+    }
+
+
 def _parts_price_snapshot_id(
     canonical_part_id: str, source_snapshot_id: str, priced_at: datetime
 ) -> str:
@@ -1271,7 +1377,47 @@ def _model_matches(model: Any, requested_model: str) -> bool:
         return False
     normalized = " ".join(candidate.split()).casefold()
     requested = " ".join(str(requested_model).split()).casefold()
-    return normalized == requested or normalized.startswith(requested + " ")
+    if normalized == requested or normalized.startswith(requested + " "):
+        return True
+
+    # Source selector labels are not stable across providers. For example,
+    # the local catalog can publish ``4 Runner 4wd`` while AutoAPI exposes
+    # ``4Runner Base`` and ``4Runner SR5``. Compare compact family names after
+    # removing a trailing drivetrain token from the requested label; trim and
+    # base suffixes remain valid family matches.
+    compact_candidate = re.sub(r"[^a-z0-9]", "", normalized)
+    compact_requested = re.sub(r"[^a-z0-9]", "", requested)
+    requested_family = re.sub(r"(?:2wd|4wd|awd|fwd|rwd)$", "", compact_requested)
+    if not requested_family:
+        return False
+    return (
+        compact_candidate.startswith(requested_family)
+        or requested_family.startswith(compact_candidate)
+    )
+
+
+def _make_matches(candidate_make: str, requested_make: str) -> bool:
+    """Match provider make labels that add a truck/body vocabulary suffix."""
+
+    candidate = re.sub(r"[^a-z0-9]", "", str(candidate_make).casefold())
+    requested = re.sub(r"[^a-z0-9]", "", str(requested_make).casefold())
+    aliases = {
+        "chevy": "chevrolet",
+        "chevytruck": "chevrolet",
+        "chevrolettruck": "chevrolet",
+        "fordtruck": "ford",
+        "gmctruck": "gmc",
+        "toyotatruck": "toyota",
+    }
+    candidate = aliases.get(candidate, candidate)
+    requested = aliases.get(requested, requested)
+    if candidate == requested:
+        return True
+    if candidate.endswith("truck"):
+        candidate = candidate[:-5]
+    if requested.endswith("truck"):
+        requested = requested[:-5]
+    return bool(candidate and requested and candidate == requested)
 
 
 def _chunks(values: list[str], size: int) -> tuple[list[str], ...]:
@@ -1358,6 +1504,43 @@ def _request_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
         if not name or any(character in name + content for character in "\r\n"):
             raise ValueError("AutoAPI request headers must not contain newlines")
         result[name] = content
+    return result
+
+
+def _provider_article_id_for_request(article_id: Any) -> str:
+    """Remove only this connector's namespace before constructing its URL."""
+
+    value = str(article_id or "").strip()
+    prefix = value.split(":", 1)[0].casefold()
+    if prefix in {"autoapi", "autodbone"}:
+        return value.split(":", 1)[1]
+    return value
+
+
+def configured_source_request_headers(base_url: str = "") -> dict[str, str]:
+    """Read approved source headers without logging or exposing their values.
+
+    The Vercel automation bypass is attached only to this project's Vercel
+    deployment hosts; it must never follow a configurable provider URL to an
+    unrelated destination.
+    """
+
+    import os
+
+    raw_headers = os.getenv("AUTODATA_SOURCE_REQUEST_HEADERS_JSON", "").strip()
+    if not raw_headers:
+        return {}
+    try:
+        headers = json.loads(raw_headers)
+    except json.JSONDecodeError as error:
+        raise ValueError("AUTODATA_SOURCE_REQUEST_HEADERS_JSON must be valid JSON") from error
+    if not isinstance(headers, Mapping) or any(not isinstance(value, str) for value in headers.values()):
+        raise ValueError("AUTODATA_SOURCE_REQUEST_HEADERS_JSON must be an object of string values")
+    result = _request_headers({str(key): value for key, value in headers.items()})
+    bypass = os.getenv("AUTODATA_AUTOAPI_VERCEL_PROTECTION_BYPASS", "").strip()
+    host = urlsplit(base_url).hostname or ""
+    if bypass and re.fullmatch(r"autodbone(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?-curtt\.vercel\.app", host.casefold()):
+        result["x-vercel-protection-bypass"] = bypass
     return result
 
 

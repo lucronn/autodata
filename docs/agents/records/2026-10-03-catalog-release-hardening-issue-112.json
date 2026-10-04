@@ -1,0 +1,17 @@
+{
+  "goal": "Localize catalog images in AutoData storage",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-catalog-release-hardening.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/112",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/opaque-source-media-paths.md"
+  ],
+  "todo": [
+    "Serve public image tokens from stored local objects",
+    "Eliminate provider fetches at article render time",
+    "Verify missing-image and warm replay behavior"
+  ],
+  "base_sha": "55b061ed3f588668986db27e8370ece3ec9b28c1",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T13:00:00Z"
+}

@@ -1,0 +1,19 @@
+{
+  "goal": "Reject heading-only, metadata-only, and otherwise unusable procedure content at ingestion, cache, composition, and public response boundaries; repair from retained source or report incomplete content explicitly.",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-procedure-content-quality-gate.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/110",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/mercury2-procedure-composition.md"
+  ],
+  "todo": [
+    "Define and test meaningful source-authored procedure content for each requested component.",
+    "Reject stale content_complete rows whose actual instructions are placeholders, headings, metadata, or empty.",
+    "Repair weak legacy rows from immutable retained source or fetch only the selected individual article and persist it idempotently.",
+    "Return explicit incomplete/source failures instead of ready placeholder procedures, and ensure public images use opaque local routes.",
+    "Repeat five distinct-YMME cold and warm multi-component requests with meaningful source-backed instructions, no labor, no combined persistence, and unchanged warm database counts."
+  ],
+  "base_sha": "f7e8cace887896f91fdf411ae9d7faeffe277b34",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T10:12:35Z"
+}

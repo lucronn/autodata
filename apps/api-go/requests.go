@@ -2,9 +2,15 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +26,7 @@ var (
 )
 
 type Principal struct {
+	Subject        string
 	OrganizationID string
 	Roles          []string
 }
@@ -37,8 +44,8 @@ type Authenticator interface {
 	Authenticate(*http.Request) (Principal, error)
 }
 
-// HeaderAuthenticator is a provider-neutral local boundary. Production identity
-// adapters can implement Authenticator without changing request handlers.
+// HeaderAuthenticator is an explicitly local-development authenticator. It is
+// retained for in-memory API tests and is never selected by normal startup.
 type HeaderAuthenticator struct{}
 
 func (HeaderAuthenticator) Authenticate(request *http.Request) (Principal, error) {
@@ -57,6 +64,143 @@ func (HeaderAuthenticator) Authenticate(request *http.Request) (Principal, error
 		}
 	}
 	return Principal{OrganizationID: parts[0], Roles: roles}, nil
+}
+
+const (
+	serviceKeyAuthMode = "service_key"
+	localAuthMode      = "local"
+)
+
+var ErrAuthenticatorConfiguration = errors.New("service-key authentication is not configured")
+
+// ServiceKeyCredential is the secret-managed, non-secret projection of one
+// service identity. Only the SHA-256 digest is stored in configuration.
+type ServiceKeyCredential struct {
+	KeySHA256      string    `json:"key_sha256"`
+	Subject        string    `json:"subject"`
+	OrganizationID string    `json:"organization_id"`
+	Roles          []string  `json:"roles"`
+	ExpiresAt      time.Time `json:"expires_at"`
+}
+
+type serviceKeyIdentity struct {
+	digest         []byte
+	subject        string
+	organizationID string
+	roles          []string
+	expiresAt      time.Time
+}
+
+// ServiceKeyAuthenticator verifies opaque bearer keys against configured
+// SHA-256 digests and returns only the configured identity projection.
+type ServiceKeyAuthenticator struct {
+	identities []serviceKeyIdentity
+	now        func() time.Time
+}
+
+func NewServiceKeyAuthenticator(rawConfig string) (*ServiceKeyAuthenticator, error) {
+	if strings.TrimSpace(rawConfig) == "" {
+		return nil, ErrAuthenticatorConfiguration
+	}
+	decoder := json.NewDecoder(strings.NewReader(rawConfig))
+	decoder.DisallowUnknownFields()
+	var credentials []ServiceKeyCredential
+	if err := decoder.Decode(&credentials); err != nil {
+		return nil, fmt.Errorf("%w: invalid credential set", ErrAuthenticatorConfiguration)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return nil, fmt.Errorf("%w: credential set must contain one JSON array", ErrAuthenticatorConfiguration)
+	}
+	if len(credentials) == 0 {
+		return nil, fmt.Errorf("%w: credential set is empty", ErrAuthenticatorConfiguration)
+	}
+
+	identities := make([]serviceKeyIdentity, 0, len(credentials))
+	seenDigests := make(map[string]struct{}, len(credentials))
+	for _, credential := range credentials {
+		digestText := strings.TrimSpace(credential.KeySHA256)
+		digest, err := hex.DecodeString(digestText)
+		if err != nil || len(digest) != sha256.Size {
+			return nil, fmt.Errorf("%w: key_sha256 must be a 64-character hexadecimal digest", ErrAuthenticatorConfiguration)
+		}
+		digestKey := hex.EncodeToString(digest)
+		if _, exists := seenDigests[digestKey]; exists {
+			return nil, fmt.Errorf("%w: duplicate key_sha256", ErrAuthenticatorConfiguration)
+		}
+		seenDigests[digestKey] = struct{}{}
+		if strings.TrimSpace(credential.Subject) == "" || strings.TrimSpace(credential.OrganizationID) == "" || credential.ExpiresAt.IsZero() {
+			return nil, fmt.Errorf("%w: subject, organization_id, and expires_at are required", ErrAuthenticatorConfiguration)
+		}
+		roles := make([]string, len(credential.Roles))
+		if len(roles) == 0 {
+			return nil, fmt.Errorf("%w: at least one role is required", ErrAuthenticatorConfiguration)
+		}
+		for index, role := range credential.Roles {
+			roles[index] = strings.TrimSpace(role)
+			if roles[index] == "" {
+				return nil, fmt.Errorf("%w: roles cannot contain empty values", ErrAuthenticatorConfiguration)
+			}
+		}
+		identities = append(identities, serviceKeyIdentity{
+			digest:         digest,
+			subject:        strings.TrimSpace(credential.Subject),
+			organizationID: strings.TrimSpace(credential.OrganizationID),
+			roles:          roles,
+			expiresAt:      credential.ExpiresAt,
+		})
+	}
+	return &ServiceKeyAuthenticator{identities: identities, now: time.Now}, nil
+}
+
+func (a *ServiceKeyAuthenticator) Authenticate(request *http.Request) (Principal, error) {
+	if a == nil || request == nil {
+		return Principal{}, ErrUnauthenticated
+	}
+	value := strings.TrimSpace(request.Header.Get("Authorization"))
+	const bearerPrefix = "Bearer "
+	if len(value) <= len(bearerPrefix) || !strings.EqualFold(value[:len(bearerPrefix)], bearerPrefix) {
+		return Principal{}, ErrUnauthenticated
+	}
+	presentedKey := strings.TrimSpace(value[len(bearerPrefix):])
+	if presentedKey == "" {
+		return Principal{}, ErrUnauthenticated
+	}
+	presentedDigest := sha256.Sum256([]byte(presentedKey))
+	matched := -1
+	for index := range a.identities {
+		if subtle.ConstantTimeCompare(a.identities[index].digest, presentedDigest[:]) == 1 {
+			matched = index
+		}
+	}
+	if matched < 0 {
+		return Principal{}, ErrUnauthenticated
+	}
+	now := time.Now
+	if a.now != nil {
+		now = a.now
+	}
+	identity := a.identities[matched]
+	if !identity.expiresAt.After(now().UTC()) {
+		return Principal{}, ErrUnauthenticated
+	}
+	return Principal{
+		Subject:        identity.subject,
+		OrganizationID: identity.organizationID,
+		Roles:          append([]string(nil), identity.roles...),
+	}, nil
+}
+
+func configuredAuthenticator() (Authenticator, error) {
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("AUTODATA_AUTH_MODE")))
+	switch mode {
+	case localAuthMode, "local_dev", "local-development":
+		return HeaderAuthenticator{}, nil
+	case "", serviceKeyAuthMode, "service-key":
+		return NewServiceKeyAuthenticator(os.Getenv("AUTODATA_SERVICE_KEYS_JSON"))
+	default:
+		return nil, fmt.Errorf("%w: unsupported AUTODATA_AUTH_MODE %q", ErrAuthenticatorConfiguration, mode)
+	}
 }
 
 type DatasetRequestInput struct {

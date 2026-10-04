@@ -1,0 +1,18 @@
+{
+  "goal": "Make the API Docker image include all OpenAPI and Swagger files embedded by the Go binary",
+  "plan_ref": "docs/superpowers/plans/2026-10-03-swagger-container-assets.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/113",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/provider-neutral-catalog-api.md"
+  ],
+  "todo": [
+    "Synchronize this plan and work item to Issue #113 and Project #8",
+    "Copy all embedded OpenAPI and Swagger assets into the API Docker build stage",
+    "Add regression assertions for each embedded asset and verify a clean no-cache image build",
+    "Run Go tests and vet, then pass hosted Compose verification on PR #123"
+  ],
+  "base_sha": "d88ca533495ef727037bc45e96283d49670f7e90",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T06:46:00Z"
+}

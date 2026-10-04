@@ -1,0 +1,18 @@
+{
+  "goal": "Make vehicle article-catalog hydration list-only and vehicle-scoped so catalog browsing never triggers a full provider snapshot or per-article detail fetch.",
+  "plan_ref": "docs/superpowers/plans/2026-09-26-article-catalog-list-only-hydration.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/113",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/article-catalog-list-only-hydration.md"
+  ],
+  "todo": [
+    "Add a list-only article hydration boundary and prohibit generic full-catalog provider fallback for scope=articles.",
+    "Reuse the bounded AutoAPI article-index path to persist list rows and raw provenance without selected article resources.",
+    "Add regression tests proving article scope never invokes snapshot, full-catalog, article detail, image, or labor reads.",
+    "Rebuild the local services and verify a cold vehicle article catalog and selected article behavior."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-09-26T04:24:00Z",
+  "base_sha": "ed6b507951b14319aa11035b020d6583773c1d7c"
+}

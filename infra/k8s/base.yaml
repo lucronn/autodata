@@ -6,6 +6,7 @@ metadata:
     app.kubernetes.io/part-of: autodata
 data:
   AUTODATA_DB_ADDRESS: postgres.example.internal:5432
+  AUTODATA_AUTH_MODE: service_key
   AUTODATA_POSTGRES_DB: autodata
   AUTODATA_POSTGRES_USER: autodata
   AUTODATA_PROJECTION_STORE: postgres
@@ -13,6 +14,7 @@ data:
   AUTODATA_NATS_URL: nats://nats.example.internal:4222
   AUTODATA_S3_ADDRESS: object-storage.example.internal:9000
   AUTODATA_S3_ENDPOINT: object-storage.example.internal:9000
+  AUTODATA_S3_SECURE: "true"
   AUTODATA_VIEWABLE_CONSUMER_ENABLED: "0"
   AUTODATA_VIEWABLE_CONSUMER_DURABLE: autodata-viewable-fanout
   AUTODATA_VIEWABLE_CONSUMER_MAX_DELIVERIES: "3"
@@ -21,6 +23,8 @@ data:
   AUTODATA_DEEP_CONSUMER_MAX_DELIVERIES: "3"
   AUTODATA_SOURCE_BUCKET: autodata-sources
   AUTODATA_INGESTION_URL: http://autodata-ingestion-http:8081
+  AUTODATA_AUTOAPI_BASE_URL: https://autodbone-curtt.vercel.app
+  AUTODATA_AUTODBTWO_BASE_URL: http://autodbtwo:3001
   AUTODATA_INGESTION_HTTP_ADDR: ":8081"
   AUTODATA_SOURCE_REGION: US
   AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS: "30"
@@ -34,6 +38,76 @@ data:
   AUTODATA_FAST_CONSUMER_MAX_DELIVERIES: "3"
   AUTODATA_PAYMENT_RECONCILE_POLL_SECONDS: "15"
   AUTODATA_PAYMENT_RECONCILE_BATCH_SIZE: "50"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autodbtwo
+  labels:
+    app.kubernetes.io/name: autodbtwo
+    app.kubernetes.io/part-of: autodata
+spec:
+  selector:
+    app.kubernetes.io/name: autodbtwo
+  ports:
+    - name: http
+      port: 3001
+      targetPort: http
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autodbtwo
+  labels:
+    app.kubernetes.io/name: autodbtwo
+    app.kubernetes.io/part-of: autodata
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: autodbtwo
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: autodbtwo
+        app.kubernetes.io/part-of: autodata
+    spec:
+      containers:
+        - name: autodbtwo
+          image: ghcr.io/lucronn/autodbtwo:sha-a54541d
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3001
+          envFrom:
+            - configMapRef:
+                name: autodata-config
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
 ---
 apiVersion: v1
 kind: Service
@@ -167,9 +241,19 @@ spec:
           envFrom:
             - configMapRef:
                 name: autodata-config
-            - secretRef:
-                name: autodata-runtime-secrets
           env:
+            - name: AUTODATA_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: autodata-runtime-secrets
+                  key: AUTODATA_POSTGRES_PASSWORD
+                  optional: false
+            - name: AUTODATA_IMAGE_URL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: autodata-runtime-secrets
+                  key: AUTODATA_IMAGE_URL_KEY
+                  optional: false
             - name: AUTODATA_INGESTION_URL
               valueFrom:
                 configMapKeyRef:
@@ -180,6 +264,24 @@ spec:
                 secretKeyRef:
                   name: autodata-runtime-secrets
                   key: AUTODATA_INGESTION_INTERNAL_TOKEN
+            - name: AUTODATA_SERVICE_KEYS_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: autodata-api-service-keys
+                  key: AUTODATA_SERVICE_KEYS_JSON
+                  optional: false
+            - name: AUTODATA_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: autodata-api-image-reader
+                  key: AUTODATA_S3_ACCESS_KEY
+                  optional: false
+            - name: AUTODATA_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: autodata-api-image-reader
+                  key: AUTODATA_S3_SECRET_KEY
+                  optional: false
           readinessProbe:
             httpGet:
               path: /readyz

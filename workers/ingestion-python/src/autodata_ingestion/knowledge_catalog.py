@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import os
+import re
 from copy import deepcopy
 from typing import Any
 
 from .article_intake import VehicleTarget
+from .source_adapters import qualify_article_id
 
 
 DEFAULT_KNOWLEDGE_CACHE_LIMIT = 200
@@ -26,10 +28,15 @@ def _query_article_patterns(query: str) -> list[str]:
     }
     patterns: list[str] = []
     for component in _components_from_query(query):
-        term = title_terms.get(component, component.replace("_", " "))
-        pattern = f"%{term}%"
-        if pattern not in patterns:
-            patterns.append(pattern)
+        terms = (
+            ["alternator", "generator"]
+            if component == "alternator"
+            else [title_terms.get(component, component.replace("_", " "))]
+        )
+        for term in terms:
+            pattern = f"%{term}%"
+            if pattern not in patterns:
+                patterns.append(pattern)
     return patterns
 
 
@@ -69,16 +76,43 @@ def load_vehicle_knowledge_catalog(
     if title_patterns:
         title_filter = "\n          AND (" + " OR ".join("ca.title ILIKE %s" for _ in title_patterns) + ")"
         params.extend(title_patterns)
+    target_engine = _engine_displacement_number(target.engine_displacement_l)
+    configuration_filter = ""
+    if target_engine is not None:
+        configuration_filter = "\n          AND (vc.engine_displacement_l IS NULL OR ABS(vc.engine_displacement_l - %s) < 0.05)"
+        params.append(target_engine)
+    engine_order = ""
+    if title_patterns and target_engine is not None:
+        engine_order = "CASE WHEN vc.engine_displacement_l = %s THEN 0 ELSE 1 END, "
+        params.append(target_engine)
+    content_order = ""
+    if title_patterns:
+        content_order = """CASE
+            WHEN ca.content_status = 'content_complete'
+             AND (NULLIF(BTRIM(ca.body), '') IS NOT NULL
+                  OR jsonb_array_length(COALESCE(ca.steps, '[]'::jsonb)) > 0)
+            THEN 0 ELSE 1 END, """
     params.append(limit)
     select_prefix = "SELECT DISTINCT ON (ca.article_id)" if title_patterns else "SELECT"
     duplicate_filter = "" if title_patterns else """
           AND NOT EXISTS (
               SELECT 1
               FROM catalog_article_vehicle_links links
+              JOIN catalog_articles canonical
+                ON canonical.catalog_article_id = links.canonical_catalog_article_id
               WHERE links.duplicate_catalog_article_id = ca.catalog_article_id
+                AND links.vehicle_id = ca.vehicle_id
+                AND links.link_state = 'duplicate'
+                AND (
+                    canonical.article_id = ca.article_id
+                    OR (
+                        NULLIF(ca.canonical_article_key, '') IS NOT NULL
+                        AND canonical.canonical_article_key = ca.canonical_article_key
+                    )
+                )
           )"""
     order_by = (
-        "ca.article_id, ca.title NULLS LAST, ca.catalog_article_id"
+        f"ca.article_id, {engine_order}{content_order}ca.title NULLS LAST, ca.catalog_article_id"
         if title_patterns
         else "ca.title NULLS LAST, ca.article_id, ca.catalog_article_id"
     )
@@ -102,7 +136,7 @@ def load_vehicle_knowledge_catalog(
                cee.extracted_text,
                cee.confidence,
                cee.reviewer_state,
-               ca.images, ca.operations
+               ca.images, ca.operations, ca.provider
         FROM catalog_articles ca
         JOIN vehicles v ON v.vehicle_id = ca.vehicle_id
         JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
@@ -118,7 +152,7 @@ def load_vehicle_knowledge_catalog(
           ON css.source_snapshot_id = ca.content_source_snapshot_id
         LEFT JOIN extraction_evidence cee
           ON cee.extraction_evidence_id = ca.content_extraction_evidence_id
-        WHERE v.vehicle_key = %s{title_filter}
+        WHERE v.vehicle_key = %s{title_filter}{configuration_filter}
           {duplicate_filter}
           AND ss.takedown_status = 'active'
         ORDER BY {order_by}
@@ -129,31 +163,12 @@ def load_vehicle_knowledge_catalog(
             cursor.execute(sql, tuple(params))
             rows = cursor.fetchall()
             catalog = _rows_to_catalog(rows, target)
-            if os.getenv("AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED", "0") == "1":
-                try:
-                    cursor.execute(
-                        """
-                        SELECT da.article_id, da.title, dar.body, dar.steps,
-                               dar.source_watermark, dar.status,
-                               dar.derived_article_revision_id::text,
-                               dar.provenance, dar.images, dar.labor,
-                               dar.normalized_fingerprint, dar.model
-                        FROM derived_articles da
-                        JOIN derived_article_revisions dar
-                          ON dar.derived_article_id = da.derived_article_id
-                         AND dar.revision_number = da.current_revision_number
-                        JOIN vehicles v ON v.vehicle_id = da.vehicle_id
-                        WHERE v.vehicle_key = %s
-                          AND dar.status IN ('ready', 'needs_review')
-                        ORDER BY dar.published_at DESC NULLS LAST, da.article_id
-                        LIMIT %s
-                        """,
-                        (target.vehicle_key, limit),
-                    )
-                    catalog.extend(_derived_rows_to_catalog(cursor.fetchall(), target))
-                except Exception:  # noqa: BLE001 - older databases lack the optional derived cache
-                    pass
     return catalog
+
+
+def _engine_displacement_number(value: object) -> float | None:
+    match = re.search(r"\d+(?:\.\d+)?", str(value or ""))
+    return float(match.group(0)) if match else None
 
 
 def _knowledge_cache_limit() -> int:
@@ -217,11 +232,15 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
         # optional content-provenance join columns.
         images = row[36] if len(row) > 36 else row[27] if len(row) == 28 else []
         operations = row[37] if len(row) > 37 else row[28] if len(row) == 29 else []
+        provider = row[38] if len(row) > 38 else None
+        provider_article_id = str(article_id)
+        qualified_article_id = qualify_article_id(article_id, provider)
         content_locator = content_source_locator or source_locator or evidence_locator or "catalog"
         content_uri = content_source_uri or source_uri
         content_version = content_source_version or source_version
         article = {
-            "article_id": str(article_id),
+            "article_id": qualified_article_id,
+            "provider_article_id": provider_article_id,
             "article_key": f"catalog:{catalog_article_id}",
             "bucket": bucket,
             "title": title,
@@ -234,6 +253,8 @@ def _rows_to_catalog(rows: list[tuple[Any, ...]], target: VehicleTarget) -> list
             "source_version": source_version,
             "content_locator": content_locator,
         }
+        if provider:
+            article["provider"] = str(provider)
         if images:
             article["images"] = images
         if operations:

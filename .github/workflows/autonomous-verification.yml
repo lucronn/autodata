@@ -66,6 +66,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -122,14 +124,7 @@ jobs:
           AUTODATA_POSTGRES_PASSWORD: ci-validation-only
           AUTODATA_MINIO_ROOT_USER: ci-validation-admin
           AUTODATA_MINIO_ROOT_PASSWORD: ci-validation-only
-        run: docker compose -f infra/compose/compose.yaml config --quiet
-
-      - name: Run deterministic chat cold/warm smoke
-        env:
-          AUTODATA_POSTGRES_PASSWORD: ci-validation-only
-          AUTODATA_MINIO_ROOT_USER: ci-validation-admin
-          AUTODATA_MINIO_ROOT_PASSWORD: ci-validation-only
-        run: docker compose -f infra/compose/compose.yaml --profile verification run --rm --no-deps chat-smoke
+        run: docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml config --quiet
 
       - name: Run fake integration smoke
         env:
@@ -150,13 +145,13 @@ jobs:
             if [ "$exit_status" -ne 0 ]; then
               docker compose -f infra/compose/compose.yaml logs api || true
             fi
-            docker compose -f infra/compose/compose.yaml down --volumes --remove-orphans
+            docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml down --volumes --remove-orphans
             exit "$exit_status"
           }
           trap cleanup EXIT
-          docker compose -f infra/compose/compose.yaml up -d --wait postgres nats minio
-          docker compose -f infra/compose/compose.yaml run migration-runner
-          docker compose -f infra/compose/compose.yaml run --rm ingest-fixture
-          docker compose -f infra/compose/compose.yaml up -d --wait api
-          docker compose -f infra/compose/compose.yaml run --rm api-runtime-smoke
-          docker compose -f infra/compose/compose.yaml run --rm --no-deps ingestion-smoke
+          docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml up -d --wait postgres nats minio
+          docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml run migration-runner
+          docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml run --rm ingest-fixture
+          docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml up -d --wait api
+          docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml run --rm api-runtime-smoke
+          docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml run --rm --no-deps ingestion-smoke

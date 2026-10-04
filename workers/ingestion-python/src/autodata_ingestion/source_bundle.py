@@ -5,11 +5,18 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from typing import Any, Iterable
 
 from .article_identity import canonicalize_article_identity
-from .source_adapters import NormalizationCandidate, SourceArtifact
+from .source_adapters import (
+    NormalizationCandidate,
+    SourceArtifact,
+    qualify_article_id,
+    source_provider,
+    source_snapshot_id,
+)
 from .vehicle_identity import canonicalize_vehicle_observation
 
 
@@ -143,9 +150,22 @@ def normalize_source_bundle(
             elif candidate.kind == "part":
                 part_records.append(_normalize_part(record, artifact, candidate, quarantined))
             elif candidate.kind == "article":
+                provider = source_provider({**artifact.metadata, **candidate.data})
+                provider_article_id = (
+                    candidate.data.get("provider_article_id")
+                    or candidate.data.get("id")
+                    or candidate.data.get("article_id")
+                    or candidate.data.get("articleId")
+                )
+                normalized_article_id = qualify_article_id(provider_article_id, provider)
                 article_record = {
-                    "article_key": candidate.key,
-                    "article_id": str(candidate.data.get("id")),
+                    "article_key": (
+                        f"article:{normalized_article_id}:{candidate.locator}"
+                        if normalized_article_id
+                        else candidate.key
+                    ),
+                    "article_id": str(normalized_article_id),
+                    "provider_article_id": str(provider_article_id or ""),
                     "bucket": candidate.data.get("bucket"),
                     "title": candidate.data.get("title"),
                     "bulletin_number": candidate.data.get("bulletinNumber"),
@@ -156,7 +176,29 @@ def normalize_source_bundle(
                     "source_uri": artifact.source_uri,
                     "source_version": artifact.source_version,
                     "content_sha256": artifact.content_sha256,
+                    "source_snapshot_id": source_snapshot_id(artifact.content_sha256),
+                    "source_artifact_key": artifact.object_key,
+                    "replay_key": (
+                        f"article:{provider or 'source'}:{normalized_article_id}:"
+                        f"{artifact.content_sha256}:{candidate.locator}"
+                    ),
                 }
+                if provider:
+                    article_record["provider"] = provider
+                for field in (
+                    "blocks",
+                    "provider",
+                    "content_kind",
+                    "procedure_kind",
+                    "component",
+                    "content_status",
+                    "normalized_document",
+                    "rewrite_status",
+                    "source_original",
+                ):
+                    value = candidate.data.get(field)
+                    if value not in (None, ""):
+                        article_record[field] = deepcopy(value)
                 body = _article_body(candidate.data)
                 if body is not None:
                     article_record["body"] = body
@@ -168,7 +210,8 @@ def normalize_source_bundle(
                     article_record["images"] = images
                 article_records.append(article_record)
             elif candidate.kind == "article_operations":
-                article_id = str(candidate.data.get("article_id") or "").strip()
+                provider = source_provider({**artifact.metadata, **candidate.data})
+                article_id = qualify_article_id(candidate.data.get("article_id"), provider)
                 operations = _article_operations(
                     candidate.data.get("operations"), evidence_item["evidence_id"]
                 )
@@ -372,7 +415,16 @@ def _normalize_vehicle(
         expected_region = expected.region if expected is not None and expected.region else str(expected_vehicle.get("region", normalized_region)).strip().upper()
         source_region = str(record.get("region", normalized_region)).strip().upper()
         try:
-            expected_year = int(expected_vehicle.get("year"))
+            expected_year = (
+                expected.year
+                if expected is not None
+                else int(
+                    expected_vehicle.get(
+                        "year",
+                        expected_vehicle.get("model_year", expected_vehicle.get("modelYear")),
+                    )
+                )
+            )
         except (TypeError, ValueError):
             expected_year = None
         expected_trim = expected.trim if expected is not None else str(expected_vehicle.get("trim", "")).strip() or None
@@ -384,7 +436,7 @@ def _normalize_vehicle(
         source_drivetrain = record.get("drivetrain")
         source_engine = record.get("engine_displacement_l")
         mismatch = (
-            make.casefold() != expected_make.casefold()
+            not _compatible_vehicle_make(make, expected_make)
             or not _compatible_vehicle_model(model, expected_model)
             or year != expected_year
             or source_region != expected_region
@@ -453,11 +505,44 @@ def _compatible_vehicle_model(source_model: object, expected_model: object) -> b
 
     source = " ".join(str(source_model or "").split()).casefold()
     expected = " ".join(str(expected_model or "").split()).casefold()
-    return (
+    if (
         source == expected
         or source.startswith(expected + " ")
         or expected.startswith(source + " ")
+    ):
+        return True
+    source_compact = re.sub(r"[^a-z0-9]", "", source)
+    expected_compact = re.sub(r"[^a-z0-9]", "", expected)
+    expected_compact = re.sub(r"(?:2wd|4wd|awd|fwd|rwd)$", "", expected_compact)
+    return bool(
+        source_compact
+        and expected_compact
+        and (
+            source_compact.startswith(expected_compact)
+            or expected_compact.startswith(source_compact)
+        )
     )
+
+
+def _compatible_vehicle_make(source_make: object, expected_make: object) -> bool:
+    """Accept provider make labels with a truck vocabulary suffix."""
+
+    aliases = {
+        "chevy": "chevrolet",
+        "chevytruck": "chevrolet",
+        "chevrolettruck": "chevrolet",
+        "fordtruck": "ford",
+        "gmctruck": "gmc",
+        "toyotatruck": "toyota",
+    }
+    values = []
+    for value in (source_make, expected_make):
+        normalized = re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+        normalized = aliases.get(normalized, normalized)
+        if normalized.endswith("truck"):
+            normalized = normalized[:-5]
+        values.append(normalized)
+    return bool(values[0] and values[1] and values[0] == values[1])
 
 
 def _resolve_article_collisions(
@@ -503,6 +588,7 @@ def _resolve_article_collisions(
                     accepted[index]
                     for index in candidate_indices
                     if not _article_roles_differ(accepted[index], record)
+                    and _same_article_provider(accepted[index], record)
                     and _similar_article(accepted[index], record)
                 ),
                 None,
@@ -744,7 +830,9 @@ def _article_roles_differ(left: dict[str, Any], right: dict[str, Any]) -> bool:
     """Keep a provider procedure and its labor row as distinct source records."""
 
     def role(record: dict[str, Any]) -> str:
-        article_id = str(record.get("article_id") or "").casefold()
+        article_id = str(
+            record.get("provider_article_id") or record.get("article_id") or ""
+        ).casefold()
         bucket = str(record.get("bucket") or "").casefold()
         if article_id.startswith("p:"):
             return "procedure"
@@ -753,6 +841,14 @@ def _article_roles_differ(left: dict[str, Any], right: dict[str, Any]) -> bool:
         return "article"
 
     return role(left) != role(right)
+
+
+def _same_article_provider(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    """Do not quarantine equivalent source records from different providers."""
+
+    left_provider = str(left.get("provider") or "").strip().casefold()
+    right_provider = str(right.get("provider") or "").strip().casefold()
+    return not left_provider or not right_provider or left_provider == right_provider
 
 
 def _similar_article(left: dict[str, Any], right: dict[str, Any]) -> bool:
@@ -806,8 +902,18 @@ def _article_body(data: dict[str, Any]) -> str | None:
     for key in ("body", "articleBody", "content"):
         value = data.get(key)
         if isinstance(value, str) and value.strip():
-            return re.sub(r"\s+", " ", value).strip()
+            return _preserve_article_blocks(value)
     return None
+
+
+def _preserve_article_blocks(value: str) -> str:
+    """Normalize whitespace without destroying source paragraph boundaries."""
+
+    text = str(value).replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def _article_steps(data: dict[str, Any]) -> list[Any] | None:
@@ -905,16 +1011,20 @@ def _article_images(data: dict[str, Any]) -> list[dict[str, Any]]:
             image = {"url": url} if url else None
         elif isinstance(value, dict):
             url = str(value.get("url") or value.get("src") or value.get("href") or "").strip()
-            image = {"url": url} if url else None
+            storage_key = str(value.get("storage_key") or value.get("artifact_key") or "").strip()
+            image = ({"url": url} if url else {}) if url or storage_key else None
             if image is not None:
-                for key in ("alt", "title", "evidence_id", "source_uri"):
+                for key in (
+                    "alt", "title", "image_id", "asset_id", "evidence_id", "source_uri", "storage_key",
+                    "artifact_key", "content_type", "content_sha256",
+                ):
                     if value.get(key):
                         image[key] = str(value[key]).strip()
         else:
             image = None
         if image is None:
             continue
-        identity = (image["url"], image.get("alt", image.get("title", "")))
+        identity = (image.get("storage_key") or image.get("artifact_key") or image.get("url"), image.get("alt", image.get("title", "")))
         if identity not in seen:
             seen.add(identity)
             images.append(image)
@@ -925,14 +1035,28 @@ def _merge_article(target: dict[str, Any], duplicate: dict[str, Any]) -> None:
     for field in ("bucket", "title", "bulletin_number", "release_date"):
         if not target.get(field) and duplicate.get(field):
             target[field] = duplicate[field]
-    for field in ("body", "steps", "operations"):
-        if not target.get(field) and duplicate.get(field):
-            target[field] = duplicate[field]
-    if duplicate.get("images"):
+    # A detail record upgrades a listing as one coherent content snapshot.
+    # A later listing must never downgrade the reusable detail record.
+    upgrading = (
+        target.get("content_status") != "content_complete"
+        and duplicate.get("content_status") == "content_complete"
+    )
+    for field in ("body", "blocks", "steps", "operations", "provider", "content_kind",
+                  "procedure_kind", "component", "content_status", "normalized_document", "rewrite_status",
+                  "content_evidence_id", "content_locator", "content_source_uri",
+                  "content_source_version", "content_sha256"):
+        if (upgrading or not target.get(field)) and duplicate.get(field) is not None:
+            target[field] = deepcopy(duplicate[field])
+    if not target.get("source_original") and duplicate.get("source_original"):
+        target["source_original"] = deepcopy(duplicate["source_original"])
+    if upgrading:
+        target["content_evidence_id"] = duplicate.get("content_evidence_id") or duplicate["evidence_id"]
+        target["images"] = deepcopy(duplicate.get("images", []))
+    if duplicate.get("images") and target.get("content_status") != "content_complete":
         merged = target.setdefault("images", [])
-        existing = {(item.get("url"), item.get("alt", item.get("title", ""))) for item in merged}
+        existing = {(item.get("storage_key") or item.get("artifact_key") or item.get("url"), item.get("alt", item.get("title", ""))) for item in merged}
         for image in duplicate["images"]:
-            identity = (image.get("url"), image.get("alt", image.get("title", "")))
+            identity = (image.get("storage_key") or image.get("artifact_key") or image.get("url"), image.get("alt", image.get("title", "")))
             if identity not in existing:
                 merged.append(image)
                 existing.add(identity)
@@ -1011,7 +1135,11 @@ def _evidence(artifact: SourceArtifact, candidate: NormalizationCandidate) -> di
     return {
         "evidence_id": evidence_id,
         "source_uri": artifact.source_uri,
+        "source_version": artifact.source_version,
         "content_sha256": artifact.content_sha256,
+        "source_snapshot_id": source_snapshot_id(artifact.content_sha256),
+        "artifact_key": artifact.object_key,
+        "provider": source_provider(artifact.metadata) or None,
         "locator": candidate.locator,
         "candidate_key": candidate.key,
         "extracted_text": extracted_text,

@@ -9,6 +9,7 @@ ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from autodata_ingestion.job_plan import (  # noqa: E402
+    _collect_images,
     build_quote_and_procedure,
     compose_procedure_revision,
     compose_procedure_with_llm,
@@ -38,6 +39,116 @@ def article(article_id, component, operations, *, images=None):
         "evidence": [{"evidence_id": f"evidence-{article_id}", "locator": f"{article_id}:body"}],
         "images": images or [],
     }
+
+
+def test_job_plan_uses_individual_articles_and_ignores_legacy_composition_rows():
+    legacy_composition = {
+        "article_id": "combined:vehicle:oil_pump+water_pump:v1",
+        "title": "Oil pump and water pump replacement",
+        "derived_components": ["oil_pump", "water_pump"],
+        "component": "oil_pump water_pump",
+        "operations": [{"operation_id": "invented", "action": "Use stale combined article"}],
+    }
+    oil = article("oil-source", "oil_pump", [{"operation_id": "oil", "action": "Replace oil pump"}])
+    water = article("water-source", "water_pump", [{"operation_id": "water", "action": "Replace water pump"}])
+
+    result = plan_job(
+        "replace oil pump and water pump",
+        VEHICLE,
+        catalog=[legacy_composition, oil, water],
+    )
+
+    assert result["selected_articles"] == ["oil-source", "water-source"]
+    assert all(step.get("operation_id") != "invented" for step in result["procedure"]["steps"])
+
+
+def test_procedure_only_job_plan_preserves_article_order_without_labor_output():
+    source = {
+        "article_id": "oil-source",
+        "title": "Oil pump removal and installation",
+        "component": "oil_pump",
+        "steps": [
+            {"sequence": 1, "instruction": "Disconnect the battery."},
+            {"sequence": 2, "instruction": "Remove the oil pan."},
+            {"sequence": 3, "instruction": "Replace the oil pump."},
+        ],
+        "operations": [
+            {"operation_id": "oil", "action": "Replace oil pump", "duration_hours": 3.5}
+        ],
+        "evidence": [{"evidence_id": "source-evidence"}],
+    }
+
+    result = plan_job(
+        "replace oil pump",
+        VEHICLE,
+        catalog=[source],
+        include_labor=False,
+    )
+
+    assert "labor" not in result
+    assert [step["instructions"][0] for step in result["procedure"]["steps"]] == [
+        "Disconnect the battery.",
+        "Remove the oil pan.",
+        "Replace the oil pump.",
+    ]
+    assert [step["sequence"] for step in result["procedure"]["steps"]] == [1, 2, 3]
+
+
+def test_procedure_only_plan_drops_metadata_and_marks_article_without_instructions_incomplete():
+    source = {
+        "article_id": "oil-source",
+        "title": "Oil pump removal and installation",
+        "component": "oil_pump",
+        "steps": [
+            {"sequence": 1, "instruction": "7L DIESEL"},
+            {"sequence": 2, "instruction": "Remove the oil pump from the engine."},
+        ],
+        "evidence": [{"evidence_id": "source-evidence"}],
+    }
+
+    result = plan_job("replace oil pump", VEHICLE, catalog=[source], include_labor=False)
+
+    assert [step["instructions"][0] for step in result["procedure"]["steps"]] == [
+        "Remove the oil pump from the engine."
+    ]
+    assert result["status"] == "ready"
+
+    source["steps"] = [{"sequence": 1, "instruction": "7L DIESEL"}]
+    incomplete = plan_job("replace oil pump", VEHICLE, catalog=[source], include_labor=False)
+
+    assert incomplete["status"] == "needs_review"
+    assert incomplete["procedure"]["content_status"] == "partial"
+    assert incomplete["procedure"]["warnings"]
+
+
+def test_job_plan_prefers_component_replacement_over_inspection_or_specification_rows():
+    result = plan_job(
+        "water pump replacement",
+        VEHICLE,
+        catalog=[
+            {
+                "article_id": "autoapitwo:1:inspection",
+                "title": "Water Pump Inspection",
+                "component": "water_pump",
+                "steps": ["Inspect the water pump."],
+            },
+            {
+                "article_id": "autoapitwo:1:replacement",
+                "title": "Water Pump Replacement",
+                "component": "water_pump",
+                "steps": ["Remove and replace the water pump."],
+            },
+            {
+                "article_id": "autoapitwo:1:specification",
+                "title": "Water Pump Specifications",
+                "component": "water_pump",
+                "steps": ["Review the water pump specifications."],
+            },
+        ],
+        include_labor=False,
+    )
+
+    assert result["selected_articles"] == ["autoapitwo:1:replacement"]
 
 
 def test_combines_component_labor_once_for_shared_operation_and_keeps_images():
@@ -146,6 +257,24 @@ def test_recognizes_multiword_pump_and_belt_components_from_natural_language():
         "timing-belt-article",
         "power-steering-pump-article",
     ]
+
+
+def test_generator_procedure_can_satisfy_an_alternator_request():
+    result = plan_job(
+        "replace the alternator",
+        VEHICLE,
+        catalog=[{
+            "article_id": "generator-removal",
+            "title": "Generator Removal (5.7L)",
+            "body": "Disconnect the generator and remove its mounting fasteners.",
+            "steps": ["Disconnect the generator", "Remove the generator"],
+            "evidence_ids": ["generator-evidence"],
+        }],
+        include_labor=False,
+    )
+
+    assert result["status"] == "ready"
+    assert result["selected_articles"] == ["generator-removal"]
 
 
 def test_shared_provider_bucket_does_not_assign_one_article_to_every_component():
@@ -286,6 +415,57 @@ def test_mercury_composition_accepts_labor_evidence_on_source_steps():
     assert result["steps"][0]["evidence_ids"] == ["labor-evidence"]
 
 
+def test_mercury_composition_accepts_ordered_source_steps_without_labor():
+    class FakeMercury:
+        def complete_json(self, _prompt):
+            return {
+                "title": "Oil pump procedure",
+                "steps": [{
+                    "operation_id": "source-step:oil-article:1",
+                    "action": "Remove the oil pan.",
+                    "components": ["oil_pump"],
+                    "category": "required",
+                    "source_article_ids": ["oil-article"],
+                    "evidence_ids": ["oil-evidence"],
+                    "instructions": ["Remove the oil pan."],
+                }],
+                "warnings": [],
+                "requires_review": True,
+            }
+
+    result = compose_procedure_with_llm(
+        FakeMercury(),
+        "replace the oil pump",
+        VEHICLE,
+        [{
+            "article_id": "oil-article",
+            "title": "Oil pump replacement",
+            "component": "oil_pump",
+            "steps": ["Remove the oil pan."],
+            "evidence": [{"evidence_id": "oil-evidence"}],
+        }],
+        {},
+        {
+            "title": "Oil pump procedure",
+            "steps": [{
+                "operation_id": "source-step:oil-article:1",
+                "action": "oil pump procedure step",
+                "components": ["oil_pump"],
+                "category": "required",
+                "source_article_ids": ["oil-article"],
+                "evidence_ids": ["oil-evidence"],
+                "instructions": ["Remove the oil pan."],
+                "origin": "source_step",
+            }],
+            "warnings": [],
+            "requires_review": True,
+        },
+    )
+
+    assert result["generation"] == "mercury-2"
+    assert result["steps"][0]["operation_id"] == "source-step:oil-article:1"
+
+
 def test_returns_review_state_without_fabricating_unknown_labor():
     result = plan_job(
         "replace the alternator",
@@ -306,6 +486,7 @@ def test_persisted_combined_article_with_source_instructions_is_returned_without
             "title": "Alternator and starter service",
             "status": "ready",
             "derived_components": ["alternator", "starter"],
+            "contract_version": 3,
             "derived_revision_id": "revision-2",
             "source_version": "fixture-v1",
             "source_article_ids": ["alternator-article", "starter-article"],
@@ -363,7 +544,7 @@ def test_incomplete_cached_combined_article_is_not_reused():
     assert result is None
 
 
-def test_composer_uses_nested_labor_from_persisted_composed_article():
+def test_composer_ignores_persisted_composed_article_as_a_source():
     composed_article = {
         "article_id": "combined:alternator+starter:complete",
         "title": "Alternator and starter service",
@@ -418,23 +599,10 @@ def test_composer_uses_nested_labor_from_persisted_composed_article():
         [composed_article],
     )
 
-    assert result["labor"]["total_hours"] == 4.25
-    assert result["labor"]["overlap_hours_removed"] == 0.25
-    assert [operation["components"] for operation in result["labor"]["operations"]] == [
-        ["alternator", "starter"],
-        ["alternator"],
-        ["starter"],
-    ]
-    assert [step["components"] for step in result["procedure"]["steps"]] == [
-        ["alternator", "starter"],
-        ["alternator"],
-        ["starter"],
-    ]
-    assert [step["instructions"] for step in result["procedure"]["steps"]] == [
-        ["Disconnect the battery."],
-        ["Replace the alternator."],
-        ["Replace the starter."],
-    ]
+    assert result["labor"]["total_hours"] == 0.0
+    assert result["selected_articles"] == []
+    assert result["labor"]["operations"] == []
+    assert result["procedure"]["steps"] == []
 
 
 def test_build_quote_separates_support_categories_and_explains_shared_labor_deduction():
@@ -1151,6 +1319,24 @@ def test_public_builder_vectorizes_source_images_and_returns_linked_refs():
     assert result["source_visual_refs"] == [artifact["source_ref"]]
     assert result["derived_visual_refs"] == [artifact["derived_ref"]]
     assert result["status"] == "needs_review"
+
+
+def test_collect_images_preserves_local_storage_key_for_public_opaque_projection():
+    images = _collect_images([{
+        "article_id": "article-1",
+        "images": [{
+            "url": "s3://internal-bucket/procedure-images/figure-1",
+            "storage_key": "procedure-images/figure-1",
+            "alt": "Pump location",
+        }],
+    }])
+
+    assert images == [{
+        "url": "s3://internal-bucket/procedure-images/figure-1",
+        "storage_key": "procedure-images/figure-1",
+        "alt": "Pump location",
+        "article_id": "article-1",
+    }]
 
 
 def test_nonfinite_or_conflicting_parts_force_review_without_nonfinite_subtotal():

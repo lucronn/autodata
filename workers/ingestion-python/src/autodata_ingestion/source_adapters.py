@@ -16,7 +16,7 @@ import io
 import json
 import mimetypes
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 from urllib.parse import unquote, urljoin, urlparse, urlsplit
@@ -29,6 +29,48 @@ _DOCUMENT_TYPES = {"text/html", "application/pdf", "text/plain"}
 _DIAGRAM_TYPES = {"image/svg+xml"}
 _IMAGE_TYPES = {"image/bmp", "image/jpeg", "image/png", "image/tiff", "image/webp"}
 _GENERIC_MEDIA_TYPES = {"application/octet-stream", "binary/octet-stream", "text/plain"}
+
+
+def source_provider(metadata: Mapping[str, Any] | None) -> str:
+    """Return a stable provider label without treating arbitrary connectors as providers."""
+
+    values = metadata or {}
+    for key in ("provider", "source_provider", "connector"):
+        value = str(values.get(key) or "").strip().casefold()
+        if not value:
+            continue
+        if value in {"autoapi", "autodbone"}:
+            return value
+        if value in {"autoapitwo", "autodbtwo"}:
+            return value
+    return ""
+
+
+def qualify_article_id(article_id: Any, provider: Any = None) -> str:
+    """Namespace a provider identifier while preserving already-qualified IDs."""
+
+    raw = str(article_id or "").strip()
+    provider_name = source_provider({"provider": provider})
+    if not raw or not provider_name:
+        return raw
+    if raw.split(":", 1)[0].casefold() in {
+        "autoapi", "autodbone", "autoapitwo", "autodbtwo"
+    }:
+        return raw
+    return f"{provider_name}:{raw}"
+
+
+def source_snapshot_id(content_sha256: Any) -> str:
+    """Return the deterministic replay reference used by source persistence."""
+
+    import uuid
+
+    return str(
+        uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"autodata-bundle:source-snapshot:{str(content_sha256).strip()}",
+        )
+    )
 
 
 class SourceConnector(Protocol):
@@ -223,6 +265,7 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
         )
         embedded_candidates, embedded_metadata = _adapt_embedded_json_resources(resource, document)
         candidates.extend(embedded_candidates)
+        candidates = _qualify_article_candidates(candidates, resource.metadata)
         metadata.update(embedded_metadata)
         metadata["candidate_count"] = len(candidates)
         metadata["extraction_status"] = "candidate_ready" if candidates else "needs_review"
@@ -373,6 +416,30 @@ def classify_json_candidates(
     return candidates
 
 
+def _qualify_article_candidates(
+    candidates: Iterable[NormalizationCandidate], metadata: Mapping[str, Any]
+) -> list[NormalizationCandidate]:
+    """Make provider identity visible to downstream coverage and persistence."""
+
+    provider = source_provider(metadata)
+    if not provider:
+        return list(candidates)
+    normalized: list[NormalizationCandidate] = []
+    for candidate in candidates:
+        if candidate.kind != "article":
+            normalized.append(candidate)
+            continue
+        data = dict(candidate.data)
+        raw_id = data.get("provider_article_id") or data.get("id") or data.get("article_id")
+        data["provider_article_id"] = str(raw_id or "")
+        data["provider"] = provider
+        data["id"] = qualify_article_id(raw_id, provider)
+        normalized.append(
+            NormalizationCandidate(candidate.kind, candidate.key, data, candidate.locator)
+        )
+    return normalized
+
+
 def _adapt_embedded_json_resources(
     resource: SourceResource,
     document: Any,
@@ -487,6 +554,9 @@ def _map_embedded_artifact(
                 f"embedded:{outer_resource.content_sha256}:{candidate.kind}:{locator}",
                 {
                     **candidate.data,
+                    **({"id": str(outer_resource.metadata["target_article_id"])}
+                       if candidate.kind == "article" and outer_resource.metadata.get("target_article_id")
+                       else {}),
                     "outer_content_sha256": outer_resource.content_sha256,
                     "embedded_content_sha256": embedded_resource.content_sha256,
                     "embedded_media_type": embedded_resource.media_type,
@@ -910,6 +980,8 @@ class _ArticleHTMLParser(HTMLParser):
         self._article_depth = 0
         self._article_ignored_depth = 0
         self._article_body_parts: list[str] = []
+        self._list_item_parts: list[str] | None = None
+        self.ordered_items: list[str] = []
         self.images: list[dict[str, str]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -933,6 +1005,8 @@ class _ArticleHTMLParser(HTMLParser):
             self._title_parts = []
         elif normalized_tag in {"h1", "h2", "h3"}:
             self._heading_parts = []
+        elif normalized_tag == "li":
+            self._list_item_parts = []
         elif normalized_tag == "script" and attributes.get("type", "").casefold() == "application/ld+json":
             self._json_ld_parts = []
         elif normalized_tag == "img" and attributes.get("src"):
@@ -964,6 +1038,11 @@ class _ArticleHTMLParser(HTMLParser):
             if value:
                 self.headings.append(value)
             self._heading_parts = None
+        elif normalized_tag == "li" and self._list_item_parts is not None:
+            value = _compact_text(" ".join(self._list_item_parts))
+            if value:
+                self.ordered_items.append(value)
+            self._list_item_parts = None
         elif normalized_tag == "script" and self._json_ld_parts is not None:
             value = "".join(self._json_ld_parts).strip()
             if value:
@@ -977,6 +1056,8 @@ class _ArticleHTMLParser(HTMLParser):
             self._title_parts.append(data)
         if self._heading_parts is not None:
             self._heading_parts.append(data)
+        if self._list_item_parts is not None:
+            self._list_item_parts.append(data)
         if self._json_ld_parts is not None:
             self._json_ld_parts.append(data)
 
@@ -1016,7 +1097,7 @@ def _html_article_candidates(resource: SourceResource) -> list[NormalizationCand
             parser.meta, "article:bulletin_number", "bulletin_number", "bulletin", "tsb"
         ),
         "body": parser.article_body,
-        "steps": None,
+        "steps": parser.ordered_items or None,
         "images": parser.images,
     }
     for record in json_ld_records:
@@ -1060,6 +1141,7 @@ def _html_article_candidates(resource: SourceResource) -> list[NormalizationCand
         or article_meta_title
         or parser.has_article_element
         or any("article" in record_type for record in json_ld_records for record_type in _json_ld_types(record))
+        or ("/article/" in resource.source_uri.casefold() and bool(parser.headings))
     )
     title = _compact_text(
         str(article_values.get("title") or (parser.headings[0] if article_signal and parser.headings else ""))
@@ -1255,6 +1337,17 @@ def _candidate_from_record(
         steps = record.get("steps")
         if isinstance(steps, list) and all(isinstance(step, (str, dict)) for step in steps):
             data["steps"] = steps
+        blocks = record.get("blocks")
+        if isinstance(blocks, list):
+            # Preserve the adapter's ordered source stream.  The normalizer
+            # will create the authoritative document; flattening it here
+            # would permanently lose tables and interleaved media.
+            data["blocks"] = blocks
+        if record.get("normalized_document"):
+            data["normalized_document"] = record["normalized_document"]
+        source_original = record.get("source_original", record.get("sourceOriginal"))
+        if source_original not in (None, ""):
+            data["source_original"] = source_original
         for source_name in ("images", "imageUrls", "image_urls", "diagrams", "media"):
             value = record.get(source_name)
             if value:
