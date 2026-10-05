@@ -1,0 +1,20 @@
+{
+  "goal": "Preserve AutoDBone relative graphic URLs through normalization and persist only the requested article during article-scope hydration.",
+  "plan_ref": "docs/superpowers/plans/2026-10-05-autodbone-relative-graphic-images.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/112",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/source-connector-api-compatibility.md",
+    "docs/architecture/opaque-source-media-paths.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Recognize AutoDBone relative /api/source/{source}/graphic/{id} references and rewrite them to opaque same-origin asset references.",
+    "Canonicalize provider source casing before signing graphic references and add regression tests for relative paths, casing, encoded IDs, and unsafe URLs.",
+    "Restrict article-scope persistence to the one selected article while retaining its source index and detail provenance; test that sibling catalog rows and links are not written.",
+    "Re-ingest only the two exact 1997 RAV4 oil/water procedure records and verify localized image bytes, exact article counts, and canonical source provenance."
+  ],
+  "base_sha": "ec2acc042f9f96bcaece6e78e133feb63800fc1a",
+  "status": "synchronized",
+  "updated_at": "2026-10-05T08:54:10Z"
+}
