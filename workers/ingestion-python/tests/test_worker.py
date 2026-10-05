@@ -592,7 +592,7 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual(autodbtwo_detail.call_count, 2)
         self.assertTrue(all(step.get("instructions") for step in result["procedure"]["steps"]))
 
-    def test_autoapi_query_fallback_hydrates_only_selected_articles_without_labor(self):
+    def test_autoapi_query_hydrates_and_persists_only_selected_articles_without_labor(self):
         from autodata_ingestion.autoapi_connector import AutoAPIVehicleBundle
         from autodata_ingestion.worker import _load_autoapi_job_catalog
 
@@ -643,17 +643,22 @@ class IngestionWorkerTests(unittest.TestCase):
             connector.fetch_article_resources.side_effect = (
                 lambda _vehicle_id, article_id, **_kwargs: details[article_id][:1]
             )
-            with patch.dict(
-                "os.environ",
-                {
-                    "AUTODATA_AUTOAPI_BASE_URL": "http://127.0.0.1:3000",
-                    "AUTODATA_SOURCE_PERSIST": "0",
-                },
-                clear=False,
+            with patch(
+                "autodata_ingestion.procedure_images.localize_procedure_images",
+                side_effect=lambda article, **_kwargs: dict(article),
             ):
-                records, source_info = _load_autoapi_job_catalog(
-                    vehicle, object(), query="replace alternator and starter"
-                )
+                with patch("autodata_ingestion.bundle_persistence.persist_source_bundle") as persist_bundle:
+                    with patch.dict(
+                        "os.environ",
+                        {
+                            "AUTODATA_AUTOAPI_BASE_URL": "http://127.0.0.1:3000",
+                            "AUTODATA_SOURCE_PERSIST": "1",
+                        },
+                        clear=False,
+                    ):
+                        records, source_info = _load_autoapi_job_catalog(
+                            vehicle, object(), query="replace alternator and starter"
+                        )
 
         self.assertEqual(source_info["targeted_article_fetch_count"], 2)
         self.assertEqual(source_info["targeted_labor_fetch_count"], 0)
@@ -668,6 +673,11 @@ class IngestionWorkerTests(unittest.TestCase):
             )
         )
         self.assertNotIn("brake-1", [call.args[1] for call in connector.fetch_article_resources.call_args_list])
+        persisted_bundle = persist_bundle.call_args.args[0]
+        self.assertEqual(
+            {article["article_id"] for article in persisted_bundle.articles},
+            {"alt-1", "starter-1"},
+        )
 
     def test_autoapi_article_catalog_fallback_reads_index_without_detail_fetches(self):
         from types import SimpleNamespace

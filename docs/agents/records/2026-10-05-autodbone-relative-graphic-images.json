@@ -14,7 +14,7 @@
     "Restrict article-scope persistence to the one selected article while retaining its source index and detail provenance; test that sibling catalog rows and links are not written.",
     "Re-ingest only the two exact 1997 RAV4 oil/water procedure records and verify localized image bytes, exact article counts, and canonical source provenance."
   ],
-  "base_sha": "ec2acc042f9f96bcaece6e78e133feb63800fc1a",
+  "base_sha": "deb9840d47c29a058a4d91614758536d5cebf0df",
   "status": "synchronized",
   "updated_at": "2026-10-05T08:54:10Z"
 }

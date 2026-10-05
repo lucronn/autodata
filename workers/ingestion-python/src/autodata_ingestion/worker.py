@@ -956,6 +956,7 @@ def _load_autoapi_job_catalog(
             }
             for article in list_normalized.articles
         ]
+        selected_ids: set[str] = set()
         # The catalog endpoint is list-only. On a query miss, select only the
         # requested component articles, then hydrate those article bodies and
         # labor endpoints so future local reads have the complete normalized
@@ -1001,6 +1002,53 @@ def _load_autoapi_job_catalog(
             str(vehicle.get("region") or "US"),
             expected_vehicle=expected_vehicle,
         )
+        if query:
+            selected_articles = tuple(
+                article
+                for article in normalized.articles
+                if str(article.get("article_id") or "") in selected_ids
+            )
+            retained_evidence_ids: set[str] = set()
+            for value in (
+                normalized.vehicle,
+                normalized.specifications,
+                normalized.models,
+                normalized.powertrains,
+                normalized.parts,
+                selected_articles,
+                normalized.documents,
+                normalized.diagrams,
+            ):
+                retained_evidence_ids.update(_source_evidence_ids(value))
+            retained_evidence = tuple(
+                item
+                for item in normalized.evidence
+                if str(item.get("evidence_id") or "") in retained_evidence_ids
+            )
+            retained_reviews = tuple(
+                item
+                for item in normalized.quarantined
+                if _source_evidence_ids(item) & retained_evidence_ids
+            )
+            retained_conflicts = tuple(
+                item
+                for item in normalized.conflicts
+                if _source_evidence_ids(item) & retained_evidence_ids
+            )
+            try:
+                normalized = replace(
+                    normalized,
+                    articles=selected_articles,
+                    evidence=retained_evidence,
+                    quarantined=retained_reviews,
+                    conflicts=retained_conflicts,
+                )
+            except TypeError:
+                # Preserve compatibility with mutable test doubles and adapters.
+                normalized.articles = selected_articles
+                normalized.evidence = retained_evidence
+                normalized.quarantined = retained_reviews
+                normalized.conflicts = retained_conflicts
         from .procedure_normalize import normalize_procedure_article
 
         normalized_articles = []
@@ -1058,6 +1106,29 @@ def _load_autoapi_job_catalog(
         "targeted_labor_fetch_count": targeted_labor_count,
         "provider_id_rejections": provider_id_rejections,
     }
+
+
+def _source_evidence_ids(value: object) -> set[str]:
+    """Collect evidence references from normalized bundle sections."""
+
+    found: set[str] = set()
+
+    def visit(candidate: object) -> None:
+        if isinstance(candidate, Mapping):
+            evidence_id = candidate.get("evidence_id")
+            if evidence_id:
+                found.add(str(evidence_id))
+            evidence_ids = candidate.get("evidence_ids")
+            if isinstance(evidence_ids, (list, tuple, set)):
+                found.update(str(item) for item in evidence_ids if item)
+            for nested in candidate.values():
+                visit(nested)
+        elif isinstance(candidate, (list, tuple, set)):
+            for nested in candidate:
+                visit(nested)
+
+    visit(value)
+    return found
 
 
 def _load_autodb_two_job_catalog(
