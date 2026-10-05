@@ -23,11 +23,16 @@ scoped vehicle, article, and resource routes. AutoData must not build legacy
 names fail clearly rather than being mapped to an unrelated catalog.
 
 AutoDBone normalizes article HTML and signs figure URLs under
-`/v1/assets/reference/{reference}`. During ingestion, AutoData fetches these
-references only from its configured AutoDBone origin, rejects redirects and
-oversized/non-image responses, and stores image bytes in AutoData object
-storage. It must not send these references to AutoDBtwo or retain their signed
-URLs in normalized public records.
+`/v1/assets/reference/{reference}`. Source HTML may contain relative graphic
+paths such as `api/source/MOTOR/graphic/{id}`; the normalizer must recognize
+these provider-relative references, canonicalize source casing, and rewrite
+them to opaque same-origin asset references rather than stripping the image.
+During ingestion, AutoData fetches these references only from its configured
+AutoDBone origin, rejects redirects and oversized/non-image responses, and
+stores image bytes in AutoData object storage. It must not send these
+references to AutoDBtwo or retain their signed URLs in normalized public
+records. Article-detail hydration must persist only the selected article, not
+every list-only row from the vehicle article index.
 
 Local development and deployment use the AutoDBone origin
 `https://autodbone-curtt.vercel.app` by default; deployments may override it
@@ -84,3 +89,7 @@ Todo:
 ## Provider integrity release follow-up
 
 The [provider integrity plan](../superpowers/plans/2026-10-03-provider-integrity-follow-up.md) is tracked in Issue #115 and Project #8. Todo: pass approved request headers to every worker-created AutoDBone connector; report per-provider failure without false completeness; retain raw source hashes and replay references; require rights and retention evidence before publication; prove protected access from the deployed worker. Authenticated Vercel CLI access alone does not satisfy the worker-runtime gate.
+
+The relative-graphic and targeted article-hydration fix is tracked in
+[Issue #112](https://github.com/lucronn/autodata/issues/112), [Project #8](https://github.com/users/lucronn/projects/8),
+and [its implementation plan](../superpowers/plans/2026-10-05-autodbone-relative-graphic-images.md).
