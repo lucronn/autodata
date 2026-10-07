@@ -10,8 +10,10 @@ keeping the APIs consumable by AutoData and third-party applications.
 
 Use a dedicated managed PostgreSQL database shared by Bankone, Banktwo, and a
 new standalone dashboard Vercel project. The manager project uses Vercel
-Authentication / Deployment Protection across all deployments; it must not
-share a Vercel project with the public APIs. Store only SHA-256 digests of
+Authentication with Standard Deployment Protection and has no production
+domain/public production alias; administrators use its protected deployment
+URL. It must not share a Vercel project with the public APIs. Store only
+SHA-256 digests of
 256-bit random keys, perform uncached service-scoped validation against the
 database on every request, and fail closed. Keep AutoData's vehicle-data store
 separate. Begin on a free database tier and do not create paid infrastructure
@@ -34,7 +36,7 @@ is [API key management](../../architecture/api-key-management.md).
 2. [ ] Implement key issuance, metadata listing, expiry and revocation,
    append-only redacted audit events, one-time secret display, and an
    authenticated dashboard protected by Vercel Authentication on a separate
-   Vercel project.
+   Vercel project with Standard Deployment Protection and no production alias.
 3. [ ] Implement shared key parsing/digest validation contract and integrate
    Banktwo; preserve health/readiness, reject invalid credentials before source
    work, and remove static-token fallback only after successful cutover.

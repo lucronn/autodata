@@ -13,9 +13,11 @@ through deployment secrets.
   API deployments. It is dedicated to API credentials and audit events; it is
   not the AutoData vehicle catalog database.
 - **Manager:** a small standalone web application deployed as its own Vercel
-  project. Vercel Authentication / Deployment Protection covers every URL in
-  this project, including its server routes. Only authorized team members can
-  reach it. The project must not host Bankone/Banktwo public API routes.
+  project. Enable Vercel Authentication with Standard Deployment Protection.
+  Do not attach a production domain or public production alias; administrators
+  use its protected deployment URL. This avoids depending on the paid
+  All-Deployments protection scope. The project must not host Bankone/Banktwo
+  public API routes.
 - **Bankone and Banktwo:** each validates the caller's bearer key against the
   same PostgreSQL records on every request, before provider/source work. The
   service name is part of the validation predicate, so keys cannot cross API
@@ -89,8 +91,9 @@ least-privilege database credentials where the provider supports them.
 2. Provision the shared database on the provider's free tier, create
    least-privilege roles, and apply the migration once.
 3. Deploy the manager as a distinct Vercel project with Vercel Authentication
-   set to protect all deployments. Verify an unauthorized request is blocked
-   and an authorized team member can reach the dashboard.
+   and Standard Deployment Protection. Leave production domains/aliases
+   unattached. Verify direct deployment URLs block unauthorized requests and
+   an authorized team member can reach the dashboard.
 4. Configure DB credentials for Bankone, Banktwo, and AutoData as deployment
    secrets. Provision one initial key per service through the manager and add
    each key only to the matching AutoData server-side client secret.
