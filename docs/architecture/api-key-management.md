@@ -55,6 +55,11 @@ trusted key administrators. If individual actor attribution or delegated
 per-service administrators are required, add a verified identity integration
 before broadening access.
 
+Every user granted access to this protected deployment has full management
+authority over both services' keys. There is no application-level user, team,
+or per-service role check. Keep deployment access limited to trusted key
+administrators; do not grant access to general read-only dashboard viewers.
+
 Key values and digests are excluded from logs, traces, audit payloads, database
 errors, and API responses except the one-time creation response. Validate
 constant-time digest equality where applicable. Key validation must not use a

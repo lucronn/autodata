@@ -39,6 +39,9 @@ operators can override database triggers, so owner-level recovery remains a
 break-glass operation. Audit events use the fixed actor label
 `vercel-authenticated-session`; Vercel's deployment gate does not expose the
 individual user identity to these functions.
+Anyone granted access to the protected deployment can create and revoke keys
+for both services. Limit deployment access to trusted key administrators; the
+app does not implement per-user or per-service roles.
 
 ## Deployment requirements
 
