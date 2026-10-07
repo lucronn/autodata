@@ -36,8 +36,12 @@ BEGIN
        OR NEW.service IS DISTINCT FROM OLD.service
        OR NEW.key_digest IS DISTINCT FROM OLD.key_digest
        OR NEW.key_prefix IS DISTINCT FROM OLD.key_prefix
-       OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+       OR NEW.created_at IS DISTINCT FROM OLD.created_at
+       OR NEW.expires_at IS DISTINCT FROM OLD.expires_at THEN
         RAISE EXCEPTION 'API key identity fields are immutable';
+    END IF;
+    IF OLD.revoked_at IS NOT NULL AND NEW.revoked_at IS DISTINCT FROM OLD.revoked_at THEN
+        RAISE EXCEPTION 'API key revocation is permanent';
     END IF;
     RETURN NEW;
 END $$;

@@ -38,6 +38,11 @@ test("clean install is versioned, repeatable, service-scoped, and immutable", { 
       (error) => error.code === "23503",
     );
     await client.query("INSERT INTO managed_api_key_audit (key_id, service, action, actor) VALUES ($1, 'bankone', 'created', 'test')", [id]);
+    await client.query("UPDATE managed_api_keys SET revoked_at = now() WHERE id = $1", [id]);
+    await assert.rejects(
+      client.query("UPDATE managed_api_keys SET revoked_at = NULL WHERE id = $1", [id]),
+      /API key revocation is permanent/,
+    );
     await assert.rejects(
       client.query("UPDATE managed_api_keys SET key_digest = $2 WHERE id = $1", [id, randomBytes(32)]),
       /API key identity fields are immutable/,
