@@ -11,6 +11,8 @@ from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from typing import Any
 
+from .api_auth import api_key_headers
+
 
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -83,7 +85,10 @@ class AutoDBtwoHTTPClient:
         connector_url = self.base_url + route
         try:
             with self.opener(
-                Request(connector_url, headers={"Accept": "image/*,application/octet-stream" if binary else "application/json"}),
+                Request(connector_url, headers={
+                    "Accept": "image/*,application/octet-stream" if binary else "application/json",
+                    **api_key_headers("banktwo"),
+                }),
                 timeout=self.timeout,
             ) as response:
                 final_url = response.geturl() if hasattr(response, "geturl") else connector_url
