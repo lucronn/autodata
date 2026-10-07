@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS managed_api_keys (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     service text NOT NULL CHECK (service IN ('bankone', 'banktwo')),
@@ -10,6 +8,7 @@ CREATE TABLE IF NOT EXISTS managed_api_keys (
     expires_at timestamptz,
     revoked_at timestamptz,
     last_used_at timestamptz,
+    CONSTRAINT managed_api_keys_id_service_key UNIQUE (id, service),
     CHECK (expires_at IS NULL OR expires_at > created_at)
 );
 
@@ -19,12 +18,14 @@ CREATE INDEX IF NOT EXISTS managed_api_keys_service_active_idx
 
 CREATE TABLE IF NOT EXISTS managed_api_key_audit (
     id bigserial PRIMARY KEY,
-    key_id uuid NOT NULL REFERENCES managed_api_keys(id) ON DELETE RESTRICT,
+    key_id uuid NOT NULL,
     service text NOT NULL CHECK (service IN ('bankone', 'banktwo')),
     action text NOT NULL CHECK (action IN ('created', 'revoked')),
     actor text NOT NULL,
     occurred_at timestamptz NOT NULL DEFAULT now(),
-    details jsonb NOT NULL DEFAULT '{}'::jsonb
+    details jsonb NOT NULL DEFAULT '{}'::jsonb,
+    CONSTRAINT managed_api_key_audit_key_service_fk
+        FOREIGN KEY (key_id, service) REFERENCES managed_api_keys(id, service) ON DELETE RESTRICT
 );
 
 CREATE INDEX IF NOT EXISTS managed_api_key_audit_key_time_idx
@@ -66,5 +67,3 @@ GRANT SELECT (id, service, key_digest, expires_at, revoked_at), UPDATE (last_use
 GRANT SELECT, INSERT, UPDATE (revoked_at) ON managed_api_keys TO api_key_manager;
 GRANT INSERT ON managed_api_key_audit TO api_key_manager;
 GRANT USAGE, SELECT ON SEQUENCE managed_api_key_audit_id_seq TO api_key_manager;
-
-COMMIT;

@@ -41,11 +41,19 @@ after creation and require the administrator to copy it then.
 Each record contains an immutable ID, service (`bankone` or `banktwo`), label,
 digest, display prefix, creation time, optional expiry, optional revocation
 time, and last-used time. Listing returns metadata only. Revocation is
-idempotent, records the actor and timestamp, and takes effect for requests
+idempotent, records a fixed service-level actor label and timestamp, and takes effect for requests
 whose validation starts after the revocation transaction commits. Expired and
 revoked rows are retained for audit and never become valid again. Rotation is
 create-new, deploy-new-secret, verify, then revoke-old; do not silently replace
 a key in place.
+
+Vercel Standard Deployment Protection supplies the dashboard's authentication
+boundary, but the function runtime does not receive a verified individual user
+identity or role claim. Audit events therefore use `vercel-authenticated-session`
+and do not provide per-user attribution. Restrict Vercel project membership to
+trusted key administrators. If individual actor attribution or delegated
+per-service administrators are required, add a verified identity integration
+before broadening access.
 
 Key values and digests are excluded from logs, traces, audit payloads, database
 errors, and API responses except the one-time creation response. Validate
@@ -61,8 +69,10 @@ shared cache; a cache hit could extend a revoked key's validity.
   sanitized 503 response. Do not expose SQL, connection strings, or tokens.
 - Health and readiness behavior remains unchanged and contains no protected
   catalog/article content.
-- Public request/response schemas remain compatible apart from requiring
-  credentials on data routes.
+- Response schemas remain unchanged, but requiring credentials on existing data
+  routes is a breaking authentication change. Coordinate the Bankone, Banktwo,
+  and AutoData deployment cutover: configure the matching AutoData secrets and
+  deploy the clients with the new keys before enabling enforcement on each API.
 - Keep the current Banktwo static-token mechanism only as a temporary,
   explicitly bounded migration fallback. Remove it after the API-key database
   and AutoData's server-side key are configured and a live valid-key request
@@ -78,16 +88,18 @@ same-origin/CSRF protection and server-side validation. All database access
 uses parameterized SQL. The UI distinguishes service scope and lifecycle state
 clearly. It never displays the secret after leaving the one-time creation view.
 
-Audit events record actor identity, action, service, key ID, and timestamp, but
-never credentials. The database role used by the manager may perform lifecycle
-mutations. API runtime roles may only read valid key metadata and update
+Audit events record the service-level actor label, action, service, key ID, and
+timestamp, but never credentials. The database role used by the manager may
+perform lifecycle mutations. API runtime roles may only read valid key metadata and update
 last-used state; they cannot create keys or alter scopes. Use separate
 least-privilege database credentials where the provider supports them.
 
 ## Delivery and rollout
 
 1. Build and migrate against local PostgreSQL; implement the manager and
-   validation adapters with deterministic integration tests.
+   validation adapters with deterministic integration tests. Each migration
+   runs transactionally and is recorded in a dedicated migration ledger; a
+   failed version is retried only after its data or schema issue is repaired.
 2. Provision the shared database on the provider's free tier, create
    least-privilege roles, and apply the migration once.
 3. Deploy the manager as a distinct Vercel project with Vercel Authentication
@@ -110,8 +122,10 @@ required review and verification gates pass.
 
 ## Acceptance evidence
 
-- Migration applies from empty and upgrade fixtures; uniqueness, service scope,
-  retention, and audit constraints are verified.
+- Migrations apply from empty and upgrade fixtures and rerun safely; migration
+  versions are recorded only after commit. Uniqueness, service scope, retention,
+  immutable key identity, matched audit service, and append-only audit constraints
+  are verified.
 - Tests cover creation, one-time plaintext display, list redaction, expiry,
   revoke/idempotency, cross-service rejection, concurrent revoke/validate,
   database outage fail-closed behavior, and secret leakage.
