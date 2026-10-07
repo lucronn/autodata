@@ -39,4 +39,5 @@ static `public/` files.
 
 The API functions return sanitized errors and disable response caching. Each
 new key's plaintext is returned only in its create response; list responses
-contain metadata only.
+contain metadata only. Audit records currently use the fixed actor label
+`vercel-authenticated-session`; they do not identify the individual Vercel user.
