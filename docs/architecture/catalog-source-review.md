@@ -17,7 +17,7 @@ The article detail response may expose a `source_review` object containing:
 - `format`: `html` or `json`; and
 - `url`: a same-origin AutoData URL for the stored source.
 
-The response does not expose `source_original`, the recorded provider URI, object-storage keys, or credentials. It may contain the existing same-origin image-proxy URLs used by the normalized article contract; those are local links and do not navigate the browser directly to a provider. The source URL reads the stored `catalog_articles.source_original` record and does not hydrate or refetch an external provider.
+The response does not expose `source_original`, the recorded provider URI, object-storage keys, or credentials. It may contain same-origin opaque image URLs backed only by already-localized objects. The image endpoint never proxies/fetches a provider during display. The source URL reads the stored `catalog_articles.source_original` record and does not hydrate or refetch an external provider. Source images unavailable as local objects are omitted rather than fetched remotely.
 
 `GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source` has two representations:
 

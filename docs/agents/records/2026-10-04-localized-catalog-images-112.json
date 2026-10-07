@@ -1,0 +1,23 @@
+{
+  "goal": "Ingest and serve catalog and stored-source images exclusively from AutoData-local object storage, with opaque public URLs and no provider fetch during display.",
+  "plan_ref": "docs/superpowers/plans/2026-10-04-localized-opaque-catalog-images.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/112",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/normalized-article-document.md",
+    "docs/architecture/opaque-source-media-paths.md",
+    "docs/architecture/catalog-source-review.md"
+  ],
+  "todo": [
+    "Configure API access to the existing object store and read localized images only.",
+    "Issue authenticated opaque tokens for validated local object keys, never provider URLs.",
+    "Retain storage keys internally and omit them from public JSON and OpenAPI.",
+    "Serve article and stored-source images from local objects with no provider display fetch.",
+    "Align OpenAPI JSON and YAML routes, schemas, security, errors, and examples.",
+    "Test storage reads, provider-request non-occurrence, redaction, missing objects, and tampered tokens.",
+    "Run focused and full tests plus cold/warm local integration checks and record evidence."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-04T17:12:57Z",
+  "base_sha": "19b4f339351ced0da14e57371bf4c6ebfa04977e"
+}

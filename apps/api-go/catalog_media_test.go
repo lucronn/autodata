@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
-	"io"
+	"encoding/json"
+	"errors"
 	"net/http"
-	"net/url"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -13,12 +16,12 @@ const testCatalogImageSecret = "0123456789abcdef0123456789abcdef-test"
 
 func TestCatalogImageReferenceIsOpaqueUniqueAndAuthenticated(t *testing.T) {
 	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
-	source := "https://autoapitwo.vercel.app/api/v1/content/carids/123/images/figure-7.png"
-	first, err := sealCatalogImageURL(source, key)
+	source := "procedure-images/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	first, err := sealCatalogImageReference(source, key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := sealCatalogImageURL(source, key)
+	second, err := sealCatalogImageReference(source, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,12 +29,12 @@ func TestCatalogImageReferenceIsOpaqueUniqueAndAuthenticated(t *testing.T) {
 		t.Fatal("repeated references must use unique randomized paths")
 	}
 	for _, token := range []string{first, second} {
-		if strings.Contains(token, "autoapitwo") || strings.Contains(token, "figure-7") || strings.Contains(token, "carids") {
-			t.Fatalf("opaque token reveals source path: %q", token)
+		if strings.Contains(token, "procedure-images") || strings.Contains(token, "0123456789") {
+			t.Fatalf("opaque token reveals object key: %q", token)
 		}
-		decoded, err := openCatalogImageURL(token, key)
+		decoded, err := openCatalogImageReference(token, key)
 		if err != nil || decoded != source {
-			t.Fatalf("openCatalogImageURL() = %q, %v", decoded, err)
+			t.Fatalf("openCatalogImageReference() = %q, %v", decoded, err)
 		}
 	}
 	data, err := base64.RawURLEncoding.DecodeString(first)
@@ -39,32 +42,98 @@ func TestCatalogImageReferenceIsOpaqueUniqueAndAuthenticated(t *testing.T) {
 		t.Fatal(err)
 	}
 	data[len(data)-1] ^= 1
-	if _, err := openCatalogImageURL(base64.RawURLEncoding.EncodeToString(data), key); err == nil {
+	if _, err := openCatalogImageReference(base64.RawURLEncoding.EncodeToString(data), key); err == nil {
 		t.Fatal("modified token must fail authentication")
 	}
 }
 
 func TestCatalogImageProjectionConvertsLegacySourceQueryToOpaquePath(t *testing.T) {
 	article := CatalogArticle{Images: []CatalogImage{
-		{ID: "image-1", URL: "/v1/catalog/images?src=https%3A%2F%2Fautoapitwo.vercel.app%2Ffig%2Fbrake.png"},
+		{ID: "image-1", URL: "/v1/catalog/images?src=https%3A%2F%2Fautoapitwo.vercel.app%2Ffig%2Fbrake.png", StorageKey: "procedure-images/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
 		{ID: "image-2", URL: "https://autoapitwo.vercel.app/fig/brake.png"},
 	}}
 	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
 	rewriteCatalogImageURLs(&article, key)
-	if len(article.Images) != 2 || !strings.HasPrefix(article.Images[0].URL, "/v1/catalog/images/") || !strings.HasPrefix(article.Images[1].URL, "/v1/catalog/images/") {
+	if len(article.Images) != 2 || !strings.HasPrefix(article.Images[0].URL, "/v1/catalog/images/") || article.Images[1].URL != "" {
 		t.Fatalf("images were not projected to opaque paths: %#v", article.Images)
-	}
-	if article.Images[0].URL == article.Images[1].URL {
-		t.Fatal("each public image reference must be independently unique")
 	}
 	serialized := article.Images[0].URL + article.Images[1].URL
 	if strings.Contains(serialized, "src=") || strings.Contains(serialized, "autoapitwo") || strings.Contains(serialized, "brake.png") {
 		t.Fatalf("public image paths reveal source details: %s", serialized)
 	}
-	article.Images[0].URL = "/v1/catalog/images?src=https%3A%2F%2Fevil.example%2Fsecret.png"
+	article.Images[0].StorageKey = "../secret"
 	rewriteCatalogImageURLs(&article, key)
 	if article.Images[0].URL != "" {
 		t.Fatalf("non-allowlisted source should not produce a public image URL: %#v", article.Images[0])
+	}
+}
+
+func TestCatalogImageStorageKeyLoadsPrivatelyAndNeverSerializes(t *testing.T) {
+	const payload = `{"id":"img-1","url":"/legacy","storage_key":"procedure-images/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}`
+	var image CatalogImage
+	if err := json.Unmarshal([]byte(payload), &image); err != nil {
+		t.Fatal(err)
+	}
+	if image.StorageKey == "" {
+		t.Fatal("persisted object key was lost during decode")
+	}
+	encoded, err := json.Marshal(image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "storage_key") || strings.Contains(string(encoded), "procedure-images/") {
+		t.Fatalf("internal object key leaked in public JSON: %s", encoded)
+	}
+}
+
+func TestOpenAPIMediaContractIsServedAndRedactsStorageKeys(t *testing.T) {
+	jsonSpec, err := os.ReadFile("openapi.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(jsonSpec, &document); err != nil {
+		t.Fatalf("invalid OpenAPI JSON: %v", err)
+	}
+	paths := document["paths"].(map[string]any)
+	for _, path := range []string{
+		"/v1/catalog/vehicles/{vehicle_id}/articles",
+		"/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}",
+		"/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source",
+		"/v1/catalog/images/{token}",
+		"/v1/catalog/images",
+	} {
+		if _, ok := paths[path]; !ok {
+			t.Fatalf("OpenAPI path missing: %s", path)
+		}
+	}
+	if strings.Contains(string(jsonSpec), "storage_key") || strings.Contains(string(jsonSpec), "autoapitwo.vercel.app") {
+		t.Fatal("OpenAPI exposes a private storage key or provider host")
+	}
+	yamlSpec, err := os.ReadFile("openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, marker := range []string{"openapi: 3.0.3", "/v1/catalog/images/{token}:", "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source:", "CatalogImage:", "storage keys are deliberately not part of this schema"} {
+		if !strings.Contains(string(yamlSpec), marker) {
+			t.Fatalf("OpenAPI YAML missing %q", marker)
+		}
+	}
+	if strings.Contains(string(yamlSpec), "storage_key") || strings.Contains(string(yamlSpec), "autoapitwo.vercel.app") {
+		t.Fatal("OpenAPI YAML exposes a private storage key or provider host")
+	}
+
+	server := catalogServer(catalogFixtureStore())
+	for _, testCase := range []struct{ path, contentType string }{
+		{"/openapi.json", "application/json; charset=utf-8"},
+		{"/openapi.yaml", "application/yaml; charset=utf-8"},
+	} {
+		request := httptest.NewRequest(http.MethodGet, testCase.path, nil)
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code != http.StatusOK || response.Header().Get("Content-Type") != testCase.contentType {
+			t.Fatalf("%s response = %d content-type %q", testCase.path, response.Code, response.Header().Get("Content-Type"))
+		}
 	}
 }
 
@@ -79,25 +148,18 @@ func TestArticleIndexDoesNotExposeSourceImagePaths(t *testing.T) {
 	}
 }
 
-func TestOpaqueCatalogImageEndpointServesAllowlistedImageAndRejectsLegacyURL(t *testing.T) {
+func TestOpaqueCatalogImageEndpointReadsLocalObjectAndRejectsLegacyURL(t *testing.T) {
 	secret := testCatalogImageSecret
 	t.Setenv("AUTODATA_IMAGE_URL_KEY", secret)
 	server := catalogServer(catalogFixtureStore())
-	source := "https://autoapitwo.vercel.app/diagram.png"
+	objectKey := "procedure-images/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	key := deriveCatalogImageReferenceKey(secret)
-	token, err := sealCatalogImageURL(source, key)
+	token, err := sealCatalogImageReference(objectKey, key)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	previousClient := catalogImageClient
-	catalogImageClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.String() != source {
-			t.Fatalf("upstream URL = %q, want allowlisted URL", request.URL)
-		}
-		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"image/png"}}, Body: io.NopCloser(strings.NewReader("png-bytes")), Request: request}, nil
-	})}
-	t.Cleanup(func() { catalogImageClient = previousClient })
+	server.catalogImageReader = fakeCatalogImageReader{key: objectKey, body: []byte("png-bytes"), mediaType: "image/png"}
 
 	response := catalogRequest(server, "/v1/catalog/images/"+token)
 	if response.Code != http.StatusOK || response.Body.String() != "png-bytes" || response.Header().Get("Content-Type") != "image/png" {
@@ -107,8 +169,8 @@ func TestOpaqueCatalogImageEndpointServesAllowlistedImageAndRejectsLegacyURL(t *
 		t.Fatalf("missing referrer policy: %#v", response.Header())
 	}
 
-	legacy := catalogRequest(server, "/v1/catalog/images?src="+url.QueryEscape(source))
-	if legacy.Code == http.StatusOK || strings.Contains(legacy.Body.String(), source) {
+	legacy := catalogRequest(server, "/v1/catalog/images?src=https%3A%2F%2Fautoapitwo.vercel.app%2Fdiagram.png")
+	if legacy.Code == http.StatusOK || strings.Contains(legacy.Body.String(), "autoapitwo.vercel.app") {
 		t.Fatalf("legacy source-bearing URL was accepted or echoed: %d %s", legacy.Code, legacy.Body.String())
 	}
 }
@@ -127,6 +189,15 @@ func TestCatalogImageReferencesFailClosedWithoutAStableSecret(t *testing.T) {
 	}
 }
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
+type fakeCatalogImageReader struct {
+	key       string
+	body      []byte
+	mediaType string
+}
 
-func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+func (reader fakeCatalogImageReader) ReadImage(_ context.Context, key string) ([]byte, string, error) {
+	if key != reader.key {
+		return nil, "", errors.New("unexpected object key")
+	}
+	return reader.body, reader.mediaType, nil
+}
