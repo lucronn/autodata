@@ -292,7 +292,10 @@ class AutoAPITwoConnector:
                 if cooldown > 0:
                     time.sleep(cooldown)
                 try:
-                    with self.opener(Request(url, headers={"Accept": "image/*" if binary else "application/json"}), timeout=self.timeout) as response:
+                    from .api_auth import api_key_headers
+
+                    headers = {"Accept": "image/*" if binary else "application/json", **api_key_headers("banktwo")}
+                    with self.opener(Request(url, headers=headers), timeout=self.timeout) as response:
                         if hasattr(response, "geturl") and response.geturl() != url:
                             raise SourceUnavailable("unexpected source redirect")
                         raw = response.read(self.max_bytes + 1)

@@ -245,7 +245,10 @@ class AutoAPITwoCatalogConnector:
                 return deepcopy(value)
             for attempt in range(self.retry_attempts):
                 try:
-                    with self.opener(Request(url, headers={"Accept": "application/json"}), timeout=self.timeout) as response:
+                    from .api_auth import api_key_headers
+
+                    headers = {"Accept": "application/json", **api_key_headers("banktwo")}
+                    with self.opener(Request(url, headers=headers), timeout=self.timeout) as response:
                         final_url = response.geturl() if hasattr(response, "geturl") else url
                         if final_url != url:
                             raise CatalogSourceUnavailable("unexpected catalog source redirect")

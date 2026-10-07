@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AutoData · API keys</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <a class="brand" href="/"><span class="mark">a</span><span>AutoData</span><span class="slash">/</span><span class="muted">Key desk</span></a>
+      <span class="session">Vercel team protected</span>
+    </header>
+    <section class="intro">
+      <p class="eyebrow">ACCESS CONTROL · BANKONE + BANKTWO</p>
+      <h1>Keys, kept<br><em>in your hands.</em></h1>
+      <p class="lede">Create a service key, keep the secret somewhere safe, and revoke access when it is no longer needed.</p>
+    </section>
+    <section class="panel" aria-labelledby="create-title">
+      <div class="panel-title"><span class="number">01</span><h2 id="create-title">Issue a key</h2></div>
+      <form id="create-form">
+        <label>Service<select name="service" required><option value="bankone">Bankone</option><option value="banktwo">Banktwo</option></select></label>
+        <label>Label<input name="label" maxlength="100" placeholder="e.g. AutoData production" required></label>
+        <label>Expires <span class="optional">optional</span><input name="expiresAt" type="datetime-local"></label>
+        <button type="submit">Create key <span aria-hidden="true">↗</span></button>
+      </form>
+      <div id="new-secret" class="secret hidden" role="status"></div>
+      <p id="form-error" class="error" role="alert"></p>
+    </section>
+    <section class="panel" aria-labelledby="keys-title">
+      <div class="panel-title"><span class="number">02</span><h2 id="keys-title">Issued keys</h2><button id="refresh" class="quiet" type="button">Refresh ↻</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Service / label</th><th>Prefix</th><th>Created</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody id="keys"><tr><td colspan="6">Loading keys…</td></tr></tbody></table></div>
+    </section>
+    <footer>Secrets are displayed once. Store them in server-side environment variables.</footer>
+  </main>
+</body>
+</html>
