@@ -1,0 +1,22 @@
+{
+  "goal": "Restore scoped API-key authentication on the live Bankone and Banktwo APIs while keeping the key manager protected; deploy the user-authorized production auth correction and leave credential rotation to the user.",
+  "plan_ref": "docs/superpowers/plans/2026-10-08-live-api-key-auth-remediation.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/129",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/api-key-management.md",
+    "docs/agents/pre-implementation-gate.md",
+    "docs/github/operating-model.md"
+  ],
+  "todo": [
+    "Verify protected manager and the shared database identity without exposing secrets.",
+    "Confirm live production SHAs and distinguish API configuration from code defects.",
+    "Run Bankone and Banktwo build, tests, and preview auth-negative/auth-positive checks.",
+    "Configure service-specific production database credentials and deploy auth-enabled APIs.",
+    "Verify live missing/wrong-scope 401, matching-key 200, and database-outage fail-closed behavior.",
+    "Update Issue #129 and Project #8 with deployed SHAs and safe verification evidence; do not rotate keys."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-08T05:00:00Z",
+  "base_sha": "70fdcb94aa2be3462e982b8aa7f6d6d3e736b111"
+}

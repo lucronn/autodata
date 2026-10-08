@@ -110,7 +110,7 @@ jobs:
         working-directory: workers/ingestion-python
         run: |
           python -m pip install --disable-pip-version-check --no-input pytest
-          python -m pytest tests -q
+          PYTHONPATH=src python -m pytest tests -q
 
       - name: Run enrichment worker tests
         working-directory: workers/enrichment-python

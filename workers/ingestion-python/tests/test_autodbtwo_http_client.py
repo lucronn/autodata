@@ -1,6 +1,7 @@
 import hashlib
 import io
 import unittest
+from unittest.mock import patch
 from urllib.parse import urlsplit
 
 from autodata_ingestion.autodbtwo_http_client import AutoDBtwoHTTPClient, AutoDBtwoRequestError
@@ -22,6 +23,19 @@ class _Response(io.BytesIO):
 
 
 class AutoDBtwoHTTPClientTests(unittest.TestCase):
+    def test_configured_connector_receives_banktwo_bearer_key(self):
+        calls = []
+        token = "adk_banktwo_" + "b" * 43
+
+        def opener(request, **_kwargs):
+            calls.append(request.get_header("Authorization"))
+            return _Response(request.full_url, b'{"ok":true}')
+
+        with patch.dict("os.environ", {"AUTODATA_BANKTWO_API_KEY": token}):
+            client = AutoDBtwoHTTPClient("https://banktwo.test", upstream_base_url="https://autoapitwo.test", opener=opener)
+            client.read("https://autoapitwo.test/api/v1/fleet/years/2012/makes")
+        self.assertEqual(calls, [f"Bearer {token}"])
+
     def test_article_path_is_forwarded_to_vehicle_scoped_autodbtwo_route(self):
         calls = []
         payload = b'{"ok":true}'

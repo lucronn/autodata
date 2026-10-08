@@ -1,0 +1,23 @@
+{
+  "goal": "Provide a protected dashboard and shared database to manage service-scoped Bankone and Banktwo API keys, enforce them on both APIs, and configure AutoData server-side clients.",
+  "plan_ref": "docs/superpowers/plans/2026-10-07-bankone-banktwo-api-key-management.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/129",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/api-key-management.md",
+    "docs/github/operating-model.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Implement dedicated key-management schema/migration, indexes, constraints, least-privilege roles, and repeatable local migration.",
+    "Implement protected standalone dashboard and key create/list/expiry/revoke lifecycle, one-time secret display, and redacted audit events.",
+    "Integrate uncached service-scoped validation into Banktwo and remove static-token fallback only after successful valid-key cutover.",
+    "Implement equivalent required-key validation in the separate Bankone repository without disturbing existing local changes.",
+    "Configure AutoData server-side Bankone/Banktwo clients to read distinct deployment secrets; prove keys never reach browsers or logs.",
+    "Add migration, lifecycle, security, failure, compatibility, dashboard, and live dev tests including immediate revocation.",
+    "Run independent schema, security, reliability, and final reviews; synchronize exact evidence and SHAs to Issue #129 and Project #8."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-07T23:33:32Z",
+  "base_sha": "249af7e8796757741350f0001b65498be63600e5"
+}

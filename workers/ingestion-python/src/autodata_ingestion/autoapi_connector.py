@@ -1501,6 +1501,12 @@ def _request_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
         if not name or any(character in name + content for character in "\r\n"):
             raise ValueError("AutoAPI request headers must not contain newlines")
         result[name] = content
+    from .api_auth import api_key_headers
+
+    key_header = api_key_headers("bankone")
+    if key_header:
+        result = {name: value for name, value in result.items() if name.lower() != "authorization"}
+        result.update(key_header)
     return result
 
 
