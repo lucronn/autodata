@@ -71,32 +71,6 @@ class IngestionWorkerTests(unittest.TestCase):
                 "brake line replacement procedure", complete
             )
         )
-    def test_autoapi_content_source_defaults_from_vehicle_make(self):
-        from autodata_ingestion.worker import _autoapi_content_source
-
-        with patch.dict("os.environ", {}, clear=True):
-            self.assertEqual(
-                _autoapi_content_source({"make": "Toyota"}),
-                "Motor",
-            )
-            self.assertEqual(
-                _autoapi_content_source({"make": "Chevrolet"}),
-                "Motor",
-            )
-
-    def test_explicit_autoapi_content_source_wins_over_make_default(self):
-        from autodata_ingestion.worker import _autoapi_content_source
-
-        with patch.dict(
-            "os.environ",
-            {"AUTODATA_AUTOAPI_CONTENT_SOURCE": "Motor"},
-            clear=True,
-        ):
-            self.assertEqual(
-                _autoapi_content_source({"make": "Toyota"}),
-                "Motor",
-            )
-
     def test_job_plan_falls_back_when_catalog_has_rows_but_not_requested_article_content(self):
         from autodata_ingestion.worker import run_job_plan
 
@@ -132,205 +106,32 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "ready")
         self.assertEqual(result["selected_articles"], ["oil-1"])
 
-    def test_autoapi_query_fallback_hydrates_only_selected_articles_and_labor(self):
-        from autodata_ingestion.autoapi_connector import AutoAPIVehicleBundle
-        from autodata_ingestion.worker import _load_autoapi_job_catalog
-
-        def resource(uri, payload):
-            return SourceResource.from_bytes(uri, "autoapi-test-v1", json.dumps(payload).encode(), "application/json")
-
-        vehicle = {
-            "vehicle_id": "v1",
-            "autoapi_vehicle_id": "v1",
-            "vehicle_key": "chevrolet-silverado-1500-1999-us",
-            "year": 1999,
-            "make": "Chevrolet",
-            "model": "Silverado 1500",
-            "region": "US",
-        }
-        bundle = AutoAPIVehicleBundle(
-            vehicle_id="v1",
-            content_source="GeneralMotors",
-            vehicle=vehicle,
-            configurations=(),
-            resources=(
-                resource("http://source/name", {"body": "1999 Chevrolet Silverado 1500"}),
-                resource("http://source/motorvehicles", {"body": [{"id": "m1", "model": "Silverado 1500", "engines": []}]}),
-                resource(
-                    "http://source/articles/v2",
-                    {"body": {"articleDetails": [
-                        {"id": "alt-1", "title": "Alternator replacement"},
-                        {"id": "starter-1", "title": "Starter replacement"},
-                        {"id": "brake-1", "title": "Brake replacement"},
-                    ]}},
-                ),
-            ),
-            article_ids=("alt-1", "starter-1", "brake-1"),
-        )
-        details = {
-            "alt-1": (
-                resource("http://source/article/alt-1", {"body": {"documentId": "alt-1", "html": "Replace the alternator."}}),
-                resource("http://source/labor/alt-1", {"body": {"operations": [{"operationId": "shared-belt", "name": "Remove belt", "hours": 0.25}, {"operationId": "alternator", "name": "Replace alternator", "hours": 1.5}]}}),
-            ),
-            "starter-1": (
-                resource("http://source/article/starter-1", {"body": {"documentId": "starter-1", "html": "Replace the starter."}}),
-                resource("http://source/labor/starter-1", {"body": {"operations": [{"operationId": "shared-belt", "name": "Remove belt", "hours": 0.25}, {"operationId": "starter", "name": "Replace starter", "hours": 2.0}]}}),
-            ),
-        }
-        with patch("autodata_ingestion.autoapi_connector.AutoAPIConnector") as connector_class:
-            connector = connector_class.return_value
-            connector.fetch_vehicle_bundle.return_value = bundle
-            connector.fetch_article_resources.side_effect = (
-                lambda _vehicle_id, article_id, **_kwargs: details[article_id]
-            )
-            with patch.dict(
-                "os.environ",
-                {
-                    "AUTODATA_AUTOAPI_BASE_URL": "http://127.0.0.1:3000",
-                    "AUTODATA_SOURCE_PERSIST": "0",
-                },
-                clear=False,
-            ):
-                records, source_info = _load_autoapi_job_catalog(
-                    vehicle, object(), query="replace alternator and starter"
-                )
-
-        self.assertEqual(source_info["targeted_article_fetch_count"], 2)
-        self.assertEqual(connector.fetch_article_resources.call_count, 2)
-        by_id = {record["article"]["article_id"]: record["article"] for record in records}
-        self.assertEqual(by_id["alt-1"]["operations"][1]["duration_hours"], 1.5)
-        self.assertEqual(by_id["starter-1"]["operations"][0]["operation_id"], "shared-belt")
-        self.assertNotIn("brake-1", [call.args[1] for call in connector.fetch_article_resources.call_args_list])
-
-    def test_autoapi_article_catalog_fallback_reads_index_without_detail_fetches(self):
+    def test_bankone_job_catalog_uses_source_connector_v1_and_preserves_page_order(self):
         from types import SimpleNamespace
-
-        from autodata_ingestion.autoapi_connector import AutoAPIVehicleBundle
+        from unittest.mock import patch
         from autodata_ingestion.worker import _load_autoapi_job_catalog
 
-        vehicle = {
-            "vehicle_id": "v1",
-            "autoapi_vehicle_id": "v1",
-            "year": 1999,
-            "make": "Toyota",
-            "model": "RAV4",
-            "region": "US",
-        }
-        bundle = AutoAPIVehicleBundle(
-            vehicle_id="v1",
-            content_source="Motor",
-            vehicle=vehicle,
-            configurations=(),
-            resources=(),
-            article_ids=("oil-1",),
-        )
-        article = {"article_id": "oil-1", "title": "Oil pump replacement", "content_status": "list_only"}
-        normalized = SimpleNamespace(articles=(article,), evidence=())
-        with patch("autodata_ingestion.autoapi_connector.AutoAPIConnector") as connector_class:
-            connector = connector_class.return_value
-            connector.fetch_vehicle_bundle.return_value = bundle
-            with patch(
-                "autodata_ingestion.source_bundle.normalize_source_bundle",
-                return_value=normalized,
-            ) as normalize_source_bundle:
-                with patch.dict(
-                    "os.environ",
-                    {
-                        "AUTODATA_AUTOAPI_BASE_URL": "http://127.0.0.1:3000",
-                        "AUTODATA_SOURCE_PERSIST": "0",
-                    },
-                    clear=False,
-                ):
-                    records, source_info = _load_autoapi_job_catalog(
-                        vehicle, object(), query=""
-                    )
+        class Client:
+            base_url = "https://bankone.test"
+            def resolve_vehicle(self, selector):
+                self.selector = selector
+                return SimpleNamespace(body={"candidates": [{"opaque_ref": "opaque/vehicle"}]})
+            def list_articles(self, vehicle_ref, cursor=None):
+                self.calls = getattr(self, "calls", []) + [(vehicle_ref, cursor)]
+                rows = [{"opaque_ref": "article-1", "title": "Z first", "category": "Repair"}] if cursor is None else [{"opaque_ref": "article-2", "title": "A second", "category": "Repair"}]
+                return SimpleNamespace(body={"articles": rows}, complete=cursor is not None, next_cursor="page-2" if cursor is None else None, persisted_provider="autoapi", source_revision="r1", source_locator="https://bankone.test/list", request_id=f"req-{len(self.calls)}")
+        client = Client()
+        from autodata_ingestion.source_bundle import SourceBundle
+        normalized_vehicle = {"vehicle_key": "toyota-rav4-1999-us"}
+        normalized_articles = tuple({"article_id": value, "title": title, "content_status": "list_only"} for value, title in (("autoapi:opaque/vehicle:article-1", "Z first"), ("autoapi:opaque/vehicle:article-2", "A second")))
+        bundle = SourceBundle("ready", normalized_vehicle, (), (), (), (), normalized_articles, (), (), (), (), ())
+        with patch("autodata_ingestion.source_connector_client.source_connector_registry", return_value={"bankone": client}), patch("autodata_ingestion.source_bundle.normalize_source_bundle", return_value=bundle) as normalize:
+            records, info = _load_autoapi_job_catalog({"year": 1999, "make": "Toyota", "model": "RAV4", "region": "US"}, object())
 
-        self.assertEqual([record["article"]["article_id"] for record in records], ["oil-1"])
-        self.assertEqual(source_info["targeted_article_fetch_count"], 0)
-        connector.fetch_article_resources.assert_not_called()
-
-        self.assertEqual(
-            normalize_source_bundle.call_args.kwargs["expected_vehicle"],
-            vehicle,
-        )
-
-    def test_autoapi_article_catalog_fallback_filters_provider_variants_by_engine(self):
-        from types import SimpleNamespace
-
-        from autodata_ingestion.worker import _filter_vehicle_bundles
-
-        bundles = tuple(
-            SimpleNamespace(
-                vehicle={"year": 1999, "make": "Toyota", "model": "4Runner"},
-                configurations=({"engine_displacement_l": engine, "trim": trim},),
-            )
-            for engine, trim in ((2.7, "4RUNNERBASE"), (3.4, "4RUNNERSR5"))
-        )
-
-        result = _filter_vehicle_bundles(
-            bundles,
-            {"year": 1999, "make": "Toyota Truck", "model": "4 Runner 4wd", "engine": "2.7"},
-        )
-
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0].configurations[0]["engine_displacement_l"], 2.7)
-
-    def test_autoapi_query_fallback_maps_separate_labor_row_to_procedure_row(self):
-        from autodata_ingestion.autoapi_connector import AutoAPIVehicleBundle
-        from autodata_ingestion.worker import _load_autoapi_job_catalog
-
-        def resource(uri, payload):
-            return SourceResource.from_bytes(uri, "autoapi-test-v1", json.dumps(payload).encode(), "application/json")
-
-        vehicle = {
-            "vehicle_id": "v1",
-            "autoapi_vehicle_id": "v1",
-            "vehicle_key": "toyota-rav4-1997-us",
-            "year": 1997,
-            "make": "Toyota",
-            "model": "RAV4",
-            "region": "US",
-        }
-        bundle = AutoAPIVehicleBundle(
-            vehicle_id="v1",
-            content_source="Motor",
-            vehicle=vehicle,
-            configurations=(),
-            resources=(
-                resource("http://source/name", {"body": "1997 Toyota RAV4"}),
-                resource("http://source/articles/v2", {"body": {"articleDetails": [
-                    {"id": "P:1", "title": "Water Pump R&R", "bucket": "Component Replacement"},
-                    {"id": "L:2", "title": "Water Pump R&R", "bucket": "Labor"},
-                ]}}),
-            ),
-            article_ids=("P:1", "L:2"),
-        )
-        labor = resource("http://source/labor/L:2", {"body": {"operations": [
-            {"operationId": "pump", "name": "Replace water pump", "hours": 2.0},
-        ]}})
-        labor.metadata["target_article_id"] = "P:1"
-        details = {
-            "P:1": (
-                resource("http://source/article/P:1", {"body": {"documentId": "P:1", "html": "Replace the water pump."}}),
-                labor,
-            ),
-        }
-        with patch("autodata_ingestion.autoapi_connector.AutoAPIConnector") as connector_class:
-            connector = connector_class.return_value
-            connector.fetch_vehicle_bundle.return_value = bundle
-            connector.fetch_article_resources.side_effect = lambda _vehicle_id, article_id, labor_article_id=None: details[article_id]
-            with patch.dict(
-                "os.environ",
-                {"AUTODATA_AUTOAPI_BASE_URL": "http://127.0.0.1:3000", "AUTODATA_SOURCE_PERSIST": "0"},
-                clear=False,
-            ):
-                records, _source_info = _load_autoapi_job_catalog(
-                    vehicle, object(), query="water pump replacement"
-                )
-
-        connector.fetch_article_resources.assert_called_once_with("v1", "P:1", labor_article_id="L:2")
-        article = next(record["article"] for record in records if record["article"]["article_id"] == "P:1")
-        self.assertEqual(article["operations"][0]["operation_id"], "pump")
+        self.assertEqual(client.calls, [("opaque/vehicle", None), ("opaque/vehicle", "page-2")])
+        self.assertEqual([row["article"]["title"] for row in records], ["Z first", "A second"])
+        self.assertEqual(info["source_provider"], "bankone")
+        self.assertEqual(normalize.call_args.kwargs["preserve_article_order"], True)
 
     def test_job_plan_returns_persisted_derived_article_before_source_fallback(self):
         from autodata_ingestion.worker import run_job_plan
@@ -375,50 +176,6 @@ class IngestionWorkerTests(unittest.TestCase):
         self.assertEqual(result["source"]["mode"], "derived_article_cache")
         self.assertTrue(result["cache_hit"])
         self.assertEqual(result["labor"]["total_labor_hours"], 3.9)
-
-    def test_autoapi_job_fallback_uses_targeted_ymme_resolution(self):
-        from types import SimpleNamespace
-
-        from autodata_ingestion.worker import _load_autoapi_job_catalog
-
-        vehicle = {
-            "year": 1997,
-            "make": "Toyota",
-            "model": "RAV4",
-            "drivetrain": "4WD",
-            "region": "US",
-        }
-        bundle = SimpleNamespace(
-            vehicle={**vehicle, "model": "RAV4 Base", "vehicle_id": "rav4-4wd"},
-            vehicle_id="rav4-4wd",
-            resources=(),
-        )
-        with patch("autodata_ingestion.autoapi_connector.AutoAPIConnector") as connector_class:
-            connector = connector_class.return_value
-            connector.find_vehicle_targets.return_value = (
-                {"vehicle_id": "rav4-4wd", "year": 1997, "make": "Toyota", "model": "RAV4"},
-            )
-            connector.fetch_vehicle_bundle.return_value = bundle
-            with patch("autodata_ingestion.source_bundle.normalize_source_bundle") as normalize:
-                normalize.return_value.articles = []
-                normalize.return_value.evidence = []
-                with patch.dict(
-                    "os.environ",
-                    {
-                        "AUTODATA_AUTOAPI_BASE_URL": "http://127.0.0.1:3000",
-                        "AUTODATA_AUTOAPI_CONTENT_SOURCE": "",
-                        "AUTODATA_SOURCE_PERSIST": "0",
-                    },
-                    clear=False,
-                ):
-                    records, source_info = _load_autoapi_job_catalog(
-                        vehicle, object(), query="oil pump replacement"
-                    )
-
-        connector.find_vehicle_targets.assert_called_once_with(1997, "Toyota", "RAV4")
-        connector.fetch_vehicle_bundle.assert_called_once()
-        self.assertEqual(records, [])
-        self.assertEqual(source_info["traversal"], "targeted_vehicle_family")
 
     def test_unknown_structured_source_can_use_opt_in_mercury_extractor(self):
         from autodata_ingestion.source_adapters import NormalizationCandidate

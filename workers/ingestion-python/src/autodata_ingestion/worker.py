@@ -778,170 +778,238 @@ def _derived_procedure_has_redundant_shared_steps(article: Mapping[str, object])
 def _load_autoapi_job_catalog(
     vehicle: dict[str, object], target: object, *, query: str = ""
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
-    """Hydrate the requested vehicle from AutoAPI only after a local miss.
+    """Hydrate one Bankone source vehicle through Source Connector v1."""
 
-    A configured provider vehicle ID performs one vehicle bundle fetch. Without
-    that ID, the connector performs its complete year/make/model traversal so
-    the same miss warms the complete selector/article-list cache.
-    """
+    from urllib.parse import quote
 
-    base_url = os.getenv("AUTODATA_AUTOAPI_BASE_URL", "").strip()
-    if not base_url:
-        return [], {"mode": "source_unavailable", "reason": "autoapi_not_configured"}
-    from .autoapi_connector import AutoAPIConnector
-    from .source_adapters import adapt_source_resource
-    from .source_bundle import normalize_source_bundle
     from .job_plan import plan_job
+    from .source_adapters import SourceResource, adapt_source_resource
+    from .source_bundle import normalize_source_bundle
+    from .source_connector_client import SourceConnectorError, source_connector_registry
 
-    content_source = _autoapi_content_source(vehicle)
-    connector = AutoAPIConnector(
-        base_url,
-        content_source=content_source,
-        default_region=str(vehicle.get("region") or os.getenv("AUTODATA_SOURCE_REGION", "US")),
-        source_version=os.getenv("AUTODATA_AUTOAPI_SOURCE_VERSION", "autoapi-http-v1"),
-        vehicle_max_concurrency=int(os.getenv("AUTODATA_AUTOAPI_VEHICLE_CONCURRENCY", "4")),
-        retry_attempts=int(os.getenv("AUTODATA_AUTOAPI_RETRY_ATTEMPTS", "3")),
-        retry_backoff_seconds=float(os.getenv("AUTODATA_AUTOAPI_RETRY_BACKOFF_SECONDS", "0.25")),
+    connector = source_connector_registry().get("bankone")
+    if connector is None:
+        return [], {"mode": "source_unavailable", "reason": "bankone_not_configured"}
+
+    selector: dict[str, object] = {
+        "year": int(vehicle.get("model_year", vehicle.get("year", 0))),
+        "make": str(vehicle.get("make") or ""),
+        "model": str(vehicle.get("model") or ""),
+        "region": str(vehicle.get("region") or os.getenv("AUTODATA_SOURCE_REGION", "US")),
+    }
+    configuration = " ".join(
+        str(value).strip()
+        for value in (vehicle.get("trim"), vehicle.get("engine"), vehicle.get("drivetrain"))
+        if value not in (None, "")
     )
-    provider_vehicle_id = str(vehicle.get("autoapi_vehicle_id") or vehicle.get("provider_vehicle_id") or "").strip()
-    if provider_vehicle_id:
-        bundle = connector.fetch_vehicle_bundle({"vehicle_id": provider_vehicle_id, **vehicle})
-        bundles = (bundle,)
-        traversal = "vehicle_bundle"
+    if configuration:
+        selector["configuration"] = configuration
+    explicit_ref = str(vehicle.get("source_vehicle_ref") or "").strip()
+    if explicit_ref:
+        source_vehicle_ref = explicit_ref
     else:
-        target_candidates = connector.find_vehicle_targets(
-            int(vehicle["model_year"] if "model_year" in vehicle else vehicle["year"]),
-            str(vehicle["make"]),
-            str(vehicle["model"]),
-        )
-        candidate_bundles = tuple(
-            connector.fetch_vehicle_bundle(candidate) for candidate in target_candidates
-        )
-        bundles = _filter_vehicle_bundles(candidate_bundles, vehicle)
-        traversal = "targeted_vehicle_family"
-    records: list[dict[str, object]] = []
+        resolution = connector.resolve_vehicle(selector)
+        candidates = resolution.body["candidates"]
+        if len(candidates) != 1:
+            raise SourceConnectorError("AMBIGUOUS" if candidates else "NOT_FOUND")
+        source_vehicle_ref = str(candidates[0]["opaque_ref"])
+
+    pages = []
+    source_articles: list[dict[str, object]] = []
+    cursor: str | None = None
+    seen: set[str] = set()
+    for _ in range(1000):
+        page = connector.list_articles(source_vehicle_ref, cursor)
+        pages.append(page)
+        source_articles.extend(dict(item) for item in page.body["articles"])
+        if page.complete:
+            break
+        cursor = page.next_cursor
+        if cursor is None or cursor in seen:
+            raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+        seen.add(cursor)
+    else:
+        raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+    if not pages:
+        raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+
+    persisted_provider = pages[0].persisted_provider
+    requested_article_id = str(vehicle.get("requested_article_id") or "").strip()
+
+    def article_id_for(item: Mapping[str, object]) -> str:
+        opaque_ref = str(item["opaque_ref"])
+        if requested_article_id and (
+            requested_article_id == opaque_ref
+            or requested_article_id.rsplit(":", 1)[-1] == opaque_ref.rsplit(":", 1)[-1]
+        ):
+            return requested_article_id
+        return f"{persisted_provider}:{source_vehicle_ref}:{opaque_ref}"
+
+    article_details = [
+        {
+            "id": article_id_for(item),
+            "title": item["title"],
+            "bucket": item.get("category"),
+            "component": item.get("component"),
+            "resource_ref": item.get("resource_ref"),
+            "labor_resource_ref": item.get("labor_resource_ref"),
+            "asset_resource_refs": item.get("asset_resource_refs", []),
+        }
+        for item in source_articles
+    ]
+    source_locator = pages[0].source_locator or (
+        f"{connector.base_url}/v1/vehicles/{quote(source_vehicle_ref, safe='')}/articles"
+    )
+    source_payload = {
+        "kind": "vehicle",
+        "year": selector["year"],
+        "make": selector["make"],
+        "model": selector["model"],
+        "region": selector["region"],
+        "trim": vehicle.get("trim"),
+        "drivetrain": vehicle.get("drivetrain"),
+        "engine": vehicle.get("engine_displacement_l", vehicle.get("engine")),
+        "articleDetails": article_details,
+    }
+    index_resource = SourceResource.from_bytes(
+        source_locator,
+        pages[0].source_revision,
+        json.dumps(source_payload, sort_keys=True, separators=(",", ":")).encode(),
+        "application/json",
+        locator=source_locator,
+        metadata={
+            "provider": persisted_provider,
+            "source_provider": "bankone",
+            "vehicle_id": source_vehicle_ref,
+            "request_ids": [page.request_id for page in pages],
+            "page_locators": [page.source_locator for page in pages if page.source_locator],
+        },
+    )
+    index_artifact = adapt_source_resource(index_resource)
+    expected_vehicle = dict(vehicle)
+    index_bundle = normalize_source_bundle(
+        [index_artifact],
+        str(vehicle.get("region") or "US"),
+        expected_vehicle=expected_vehicle,
+        preserve_article_order=True,
+    )
+    canonical_vehicle = index_bundle.vehicle
+    if canonical_vehicle is None:
+        raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+    list_records = [
+        {
+            "kind": "article",
+            "vehicle_key": canonical_vehicle.get("vehicle_key"),
+            "vehicle_identity": dict(canonical_vehicle),
+            "article": dict(article),
+            "evidence": [],
+        }
+        for article in index_bundle.articles
+    ]
+
+    selected_ids: set[str] = set()
+    selected_items: list[dict[str, object]] = []
+    if query and list_records:
+        planned = plan_job(query, vehicle, catalog=list_records)
+        selected_ids.update(str(value) for value in planned.get("selected_articles", []))
+    if requested_article_id:
+        selected = [
+            article_id_for(item)
+            for item in source_articles
+            if article_id_for(item) == requested_article_id
+        ]
+        selected_ids.update(selected)
+
+    artifacts = [index_artifact]
     targeted_article_count = 0
     targeted_labor_count = 0
-    for bundle in bundles:
-        artifacts = [adapt_source_resource(resource) for resource in bundle.resources]
-        # Both catalog discovery and selected-article hydration are keyed by
-        # the user's canonical selector. The provider may use a shorter
-        # make/model label, but normalized rows must attach to the existing
-        # local vehicle identity instead of creating a provider-shaped twin.
-        expected_vehicle = dict(vehicle)
-        list_normalized = normalize_source_bundle(
-            artifacts,
-            str(vehicle.get("region") or "US"),
-            expected_vehicle=expected_vehicle,
-        )
-        list_records = [
-            {
-                "kind": "article",
-                "vehicle_key": bundle.vehicle.get("vehicle_key"),
-                "vehicle_identity": dict(bundle.vehicle),
-                "article": dict(article),
-                "evidence": [],
-            }
-            for article in list_normalized.articles
+    if selected_ids:
+        selected_items = [
+            item for item in source_articles if article_id_for(item) in selected_ids
         ]
-        # The catalog endpoint is list-only. On a query miss, select only the
-        # requested component articles, then hydrate those article bodies and
-        # labor endpoints so future local reads have the complete normalized
-        # article instead of repeatedly calling the source.
-        if query and list_records:
-            provisional = plan_job(query, vehicle, catalog=list_records)
-            selected_ids = set(str(value) for value in provisional.get("selected_articles", []))
-            requested_article_id = str(vehicle.get("requested_article_id") or "").strip()
-            if requested_article_id:
-                selected_ids.add(requested_article_id)
-            labor_articles = [
-                record["article"]
-                for record in list_records
-                if _is_labor_article(record["article"])
-            ]
-            for article_id in sorted(selected_ids):
-                selected_article = next(
-                    (record["article"] for record in list_records if str(record["article"].get("article_id")) == article_id),
-                    {},
-                )
-                labor_article_id = _match_labor_article_id(selected_article, labor_articles)
-                if labor_article_id and labor_article_id != article_id:
-                    resources = connector.fetch_article_resources(
-                        bundle.vehicle_id, article_id, labor_article_id=labor_article_id
+        for item in selected_items:
+            article_id = article_id_for(item)
+            refs = [item.get("resource_ref"), item.get("labor_resource_ref")]
+            refs.extend(item.get("asset_resource_refs") or [])
+            fetched_article = False
+            for resource_ref in dict.fromkeys(str(ref) for ref in refs if ref):
+                resource = connector.read_resource(resource_ref).to_source_resource()
+                if resource_ref == item.get("resource_ref"):
+                    resource = replace(
+                        resource,
+                        metadata={**resource.metadata, "target_article_id": article_id},
                     )
-                else:
-                    resources = connector.fetch_article_resources(
-                        bundle.vehicle_id,
-                        article_id,
-                        include_labor=False,
-                    )
-                for resource in resources:
-                    if str(resource.source_uri).casefold().find("/article/") >= 0:
-                        resource = replace(
-                            resource,
-                            metadata={**resource.metadata, "target_article_id": article_id},
-                        )
-                    artifacts.append(adapt_source_resource(resource))
-                targeted_article_count += 1
-                targeted_labor_count += max(0, len(resources) - 1)
-        normalized = normalize_source_bundle(
-            artifacts,
-            str(vehicle.get("region") or "US"),
-            expected_vehicle=expected_vehicle,
-        )
-        from .procedure_normalize import normalize_procedure_article
+                    fetched_article = True
+                artifacts.append(adapt_source_resource(resource))
+                if resource_ref != item.get("resource_ref"):
+                    targeted_labor_count += int(resource_ref == item.get("labor_resource_ref"))
+            targeted_article_count += int(fetched_article)
 
-        normalized_articles = []
+    normalized = normalize_source_bundle(
+        artifacts,
+        str(vehicle.get("region") or "US"),
+        expected_vehicle=expected_vehicle,
+        preserve_article_order=True,
+    )
+    from .procedure_normalize import normalize_procedure_article
+
+    normalized_articles = []
+    selected_id_by_title = {
+        str(item.get("title") or "").strip().casefold(): article_id_for(item)
+        for item in selected_items if selected_ids
+    }
+    for article in normalized.articles:
+        if article.get("body") or article.get("steps"):
+            article = normalize_procedure_article(article)
+        selected_id = selected_id_by_title.get(str(article.get("title") or "").strip().casefold())
+        if selected_id:
+            article["article_id"] = selected_id
+        normalized_articles.append(article)
+    normalized = replace(normalized, articles=tuple(normalized_articles))
+
+    if os.getenv("AUTODATA_SOURCE_PERSIST") == "1":
+        from .procedure_images import localize_procedure_images
+
+        localized_articles = []
         for article in normalized.articles:
-            if article.get("body") or article.get("steps"):
-                article = normalize_procedure_article(article)
-                from .procedure_rewrite import rewrite_procedure_article
-
-                article = rewrite_procedure_article(
-                    article,
-                    vehicle=normalized.vehicle or vehicle,
+            try:
+                localized_articles.append(
+                    localize_procedure_images(article, vehicle=normalized.vehicle or vehicle)
                 )
-            normalized_articles.append(article)
-        try:
-            normalized = replace(normalized, articles=tuple(normalized_articles))
-        except TypeError:
-            # Keep lightweight test doubles and connector adapters compatible
-            # with the immutable SourceBundle contract.
-            normalized.articles = tuple(normalized_articles)
-        if os.getenv("AUTODATA_SOURCE_PERSIST") == "1":
-            from .procedure_images import localize_procedure_images
+            except Exception:  # noqa: BLE001 - retain readable text if media storage is unavailable
+                localized_articles.append(article)
+        normalized = replace(normalized, articles=tuple(localized_articles))
+        from .bundle_persistence import persist_source_bundle
 
-            localized_articles = []
-            for article in normalized.articles:
-                try:
-                    localized_articles.append(
-                        localize_procedure_images(article, vehicle=normalized.vehicle or vehicle)
-                    )
-                except Exception:  # noqa: BLE001 - retain source text when media storage is unavailable
-                    localized_articles.append(article)
-            normalized = replace(normalized, articles=tuple(localized_articles))
-            from .bundle_persistence import persist_source_bundle
+        persist_source_bundle(normalized, artifacts, adapter_name="autoapi")
 
-            persist_source_bundle(normalized, artifacts, adapter_name=connector.name)
-        evidence_by_id = {str(item["evidence_id"]): item for item in normalized.evidence if item.get("evidence_id")}
-        for article in normalized.articles:
-            records.append({
-                "kind": "article",
-                "vehicle_key": bundle.vehicle.get("vehicle_key"),
-                "vehicle_identity": dict(bundle.vehicle),
-                "article": dict(article),
-                "evidence": (
-                    [evidence_by_id[str(article["evidence_id"])] ]
-                    if article.get("evidence_id") and str(article["evidence_id"]) in evidence_by_id
-                    else []
-                ),
-            })
+    evidence_by_id = {
+        str(item["evidence_id"]): item
+        for item in normalized.evidence
+        if item.get("evidence_id")
+    }
+    records = [
+        {
+            "kind": "article",
+            "vehicle_key": canonical_vehicle.get("vehicle_key"),
+            "vehicle_identity": dict(canonical_vehicle),
+            "article": dict(article),
+            "evidence": (
+                [evidence_by_id[str(article["evidence_id"])] ]
+                if article.get("evidence_id") and str(article["evidence_id"]) in evidence_by_id
+                else []
+            ),
+        }
+        for article in normalized.articles
+    ]
     return records, {
-        "mode": "autoapi_fallback",
-        "content_source": content_source,
-        "traversal": traversal,
-        "vehicle_count": len(bundles),
+        "mode": "source_connector_v1",
+        "content_source": "autoapi",
+        "source_provider": "bankone",
+        "traversal": "vehicle_article_index",
+        "vehicle_count": 1,
         "materialized_records": len(records),
+        "index_read_count": len(pages),
         "targeted_article_fetch_count": targeted_article_count,
         "targeted_labor_fetch_count": targeted_labor_count,
     }
@@ -1005,155 +1073,6 @@ def _match_labor_article_id(
 
 def _is_labor_article(article: Mapping[str, object]) -> bool:
     return str(article.get("article_id") or "").casefold().startswith("l:") or str(article.get("bucket") or "").casefold() == "labor"
-
-
-_AUTOAPI_SOURCE_BY_MAKE = {
-    # Motor is the working AutoAPI content source for local chat retrieval.
-    # The older GeneralMotors source route 404s on this deployment.
-    "buick": "Motor",
-    "cadillac": "Motor",
-    "chevrolet": "Motor",
-    "gmc": "Motor",
-    "oldsmobile": "Motor",
-    "pontiac": "Motor",
-    "lexus": "Motor",
-    "scion": "Motor",
-    "toyota": "Motor",
-}
-
-
-def _autoapi_content_source(vehicle: dict[str, object]) -> str:
-    """Choose the provider content source for one vehicle request.
-
-    A request can carry an explicit provider source, or deployment can set a
-    single source for a dedicated connector. Otherwise use the source family
-    implied by the make. ``Motor`` is the provider-neutral fallback; it keeps
-    an unrecognized make from being sent to the General Motors source.
-    """
-
-    for key in ("autoapi_content_source", "content_source"):
-        value = str(vehicle.get(key) or "").strip()
-        if value:
-            return value
-    configured = os.getenv("AUTODATA_AUTOAPI_CONTENT_SOURCE", "").strip()
-    if configured:
-        return configured
-    make = str(vehicle.get("make") or "").strip().casefold()
-    return _AUTOAPI_SOURCE_BY_MAKE.get(make, "Motor")
-
-
-def _same_vehicle_family(left: dict[str, object], right: dict[str, object]) -> bool:
-    return (
-        all(
-            (
-                str(left.get("year", "")).casefold()
-                == str(right.get("year", "")).casefold()
-                if key == "year"
-                else _same_make_family(left.get("make"), right.get("make"))
-            )
-            for key in ("year", "make")
-        )
-        and _same_model_family(left.get("model"), right.get("model"))
-    )
-
-
-def _same_make_family(left: object, right: object) -> bool:
-    aliases = {
-        "chevy": "chevrolet",
-        "chevytruck": "chevrolet",
-        "chevrolettruck": "chevrolet",
-        "fordtruck": "ford",
-        "gmctruck": "gmc",
-        "toyotatruck": "toyota",
-    }
-    values = []
-    for value in (left, right):
-        normalized = re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
-        normalized = aliases.get(normalized, normalized)
-        if normalized.endswith("truck"):
-            normalized = normalized[:-5]
-        values.append(normalized)
-    if not values[0] or not values[1]:
-        return False
-    if values[0] == values[1]:
-        return True
-    return False
-
-
-def _same_model_family(left: object, right: object) -> bool:
-    """Match provider trim-suffixed names to a selected base model."""
-
-    left_model = " ".join(str(left or "").split()).casefold()
-    right_model = " ".join(str(right or "").split()).casefold()
-    if (
-        left_model == right_model
-        or left_model.startswith(right_model + " ")
-        or right_model.startswith(left_model + " ")
-    ):
-        return True
-    left_compact = re.sub(r"[^a-z0-9]", "", left_model)
-    right_compact = re.sub(r"[^a-z0-9]", "", right_model)
-    left_compact = re.sub(r"(?:2wd|4wd|awd|fwd|rwd)$", "", left_compact)
-    right_compact = re.sub(r"(?:2wd|4wd|awd|fwd|rwd)$", "", right_compact)
-    return bool(left_compact and right_compact and (left_compact.startswith(right_compact) or right_compact.startswith(left_compact)))
-
-
-def _filter_vehicle_bundles(
-    bundles: tuple[object, ...], vehicle: dict[str, object]
-) -> tuple[object, ...]:
-    """Keep only provider bundles matching requested drivetrain dimensions."""
-
-    family = tuple(
-        bundle
-        for bundle in bundles
-        if hasattr(bundle, "vehicle")
-        and isinstance(bundle.vehicle, dict)
-        and _same_vehicle_family(bundle.vehicle, vehicle)
-    )
-    requested_drive = str(
-        vehicle.get("drivetrain", vehicle.get("drive_type", ""))
-    ).strip()
-    if requested_drive:
-        matching = tuple(
-            bundle
-            for bundle in family
-            if _normalize_vehicle_dimension(bundle.vehicle.get("drivetrain"))
-            == _normalize_vehicle_dimension(requested_drive)
-        )
-        family = matching or family
-
-    requested_engine = _engine_value(
-        vehicle.get("engine_displacement_l", vehicle.get("engine"))
-    )
-    requested_trim = _normalize_vehicle_dimension(vehicle.get("trim"))
-    if requested_engine is None and not requested_trim:
-        return family
-    narrowed = []
-    for bundle in family:
-        configurations = getattr(bundle, "configurations", ()) or ()
-        if not configurations:
-            continue
-        if any(
-            (requested_engine is None or _engine_value(configuration.get("engine_displacement_l")) == requested_engine)
-            and (not requested_trim or requested_trim in _normalize_vehicle_dimension(configuration.get("trim")))
-            for configuration in configurations
-            if isinstance(configuration, Mapping)
-        ):
-            narrowed.append(bundle)
-    return tuple(narrowed) or family
-
-
-def _engine_value(value: object) -> float | None:
-    if value in (None, ""):
-        return None
-    try:
-        return round(float(re.search(r"\d+(?:\.\d+)?", str(value)).group(0)), 4)
-    except (AttributeError, TypeError, ValueError):
-        return None
-
-
-def _normalize_vehicle_dimension(value: object) -> str:
-    return "".join(character for character in str(value or "").casefold() if character.isalnum())
 
 
 def _persist_article_intake(intake: object, *, adapter_name: str) -> dict[str, object] | None:

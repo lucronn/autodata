@@ -2,6 +2,7 @@ import sys
 import unittest
 import json
 import os
+import hashlib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,18 +12,26 @@ from autodata_ingestion.catalog_service import (
     _ArticleCatalogProgress,
     CatalogRequest,
     CacheFirstCatalogService,
-    _autoapitwo_car_ids,
-    _autoapitwo_search_queries,
-    _descriptor_href,
     _engine_number,
-    _same_autoapitwo_vehicle,
     _source_failure_detail,
+    _find_source_article,
+    _load_autoapitwo_article_catalog,
+    _load_autoapitwo_article_detail,
+    _configured_catalog_providers,
     canonical_catalog_id,
     ensure_catalog_hydration,
 )
 
 
 class CatalogServiceTests(unittest.TestCase):
+    def test_catalog_provider_configuration_ignores_legacy_base_urls(self):
+        with patch("autodata_ingestion.source_connector_client.source_connector_registry", return_value={}), \
+                patch.dict(os.environ, {
+                    "AUTODATA_AUTOAPI_BASE_URL": "https://old-bankone.test",
+                    "AUTODATA_AUTOAPITWO_BASE_URL": "https://old-banktwo.test",
+                }, clear=True):
+            self.assertEqual(_configured_catalog_providers(), ())
+
     def test_article_catalog_progress_throttles_durable_writes_by_count_and_time(self):
         request = {"vehicle_id": "vehicle-1", "year": 2012, "make": "Ram", "model": "Ram 1500 Ds"}
         payload = {
@@ -45,77 +54,6 @@ class CatalogServiceTests(unittest.TestCase):
             [0, 100, 101],
         )
 
-    def test_autoapitwo_vehicle_match_accepts_make_alias_and_inserted_model_variant(self):
-        self.assertTrue(
-            _same_autoapitwo_vehicle(
-                {"year": "2012", "make": "Chevy Truck", "model": "Express 1500 AWD"},
-                {"year": 2012, "make": "Chevrolet", "model": "Express Awd"},
-            )
-        )
-        self.assertFalse(
-            _same_autoapitwo_vehicle(
-                {"year": "2012", "make": "Chevy Truck", "model": "Express 1500 RWD"},
-                {"year": 2012, "make": "Chevrolet", "model": "Express Awd"},
-            )
-        )
-
-    def test_autoapitwo_search_falls_back_from_provider_model_code(self):
-        queries = []
-
-        class Connector:
-            def search_vehicles(self, query):
-                queries.append(query)
-                if query == "2018 Dodge Charger":
-                    return [{"year": "2018", "make": "Dodge", "model": "Charger AWD", "id": "58065"}]
-                return []
-
-        vehicle = {"model_year": 2018, "make": "Dodge", "model": "Charger Ld"}
-        self.assertEqual(_autoapitwo_search_queries(vehicle), ("2018 Dodge Charger Ld", "2018 Dodge Charger"))
-        self.assertEqual(_autoapitwo_car_ids({"vehicle_id": ""}, vehicle, Connector()), ("58065",))
-        self.assertEqual(queries, ["2018 Dodge Charger Ld", "2018 Dodge Charger"])
-
-    def test_autoapitwo_matches_ram_ds_to_dodge_or_ram_provider_family(self):
-        queries = []
-
-        class Connector:
-            def search_vehicles(self, query):
-                queries.append(query)
-                if query == "2012 Ram 1500":
-                    return [
-                        {
-                            "year": "2012",
-                            "make": "Dodge or Ram Truck",
-                            "model": "RAM 1500 Truck 2WD",
-                            "engine": "V6-3.7L",
-                            "id": "50578",
-                        },
-                    ]
-                return []
-
-        vehicle = {"model_year": 2012, "make": "Ram", "model": "Ram 1500 Ds"}
-        self.assertEqual(
-            _autoapitwo_search_queries(vehicle),
-            (
-                "2012 Ram Ram 1500 Ds",
-                "2012 Ram Ram 1500",
-                "2012 Ram 1500 Ds",
-                "2012 Ram 1500",
-            ),
-        )
-        self.assertEqual(
-            _autoapitwo_car_ids({"vehicle_id": ""}, vehicle, Connector()),
-            ("50578",),
-        )
-        self.assertEqual(
-            queries,
-            [
-                "2012 Ram Ram 1500 Ds",
-                "2012 Ram Ram 1500",
-                "2012 Ram 1500 Ds",
-                "2012 Ram 1500",
-            ],
-        )
-
     def test_source_failure_detail_names_source_and_outcome(self):
         self.assertEqual(
             _source_failure_detail('AutoAPI', RuntimeError('expired authentication token')),
@@ -129,61 +67,189 @@ class CatalogServiceTests(unittest.TestCase):
             _source_failure_detail('AutoAPItwo', RuntimeError('AutoAPItwo did not resolve a matching vehicle')),
             'AutoAPItwo failed — returned no matching vehicle.',
         )
+        self.assertIn("more than one", _source_failure_detail("AutoAPItwo", RuntimeError("source connector ambiguous")))
 
-    def test_descriptor_href_accepts_persisted_article_shapes(self):
-        self.assertEqual(
-            _descriptor_href({"href": "https://source.test/direct"}),
-            "https://source.test/direct",
+    def test_generic_banktwo_article_index_preserves_page_order_and_lineage(self):
+        from autodata_ingestion.source_connector_client import SourceEnvelopeV1
+
+        page_one = SourceEnvelopeV1(
+            "request-1", "banktwo", "revision-7", "2026-10-08T12:00:00Z", "https://banktwo.test/catalog",
+            {"complete": False, "next_cursor": "cursor-2", "articles": [
+                {"opaque_ref": "article-2", "title": "Second", "resource_ref": "resource-2"},
+            ]},
         )
-        self.assertEqual(
-            _descriptor_href({"source_uri": "https://source.test/source"}),
-            "https://source.test/source",
+        page_two = SourceEnvelopeV1(
+            "request-2", "banktwo", "revision-7", "2026-10-08T12:00:01Z", "https://banktwo.test/catalog?page=2",
+            {"complete": True, "articles": [
+                {"opaque_ref": "article-1", "title": "First", "resource_ref": "resource-1"},
+            ]},
         )
-        self.assertEqual(
-            _descriptor_href({"_links": {"self": {"href": "https://source.test/link"}}}),
-            "https://source.test/link",
+
+        class Connector:
+            provider = "banktwo"
+            base_url = "https://banktwo.test"
+
+            def __init__(self):
+                self.cursors = []
+
+            def resolve_vehicle(self, selector):
+                self.selector = selector
+                return SourceEnvelopeV1(
+                    "resolve-1", "banktwo", "revision-7", "2026-10-08T12:00:00Z", None,
+                    {"candidates": [{"opaque_ref": "vehicle/ref-1", "label": "2.0L Sport", "confidence": 1.0}]},
+                )
+
+            def list_articles(self, source_vehicle_ref, cursor=None):
+                self.cursors.append((source_vehicle_ref, cursor))
+                return page_one if cursor is None else page_two
+
+        connector = Connector()
+        with patch("autodata_ingestion.source_connector_client.source_connector_registry", return_value={"banktwo": connector}), \
+                patch.dict(os.environ, {"AUTODATA_SOURCE_PERSIST": "0"}):
+            records, metadata = _load_autoapitwo_article_catalog(
+                {"year": 2020},
+                {"model_year": 2020, "year": 2020, "make": "Example", "model": "Sedan", "region": "US", "engine": "2.0L"},
+            )
+
+        self.assertEqual(connector.selector["configuration"], "2.0L")
+        self.assertEqual(connector.cursors, [("vehicle/ref-1", None), ("vehicle/ref-1", "cursor-2")])
+        self.assertEqual([row["article"]["article_id"] for row in records], [
+            "autoapitwo:vehicle/ref-1:article-2", "autoapitwo:vehicle/ref-1:article-1",
+        ])
+        self.assertEqual(metadata["index_read_count"], 2)
+
+    def test_generic_banktwo_selected_article_reads_original_resources_and_keeps_id(self):
+        from autodata_ingestion.source_bundle import SourceBundle
+        from autodata_ingestion.source_connector_client import SourceEnvelopeV1
+        from autodata_ingestion.source_adapters import SourceResource
+
+        raw_article = b'{"kind":"article","article_id":"new-id","title":"Oil pump"}'
+        raw_labor = b'{"operations":[{"name":"Replace oil pump"}]}'
+
+        def resource(ref, kind, body):
+            raw = raw_article if ref == "article-resource" else raw_labor
+            return SourceEnvelopeV1(
+                f"request-{ref}", "banktwo", "revision-9", "2026-10-08T12:00:00Z",
+                f"https://banktwo.test/source/{ref}",
+                {"kind": kind, "media_type": "application/json", "sha256": hashlib.sha256(raw).hexdigest()},
+                resource_uri=ref, raw_resource=raw,
+            )
+
+        class Connector:
+            provider = "banktwo"
+            base_url = "https://banktwo.test"
+
+            def __init__(self):
+                self.reads = []
+
+            def resolve_vehicle(self, _selector):
+                return SourceEnvelopeV1(
+                    "resolve-1", "banktwo", "revision-9", "2026-10-08T12:00:00Z", None,
+                    {"candidates": [{"opaque_ref": "vehicle/ref-1", "label": "Exact", "confidence": 1.0}]},
+                )
+
+            def list_articles(self, _source_vehicle_ref, cursor=None):
+                return SourceEnvelopeV1(
+                    "list-1", "banktwo", "revision-9", "2026-10-08T12:00:00Z", None,
+                    {"complete": True, "articles": [{
+                        "opaque_ref": "article-1", "title": "Oil pump", "resource_ref": "article-resource",
+                        "labor_resource_ref": "labor-resource",
+                    }]},
+                )
+
+            def read_resource(self, ref):
+                self.reads.append(ref)
+                return resource(ref, "article" if ref == "article-resource" else "labor", {})
+
+        connector = Connector()
+        observed = []
+        bundle = SourceBundle(
+            status="complete", vehicle={"vehicle_key": "vehicle:1"}, specifications=(), models=(),
+            powertrains=(), parts=(), articles=({"article_id": "new-id", "title": "Oil pump", "evidence_id": "e1"},),
+            documents=(), diagrams=(), evidence=({"evidence_id": "e1"},), quarantined=(), conflicts=(),
         )
-        self.assertEqual(
-            _descriptor_href({"evidence": [{"source_uri": "https://source.test/evidence"}]}),
-            "https://source.test/evidence",
-        )
+        request = {
+            "year": 2013, "make": "Honda", "model": "Accord", "region": "US",
+            "source_article_id": "autoapitwo:old-vehicle-ref:article-1", "title": "Oil pump",
+        }
+        vehicle = {"model_year": 2013, "year": 2013, "make": "Honda", "model": "Accord", "region": "US"}
+        with patch("autodata_ingestion.source_connector_client.source_connector_registry", return_value={"banktwo": connector}), \
+                patch("autodata_ingestion.source_adapters.adapt_source_resource", side_effect=lambda item: observed.append(item) or item), \
+                patch("autodata_ingestion.source_bundle.normalize_source_bundle", return_value=bundle), \
+                patch("autodata_ingestion.procedure_normalize.normalize_procedure_article", side_effect=lambda item: dict(item)), \
+                patch("autodata_ingestion.procedure_images.localize_procedure_images", side_effect=lambda item, vehicle: item), \
+                patch.dict(os.environ, {"AUTODATA_SOURCE_PERSIST": "0"}):
+            rows, metadata = _load_autoapitwo_article_detail(request, vehicle)
+
+        self.assertEqual(connector.reads, ["article-resource", "labor-resource"])
+        self.assertEqual([item.payload for item in observed], [raw_article, raw_labor])
+        self.assertEqual([item.content_sha256 for item in observed], [hashlib.sha256(raw_article).hexdigest(), hashlib.sha256(raw_labor).hexdigest()])
+        self.assertEqual([item.locator for item in observed], ["https://banktwo.test/source/article-resource", "https://banktwo.test/source/labor-resource"])
+        self.assertEqual(rows[0]["article"]["article_id"], request["source_article_id"])
+        self.assertEqual(metadata["content_source"], "autoapitwo")
+
+    def test_legacy_banktwo_article_suffix_must_match_one_descriptor(self):
+        from autodata_ingestion.source_connector_client import SourceConnectorError, SourceEnvelopeV1
+
+        class Connector:
+            def list_articles(self, _vehicle_ref, _cursor=None):
+                return SourceEnvelopeV1(
+                    "list-1", "banktwo", "revision-1", "2026-10-08T12:00:00Z", "https://banktwo.test/articles",
+                    {"complete": True, "articles": [
+                        {"opaque_ref": "article:1535667", "title": "Oil pump", "resource_ref": "r1"},
+                        {"opaque_ref": "other:1535667", "title": "Oil pump alternate", "resource_ref": "r2"},
+                    ]},
+                )
+
+        with self.assertRaises(SourceConnectorError) as caught:
+            _find_source_article(
+                Connector(), "vehicle/opaque",
+                {"source_article_id": "autoapitwo:52597:1535667"},
+            )
+        self.assertEqual(caught.exception.code, "AMBIGUOUS")
+
+    def test_generic_vehicle_resolution_rejects_ambiguous_source_candidates(self):
+        from autodata_ingestion.source_connector_client import SourceConnectorError, SourceEnvelopeV1
+
+        class Connector:
+            def resolve_vehicle(self, _selector):
+                return SourceEnvelopeV1(
+                    "resolve-ambiguous", "banktwo", "revision-1", "2026-10-08T12:00:00Z", None,
+                    {"candidates": [
+                        {"opaque_ref": "candidate-1", "label": "Base", "confidence": 0.8},
+                        {"opaque_ref": "candidate-2", "label": "Sport", "confidence": 0.8},
+                    ]},
+                )
+
+        with self.assertRaises(SourceConnectorError) as caught:
+            from autodata_ingestion.catalog_service import _resolve_source_vehicle_ref
+            _resolve_source_vehicle_ref(Connector(), {}, {"year": 2020, "make": "Example", "model": "Sedan"})
+        self.assertEqual(caught.exception.code, "AMBIGUOUS")
+
+    def test_generic_article_search_rejects_duplicate_exact_titles(self):
+        from autodata_ingestion.source_connector_client import SourceConnectorError, SourceEnvelopeV1
+        from autodata_ingestion.catalog_service import _find_source_article
+
+        class Connector:
+            def search_articles(self, source_vehicle_ref, query, cursor=None):
+                self.asserted = (source_vehicle_ref, query, cursor)
+                return SourceEnvelopeV1(
+                    "search-1", "banktwo", "revision-1", "2026-10-08T12:00:00Z", None,
+                    {"complete": True, "articles": [
+                        {"opaque_ref": "article-1", "title": "Oil pump"},
+                        {"opaque_ref": "article-2", "title": "Oil pump"},
+                    ]},
+                )
+
+        connector = Connector()
+        with self.assertRaises(SourceConnectorError) as caught:
+            _find_source_article(connector, "vehicle-ref", {"title": "Oil pump"})
+        self.assertEqual(caught.exception.code, "AMBIGUOUS")
+        self.assertEqual(connector.asserted, ("vehicle-ref", "Oil pump", None))
 
     def test_engine_number_prefers_displacement_in_provider_engine_label(self):
         self.assertEqual(_engine_number("L4-2.4L (K24W1)"), 2.4)
         self.assertEqual(_engine_number("V6-3.5L (J35Y2)"), 3.5)
-
-    def test_autoapitwo_id_only_mapping_is_enriched_before_engine_filtering(self):
-        class Connector:
-            def search_vehicles(self, query):
-                return [
-                    {"id": "52597", "year": "2013", "make": "Honda", "model": "Accord Coupe", "engine": "L4-2.4L (K24W1)"},
-                    {"id": "52599", "year": "2013", "make": "Honda", "model": "Accord Coupe", "engine": "V6-3.5L (J35Y2)"},
-                ]
-
-        vehicle = {"model_year": 2013, "make": "Honda", "model": "Accord Coupe", "engine": "2.4"}
-        self.assertEqual(
-            _autoapitwo_car_ids(
-                {"vehicle_id": "vehicle-1"},
-                vehicle,
-                Connector(),
-            ),
-            ("52597",),
-        )
-
-    def test_autoapitwo_accepts_provider_model_variants_for_normalized_model(self):
-        class Connector:
-            def search_vehicles(self, query):
-                return [
-                    {"id": "52992", "year": "2013", "make": "Honda", "model": "Crosstour 2WD", "engine": "L4-2.4L (K24Y2)"},
-                    {"id": "52998", "year": "2013", "make": "Honda", "model": "Crosstour 2WD", "engine": "V6-3.5L (J35Y1)"},
-                    {"id": "52999", "year": "2013", "make": "Honda", "model": "Crosstour 4WD", "engine": "V6-3.5L (J35Y1)"},
-                ]
-
-        vehicle = {"model_year": 2013, "make": "Honda", "model": "Crosstour"}
-        self.assertEqual(
-            _autoapitwo_car_ids({"vehicle_id": "vehicle-crosstour"}, vehicle, Connector()),
-            ("52992", "52998", "52999"),
-        )
 
     def test_complete_cache_is_returned_without_calling_provider(self):
         provider_calls = []

@@ -3,38 +3,21 @@
 from __future__ import annotations
 
 import base64
-import json
 import mimetypes
 import os
-import re
-import urllib.request
-from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
 from io import BytesIO
-from typing import Any
-from urllib.error import HTTPError
-from urllib.parse import quote, urlsplit
-from urllib.request import HTTPRedirectHandler, Request
+from typing import Any, Mapping
+from urllib.parse import urlsplit
 
 from .object_storage import ensure_versioned_bucket
 
+
 PROVIDER_IMAGE_HOST_MARKERS = (
-    "autoapitwo.vercel.app",
+    "banktwo.cars.tk",
     "alldata.com",
-    "autodbone-curtt.vercel.app",
 )
-_ASSET_REFERENCE_PATH = re.compile(
-    r"^/v1/assets/reference/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$"
-)
-_MAX_SOURCE_IMAGE_BYTES = 8 * 1024 * 1024
-
-
-class _RejectRedirect(HTTPRedirectHandler):
-    """Signed source references must not forward credentials to a redirect target."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
 
 
 def localize_procedure_images(
@@ -50,27 +33,32 @@ def localize_procedure_images(
 
     out = dict(article)
     vehicle = vehicle or {}
-    provider_id = str(vehicle.get("autoapitwo_vehicle_id") or "").strip()
+    del vehicle
     images = _collect_image_records(out)
     if not images:
         return out
 
-    unique_urls = list(
+    unique_asset_refs = list(
         dict.fromkeys(
-            str(image.get("url") or "").strip()
+            str(image.get("asset_resource_ref") or "").strip()
             for image in images
-            if str(image.get("url") or "").strip()
+            if str(image.get("asset_resource_ref") or "").strip()
             and not str(image.get("storage_key") or "").strip()
-            and not str(image.get("url") or "").startswith("data:image/")
         )
     )
-    fetched = _fetch_urls(unique_urls, provider_id=provider_id) if unique_urls else {}
+    fetched = _fetch_asset_resources(unique_asset_refs) if unique_asset_refs else {}
     stored: dict[str, dict[str, Any]] = {}
-    for url, payload in fetched.items():
+    for resource_ref, resource in fetched.items():
+        payload = resource["payload"]
         if not payload:
             continue
         try:
-            stored[url] = _store_image_bytes(url, payload)
+            stored[resource_ref] = _store_image_bytes(
+                resource_ref,
+                payload,
+                media_type=resource["media_type"],
+                source_metadata=resource["metadata"],
+            )
         except Exception:  # noqa: BLE001 - one failed figure must not abort ingestion
             continue
 
@@ -78,27 +66,23 @@ def localize_procedure_images(
         record = dict(image)
         record.pop("source_url", None)
         url = str(record.get("url") or "").strip()
+        if url.startswith("data:image/"):
+            return record
+        record.pop("url", None)
         if str(record.get("storage_key") or "").strip():
-            if not (url.startswith("data:image/") or url.startswith("/v1/catalog/images?src=")):
-                record.pop("url", None)
+            record["url"] = f"artifact://{record.get('image_id')}" if record.get("image_id") else ""
             record.pop("fetch_failed", None)
             return record
-        local = stored.get(url)
-        if local is None and url.startswith("data:image/"):
-            return record
+        resource_ref = str(record.get("asset_resource_ref") or "").strip()
+        local = stored.get(resource_ref)
         if local is None:
-            record.pop("url", None)
             record["fetch_failed"] = True
             return record
         image_id = record.get("image_id")
         record.update(local)
         if image_id:
             record["image_id"] = image_id
-        # The API serves this same-origin route and keeps the provider URL out
-        # of the public payload.  The object-store key remains authoritative;
-        # the proxy is a compatibility fallback until the API's object-store
-        # reader is enabled in every deployment.
-        record["url"] = f"/v1/catalog/images?src={quote(url, safe='')}"
+        record["url"] = f"artifact://{record.get('image_id')}" if record.get("image_id") else ""
         record.pop("fetch_failed", None)
         return record
 
@@ -123,7 +107,7 @@ def localize_procedure_images(
                 ]
             rewritten_steps.append(step_out)
         out["steps"] = rewritten_steps
-    _rewrite_document_images(out, images)
+    _rewrite_document_images(out, _collect_image_records(out))
     return out
 
 
@@ -268,108 +252,53 @@ def _rewrite_document_images(article: dict[str, Any], original_images: list[dict
         rewrite(block)
 
 
-def _fetch_urls(urls: list[str], *, provider_id: str) -> dict[str, bytes]:
-    from .autoapitwo_connector import AutoAPITwoConnector
-
-    connector_base_url = os.getenv(
-        "AUTODATA_AUTOAPITWO_BASE_URL", "https://autoapitwo.vercel.app"
-    )
-
-    def fetch_one(url: str) -> tuple[str, bytes]:
+def _fetch_asset_resources(resource_refs: list[str]) -> dict[str, dict[str, Any]]:
+    def fetch_one(resource_ref: str) -> tuple[str, dict[str, Any] | None]:
         try:
-            if _is_autodbone_asset_reference(url):
-                return url, _fetch_autodbone_asset(url)
-            connector = AutoAPITwoConnector(connector_base_url)
-            payload = connector.read(url, car_id=provider_id or None, binary=True)
-            return url, bytes(payload or b"")
+            return resource_ref, _read_asset_resource(resource_ref)
         except Exception:  # noqa: BLE001 - leave image marked failed
-            return url, b""
+            return resource_ref, None
 
-    results: dict[str, bytes] = {}
-    if not urls:
+    results: dict[str, dict[str, Any]] = {}
+    if not resource_refs:
         return results
-    with ThreadPoolExecutor(max_workers=min(4, len(urls))) as pool:
-        for url, payload in pool.map(fetch_one, urls):
-            if payload:
-                results[url] = payload
+    with ThreadPoolExecutor(max_workers=min(4, len(resource_refs))) as pool:
+        for resource_ref, value in pool.map(fetch_one, resource_refs):
+            if value and value["payload"]:
+                results[resource_ref] = value
     return results
 
 
-def _is_autodbone_asset_reference(url: str) -> bool:
-    configured = os.getenv(
-        "AUTODATA_AUTOAPI_BASE_URL", "https://autodbone-curtt.vercel.app"
-    ).strip()
-    try:
-        source = urlsplit(configured)
-        candidate = urlsplit(url)
-        return (
-            source.scheme == "https"
-            and bool(source.netloc)
-            and not source.username
-            and not source.password
-            and candidate.scheme == source.scheme
-            and candidate.netloc.casefold() == source.netloc.casefold()
-            and not candidate.username
-            and not candidate.password
-            and not candidate.query
-            and not candidate.fragment
-            and bool(_ASSET_REFERENCE_PATH.fullmatch(candidate.path))
-        )
-    except ValueError:
-        return False
+def _read_asset_resource(resource_ref: str) -> dict[str, Any]:
+    from .source_connector_client import source_connector_registry
+
+    connector = source_connector_registry(include_defaults=True)["banktwo"]
+    envelope = connector.read_resource(resource_ref)
+    resource = envelope.to_source_resource()
+    if resource.metadata.get("kind") not in {"asset", "binary"} or not resource.media_type.startswith("image/"):
+        raise ValueError("source resource is not an image asset")
+    return {
+        "payload": resource.payload,
+        "media_type": resource.media_type,
+        "metadata": {
+            **dict(resource.metadata),
+            "source_revision": resource.source_version,
+            "source_uri": resource.locator,
+        },
+    }
 
 
-def _fetch_autodbone_asset(url: str) -> bytes:
-    """Fetch a signed AutoDBone image from its configured origin only."""
-    if not _is_autodbone_asset_reference(url):
-        return b""
-    headers: dict[str, str] = {"Accept": "image/*"}
-    raw_headers = os.getenv("AUTODATA_SOURCE_REQUEST_HEADERS_JSON", "").strip()
-    if raw_headers:
-        try:
-            decoded = json.loads(raw_headers)
-        except (TypeError, ValueError):
-            return b""
-        if not isinstance(decoded, dict) or any(
-            not isinstance(key, str)
-            or not isinstance(value, str)
-            or not key.strip()
-            or any(char in key + value for char in "\r\n")
-            for key, value in decoded.items()
-        ):
-            return b""
-        headers.update(decoded)
-    limit = int(
-        os.getenv("AUTODATA_AUTOAPI_IMAGE_MAX_BYTES", str(_MAX_SOURCE_IMAGE_BYTES))
-    )
-    if limit <= 0 or limit > _MAX_SOURCE_IMAGE_BYTES:
-        limit = _MAX_SOURCE_IMAGE_BYTES
-    request = Request(url, headers=headers)
-    opener = urllib.request.build_opener(_RejectRedirect())
-    try:
-        with opener.open(request, timeout=20) as response:
-            if response.geturl() != url:
-                return b""
-            content_type = (
-                str(response.headers.get("Content-Type", ""))
-                .split(";", 1)[0]
-                .strip()
-                .lower()
-            )
-            if not content_type.startswith("image/"):
-                return b""
-            content_length = response.headers.get("Content-Length")
-            if content_length and int(content_length) > limit:
-                return b""
-            payload = response.read(limit + 1)
-            return payload if 0 < len(payload) <= limit else b""
-    except (HTTPError, OSError, ValueError, TimeoutError):
-        return b""
-
-
-def _store_image_bytes(source_url: str, payload: bytes) -> dict[str, Any]:
+def _store_image_bytes(
+    source_ref: str,
+    payload: bytes,
+    *,
+    media_type: str,
+    source_metadata: Mapping[str, Any],
+) -> dict[str, Any]:
     digest = sha256(payload).hexdigest()
-    media_type = _guess_media_type(source_url, payload)
+    declared_digest = str(source_metadata.get("source_sha256") or "")
+    if digest != declared_digest:
+        raise ValueError("source asset hash did not match its envelope")
     storage_key = f"procedure-images/{digest}"
     _put_object(storage_key, payload, media_type)
     return {
@@ -377,6 +306,11 @@ def _store_image_bytes(source_url: str, payload: bytes) -> dict[str, Any]:
         "storage_key": storage_key,
         "content_sha256": digest,
         "media_type": media_type,
+        "source_sha256": declared_digest,
+        "source_asset_ref": source_ref,
+        "source_request_id": source_metadata.get("request_id"),
+        "source_revision": source_metadata.get("source_revision"),
+        "source_uri": source_metadata.get("source_uri"),
     }
 
 
@@ -445,14 +379,8 @@ def _guess_media_type(url: str, payload: bytes) -> str:
 
 
 def _is_provider_host(url: str) -> bool:
-    try:
-        host = (urlsplit(url).hostname or "").casefold()
-    except ValueError:
-        return False
-    return any(
-        host == marker or host.endswith("." + marker)
-        for marker in PROVIDER_IMAGE_HOST_MARKERS
-    )
+    host = urlsplit(url).netloc.casefold()
+    return any(marker in host for marker in PROVIDER_IMAGE_HOST_MARKERS)
 
 
 __all__ = [

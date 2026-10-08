@@ -159,8 +159,57 @@ def test_query_creation_is_idempotent_and_exposes_numbered_clickable_options():
     assert calls["compose"] == []
 
 
+def test_structured_vehicle_context_binds_job_without_repeating_vehicle_in_message():
+    calls = install_runtime(candidates=lambda _message, _principal: ())
+    selected = {
+        **VEHICLE_A,
+        "model": "RAV4",
+        "configuration_key": "1997-toyota-rav4-2.0l-4wd",
+        "vehicle_configuration_id": "configuration-rav4-4wd",
+        "engine_displacement_l": 2.0,
+    }
+
+    created = create_chat_query(
+        "brake line replacement procedure and quote",
+        idempotency_key="chat-structured-vehicle-1",
+        principal=principal(),
+        request_params={"vehicle": selected},
+    )
+
+    assert created["status"] == "processing"
+    assert created["answer"]["vehicle"]["vehicle_id"] == "vehicle-rav4-4wd"
+    assert created["answer"]["vehicle"]["configuration_key"] == "1997-toyota-rav4-2.0l-4wd"
+    assert calls["source"] == []
+
+
+def test_selected_vehicle_context_stays_bound_for_oil_and_water_pump_job():
+    calls = install_runtime(candidates=lambda _message, _principal: ())
+    selected = {
+        "vehicle_id": "vehicle-lincoln-base",
+        "candidate_key": "lincoln-base",
+        "configuration_key": "1966-lincoln-continental-base",
+        "year": 1966,
+        "make": "Lincoln",
+        "model": "Continental",
+        "drivetrain": "4WD",
+    }
+
+    created = create_chat_query(
+        "oil and water pump procedure",
+        idempotency_key="chat-pump-context-1",
+        principal=principal(),
+        request_params={"vehicle": selected},
+    )
+
+    assert created["status"] == "processing"
+    assert created["answer"]["vehicle"]["vehicle_id"] == selected["vehicle_id"]
+    assert created["answer"]["vehicle"]["model"] == selected["model"]
+    assert created["answer"]["warnings"] == []
+    assert calls["source"] == []
+
+
 def test_nonmatching_provider_vehicle_results_do_not_block_explicit_vehicle_fallback(monkeypatch):
-    from autodata_ingestion import autoapitwo_guide
+    from autodata_ingestion import banktwo_guide
     from autodata_ingestion.chat_service import _vehicle_candidates
 
     configure_chat_runtime(
@@ -172,8 +221,8 @@ def test_nonmatching_provider_vehicle_results_do_not_block_explicit_vehicle_fall
     )
     monkeypatch.delenv("AUTODATA_CHAT_VEHICLE_CANDIDATES_JSON", raising=False)
     monkeypatch.setattr(
-        autoapitwo_guide,
-        "vehicle_candidates_from_autoapitwo",
+        banktwo_guide,
+        "vehicle_candidates_from_banktwo",
         lambda _message: [
             {
                 "vehicle_id": "autoapitwo-c1500",
@@ -805,7 +854,7 @@ def test_render_chat_guide_html_authorizes_and_reuses_prepared_images(monkeypatc
             {
                 "sequence": 1,
                 "action": "Install the pump.",
-                "images": [{"url": "https://source.test/pump.png", "media_type": "image/png"}],
+                "images": [{"asset_resource_ref": "asset-pump-opaque", "media_type": "image/png"}],
             }
         ],
     }
@@ -820,17 +869,13 @@ def test_render_chat_guide_html_authorizes_and_reuses_prepared_images(monkeypatc
         }
     )
 
-    class FakeConnector:
-        reads = []
+    reads = []
 
-        def __init__(self, _base_url):
-            pass
+    def read_asset(resource_ref):
+        reads.append(resource_ref)
+        return {"payload": b"prepared-image", "media_type": "image/png", "metadata": {}}
 
-        def read(self, url, *, car_id=None, binary=False):
-            self.reads.append((url, car_id, binary))
-            return b"prepared-image"
-
-    monkeypatch.setattr("autodata_ingestion.autoapitwo_connector.AutoAPITwoConnector", FakeConnector)
+    monkeypatch.setattr("autodata_ingestion.procedure_images._read_asset_resource", read_asset)
 
     first = render_chat_guide_html(query_id, principal=owner)
     second = render_chat_guide_html(query_id, principal=owner)
@@ -838,7 +883,7 @@ def test_render_chat_guide_html_authorizes_and_reuses_prepared_images(monkeypatc
     assert first == second
     assert first.startswith(b"<!doctype html>")
     assert b"data:image/png;base64,cHJlcGFyZWQtaW1hZ2U=" in first
-    assert len(FakeConnector.reads) == 1
+    assert reads == ["asset-pump-opaque"]
     with pytest.raises(PermissionError, match="owner"):
         render_chat_guide_html(query_id, principal=principal("other-owner", "org-1"))
 

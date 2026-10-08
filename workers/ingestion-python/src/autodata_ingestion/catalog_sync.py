@@ -7,17 +7,15 @@ import hashlib
 import json
 import os
 from threading import Thread
-from typing import Any
+from typing import Any, Iterator
 
-from .autoapitwo_catalog import AutoAPITwoCatalogConnector
+from .source_connector_client import SourceConnectorClient, source_connector_registry
 
 
-DEFAULT_SOURCE_VERSION = "autoapitwo-fleet-v1"
+DEFAULT_SOURCE_VERSION = "autoapitwo-fleet-v1"  # Stable persisted job identity.
 DEFAULT_TRAVERSAL_VERSION = "fleet-vocabulary-v1"
 DEFAULT_MAX_ATTEMPTS = 3
-# Fleet traversal is multi-hour. Heartbeats refresh updated_at per batch; stale
-# reclaim must use that signal or a long-lived sync is wrongly abandoned.
-_STALE_RUNNING_AFTER = timedelta(minutes=45)
+_STALE_RUNNING_AFTER = timedelta(minutes=10)
 
 
 def ensure_catalog_sync(serialized_request: str) -> dict[str, object]:
@@ -28,26 +26,16 @@ def ensure_catalog_sync(serialized_request: str) -> dict[str, object]:
         raise ValueError("catalog sync request must be an object")
     source_version = str(
         request.get("source_version")
-        or os.getenv("AUTODATA_AUTOAPITWO_CATALOG_SOURCE_VERSION", DEFAULT_SOURCE_VERSION)
+        or os.getenv("BANKTWO_CATALOG_SOURCE_VERSION", DEFAULT_SOURCE_VERSION)
     ).strip()
     traversal_version = str(
         request.get("traversal_version")
-        or os.getenv("AUTODATA_AUTOAPITWO_CATALOG_TRAVERSAL_VERSION", DEFAULT_TRAVERSAL_VERSION)
+        or os.getenv("BANKTWO_CATALOG_TRAVERSAL_VERSION", DEFAULT_TRAVERSAL_VERSION)
     ).strip()
     if not source_version or not traversal_version:
         raise ValueError("catalog sync source and traversal versions are required")
-    # Selector reads call ensure repeatedly. That call is the explicit replay
-    # signal for dead_lettered fleet warmups that stopped mid-catalog.
-    sync = _claim(source_version, traversal_version, force_replay=True)
-    if sync["status"] in {"completed", "running"}:
-        return {
-            "status": sync["status"],
-            "provider": "autoapitwo",
-            "source_version": source_version,
-            "traversal_version": traversal_version,
-            "row_count": sync["row_count"],
-        }
-    if sync["status"] == "dead_letter":
+    sync = _claim(source_version, traversal_version)
+    if sync["status"] in {"completed", "running", "dead_letter"}:
         return {
             "status": sync["status"],
             "provider": "autoapitwo",
@@ -71,137 +59,107 @@ def ensure_catalog_sync(serialized_request: str) -> dict[str, object]:
 
 
 def _run_claimed(sync_id: str, source_version: str, traversal_version: str) -> None:
-    base_url = os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "https://autoapitwo.vercel.app")
-    persisted = 0
+    total = 0
     try:
-        connector = AutoAPITwoCatalogConnector(
-            base_url,
-            timeout=float(os.getenv("AUTODATA_AUTOAPITWO_TIMEOUT_SECONDS", "25")),
-            retry_attempts=int(os.getenv("AUTODATA_AUTOAPITWO_RETRY_ATTEMPTS", "3")),
-            retry_delay=float(os.getenv("AUTODATA_AUTOAPITWO_RETRY_DELAY_SECONDS", "0.25")),
-        )
-        completed_keys = _completed_scope_keys(sync_id)
-        resume_after_year = _resume_after_year(completed_keys)
+        connector = source_connector_registry(include_defaults=True)["banktwo"]
+        rows = _iter_catalog_rows(connector)
+        source_uri = f"{connector.base_url}/v1/catalog/configurations"
+
         batch: list[dict[str, object]] = []
-        for row in connector.iter_rows():
-            year_text = str(row.get("year") or "").strip()
-            try:
-                year = int(year_text)
-            except ValueError:
-                year = 0
-            if resume_after_year is not None and year and year < resume_after_year:
-                continue
-            scope_key = _scope_key(row)
-            if scope_key in completed_keys:
-                continue
+        batch_source_version = source_version
+        batch_source_uri = source_uri
+        for row in rows:
+            row_source_version = str(row.get("source_revision") or source_version)
+            row_source_uri = str(row.get("source_locator") or source_uri)
+            if batch and (row_source_version != batch_source_version or row_source_uri != batch_source_uri):
+                _persist_batch(sync_id, batch, batch_source_version, batch_source_uri)
+                total += len(batch)
+                batch = []
+            batch_source_version = row_source_version
+            batch_source_uri = row_source_uri
             batch.append(row)
             if len(batch) >= 100:
-                _persist_batch(sync_id, batch, source_version, base_url)
-                persisted += len(batch)
-                completed_keys.update(_scope_key(item) for item in batch)
+                _persist_batch(sync_id, batch, batch_source_version, batch_source_uri)
+                total += len(batch)
                 batch = []
         if batch:
-            _persist_batch(sync_id, batch, source_version, base_url)
-            persisted += len(batch)
-        scope_count = _scope_count(sync_id)
-        if scope_count == 0:
+            _persist_batch(sync_id, batch, batch_source_version, batch_source_uri)
+            total += len(batch)
+        if total == 0:
             raise RuntimeError("AutoAPItwo catalog returned no vehicle rows")
         _finish(
             sync_id,
             status="completed",
-            row_count=scope_count,
-            checkpoint={
-                "phase": "persisted",
-                "scope_count": scope_count,
-                "persisted_this_run": persisted,
-                "resume_after_year": resume_after_year,
-            },
+            row_count=total,
+            checkpoint={"phase": "persisted", "scope_count": total},
         )
     except Exception as error:  # noqa: BLE001 - persisted status is the recovery boundary
-        scope_count = _scope_count(sync_id)
         _finish(
             sync_id,
-            status="partial" if scope_count else "failed",
-            row_count=scope_count,
-            checkpoint={
-                "phase": "partial" if scope_count else "failed",
-                "scope_count": scope_count,
-                "persisted_this_run": persisted,
-            },
+            status="partial" if total else "failed",
+            row_count=total,
+            checkpoint={"phase": "partial" if total else "failed", "scope_count": total},
             error=f"{type(error).__name__}: {error}"[:500],
         )
 
 
-def _scope_key(row: dict[str, object]) -> str:
-    return ":".join(
-        str(row.get(key, "")).strip()
-        for key in ("year", "make", "model", "engine", "autoapitwo_vehicle_id")
-    )
+def _iter_catalog_rows(connector: SourceConnectorClient) -> Iterator[dict[str, object]]:
+    """Read complete configuration pages and keep opaque refs separate from legacy IDs."""
 
-
-def _completed_scope_keys(sync_id: str) -> set[str]:
-    import psycopg
-
-    with psycopg.connect(**_conninfo()) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT scope_key
-                FROM vehicle_catalog_sync_scopes
-                WHERE vehicle_catalog_sync_id = %s AND status = 'completed'
-                """,
-                (sync_id,),
-            )
-            return {str(row[0]) for row in cursor.fetchall()}
-
-
-def _resume_after_year(completed_keys: set[str]) -> int | None:
-    """Skip years fully behind the latest completed scope year.
-
-    The newest year in the checkpoint may be partial, so only years strictly
-    before that watermark are skipped. The watermark year is re-walked and
-    filtered by completed scope keys.
-    """
-
-    years: list[int] = []
-    for key in completed_keys:
-        prefix = key.split(":", 1)[0]
-        try:
-            years.append(int(prefix))
-        except ValueError:
-            continue
-    return max(years) if years else None
-
-
-def _scope_count(sync_id: str) -> int:
-    import psycopg
-
-    with psycopg.connect(**_conninfo()) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT count(*)
-                FROM vehicle_catalog_sync_scopes
-                WHERE vehicle_catalog_sync_id = %s
-                """,
-                (sync_id,),
-            )
-            row = cursor.fetchone()
-            return int(row[0]) if row else 0
+    cursor: str | None = None
+    seen: set[str] = set()
+    for _ in range(10_000):
+        page = connector.catalog("configurations", cursor=cursor)
+        for item in page.body["items"]:
+            if not all(item.get(key) not in (None, "") for key in ("year", "make", "model")):
+                raise ValueError("source configuration lacks canonical vehicle fields")
+            source_ref = item["opaque_ref"]
+            row: dict[str, object] = {
+                "year": item["year"],
+                "make": item["make"],
+                "model": item["model"],
+                "region": item.get("region") or os.getenv("AUTODATA_SOURCE_REGION", "US"),
+                "source_vehicle_ref": source_ref,
+                "source_locator": page.source_locator or f"{connector.base_url}/v1/catalog/configurations",
+                "source_revision": page.source_revision,
+                "provider_mappings": [{
+                    "provider": page.persisted_provider,
+                    "entity_type": "car",
+                    "provider_id": source_ref,
+                    "provider_label": item["label"],
+                }],
+            }
+            for key in ("engine", "drivetrain"):
+                if item.get(key):
+                    row[key] = item[key]
+            if item.get("configuration"):
+                row["engine_label"] = item["configuration"]
+            yield row
+        if page.complete:
+            return
+        cursor = page.next_cursor
+        if cursor is None or cursor in seen:
+            raise ValueError("source catalog pagination did not advance")
+        seen.add(cursor)
+    raise ValueError("source catalog exceeded pagination limit")
 
 
 def _persist_batch(
     sync_id: str,
     rows: list[dict[str, object]],
     source_version: str,
-    base_url: str,
+    source_uri: str,
 ) -> None:
     from .vehicle_selection_persistence import persist_vehicle_selection_list
 
+    # Keep the legacy source_version as the job/idempotency key; snapshots
+    # for configured V1 sources use the revision and locator from that page.
+    snapshot_version = str(rows[0].get("source_revision") or source_version)
+    snapshot_uri = str(rows[0].get("source_locator") or source_uri)
     persist_vehicle_selection_list(
         rows,
-        source_uri=f"{base_url.rstrip('/')}/api/v1/fleet/years",
-        source_version=source_version,
+        source_uri=snapshot_uri,
+        source_version=snapshot_version,
         region=os.getenv("AUTODATA_SOURCE_REGION", "US"),
     )
     _record_scopes(sync_id, rows)
@@ -214,7 +172,10 @@ def _record_scopes(sync_id: str, rows: list[dict[str, object]]) -> None:
     with psycopg.connect(**_conninfo()) as connection:
         with connection.cursor() as cursor:
             for row in rows:
-                scope_key = _scope_key(row)
+                scope_key = ":".join(
+                    str(row.get(key, "")).strip()
+                    for key in ("year", "make", "model", "engine")
+                ) + ":" + str(row.get("source_vehicle_ref") or row.get("autoapitwo_vehicle_id") or "").strip()
                 response_hash = hashlib.sha256(
                     json.dumps(row, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
                 ).hexdigest()
@@ -243,8 +204,7 @@ def _record_scopes(sync_id: str, rows: list[dict[str, object]]) -> None:
                         WHERE vehicle_catalog_sync_id = %s
                     ),
                     checkpoint = jsonb_build_object('phase', 'persisting'),
-                    updated_at = now(),
-                    started_at = now()
+                    updated_at = now()
                 WHERE vehicle_catalog_sync_id = %s
                 """,
                 (sync_id, sync_id),
@@ -263,17 +223,12 @@ def _conninfo() -> dict[str, Any]:
     }
 
 
-def _claim(
-    source_version: str,
-    traversal_version: str,
-    *,
-    force_replay: bool = False,
-) -> dict[str, object]:
+def _claim(source_version: str, traversal_version: str) -> dict[str, object]:
     import psycopg
 
     now = datetime.now(UTC).replace(microsecond=0)
     stale_before = now - _STALE_RUNNING_AFTER
-    max_attempts = int(os.getenv("AUTODATA_AUTOAPITWO_CATALOG_MAX_ATTEMPTS", str(DEFAULT_MAX_ATTEMPTS)))
+    max_attempts = int(os.getenv("BANKTWO_CATALOG_MAX_ATTEMPTS", str(DEFAULT_MAX_ATTEMPTS)))
     with psycopg.connect(**_conninfo()) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -288,7 +243,7 @@ def _claim(
             cursor.execute(
                 """
                 SELECT vehicle_catalog_sync_id::text, status, attempt_count, row_count,
-                       started_at, updated_at
+                       started_at
                 FROM vehicle_catalog_syncs
                 WHERE provider = 'autoapitwo'
                   AND source_version = %s
@@ -300,29 +255,13 @@ def _claim(
             row = cursor.fetchone()
             if row is None:
                 raise RuntimeError("catalog sync state could not be created")
-            sync_id, status, attempt_count, row_count, started_at, updated_at = row
+            sync_id, status, attempt_count, row_count, started_at = row
             if status == "completed":
                 connection.commit()
                 return {"id": sync_id, "status": status, "row_count": row_count}
-            heartbeat = updated_at or started_at
-            if status == "running" and heartbeat and heartbeat > stale_before:
+            if status == "running" and started_at and started_at > stale_before:
                 connection.commit()
                 return {"id": sync_id, "status": status, "row_count": row_count}
-            if status == "dead_letter":
-                if not force_replay:
-                    connection.commit()
-                    return {"id": sync_id, "status": status, "row_count": row_count}
-                # Explicit ensure/replay resets the attempt budget and resumes.
-                cursor.execute(
-                    """
-                    UPDATE vehicle_catalog_syncs
-                    SET status = 'pending', attempt_count = 0, last_error = NULL, updated_at = now()
-                    WHERE vehicle_catalog_sync_id = %s
-                    """,
-                    (sync_id,),
-                )
-                attempt_count = 0
-                status = "pending"
             if attempt_count >= max_attempts:
                 cursor.execute(
                     "UPDATE vehicle_catalog_syncs SET status = 'dead_letter', updated_at = now() WHERE vehicle_catalog_sync_id = %s",
