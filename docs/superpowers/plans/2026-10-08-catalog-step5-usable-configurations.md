@@ -22,14 +22,14 @@ scope marker, so Step 5 appears broken.
 
 ## Todo
 
-- [ ] Treat usable complete configuration items as ready in the Go
+- [x] Treat usable complete configuration items as ready in the Go
       configurations response (`hydrating: false` when items are usable).
-- [ ] Persist the configurations hydration-scope marker when ensure reports a
+- [x] Persist the configurations hydration-scope marker when ensure reports a
       complete scoped read, including empty-but-complete provider responses.
-- [ ] Update the dashboard poller so Step 5 renders the latest usable items
+- [x] Update the dashboard poller so Step 5 renders the latest usable items
       instead of staying blank while background hydration continues.
-- [ ] Add Go and dashboard regression coverage for the ready/hydrating decision.
-- [ ] Verify in the Cursor browser that 2026 Dodge Charger R/T 4 Door Step 5
+- [x] Add Go and dashboard regression coverage for the ready/hydrating decision.
+- [x] Verify in the Cursor browser that 2026 Dodge Charger R/T 4 Door Step 5
       shows Base Powertrain promptly.
 
 ## Acceptance
