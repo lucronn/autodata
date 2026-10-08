@@ -32,8 +32,13 @@ API container running, open the local dashboard at
 
 ## Try an illustrated repair guide
 
-Configure the ingestion service with
-`AUTODATA_AUTOAPITWO_BASE_URL=https://autoapitwo.vercel.app`, then enter a
+Configure the ingestion service with `BANKONE_BASE_URL` and
+`BANKTWO_BASE_URL` in its environment. Their intended defaults are
+`https://bankone.cars.tk` and `https://banktwo.cars.tk`, but public DNS,
+deployments, and live service access remain pending and have not been proven.
+See the [Source Connector v1 contract](../../packages/contracts/source-connector/v1/openapi.yaml)
+and [independent connector architecture](../architecture/independent-bank-connectors.md).
+Then enter a
 request such as:
 
 ```text
@@ -53,7 +58,7 @@ boundary are documented in the [repository README](https://github.com/lucronn/au
 
 The root [README](https://github.com/lucronn/autodata#start-the-local-stack)
 contains the chatbot request example, source-drop normalization commands,
-AutoAPI connector boundary, and complete test commands. The canonical
+Bankone/Banktwo connector boundary, and complete test commands. The canonical
 [infrastructure and developer guide](https://github.com/lucronn/autodata/blob/master/docs/architecture/infrastructure-and-dev.md)
 contains recovery checks, persistence details, and secret-handling rules.
 
