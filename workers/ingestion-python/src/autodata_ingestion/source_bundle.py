@@ -47,6 +47,7 @@ def normalize_source_bundle(
     region: str,
     *,
     expected_vehicle: dict[str, Any] | None = None,
+    preserve_article_order: bool = False,
 ) -> SourceBundle:
     """Join heterogeneous artifacts without making unsupported facts canonical."""
 
@@ -221,7 +222,13 @@ def normalize_source_bundle(
         if operations:
             article["operations"] = operations
     evidence.extend(document_content_evidence)
-    article_records = _resolve_article_collisions(article_records, evidence, quarantined, conflicts)
+    article_records = _resolve_article_collisions(
+        article_records,
+        evidence,
+        quarantined,
+        conflicts,
+        preserve_order=preserve_article_order,
+    )
     vehicle = _normalize_vehicle(
         vehicle_candidates,
         region,
@@ -514,11 +521,13 @@ def _resolve_article_collisions(
     evidence: list[dict[str, Any]],
     quarantined: list[dict[str, Any]],
     conflicts: list[dict[str, Any]],
+    *,
+    preserve_order: bool = False,
 ) -> list[dict[str, Any]]:
     """Merge exact article replays and quarantine deterministic near matches."""
 
     evidence_by_id = {item["evidence_id"]: item for item in evidence}
-    ordered = sorted(records, key=_article_order)
+    ordered = list(records) if preserve_order else sorted(records, key=_article_order)
     accepted: list[dict[str, Any]] = []
     accepted_by_id: dict[str, dict[str, Any]] = {}
     accepted_by_title: dict[str, dict[str, Any]] = {}

@@ -1,0 +1,11 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000002",
+  "provider": "banktwo",
+  "source_revision": "fixture-2026-10-08",
+  "fetched_at": "2026-10-08T12:00:00Z",
+  "selector": {"year":2020,"make":"Example","model":"Sedan"},
+  "candidates": [
+    {"opaque_ref":"src-vehicle-a","label":"2.0L FWD","confidence":0.8,"evidence":["engine differs"]},
+    {"opaque_ref":"src-vehicle-b","label":"2.0L AWD","confidence":0.8,"evidence":["drive differs"]}
+  ]
+}

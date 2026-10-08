@@ -1,0 +1,10 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000009",
+  "provider": "bankone",
+  "source_revision": "fixture-2026-10-08",
+  "fetched_at": "2026-10-08T12:00:00Z",
+  "kind": "asset",
+  "media_type": "image/png",
+  "content_base64": "cmVkYWN0ZWQ=",
+  "sha256": "b68919aff001d8366249403a2544fba2d833084f1ad22839b6310aadacb6a138"
+}

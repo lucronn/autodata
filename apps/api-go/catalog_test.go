@@ -21,7 +21,7 @@ func catalogFixtureStore() *memoryCatalogStore {
 		Steps: []CatalogStep{{Number: 2, Heading: "Install", Instructions: []string{"B"}}, {Number: 1, Heading: "Remove", Instructions: []string{"A"}}},
 		Images: []CatalogImage{
 			{ID: "image-1", URL: "/v1/catalog/images/local.png", Alt: "Filter location", StorageKey: "private/source-object/key"},
-			{ID: "image-2", URL: "https://autoapitwo.vercel.app/diagram.png", Alt: "Filter wiring", StorageKey: "procedure-images/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+			{ID: "image-2", URL: "https://banktwo.cars.tk/diagram.png", Alt: "Filter wiring", StorageKey: "procedure-images/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
 		},
 		SourceOriginal: json.RawMessage(`{"provider":"opaque","steps":[{"n":2},{"n":1}]}`),
 		Provenance:     []CatalogProvenance{{ID: "source-1", Version: "v1"}},
@@ -107,7 +107,7 @@ func TestCatalogArticleDetailKeepsSourceOrderAndHidesOriginal(t *testing.T) {
 	if len(body.Article.Images) != 2 || body.Article.Images[0].Alt != "Filter location" {
 		t.Fatalf("images = %#v, want the article illustrations", body.Article.Images)
 	}
-	if !strings.HasPrefix(body.Article.Images[1].URL, "/v1/catalog/images/") || strings.Contains(body.Article.Images[1].URL, "autoapitwo.vercel.app/diagram.png") {
+	if !strings.HasPrefix(body.Article.Images[1].URL, "/v1/catalog/images/") || strings.Contains(body.Article.Images[1].URL, "banktwo.cars.tk/diagram.png") {
 		t.Fatalf("provider image leaked or was not proxied: %#v", body.Article.Images[1])
 	}
 	if strings.Contains(response.Body.String(), "source_original") || strings.Contains(response.Body.String(), "provider") {
@@ -126,7 +126,7 @@ func TestCatalogSourceRendersStoredHTMLWithoutProviderNavigation(t *testing.T) {
 		ID: "article-1", VehicleID: "vehicle-1", Title: "Replace filter", ContentStatus: "content_complete", Complete: true,
 		SourceOriginal: json.RawMessage(`{"_embedded":{"data":{"article":{"content":"<!doctype html><html><body><h2>REMOVAL</h2><p>Remove the cover.</p><table><tr><td><img src=\"/api/v1/content/carids/1/svgs/figure.svg\"></td></tr></table><script>alert(1)</script><a href=\"/api/v1/content/carids/1/components/2\">source link</a></body></html>"}}}}`),
 		Provenance:     []CatalogProvenance{{ID: "source-1", Version: "autoapitwo-content-detail-v1"}},
-		sourceURI:      "https://autoapitwo.vercel.app/api/v1/content/carids/1/articles/2",
+		sourceURI:      "https://banktwo.cars.tk/api/v1/content/carids/1/articles/2",
 	})
 	server := catalogServer(store)
 	request := httptest.NewRequest(http.MethodGet, "/v1/catalog/vehicles/vehicle-1/articles/article-1/source", nil)
@@ -144,7 +144,7 @@ func TestCatalogSourceRendersStoredHTMLWithoutProviderNavigation(t *testing.T) {
 	if body.Source.Format != "html" || !strings.Contains(body.Content, "REMOVAL") || strings.Contains(body.Content, "<img") {
 		t.Fatalf("source response = %#v, want rendered text and omitted unlocalized image", body)
 	}
-	for _, forbidden := range []string{"<script", "autoapitwo.vercel.app", `?src=`, `href="/api/v1/content`} {
+	for _, forbidden := range []string{"<script", "autoapitwo.vercel.app", "banktwo.cars.tk", `?src=`, `href="/api/v1/content`} {
 		if strings.Contains(body.Content, forbidden) {
 			t.Fatalf("source content contains forbidden %q: %s", forbidden, body.Content)
 		}
@@ -158,7 +158,7 @@ func TestCatalogSourceRendersStoredHTMLWithoutProviderNavigation(t *testing.T) {
 	if htmlResponse.Code != http.StatusOK || !strings.Contains(htmlResponse.Header().Get("Content-Security-Policy"), "default-src 'none'") || !strings.Contains(htmlResponse.Body.String(), "Evidence e-1") {
 		t.Fatalf("browser source response = status %d headers %#v body %s", htmlResponse.Code, htmlResponse.Header(), htmlResponse.Body.String())
 	}
-	if strings.Contains(htmlResponse.Body.String(), "autoapitwo.vercel.app") || strings.Contains(htmlResponse.Body.String(), "?src=") {
+	if strings.Contains(htmlResponse.Body.String(), "autoapitwo.vercel.app") || strings.Contains(htmlResponse.Body.String(), "banktwo.cars.tk") || strings.Contains(htmlResponse.Body.String(), "?src=") {
 		t.Fatalf("browser source response leaked a provider URL or legacy image route: %s", htmlResponse.Body.String())
 	}
 
@@ -379,7 +379,7 @@ func TestIncompleteSelectorReadReturnsWhileHydrationRunsInBackground(t *testing.
 
 func TestCatalogSourceImageFailsClosedWithoutImageKey(t *testing.T) {
 	for _, raw := range []string{"/figures/one.png", "data:image/png;base64,AA=="} {
-		if path, ok := catalogSourceAssetURL("https://autoapitwo.vercel.app/article/1", raw, nil); ok || path != "" {
+		if path, ok := catalogSourceAssetURL("https://banktwo.cars.tk/article/1", raw, nil); ok || path != "" {
 			t.Fatalf("source image %q should fail closed without image key, got %q, %v", raw, path, ok)
 		}
 	}
@@ -392,7 +392,7 @@ func TestCatalogSourceOmitsInlineDataImagesFromJSONAndHTML(t *testing.T) {
 		ID: "article-1", VehicleID: "vehicle-1", Title: "Replace filter", ContentStatus: "content_complete", Complete: true,
 		SourceOriginal: json.RawMessage(`{"_embedded":{"data":{"article":{"content":"<html><body><h2>Removal</h2><img src=\"data:image/png;base64,AA==\"></body></html>"}}}}`),
 		Provenance:     []CatalogProvenance{{ID: "source-1", Version: "autoapitwo-content-detail-v1"}},
-		sourceURI:      "https://autoapitwo.vercel.app/api/v1/content/carids/1/articles/2",
+		sourceURI:      "https://banktwo.cars.tk/api/v1/content/carids/1/articles/2",
 	})
 	server := catalogServer(store)
 	t.Setenv("AUTODATA_IMAGE_URL_KEY", "")

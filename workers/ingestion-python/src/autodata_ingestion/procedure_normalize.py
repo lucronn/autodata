@@ -105,7 +105,19 @@ def build_consumer_steps(
     # Split before whitespace normalization erases their boundaries.
     expanded_blocks = []
     for block in blocks:
-        if isinstance(block, Mapping) and block.get("kind") != "image":
+        if isinstance(block, Mapping) and block.get("kind") in {"ordered_list", "unordered_list", "list"}:
+            start = block.get("start") if block.get("kind") == "ordered_list" else None
+            try:
+                start = max(1, int(start)) if start is not None else 1
+            except (TypeError, ValueError):
+                start = 1
+            for offset, item in enumerate(block.get("items") or block.get("values") or []):
+                text = item.get("text") if isinstance(item, Mapping) else item
+                text = str(text or "").strip()
+                if text:
+                    prefix = f"{start + offset}. " if block.get("kind") == "ordered_list" else ""
+                    expanded_blocks.append({**block, "kind": "text", "text": f"{prefix}{text}"})
+        elif isinstance(block, Mapping) and block.get("kind") != "image":
             lines = str(block.get("text") or "").splitlines()
             expanded_blocks.extend({**block, "text": line} for line in lines)
         else:
@@ -211,7 +223,6 @@ def _ensure_classification(article: dict[str, Any]) -> None:
     if not str(article.get("provider") or "").strip() and (
         article_id.startswith("merged:autoapitwo")
         or article_id.startswith("autoapitwo:")
-        or "autoapitwo.vercel.app" in str(article.get("source_uri") or "")
     ):
         article["provider"] = "autoapitwo"
     if not str(article.get("content_kind") or "").strip():

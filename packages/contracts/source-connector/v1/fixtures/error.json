@@ -1,0 +1,4 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000003",
+  "error": {"code":"AMBIGUOUS","message":"Multiple source vehicles match","retryable":false,"details":{"candidate_count":2}}
+}

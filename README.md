@@ -60,6 +60,20 @@ For a guided introduction, start with the [GitHub Wiki](https://github.com/lucro
 For the authoritative technical details, use the linked documents under
 [`docs/`](docs/).
 
+## Independent source connectors
+
+AutoData calls the independent Bankone and Banktwo services through the shared
+provider-neutral [Source Connector v1 contract](packages/contracts/source-connector/v1/openapi.yaml).
+The configured defaults are `https://bankone.cars.tk` and
+`https://banktwo.cars.tk`, set independently by `BANKONE_BASE_URL` and
+`BANKTWO_BASE_URL`. AutoData owns source snapshots, normalization, provenance,
+and persisted jobs; each bank owns its upstream access and connector API. Wire
+slugs `bankone` and `banktwo` map to historical stored IDs `autoapi` and
+`autoapitwo`. DNS ownership, Vercel attachment, TLS, live authentication,
+deployments, and canaries remain pending. See the
+[connector architecture](docs/architecture/independent-bank-connectors.md)
+for component locations and current status.
+
 ## Current development slice
 
 ### Illustrated DIY repair guides
@@ -67,10 +81,10 @@ For the authoritative technical details, use the linked documents under
 The chat workflow now turns a vehicle-and-job request into one consumer-ready
 guide, including the access work that makes the repair possible, removal,
 reassembly, installation, torque values, timing checks, fluid refill, and final
-leak checks. It combines the existing AutoAPI retrieval path with the
-read-only [AutoAPI Two content API](https://autoapitwo.vercel.app/docs), keeps
-provider vehicle identities separate, and places the returned diagrams beside
-the steps they explain.
+leak checks. It retrieves source material from the independent Bankone and
+Banktwo connectors through Source Connector v1, keeps provider vehicle
+identities separate, and places returned diagrams beside the steps they
+explain. The intended origins are not verified live.
 
 Complete guides expose a revision-matched PDF download from the authenticated
 chat query. If an installation page, required prerequisite, or figure is
@@ -78,10 +92,8 @@ missing, chat shows the available material as a clearly labeled preview and
 withholds the final PDF. Generated automotive content remains
 `UNREVIEWED — human review pending`; completeness is not technician approval.
 
-For local source-backed chat runs, set
-`AUTODATA_AUTOAPITWO_BASE_URL=https://autoapitwo.vercel.app` in the ingestion
-environment. The connector uses only vehicle search, vehicle-scoped repair
-content, and returned media links; it does not use account or session routes.
+For source-backed runs, configure `BANKONE_BASE_URL` and `BANKTWO_BASE_URL`
+independently. Live DNS, deployments, and service access remain unverified.
 
 The current development slice is tracked in [Issue #85](https://github.com/lucronn/autodata/issues/85) and [Project #8](https://github.com/users/lucronn/projects/8). The verified local path currently supports:
 
@@ -93,7 +105,10 @@ The current development slice is tracked in [Issue #85](https://github.com/lucro
 - warm replay from PostgreSQL without repeating the source or model call; and
 - dashboard rendering of every generated step with an explicit `UNREVIEWED` label.
 
-The RAV4 examples are automated `ready` results, not technician approval. Source evidence remains pending human review, and a genuinely uncached source request still depends on the configured AutoAPI service being available. Those are tracked separately from the completed cache, composition, and dashboard behavior.
+The RAV4 examples are automated `ready` results, not technician approval.
+Source evidence remains pending human review, and uncached requests require a
+reachable configured Bankone or Banktwo service. The intended domains have not
+been verified live.
 
 The active product slice is the [chat-first natural-language quote and
 procedure generator](https://github.com/lucronn/autodata/issues/87), tracked in
@@ -194,29 +209,18 @@ curl -sS -X POST http://127.0.0.1:8080/job-plans \
 ```
 
 Omit the request's `catalog` after a successful persisted request to exercise
-the warm derived-article path. A cache miss uses
-`AUTODATA_AUTOAPI_BASE_URL` only after the indexed local lookup is empty.
-The Compose development default is the verified deployment at
-`https://autoapi-sigma.vercel.app`; set `AUTODATA_AUTOAPI_BASE_URL` explicitly
-for another local, staging, or provider-neutral connector deployment.
+the warm derived-article path. A cache miss uses the configured Bankone and
+Banktwo connectors only after the indexed local lookup is empty. Configure
+`BANKONE_BASE_URL` and `BANKTWO_BASE_URL` independently; these intended domain
+defaults do not prove live DNS or service availability.
 The fallback first reads the vehicle's article list, selects only the articles
 relevant to the natural-language request, then fetches those articles' detail
 and labor resources. It persists the normalized article body, source images,
 labor operations, and evidence, so the next lookup uses PostgreSQL instead of
 repeating provider calls. The full catalog warm-up remains list-only; it does
-not fetch every individual article detail. The
-AutoAPI traversal command hydrates the complete available year/make/model/
-vehicle configuration and article-list catalog when the connector session is
-authorized:
-
-```sh
-AUTODATA_POSTGRES_PASSWORD=local-dev-only \
-AUTODATA_MINIO_ROOT_USER=localadmin \
-AUTODATA_MINIO_ROOT_PASSWORD=local-dev-password \
-PYTHONPATH=workers/ingestion-python/src \
-python3 scripts/dev/ingest_autoapi_service.py \
-  --base-url http://127.0.0.1:3000 --persist
-```
+not fetch every individual article detail. Runtime source access uses the
+shared connector contract and does not require a bank service to be built into
+the AutoData stack.
 
 Mercury-2 is an advisory wording layer for selected, evidence-backed source
 steps. It may translate natural-language intent into allowlisted component
@@ -314,7 +318,7 @@ configuration beneath the existing `vehicle_id` instead of creating another
 vehicle family. `AUTODATA_VEHICLE_LIST_SOURCE_URI` and
 `AUTODATA_SOURCE_VERSION` identify the list source for replay and audit.
 
-For a complete local AutoAPI export, use the batch runner. It discovers a
+For a complete local Bankone export, use the batch runner. It discovers a
 vehicle bundle from each directory containing `name.json`, derives selector
 configurations from the split `name.json` and `motorvehicles.json` responses,
 and processes every other file in that directory through the universal source
@@ -331,19 +335,19 @@ a matching source bundle is never silently skipped:
 
 ```sh
 PYTHONPATH=workers/ingestion-python/src \
-python3 scripts/dev/ingest_autoapi_batch.py "sample data" \
+python3 scripts/dev/ingest_bankone_batch.py "sample data" \
   --region US \
-  --source-version autoapi-local-v1
+  --source-version bankone-local-v1
 ```
 
 Selector-only catalog import (identity/configuration stage):
 
 ```sh
 PYTHONPATH=workers/ingestion-python/src \
-python3 scripts/dev/ingest_autoapi_batch.py "autoapi-export" \
-  --selector-json "autoapi-export/vehicles.json" \
+python3 scripts/dev/ingest_bankone_batch.py "bankone-export" \
+  --selector-json "bankone-export/vehicles.json" \
   --region US \
-  --source-version autoapi-selector-v1
+  --source-version bankone-selector-v1
 ```
 
 When the corresponding per-vehicle directories are added beneath the same
@@ -360,41 +364,9 @@ Add `--persist` only when PostgreSQL and MinIO are available through the local
 environment. This persists the derived selector rows and each vehicle's
 source snapshots, evidence, normalized articles, duplicate links, and review
 items. The command continues across vehicle bundles and reports per-vehicle
-failure or review status. A remote AutoAPI connector must provide the same
+failure or review status. A remote Bankone connector must provide the same
 immutable bundle shape; this local runner does not guess undocumented remote
 endpoint paths.
-
-The companion AutoAPI repository in `/Users/dull/Documents/ChatGPT/autoapi`
-provides the verified read-only `/v1/api` connector surface. When that local
-service is running, the service-backed catalog runner traverses every exposed
-year, make, model, and vehicle ID, fetches each vehicle's name and engine
-metadata, fetches the complete article list, and passes the list response through
-the same normalizer and persistence path with bounded vehicle-level concurrency:
-
-```sh
-PYTHONPATH=workers/ingestion-python/src \
-python3 scripts/dev/ingest_autoapi_service.py \
-  --base-url http://127.0.0.1:3000 \
-  --content-source GeneralMotors \
-  --source-version autoapi-http-v1 \
-  --vehicle-concurrency 4 \
-  --retry-attempts 3 \
-  --retry-backoff-seconds 0.25
-```
-
-Add `--persist` only with the local PostgreSQL and MinIO environment configured.
-The command exits nonzero when the AutoAPI catalog traversal or any article
-list fetch is incomplete; its JSON report includes the years traversed and
-vehicle/article-list counts. The AutoAPI service's own
-runtime credentials remain in its secret-managed environment and are never
-copied into AutoData or logged by this runner.
-Vehicle bundles default to four concurrent fetches; lower that limit when the
-upstream session or local network needs a gentler request rate. The runner
-fetches the AutoAPI article list for each vehicle but intentionally does not
-request individual article-detail endpoints. Idempotent GETs retry
-transient 408, 425, 429, 500, 502, 503, and 504 responses with bounded
-exponential backoff; persistent authentication failures remain visible and
-fail the run.
 
 Each processed result includes `article_coverage`: raw candidate count, raw
 unique article IDs, normalized unique IDs, review/quarantine IDs, and an
