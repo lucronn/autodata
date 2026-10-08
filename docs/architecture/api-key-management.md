@@ -125,6 +125,21 @@ Do not deploy production or change production credentials as part of local
 implementation. Dev deployment is allowed by repository policy after all
 required review and verification gates pass.
 
+### 2026-10-08 live authentication remediation
+
+The user has explicitly authorized correcting the existing `cars.tk` Bankone
+and Banktwo production API authentication so that issued keys work before the
+user replaces them. This is a task-specific exception to the initial rollout
+scope above; it does not authorize rotating/revoking keys or changing the
+protected dashboard access model. The global autonomy policy continues to
+disable unattended production releases. Follow the corrective plan and verify
+the production behavior manually through the authenticated Vercel CLI only
+after local and preview gates pass. The existing protected dashboard and its
+shared key database must remain available throughout.
+
+See [the live API-key authentication remediation plan](../superpowers/plans/2026-10-08-live-api-key-auth-remediation.md)
+for the exact investigation, deployment, and acceptance steps.
+
 ## Acceptance evidence
 
 - Migrations apply from empty and upgrade fixtures and rerun safely; migration
