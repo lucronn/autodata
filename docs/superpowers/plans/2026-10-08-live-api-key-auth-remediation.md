@@ -70,3 +70,31 @@ promoting configuration to Production.
 - Database outages fail closed without leaking details.
 - Verification demonstrates the live `cars.tk` routes, not only local tests
   or deployment readiness.
+
+## Execution evidence (2026-10-08)
+
+- The protected key-manager Preview deployment was left protected. Its
+  manager-specific credential remains scoped to Preview.
+- The existing service-specific `API_KEYS_DATABASE_URL` environment variables
+  were extended from Preview to Production by updating their Vercel targets;
+  the encrypted values were preserved and never read or printed.
+- Bankone production runs commit
+  `469612d75649cd18e41998bb9ba67bf7447c52c6`, deployment
+  `dpl_4rKTrz5htWkV4gMB4aWUbv98wuQx`.
+- Banktwo production runs commit
+  `62964c6ccfd628b9a9305569d0b08801c8f6f858`, deployment
+  `dpl_CaxirZPLPpEuapEn3Vb22kEs7Pp7`. Its Vercel project uses the Fastify
+  framework adapter, and the serverless handler now lives in `src/server.ts`.
+  The `@fastify/static` lock is pinned to the CommonJS-compatible `10.1.3`
+  release required by Vercel's Fastify function wrapper.
+- Vercel routing version
+  `b79834c3-aea7-4dad-9509-70bcdd58854c` is active. It preserves both
+  `/bankone/*` rewrites and adds `/banktwo/*` rewrites to the Banktwo project.
+- Live checks through `cars.tk`: each API returned 401 without a key and for
+  the other service's key; each returned 200 for its own key. Banktwo returned
+  62 catalog records. Banktwo readiness and its docs page returned 200.
+- Bankone tests/build passed (69 tests); Banktwo tests/build passed (10 tests).
+  The independent AutoData review agent found no actionable findings in the
+  Banktwo code diff.
+- The protected manager access policy was not changed. The user will replace
+  the shared-in-chat keys after this fix.

@@ -140,6 +140,11 @@ shared key database must remain available throughout.
 See [the live API-key authentication remediation plan](../superpowers/plans/2026-10-08-live-api-key-auth-remediation.md)
 for the exact investigation, deployment, and acceptance steps.
 
+The remediation completed on 2026-10-08: both API projects now use their
+existing service-specific encrypted database credentials in Production, and
+the active `cars.tk` routes enforce matching keys. The same evidence and
+deployment identifiers are recorded in the corrective plan and Issue #129.
+
 ## Acceptance evidence
 
 - Migrations apply from empty and upgrade fixtures and rerun safely; migration
