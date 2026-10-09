@@ -1050,6 +1050,10 @@ def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult) 
     from .catalog_sync import _conninfo
 
     scope = str(request.get("scope", "")).strip()
+    if scope == "years":
+        # The years index is not year-scoped: this table requires a valid
+        # model_year, so there is no durable coverage marker to write for it.
+        return {"status": "not_applicable"}
     year = int(request.get("year", 0))
     make = str(request.get("make", "")).strip()
     model = str(request.get("model", "")).strip()
