@@ -29,7 +29,20 @@ Non-obvious things worth knowing:
   `.base44/migrate.sh`, which records applied files in `base44_schema_migrations`
   so a repeated `up` is safe) and `ingest-fixture` writes the deterministic
   fast-lane fixture (`ON CONFLICT DO NOTHING`). Seeing them as `Exited (0)` in
-  `docker compose ps -a` is success, not a failure.
+  `docker compose ps -a` is success, not a failure. Both are declared as
+  completed prerequisites of the long-running services that consume them —
+  `ingest-fixture` is in `api`'s `depends_on` with
+  `condition: service_completed_successfully` — so a finished one-shot is never
+  mistaken for a crashed application service, and `api` never serves an unseeded
+  store.
+- **The `years` scope writes no hydration-scope marker.** `vehicle_catalog_hydration_scopes.model_year`
+  requires a real year (`CHECK (model_year >= 1886 ...)`), but the years index is
+  not year-scoped, so `catalog_service._persist_hydration_scope` returns
+  `not_applicable` for `scope == "years"` instead of inserting a synthetic `0`
+  row (which used to violate the check constraint). `vehicle_catalog_years` is
+  populated through the canonical selection store instead, and the API's
+  `Years` read unions it with `vehicles.model_year`, so the picker's first
+  dropdown is never empty once the fixture has run.
 - **The catalog picker needs the external connectors.** Vehicle years/makes/
   models are hydrated from the independent Source Connector v1 origins
   `BANKONE_BASE_URL` / `BANKTWO_BASE_URL` (defaults `https://bankone.cars.tk`,

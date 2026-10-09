@@ -150,7 +150,9 @@ services:
         condition: service_healthy
 
   # One-shot: deterministic local fixture data (persists with ON CONFLICT
-  # DO NOTHING, so a repeated `up` is safe).
+  # DO NOTHING, so a repeated `up` is safe). `api` depends on it with
+  # `service_completed_successfully`, so exiting 0 is its expected terminal
+  # state — not a crashed service — and the API never serves an unseeded store.
   ingest-fixture:
     build: *ingestion-build
     volumes: *ingestion-src
@@ -203,6 +205,8 @@ services:
       minio:
         condition: service_healthy
       migration-runner:
+        condition: service_completed_successfully
+      ingest-fixture:
         condition: service_completed_successfully
       ingestion-http:
         condition: service_healthy
