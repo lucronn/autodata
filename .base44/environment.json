@@ -1,0 +1,17 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/workshop/",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "BANKONE_API_TOKEN",
+      "description": "Bearer token for the Bankone Source Connector v1 origin (https://bankone.cars.tk, the lucronn/bankone project). Without it catalog hydration is rejected upstream (401) and the vehicle picker stays empty. Optional at boot: the stack starts without it.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "BANKTWO_API_TOKEN",
+      "description": "Bearer token for the Banktwo Source Connector v1 origin (https://banktwo.cars.tk, the lucronn/banktwo project). Without it catalog hydration is rejected upstream (401) and the vehicle picker stays empty. Optional at boot: the stack starts without it.",
+      "requiredAtBoot": false
+    }
+  ]
+}

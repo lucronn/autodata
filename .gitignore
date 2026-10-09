@@ -1,3 +1,6 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+
+# Go API live-reload build output (air, see .base44/air.toml)
+/apps/api-go/tmp/
