@@ -31,14 +31,19 @@ x-enrichment-build: &enrichment-build
 
 # Bind-mounted source. Keeping dependency directories out of these mounts means
 # the image's installed packages stay available (PYTHONPATH=/app/src:/app/contracts).
+# The last entry is the sandbox live-reload wrapper: the Python services have no
+# reloader of their own, so without it a source edit only takes effect after a
+# manual `docker compose restart`.
 x-ingestion-src: &ingestion-src
   - ./workers/ingestion-python/src:/app/src
   - ./packages/contracts/python:/app/contracts
   - ./scripts/dev:/app/scripts
+  - ./.base44/reload-python.sh:/app/reload-python.sh:ro
 
 x-enrichment-src: &enrichment-src
   - ./workers/enrichment-python/src:/app/src
   - ./scripts/dev:/app/scripts
+  - ./.base44/reload-python.sh:/app/reload-python.sh:ro
 
 x-app-env-file: &app-env-file
   - ./.env.base44-defaults # sandbox defaults (listed first, never secrets)
@@ -237,7 +242,7 @@ services:
       AUTODATA_MERCURY2_EXTRACTION_ENABLED: "0"
       AUTODATA_MERCURY2_JOB_PLANS_ENABLED: "1"
       AUTODATA_MERCURY2_PROCEDURE_COMPOSITION_ENABLED: "1"
-    command: ["python", "-m", "autodata_ingestion.http_service"]
+    command: ["sh", "/app/reload-python.sh", "python", "-m", "autodata_ingestion.http_service"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -266,7 +271,7 @@ services:
       AUTODATA_FAST_CONSUMER_DURABLE: autodata-fast-lane
       AUTODATA_FAST_CONSUMER_MAX_DELIVERIES: "3"
       AUTODATA_WORKER_HEARTBEAT_SECONDS: "5"
-    command: ["python", "-m", "autodata_ingestion.worker"]
+    command: ["sh", "/app/reload-python.sh", "python", "-m", "autodata_ingestion.worker"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -295,7 +300,7 @@ services:
       AUTODATA_CHAT_WORKER_ENABLED: "1"
       AUTODATA_CHAT_RUNTIME_BACKEND: postgres
       AUTODATA_WORKER_HEARTBEAT_SECONDS: "2"
-    command: ["python", "-m", "autodata_ingestion.worker"]
+    command: ["sh", "/app/reload-python.sh", "python", "-m", "autodata_ingestion.worker"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -324,7 +329,7 @@ services:
       AUTODATA_KNOWLEDGE_CONSUMER_DURABLE: autodata-knowledge-fallback
       AUTODATA_KNOWLEDGE_CONSUMER_MAX_DELIVERIES: "3"
       AUTODATA_WORKER_HEARTBEAT_SECONDS: "5"
-    command: ["python", "-m", "autodata_ingestion.worker"]
+    command: ["sh", "/app/reload-python.sh", "python", "-m", "autodata_ingestion.worker"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -355,7 +360,7 @@ services:
       AUTODATA_DEEP_CONSUMER_DURABLE: autodata-deep-sections
       AUTODATA_DEEP_CONSUMER_MAX_DELIVERIES: "3"
       AUTODATA_WORKER_HEARTBEAT_SECONDS: "5"
-    command: ["python", "-m", "autodata_enrichment.worker"]
+    command: ["sh", "/app/reload-python.sh", "python", "-m", "autodata_enrichment.worker"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -380,12 +385,14 @@ services:
       - ./workers/enrichment-python/src:/app/src
       - ./scripts/dev/outbox_relay.py:/app/scripts/outbox_relay.py:ro
       - ./.base44/healthcheck-db-poller.sh:/app/healthcheck.sh:ro
+      - ./.base44/reload-python.sh:/app/reload-python.sh:ro
     environment:
       <<: *enrichment-env
+      BASE44_RELOAD_WATCH_DIRS: "/app/src /app/scripts"
       AUTODATA_OUTBOX_BATCH_SIZE: "50"
       AUTODATA_OUTBOX_MAX_ATTEMPTS: "3"
       AUTODATA_OUTBOX_POLL_SECONDS: "5"
-    command: ["python", "/app/scripts/outbox_relay.py"]
+    command: ["sh", "/app/reload-python.sh", "python", "/app/scripts/outbox_relay.py"]
     depends_on:
       postgres:
         condition: service_healthy

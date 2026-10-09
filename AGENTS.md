@@ -22,9 +22,13 @@ Non-obvious things worth knowing:
   302 to `/workshop/`, so probe `/workshop/` for a 200.
 - **Live reload.** `api` runs `air` from a bind mount (`.base44/air.toml`), so Go
   changes and the go:embed'ed `dashboard/` + `workshop/` assets rebuild on save.
-  Its build output lives in `apps/api-go/tmp/`, which is git-ignored. The Python
-  workers run from bind-mounted `src/` directories (no rebuild needed); restart
-  the service after changing their dependencies or compose environment.
+  Its build output lives in `apps/api-go/tmp/`, which is git-ignored. Every
+  long-running Python service runs through `.base44/reload-python.sh`, which
+  re-execs the service command (1s mtime poll) when a file under its watched
+  `src/` changes, so a save is enough — without that wrapper a running
+  interpreter kept the code it imported at startup and an edit silently had no
+  effect until a manual restart (no rebuild is needed either way). A dependency
+  change still needs `up -d --build`.
 - **One-shot jobs exit 0 by design.** `migration-runner` applies the schema (via
   `.base44/migrate.sh`, which records applied files in `base44_schema_migrations`
   so a repeated `up` is safe) and `ingest-fixture` writes the deterministic
@@ -35,6 +39,15 @@ Non-obvious things worth knowing:
   `condition: service_completed_successfully` — so a finished one-shot is never
   mistaken for a crashed application service, and `api` never serves an unseeded
   store.
+- **Selector hydration persists durable manifests.** Years, makes, and models
+  are flat provider indexes with no full vehicle identity, so hydration writes
+  them to `vehicle_catalog_years`, `vehicle_catalog_makes` and
+  `vehicle_catalog_models` (migration `037_catalog_selector_manifests.sql`)
+  through `catalog_manifests.persist_selector_manifest`; the API's selector
+  reads union those manifests with the seeded identity rows. A new migration
+  file only reaches the database through the one-shot `migration-runner`, so
+  after adding one run `docker compose -f docker-compose.base44.yml up -d`
+  (it re-runs the recorded-files wrapper and exits 0).
 - **The `years` scope writes no hydration-scope marker.** `vehicle_catalog_hydration_scopes.model_year`
   requires a real year (`CHECK (model_year >= 1886 ...)`), but the years index is
   not year-scoped, so `catalog_service._persist_hydration_scope` returns
