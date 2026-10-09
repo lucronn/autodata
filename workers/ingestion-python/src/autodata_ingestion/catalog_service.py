@@ -351,6 +351,7 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             provenance=resolved.provenance,
         )
         coverage = _persist_hydration_scope(request, resolved)
+        manifest = _persist_selector_manifest(request, resolved)
         result = {
             "status": "cache_hit" if resolved.cache_hit else "hydrated",
             "hydration_key": key,
@@ -361,6 +362,7 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             "provenance": list(resolved.provenance),
             "persistence": persistence,
             "coverage": coverage,
+            "manifest": manifest,
         }
     with _HYDRATION_LOCK:
         _HYDRATION_RESULTS[key] = deepcopy(result)
@@ -1040,6 +1042,30 @@ def _persist_resolved_catalog_rows(
         region=str(persistable[0].get("region") or "US"),
     )
     return {"status": "persisted", "row_count": len(persistable), **result}
+
+
+def _persist_selector_manifest(request: Mapping[str, Any], result: CatalogResult) -> dict[str, Any]:
+    """Record the resolved selector index the picker reads back.
+
+    Years, makes, and models are published by the sources as flat indexes that
+    carry no full vehicle identity. Without a durable manifest a completed
+    selector hydration left nothing behind for the workshop dropdown, so the
+    picker only ever listed rows some other path had already written.
+    """
+
+    scope = str(request.get("scope", "")).strip()
+    if scope not in {"years", "makes", "models"}:
+        return {"status": "not_applicable"}
+    if not result.complete or not result.rows or os.getenv("AUTODATA_SOURCE_PERSIST", "1") != "1":
+        return {"status": "not_complete"}
+    from .catalog_manifests import persist_selector_manifest
+
+    return persist_selector_manifest(
+        scope,
+        result.rows,
+        region=str(request.get("region") or ""),
+        provenance=result.provenance,
+    )
 
 
 def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult) -> dict[str, Any]:

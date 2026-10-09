@@ -289,6 +289,11 @@ func (s *memoryCatalogStore) Configurations(_ context.Context, _ Principal, year
 func (s *memoryCatalogStore) CatalogScopeComplete(_ context.Context, _ Principal, scope string, year int, makeName, model, region string) (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	// The in-memory store has no manifest tables; the year index it serves is
+	// derived from its configurations, so that is its completeness evidence.
+	if scope == "years" {
+		return len(s.configurations) > 0, nil
+	}
 	for _, record := range s.configurations {
 		if record.Year != year || (region != "" && !strings.EqualFold(record.Region, region)) {
 			continue
@@ -441,9 +446,17 @@ func (s *postgresCatalogStore) Years(ctx context.Context, _ Principal) ([]Catalo
 }
 
 func (s *postgresCatalogStore) Makes(ctx context.Context, _ Principal, year int, region string) ([]CatalogMake, error) {
+	// The identity store only knows a make once one of its models has been
+	// resolved, so the selector manifest — the durable record of what the
+	// sources publish for this year — is read alongside it.
 	rows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT make FROM vehicle_identity_bases
-		WHERE model_year = $1 AND ($2 = '' OR region = $2) AND reviewer_state <> 'rejected'
+		SELECT DISTINCT make FROM (
+			SELECT make FROM vehicle_identity_bases
+			WHERE model_year = $1 AND ($2 = '' OR region = $2) AND reviewer_state <> 'rejected'
+			UNION
+			SELECT make FROM vehicle_catalog_makes
+			WHERE model_year = $1 AND ($2 = '' OR region = $2)
+		) AS selector_makes
 		ORDER BY make`, year, region)
 	if err != nil {
 		return nil, err
@@ -469,8 +482,13 @@ func (s *postgresCatalogStore) Makes(ctx context.Context, _ Principal, year int,
 
 func (s *postgresCatalogStore) Models(ctx context.Context, _ Principal, year int, makeName, region string) ([]CatalogModel, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT model FROM vehicle_identity_bases
-		WHERE model_year = $1 AND LOWER(make) = LOWER($2) AND ($3 = '' OR region = $3) AND reviewer_state <> 'rejected'
+		SELECT DISTINCT model FROM (
+			SELECT model FROM vehicle_identity_bases
+			WHERE model_year = $1 AND LOWER(make) = LOWER($2) AND ($3 = '' OR region = $3) AND reviewer_state <> 'rejected'
+			UNION
+			SELECT model FROM vehicle_catalog_models
+			WHERE model_year = $1 AND LOWER(make) = LOWER($2) AND ($3 = '' OR region = $3)
+		) AS selector_models
 		ORDER BY model`, year, makeName, region)
 	if err != nil {
 		return nil, err
@@ -522,17 +540,34 @@ func (s *postgresCatalogStore) Configurations(ctx context.Context, _ Principal, 
 }
 
 func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Principal, scope string, year int, makeName, model, region string) (bool, error) {
-	if scope != "makes" && scope != "models" && scope != "configurations" {
+	// A selector scope is complete only once its durable manifest holds the
+	// values the sources publish. A hydration coverage marker on its own is
+	// not evidence: it used to be written for a makes/models read that
+	// persisted no rows at all, which left the picker permanently short.
+	var complete bool
+	switch scope {
+	case "years":
+		err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM vehicle_catalog_years)`).Scan(&complete)
+		return complete, err
+	case "makes":
+		err := s.pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM vehicle_catalog_makes
+				WHERE model_year = $1 AND ($2 = '' OR region = $2)
+			)`, year, region).Scan(&complete)
+		return complete, err
+	case "models":
+		err := s.pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM vehicle_catalog_models
+				WHERE model_year = $1 AND LOWER(make) = LOWER($2) AND ($3 = '' OR region = $3)
+			)`, year, makeName, region).Scan(&complete)
+		return complete, err
+	case "configurations":
+	default:
 		return false, ErrCatalogInvalid
 	}
-	prefix := strconv.Itoa(year) + ":"
-	if scope == "models" || scope == "configurations" {
-		prefix += makeName + ":"
-	}
-	if scope == "configurations" {
-		prefix += model + ":"
-	}
-	var complete bool
+	prefix := strconv.Itoa(year) + ":" + makeName + ":" + model + ":"
 	err := s.pool.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1

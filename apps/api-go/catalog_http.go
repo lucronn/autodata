@@ -57,15 +57,25 @@ func (s *Server) listCatalogYears(response http.ResponseWriter, request *http.Re
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	if len(items) == 0 && s.ingestionClient != nil {
-		if err := s.ensureCatalogHydrated(request, map[string]any{"scope": "years"}); err != nil {
-			s.writeCatalogError(response, request, err)
-			return
-		}
-		items, err = s.catalog.Years(request.Context(), principal)
+	if s.ingestionClient != nil {
+		// A seeded but unhydrated store (the fast-lane fixture writes one year)
+		// must not satisfy the year index, so completeness follows the durable
+		// year manifest instead of "was the local list empty".
+		complete, err := s.catalog.CatalogScopeComplete(request.Context(), principal, "years", 0, "", "", "")
 		if err != nil {
 			s.writeCatalogError(response, request, err)
 			return
+		}
+		if !complete {
+			if err := s.ensureCatalogHydrated(request, map[string]any{"scope": "years"}); err != nil {
+				s.writeCatalogError(response, request, err)
+				return
+			}
+			items, err = s.catalog.Years(request.Context(), principal)
+			if err != nil {
+				s.writeCatalogError(response, request, err)
+				return
+			}
 		}
 	}
 	writeJSON(response, http.StatusOK, CatalogYearsResponse{Version: "v1", Items: items})
