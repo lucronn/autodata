@@ -1,0 +1,22 @@
+# Base44 sandbox live-reload config for the Go API.
+# Watches the API package (including the go:embed'ed dashboard/ and workshop/
+# assets) and rebuilds + restarts the binary on change.
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/main ."
+  bin = "tmp/main"
+  include_ext = ["go", "html", "css", "js", "mjs", "json", "yaml", "ttf"]
+  exclude_dir = ["tmp", "vendor"]
+  delay = 500
+  stop_on_error = true
+
+[log]
+  time = true
+
+[screen]
+  clear_on_rebuild = false
+
+[misc]
+  clean_on_exit = true

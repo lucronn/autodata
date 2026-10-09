@@ -1,0 +1,421 @@
+# Base44 sandbox development stack for AutoData.
+#
+# Goal: run the cloned source with live reload so edits show up in the preview.
+#
+#   - api / ingestion / enrichment run FROM THE CLONED SOURCE.
+#     Python images are built from the repository Dockerfiles (that build step
+#     only installs dependencies); the source directories are bind-mounted over
+#     the copies inside the image, so the running code is the edited code.
+#     The Go API uses a plain golang image plus a bind mount and `air`
+#     (rebuild + restart), because its dashboard/ and workshop/ assets are
+#     go:embed'ed into the binary.
+#   - postgres / nats / minio / nginx are unmodified upstream images.
+#   - The browser reaches everything through nginx on host port 3000, so the
+#     workshop and dashboard clients use one same-origin API (relative /v1/...).
+#
+# Secrets: user-supplied external credentials are never set under `environment`
+# (that would permanently outrank the dashboard). They arrive through
+# /run/base44/app.env, listed LAST in env_file.
+#
+# See AGENTS.md ("Base44 sandbox") for the runbook and verification notes.
+
+name: autodata-base44
+
+x-ingestion-build: &ingestion-build
+  context: .
+  dockerfile: workers/ingestion-python/Dockerfile
+
+x-enrichment-build: &enrichment-build
+  context: .
+  dockerfile: workers/enrichment-python/Dockerfile
+
+# Bind-mounted source. Keeping dependency directories out of these mounts means
+# the image's installed packages stay available (PYTHONPATH=/app/src:/app/contracts).
+x-ingestion-src: &ingestion-src
+  - ./workers/ingestion-python/src:/app/src
+  - ./packages/contracts/python:/app/contracts
+  - ./scripts/dev:/app/scripts
+
+x-enrichment-src: &enrichment-src
+  - ./workers/enrichment-python/src:/app/src
+  - ./scripts/dev:/app/scripts
+
+x-app-env-file: &app-env-file
+  - ./.env.base44-defaults # sandbox defaults (listed first, never secrets)
+  - /run/base44/app.env # platform secrets (listed last, always win)
+
+x-ingestion-env: &ingestion-env
+  AUTODATA_DB_ADDRESS: postgres:5432
+  AUTODATA_POSTGRES_DB: autodata
+  AUTODATA_POSTGRES_USER: autodata
+  AUTODATA_POSTGRES_PASSWORD: local-dev-only
+  AUTODATA_NATS_ADDRESS: nats:4222
+  AUTODATA_NATS_URL: nats://nats:4222
+  AUTODATA_S3_ADDRESS: minio:9000
+  AUTODATA_S3_ENDPOINT: minio:9000
+  AUTODATA_S3_ACCESS_KEY: localadmin
+  AUTODATA_S3_SECRET_KEY: local-dev-password
+  AUTODATA_S3_SECURE: "false"
+  AUTODATA_SOURCE_BUCKET: autodata-sources
+  AUTODATA_SOURCE_PERSIST: "1"
+  AUTODATA_SOURCE_REGION: US
+  AUTODATA_EMBEDDING_MODE: deterministic-fake
+  AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED: "1"
+  BANKONE_BASE_URL: ${BANKONE_BASE_URL:-https://bankone.cars.tk}
+  BANKTWO_BASE_URL: ${BANKTWO_BASE_URL:-https://banktwo.cars.tk}
+
+x-enrichment-env: &enrichment-env
+  AUTODATA_DB_ADDRESS: postgres:5432
+  AUTODATA_POSTGRES_DB: autodata
+  AUTODATA_POSTGRES_USER: autodata
+  AUTODATA_POSTGRES_PASSWORD: local-dev-only
+  AUTODATA_NATS_ADDRESS: nats:4222
+  AUTODATA_NATS_URL: nats://nats:4222
+  AUTODATA_S3_ADDRESS: minio:9000
+  AUTODATA_S3_ENDPOINT: minio:9000
+  AUTODATA_S3_ACCESS_KEY: localadmin
+  AUTODATA_S3_SECRET_KEY: local-dev-password
+  AUTODATA_SOURCE_BUCKET: autodata-sources
+  AUTODATA_EMBEDDING_MODE: deterministic-fake
+  AUTODATA_WORKER_HEARTBEAT_SECONDS: "5"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: on-failure
+    environment:
+      POSTGRES_DB: autodata
+      POSTGRES_USER: autodata
+      POSTGRES_PASSWORD: local-dev-only
+    volumes:
+      - postgres-data-base44:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autodata -d autodata"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  nats:
+    image: nats:2.10-alpine
+    restart: on-failure
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    volumes:
+      - nats-data-base44:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8222/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  # S3-compatible object storage. The deployed MinIO release tag cannot be
+  # pulled anonymously from Quay in this sandbox, so this reuses the exact
+  # substitute the repository's own CI Compose override pins
+  # (infra/compose/compose.ci.yaml). Same S3 API on minio:9000, same bucket,
+  # same credentials, same application configuration.
+  minio:
+    image: ghcr.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    restart: on-failure
+    command: ["mini", "-dir=/data", "-s3.port=9000"]
+    environment:
+      AWS_ACCESS_KEY_ID: localadmin
+      AWS_SECRET_ACCESS_KEY: local-dev-password
+      S3_BUCKET: autodata-sources
+    volumes:
+      - minio-data-base44:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9333/cluster/status >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  # One-shot: schema. Wrapper in .base44 keeps re-runs safe.
+  migration-runner:
+    image: postgres:17-alpine
+    working_dir: /workspace
+    volumes:
+      - ./db/migrations:/workspace/db/migrations:ro
+      - ./.base44/migrate.sh:/workspace/migrate.sh:ro
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: autodata
+      PGUSER: autodata
+      PGPASSWORD: local-dev-only
+    command: ["sh", "/workspace/migrate.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # One-shot: deterministic local fixture data (persists with ON CONFLICT
+  # DO NOTHING, so a repeated `up` is safe).
+  ingest-fixture:
+    build: *ingestion-build
+    volumes: *ingestion-src
+    env_file: *app-env-file
+    environment:
+      <<: *ingestion-env
+    command: ["python", "-m", "autodata_ingestion.ingest_fixture"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+
+  api:
+    image: golang:1.26-bookworm
+    restart: on-failure
+    working_dir: /src/apps/api-go
+    volumes:
+      - .:/src
+      - go-cache-base44:/go
+    env_file: *app-env-file
+    environment:
+      AUTODATA_API_ADDR: ":8080"
+      AUTODATA_DB_ADDRESS: postgres:5432
+      AUTODATA_POSTGRES_DB: autodata
+      AUTODATA_POSTGRES_USER: autodata
+      AUTODATA_POSTGRES_PASSWORD: local-dev-only
+      AUTODATA_PROJECTION_STORE: postgres
+      AUTODATA_NATS_ADDRESS: nats:4222
+      AUTODATA_S3_ADDRESS: minio:9000
+      AUTODATA_S3_ENDPOINT: minio:9000
+      AUTODATA_S3_ACCESS_KEY: localadmin
+      AUTODATA_S3_SECRET_KEY: local-dev-password
+      AUTODATA_S3_SECURE: "false"
+      AUTODATA_SOURCE_BUCKET: autodata-sources
+      AUTODATA_INGESTION_URL: http://ingestion-http:8081
+      AUTODATA_INGESTION_TIMEOUT_SECONDS: "120"
+      BASE44_PREVIEW_MODE: ${BASE44_PREVIEW_MODE:-}
+    # Live reload: air rebuilds and restarts the binary on source changes.
+    command: ["sh", "-ec", "go install github.com/air-verse/air@latest && exec /go/bin/air -c /src/.base44/air.toml"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+      ingestion-http:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "/src/.base44/healthcheck-api.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 300s
+
+  # Internal ingestion HTTP gateway (API -> worker boundary).
+  ingestion-http:
+    build: *ingestion-build
+    restart: on-failure
+    volumes: *ingestion-src
+    env_file: *app-env-file
+    environment:
+      <<: *ingestion-env
+      AUTODATA_INGESTION_HTTP_ADDR: ":8081"
+      AUTODATA_CHAT_RUNTIME_BACKEND: postgres
+      AUTODATA_SOURCE_VERSION: local-http-v1
+      AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS: "30"
+      AUTODATA_SOURCE_MAX_BYTES: "52428800"
+      AUTODATA_KNOWLEDGE_CACHE_MAX_RECORDS: "200"
+      INCEPTION_API_BASE_URL: ${INCEPTION_API_BASE_URL:-https://api.inceptionlabs.ai/v1}
+      INCEPTION_MODEL: ${INCEPTION_MODEL:-mercury-2}
+      INCEPTION_API_TIMEOUT_SECONDS: "45"
+      AUTODATA_MERCURY2_EXTRACTION_ENABLED: "0"
+      AUTODATA_MERCURY2_JOB_PLANS_ENABLED: "1"
+      AUTODATA_MERCURY2_PROCEDURE_COMPOSITION_ENABLED: "1"
+    command: ["python", "-m", "autodata_ingestion.http_service"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # Fast-lane consumer (dataset.fast.requested -> normalized publication).
+  ingestion-worker:
+    build: *ingestion-build
+    restart: on-failure
+    volumes: *ingestion-src
+    env_file: *app-env-file
+    environment:
+      <<: *ingestion-env
+      AUTODATA_FAST_CONSUMER_ENABLED: "1"
+      AUTODATA_FAST_CONSUMER_DURABLE: autodata-fast-lane
+      AUTODATA_FAST_CONSUMER_MAX_DELIVERIES: "3"
+      AUTODATA_WORKER_HEARTBEAT_SECONDS: "5"
+    command: ["python", "-m", "autodata_ingestion.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "AUTODATA_FAST_CONSUMER_ENABLED=0 python -c 'from autodata_ingestion.worker import run_once; assert run_once()[\"status\"] == \"idle\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 20s
+
+  # Durable chat worker. The chat boundary in ingestion-http writes durable
+  # jobs; without this loop a dashboard chat query never leaves "processing".
+  ingestion-chat-worker:
+    build: *ingestion-build
+    restart: on-failure
+    volumes: *ingestion-src
+    env_file: *app-env-file
+    environment:
+      <<: *ingestion-env
+      AUTODATA_CHAT_WORKER_ENABLED: "1"
+      AUTODATA_CHAT_RUNTIME_BACKEND: postgres
+      AUTODATA_WORKER_HEARTBEAT_SECONDS: "2"
+    command: ["python", "-m", "autodata_ingestion.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "AUTODATA_CHAT_WORKER_ENABLED=0 python -c 'from autodata_ingestion.worker import run_once; assert run_once()[\"status\"] == \"idle\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 20s
+
+  # Knowledge-fallback consumer for /knowledge-queries.
+  ingestion-knowledge-worker:
+    build: *ingestion-build
+    restart: on-failure
+    volumes: *ingestion-src
+    env_file: *app-env-file
+    environment:
+      <<: *ingestion-env
+      AUTODATA_KNOWLEDGE_CONSUMER_ENABLED: "1"
+      AUTODATA_KNOWLEDGE_CONSUMER_DURABLE: autodata-knowledge-fallback
+      AUTODATA_KNOWLEDGE_CONSUMER_MAX_DELIVERIES: "3"
+      AUTODATA_WORKER_HEARTBEAT_SECONDS: "5"
+    command: ["python", "-m", "autodata_ingestion.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "AUTODATA_KNOWLEDGE_CONSUMER_ENABLED=0 python -c 'from autodata_ingestion.worker import run_once; assert run_once()[\"status\"] == \"idle\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 20s
+
+  # Deep lane: viewable fan-out and section enrichment.
+  enrichment-worker:
+    build: *enrichment-build
+    restart: on-failure
+    volumes: *enrichment-src
+    environment:
+      <<: *enrichment-env
+      AUTODATA_VIEWABLE_CONSUMER_ENABLED: "1"
+      AUTODATA_VIEWABLE_CONSUMER_DURABLE: autodata-viewable-fanout
+      AUTODATA_VIEWABLE_CONSUMER_MAX_DELIVERIES: "3"
+      AUTODATA_DEEP_CONSUMER_ENABLED: "1"
+      AUTODATA_DEEP_CONSUMER_DURABLE: autodata-deep-sections
+      AUTODATA_DEEP_CONSUMER_MAX_DELIVERIES: "3"
+      AUTODATA_WORKER_HEARTBEAT_SECONDS: "5"
+    command: ["python", "-m", "autodata_enrichment.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "AUTODATA_VIEWABLE_CONSUMER_ENABLED=0 AUTODATA_DEEP_CONSUMER_ENABLED=0 python -c 'from autodata_enrichment.worker import run_once; assert run_once()[\"status\"] == \"idle\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 20s
+
+  # Publication outbox relay (PostgreSQL -> NATS JetStream).
+  outbox-relay:
+    build: *enrichment-build
+    restart: on-failure
+    volumes:
+      - ./workers/enrichment-python/src:/app/src
+      - ./scripts/dev/outbox_relay.py:/app/scripts/outbox_relay.py:ro
+      - ./.base44/healthcheck-db-poller.sh:/app/healthcheck.sh:ro
+    environment:
+      <<: *enrichment-env
+      AUTODATA_OUTBOX_BATCH_SIZE: "50"
+      AUTODATA_OUTBOX_MAX_ATTEMPTS: "3"
+      AUTODATA_OUTBOX_POLL_SECONDS: "5"
+    command: ["python", "/app/scripts/outbox_relay.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "sh", "/app/healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 20s
+
+  # Single public entry point for the preview (host port 3000).
+  proxy:
+    image: nginx:alpine
+    restart: on-failure
+    ports:
+      - "3000:80"
+    volumes:
+      - ./.base44/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/workshop/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  postgres-data-base44:
+  nats-data-base44:
+  minio-data-base44:
+  go-cache-base44:
