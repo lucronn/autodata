@@ -154,27 +154,6 @@ services:
       postgres:
         condition: service_healthy
 
-  # One-shot: deterministic local fixture data (persists with ON CONFLICT
-  # DO NOTHING, so a repeated `up` is safe). `api` depends on it with
-  # `service_completed_successfully`, so exiting 0 is its expected terminal
-  # state — not a crashed service — and the API never serves an unseeded store.
-  ingest-fixture:
-    build: *ingestion-build
-    volumes: *ingestion-src
-    env_file: *app-env-file
-    environment:
-      <<: *ingestion-env
-    command: ["python", "-m", "autodata_ingestion.ingest_fixture"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      nats:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      migration-runner:
-        condition: service_completed_successfully
-
   api:
     image: golang:1.26-bookworm
     restart: on-failure
@@ -211,8 +190,6 @@ services:
         condition: service_healthy
       migration-runner:
         condition: service_completed_successfully
-      ingest-fixture:
-        condition: service_completed_successfully
       ingestion-http:
         condition: service_healthy
     healthcheck:
@@ -223,6 +200,15 @@ services:
       start_period: 300s
 
   # Internal ingestion HTTP gateway (API -> worker boundary).
+  #
+  # It also seeds the deterministic fast-lane fixture before it serves: the
+  # seed is idempotent (stable IDs, ON CONFLICT DO NOTHING) and `api` waits for
+  # this service to report healthy, so the store is never unseeded. The seed
+  # runs in this plain-source service instead of a dedicated one-shot container
+  # because a one-shot service that the sandbox health probe sees as an exited
+  # *application* service is reported as a failure, even when it exits 0 by
+  # design (see AGENTS.md, "Base44 sandbox"). `docker compose restart
+  # ingestion-http` re-runs the seed.
   ingestion-http:
     build: *ingestion-build
     restart: on-failure
@@ -242,7 +228,9 @@ services:
       AUTODATA_MERCURY2_EXTRACTION_ENABLED: "0"
       AUTODATA_MERCURY2_JOB_PLANS_ENABLED: "1"
       AUTODATA_MERCURY2_PROCEDURE_COMPOSITION_ENABLED: "1"
-    command: ["sh", "/app/reload-python.sh", "python", "-m", "autodata_ingestion.http_service"]
+    # The seed runs once per container start (the reload wrapper owns only the
+    # gateway command, so a source edit does not re-seed).
+    command: ["sh", "-ec", "python -m autodata_ingestion.ingest_fixture && exec sh /app/reload-python.sh python -m autodata_ingestion.http_service"]
     depends_on:
       postgres:
         condition: service_healthy
