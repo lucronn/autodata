@@ -29,16 +29,12 @@ Non-obvious things worth knowing:
   interpreter kept the code it imported at startup and an edit silently had no
   effect until a manual restart (no rebuild is needed either way). A dependency
   change still needs `up -d --build`.
-- **One-shot jobs exit 0 by design.** `migration-runner` applies the schema (via
-  `.base44/migrate.sh`, which records applied files in `base44_schema_migrations`
-  so a repeated `up` is safe) and `ingest-fixture` writes the deterministic
-  fast-lane fixture (`ON CONFLICT DO NOTHING`). Seeing them as `Exited (0)` in
-  `docker compose ps -a` is success, not a failure. Both are declared as
-  completed prerequisites of the long-running services that consume them —
-  `ingest-fixture` is in `api`'s `depends_on` with
-  `condition: service_completed_successfully` — so a finished one-shot is never
-  mistaken for a crashed application service, and `api` never serves an unseeded
-  store.
+- **One-shot job.** `migration-runner` applies the schema (via
+  `.base44/migrate.sh`, recorded in `base44_schema_migrations`) and exits 0 by
+  design; it is a `service_completed_successfully` prerequisite of the app
+  services. The fixture seed runs inside `ingestion-http` startup (no separate
+  `ingest-fixture` service; remove a stale container with
+  `docker compose -f docker-compose.base44.yml up -d --remove-orphans`).
 - **Selector hydration persists durable manifests.** Years, makes, and models
   are flat provider indexes with no full vehicle identity, so hydration writes
   them to `vehicle_catalog_years`, `vehicle_catalog_makes` and
