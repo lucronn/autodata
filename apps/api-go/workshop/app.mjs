@@ -1,5 +1,5 @@
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './catalog.mjs';
-import { loadingProgress } from './progress.mjs';
+import { LOAD_STAGES, loadingProgress } from './progress.mjs';
 
 const $ = id => document.getElementById(id);
 const names = ['year', 'make', 'model', 'configuration'];
@@ -26,6 +26,9 @@ function setStatus(text, tone = 'ready', retry = null) {
   $('activity-text').textContent = text;
   $('activity').dataset.tone = tone;
   document.body.dataset.busy = String(tone === 'loading');
+  // The picker reports its own busy state so assistive technology knows the
+  // selects are waiting on a catalog read rather than offering a settled list.
+  $('vehicle-picker').setAttribute('aria-busy', String(tone === 'loading'));
   $('loading-progress').hidden = tone !== 'loading';
   $('retry').hidden = !retry;
   $('cancel').hidden = tone !== 'loading';
@@ -33,8 +36,10 @@ function setStatus(text, tone = 'ready', retry = null) {
 }
 
 function resetLoadingProgress() {
+  $('vehicle-picker').setAttribute('aria-busy', 'false');
   $('loading-progress').hidden = true;
   $('loading-progress-catalog').hidden = true;
+  $('loading-steps').replaceChildren();
   $('loading-progress-bar').value = 0;
   $('loading-progress-catalog-bar').value = 0;
   $('loading-progress-percent').textContent = '0%';
@@ -56,9 +61,21 @@ function catalogProgressDetail(progress) {
   return progress.detail || '';
 }
 
+function renderLoadingSteps(progress) {
+  const finished = progress.percent >= 100 ? progress.total : progress.step - 1;
+  $('loading-steps').replaceChildren(...LOAD_STAGES.map((stage, index) => {
+    const state = index < finished ? 'done' : index === progress.step - 1 ? 'current' : 'pending';
+    const item = element('li', stage.label, `loading-step is-${state}`);
+    item.dataset.state = state;
+    if (state === 'current') item.setAttribute('aria-current', 'step');
+    return item;
+  }));
+}
+
 function setLoadingProgress(stageKey, options = {}) {
   const progress = loadingProgress(stageKey, options);
   const detail = options.detail || `Working on ${progress.label.toLocaleLowerCase()}…`;
+  renderLoadingSteps(progress);
   const summary = `Step ${progress.step} of ${progress.total} · ${progress.label} · ${progress.percent}%`;
   const catalog = stageKey === 'articles' && options.catalogProgress && typeof options.catalogProgress === 'object'
     ? options.catalogProgress
@@ -165,11 +182,16 @@ async function loadOptions(name, signal, desired = '') {
   $(name).disabled = true;
   const retry = () => run(s => loadOptions(name, s), retry);
   const data = await readCollection(() => requestJSON(pathTo(name), { signal, token: token(), timeout: 20000 }), {
+    // Selector reads are small and hydrated rows land within seconds, so the
+    // picker re-checks more often than the long article catalog does.
+    interval: 750,
     signal, desired,
     onUpdate(result, meta) {
       populate(name, result.items);
       const detail = result.hydrating && !result.complete
-        ? result.items.length ? `${result.items.length} ${plural[name]} currently available; checking saved catalog coverage…` : `Checking the saved ${plural[name]} catalog…`
+        ? result.items.length
+          ? `${result.items.length} ${plural[name]} available so far — still reading the rest from the sources…`
+          : `Reading the ${plural[name]} list from the configured sources…`
         : `${result.items.length} ${plural[name]} ready.`;
       setLoadingProgress(name, { ...meta, hydrating: Boolean(result.hydrating && !result.complete), complete: result.complete === true, detail });
     },
@@ -178,7 +200,7 @@ async function loadOptions(name, signal, desired = '') {
   if (!data.items.length) {
     setStatus(data.timedOut ? `Still waiting for the ${plural[name]} catalog. Retry to check again.` : `No ${plural[name]} are available for this selection. Try again or change the vehicle.`, 'error', retry);
   } else if (data.complete === false) {
-    setStatus(`${data.items.length} ${plural[name]} available. The list may still be incomplete.`, 'ready', retry);
+    setStatus(`${data.items.length} ${plural[name]} available — you can choose now, or retry for the rest.`, 'ready', retry);
   } else {
     setStatus(`${data.items.length} ${plural[name]} available. Choose ${singular[name]} to continue.`);
   }

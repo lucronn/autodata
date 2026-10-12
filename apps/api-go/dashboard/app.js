@@ -93,6 +93,27 @@
     element.dataset.state = stateName;
   }
 
+  // One line in the conversation that names the stage currently running, so a
+  // request that takes a while reads as progress instead of a stalled screen.
+  function setChatProgress(message, stateName = "processing") {
+    const line = $("chat-progress");
+    if (!line) return;
+    const label = text(message);
+    line.hidden = !label;
+    line.dataset.state = label ? stateName : "";
+    const target = $("chat-progress-text");
+    if (target) target.textContent = label;
+  }
+
+  function renderRawOutput() {
+    const details = $("raw-output");
+    const target = $("json-output");
+    // Serializing the full payload on every progress frame was the heaviest
+    // work in the render path, so it runs only while the panel is open.
+    if (!target || !details || !details.open) return;
+    target.textContent = JSON.stringify(state.payload, null, 2);
+  }
+
   function setDetailView(enabled) {
     state.detailView = Boolean(enabled);
     const panel = $("answer-panel");
@@ -416,6 +437,7 @@
     $("global-warnings").hidden = true;
     replaceChildren($("global-warnings"), []);
     $("json-output").textContent = "{}";
+    setChatProgress("");
     resetTerminal();
   }
 
@@ -830,7 +852,7 @@
       setResultStatus(text(error.code) || "Request failed", "error");
       setSystemStatus("API request failed", "error");
       renderGlobalWarnings(state.payload, answer);
-      $("json-output").textContent = JSON.stringify(state.payload, null, 2);
+      renderRawOutput();
       return;
     }
     const dataState = dataStateFrom(state.payload, answer);
@@ -845,7 +867,7 @@
     renderSource(state.payload, answer);
     renderGlobalWarnings(state.payload, answer);
     renderWorkerStream(answer.worker_stream || state.payload.worker_stream);
-    $("json-output").textContent = JSON.stringify(state.payload, null, 2);
+    renderRawOutput();
   }
 
   function mergeObject(previous, update) {

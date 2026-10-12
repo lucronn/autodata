@@ -259,25 +259,49 @@ func TestCatalogRoutesReuseAuthorizationConvention(t *testing.T) {
 }
 
 func TestIncompleteCatalogReadHydratesOnceAndCompleteReadSkipsWorker(t *testing.T) {
-	capture := &fakeIngestionClient{status: http.StatusAccepted, responseBody: []byte(`{"status":"hydrated"}`)}
+	// The year index hydrates in the background like the other selector scopes
+	// so the first dropdown can paint while the sources are read.
+	client := &blockingCatalogHydrationClient{
+		started:  make(chan struct{}),
+		release:  make(chan struct{}),
+		finished: make(chan struct{}),
+	}
 	server := NewServerWithCatalogStore(staticReadiness{}, &fakeAuthenticator{
 		principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}},
 	}, newMemoryRequestStore(), newMemoryCatalogStore())
-	server.ingestionClient = capture
+	server.ingestionClient = client
 
 	response := catalogRequest(server, "/v1/catalog/years")
 	if response.Code != http.StatusOK {
 		t.Fatalf("incomplete read status = %d, want %d", response.Code, http.StatusOK)
 	}
-	if capture.path != "/v1/catalog/ensure" || capture.idempotencyKey == "" || !strings.Contains(string(capture.body), `"scope":"years"`) {
-		t.Fatalf("hydration request = path %q body %q key %q", capture.path, capture.body, capture.idempotencyKey)
-	}
-	var hydrationBody map[string]any
-	if err := json.Unmarshal(capture.body, &hydrationBody); err != nil {
+	var yearsBody CatalogYearsResponse
+	if err := json.NewDecoder(response.Body).Decode(&yearsBody); err != nil {
 		t.Fatal(err)
 	}
-	if hydrationBody["idempotency_key"] != capture.idempotencyKey {
-		t.Fatalf("worker envelope idempotency key = %#v, want %q", hydrationBody["idempotency_key"], capture.idempotencyKey)
+	if yearsBody.Complete || !yearsBody.Hydrating {
+		t.Fatalf("years hydration state = complete:%t hydrating:%t, want incomplete and hydrating", yearsBody.Complete, yearsBody.Hydrating)
+	}
+	select {
+	case <-client.started:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("years read did not schedule source hydration")
+	}
+	if client.path != "/v1/catalog/ensure" || client.idempotencyKey == "" || !strings.Contains(string(client.body), `"scope":"years"`) {
+		t.Fatalf("hydration request = path %q body %q key %q", client.path, client.body, client.idempotencyKey)
+	}
+	var hydrationBody map[string]any
+	if err := json.Unmarshal(client.body, &hydrationBody); err != nil {
+		t.Fatal(err)
+	}
+	if hydrationBody["idempotency_key"] != client.idempotencyKey {
+		t.Fatalf("worker envelope idempotency key = %#v, want %q", hydrationBody["idempotency_key"], client.idempotencyKey)
+	}
+	close(client.release)
+	select {
+	case <-client.finished:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("background years hydration did not finish")
 	}
 
 	complete := catalogFixtureStore()
@@ -317,12 +341,18 @@ func TestArticleIndexReturnsHydratingStateInsteadOfBlockingOnSource(t *testing.T
 }
 
 type blockingCatalogHydrationClient struct {
-	started  chan struct{}
-	release  chan struct{}
-	finished chan struct{}
+	started        chan struct{}
+	release        chan struct{}
+	finished       chan struct{}
+	path           string
+	body           []byte
+	idempotencyKey string
 }
 
-func (c *blockingCatalogHydrationClient) Do(_ *http.Request, path string, _ []byte, _ string) (int, []byte, error) {
+func (c *blockingCatalogHydrationClient) Do(_ *http.Request, path string, body []byte, idempotencyKey string) (int, []byte, error) {
+	c.path = path
+	c.body = append([]byte(nil), body...)
+	c.idempotencyKey = idempotencyKey
 	if path != "/v1/catalog/ensure" {
 		return http.StatusBadRequest, nil, nil
 	}

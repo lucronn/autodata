@@ -16,13 +16,14 @@ import (
 // duplicate long-running requests before the worker has persisted its result.
 var catalogHydrationInFlight sync.Map
 
-type CatalogYearsResponse struct {
-	Version string        `json:"version"`
-	Items   []CatalogYear `json:"items"`
-}
 type CatalogHydrationResponse struct {
 	Complete  bool `json:"complete"`
 	Hydrating bool `json:"hydrating"`
+}
+type CatalogYearsResponse struct {
+	Version string        `json:"version"`
+	Items   []CatalogYear `json:"items"`
+	CatalogHydrationResponse
 }
 type CatalogMakesResponse struct {
 	Version string        `json:"version"`
@@ -66,17 +67,18 @@ func (s *Server) listCatalogYears(response http.ResponseWriter, request *http.Re
 			s.writeCatalogError(response, request, err)
 			return
 		}
-		if !complete {
-			if err := s.ensureCatalogHydrated(request, map[string]any{"scope": "years"}); err != nil {
-				s.writeCatalogError(response, request, err)
-				return
-			}
-			items, err = s.catalog.Years(request.Context(), principal)
-			if err != nil {
-				s.writeCatalogError(response, request, err)
-				return
-			}
+		// Hydration is scheduled rather than awaited, like every other selector
+		// scope: blocking here held the first dropdown for the length of a full
+		// upstream fetch, so the page could not paint or report progress.
+		hydrating := !complete && s.ingestionClient != nil
+		if hydrating {
+			s.scheduleCatalogHydration(request, map[string]any{"scope": "years"})
 		}
+		writeJSON(response, http.StatusOK, CatalogYearsResponse{
+			Version: "v1", Items: items,
+			CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete && len(items) > 0, Hydrating: hydrating},
+		})
+		return
 	}
 	writeJSON(response, http.StatusOK, CatalogYearsResponse{Version: "v1", Items: items})
 }
