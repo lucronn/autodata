@@ -76,9 +76,20 @@ Non-obvious things worth knowing:
   cannot hydrate from banktwo regardless of the token; bankone still serves
   years/makes/models (200), while its `configurations` rows hold only a
   `configuration` label — no separate trim/engine fields.
+- **Ad-hoc SQL must use the app role and the real schema.** Query the app
+  database as `docker compose -f docker-compose.base44.yml exec -T postgres psql
+  -U autodata -d autodata`; there is no `postgres` role, so a bare `psql` only
+  logs `FATAL: role "postgres" does not exist`. Read `db/migrations/*.sql` for
+  column names before probing: guessed names such as `make_name` (the column is
+  `make`), `vehicle_configurations.make` (make lives on the identity tables) or
+  `vehicle_catalog_years.region` (region is on `vehicle_catalog_hydration_scopes`)
+  surface as `ERROR: column ... does not exist` in the `postgres` log and look
+  like app failures in the sandbox error report.
 - **Checking a running stack:** `docker compose -f docker-compose.base44.yml ps`
   for service state, `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/workshop/`
   for the UI, and `docker compose -f docker-compose.base44.yml logs --since=10m api`
-  for hydration failures. Service logs carry benign noise: SeaweedFS (`minio`)
+  for hydration failures. The UI's picker endpoints need the local dev bearer
+  token (`Authorization: Bearer local:demo:dataset_viewer`), so a bare `curl` of
+  `/v1/catalog/...` answers `401 UNAUTHENTICATED`. Service logs carry benign noise: SeaweedFS (`minio`)
   prints gRPC/lock-ring startup chatter and the migrations print `NOTICE ...
   constraint ... does not exist, skipping` for idempotent DDL.
