@@ -66,6 +66,20 @@ Non-obvious things worth knowing:
   (delivered via `/run/base44/app.env`, listed last in every `env_file`); never
   commit them. Local-only, non-credential settings live in
   `.env.base44-defaults`.
+- **A dashboard secret update needs a forced recreate.** Compose (v5.5.1 here)
+  does not notice that `/run/base44/app.env` changed *content*, so a plain
+  `up -d` leaves the running containers on the previous value. Compare without
+  printing anything (`printenv NAME` in the container vs. the name's line in the
+  file) and, when they differ, recreate the consumers:
+  `docker compose -f docker-compose.base44.yml up -d --force-recreate --no-deps ingestion-http ingestion-worker api`.
+- **Banktwo's catalog reads are refused upstream.** With a credential in place,
+  `GET https://banktwo.cars.tk/v1/capabilities` answers `200` (the gateway knows
+  the key), but every `/v1/catalog/{years,makes,models,configurations}` scope and
+  the legacy `/v1/fleet/*` index answer `401 Banktwo source access was denied`
+  (the fleet routes carry `upstream_status: 403`). So configuration/trim detail
+  cannot hydrate from banktwo regardless of the token; bankone still serves
+  years/makes/models (200), while its `configurations` rows hold only a
+  `configuration` label — no separate trim/engine fields.
 - **Checking a running stack:** `docker compose -f docker-compose.base44.yml ps`
   for service state, `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/workshop/`
   for the UI, and `docker compose -f docker-compose.base44.yml logs --since=10m api`
