@@ -30,4 +30,7 @@ phrase-only, and served images reference local stored objects. Labor and
 combined procedures are not part of this API.
 
 The active product path does not require chatbot routes, chat runtime state,
-chat event streams, or chat-scoped guide URLs.
+chat event streams, or chat-scoped guide URLs. Tracked in
+[Issue #113](https://github.com/lucronn/autodata/issues/113) and
+[Project #8](https://github.com/users/lucronn/projects/8); plan:
+[`2026-10-03-disable-chat-active-path.md`](../superpowers/plans/2026-10-03-disable-chat-active-path.md).
