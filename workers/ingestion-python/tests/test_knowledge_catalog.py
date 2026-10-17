@@ -140,7 +140,9 @@ class KnowledgeCatalogTests(unittest.TestCase):
                 "os.environ",
                 {
                     "AUTODATA_POSTGRES_PASSWORD": "test-only",
-                    "AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED": "0",
+                    # Legacy setting must never put composed procedures back
+                    # into the normalized individual-source catalog.
+                    "AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED": "1",
                 },
             ):
                 load_vehicle_knowledge_catalog(target, query="oil pump, water pump replacement procedure")

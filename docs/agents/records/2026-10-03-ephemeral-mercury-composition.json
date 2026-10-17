@@ -1,0 +1,23 @@
+{
+  "goal": "Return a unified multi-component procedure per request from normalized persisted individual articles, without persisting or caching the composition.",
+  "plan_ref": "docs/superpowers/plans/2026-09-19-mercury2-overlap-procedure-composition.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/110",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/mercury2-procedure-composition.md",
+    "docs/agents/pre-implementation-gate.md",
+    "docs/github/operating-model.md"
+  ],
+  "todo": [
+    "Trace public composition request, normalized article lookup, missing-article ingestion, and composition persistence/cache call sites.",
+    "Remove composed-result persistence/cache and chat-specific dependencies from the active composition path.",
+    "Compose from normalized individual source articles while preserving vehicle scope, source step order, lineage, and local image references.",
+    "Ensure missing individual articles use one-time source ingestion and are reusable on later requests.",
+    "Provide deterministic non-empty source-backed fallback on Mercury-2 failure and explicit errors when required source articles are unavailable.",
+    "Add tests for cache-first reuse, one-time ingestion, no composed-result writes/cache, fallback, lineage, images, and API behavior.",
+    "Run worker/API/contract checks and public API smoke when available; report exact evidence and blockers."
+  ],
+  "base_sha": "1cde779c9bbeaf3605bfec7ac1aa2e5d95c4252f",
+  "status": "synchronized",
+  "updated_at": "2026-10-03T15:00:00Z"
+}
