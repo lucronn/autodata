@@ -15,10 +15,10 @@
 
 ## Concrete todo
 
-- [ ] Rename `autoapi_batch` / `autoapi_job_persistence` modules, symbols, tests, and `ingest_autoapi_*` scripts to Bankone equivalents.
-- [ ] Update Dockerfile and README operator commands to the new script names.
-- [ ] Leave migration filenames and stored provider IDs unchanged.
-- [ ] Run focused Bankone batch/persistence tests and Compose/governance checks that reference the renamed paths.
+- [x] Rename `bankone_batch` / `bankone_job_persistence` modules, symbols, tests, and `ingest_bankone_*` scripts to Bankone equivalents.
+- [x] Update Dockerfile and README operator commands to the new script names.
+- [x] Leave migration filenames and stored provider IDs unchanged.
+- [x] Run focused Bankone batch/persistence tests and Compose/governance checks that reference the renamed paths.
 
 ## Validation
 

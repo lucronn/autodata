@@ -1,4 +1,4 @@
-"""Plan and execute vehicle-scoped batches from split AutoAPI source drops."""
+"""Plan and execute vehicle-scoped batches from split Bankone source drops."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from .vehicle_selection import normalize_vehicle_list, normalize_vehicle_list_js
 
 
 @dataclass(frozen=True)
-class AutoAPIBatch:
+class BankoneBatch:
     """One vehicle family and all source directories that own its articles."""
 
     vehicle_key: str
@@ -130,13 +130,13 @@ def derive_autoapi_vehicle_rows(
     return rows or [_base_row(vehicle)]
 
 
-def build_autoapi_batch_plan(
+def build_bankone_batch_plan(
     source_root: str | Path,
     *,
     selector_rows: Iterable[Mapping[str, Any] | str] | None = None,
     default_region: str | None = None,
     source_version: str = "autoapi-local-v1",
-) -> tuple[AutoAPIBatch, ...]:
+) -> tuple[BankoneBatch, ...]:
     """Build deterministic per-vehicle batches, merging duplicate selector rows."""
 
     directories = discover_autoapi_source_directories(source_root)
@@ -162,7 +162,7 @@ def build_autoapi_batch_plan(
             (directory, derived_rows)
         )
 
-    batches: list[AutoAPIBatch] = []
+    batches: list[BankoneBatch] = []
     matched_vehicle_keys: set[str] = set()
     for vehicle_key in sorted(derived_by_vehicle):
         source_entries = derived_by_vehicle[vehicle_key]
@@ -199,7 +199,7 @@ def build_autoapi_batch_plan(
         if vehicle["region"] is None:
             raise ValueError(f"AutoAPI bundle vehicle has no region: {directory}")
         batches.append(
-            AutoAPIBatch(
+            BankoneBatch(
                 vehicle_key=selected.vehicle_key,
                 vehicle=vehicle,
                 source_directory=source_directories[0],
@@ -221,7 +221,7 @@ def build_autoapi_batch_plan(
         if vehicle["region"] is None:
             raise ValueError(f"selector vehicle has no region: {selected.vehicle_key}")
         batches.append(
-            AutoAPIBatch(
+            BankoneBatch(
                 vehicle_key=selected.vehicle_key,
                 vehicle=vehicle,
                 source_directory=None,
@@ -251,12 +251,12 @@ def collect_autoapi_selection_rows(
     return rows
 
 
-def execute_autoapi_batch(
-    plan: Iterable[AutoAPIBatch],
+def execute_bankone_batch(
+    plan: Iterable[BankoneBatch],
     *,
     source_version: str,
     persist: bool = False,
-    adapter_name: str = "autoapi-local",
+    adapter_name: str = "bankone-local",
     selector_rows: Iterable[Mapping[str, Any] | str] | None = None,
     selector_source_uri: str = "autoapi://local/selector-list",
 ) -> dict[str, Any]:
@@ -358,9 +358,9 @@ def execute_autoapi_batch(
     }
     if selection_persistence is not None:
         output["selection_persistence"] = selection_persistence
-        from .autoapi_job_persistence import persist_autoapi_article_fetch_jobs
+        from .bankone_job_persistence import persist_bankone_article_fetch_jobs
 
-        output["article_fetch_jobs"] = persist_autoapi_article_fetch_jobs(
+        output["article_fetch_jobs"] = persist_bankone_article_fetch_jobs(
             batches,
             results,
             selector_persistence=selection_persistence,
@@ -526,12 +526,12 @@ def _selection_record_rows(record: Any) -> list[dict[str, Any]]:
 
 
 __all__ = [
-    "AutoAPIBatch",
-    "build_autoapi_batch_plan",
+    "BankoneBatch",
+    "build_bankone_batch_plan",
     "collect_autoapi_selection_rows",
     "derive_autoapi_vehicle_rows",
     "discover_autoapi_source_directories",
-    "execute_autoapi_batch",
+    "execute_bankone_batch",
     "load_selector_rows",
     "normalize_vehicle_list_json",
 ]
