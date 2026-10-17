@@ -45,6 +45,20 @@ The contract defines `GET /v1/capabilities`, `GET /v1/catalog/{scope}`,
 The OpenAPI document defines these paths; their live availability has not been
 verified in this worktree.
 
+
+## AutoData repository boundary
+
+AutoData no longer vendors Bankone or Banktwo as Git submodules or build
+contexts. The historical `services/autodbtwo` submodule path is removed. Local
+clones of [`lucronn/bankone`](https://github.com/lucronn/bankone) or
+[`lucronn/banktwo`](https://github.com/lucronn/banktwo) may exist beside this
+repository for operator convenience, but they are not required to build, test,
+or run AutoData. AutoData reaches each bank only through configured
+`BANKONE_BASE_URL` / `BANKTWO_BASE_URL` HTTPS origins.
+
+Tracked in [Issue #132](https://github.com/lucronn/autodata/issues/132) and
+[Project #8](https://github.com/users/lucronn/projects/8).
+
 ## Names and persistence
 
 Wire provider slugs are `bankone` and `banktwo`. AutoData maps them to the
