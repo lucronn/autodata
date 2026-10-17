@@ -19,12 +19,12 @@
 
 ## Concrete todo
 
-- [ ] Remove chatbot UI from the dashboard and replace the landing content with links to Swagger and Workshop.
-- [ ] Unregister all `/chat/*` routes and remove now-unused chat handler wiring from API startup.
-- [ ] Disable chat worker subscription, startup, and Compose defaults; ensure API/worker health and non-chat routes remain healthy.
-- [ ] Bundle same-origin Swagger UI assets required by the dashboard API Explorer link and Dockerfile embed.
-- [ ] Update API documentation, route tests, dashboard tests, and Compose assertions to prove chat is absent and catalog routes still work.
-- [ ] Run Go/worker/Compose verification and test the rebuilt local API's dashboard, chat-route 404, Swagger, and Workshop entry points.
+- [x] Remove chatbot UI from the dashboard and replace the landing content with links to Swagger and Workshop.
+- [x] Unregister all `/chat/*` routes and remove now-unused chat handler wiring from API startup.
+- [x] Disable chat worker subscription, startup, and Compose defaults; ensure API/worker health and non-chat routes remain healthy.
+- [x] Bundle same-origin Swagger UI assets required by the dashboard API Explorer link and Dockerfile embed.
+- [x] Update API documentation, route tests, dashboard tests, and Compose assertions to prove chat is absent and catalog routes still work.
+- [x] Run Go/worker/Compose verification and test the rebuilt local API's dashboard, chat-route 404, Swagger, and Workshop entry points.
 
 ## Validation boundary
 

@@ -76,59 +76,27 @@ for component locations and current status.
 
 ## Current development slice
 
-### Illustrated DIY repair guides
+### Provider-neutral catalog and Workshop
 
-The chat workflow now turns a vehicle-and-job request into one consumer-ready
-guide, including the access work that makes the repair possible, removal,
-reassembly, installation, torque values, timing checks, fluid refill, and final
-leak checks. It retrieves source material from the independent Bankone and
-Banktwo connectors through Source Connector v1, keeps provider vehicle
-identities separate, and places returned diagrams beside the steps they
-explain. The intended origins are not verified live.
+AutoData's active product path is the durable catalog API and Workshop.
+External applications select year → make → model → configuration → article
+through versioned `/v1/catalog/*` routes. Workshop at `/workshop/` is the
+operator UI for the same cascade. The chatbot is not part of the active
+product path ([Issue #113](https://github.com/lucronn/autodata/issues/113)).
 
-Complete guides expose a revision-matched PDF download from the authenticated
-chat query. If an installation page, required prerequisite, or figure is
-missing, chat shows the available material as a clearly labeled preview and
-withholds the final PDF. Generated automotive content remains
-`UNREVIEWED — human review pending`; completeness is not technician approval.
-
-For source-backed runs, configure `BANKONE_BASE_URL` and `BANKTWO_BASE_URL`
+Source material comes from independent Bankone and Banktwo connectors through
+Source Connector v1. Configure `BANKONE_BASE_URL` and `BANKTWO_BASE_URL`
 independently. Live DNS, deployments, and service access remain unverified.
 
-The current development slice is tracked in [Issue #85](https://github.com/lucronn/autodata/issues/85) and [Project #8](https://github.com/users/lucronn/projects/8). The verified local path currently supports:
+Normalized articles keep source order, store images locally behind opaque
+tokens, and retain immutable original provider content for review. Multi-
+component composition stays response-only and is not persisted as a derived
+catalog article.
 
-- natural-language component intent translation into an allowlisted vehicle-scoped query;
-- query-aware normalized-article lookup with exact and near-duplicate protection;
-- deterministic single-technician labor calculation with shared-operation overlap counted once;
-- Mercury-2 composition of an evidence-linked multi-component procedure;
-- persistence of the composed procedure as a reusable derived article;
-- warm replay from PostgreSQL without repeating the source or model call; and
-- dashboard rendering of every generated step with an explicit `UNREVIEWED` label.
-
-The RAV4 examples are automated `ready` results, not technician approval.
-Source evidence remains pending human review, and uncached requests require a
-reachable configured Bankone or Banktwo service. The intended domains have not
-been verified live.
-
-The active product slice is the [chat-first natural-language quote and
-procedure generator](https://github.com/lucronn/autodata/issues/87), tracked in
-[Project #8](https://github.com/users/lucronn/projects/8). Its target
-interaction is a single request such as `97 Toyota RAV4 brake line replacement
-procedure, and quote`; it returns the full procedure, required and recommended
-supporting work, overlap-aware labor hours, source parts prices with pricing
-dates and no markup, and live worker progress. Contracts and persistence are
-complete; natural-language intent extraction is pushed at `30d166d`, and
-read-through source retrieval/pricing is pushed at `910ba88`. Their scoped
-reviews are tracked in Issue #87. Quote composition, visuals, and the
-overlap-aware procedure engine are pushed at `48ebb77` with 26 focused tests;
-chat orchestration, API delivery, and end-to-end integration continue as the
-next work. The repository
-[pre-implementation gate](docs/agents/pre-implementation-gate.md) remains
-mandatory.
-
-The approved [design spec](docs/superpowers/specs/2026-09-11-natural-language-quote-procedure-generator-design.md)
-and [implementation plan](docs/superpowers/plans/2026-09-11-natural-language-quote-procedure-generator.md)
-are the canonical technical records for this slice.
+Canonical records:
+- [provider-neutral catalog API](docs/architecture/provider-neutral-catalog-api.md)
+- [independent bank connectors](docs/architecture/independent-bank-connectors.md)
+- [chatbot removal plan](docs/superpowers/plans/2026-10-03-disable-chat-active-path.md)
 
 ## Start the local stack
 

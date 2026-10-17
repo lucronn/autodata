@@ -41,8 +41,8 @@ func TestSwaggerAndOpenAPIRoutesAreAvailableWithoutChatPaths(t *testing.T) {
 		marker      string
 	}{
 		{"/swagger/", "text/html; charset=utf-8", "/openapi.json"},
-		{"/openapi.json", "application/json; charset=utf-8", "listCatalogMakes"},
-		{"/openapi.yaml", "application/yaml; charset=utf-8", "listCatalogModels"},
+		{"/openapi.json", "application/json; charset=utf-8", "listCatalogArticles"},
+		{"/openapi.yaml", "application/yaml; charset=utf-8", "getCatalogArticle"},
 		{"/swagger/swagger-ui.css", "", ".swagger-ui"},
 	} {
 		request := httptest.NewRequest(http.MethodGet, testCase.path, nil)
