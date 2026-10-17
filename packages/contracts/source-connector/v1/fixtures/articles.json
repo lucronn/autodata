@@ -1,0 +1,8 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000006",
+  "provider": "bankone",
+  "source_revision": "fixture-2026-10-08",
+  "fetched_at": "2026-10-08T12:00:00Z",
+  "complete": true,
+  "articles": [{"opaque_ref":"article-1","title":"Example repair","category":"Engine","component":"Cooling","resource_ref":"resource-1","labor_resource_ref":"labor-1","asset_resource_refs":["asset-1"]}]
+}

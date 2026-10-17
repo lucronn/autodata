@@ -100,7 +100,9 @@ jobs:
           git diff --exit-code -- packages/contracts/go/contracts.go packages/contracts/python/autodata_contracts/contracts.py
 
       - name: Run shared contract tests
-        run: python -m unittest discover -s scripts/contracts -p 'test_*.py' -v
+        run: |
+          python -m pip install --disable-pip-version-check --no-input PyYAML jsonschema referencing
+          python -m unittest discover -s scripts/contracts -p 'test_*.py' -v
 
       - name: Run Go contract tests
         working-directory: packages/contracts/go

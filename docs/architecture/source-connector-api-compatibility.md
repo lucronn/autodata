@@ -1,82 +1,95 @@
-# Source Connector API Compatibility
+# Source Connector API compatibility
 
-AutoData serves normalized, ingested data and owns its persistence and public
-API. AutoDBone and AutoDBtwo are read-only source connectors behind AutoData's
-ingestion adapters. Their independently versioned route contracts must be
-reflected in AutoData's adapter paths and deployment configuration.
+AutoData consumes Bankone and Banktwo through the same versioned, read-only
+contract. AutoData remains responsible for its product API, canonical vehicle
+identity, source capture, normalization, provenance, review, and persistence.
+Provider-specific upstream paths, schemas, and credentials belong inside the
+corresponding bank service.
 
-## AutoDBone
+The canonical contract is
+[`packages/contracts/source-connector/v1/openapi.yaml`](../../packages/contracts/source-connector/v1/openapi.yaml),
+with shared contract metadata in
+[`packages/contracts/contract.json`](../../packages/contracts/contract.json)
+and conformance fixtures under `packages/contracts/source-connector/v1/fixtures/`.
+The AutoData HTTP adapter is
+`workers/ingestion-python/src/autodata_ingestion/source_connector_client.py`.
+It validates envelopes, bounds response sizes, rejects redirects, and converts
+resource bytes into AutoData `SourceResource` records without interpreting
+provider-specific payload formats.
 
-The current AutoDBone facade uses neutral catalog routes under
-`/v1/api/catalog/{catalog}/...`. AutoData maps its existing source vocabulary
-at the connector boundary:
+## Operations and routes
 
-| AutoData source name | AutoDBone catalog alias |
-| --- | --- |
-| `GeneralMotors` | `gm` |
-| `Toyota` | `toyota` |
-| `Motor` | `catalog` |
+Both bank APIs implement the following contract operations:
 
-The connector exposes the shared year/make/model selector routes and catalog-
-scoped vehicle, article, and resource routes. AutoData must not build legacy
-`/v1/api/source/{provider}/...` paths against the new facade. Unknown source
-names fail clearly rather than being mapped to an unrelated catalog.
+| Operation | Route | Purpose |
+| --- | --- | --- |
+| Capabilities | `GET /v1/capabilities` | Declare supported source operations |
+| Catalog | `GET /v1/catalog/{scope}` | Read bounded `years`, `makes`, `models`, or `configurations` pages |
+| Vehicle resolution | `POST /v1/vehicle-resolutions` | Return zero or more source candidates for a selector |
+| Article list | `GET /v1/vehicles/{opaqueRef}/articles` | List a source vehicle's articles |
+| Article search | `POST /v1/vehicles/{opaqueRef}/article-search` | Search articles within a source vehicle |
+| Resource read | `GET /v1/resources/{opaqueRef}` | Retrieve article, labor, text, or binary source content |
+| Liveness | `GET /healthz` | Report service liveness |
+| Readiness | `GET /readyz` | Report whether the service can accept requests |
 
-AutoDBone normalizes article HTML and signs figure URLs under
-`/v1/assets/reference/{reference}`. During ingestion, AutoData fetches these
-references only from its configured AutoDBone origin, rejects redirects and
-oversized/non-image responses, and stores image bytes in AutoData object
-storage. It must not send these references to AutoDBtwo or retain their signed
-URLs in normalized public records.
+The contract defines paginated results with `complete` and, when incomplete,
+`next_cursor`. Catalog items, vehicle candidates, articles, and resources use
+opaque references. AutoData stores and returns a reference only to the bank
+that issued it; it must not treat a reference as a URL or construct a
+provider-specific upstream route from it. Vehicle resolution may return
+multiple candidates. Ambiguity remains explicit for caller selection.
 
-Local development and deployment use the AutoDBone origin
-`https://autodbone-curtt.vercel.app` by default; deployments may override it
-with `AUTODATA_AUTOAPI_BASE_URL`. This Vercel deployment is protected, so a
-successful request made through the authenticated Vercel CLI proves the route
-contract but does not prove that an AutoData runtime has upstream access. Do
-not disable deployment protection or place bypass credentials in the
-repository. Runtime authentication must be configured through an approved
-deployment secret or an internal connector deployment before claiming live
-AutoData-to-AutoDBone acceptance.
+Responses carry a request ID, wire provider, source revision, fetched time, and
+where applicable a source locator. Resource reads provide original text/bytes,
+media type, and SHA-256. AutoData verifies the declared content hash and stores
+the resource and its source metadata in its own snapshot/evidence pipeline.
+Opaque asset references are resolved by their originating bank. Signed source
+URLs, cookies, credentials, and raw authentication material are not part of
+the public AutoData record.
 
-## AutoDBtwo
+Stable error codes include `INVALID_INPUT`, `NOT_FOUND`, `AMBIGUOUS`,
+`UNAUTHORIZED`, `RATE_LIMITED`, `UPSTREAM_UNAVAILABLE`, and
+`INVALID_UPSTREAM_RESPONSE`. The adapter maps transport and contract failures
+to these sanitized categories; source-specific error bodies are not forwarded
+as product responses.
 
-AutoData's Python adapters call the standalone AutoDBtwo service through
-`AUTODATA_AUTODBTWO_BASE_URL`; only AutoDBtwo connects to the configured
-AutoAPItwo upstream. The connector remains read-only and handles catalog,
-article, binary asset, and image/resource transport. AutoData still owns
-response interpretation, normalization, provenance, and database persistence.
+## Naming and configuration
 
-The AutoDBtwo submodule revision is updated deliberately and tested against
-the worker HTTP adapter. AutoData runtime configuration must not bypass that
-service by issuing direct AutoAPItwo network requests.
+The source API uses wire provider slugs `bankone` and `banktwo`. AutoData maps
+those slugs to existing persisted lineage values `autoapi` and `autoapitwo` in
+`source_connector_client.py` and `packages/contracts/contract.json`. Historical
+database keys and migration names retain their original spellings; this is
+compatibility behavior, not evidence that the current services are named
+AutoDBone or AutoDBtwo.
 
-## Verification and change control
+AutoData reads `BANKONE_BASE_URL` and `BANKTWO_BASE_URL` independently. Local
+Compose defaults and Kubernetes config point to `https://bankone.cars.tk` and
+`https://banktwo.cars.tk`; `.env.example` shows the same origins. Optional
+`BANKONE_API_TOKEN` and `BANKTWO_API_TOKEN` values are read from the runtime
+environment. No example token is checked in. A configured URL or token does
+not establish that the domain, authentication policy, or remote API is live.
 
-Route and catalog-alias mappings have deterministic contract tests. Worker
-tests verify safe handling of connector errors and unchanged source response
-semantics. Runtime manifests are checked for the intended service URL and
-startup dependency. Live connector tests are reported separately from local
-unit/configuration results; an unavailable endpoint or required authentication
-is a limitation, not a pass.
+The contract's corresponding source implementations are in the independent
+[`lucronn/bankone`](https://github.com/lucronn/bankone) and
+[`lucronn/banktwo`](https://github.com/lucronn/banktwo) repositories. They do
+not live under an AutoDBone/AutoDBtwo path in this repository. AutoData no longer
+uses a Git submodule or builds either bank as a Compose service. Live DNS,
+Vercel ownership, TLS, auth, deployment, canary, and release verification remain
+pending; contract and local configuration inspection do not prove live service
+compatibility.
 
-Implementation and acceptance evidence for the current compatibility work are
-tracked in [Issue #115](https://github.com/lucronn/autodata/issues/115),
-[Project #8](https://github.com/users/lucronn/projects/8), and the
-[implementation plan](../superpowers/plans/2026-10-02-source-connector-api-compatibility.md).
+## AutoData persistence boundary
 
-## Unknown response-envelope handling
+Source snapshots, hashes, normalization, evidence, and stored assets remain in
+AutoData. Catalog synchronization uses the generic client and retains source
+completeness and cursors. Article fetch jobs are persisted through
+`workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py` in
+the provider-neutral `source_fetch_jobs` table. Migration
+`db/migrations/036_source_fetch_jobs.sql` imports the legacy Bankone job rows
+additively and checks that UUIDs, status, retry count, idempotency keys, and
+snapshot links survive. The historical tables remain available during
+compatibility/rollback; no bank service receives access to them.
 
-AutoData must distinguish an explicitly empty supported catalog response from an
-unsupported or malformed AutoDBtwo response envelope. Unknown shapes fail as a
-source error and are not cached as empty success. This follow-up is tracked in
-[Issue #115](https://github.com/lucronn/autodata/issues/115) and
-[Project #8](https://github.com/users/lucronn/projects/8), with plan
-`docs/superpowers/plans/2026-10-03-autodb-two-response-shape.md`.
-
-Todo:
-
-- Document and parse supported list response shapes.
-- Fail visibly for unknown/malformed envelopes while preserving explicit empty
-  lists.
-- Test failure and retry behavior, then verify PR #120 and descendants.
+For ownership and local-versus-live status, see
+[Independent Bankone and Banktwo connectors](independent-bank-connectors.md)
+and [Bankone/Banktwo domain routing](bankone-banktwo-domain-routing.md).

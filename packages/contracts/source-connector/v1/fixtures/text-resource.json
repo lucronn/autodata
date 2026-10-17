@@ -1,0 +1,10 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000007",
+  "provider": "banktwo",
+  "source_revision": "fixture-2026-10-08",
+  "fetched_at": "2026-10-08T12:00:00Z",
+  "kind": "article",
+  "media_type": "text/plain",
+  "content": "Redacted source content",
+  "sha256": "a5ad106150bc1666a84d5ab9cfa6a87ed8b6bf4f03f6aeb9f29b2f91aef75a67"
+}

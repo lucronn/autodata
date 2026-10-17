@@ -12,6 +12,7 @@ import time
 from copy import deepcopy
 from threading import RLock
 from typing import Any, Callable, Iterable, Mapping
+from urllib.parse import quote
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,7 @@ class CacheFirstCatalogService:
     def resolve(self, request: CatalogRequest) -> CatalogResult:
         cached = self._cache_reader(request)
         if _is_complete(cached):
-            result = _result_from_payload(cached, cache_hit=True)
+            result = _result_from_payload(cached, cache_hit=True, scope=request.scope)
             return result
 
         rows: list[dict[str, Any]] = []
@@ -78,7 +79,7 @@ class CacheFirstCatalogService:
         provenance: list[dict[str, Any]] = []
         complete = False
         if isinstance(cached, Mapping):
-            rows.extend(_canonical_rows(cached.get("rows", cached.get("records", []))))
+            rows.extend(_canonical_rows(cached.get("rows", cached.get("records", [])), scope=request.scope))
             provenance.extend(_provenance(cached.get("provenance", ())))
 
         for provider in self._providers:
@@ -87,7 +88,7 @@ class CacheFirstCatalogService:
             except Exception as error:  # noqa: BLE001 - one source may be unavailable while another is usable
                 missing.add("provider")
                 continue
-            normalized_rows = _canonical_rows(payload.get("rows", payload.get("records", ())))
+            normalized_rows = _canonical_rows(payload.get("rows", payload.get("records", ())), scope=request.scope)
             rows = _merge_rows(rows, normalized_rows)
             provenance.extend(_provenance(payload.get("provenance", ())))
             missing.update(_missing_scopes(payload))
@@ -109,8 +110,6 @@ class CacheFirstCatalogService:
 
 _HYDRATION_LOCK = RLock()
 _HYDRATION_RESULTS: dict[str, dict[str, Any]] = {}
-_AUTOAPITWO_MODEL_CODES = frozenset({"ds", "jc", "la", "ld", "rt", "wd"})
-_AUTOAPITWO_DRIVETRAIN_TOKENS = frozenset({"2wd", "4wd", "awd", "fwd", "rwd"})
 
 
 class _ArticleCatalogProgress:
@@ -225,7 +224,7 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
     if not isinstance(cached, Mapping):
         cached = {"complete": False, "missing_scopes": [scope], "rows": []}
     if _is_complete(cached):
-        resolved = _result_from_payload(cached, cache_hit=True)
+        resolved = _result_from_payload(cached, cache_hit=True, scope=scope)
         result = {
             "status": "cache_hit",
             "hydration_key": key,
@@ -371,83 +370,36 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
 def _load_autoapitwo_article_detail(
     request: Mapping[str, Any], vehicle: Mapping[str, Any]
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Fetch and persist one selected AutoAPItwo article on demand."""
+    """Fetch one selected Banktwo article through the shared v1 contract."""
 
     from dataclasses import replace
 
-    from .autoapitwo_connector import AutoAPITwoConnector
     from .procedure_normalize import normalize_procedure_article
-    from .procedure_rewrite import rewrite_procedure_article
     from .procedure_images import localize_procedure_images
-    from .source_adapters import SourceResource, adapt_source_resource
+    from .source_adapters import adapt_source_resource
     from .source_bundle import normalize_source_bundle
+    from .source_connector_client import source_connector_registry
 
-    connector = AutoAPITwoConnector(
-        os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "https://autoapitwo.vercel.app"),
-        timeout=float(os.getenv("AUTODATA_AUTOAPITWO_TIMEOUT_SECONDS", "25")),
-        retry_attempts=int(os.getenv("AUTODATA_AUTOAPITWO_RETRY_ATTEMPTS", "3")),
-        retry_delay=float(os.getenv("AUTODATA_AUTOAPITWO_RETRY_DELAY_SECONDS", "0.25")),
-    )
+    connector = source_connector_registry().get("banktwo")
+    if connector is None:
+        raise RuntimeError("Banktwo source connector is not configured")
     requested_source_id = str(request.get("source_article_id") or "").strip()
-    requested_article_id = requested_source_id.rsplit(":", 1)[-1] if requested_source_id else ""
-    requested_car_id = ""
-    source_parts = requested_source_id.split(":")
-    if len(source_parts) >= 3 and source_parts[0] == "autoapitwo" and source_parts[1].isdigit():
-        requested_car_id = source_parts[1]
-    car_ids = (requested_car_id,) if requested_car_id else _autoapitwo_car_ids(request, vehicle, connector)
-    if not car_ids:
-        raise RuntimeError("AutoAPItwo did not resolve a matching vehicle for article detail")
-
-    selected = None
-    persisted_descriptor = _lookup_autoapitwo_descriptor(
-        str(request.get("vehicle_id") or ""), requested_source_id
-    )
-    used_persisted_descriptor = persisted_descriptor is not None
-    if persisted_descriptor is not None:
-        selected = (
-            requested_car_id or str(persisted_descriptor.get("provider_vehicle_id") or ""),
-            persisted_descriptor,
-        )
-    else:
-        for car_id in car_ids:
-            catalog = connector.fetch_article_catalog(car_id)
-            for descriptor in catalog.get("articles", ()):
-                descriptor_id = str(descriptor.get("id") or "")
-                if requested_article_id and not descriptor_id.endswith(f":{requested_article_id}"):
-                    continue
-                if not requested_article_id and str(descriptor.get("title") or "").casefold() != str(request.get("title") or "").casefold():
-                    continue
-                selected = (str(car_id), dict(descriptor))
-                break
-            if selected is not None:
-                break
-    if selected is None:
-        raise RuntimeError("AutoAPItwo article was not found in the vehicle catalog")
-
-    car_id, descriptor = selected
-    raw_source = connector.read(descriptor["href"], car_id=car_id)
-    source_article = connector.article(car_id, descriptor["href"], title=descriptor.get("title"))
-    source_article["id"] = source_article.get("article_id")
-    source_article["source_original"] = raw_source
-    source_engine = _engine_number(vehicle.get("engine_displacement_l", vehicle.get("engine")))
-    source_payload = {
-        "year": int(vehicle.get("model_year", vehicle.get("year"))),
-        "make": str(vehicle["make"]),
-        "model": str(vehicle["model"]),
-        "region": str(vehicle.get("region") or "US"),
-        "engine": f"{source_engine:.1f}L" if source_engine is not None else None,
-        "articleDetails": [source_article],
-    }
-    resource = SourceResource.from_bytes(
-        descriptor["href"],
-        "autoapitwo-content-detail-v1",
-        json.dumps(source_payload, sort_keys=True, separators=(",", ":")).encode(),
-        "application/json",
-        metadata={"provider": "autoapitwo", "vehicle_id": car_id, "selected_article": True},
-    )
-    artifact = adapt_source_resource(resource)
+    source_vehicle_ref = _resolve_source_vehicle_ref(connector, request, vehicle)
+    descriptor = _find_source_article(connector, source_vehicle_ref, request)
+    resource_refs = [descriptor.get("resource_ref")]
+    resource_refs.extend([descriptor.get("labor_resource_ref")])
+    resource_refs.extend(descriptor.get("asset_resource_refs") or [])
+    resources = []
+    for resource_ref in resource_refs:
+        if not resource_ref:
+            continue
+        resource = connector.read_resource(str(resource_ref)).to_source_resource()
+        resources.append(resource)
+    if not resources:
+        raise RuntimeError("Banktwo article has no readable source resource")
+    artifacts = [adapt_source_resource(resource) for resource in resources]
     bundle = normalize_source_bundle(
-        [artifact],
+        artifacts,
         str(vehicle.get("region") or "US"),
         expected_vehicle=dict(vehicle),
     )
@@ -456,7 +408,11 @@ def _load_autoapitwo_article_detail(
     normalized_articles = []
     for article in bundle.articles:
         normalized = normalize_procedure_article(article)
-        normalized = rewrite_procedure_article(normalized, vehicle=vehicle)
+        requested_article_id = str(descriptor.get("_requested_article_id") or "").strip()
+        if requested_article_id:
+            # The caller's persisted lineage ID is authoritative when a v1
+            # opaque reference resolves an older catalog entry.
+            normalized["article_id"] = requested_article_id
         try:
             normalized = localize_procedure_images(normalized, vehicle=vehicle)
         except Exception:  # noqa: BLE001 - preserve readable text if object storage is unavailable
@@ -467,7 +423,7 @@ def _load_autoapitwo_article_detail(
     if os.getenv("AUTODATA_SOURCE_PERSIST", "1") == "1":
         from .bundle_persistence import persist_source_bundle
 
-        persist_source_bundle(bundle, [artifact], adapter_name="autoapitwo")
+        persist_source_bundle(bundle, artifacts, adapter_name="autoapitwo")
     evidence_by_id = {
         str(item["evidence_id"]): item
         for item in bundle.evidence
@@ -495,91 +451,124 @@ def _load_autoapitwo_article_detail(
         "traversal": "selected_article_only",
         "vehicle_count": 1,
         "materialized_records": len(records),
-        "index_read_count": 0 if used_persisted_descriptor else 36,
+        "index_read_count": len(descriptor.get("_catalog_request_ids", ())),
         "targeted_article_fetch_count": 1,
-        "targeted_labor_fetch_count": 0,
+        "targeted_labor_fetch_count": int(bool(descriptor.get("labor_resource_ref"))),
     }
 
 
-def _lookup_autoapitwo_descriptor(vehicle_id: str, source_article_id: str) -> dict[str, Any] | None:
-    """Recover a selected catalog link from the persisted list-only snapshot."""
+def _resolve_source_vehicle_ref(
+    connector: Any, request: Mapping[str, Any], vehicle: Mapping[str, Any]
+) -> str:
+    """Resolve exactly one source vehicle without guessing among candidates."""
 
-    if not vehicle_id or not source_article_id:
-        return None
-    try:
-        import psycopg
-        from minio import Minio
+    supplied = str(request.get("source_vehicle_ref") or "").strip()
+    if supplied:
+        return supplied
+    from .source_connector_client import SourceConnectorError
 
-        host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
-        with psycopg.connect(
-            host=host,
-            port=int(port_text),
-            dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
-            user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-            password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
-        ) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT ss.object_key
-                    FROM catalog_articles ca
-                    JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
-                    WHERE ca.vehicle_id = %s::uuid AND ca.article_id = %s
-                    ORDER BY ca.created_at DESC
-                    LIMIT 1
-                    """,
-                    (vehicle_id, source_article_id),
-                )
-                row = cursor.fetchone()
-        if not row or not row[0]:
-            return None
-        client = Minio(
-            os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
-            access_key=os.environ["AUTODATA_S3_ACCESS_KEY"],
-            secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],
-            secure=False,
+    selector: dict[str, Any] = {
+        "year": int(vehicle.get("model_year", vehicle.get("year"))),
+        "make": str(vehicle["make"]),
+        "model": str(vehicle["model"]),
+        "region": str(vehicle.get("region") or "US"),
+    }
+    configuration = " ".join(
+        str(value).strip()
+        for value in (vehicle.get("trim"), vehicle.get("engine"), vehicle.get("drivetrain"))
+        if value not in (None, "")
+    )
+    if configuration:
+        selector["configuration"] = configuration
+    resolution = connector.resolve_vehicle(selector)
+    candidates = resolution.body.get("candidates", ())
+    if len(candidates) != 1:
+        raise SourceConnectorError("AMBIGUOUS" if candidates else "NOT_FOUND")
+    return str(candidates[0]["opaque_ref"])
+
+
+def _source_article_pages(connector: Any, source_vehicle_ref: str) -> tuple[list[Any], list[dict[str, Any]]]:
+    """Read article pages in source order, rejecting repeated or stalled cursors."""
+
+    pages: list[Any] = []
+    articles: list[dict[str, Any]] = []
+    cursor: str | None = None
+    seen: set[str] = set()
+    for _ in range(1000):
+        page = connector.list_articles(source_vehicle_ref, cursor)
+        pages.append(page)
+        articles.extend(dict(item) for item in page.body["articles"])
+        if page.complete:
+            return pages, articles
+        cursor = page.next_cursor
+        if cursor is None or cursor in seen:
+            from .source_connector_client import SourceConnectorError
+
+            raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+        seen.add(cursor)
+    from .source_connector_client import SourceConnectorError
+
+    raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+
+
+def _find_source_article(
+    connector: Any, source_vehicle_ref: str, request: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Select one list entry by its opaque ref or by a unique title search."""
+
+    from .source_connector_client import SourceConnectorError
+
+    requested_id = str(request.get("source_article_id") or request.get("article_id") or "").strip()
+    title = str(request.get("title") or "").strip().casefold()
+    pages: list[Any] = []
+    articles: list[dict[str, Any]] = []
+    if requested_id:
+        pages, articles = _source_article_pages(connector, source_vehicle_ref)
+        legacy_suffix = requested_id.rsplit(":", 1)[-1]
+        matches = [
+            item for item in articles
+            if item["opaque_ref"] == requested_id
+            or item["opaque_ref"] == legacy_suffix
+            or item["opaque_ref"].endswith(f":{legacy_suffix}")
+        ]
+        if not matches and title:
+            # A historical AutoData ID may refer to an old provider key. Use
+            # the exact persisted title to map it to the new opaque ref.
+            matches = _search_source_articles(connector, source_vehicle_ref, title)
+    else:
+        if not title:
+            raise SourceConnectorError("INVALID_INPUT")
+        matches = _search_source_articles(connector, source_vehicle_ref, str(request.get("title")))
+    if len(matches) != 1:
+        raise SourceConnectorError("AMBIGUOUS" if matches else "NOT_FOUND")
+    selected = dict(matches[0])
+    selected["_requested_article_id"] = requested_id
+    selected["_catalog_request_ids"] = [page.request_id for page in pages]
+    return selected
+
+
+def _search_source_articles(connector: Any, source_vehicle_ref: str, query: str) -> list[dict[str, Any]]:
+    """Search all v1 pages and keep exact title matches in returned order."""
+
+    from .source_connector_client import SourceConnectorError
+
+    normalized_title = query.strip().casefold()
+    matches: list[dict[str, Any]] = []
+    cursor: str | None = None
+    seen: set[str] = set()
+    for _ in range(1000):
+        page = connector.search_articles(source_vehicle_ref, query, cursor)
+        matches.extend(
+            dict(item) for item in page.body["articles"]
+            if str(item.get("title") or "").strip().casefold() == normalized_title
         )
-        response = client.get_object(os.getenv("AUTODATA_SOURCE_BUCKET", "autodata-sources"), row[0])
-        try:
-            payload = json.loads(response.read())
-        finally:
-            response.close()
-            response.release_conn()
-        articles = payload.get("articleDetails") if isinstance(payload, Mapping) else None
-        if not isinstance(articles, list):
-            return None
-        for article in articles:
-            if not isinstance(article, Mapping):
-                continue
-            if str(article.get("id") or "") == source_article_id:
-                descriptor = dict(article)
-                href = _descriptor_href(descriptor)
-                if href:
-                    descriptor["href"] = href
-                    return descriptor
-                return None
-    except Exception:  # noqa: BLE001 - source search remains the fallback
-        return None
-    return None
-
-
-def _descriptor_href(descriptor: Mapping[str, Any]) -> str:
-    """Resolve the provider detail URL from any persisted catalog shape."""
-
-    direct = descriptor.get("href") or descriptor.get("source_uri")
-    if direct:
-        return str(direct).strip()
-    links = descriptor.get("_links")
-    if isinstance(links, Mapping):
-        self_link = links.get("self")
-        if isinstance(self_link, Mapping) and self_link.get("href"):
-            return str(self_link["href"]).strip()
-    evidence = descriptor.get("evidence")
-    if isinstance(evidence, list):
-        for item in evidence:
-            if isinstance(item, Mapping) and item.get("source_uri"):
-                return str(item["source_uri"]).strip()
-    return ""
+        if page.complete:
+            return matches
+        cursor = page.next_cursor
+        if cursor is None or cursor in seen:
+            raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+        seen.add(cursor)
+    raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
 
 def _hydrate_article_catalog(request: Mapping[str, Any], key: str) -> dict[str, Any]:
     """Persist one vehicle's article index without fetching article bodies."""
@@ -732,48 +721,38 @@ def _load_autoapitwo_article_catalog(
     *,
     progress: _ArticleCatalogProgress | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Persist a vehicle's AutoAPItwo article index without reading content."""
+    """Persist a vehicle's Banktwo v1 article index without reading content."""
 
-    from .autoapitwo_connector import AutoAPITwoConnector
     from .source_adapters import SourceResource, adapt_source_resource
     from .source_bundle import normalize_source_bundle
+    from .source_connector_client import source_connector_registry
 
-    connector = AutoAPITwoConnector(
-        os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "https://autoapitwo.vercel.app"),
-        timeout=float(os.getenv("AUTODATA_AUTOAPITWO_TIMEOUT_SECONDS", "25")),
-        retry_attempts=int(os.getenv("AUTODATA_AUTOAPITWO_RETRY_ATTEMPTS", "3")),
-        retry_delay=float(os.getenv("AUTODATA_AUTOAPITWO_RETRY_DELAY_SECONDS", "0.25")),
+    connector = source_connector_registry().get("banktwo")
+    if connector is None:
+        raise RuntimeError("Banktwo source connector is not configured")
+    source_vehicle_ref = _resolve_source_vehicle_ref(connector, request, vehicle)
+    pages, source_articles = _source_article_pages(connector, source_vehicle_ref)
+    if not pages or not pages[-1].complete:
+        raise RuntimeError("Banktwo article index is incomplete")
+    provider_id = pages[0].persisted_provider
+    source_revision = pages[0].source_revision
+    source_locator = pages[0].source_locator or (
+        f"{connector.base_url}/v1/vehicles/{quote(source_vehicle_ref, safe='')}/articles"
     )
-    car_ids = _autoapitwo_car_ids(request, vehicle, connector)
-    if not car_ids:
-        raise RuntimeError("AutoAPItwo did not resolve a matching vehicle")
+    articles = [
+        {
+            "id": f"{provider_id}:{source_vehicle_ref}:{item['opaque_ref']}",
+            "title": item["title"],
+            "bucket": item.get("category"),
+            "component": item.get("component"),
+            "resource_ref": item.get("resource_ref"),
+            "labor_resource_ref": item.get("labor_resource_ref"),
+            "asset_resource_refs": item.get("asset_resource_refs", []),
+        }
+        for item in source_articles
+    ]
 
-    catalogs: list[tuple[str, list[Mapping[str, Any]]]] = []
-    index_reads = 0
-    index_total = len(car_ids) * 36
-    for car_id in car_ids:
-        car_index_start = index_reads
-
-        def on_index_progress(update: Mapping[str, Any]) -> None:
-            if progress is None:
-                return
-            completed = car_index_start + int(update.get("processed_units") or 0)
-            progress.publish(
-                {
-                    **dict(update),
-                    "processed_units": completed,
-                    "total_units": index_total,
-                }
-            )
-
-        catalog = connector.fetch_article_catalog(car_id, on_progress=on_index_progress)
-        articles = list(catalog.get("articles", ()))
-        index_reads += int(catalog.get("index_reads", 0))
-        if not articles:
-            continue
-        catalogs.append((str(car_id), articles))
-
-    total_articles = sum(len(articles) for _, articles in catalogs)
+    total_articles = len(articles)
     if progress is not None:
         progress.publish(
             {
@@ -788,41 +767,43 @@ def _load_autoapitwo_article_catalog(
     records: list[dict[str, Any]] = []
     bundles: list[tuple[Any, list[Any]]] = []
     processed_articles = 0
-    source_vehicle_count = 0
-    for car_id, articles in catalogs:
-        source_vehicle_count += 1
-        year = int(vehicle.get("model_year", vehicle.get("year")))
-        source_uri = (
-            f"{connector.base}/api/v1/content/carids/{car_id}/components/1"
-        )
-        source_engine = vehicle.get("engine_displacement_l", vehicle.get("engine"))
-        source_engine_number = _engine_number(source_engine)
-        if source_engine_number is not None:
-            source_engine = f"{source_engine_number:.1f}L"
-        payload = {
-            "year": year,
-            "make": str(vehicle["make"]),
-            "model": str(vehicle["model"]),
-            "region": str(vehicle.get("region") or "US"),
-            "engine": source_engine,
-            "articleDetails": articles,
-        }
-        raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-        resource = SourceResource.from_bytes(
-            source_uri,
-            "autoapitwo-content-index-v1",
-            raw,
-            "application/json",
-            metadata={"provider": "autoapitwo", "vehicle_id": str(car_id)},
-        )
-        artifact = adapt_source_resource(resource)
-        bundle = normalize_source_bundle(
-            [artifact],
-            str(vehicle.get("region") or "US"),
-            expected_vehicle=dict(vehicle),
-        )
-        if bundle.vehicle is None:
-            continue
+    year = int(vehicle.get("model_year", vehicle.get("year")))
+    source_engine = vehicle.get("engine_displacement_l", vehicle.get("engine"))
+    source_engine_number = _engine_number(source_engine)
+    if source_engine_number is not None:
+        source_engine = f"{source_engine_number:.1f}L"
+    payload = {
+        "kind": "vehicle",
+        "year": year,
+        "make": str(vehicle["make"]),
+        "model": str(vehicle["model"]),
+        "region": str(vehicle.get("region") or "US"),
+        "engine": source_engine,
+        "articleDetails": articles,
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    resource = SourceResource.from_bytes(
+        source_locator,
+        source_revision,
+        raw,
+        "application/json",
+        locator=source_locator,
+        metadata={
+            "provider": provider_id,
+            "source_provider": "banktwo",
+            "vehicle_id": source_vehicle_ref,
+            "request_ids": [page.request_id for page in pages],
+            "page_locators": [page.source_locator for page in pages if page.source_locator],
+        },
+    )
+    artifact = adapt_source_resource(resource)
+    bundle = normalize_source_bundle(
+        [artifact],
+        str(vehicle.get("region") or "US"),
+        expected_vehicle=dict(vehicle),
+        preserve_article_order=True,
+    )
+    if bundle.vehicle is not None:
         evidence_by_id = {
             str(item["evidence_id"]): item
             for item in bundle.evidence
@@ -880,9 +861,9 @@ def _load_autoapitwo_article_catalog(
         "mode": "autoapitwo_article_index",
         "content_source": "autoapitwo",
         "traversal": "vehicle_article_index",
-        "vehicle_count": source_vehicle_count,
+        "vehicle_count": int(bool(bundle.vehicle)),
         "materialized_records": len(records),
-        "index_read_count": index_reads,
+        "index_read_count": len(pages),
         "targeted_article_fetch_count": 0,
         "targeted_labor_fetch_count": 0,
     }
@@ -908,7 +889,7 @@ def _source_failure_detail(source: str, error: BaseException) -> str:
     text = " ".join(
         str(getattr(item, "reason", "") or item).casefold()
         for item in chain
-    )
+    ).replace("_", " ")
     if status == 429 or "rate limit" in text or "too many requests" in text:
         reason = "rate limited"
     elif status == 401 or "expired" in text or "authentication" in text or "unauthorized" in text:
@@ -921,6 +902,8 @@ def _source_failure_detail(source: str, error: BaseException) -> str:
         reason = "source server unavailable"
     elif "redirect" in text:
         reason = "unexpected redirect"
+    elif "ambiguous" in text:
+        reason = "matched more than one source item"
     elif "no matching" in text or "did not resolve" in text or "no vehicle" in text:
         reason = "returned no matching vehicle"
     elif "empty" in text or "not found" in text or "no article" in text:
@@ -1020,168 +1003,6 @@ def _update_article_catalog_progress(
         return
 
 
-def _autoapitwo_car_ids(
-    request: Mapping[str, Any],
-    vehicle: Mapping[str, Any],
-    connector: Any,
-) -> tuple[str, ...]:
-    supplied = request.get("autoapitwo_vehicle_ids")
-    candidates: list[Mapping[str, Any]] = []
-    if isinstance(supplied, (list, tuple)):
-        candidates.extend({"id": str(value)} for value in supplied if str(value).isdigit())
-    if not candidates:
-        vehicle_id = str(request.get("vehicle_id") or "").strip()
-        candidates.extend(_lookup_autoapitwo_car_rows(vehicle_id))
-    if not candidates:
-        for query in _autoapitwo_search_queries(vehicle):
-            candidates.extend(connector.search_vehicles(query))
-
-    target_engine = _engine_number(vehicle.get("engine_displacement_l", vehicle.get("engine")))
-
-    def select(values: Iterable[Mapping[str, Any]]) -> list[str]:
-        selected: list[str] = []
-        for candidate in values:
-            if not isinstance(candidate, Mapping):
-                continue
-            candidate_id = str(candidate.get("id") or candidate.get("carId") or "").strip()
-            if not candidate_id.isdigit():
-                continue
-            if not _same_autoapitwo_vehicle(candidate, vehicle):
-                continue
-            if target_engine is not None:
-                candidate_engine = _engine_number(candidate.get("engine"))
-                if candidate_engine is None or abs(candidate_engine - target_engine) >= 0.0001:
-                    continue
-            if candidate_id not in selected:
-                selected.append(candidate_id)
-        return selected
-
-    selected = select(candidates)
-    if target_engine is not None and not selected:
-        for query in _autoapitwo_search_queries(vehicle):
-            selected = select([*candidates, *connector.search_vehicles(query)])
-            if selected:
-                break
-    return tuple(selected)
-
-
-def _autoapitwo_search_queries(vehicle: Mapping[str, Any]) -> tuple[str, ...]:
-    year = vehicle.get("model_year", vehicle.get("year"))
-    make = str(vehicle.get("make") or "").strip()
-    model = str(vehicle.get("model") or "").strip()
-    model_tokens = re.findall(r"[A-Za-z0-9]+", model)
-    base_tokens = [
-        token for token in model_tokens
-        if token.casefold() not in _AUTOAPITWO_MODEL_CODES
-    ]
-
-    # Some normalized catalog rows repeat the make in the model (for example,
-    # ``Ram / Ram 1500 Ds``), while AutoAPItwo searches the model family as
-    # ``Ram 1500``. Keep the exact query first, then try the provider-shaped
-    # variants without making an unbounded series of guesses.
-    make_tokens = {token.casefold() for token in re.findall(r"[A-Za-z0-9]+", make)}
-    model_variants = [model_tokens, base_tokens]
-    if model_tokens and model_tokens[0].casefold() in make_tokens:
-        model_variants.extend((model_tokens[1:], base_tokens[1:]))
-
-    queries = [
-        f"{year} {make} {' '.join(tokens)}".strip()
-        for tokens in model_variants
-        if tokens
-    ]
-    return tuple(dict.fromkeys(query for query in queries if query))
-
-
-def _lookup_autoapitwo_car_rows(vehicle_id: str) -> list[dict[str, str]]:
-    if not vehicle_id:
-        return []
-    try:
-        import psycopg
-
-        host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
-        with psycopg.connect(
-            host=host,
-            port=int(port_text),
-            dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
-            user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-            password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
-        ) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT provider_id
-                    FROM vehicle_provider_mappings
-                    WHERE vehicle_id = %s::uuid
-                      AND provider = 'autoapitwo'
-                      AND entity_type = 'car'
-                      AND provider_id ~ '^[0-9]+$'
-                    ORDER BY provider_id
-                    """,
-                    (vehicle_id,),
-                )
-                return [{"id": str(row[0])} for row in cursor.fetchall()]
-    except Exception:  # noqa: BLE001 - search is the source fallback
-        return []
-
-
-def _same_autoapitwo_vehicle(candidate: Mapping[str, Any], vehicle: Mapping[str, Any]) -> bool:
-    def compact(value: Any) -> str:
-        return re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
-
-    def words(value: Any) -> str:
-        return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
-
-    def normalized_make(value: Any) -> str:
-        value = words(value)
-        value = re.sub(r"\btruck\b", "", value).strip()
-        if value in {"dodge", "dodge ram", "dodge or ram", "ram"}:
-            return "dodge or ram"
-        aliases = {"chevy": "chevrolet"}
-        return " ".join(aliases.get(word, word) for word in value.split())
-
-    def model_tokens_are_present(candidate_value: Any, target_value: Any) -> bool:
-        candidate_tokens = words(candidate_value).split()
-        target_tokens = words(target_value).split()
-        target_has_drivetrain = bool(
-            set(target_tokens) & _AUTOAPITWO_DRIVETRAIN_TOKENS
-        )
-        target_tokens = [
-            token for token in target_tokens if token not in _AUTOAPITWO_MODEL_CODES
-        ]
-        if not target_has_drivetrain:
-            candidate_tokens = [
-                token for token in candidate_tokens
-                if token not in _AUTOAPITWO_DRIVETRAIN_TOKENS
-            ]
-        if not target_tokens:
-            return True
-        target_index = 0
-        for token in candidate_tokens:
-            if token == target_tokens[target_index]:
-                target_index += 1
-                if target_index == len(target_tokens):
-                    return True
-        return False
-
-    year = str(candidate.get("year") or "")
-    target_year = str(vehicle.get("model_year", vehicle.get("year")) or "")
-    if year and target_year and year != target_year:
-        return False
-    candidate_make = normalized_make(candidate.get("make"))
-    target_make = normalized_make(vehicle.get("make"))
-    candidate_model = compact(candidate.get("model"))
-    target_model = compact(vehicle.get("model"))
-    model_matches = (
-        not candidate_model
-        or candidate_model == target_model
-        or model_tokens_are_present(candidate.get("model"), vehicle.get("model"))
-    )
-    return (
-        (not candidate_make or candidate_make == target_make)
-        and model_matches
-    )
-
-
 def _engine_number(value: Any) -> float | None:
     matches = re.findall(r"\d+(?:\.\d+)?", str(value or ""))
     if not matches:
@@ -1254,18 +1075,76 @@ def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult) 
 
 
 def _configured_catalog_providers() -> tuple[Any, ...]:
-    providers: list[Any] = []
-    autoapi_base = os.getenv("AUTODATA_AUTOAPI_BASE_URL", "").strip()
-    if autoapi_base:
-        from .autoapi_connector import AutoAPIConnector
+    from .source_connector_client import source_connector_registry
 
-        providers.append(AutoAPIConnector(autoapi_base))
-    autoapitwo_base = os.getenv("AUTODATA_AUTOAPITWO_BASE_URL", "").strip()
-    if autoapitwo_base:
-        from .autoapitwo_catalog import AutoAPITwoCatalogConnector
+    clients = source_connector_registry()
+    return tuple(_SourceCatalogProvider(client) for client in clients.values())
 
-        providers.append(AutoAPITwoCatalogConnector(autoapitwo_base))
-    return tuple(providers)
+
+class _SourceCatalogProvider:
+    """Project contract rows into the existing canonical catalog shape."""
+
+    def __init__(self, client: Any):
+        self.client = client
+
+    def resolve_catalog(self, request: CatalogRequest) -> Mapping[str, Any]:
+        scope = request.scope if request.scope in {"years", "makes", "models", "configurations"} else "configurations"
+        # `year` is a required CatalogRequest field, but years are an
+        # unfiltered index and must not receive that synthetic placeholder.
+        selector: dict[str, Any] = {}
+        if scope != "years":
+            selector["year"] = request.year
+        if scope in {"models", "configurations"}:
+            selector["make"] = request.make
+        if scope == "configurations":
+            selector["model"] = request.model
+        rows: list[dict[str, Any]] = []
+        provenance: list[dict[str, Any]] = []
+        cursor: str | None = None
+        seen: set[str] = set()
+        for _ in range(1000):
+            page = self.client.catalog(scope, selector, cursor)
+            provenance.append({
+                "provider": page.persisted_provider,
+                "source_uri": page.source_locator or f"{self.client.base_url}/v1/catalog/{scope}",
+                "source_version": page.source_revision,
+                "retrieved_at": page.fetched_at,
+                "metadata": {"request_id": page.request_id, "wire_provider": page.provider},
+            })
+            for item in page.body["items"]:
+                fields_by_scope = {
+                    "years": ("year",),
+                    "makes": ("year", "make"),
+                    "models": ("year", "make", "model"),
+                    "configurations": ("year", "make", "model", "engine", "drivetrain", "region"),
+                }
+                row = {
+                    key: item[key]
+                    for key in fields_by_scope[scope]
+                    if key in item
+                }
+                if scope == "configurations":
+                    row.setdefault("region", item.get("region") or request.region)
+                if scope == "configurations" and "configuration" in item:
+                    row["engine_label"] = item["configuration"]
+                row["provider_mappings"] = [{
+                    "provider": page.persisted_provider,
+                    "entity_type": "car",
+                    "provider_id": item["opaque_ref"],
+                    "provider_label": item["label"],
+                }]
+                rows.append(row)
+            if page.complete:
+                # Completeness belongs to the requested selector scope. Sparse
+                # scope rows remain available to selectors; full-vehicle
+                # persistence performs its own field check.
+                return {"rows": rows, "complete": True, "provenance": provenance,
+                        "missing_scopes": []}
+            cursor = page.next_cursor
+            if cursor is None or cursor in seen:
+                raise ValueError("source catalog pagination did not advance")
+            seen.add(cursor)
+        raise ValueError("source catalog exceeded pagination limit")
 
 
 def _call_provider(provider: Any, request: CatalogRequest) -> Mapping[str, Any]:
@@ -1308,8 +1187,10 @@ def _is_complete(payload: Mapping[str, Any] | None) -> bool:
     return isinstance(payload, Mapping) and payload.get("complete") is True and not _missing_scopes(payload)
 
 
-def _result_from_payload(payload: Mapping[str, Any], *, cache_hit: bool) -> CatalogResult:
-    rows = tuple(_canonical_rows(payload.get("rows", payload.get("records", ()))))
+def _result_from_payload(
+    payload: Mapping[str, Any], *, cache_hit: bool, scope: str = "configurations"
+) -> CatalogResult:
+    rows = tuple(_canonical_rows(payload.get("rows", payload.get("records", ())), scope=scope))
     return CatalogResult(
         rows=rows,
         complete=True,
@@ -1318,7 +1199,7 @@ def _result_from_payload(payload: Mapping[str, Any], *, cache_hit: bool) -> Cata
     )
 
 
-def _canonical_rows(values: Any) -> list[dict[str, Any]]:
+def _canonical_rows(values: Any, *, scope: str = "configurations") -> list[dict[str, Any]]:
     if isinstance(values, Mapping):
         values = values.get("rows", values.get("records", ()))
     if not isinstance(values, Iterable) or isinstance(values, (str, bytes, Mapping)):
@@ -1335,7 +1216,13 @@ def _canonical_rows(values: Any) -> list[dict[str, Any]]:
             )
             if value.get(key) not in (None, "")
         }
-        if not {"year", "make", "model", "region"}.issubset(row):
+        required = {
+            "years": {"year"},
+            "makes": {"year", "make"},
+            "models": {"year", "make", "model"},
+            "configurations": {"year", "make", "model", "region"},
+        }.get(scope, {"year", "make", "model", "region"})
+        if not required.issubset(row):
             continue
         row["catalog_id"] = canonical_catalog_id(row)
         rows.append(row)
@@ -1353,8 +1240,41 @@ def _merge_rows(existing: list[dict[str, Any]], additions: Iterable[Mapping[str,
             by_id[row["catalog_id"]] = row
             result.append(row)
         else:
-            current.update({key: value for key, value in row.items() if value not in (None, "")})
+            incoming = {key: value for key, value in row.items() if value not in (None, "")}
+            if "provider_mappings" in incoming:
+                incoming["provider_mappings"] = _merge_provider_mappings(
+                    current.get("provider_mappings", ()), incoming["provider_mappings"]
+                )
+            current.update(incoming)
     return result
+
+
+def _merge_provider_mappings(existing: Any, additions: Any) -> list[dict[str, Any]]:
+    """Keep distinct source identities when providers share a canonical row."""
+
+    merged: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for value in (*_mapping_sequence(existing), *_mapping_sequence(additions)):
+        if not isinstance(value, Mapping):
+            continue
+        mapping = dict(value)
+        key = (
+            str(mapping.get("provider", "")),
+            str(mapping.get("entity_type", "")),
+            str(mapping.get("provider_id", "")),
+        )
+        if key not in seen:
+            seen.add(key)
+            merged.append(mapping)
+    return merged
+
+
+def _mapping_sequence(value: Any) -> tuple[Any, ...]:
+    if isinstance(value, Mapping):
+        return (value,)
+    if isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+        return tuple(value)
+    return ()
 
 
 def _missing_scopes(payload: Mapping[str, Any] | None) -> tuple[str, ...]:

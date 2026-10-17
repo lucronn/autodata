@@ -15,7 +15,6 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .article_intake import VehicleTarget
-from .autoapi_connector import AutoAPIConnector, fetch_required_source_resources
 from .http_connector import HttpSourceConnector
 from .knowledge_fallback import (
     KnowledgeFallbackFulfillmentHandler,
@@ -113,77 +112,40 @@ class ConfiguredKnowledgeSourceResolver:
         keywords: tuple[str, ...],
         source_hint: Any | None,
     ) -> ResolvedSource:
+        from .source_connector_client import SourceConnectorError, source_connector_registry
+
         hint = source_hint if isinstance(source_hint, Mapping) else {}
-        base_url = (
-            hint.get("base_url")
-            or hint.get("autoapi_base_url")
-            or os.getenv("AUTODATA_AUTOAPI_BASE_URL", "")
-        )
-        if not str(base_url).strip():
-            raise LookupError("AutoAPI source configuration requires a base URL")
-        content_source = _autoapi_content_source(target, hint)
-        default_region = str(
-            hint.get("region")
-            or target.region
-            or os.getenv("AUTODATA_SOURCE_REGION", "US")
-        ).strip().upper()
-        source_version = str(
-            hint.get("source_version")
-            or os.getenv("AUTODATA_AUTOAPI_SOURCE_VERSION", "autoapi-http-v1")
-        ).strip()
-        vehicle_id_value = hint.get("vehicle_id") or hint.get("autoapi_vehicle_id")
-        vehicle_id = str(vehicle_id_value).strip() if vehicle_id_value else None
+        connector = source_connector_registry().get("bankone")
+        if connector is None:
+            raise LookupError("Bankone Source Connector is not configured")
+        source_version = "source-connector-v1"
+        selector = target.as_dict()
+        selector = {key: selector[key] for key in ("year", "make", "model", "region") if key in selector}
+        if "year" not in selector:
+            selector["year"] = target.model_year
+        selector.setdefault("region", target.region or os.getenv("AUTODATA_SOURCE_REGION", "US"))
+        source_vehicle_ref = str(hint.get("source_vehicle_ref") or "").strip()
+        if not source_vehicle_ref:
+            resolution = connector.resolve_vehicle(selector)
+            candidates = resolution.body["candidates"]
+            if len(candidates) != 1:
+                raise SourceConnectorError("AMBIGUOUS" if candidates else "NOT_FOUND")
+            source_vehicle_ref = str(candidates[0]["opaque_ref"])
         operations = hint.get("operations")
         if not isinstance(operations, (list, tuple)):
-            operations = [
-                {
-                    "article_title": query,
-                    "keywords": list(keywords),
-                    "requires_parts": bool(hint.get("requires_parts")),
-                }
-            ]
-        connector = AutoAPIConnector(
-            str(base_url),
-            content_source=content_source,
-            source_version=source_version,
-            timeout_seconds=float(
-                os.getenv("AUTODATA_AUTOAPI_TIMEOUT_SECONDS", "30")
-            ),
-            max_bytes=int(
-                os.getenv("AUTODATA_AUTOAPI_MAX_BYTES", str(50 * 1024 * 1024))
-            ),
-            default_region=default_region,
-            vehicle_max_concurrency=int(
-                os.getenv("AUTODATA_AUTOAPI_VEHICLE_CONCURRENCY", "4")
-            ),
-            retry_attempts=int(
-                os.getenv("AUTODATA_AUTOAPI_RETRY_ATTEMPTS", "3")
-            ),
-            retry_backoff_seconds=float(
-                os.getenv("AUTODATA_AUTOAPI_RETRY_BACKOFF_SECONDS", "0.25")
-            ),
-            request_headers=_source_headers(),
-            source_cache_ttl_seconds=float(
-                os.getenv("AUTODATA_AUTOAPI_SOURCE_CACHE_TTL_SECONDS", "300")
-            ),
-        )
-        source_connector = _AutoAPIKnowledgeSourceConnector(
+            operations = ({"article_title": query, "keywords": list(keywords)},)
+        operations = tuple(dict(op) for op in operations if isinstance(op, Mapping))
+        source_connector = _BankoneKnowledgeSourceConnector(
             connector,
-            vehicle_id=vehicle_id,
+            source_vehicle_ref=source_vehicle_ref,
             target=target,
-            vehicle=target.as_dict(),
-            operations=tuple(
-                dict(operation)
-                for operation in operations
-                if isinstance(operation, Mapping)
-            )
-            or ({"article_title": query},),
+            operations=operations or ({"article_title": query},),
             source_persister=self.source_persister,
             on_persisted=self._record_persistence,
             on_result=self._record_autoapi_result,
         )
         return ResolvedSource(
-            str(base_url).strip().rstrip("/"),
+            connector.base_url,
             source_version=source_version,
             connector=source_connector,
         )
@@ -220,34 +182,8 @@ def _is_autoapi_request(source_hint: Any | None) -> bool:
             or source_hint.get("source_provider")
             or ""
         ).strip().casefold()
-        return provider == "autoapi" or source_hint.get("autoapi") is True
-    return bool(os.getenv("AUTODATA_AUTOAPI_BASE_URL", "").strip())
-
-
-_AUTOAPI_SOURCE_BY_MAKE = {
-    "buick": "GeneralMotors",
-    "cadillac": "GeneralMotors",
-    "chevrolet": "GeneralMotors",
-    "gmc": "GeneralMotors",
-    "oldsmobile": "GeneralMotors",
-    "pontiac": "GeneralMotors",
-    "lexus": "Motor",
-    "scion": "Motor",
-    "toyota": "Motor",
-}
-
-
-def _autoapi_content_source(
-    target: VehicleTarget, hint: Mapping[str, Any]
-) -> str:
-    for key in ("content_source", "autoapi_content_source"):
-        value = str(hint.get(key) or "").strip()
-        if value:
-            return value
-    configured = os.getenv("AUTODATA_AUTOAPI_CONTENT_SOURCE", "").strip()
-    if configured:
-        return configured
-    return _AUTOAPI_SOURCE_BY_MAKE.get(target.make.casefold(), "Motor")
+        return provider in {"autoapi", "bankone"} or source_hint.get("autoapi") is True
+    return os.getenv("AUTODATA_KNOWLEDGE_SOURCE_PROVIDER", "").strip().casefold() in {"autoapi", "bankone"}
 
 
 def _safe_source_references(references: Any) -> list[dict[str, Any]]:
@@ -310,27 +246,25 @@ class _PersistingSourceConnector:
         return resources
 
 
-class _AutoAPIKnowledgeSourceConnector:
-    """Adapt the multi-resource AutoAPI read-through result to article intake."""
+class _BankoneKnowledgeSourceConnector:
+    """Adapt Source Connector v1 article resources to vehicle-scoped intake."""
 
     name = "autoapi"
 
     def __init__(
         self,
-        connector: AutoAPIConnector,
+        connector: Any,
         *,
-        vehicle_id: str | None,
+        source_vehicle_ref: str,
         target: VehicleTarget,
-        vehicle: Mapping[str, Any],
         operations: tuple[Mapping[str, Any], ...],
         source_persister: Any | None,
         on_persisted: Any | None,
         on_result: Any | None,
     ) -> None:
         self._connector = connector
-        self._vehicle_id = vehicle_id
+        self._source_vehicle_ref = source_vehicle_ref
         self._target = target
-        self._vehicle = dict(vehicle)
         self._operations = operations
         self._source_persister = source_persister
         self._on_persisted = on_persisted
@@ -339,54 +273,76 @@ class _AutoAPIKnowledgeSourceConnector:
         self.last_price_persistence: dict[str, Any] | None = None
 
     def fetch(self, _request: dict[str, Any]) -> list[Any]:
-        vehicle_id = self._vehicle_id or self._resolve_provider_vehicle_id()
-        result = fetch_required_source_resources(
-            {**self._vehicle, "vehicle_id": vehicle_id},
-            self._operations,
-            self._connector,
-        )
-        self.last_result = result
+        from .source_connector_client import SourceConnectorError
+
+        query = str(
+            self._operations[0].get("article_title")
+            or self._operations[0].get("query")
+            or ""
+        ).strip()
+
+        def read_pages(operation: Any) -> list[dict[str, Any]]:
+            rows: list[dict[str, Any]] = []
+            cursor = None
+            seen: set[str] = set()
+            for _ in range(1000):
+                page = operation(cursor)
+                rows.extend(dict(row) for row in page.body["articles"])
+                if page.complete:
+                    return rows
+                cursor = page.next_cursor
+                if not cursor or cursor in seen:
+                    raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+                seen.add(cursor)
+            raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+
+        if query:
+            articles = read_pages(
+                lambda cursor: self._connector.search_articles(
+                    self._source_vehicle_ref, query, cursor
+                )
+            )
+        else:
+            articles = []
+        if not articles:
+            articles = read_pages(
+                lambda cursor: self._connector.list_articles(
+                    self._source_vehicle_ref, cursor
+                )
+            )
+        requested = str(self._operations[0].get("article_id") or "").strip()
+        title = str(self._operations[0].get("article_title") or "").strip().casefold()
+        matching = [row for row in articles if (requested and row["opaque_ref"] == requested) or (title and str(row.get("title", "")).strip().casefold() == title)]
+        if len(matching) > 1:
+            raise SourceConnectorError("AMBIGUOUS")
+        if not matching:
+            raise SourceConnectorError("NOT_FOUND")
+        row = matching[0]
+        refs = [row.get("resource_ref"), row.get("labor_resource_ref")]
+        refs.extend(row.get("asset_resource_refs") or [])
+        resources = [self._connector.read_resource(str(ref)).to_source_resource() for ref in dict.fromkeys(refs) if ref]
+        if not row.get("resource_ref"):
+            raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+        selected = resources[0] if resources else None
+        if selected is None:
+            raise SourceConnectorError("NOT_FOUND")
+        self.last_result = {
+            "article_list": articles,
+            "article_details": [dict(row)],
+            "labor": [item for item in resources if item is not selected],
+            "source_resources": resources,
+            "source_references": resources,
+        }
         if callable(self._on_result):
-            self._on_result(result)
-        resources = tuple(result.get("source_resources", ()))
+            self._on_result(self.last_result)
+        resources = tuple(resources)
         if self._source_persister is not None:
             persistence = _invoke_source_persister(
                 self._source_persister, resources, adapter_name=self.name
             )
             if callable(self._on_persisted):
                 self._on_persisted(persistence, resources)
-            if result.get("parts"):
-                self.last_price_persistence = persist_price_snapshots(result["parts"])
-        selected = next(
-            (
-                resource
-                for resource in resources
-                if "/article/" in resource.source_uri.casefold()
-                and "/labor/" not in resource.source_uri.casefold()
-            ),
-            None,
-        )
-        if selected is None and resources:
-            selected = resources[0]
-        if selected is None:
-            raise LookupError("AutoAPI returned no source resources")
         return [selected]
-
-    def _resolve_provider_vehicle_id(self) -> str:
-        candidates = self._connector.find_vehicle_targets(
-            self._target.model_year,
-            self._target.make,
-            self._target.model,
-        )
-        if len(candidates) != 1:
-            raise LookupError(
-                "AutoAPI vehicle resolution requires one canonical provider vehicle; "
-                f"received {len(candidates)} candidates"
-            )
-        vehicle_id = str(candidates[0].get("vehicle_id", "")).strip()
-        if not vehicle_id:
-            raise LookupError("AutoAPI vehicle resolution returned no provider vehicle ID")
-        return vehicle_id
 
 
 def _invoke_source_persister(

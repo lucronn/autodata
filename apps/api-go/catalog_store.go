@@ -164,6 +164,22 @@ type CatalogImage struct {
 	ImageID    string `json:"image_id,omitempty"`
 }
 
+// UnmarshalJSON retains the private storage locator from persisted article
+// JSON. StorageKey remains excluded from public JSON by its struct tag.
+func (image *CatalogImage) UnmarshalJSON(data []byte) error {
+	type publicImage CatalogImage
+	var decoded struct {
+		publicImage
+		StorageKey string `json:"storage_key"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*image = CatalogImage(decoded.publicImage)
+	image.StorageKey = decoded.StorageKey
+	return nil
+}
+
 type memoryCatalogStore struct {
 	mu             sync.RWMutex
 	configurations map[string]CatalogConfiguration

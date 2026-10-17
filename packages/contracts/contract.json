@@ -1,5 +1,13 @@
 {
   "schema_version": 1,
+  "source_connector": {
+    "version": "v1",
+    "openapi": "source-connector/v1/openapi.yaml",
+    "providers": ["bankone", "banktwo"],
+    "persisted_provider_mapping": {"bankone": "autoapi", "banktwo": "autoapitwo"},
+    "capabilities": ["catalog", "vehicle_resolution", "article_list", "article_search", "resource_read"],
+    "error_codes": ["INVALID_INPUT", "NOT_FOUND", "AMBIGUOUS", "UNAUTHORIZED", "RATE_LIMITED", "UPSTREAM_UNAVAILABLE", "INVALID_UPSTREAM_RESPONSE"]
+  },
   "data_state": [
     "normalized",
     "source_unnormalized",

@@ -1,0 +1,9 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000005",
+  "provider": "banktwo",
+  "source_revision": "fixture-2026-10-08",
+  "fetched_at": "2026-10-08T12:00:00Z",
+  "scope": "years",
+  "complete": true,
+  "items": [{"opaque_ref":"year-2020","label":"2020","year":2020,"region":"US"}]
+}

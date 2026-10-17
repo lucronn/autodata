@@ -16,6 +16,32 @@ from autodata_ingestion.source_bundle import normalize_source_bundle  # noqa: E4
 
 
 class SourceBundleTests(unittest.TestCase):
+    def test_article_order_can_preserve_provider_page_order_when_requested(self):
+        resource = SourceResource.from_bytes(
+            "provider://articles.json",
+            "v1",
+            json.dumps({"body": {"articleDetails": [
+                {"id": "z-2", "title": "Zeta procedure"},
+                {"id": "a-1", "title": "Alpha procedure"},
+            ]}}).encode(),
+            "application/json",
+        )
+        artifact = adapt_source_resource(resource)
+
+        default_bundle = normalize_source_bundle([artifact], "US")
+        ordered_bundle = normalize_source_bundle(
+            [artifact], "US", preserve_article_order=True
+        )
+
+        self.assertEqual(
+            [article["title"] for article in default_bundle.articles],
+            ["Alpha procedure", "Zeta procedure"],
+        )
+        self.assertEqual(
+            [article["title"] for article in ordered_bundle.articles],
+            ["Zeta procedure", "Alpha procedure"],
+        )
+
     def test_article_body_normalization_preserves_paragraph_boundaries(self):
         resource = SourceResource.from_bytes(
             "provider://articles.json",

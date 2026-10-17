@@ -1,0 +1,141 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "AutoData Catalog Media API",
+    "version": "1.0.0",
+    "description": "Consumer catalog article and stored-source media contract. Public image URLs are minted by AutoData for already-localized assets. Storage keys and provider URLs are private and are never returned by these routes."
+  },
+  "servers": [{ "url": "/" }],
+  "security": [{ "bearerAuth": [] }],
+  "tags": [{ "name": "Catalog media" }],
+  "paths": {
+    "/v1/catalog/vehicles/{vehicle_id}/articles": {
+      "get": {
+        "tags": ["Catalog media"],
+        "operationId": "listCatalogArticles",
+        "summary": "List a vehicle's catalog articles and opaque image URLs",
+        "parameters": [{ "$ref": "#/components/parameters/VehicleId" }],
+        "responses": {
+          "200": { "description": "Catalog article list. Missing or unlocalized images have no display URL.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogArticlesResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "500": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}": {
+      "get": {
+        "tags": ["Catalog media"],
+        "operationId": "getCatalogArticle",
+        "summary": "Read a catalog article and its opaque image URLs",
+        "parameters": [{ "$ref": "#/components/parameters/VehicleId" }, { "$ref": "#/components/parameters/ArticleId" }],
+        "responses": {
+          "200": { "description": "Normalized article; internal object keys and provider URLs are omitted.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogArticleResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source": {
+      "get": {
+        "tags": ["Catalog media"],
+        "operationId": "getStoredArticleSource",
+        "summary": "Read sanitized stored source content",
+        "description": "Reads the stored snapshot without calling a provider. Source images are rendered only when mapped to an already-localized object; otherwise they are omitted. HTML is CSP-protected.",
+        "parameters": [
+          { "$ref": "#/components/parameters/VehicleId" },
+          { "$ref": "#/components/parameters/ArticleId" },
+          { "name": "Accept", "in": "header", "required": false, "schema": { "type": "string", "enum": ["application/json", "text/html"] } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sanitized stored source in the requested representation.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/SourceContentResponse" } },
+              "text/html": { "schema": { "type": "string" } }
+            },
+            "headers": {
+              "Content-Security-Policy": { "schema": { "type": "string" } },
+              "X-Content-Type-Options": { "schema": { "type": "string", "example": "nosniff" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/v1/catalog/images/{token}": {
+      "get": {
+        "tags": ["Catalog media"],
+        "operationId": "getLocalizedCatalogImage",
+        "summary": "Fetch an AutoData-localized image",
+        "description": "The token is randomly minted by AutoData and resolves only to a validated local object key. It is not a provider URL or storage key. No bearer token is required; invalid or unavailable references fail closed. Tokens are environment-specific and must not be constructed from this document.",
+        "security": [],
+        "parameters": [{ "name": "token", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "minLength": 1, "maxLength": 6000 } }],
+        "responses": {
+          "200": { "description": "Localized image bytes.", "content": { "image/*": { "schema": { "type": "string", "format": "binary" } } } },
+          "404": { "description": "Invalid reference, missing local object, or invalid media.", "content": { "text/plain": { "schema": { "type": "string", "example": "catalog image not found" } } } },
+          "503": { "description": "Image key or local object storage is unavailable.", "content": { "text/plain": { "schema": { "type": "string", "example": "catalog image storage is unavailable" } } } }
+        }
+      }
+    },
+    "/v1/catalog/images": {
+      "get": {
+        "tags": ["Catalog media"],
+        "operationId": "rejectLegacyCatalogImageReference",
+        "summary": "Reject the legacy source-bearing image route",
+        "description": "The src query parameter is not accepted; the handler never fetches caller-supplied URLs.",
+        "deprecated": true,
+        "security": [],
+        "responses": { "400": { "description": "An opaque image path token is required.", "content": { "text/plain": { "schema": { "type": "string", "example": "opaque image reference required" } } } } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer" } },
+    "parameters": {
+      "VehicleId": { "name": "vehicle_id", "in": "path", "required": true, "schema": { "type": "string" } },
+      "ArticleId": { "name": "article_id", "in": "path", "required": true, "schema": { "type": "string" } }
+    },
+    "schemas": {
+      "CatalogImage": {
+        "type": "object",
+        "description": "Public image projection; object-storage keys are deliberately not part of this schema.",
+        "properties": {
+          "id": { "type": "string" },
+          "url": { "type": "string", "description": "AutoData-issued same-origin opaque URL; omitted when the asset is unavailable locally." },
+          "alt": { "type": "string" },
+          "media_type": { "type": "string" },
+          "image_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "CatalogArticle": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "vehicle_id": { "type": "string" },
+          "title": { "type": "string" },
+          "content_status": { "type": "string" },
+          "complete": { "type": "boolean" },
+          "images": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogImage" } }
+        },
+        "additionalProperties": true
+      },
+      "CatalogArticleResponse": { "type": "object", "required": ["version", "article"], "properties": { "version": { "type": "string", "example": "v1" }, "article": { "$ref": "#/components/schemas/CatalogArticle" } } },
+      "CatalogArticlesResponse": { "type": "object", "required": ["version", "items"], "properties": { "version": { "type": "string", "example": "v1" }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogArticle" } } } },
+      "SourceContentResponse": { "type": "object", "properties": { "source": { "$ref": "#/components/schemas/SourceReview" }, "content": { "type": "string" } } },
+      "SourceReview": { "type": "object", "properties": { "available": { "type": "boolean" }, "snapshot_id": { "type": "string" }, "version": { "type": "string" }, "content_sha256": { "type": "string" }, "format": { "type": "string", "enum": ["html", "json"] }, "url": { "type": "string" } } }
+    },
+    "responses": {
+      "Unauthorized": { "description": "Authentication is required." },
+      "Forbidden": { "description": "The caller lacks the required role." },
+      "NotFound": { "description": "Article or source snapshot not found." },
+      "Unavailable": { "description": "The catalog is temporarily unavailable." }
+    }
+  }
+}

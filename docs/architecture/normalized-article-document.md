@@ -81,6 +81,13 @@ using a content hash, and gives the document an internal asset ID. Public API
 responses expose only same-origin asset URLs. A failed image fetch creates an
 unavailable asset state with a reason and source evidence.
 
+Catalog display URLs are opaque references to these already-local objects.
+The API may read the configured object store to serve an image, but must never
+fetch an image from a provider during article or source-review display. Object
+keys remain internal and are omitted from public JSON and OpenAPI. An asset
+that could not be localized remains unavailable; it does not fall back to a
+remote URL.
+
 The exact source response is stored in `source_original` and linked to the
 source snapshot. The normalized document is versioned. A new source snapshot or
 normalization version creates a new revision of the same canonical article

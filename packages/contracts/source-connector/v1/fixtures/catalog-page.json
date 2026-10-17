@@ -1,0 +1,10 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "provider": "bankone",
+  "source_revision": "fixture-2026-10-08",
+  "fetched_at": "2026-10-08T12:00:00Z",
+  "scope": "models",
+  "complete": false,
+  "next_cursor": "opaque-page-2",
+  "items": [{"opaque_ref":"src-model-1","label":"Example Sedan","year":2020,"make":"Example","model":"Sedan"}]
+}

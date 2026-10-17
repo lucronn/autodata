@@ -216,45 +216,33 @@ class KnowledgeFallbackRuntimeTests(unittest.TestCase):
         # receives the exact immutable resources that will be normalized.
         self.assertEqual(captured, [resource])
 
-    def test_production_resolver_routes_autoapi_requests_through_required_resource_helper(self):
-        from autodata_ingestion import knowledge_fallback_runtime as runtime
+    def test_bankone_knowledge_resolver_reads_only_v1_resource_refs(self):
+        from types import SimpleNamespace
         from autodata_ingestion.source_adapters import SourceResource
 
-        resource = SourceResource.from_bytes(
-            "http://autoapi.test/v1/api/source/Motor/vehicle/v1/article/a1",
-            "autoapi-v1",
-            b'{"header": {}, "body": {"documentId": "a1", "html": "<p>Brake</p>"}}',
-            "application/json",
-        )
-        helper_result = {"source_resources": (resource,), "requested_article_ids": ("a1",)}
+        raw = b'{"steps":["Replace brake pads"]}'
+        resource = SourceResource.from_bytes("https://bankone.test/resources/article-ref", "revision-1", raw, "application/json")
+        class ResourceEnvelope:
+            def to_source_resource(self): return resource
+        class Client:
+            base_url = "https://bankone.test"
+            def search_articles(self, vehicle_ref, query, cursor=None):
+                self.search = (vehicle_ref, query, cursor)
+                return SimpleNamespace(body={"articles": [{"opaque_ref": "article-ref", "title": "Brake service", "resource_ref": "article-resource"}]}, complete=True, next_cursor=None)
+            def read_resource(self, ref):
+                self.read = ref
+                return ResourceEnvelope()
+        client = Client()
         resolver = ConfiguredKnowledgeSourceResolver()
-        with patch.dict(
-            os.environ,
-            {
-                "AUTODATA_KNOWLEDGE_SOURCE_PROVIDER": "autoapi",
-                "AUTODATA_AUTOAPI_BASE_URL": "http://autoapi.test",
-                "AUTODATA_AUTOAPI_CONTENT_SOURCE": "Motor",
-            },
-            clear=False,
-        ), patch.object(
-            runtime, "fetch_required_source_resources", return_value=helper_result
-        ) as helper:
-            source = resolver(
-                self.target,
-                "brake",
-                ("brake",),
-                {
-                    "provider": "autoapi",
-                    "vehicle_id": "v1",
-                    "operations": [{"article_id": "a1"}],
-                },
-            )
-            returned = source.connector.fetch({"source_uri": source.source_uri})
-
+        with patch("autodata_ingestion.source_connector_client.source_connector_registry", return_value={"bankone": client}):
+            source = resolver(self.target, "Brake service", ("brake",), {"provider": "autoapi", "source_vehicle_ref": "opaque-vehicle", "operations": [{"article_title": "Brake service"}]})
+            returned = source.connector.fetch({})
+        self.assertEqual(source.source_uri, "https://bankone.test")
+        self.assertEqual(source.connector.name, "autoapi")
+        self.assertEqual(client.search, ("opaque-vehicle", "Brake service", None))
+        self.assertEqual(client.read, "article-resource")
         self.assertEqual(returned, [resource])
-        helper.assert_called_once()
-        self.assertEqual(helper.call_args.args[0]["vehicle_id"], "v1")
-        self.assertEqual(helper.call_args.args[1], ({"article_id": "a1"},))
+        self.assertEqual(resource.content_sha256, __import__("hashlib").sha256(raw).hexdigest())
 
     def test_explicit_string_http_hint_stays_http_when_autoapi_is_configured(self):
         with patch.dict(
@@ -274,83 +262,6 @@ class KnowledgeFallbackRuntimeTests(unittest.TestCase):
 
         self.assertEqual(source.source_uri, "https://source.test/article")
         self.assertEqual(source.connector.name, "http")
-
-    def test_autoapi_resolver_uses_canonical_make_region_headers_and_runtime_limits(self):
-        from autodata_ingestion import knowledge_fallback_runtime as runtime
-
-        captured = {}
-
-        class FakeAutoAPIConnector:
-            def __init__(self, base_url, **kwargs):
-                captured["base_url"] = base_url
-                captured.update(kwargs)
-
-        with patch.dict(
-            os.environ,
-            {
-                "AUTODATA_AUTOAPI_BASE_URL": "http://autoapi.test",
-                "AUTODATA_AUTOAPI_CONTENT_SOURCE": "",
-                "AUTODATA_AUTOAPI_VEHICLE_CONCURRENCY": "7",
-                "AUTODATA_AUTOAPI_RETRY_ATTEMPTS": "5",
-                "AUTODATA_AUTOAPI_RETRY_BACKOFF_SECONDS": "0.5",
-                "AUTODATA_SOURCE_REQUEST_HEADERS_JSON": '{"X-Source": "test"}',
-            },
-            clear=True,
-        ), patch.object(runtime, "AutoAPIConnector", FakeAutoAPIConnector):
-            source = ConfiguredKnowledgeSourceResolver()(
-                self.target,
-                "brake",
-                ("brake",),
-                {"provider": "autoapi", "vehicle_id": "toyota-v1"},
-            )
-
-        self.assertEqual(source.source_uri, "http://autoapi.test")
-        self.assertEqual(captured["content_source"], "Motor")
-        self.assertEqual(captured["default_region"], "US")
-        self.assertEqual(captured["request_headers"], {"X-Source": "test"})
-        self.assertEqual(captured["vehicle_max_concurrency"], 7)
-        self.assertEqual(captured["retry_attempts"], 5)
-        self.assertEqual(captured["retry_backoff_seconds"], 0.5)
-
-    def test_autoapi_resolver_resolves_provider_vehicle_id_before_required_fetch(self):
-        from autodata_ingestion import knowledge_fallback_runtime as runtime
-        from autodata_ingestion.source_adapters import SourceResource
-
-        resource = SourceResource.from_bytes(
-            "http://autoapi.test/v1/api/source/Toyota/vehicle/provider-v1/article/a1",
-            "autoapi-v1",
-            b'{"header": {}, "body": {"documentId": "a1"}}',
-            "application/json",
-        )
-        helper_result = {"source_resources": (resource,), "requested_article_ids": ("a1",)}
-        calls = []
-
-        class FakeAutoAPIConnector:
-            def __init__(self, _base_url, **_kwargs):
-                pass
-
-            def find_vehicle_targets(self, year, make, model):
-                calls.append((year, make, model))
-                return ({"vehicle_id": "provider-v1"},)
-
-        resolver = ConfiguredKnowledgeSourceResolver()
-        with patch.dict(
-            os.environ,
-            {"AUTODATA_AUTOAPI_BASE_URL": "http://autoapi.test"},
-            clear=True,
-        ), patch.object(runtime, "AutoAPIConnector", FakeAutoAPIConnector), patch.object(
-            runtime, "fetch_required_source_resources", return_value=helper_result
-        ) as helper:
-            source = resolver(
-                self.target,
-                "brake",
-                ("brake",),
-                {"provider": "autoapi", "operations": [{"article_id": "a1"}]},
-            )
-            source.connector.fetch({})
-
-        self.assertEqual(calls, [(2024, "Toyota", "Corolla")])
-        self.assertEqual(helper.call_args.args[0]["vehicle_id"], "provider-v1")
 
     def test_fulfill_once_retains_autoapi_parts_raw_result_and_references(self):
         from autodata_ingestion import knowledge_fallback_runtime as runtime

@@ -16,12 +16,19 @@ diagrams, search, embeddings, and quality review.
 ## Illustrated repair guides
 
 Describe the exact vehicle and repair in chat. AutoData can combine its
-existing catalog with the read-only [AutoAPI Two repair-content API](https://autoapitwo.vercel.app/docs)
+existing catalog with independent Bankone and Banktwo source connectors through
+the versioned [Source Connector v1 contract](../../packages/contracts/source-connector/v1/openapi.yaml)
 to produce a vehicle-matched DIY guide with access, removal, reassembly,
 installation, torque values, timing, fluids, final checks, and step-specific
 figures. A complete guide can be downloaded as the same immutable PDF revision
 shown in chat. Missing required content remains a preview and does not produce
 a final PDF.
+
+The intended service origins are `https://bankone.cars.tk` and
+`https://banktwo.cars.tk`. Public DNS, TLS, deployments, and live connector
+access remain pending; these domains have not been verified live. See the
+repository's [independent connector architecture](../architecture/independent-bank-connectors.md)
+for current ownership and status.
 
 ## Current boundary
 

@@ -1,0 +1,19 @@
+{
+  "goal": "Separate AutoData, Bankone, and Banktwo into independent codebases and deployments connected by a versioned provider-neutral API.",
+  "plan_ref": "docs/superpowers/plans/2026-10-08-independent-bank-connectors.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/132",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/independent-bank-connectors.md",
+    "docs/superpowers/specs/2026-10-08-independent-bank-connectors-design.md"
+  ],
+  "todo": [
+    "Freeze and test the provider-neutral v1 HTTP contract.",
+    "Move provider-specific API behavior into independently deployable Bankone and Banktwo repositories.",
+    "Replace AutoData-specific adapters with generic HTTP clients and preserve stored identity/provenance.",
+    "Migrate source fetch jobs additively and preserve in-flight work/idempotency.",
+    "Deploy direct bank subdomains, remove cross-bank routing and AutoData build coupling, and canary both APIs."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-08T15:52:44.790031+00:00"
+}

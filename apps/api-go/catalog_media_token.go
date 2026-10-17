@@ -9,10 +9,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
+	"regexp"
 	"strings"
 )
 
 const catalogImageTokenAAD = "autodata:catalog-image:v1"
+
+var localCatalogImageKeyPattern = regexp.MustCompile(`^procedure-images/[a-f0-9]{64}$`)
 
 // configuredCatalogImageKey uses an explicit media key when available, or
 // derives a domain-separated key from the API's existing internal token.
@@ -34,8 +37,8 @@ func deriveCatalogImageReferenceKey(secret string) []byte {
 	return mac.Sum(nil)
 }
 
-func sealCatalogImageURL(source string, key []byte) (string, error) {
-	if len(key) != 32 || len(source) == 0 || len(source) > 4096 {
+func sealCatalogImageReference(objectKey string, key []byte) (string, error) {
+	if len(key) != 32 || !localCatalogImageKeyPattern.MatchString(objectKey) {
 		return "", errors.New("invalid catalog image reference")
 	}
 	block, err := aes.NewCipher(key)
@@ -50,11 +53,11 @@ func sealCatalogImageURL(source string, key []byte) (string, error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return "", err
 	}
-	sealed := aead.Seal(nonce, nonce, []byte(source), []byte(catalogImageTokenAAD))
+	sealed := aead.Seal(nonce, nonce, []byte(objectKey), []byte(catalogImageTokenAAD))
 	return base64.RawURLEncoding.EncodeToString(sealed), nil
 }
 
-func openCatalogImageURL(token string, key []byte) (string, error) {
+func openCatalogImageReference(token string, key []byte) (string, error) {
 	if len(key) != 32 || len(token) == 0 || len(token) > 6000 {
 		return "", errors.New("invalid catalog image reference")
 	}
@@ -73,6 +76,9 @@ func openCatalogImageURL(token string, key []byte) (string, error) {
 	nonce, ciphertext := sealed[:aead.NonceSize()], sealed[aead.NonceSize():]
 	plaintext, err := aead.Open(nil, nonce, ciphertext, []byte(catalogImageTokenAAD))
 	if err != nil {
+		return "", errors.New("invalid catalog image reference")
+	}
+	if !localCatalogImageKeyPattern.Match(plaintext) {
 		return "", errors.New("invalid catalog image reference")
 	}
 	return string(plaintext), nil
