@@ -4,17 +4,17 @@ import unittest
 from pathlib import Path
 
 
-from autodata_ingestion.autoapi_batch import (
-    AutoAPIBatch,
-    build_autoapi_batch_plan,
+from autodata_ingestion.bankone_batch import (
+    BankoneBatch,
+    build_bankone_batch_plan,
     collect_autoapi_selection_rows,
     derive_autoapi_vehicle_rows,
-    execute_autoapi_batch,
+    execute_bankone_batch,
     load_selector_rows,
 )
 
 
-class AutoAPIBatchTests(unittest.TestCase):
+class BankoneBatchTests(unittest.TestCase):
     def test_derives_vehicle_configurations_from_split_autoapi_responses(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -70,7 +70,7 @@ class AutoAPIBatchTests(unittest.TestCase):
                 )
             )
 
-            plan = build_autoapi_batch_plan(root, default_region="US")
+            plan = build_bankone_batch_plan(root, default_region="US")
 
         self.assertEqual(len(plan), 1)
         self.assertEqual(plan[0].vehicle_key, "cadillac-escalade-esv-2019-us")
@@ -119,7 +119,7 @@ class AutoAPIBatchTests(unittest.TestCase):
                 json.dumps({"header": {"status": "OK"}, "body": []})
             )
 
-            plan = build_autoapi_batch_plan(
+            plan = build_bankone_batch_plan(
                 root,
                 selector_rows=[
                     {"year": 2019, "make": "Cadillac", "model": "Escalade ESV", "region": "US"},
@@ -135,9 +135,9 @@ class AutoAPIBatchTests(unittest.TestCase):
         self.assertIsNone(plan[1].source_directory)
 
     def test_execution_reports_missing_source_without_stringifying_null_path(self):
-        result = execute_autoapi_batch(
+        result = execute_bankone_batch(
             [
-                AutoAPIBatch(
+                BankoneBatch(
                     vehicle_key="ford-f-150-2020-us",
                     vehicle={
                         "year": 2020,
@@ -178,7 +178,7 @@ class AutoAPIBatchTests(unittest.TestCase):
                 )
             )
             selector_rows = load_selector_rows(root / "vehicles.json")
-            plan = build_autoapi_batch_plan(
+            plan = build_bankone_batch_plan(
                 root,
                 selector_rows=selector_rows,
                 default_region="US",
@@ -213,7 +213,7 @@ class AutoAPIBatchTests(unittest.TestCase):
                     }
                 )
             )
-            plan = build_autoapi_batch_plan(
+            plan = build_bankone_batch_plan(
                 root,
                 selector_rows=[
                     {
@@ -255,7 +255,7 @@ class AutoAPIBatchTests(unittest.TestCase):
                 )
             )
             rows = load_selector_rows(path)
-            plan = build_autoapi_batch_plan(
+            plan = build_bankone_batch_plan(
                 root, selector_rows=rows, default_region="US"
             )
 
@@ -303,7 +303,7 @@ class AutoAPIBatchTests(unittest.TestCase):
                     )
                 )
 
-            plan = build_autoapi_batch_plan(root, default_region="US")
+            plan = build_bankone_batch_plan(root, default_region="US")
 
         self.assertEqual(len(plan), 1)
         self.assertEqual(plan[0].vehicle_key, "cadillac-escalade-esv-2019-us")

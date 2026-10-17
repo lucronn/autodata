@@ -1,4 +1,4 @@
-"""Durable per-vehicle AutoAPI article-fetch job persistence."""
+"""Durable per-vehicle Bankone article-fetch job persistence."""
 
 from __future__ import annotations
 
@@ -13,13 +13,13 @@ _JOB_STATUSES = {"pending", "completed", "needs_review", "failed"}
 _TERMINAL_JOB_STATUSES = {"completed", "needs_review", "dead_letter"}
 
 
-def persist_autoapi_article_fetch_jobs(
+def persist_bankone_article_fetch_jobs(
     batches: Iterable[Any],
     results: Iterable[Mapping[str, Any]],
     *,
     selector_persistence: Mapping[str, Any] | None,
     source_version: str,
-    adapter_name: str = "autoapi-local",
+    adapter_name: str = "bankone-local",
 ) -> dict[str, Any]:
     """Persist one replayable all-articles job for every planned vehicle.
 
@@ -34,7 +34,7 @@ def persist_autoapi_article_fetch_jobs(
     result_by_vehicle = {str(item["vehicle_key"]): item for item in results}
     vehicle_ids = _vehicle_ids(selector_persistence)
     if not vehicle_ids:
-        raise ValueError("selector persistence is required to create AutoAPI jobs")
+        raise ValueError("selector persistence is required to create Bankone jobs")
 
     import psycopg
     from psycopg.types.json import Jsonb
@@ -360,7 +360,7 @@ def _stable_uuid(value: str) -> str:
 
 __all__ = [
     "claim_autoapi_article_fetch_job",
-    "persist_autoapi_article_fetch_jobs",
+    "persist_bankone_article_fetch_jobs",
     "record_autoapi_article_fetch_failure",
     "record_autoapi_article_fetch_success",
 ]

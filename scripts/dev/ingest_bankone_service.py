@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
 
-from autodata_ingestion.autoapi_batch import execute_autoapi_batch  # noqa: E402
+from autodata_ingestion.bankone_batch import execute_bankone_batch  # noqa: E402
 from autodata_ingestion.autoapi_connector import AutoAPIConnector  # noqa: E402
 
 
@@ -63,7 +63,7 @@ def main() -> None:
     )
     catalog = connector.fetch_catalog()
     plan = catalog.to_batches()
-    output = execute_autoapi_batch(
+    output = execute_bankone_batch(
         plan,
         source_version=args.source_version,
         persist=args.persist,

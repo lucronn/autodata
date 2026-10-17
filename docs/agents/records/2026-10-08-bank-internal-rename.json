@@ -1,0 +1,19 @@
+{
+  "goal": "Rename AutoData internal AutoAPI/AutoDB references to Bankone/Banktwo while preserving persisted compatibility identifiers.",
+  "plan_ref": "docs/superpowers/plans/2026-10-08-bank-internal-rename.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/131",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/bank-internal-naming.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Rename autoapi_batch/autoapi_job_persistence modules, symbols, tests, and ingest_autoapi_* scripts to Bankone equivalents.",
+    "Update Dockerfile and README operator commands to the new script names.",
+    "Leave migration filenames and stored provider IDs unchanged.",
+    "Run focused Bankone batch/persistence tests and path-referencing checks."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-17T12:47:17Z",
+  "base_sha": "9db42956ce0b6c5a936c546bbc4bbcfcd533f196"
+}

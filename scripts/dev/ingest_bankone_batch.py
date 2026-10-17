@@ -12,10 +12,10 @@ from pathlib import Path
 ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
 
-from autodata_ingestion.autoapi_batch import (  # noqa: E402
-    build_autoapi_batch_plan,
+from autodata_ingestion.bankone_batch import (  # noqa: E402
+    build_bankone_batch_plan,
     collect_autoapi_selection_rows,
-    execute_autoapi_batch,
+    execute_bankone_batch,
     load_selector_rows,
 )
 
@@ -36,13 +36,13 @@ def main() -> None:
             default_region=args.region,
             source_version=args.source_version,
         )
-    plan = build_autoapi_batch_plan(
+    plan = build_bankone_batch_plan(
         args.source_root,
         selector_rows=selector_rows,
         default_region=args.region,
         source_version=args.source_version,
     )
-    output = execute_autoapi_batch(
+    output = execute_bankone_batch(
         plan,
         source_version=args.source_version,
         persist=args.persist,

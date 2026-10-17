@@ -7,10 +7,10 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
-from autodata_ingestion.autoapi_batch import AutoAPIBatch  # noqa: E402
-from autodata_ingestion.autoapi_job_persistence import (  # noqa: E402
+from autodata_ingestion.bankone_batch import BankoneBatch  # noqa: E402
+from autodata_ingestion.bankone_job_persistence import (  # noqa: E402
     claim_autoapi_article_fetch_job,
-    persist_autoapi_article_fetch_jobs,
+    persist_bankone_article_fetch_jobs,
     record_autoapi_article_fetch_failure,
 )
 
@@ -61,13 +61,13 @@ class AutoAPIJobPersistenceTests(unittest.TestCase):
         cursor = RecordingCursor()
         connection = RecordingConnection(cursor)
         batches = [
-            AutoAPIBatch(
+            BankoneBatch(
                 vehicle_key="ford-f-150-2020-us",
                 vehicle={"year": 2020, "make": "Ford", "model": "F-150", "region": "US"},
                 source_directory=None,
                 configurations=(),
             ),
-            AutoAPIBatch(
+            BankoneBatch(
                 vehicle_key="cadillac-escalade-esv-2019-us",
                 vehicle={
                     "year": 2019,
@@ -115,7 +115,7 @@ class AutoAPIJobPersistenceTests(unittest.TestCase):
             },
         ):
             with patch.dict("os.environ", {"AUTODATA_POSTGRES_PASSWORD": "test-only"}):
-                result = persist_autoapi_article_fetch_jobs(
+                result = persist_bankone_article_fetch_jobs(
                     batches,
                     results,
                     selector_persistence=selector_persistence,
@@ -176,7 +176,7 @@ class AutoAPIJobPersistenceTests(unittest.TestCase):
         cursor = RecordingCursor()
         connection = RecordingConnection(cursor)
         batches = [
-            AutoAPIBatch(
+            BankoneBatch(
                 vehicle_key="cadillac-escalade-esv-2019-us",
                 vehicle={
                     "year": 2019,
@@ -214,7 +214,7 @@ class AutoAPIJobPersistenceTests(unittest.TestCase):
             },
         ):
             with patch.dict("os.environ", {"AUTODATA_POSTGRES_PASSWORD": "test-only"}):
-                persist_autoapi_article_fetch_jobs(
+                persist_bankone_article_fetch_jobs(
                     batches,
                     [
                         {
