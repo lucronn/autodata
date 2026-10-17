@@ -122,9 +122,10 @@ generic `Replace ...` labels.
 
 ## Follow-up: procedure artifact navigation and formatting
 
-The complete guide actions in the dashboard are inspection actions. They must
+The complete guide actions in the Workshop are inspection actions. They must
 open the revision-matched HTML or PDF in a new browser tab/window so the user
-can read the formatted procedure while keeping the chatbot answer available.
+can read the formatted procedure while keeping the selected Workshop article
+available.
 They must not force a download: the dashboard links omit `download`, use
 `target="_blank"` with `rel="noopener noreferrer"`, and the authorized Go and
 ingestion guide responses use `Content-Disposition: inline`.

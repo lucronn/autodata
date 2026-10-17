@@ -35,11 +35,16 @@ class ComposeImageContractTests(unittest.TestCase):
         self.assertIn("!reset []", compose)
         self.assertIn("127.0.0.1:9333/cluster/status", compose)
 
-    def test_chat_runtime_is_not_active_by_default(self):
+    def test_chat_worker_and_chat_smoke_are_removed_from_default_product_path(self):
         compose = COMPOSE.read_text()
+        workflow = (ROOT / ".github" / "workflows" / "autonomous-verification.yml").read_text()
+        worker = (ROOT / "workers" / "ingestion-python" / "src" / "autodata_ingestion" / "worker.py").read_text()
 
-        self.assertIn("AUTODATA_CHAT_WORKER_ENABLED: ${AUTODATA_CHAT_WORKER_ENABLED:-0}", compose)
-        self.assertNotIn("AUTODATA_CHAT_RUNTIME_BACKEND:", compose)
+        self.assertNotIn("AUTODATA_CHAT_WORKER_ENABLED", compose)
+        self.assertNotIn("chat-smoke:", compose)
+        self.assertNotIn("chat-smoke", workflow)
+        self.assertNotIn("AUTODATA_CHAT_WORKER_ENABLED", worker)
+        self.assertNotIn("AUTODATA_CHAT_QUERY_JSON", worker)
 
 
 if __name__ == "__main__":

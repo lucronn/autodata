@@ -2,13 +2,11 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 )
 
 type fakeIngestionClient struct {
@@ -121,140 +119,7 @@ func TestKnowledgeQueryAPIRejectsTrailingJSON(t *testing.T) {
 	}
 }
 
-func TestHTTPIngestionClientAcceptsBoundedSourceFallbackResponse(t *testing.T) {
-	largeSource := append([]byte(`{"source_unnormalized":"`), bytes.Repeat([]byte("a"), 2<<20)...)
-	largeSource = append(largeSource, []byte(`"}`)...)
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/v1/chat/queries/q-large" {
-			t.Fatalf("path = %q, want chat query path", request.URL.Path)
-		}
-		_, _ = response.Write(largeSource)
-	}))
-	defer server.Close()
-
-	client, err := NewHTTPIngestionClient(server.URL, "", time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	status, body, err := client.Get(context.Background(), httptest.NewRequest(http.MethodGet, "/chat/queries/q-large", nil), "q-large")
-	if err != nil {
-		t.Fatalf("large source response failed: %v", err)
-	}
-	if status != http.StatusOK || len(body) != len(largeSource) {
-		t.Fatalf("status/body length = %d/%d, want %d/%d", status, len(body), http.StatusOK, len(largeSource))
-	}
-}
-
-func TestHTTPIngestionClientRetriesTransientGuidePDFResponse(t *testing.T) {
-	requestCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		requestCount++
-		if request.URL.Path != "/v1/chat/queries/q-pdf/guide.pdf" {
-			t.Fatalf("path = %q, want guide PDF path", request.URL.Path)
-		}
-		if requestCount == 1 {
-			response.WriteHeader(http.StatusBadGateway)
-			_, _ = response.Write([]byte(`{"error":"transient"}`))
-			return
-		}
-		response.Header().Set("Content-Type", "application/pdf")
-		_, _ = response.Write([]byte("%PDF-test"))
-	}))
-	defer server.Close()
-
-	client, err := NewHTTPIngestionClient(server.URL, "", time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	status, body, err := client.GuidePDF(
-		context.Background(),
-		httptest.NewRequest(http.MethodGet, "/chat/queries/q-pdf/guide.pdf", nil),
-		"q-pdf",
-	)
-	if err != nil {
-		t.Fatalf("guide PDF failed: %v", err)
-	}
-	if status != http.StatusOK || string(body) != "%PDF-test" {
-		t.Fatalf("status/body = %d/%q, want 200/PDF", status, body)
-	}
-	if requestCount != 2 {
-		t.Fatalf("request count = %d, want one retry", requestCount)
-	}
-}
-
-func TestHTTPIngestionClientRetriesTransientGuideHTMLResponse(t *testing.T) {
-	requestCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		requestCount++
-		if request.URL.Path != "/v1/chat/queries/q-html/guide.html" {
-			t.Fatalf("path = %q, want guide HTML path", request.URL.Path)
-		}
-		if requestCount == 1 {
-			response.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = response.Write([]byte(`{"error":"transient"}`))
-			return
-		}
-		response.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = response.Write([]byte("<!doctype html><html><body>guide</body></html>"))
-	}))
-	defer server.Close()
-
-	client, err := NewHTTPIngestionClient(server.URL, "", time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	status, body, err := client.GuideHTML(
-		context.Background(),
-		httptest.NewRequest(http.MethodGet, "/chat/queries/q-html/guide.html", nil),
-		"q-html",
-	)
-	if err != nil {
-		t.Fatalf("guide HTML failed: %v", err)
-	}
-	if status != http.StatusOK || string(body) != "<!doctype html><html><body>guide</body></html>" {
-		t.Fatalf("status/body = %d/%q, want 200/HTML", status, body)
-	}
-	if requestCount != 2 {
-		t.Fatalf("request count = %d, want one retry", requestCount)
-	}
-}
-
-func TestHTTPIngestionClientRetriesTransientChatQueryResponse(t *testing.T) {
-	requestCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		requestCount++
-		if request.URL.Path != "/v1/chat/queries/q-get" {
-			t.Fatalf("path = %q, want chat query path", request.URL.Path)
-		}
-		if requestCount == 1 {
-			response.WriteHeader(http.StatusBadGateway)
-			return
-		}
-		_, _ = response.Write([]byte(`{"query_id":"q-get","status":"available"}`))
-	}))
-	defer server.Close()
-
-	client, err := NewHTTPIngestionClient(server.URL, "", time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	status, body, err := client.Get(
-		context.Background(),
-		httptest.NewRequest(http.MethodGet, "/chat/queries/q-get", nil),
-		"q-get",
-	)
-	if err != nil {
-		t.Fatalf("chat query failed: %v", err)
-	}
-	if status != http.StatusOK || string(body) != `{"query_id":"q-get","status":"available"}` {
-		t.Fatalf("status/body = %d/%q, want 200/query", status, body)
-	}
-	if requestCount != 2 {
-		t.Fatalf("request count = %d, want one retry", requestCount)
-	}
-}
-
-func TestDefaultIngestionTimeoutSupportsGuidePDFGeneration(t *testing.T) {
+func TestDefaultIngestionTimeoutSupportsArticleHydration(t *testing.T) {
 	if defaultIngestionTimeoutSeconds < 120 {
 		t.Fatalf("default ingestion timeout = %d seconds, want at least 120", defaultIngestionTimeoutSeconds)
 	}
