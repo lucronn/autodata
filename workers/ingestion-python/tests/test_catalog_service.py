@@ -11,8 +11,10 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 from autodata_ingestion.catalog_service import (
     _ArticleCatalogProgress,
     CatalogRequest,
+    CatalogResult,
     CacheFirstCatalogService,
     _engine_number,
+    _persist_hydration_scope,
     _source_failure_detail,
     _find_source_article,
     _load_autoapitwo_article_catalog,
@@ -459,6 +461,68 @@ class CatalogServiceTests(unittest.TestCase):
         self.assertFalse(result.complete)
         self.assertEqual(provider.calls, [])
         self.assertEqual(result.missing_scopes, ("provider",))
+
+
+    def test_persist_hydration_scope_allows_empty_complete_provider_reads(self):
+        import sys
+        from types import ModuleType
+        from unittest.mock import MagicMock
+
+        class Cursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def execute(self, *_args, **_kwargs):
+                return None
+
+        class Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def cursor(self):
+                return Cursor()
+
+            def commit(self):
+                return None
+
+        connect = MagicMock(return_value=Connection())
+        jsonb_mod = ModuleType("psycopg.types.json")
+        jsonb_mod.Jsonb = lambda value: value
+        types_mod = ModuleType("psycopg.types")
+        types_mod.json = jsonb_mod
+        psycopg_mod = ModuleType("psycopg")
+        psycopg_mod.connect = connect
+        psycopg_mod.types = types_mod
+
+        request = {
+            "scope": "configurations",
+            "year": 2026,
+            "make": "Dodge",
+            "model": "Charger R T 4 Door",
+            "region": "US",
+        }
+        result = CatalogResult(rows=(), complete=True, provenance=())
+        with patch.dict(os.environ, {"AUTODATA_SOURCE_PERSIST": "1"}), patch(
+            "autodata_ingestion.catalog_sync._conninfo", return_value={}
+        ), patch.dict(
+            sys.modules,
+            {
+                "psycopg": psycopg_mod,
+                "psycopg.types": types_mod,
+                "psycopg.types.json": jsonb_mod,
+            },
+        ):
+            coverage = _persist_hydration_scope(request, result)
+
+        self.assertEqual(coverage["status"], "persisted")
+        self.assertIn("configurations|2026|dodge|charger r t 4 door|US", coverage["scope_key"])
+        connect.assert_called_once()
 
 
 if __name__ == "__main__":

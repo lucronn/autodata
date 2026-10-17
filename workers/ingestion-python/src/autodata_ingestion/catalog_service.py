@@ -1045,7 +1045,9 @@ def _persist_resolved_catalog_rows(
 def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult) -> dict[str, Any]:
     """Persist a durable completeness marker for a successful scoped read."""
 
-    if not result.complete or not result.rows or os.getenv("AUTODATA_SOURCE_PERSIST", "1") != "1":
+    # Empty rows are allowed: a complete provider enumeration with no matching
+    # cars still proves the scope was walked and must clear API hydrating.
+    if not result.complete or os.getenv("AUTODATA_SOURCE_PERSIST", "1") != "1":
         return {"status": "not_complete"}
     from .catalog_sync import _conninfo
 

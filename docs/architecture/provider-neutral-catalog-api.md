@@ -3,7 +3,7 @@
 AutoData is the durable catalog service for external applications. A client
 selects a year, make, model, engine/base/trim, and article through versioned
 API resources. AutoData serves stored canonical records and hydrates missing or
-incomplete records from AutoAPI and AutoAPItwo.
+incomplete records from Bankone and Banktwo.
 
 The public contract is published at `/openapi.json`; `/swagger/` serves the
 same-origin interactive Swagger UI with prefilled examples for the full
@@ -15,6 +15,14 @@ configuration, article, step, and image records. The public API returns only
 provider-neutral projections. A source list is not treated as complete until
 the adapter proves its expected scope was enumerated; an incomplete record is
 usable only as an explicit incomplete state that can trigger hydration.
+
+Usable complete configuration rows already stored for a year/make/model must
+remain selectable while background hydration continues. The configurations
+response must not keep `hydrating: true` solely because the durable scope
+marker is missing when every returned item is already complete. Tracked in
+[Issue #134](https://github.com/lucronn/autodata/issues/134) and
+[Project #8](https://github.com/users/lucronn/projects/8); plan:
+[`2026-10-08-catalog-step5-usable-configurations.md`](../superpowers/plans/2026-10-08-catalog-step5-usable-configurations.md).
 
 Article detail is normalized once. Its original provider content remains
 immutable, normalized steps retain source order, optional wording rewrite is
