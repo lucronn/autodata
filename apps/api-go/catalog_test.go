@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -74,6 +75,42 @@ func TestCatalogCascadeReturnsMakesModelsAndConfigurations(t *testing.T) {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Fatalf("%s body = %s, want %q", path, response.Body.String(), want)
 		}
+	}
+}
+
+type incompleteScopeCatalogStore struct {
+	*memoryCatalogStore
+}
+
+func (s incompleteScopeCatalogStore) CatalogScopeComplete(context.Context, Principal, string, int, string, string, string) (bool, error) {
+	return false, nil
+}
+
+func TestUsableConfigurationsAreNotBlockedByMissingHydrationScope(t *testing.T) {
+	store := incompleteScopeCatalogStore{memoryCatalogStore: catalogFixtureStore()}
+	capture := &fakeIngestionClient{status: http.StatusAccepted}
+	server := NewServerWithCatalogStore(staticReadiness{}, &fakeAuthenticator{
+		principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}},
+	}, newMemoryRequestStore(), store)
+	server.ingestionClient = capture
+
+	response := catalogRequest(server, "/v1/catalog/years/2024/makes/acme/models/roadster/configurations")
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var body CatalogConfigurationsResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Hydrating || len(body.Items) != 1 || !body.Items[0].Complete {
+		t.Fatalf("body = %#v, want usable items with hydrating false", body)
+	}
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for capture.path == "" && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if capture.path != "/v1/catalog/ensure" {
+		t.Fatalf("expected background ensure to fill the missing scope marker, got path %q", capture.path)
 	}
 }
 

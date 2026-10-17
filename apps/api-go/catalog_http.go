@@ -146,8 +146,12 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	hydrating := (!complete || catalogConfigurationsIncomplete(items)) && s.ingestionClient != nil
-	if hydrating {
+	usable := !catalogConfigurationsIncomplete(items)
+	// Usable complete rows must stay selectable even when the durable scope
+	// marker is still missing. Keep background ensure running until the marker
+	// lands, but do not hide the list behind hydrating:true.
+	hydrating := !usable && s.ingestionClient != nil
+	if (!complete || !usable) && s.ingestionClient != nil {
 		s.scheduleCatalogHydration(request, map[string]any{
 			"scope": "configurations", "year": year, "make": makeName,
 			"model": modelName, "region": catalogRegion(request),
@@ -155,7 +159,7 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	}
 	writeJSON(response, http.StatusOK, CatalogConfigurationsResponse{
 		Version: "v1", Items: items,
-		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete && !catalogConfigurationsIncomplete(items), Hydrating: hydrating},
+		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete && usable, Hydrating: hydrating},
 	})
 }
 
