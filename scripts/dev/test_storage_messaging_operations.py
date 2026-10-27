@@ -234,7 +234,10 @@ class StorageMessagingOperationsTests(unittest.TestCase):
 
         for script_name, expected_flag in [
             ("ingest_bankone_service.py", "--limit"),
+            ("ingest_bankone_service.py", "--address"),
             ("ingest_banktwo_service.py", "--limit"),
+            ("ingest_banktwo_service.py", "--address"),
+            ("ingest_bankone_batch.py", "--address"),
             ("deep_lane_smoke.py", "--processing-version"),
             ("deep_lane_smoke.py", "--address"),
             ("smoke_local_stack.py", "--base-url"),
@@ -245,10 +248,14 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             ("payment_reconciliation_smoke.py", "--address"),
             ("reconcile_payments.py", "--address"),
             ("migrate.py", "--address"),
+            ("migrate.py", "--database-url"),
             ("migration_plan.py", "--migrations-dir"),
             ("nats_health.py", "--stream"),
+            ("nats_health.py", "--nats-url"),
             ("object_storage_health.py", "--bucket"),
+            ("object_storage_health.py", "--s3-endpoint"),
             ("ingestion_smoke.py", "--address"),
+            ("ingestion_smoke.py", "--database-url"),
             ("ingestion_smoke.py", "--s3-endpoint"),
             ("ingestion_smoke.py", "--nats-url"),
             ("replay_outbox.py", "--address"),
@@ -265,6 +272,23 @@ class StorageMessagingOperationsTests(unittest.TestCase):
                 check=True,
             )
             self.assertIn(expected_flag, result.stdout, f"missing {expected_flag} in {script_name}")
+
+
+    def test_bank_service_scripts_cli_argument_parsing(self):
+        import subprocess
+
+        for script_name in ("ingest_bankone_service.py", "ingest_banktwo_service.py"):
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts/dev" / script_name), "--help"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            self.assertIn("--address", result.stdout)
+            self.assertIn("--database-url", result.stdout)
+            self.assertIn("--limit", result.stdout)
+            self.assertIn("--timeout-seconds", result.stdout)
+            self.assertIn("--persist", result.stdout)
 
 
 if __name__ == "__main__":

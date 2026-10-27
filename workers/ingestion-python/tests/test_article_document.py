@@ -504,3 +504,115 @@ def test_paragraph_block_extracts_content_and_body_and_preserves_images():
     assert blocks[2]["text"] == "Front Brake Service"
     assert blocks[2]["level"] == 3
 
+
+def test_document_figure_queue_does_not_duplicate_block_images():
+    article = {
+        "article_id": "test-block-img-dedup",
+        "images": [
+            {
+                "image_id": "step-fig-1",
+                "storage_key": "procedure-images/step1",
+                "alt": "Step 1 Figure",
+            },
+            {
+                "image_id": "para-fig-2",
+                "storage_key": "procedure-images/para2",
+                "alt": "Paragraph Figure",
+            },
+            {
+                "image_id": "standalone-fig-3",
+                "storage_key": "procedure-images/standalone3",
+                "alt": "Unattached PDF Figure",
+            },
+        ],
+    }
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "step",
+                "action": "Loosen caliper bolts.",
+                "number": 1,
+                "images": [
+                    {
+                        "image_id": "step-fig-1",
+                        "storage_key": "procedure-images/step1",
+                    }
+                ],
+            },
+            {
+                "kind": "paragraph",
+                "text": "Apply anti-seize compound to guide pins.",
+                "images": [
+                    {
+                        "image_id": "para-fig-2",
+                        "storage_key": "procedure-images/para2",
+                    }
+                ],
+            },
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    blocks = document["blocks"]
+    # Blocks should be: step, paragraph, and the unattached standalone-fig-3 image block.
+    # step-fig-1 and para-fig-2 should NOT be re-added as standalone image blocks.
+    assert len(blocks) == 3
+    assert blocks[0]["type"] == "step"
+    assert blocks[0]["images"][0]["image_id"] == "step-fig-1"
+    assert blocks[1]["type"] == "paragraph"
+    assert blocks[1]["images"][0]["image_id"] == "para-fig-2"
+    assert blocks[2]["type"] == "image"
+    assert blocks[2]["image_id"] == "standalone-fig-3"
+
+
+def test_numbered_paragraph_preserves_attached_images():
+    article = {"article_id": "test-numbered-para-img"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "paragraph",
+                "text": "1. Disconnect negative battery terminal.",
+                "images": [
+                    {
+                        "image_id": "batt-term-fig",
+                        "storage_key": "procedure-images/battery",
+                        "alt": "Battery terminal",
+                    }
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    step_block = document["blocks"][0]
+    assert step_block["type"] == "step"
+    assert step_block["number"] == 1
+    assert step_block["text"] == "Disconnect negative battery terminal."
+    assert "images" in step_block
+    assert step_block["images"][0]["image_id"] == "batt-term-fig"
+    assert step_block["images"][0]["status"] == "available"
+
+
+def test_step_block_handles_mapping_instructions():
+    article = {"article_id": "test-step-mapping-inst"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "step",
+                "instructions": [
+                    {"instruction": "Remove retaining clip."},
+                    {"text": "Pull wiring harness plug firmly."},
+                ],
+                "number": 2,
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    step_block = document["blocks"][0]
+    assert step_block["type"] == "step"
+    assert step_block["number"] == 2
+    assert step_block["text"] == "Remove retaining clip. Pull wiring harness plug firmly."
+

@@ -47,18 +47,18 @@
 
 ## Concrete Todo
 
-- [ ] Enhance build_ordered_document in article_document.py to pre-scan images on all source blocks and preserve images on numbered paragraphs.
-- [ ] Support mapping elements in instructions lists in _step_block.
-- [ ] Add --address and --database-url arguments to scripts/dev/ingest_bankone_batch.py.
-- [ ] Add --address and --database-url arguments to scripts/dev/ingest_bankone_service.py and ingest_banktwo_service.py.
-- [ ] Support --database-url alias in scripts/dev/migrate.py and scripts/dev/ingestion_smoke.py.
-- [ ] Support --nats-url alias in scripts/dev/nats_health.py and --s3-endpoint alias in scripts/dev/object_storage_health.py.
-- [ ] Add unit tests in workers/ingestion-python/tests/test_article_document.py.
-- [ ] Expand CLI argument assertions in scripts/dev/test_storage_messaging_operations.py.
-- [ ] Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.
-- [ ] Update .env.example with developer CLI options.
-- [ ] Record delivery in docs/agents/records/2026-10-27-document-image-dedup-dev-cli-uniformity.json.
-- [ ] Prune merged remote git branches.
+- [x] Enhance build_ordered_document in article_document.py to pre-scan images on all source blocks and preserve images on numbered paragraphs.
+- [x] Support mapping elements in instructions lists in _step_block.
+- [x] Add --address and --database-url arguments to scripts/dev/ingest_bankone_batch.py.
+- [x] Add --address and --database-url arguments to scripts/dev/ingest_bankone_service.py and ingest_banktwo_service.py.
+- [x] Support --database-url alias in scripts/dev/migrate.py and scripts/dev/ingestion_smoke.py.
+- [x] Support --nats-url alias in scripts/dev/nats_health.py and --s3-endpoint alias in scripts/dev/object_storage_health.py.
+- [x] Add unit tests in workers/ingestion-python/tests/test_article_document.py.
+- [x] Expand CLI argument assertions in scripts/dev/test_storage_messaging_operations.py.
+- [x] Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.
+- [x] Update .env.example with developer CLI options.
+- [x] Record delivery in docs/agents/records/2026-10-27-document-image-dedup-dev-cli-uniformity.json.
+- [x] Prune merged remote git branches.
 
 ## Security and Credential Isolation Rules
 

@@ -118,7 +118,7 @@ def apply_migrations(root: Path, address: str | None = None) -> list[str]:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Wait for local database and apply numbered migrations")
-    parser.add_argument("--address", default=None, help="Target PostgreSQL host:port")
+    parser.add_argument("--address", "--database-url", default=None, help="Target PostgreSQL host:port")
     parser.add_argument("--timeout", type=int, default=None, help="Wait timeout in seconds")
     parser.add_argument("--compose-file", default=None, help="Docker Compose file for containerized psql execution")
     args = parser.parse_args(argv)

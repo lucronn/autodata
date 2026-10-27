@@ -93,7 +93,7 @@ async def inspect_stream(url: str, stream: str) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default=None)
+    parser.add_argument("--url", "--nats-url", default=None)
     parser.add_argument("--stream", default=os.getenv("AUTODATA_NATS_STREAM", "AUTODATA"))
     args = parser.parse_args(argv)
     url = resolve_nats_url(args.url)
