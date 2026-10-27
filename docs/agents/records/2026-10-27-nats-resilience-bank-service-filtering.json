@@ -1,0 +1,19 @@
+{
+  "goal": "Resilience and developer tooling improvements across NATS offline health probing, Bank connector service filtering, and reconciler CLI flags.",
+  "plan_ref": "docs/superpowers/plans/2026-10-27-nats-resilience-bank-service-filtering.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/149",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/architecture/independent-bank-connectors.md"
+  ],
+  "todo": [
+    "Harden resolve_nats_url in nats_health.py and ingestion_smoke.py with hostname resolution check and silent error callback.",
+    "Implement target_year, target_make, and limit filtering in ingest_bankone_service.py with CLI flags.",
+    "Implement target_year, target_make, and limit filtering in ingest_banktwo_service.py with CLI flags.",
+    "Add argparse CLI flags (--once, --batch-size, --poll-seconds) to reconcile_payments.py.",
+    "Add unit tests in test_bank_topology.py and test_storage_messaging_operations.py."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-27T11:10:00Z"
+}

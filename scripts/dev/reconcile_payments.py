@@ -43,24 +43,47 @@ def db_connection():
     )
 
 
-def run_once() -> list[dict[str, object]]:
+def run_once(batch_size: int | None = None) -> list[dict[str, object]]:
+    size = batch_size if batch_size is not None else int(os.getenv("AUTODATA_PAYMENT_RECONCILE_BATCH_SIZE", "50"))
     with db_connection() as connection:
         return reconcile_pending_payments(
             connection,
-            int(os.getenv("AUTODATA_PAYMENT_RECONCILE_BATCH_SIZE", "50")),
+            size,
         )
 
 
-def main() -> None:
-    interval = float(os.getenv("AUTODATA_PAYMENT_RECONCILE_POLL_SECONDS", "15"))
-    if os.getenv("AUTODATA_PAYMENT_RECONCILE_ONCE") == "1":
-        print(run_once(), flush=True)
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        default=(os.getenv("AUTODATA_PAYMENT_RECONCILE_ONCE") == "1"),
+        help="Run reconciliation once and exit",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=int(os.getenv("AUTODATA_PAYMENT_RECONCILE_BATCH_SIZE", "50")),
+        help="Batch size of pending payments to reconcile",
+    )
+    parser.add_argument(
+        "--poll-seconds",
+        type=float,
+        default=float(os.getenv("AUTODATA_PAYMENT_RECONCILE_POLL_SECONDS", "15")),
+        help="Polling interval in seconds",
+    )
+    args = parser.parse_args(argv)
+
+    if args.once:
+        print(run_once(batch_size=args.batch_size), flush=True)
         return
     while True:
-        results = run_once()
+        results = run_once(batch_size=args.batch_size)
         if results:
             print(results, flush=True)
-        time.sleep(interval)
+        time.sleep(args.poll_seconds)
 
 
 if __name__ == "__main__":

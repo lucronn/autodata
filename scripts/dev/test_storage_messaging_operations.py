@@ -73,6 +73,32 @@ class StorageMessagingOperationsTests(unittest.TestCase):
         self.assertIn('os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password")', obj_health)
         self.assertIn("resolve_s3_endpoint", obj_health)
 
+    def test_nats_url_resolution_and_silent_offline_handling(self):
+        from nats_health import resolve_nats_url
+
+        self.assertEqual(resolve_nats_url("nats://custom:4222"), "nats://custom:4222")
+
+        nats_src = (ROOT / "scripts/dev/nats_health.py").read_text()
+        self.assertIn("_silent_nats_error", nats_src)
+        self.assertIn("error_cb=_silent_nats_error", nats_src)
+
+        smoke_src = (ROOT / "scripts/dev/ingestion_smoke.py").read_text()
+        self.assertIn("_silent_nats_error", smoke_src)
+        self.assertIn("error_cb=_silent_nats_error", smoke_src)
+
+    def test_reconcile_payments_cli_argument_parsing(self):
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/dev/reconcile_payments.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("--once", result.stdout)
+        self.assertIn("--batch-size", result.stdout)
+        self.assertIn("--poll-seconds", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

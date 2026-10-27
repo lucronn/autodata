@@ -28,6 +28,9 @@ def fetch_banktwo_batches(
     *,
     region: str = "US",
     source_version: str = "banktwo-http-v1",
+    target_year: int | None = None,
+    target_make: str | None = None,
+    limit: int | None = None,
 ) -> tuple[list[BankoneBatch], list[dict[str, object]], dict[str, object]]:
     """Traverse the Banktwo connector to assemble vehicle batches and selection rows."""
     batches: list[BankoneBatch] = []
@@ -41,7 +44,12 @@ def fetch_banktwo_batches(
     except Exception as exc:
         errors.append({"scope": "years", "error": str(exc)})
 
+    if target_year is not None:
+        years = [year for year in years if year == target_year]
+
     for year in years:
+        if limit is not None and len(batches) >= limit:
+            break
         try:
             makes_page = connector.catalog("makes", selector={"year": year})
             makes = sorted({str(item["make"]) for item in makes_page.body.get("items", []) if "make" in item})
@@ -49,7 +57,13 @@ def fetch_banktwo_batches(
             errors.append({"scope": f"makes:{year}", "error": str(exc)})
             continue
 
+        if target_make is not None:
+            target_make_lower = target_make.lower()
+            makes = [make for make in makes if make.lower() == target_make_lower]
+
         for make in makes:
+            if limit is not None and len(batches) >= limit:
+                break
             try:
                 models_page = connector.catalog("models", selector={"year": year, "make": make})
                 models = sorted({str(item["model"]) for item in models_page.body.get("items", []) if "model" in item})
@@ -58,6 +72,8 @@ def fetch_banktwo_batches(
                 continue
 
             for model in models:
+                if limit is not None and len(batches) >= limit:
+                    break
                 try:
                     configs_page = connector.catalog(
                         "configurations",
@@ -112,6 +128,9 @@ def main() -> None:
         default=os.getenv("AUTODATA_BANKTWO_SOURCE_VERSION", "banktwo-http-v1"),
     )
     parser.add_argument("--region", default=os.getenv("AUTODATA_SOURCE_REGION", "US"))
+    parser.add_argument("--year", type=int, default=None, help="Target year to filter traversal")
+    parser.add_argument("--make", default=None, help="Target make to filter traversal")
+    parser.add_argument("--limit", type=int, default=None, help="Maximum vehicle batches to ingest")
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
     parser.add_argument("--persist", action="store_true")
     args = parser.parse_args()
@@ -126,6 +145,9 @@ def main() -> None:
         connector,
         region=args.region,
         source_version=args.source_version,
+        target_year=args.year,
+        target_make=args.make,
+        limit=args.limit,
     )
     output = execute_bankone_batch(
         batches,
