@@ -260,3 +260,28 @@ def test_safe_link_sanitization():
     assert _safe_link("#section-anchor") == ""
     assert _safe_link("/v1/catalog/articles/spec-1") == "/v1/catalog/articles/spec-1"
     assert _safe_link("https://example.com/spec") == "https://example.com/spec"
+
+
+def test_image_block_preserves_asset_resource_ref_and_attributes():
+    article = {"article_id": "test-art-asset-ref"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "image",
+                "image_id": "fig-res-1",
+                "asset_resource_ref": "banktwo/asset/123",
+                "storage_key": "procedure-images/abcd",
+                "url": "https://source.test/fig.png",
+                "alt": "Component diagram",
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    block = document["blocks"][0]
+    assert block["type"] == "image"
+    assert block["status"] == "available"
+    assert block["asset_resource_ref"] == "banktwo/asset/123"
+    assert block["storage_key"] == "procedure-images/abcd"
+    assert block["url"] == "https://source.test/fig.png"
+    assert block["image_id"] == "fig-res-1"

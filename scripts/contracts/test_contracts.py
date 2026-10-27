@@ -104,6 +104,23 @@ class ContractTests(unittest.TestCase):
             write_generated(output, "complete contract")
             self.assertEqual(output.read_text(), "complete contract")
 
+    def test_generate_check_mode_succeeds_when_in_sync(self):
+        from generate import main
+
+        self.assertEqual(main(["--check"]), 0)
+
+    def test_generate_check_mode_detects_drift(self):
+        import io
+        from contextlib import redirect_stderr
+        from unittest.mock import patch
+        from generate import main
+
+        buffer = io.StringIO()
+        with redirect_stderr(buffer):
+            with patch("generate.render_go", return_value="// drifted"):
+                self.assertEqual(main(["--check"]), 1)
+        self.assertIn("Contract drift detected", buffer.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

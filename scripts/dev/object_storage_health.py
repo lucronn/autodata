@@ -33,11 +33,11 @@ def resolve_s3_endpoint(endpoint: str | None = None) -> str:
     return "minio:9000"
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--endpoint", default=None)
     parser.add_argument("--bucket", action="append", dest="buckets")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     buckets = args.buckets or [
         bucket.strip()
         for bucket in os.getenv("AUTODATA_STORAGE_BUCKETS", os.getenv("AUTODATA_SOURCE_BUCKET", "autodata-sources")).split(",")

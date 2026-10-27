@@ -6,6 +6,7 @@ import base64
 import mimetypes
 import os
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from hashlib import sha256
 from io import BytesIO
 from typing import Any, Mapping
@@ -183,6 +184,38 @@ def hydrate_article_image_urls(
                 ]
             hydrated_steps.append(step_out)
         out["steps"] = hydrated_steps
+
+    document = out.get("normalized_document")
+    if isinstance(document, Mapping):
+        doc_out = deepcopy(dict(document))
+
+        def hydrate_block(block: Any) -> None:
+            if not isinstance(block, dict):
+                return
+            bkind = str(block.get("type") or block.get("kind") or "").casefold()
+            if bkind == "image":
+                hydrated = hydrate(block)
+                block.update(hydrated)
+                return
+            if bkind in {"table", "grid"}:
+                for row in block.get("rows") or []:
+                    cells = row if isinstance(row, list) else row.get("cells", []) if isinstance(row, Mapping) else []
+                    for cell in cells:
+                        if isinstance(cell, Mapping):
+                            cell_images = cell.get("images")
+                            if isinstance(cell_images, list):
+                                cell["images"] = [
+                                    hydrate(img) for img in cell_images if isinstance(img, Mapping)
+                                ]
+                            for child in cell.get("blocks") or []:
+                                hydrate_block(child)
+            for child in block.get("blocks") or []:
+                hydrate_block(child)
+
+        for block in doc_out.get("blocks") or []:
+            hydrate_block(block)
+        out["normalized_document"] = doc_out
+
     return out
 
 
