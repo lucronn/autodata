@@ -245,7 +245,9 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             ("migration_plan.py", "--migrations-dir"),
             ("nats_health.py", "--stream"),
             ("object_storage_health.py", "--bucket"),
-            ("ingestion_smoke.py", "--help"),
+            ("ingestion_smoke.py", "--address"),
+            ("ingestion_smoke.py", "--s3-endpoint"),
+            ("ingestion_smoke.py", "--nats-url"),
             ("universal_article_smoke.py", "--live-url"),
             ("knowledge_warm_path_benchmark.py", "--query"),
         ]:

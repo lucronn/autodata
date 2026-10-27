@@ -131,10 +131,10 @@ def summarize_viewable_event(event: dict[str, Any], expected_revision_id: str) -
     }
 
 
-def _db_connection():
+def _db_connection(address: str | None = None):
     import psycopg
 
-    host, port_text = resolve_database_address().rsplit(":", 1)
+    host, port_text = resolve_database_address(address).rsplit(":", 1)
     return psycopg.connect(
         host=host,
         port=int(port_text),
@@ -144,7 +144,7 @@ def _db_connection():
     )
 
 
-def _read_database() -> dict[str, Any]:
+def _read_database(address: str | None = None) -> dict[str, Any]:
     from autodata_contracts.fakes import FakePaymentProvider
 
     provider = FakePaymentProvider(
@@ -153,7 +153,7 @@ def _read_database() -> dict[str, Any]:
     session = provider.create_checkout_session("vehicle-core-fixture", "41000000-0000-0000-0000-000000000001")
     payment = provider.verify_webhook(session["headers"], session["body"])
     provider_event_id = payment["provider_event_id"]
-    with _db_connection() as connection, connection.cursor() as cursor:
+    with _db_connection(address) as connection, connection.cursor() as cursor:
         cursor.execute(
             """
             SELECT dr.dataset_request_id, dr.status, e.status, dp.dataset_projection_id,
@@ -221,11 +221,11 @@ def _read_database() -> dict[str, Any]:
     }
 
 
-def _read_object(database: dict[str, Any]) -> dict[str, Any]:
+def _read_object(database: dict[str, Any], endpoint: str | None = None) -> dict[str, Any]:
     from minio import Minio
 
     client = Minio(
-        resolve_s3_endpoint(),
+        resolve_s3_endpoint(endpoint),
         access_key=os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin"),
         secret_key=os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password"),
         secure=False,
@@ -239,7 +239,7 @@ def _read_object(database: dict[str, Any]) -> dict[str, Any]:
     return summarize_source_object(payload, "Toyota Corolla 2024", FIXTURE_VEHICLE_KEY, database["content_sha256"])
 
 
-async def _read_event(database: dict[str, Any]) -> dict[str, Any]:
+async def _read_event(database: dict[str, Any], nats_url: str | None = None) -> dict[str, Any]:
     try:
         import nats
     except ImportError:
@@ -254,10 +254,10 @@ async def _read_event(database: dict[str, Any]) -> dict[str, Any]:
     async def _silent_nats_error(error: Exception) -> None:
         pass
 
-    nats_url = resolve_nats_url()
+    resolved_url = resolve_nats_url(nats_url)
     try:
         connection = await nats.connect(
-            nats_url,
+            resolved_url,
             connect_timeout=1,
             max_reconnect_attempts=1,
             allow_reconnect=False,
@@ -301,11 +301,26 @@ async def _read_event(database: dict[str, Any]) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.parse_args(argv)
+    parser.add_argument(
+        "--address",
+        default=None,
+        help="PostgreSQL host:port target (defaults to AUTODATA_DB_ADDRESS or local probe)",
+    )
+    parser.add_argument(
+        "--s3-endpoint",
+        default=None,
+        help="S3 / MinIO host:port endpoint (defaults to AUTODATA_S3_ENDPOINT or local probe)",
+    )
+    parser.add_argument(
+        "--nats-url",
+        default=None,
+        help="NATS URL (defaults to AUTODATA_NATS_URL or local probe)",
+    )
+    args = parser.parse_args(argv)
     try:
-        database = _read_database()
-        object_summary = _read_object(database)
-        event_summary = asyncio.run(_read_event(database))
+        database = _read_database(address=args.address)
+        object_summary = _read_object(database, endpoint=args.s3_endpoint)
+        event_summary = asyncio.run(_read_event(database, nats_url=args.nats_url))
     except Exception as error:
         raise SystemExit(f"ingestion smoke failed: {error}") from error
     print(json.dumps({"database": database, "object": object_summary, "event": event_summary}, sort_keys=True))

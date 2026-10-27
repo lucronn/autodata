@@ -255,7 +255,14 @@ def _collect_image_records(article: Mapping[str, Any]) -> list[dict[str, Any]]:
                                 )
                             for child in cell.get("blocks") or []:
                                 _collect_from_block(child)
+            block_images = block.get("images")
+            if isinstance(block_images, list):
+                records.extend(
+                    dict(img) for img in block_images if isinstance(img, Mapping)
+                )
             for child in block.get("blocks") or []:
+                _collect_from_block(child)
+            for child in block.get("children") or []:
                 _collect_from_block(child)
 
         for block in document.get("blocks") or []:
@@ -329,6 +336,37 @@ def _rewrite_document_images(
                 candidates.append(c)
         return candidates[0] if candidates else None
 
+    def _rewrite_figure(image: dict[str, Any]) -> None:
+        localized = _lookup(image)
+        reference = str(image.get("image_id") or image.get("asset_id") or "")
+        if localized and (localized.get("storage_key") or str(localized.get("url") or "").startswith("data:image/")):
+            if str(localized.get("url") or "").startswith("data:image/") and not localized.get("storage_key"):
+                data_loc = _localize_data_uri_image(localized, str(localized.get("url") or ""))
+                if data_loc:
+                    localized.update(data_loc)
+            image["storage_key"] = localized.get("storage_key") or image.get("storage_key")
+            image["asset_id"] = localized.get("storage_key") or image.get("image_id") or localized.get("image_id") or reference
+            image["image_id"] = image.get("image_id") or localized.get("image_id") or reference
+            image["status"] = "available"
+            image.pop("unavailable_reason", None)
+            if image.get("image_id") and not str(image.get("url") or "").startswith("data:image/"):
+                image["url"] = f"artifact://{image['image_id']}"
+        elif str(image.get("url") or "").startswith("data:image/"):
+            data_loc = _localize_data_uri_image(image, str(image.get("url") or ""))
+            if data_loc and data_loc.get("storage_key"):
+                image.update(data_loc)
+                image["status"] = "available"
+                image.pop("unavailable_reason", None)
+            else:
+                image["status"] = "unavailable"
+                image["unavailable_reason"] = "image could not be materialized"
+        elif image.get("storage_key"):
+            image["status"] = "available"
+            image.pop("unavailable_reason", None)
+        else:
+            image["status"] = "unavailable"
+            image["unavailable_reason"] = "image could not be materialized"
+
     def rewrite(block: Any) -> None:
         if not isinstance(block, dict):
             return
@@ -376,38 +414,17 @@ def _rewrite_document_images(
                     if isinstance(cell, Mapping):
                         for image in cell.get("images") or []:
                             if isinstance(image, dict):
-                                localized = _lookup(image)
-                                reference = str(image.get("image_id") or image.get("asset_id") or "")
-                                if localized and (localized.get("storage_key") or str(localized.get("url") or "").startswith("data:image/")):
-                                    if str(localized.get("url") or "").startswith("data:image/") and not localized.get("storage_key"):
-                                        data_loc = _localize_data_uri_image(localized, str(localized.get("url") or ""))
-                                        if data_loc:
-                                            localized.update(data_loc)
-                                    image["storage_key"] = localized.get("storage_key") or image.get("storage_key")
-                                    image["asset_id"] = localized.get("storage_key") or image.get("image_id") or localized.get("image_id") or reference
-                                    image["image_id"] = image.get("image_id") or localized.get("image_id") or reference
-                                    image["status"] = "available"
-                                    image.pop("unavailable_reason", None)
-                                    if image.get("image_id") and not str(image.get("url") or "").startswith("data:image/"):
-                                        image["url"] = f"artifact://{image['image_id']}"
-                                elif str(image.get("url") or "").startswith("data:image/"):
-                                    data_loc = _localize_data_uri_image(image, str(image.get("url") or ""))
-                                    if data_loc and data_loc.get("storage_key"):
-                                        image.update(data_loc)
-                                        image["status"] = "available"
-                                        image.pop("unavailable_reason", None)
-                                    else:
-                                        image["status"] = "unavailable"
-                                        image["unavailable_reason"] = "image could not be materialized"
-                                elif image.get("storage_key"):
-                                    image["status"] = "available"
-                                    image.pop("unavailable_reason", None)
-                                else:
-                                    image["status"] = "unavailable"
-                                    image["unavailable_reason"] = "image could not be materialized"
+                                _rewrite_figure(image)
                         for child in cell.get("blocks") or []:
                             rewrite(child)
+        block_images = block.get("images")
+        if isinstance(block_images, list):
+            for image in block_images:
+                if isinstance(image, dict):
+                    _rewrite_figure(image)
         for child in block.get("blocks") or []:
+            rewrite(child)
+        for child in block.get("children") or []:
             rewrite(child)
 
     for block in document.get("blocks") or []:
@@ -434,7 +451,17 @@ def _fetch_asset_resources(resource_refs: list[str]) -> dict[str, dict[str, Any]
 def _read_asset_resource(resource_ref: str) -> dict[str, Any]:
     from .source_connector_client import source_connector_registry
 
-    connector = source_connector_registry(include_defaults=True)["banktwo"]
+    registry = source_connector_registry(include_defaults=True)
+    connector_name = "banktwo"
+    if ":" in resource_ref:
+        prefix = resource_ref.split(":", 1)[0].lower()
+        if prefix in registry or prefix in {"bankone", "banktwo", "generic", "fake"}:
+            connector_name = prefix
+    connector = registry.get(connector_name)
+    if connector is None:
+        raise ValueError(
+            f"unknown or unconfigured source connector '{connector_name}' for resource {resource_ref}"
+        )
     envelope = connector.read_resource(resource_ref)
     resource = envelope.to_source_resource()
     if resource.metadata.get("kind") not in {"asset", "binary"} or not resource.media_type.startswith("image/"):
