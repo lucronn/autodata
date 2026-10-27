@@ -1,0 +1,23 @@
+{
+  "goal": "Hardening for table figures, document image localization, and developer ergonomics across the local workspace.",
+  "plan_ref": "docs/superpowers/plans/2026-10-27-table-figures-document-hygiene-developer-ergonomics.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/159",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "todo": [
+    "Preserve direct and nested table cell images and attributes in article_document.",
+    "Validate list block items in validate_ordered_document and sanitize unsafe link protocols in _safe_link.",
+    "Enhance multi-key image matching and table cell image localization in procedure_images.",
+    "Broaden candidate image identifier deduplication in source_bundle.",
+    "Add worker venv discovery to smoke_local_stack.py and consumer_agent.py.",
+    "Add worker venv discovery and CLI main(argv) to migrate.py and migration_plan.py.",
+    "Remove duplicate bin/autodata.dump workspace artifact.",
+    "Add regression tests in test_article_document.py, test_procedure_images.py, and test_source_bundle.py.",
+    "Expand test_storage_messaging_operations.py for venv discovery and CLI parsing across all modernized developer scripts.",
+    "Update canonical architecture documentation in infrastructure-and-dev.md."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-27T16:12:00Z"
+}

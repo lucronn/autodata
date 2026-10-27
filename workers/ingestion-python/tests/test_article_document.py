@@ -196,3 +196,67 @@ def test_document_figure_queue_does_not_duplicate_table_images():
     assert document["blocks"][1]["rows"][0][0]["images"][0]["image_id"] == "tool-in-table"
     assert [b["source_order"] for b in document["blocks"]] == [1, 2, 3]
     assert validate_ordered_document(document) == []
+
+
+def test_table_cell_preserves_direct_images():
+    article = {"article_id": "test-table-direct-img"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "table",
+                "label": "Torque specifications",
+                "rows": [
+                    [
+                        "Bolt A",
+                        {
+                            "text": "35 Nm",
+                            "images": [
+                                {
+                                    "image_id": "img-torque-1",
+                                    "storage_key": "s3://bucket/torque1.png",
+                                    "alt": "Torque pattern",
+                                }
+                            ],
+                        },
+                    ]
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    cell = document["blocks"][0]["rows"][0][1]
+    assert isinstance(cell, dict)
+    assert cell["text"] == "35 Nm"
+    assert len(cell["images"]) == 1
+    assert cell["images"][0]["image_id"] == "img-torque-1"
+    assert cell["images"][0]["storage_key"] == "s3://bucket/torque1.png"
+    assert cell["images"][0]["status"] == "available"
+
+
+def test_validate_ordered_document_checks_list_items():
+    doc = {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+            {
+                "block_id": "art:block:0001",
+                "source_order": 1,
+                "type": "ordered_list",
+                "items": "not a list",
+            }
+        ],
+    }
+    errors = validate_ordered_document(doc)
+    assert "block 1 has no list items" in errors
+
+
+def test_safe_link_sanitization():
+    from autodata_ingestion.article_document import _safe_link
+
+    assert _safe_link("javascript:alert(1)") == ""
+    assert _safe_link("vbscript:msgbox(1)") == ""
+    assert _safe_link("data:text/html,<script>alert(1)</script>") == ""
+    assert _safe_link("#section-anchor") == ""
+    assert _safe_link("/v1/catalog/articles/spec-1") == "/v1/catalog/articles/spec-1"
+    assert _safe_link("https://example.com/spec") == "https://example.com/spec"

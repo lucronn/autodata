@@ -5,7 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 
 def default_base_url() -> str:

@@ -154,3 +154,34 @@ def test_localize_data_uri_image_handles_malformed_uris(monkeypatch):
         "images": [{"image_id": "malformed-2", "url": "data:image/png;base64"}],
     })
     assert result2["images"][0]["fetch_failed"] is True
+
+
+def test_rewrite_document_images_handles_table_cells():
+    result = procedure_images.localize_procedure_images({
+        "images": [
+            {
+                "image_id": "cell-img-1",
+                "storage_key": "procedure-images/abcd1234",
+                "alt": "Diagram 1",
+            }
+        ],
+        "normalized_document": {
+            "blocks": [
+                {
+                    "type": "table",
+                    "rows": [
+                        [
+                            {
+                                "text": "Step 1 diagram",
+                                "images": [{"image_id": "cell-img-1", "status": "unavailable"}],
+                            }
+                        ]
+                    ],
+                }
+            ]
+        },
+    })
+    cell_img = result["normalized_document"]["blocks"][0]["rows"][0][0]["images"][0]
+    assert cell_img["status"] == "available"
+    assert cell_img["asset_id"] == "procedure-images/abcd1234"
+    assert cell_img["image_id"] == "cell-img-1"

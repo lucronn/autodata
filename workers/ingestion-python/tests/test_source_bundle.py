@@ -848,6 +848,30 @@ class SourceBundleTests(unittest.TestCase):
         self.assertEqual(second["storage_key"], "procedure-images/diagram")
         self.assertEqual(second["page"], 1)
 
+    def test_document_content_record_deduplicates_by_id_and_artifact_key(self):
+        from autodata_ingestion.source_bundle import _document_content_record
+
+        record1 = {
+            "locator": "page:1",
+            "evidence_id": "ev-1",
+            "source_uri": "https://source.test/1",
+            "content_sha256": "hash1",
+            "text": "Text 1",
+            "images": [{"id": "img-unique-1", "artifact_key": "art-key-1"}],
+        }
+        record2 = {
+            "locator": "page:2",
+            "evidence_id": "ev-2",
+            "source_uri": "https://source.test/1",
+            "content_sha256": "hash1",
+            "text": "Text 2",
+            "images": [{"id": "img-unique-1", "artifact_key": "art-key-1"}],
+        }
+        evidence_list = []
+        merged = _document_content_record([record1, record2], evidence_list)
+        self.assertEqual(len(merged["images"]), 1)
+        self.assertEqual(merged["images"][0]["id"], "img-unique-1")
+
 
 if __name__ == "__main__":
     unittest.main()

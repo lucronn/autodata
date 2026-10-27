@@ -735,7 +735,7 @@ def _resolve_document_images(
             if not isinstance(raw, dict):
                 continue
             image = dict(raw)
-            image_id = str(image.get("image_id") or "").strip()
+            image_id = str(image.get("image_id") or image.get("id") or "").strip()
             artifact = media_by_id.get(image_id) if image_id else None
             if artifact is not None:
                 image["url"] = str(artifact.get("source_uri") or "")
@@ -746,8 +746,8 @@ def _resolve_document_images(
             url = str(image.get("url") or "").strip()
             storage_key = str(image.get("storage_key") or image.get("artifact_key") or "").strip()
             asset_resource_ref = str(image.get("asset_resource_ref") or "").strip()
-            image_id = str(image.get("image_id") or "").strip()
-            identity = storage_key or url or asset_resource_ref or image_id
+            content_sha256 = str(image.get("content_sha256") or "").strip()
+            identity = storage_key or url or asset_resource_ref or image_id or content_sha256
             if not identity or identity in seen:
                 continue
             if url:
@@ -795,8 +795,10 @@ def _document_content_record(
                 continue
             identity = str(
                 image.get("image_id")
+                or image.get("id")
                 or image.get("content_sha256")
                 or image.get("storage_key")
+                or image.get("artifact_key")
                 or image.get("asset_resource_ref")
                 or image.get("url")
                 or ""
