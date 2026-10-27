@@ -99,7 +99,7 @@ def persist_fast_lane(
     host, port_text = db_address.rsplit(":", 1)
     product_id = _stable_uuid(f"product:{PRODUCT_KEY}:1")
     payment_provider = FakePaymentProvider(
-        signing_secret=os.environ["AUTODATA_FAKE_PAYMENT_SIGNING_SECRET"]
+        signing_secret=os.getenv("AUTODATA_FAKE_PAYMENT_SIGNING_SECRET", "local-fixture-signing-key")
     )
     session = payment_provider.create_checkout_session(PRODUCT_KEY, organization_id)
     payment_event = payment_provider.record_payment_event(
@@ -120,7 +120,7 @@ def persist_fast_lane(
         "port": int(port_text),
         "dbname": os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         "user": os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        "password": os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        "password": os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
     }
     with psycopg.connect(**conninfo) as connection:
         with connection.cursor() as cursor:
@@ -375,35 +375,43 @@ async def publish_viewable_event(result: dict[str, str], normalized: NormalizedV
     import nats
     from nats.js.errors import BadRequestError
 
-    connection = await nats.connect(os.getenv("AUTODATA_NATS_URL", "nats://nats:4222"))
+    nats_url = os.getenv("AUTODATA_NATS_URL", "nats://nats:4222")
+    connection = None
     try:
-        jetstream = connection.jetstream()
+        connection = await nats.connect(nats_url, connect_timeout=2)
+    except Exception as error:
+        import sys
+        print(f"warning: NATS unavailable at {nats_url}, skipping event publish: {error}", file=sys.stderr)
+
+    if connection is not None:
         try:
-            await jetstream.add_stream(name="AUTODATA", subjects=["dataset.>"])
-        except BadRequestError as error:
-            if "stream name already in use" not in str(error).lower():
-                raise
-        event = {
-            "event_id": _stable_uuid(f"event:{result['revision_id']}"),
-            "event_type": "dataset.viewable",
-            "event_version": 1,
-            "occurred_at": _timestamp().isoformat(),
-            "producer": "ingestion-worker",
-            "request_id": result["dataset_request_id"],
-            "projection_id": result["projection_id"],
-            "revision_id": result["revision_id"],
-            "correlation_id": _stable_uuid(f"correlation:{result['dataset_request_id']}"),
-            "idempotency_key": f"viewable:{result['dataset_request_id']}:1",
-            "payload": {
-                "vehicle_key": normalized.vehicle_key,
-                "source_snapshot_id": result["source_snapshot_id"],
-                "source_watermark": normalized.source_version,
-            },
-        }
-        await jetstream.publish("dataset.viewable", json.dumps(event, sort_keys=True).encode())
-        await connection.flush()
-    finally:
-        await connection.close()
+            jetstream = connection.jetstream()
+            try:
+                await jetstream.add_stream(name="AUTODATA", subjects=["dataset.>"])
+            except BadRequestError as error:
+                if "stream name already in use" not in str(error).lower():
+                    raise
+            event = {
+                "event_id": _stable_uuid(f"event:{result['revision_id']}"),
+                "event_type": "dataset.viewable",
+                "event_version": 1,
+                "occurred_at": _timestamp().isoformat(),
+                "producer": "ingestion-worker",
+                "request_id": result["dataset_request_id"],
+                "projection_id": result["projection_id"],
+                "revision_id": result["revision_id"],
+                "correlation_id": _stable_uuid(f"correlation:{result['dataset_request_id']}"),
+                "idempotency_key": f"viewable:{result['dataset_request_id']}:1",
+                "payload": {
+                    "vehicle_key": normalized.vehicle_key,
+                    "source_snapshot_id": result["source_snapshot_id"],
+                    "source_watermark": normalized.source_version,
+                },
+            }
+            await jetstream.publish("dataset.viewable", json.dumps(event, sort_keys=True).encode())
+            await connection.flush()
+        finally:
+            await connection.close()
 
     import psycopg
 
@@ -414,7 +422,7 @@ async def publish_viewable_event(result: dict[str, str], normalized: NormalizedV
         port=int(port_text),
         dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        password=os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
     ) as connection, connection.cursor() as cursor:
         cursor.execute(
             """

@@ -17,6 +17,22 @@ def parse_address(value: str) -> tuple[str, int]:
     return host, int(port)
 
 
+def resolve_database_address(address: str | None = None) -> str:
+    if address:
+        return address
+    configured = os.getenv("AUTODATA_DB_ADDRESS")
+    if configured:
+        return configured
+    # In local developer environments, PostgreSQL often listens on 127.0.0.1:5432
+    # via Docker port forwarding or native service.
+    try:
+        with socket.create_connection(("127.0.0.1", 5432), timeout=0.2):
+            return "127.0.0.1:5432"
+    except OSError:
+        pass
+    return "postgres:5432"
+
+
 def wait_for_database(address: str, timeout_seconds: int) -> None:
     host, port = parse_address(address)
     deadline = time.monotonic() + timeout_seconds
@@ -36,7 +52,7 @@ def migration_files(directory: Path) -> list[Path]:
 def psql_command(address: str | None = None) -> list[str]:
     user = os.getenv("AUTODATA_POSTGRES_USER", "autodata")
     database = os.getenv("AUTODATA_POSTGRES_DB", "autodata")
-    target_address = address or os.getenv("AUTODATA_DB_ADDRESS")
+    target_address = resolve_database_address(address)
     if shutil.which("psql"):
         command = ["psql", "-U", user, "-d", database]
         if target_address:
@@ -95,7 +111,7 @@ def apply_migrations(root: Path, address: str | None = None) -> list[str]:
 
 def main() -> None:
     root = Path(__file__).parents[2]
-    address = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432")
+    address = resolve_database_address()
     timeout_seconds = int(os.getenv("AUTODATA_MIGRATION_WAIT_SECONDS", "60"))
     wait_for_database(address, timeout_seconds)
     completed = apply_migrations(root, address=address)

@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(ROOT / "scripts/dev"))
 
+from api_runtime_smoke import default_api_url  # noqa: E402
 from smoke_local_stack import default_base_url  # noqa: E402
 
 
@@ -81,6 +82,38 @@ class APIRuntimeContractTests(unittest.TestCase):
             del os.environ["AUTODATA_API_ADDR"]
             self.assertEqual(default_base_url(), "http://127.0.0.1:8080")
         finally:
+            if old_base is not None:
+                os.environ["AUTODATA_API_BASE_URL"] = old_base
+            else:
+                os.environ.pop("AUTODATA_API_BASE_URL", None)
+            if old_addr is not None:
+                os.environ["AUTODATA_API_ADDR"] = old_addr
+            else:
+                os.environ.pop("AUTODATA_API_ADDR", None)
+
+    def test_api_runtime_smoke_resolves_base_url_consistently(self):
+        old_url = os.environ.get("AUTODATA_API_URL")
+        old_base = os.environ.get("AUTODATA_API_BASE_URL")
+        old_addr = os.environ.get("AUTODATA_API_ADDR")
+        try:
+            os.environ["AUTODATA_API_URL"] = "http://127.0.0.1:9099"
+            self.assertEqual(default_api_url(), "http://127.0.0.1:9099")
+
+            del os.environ["AUTODATA_API_URL"]
+            os.environ["AUTODATA_API_BASE_URL"] = "http://127.0.0.1:18080"
+            self.assertEqual(default_api_url(), "http://127.0.0.1:18080")
+
+            del os.environ["AUTODATA_API_BASE_URL"]
+            os.environ["AUTODATA_API_ADDR"] = ":18080"
+            self.assertEqual(default_api_url(), "http://127.0.0.1:18080")
+
+            del os.environ["AUTODATA_API_ADDR"]
+            self.assertEqual(default_api_url(), "http://127.0.0.1:8080")
+        finally:
+            if old_url is not None:
+                os.environ["AUTODATA_API_URL"] = old_url
+            else:
+                os.environ.pop("AUTODATA_API_URL", None)
             if old_base is not None:
                 os.environ["AUTODATA_API_BASE_URL"] = old_base
             else:
