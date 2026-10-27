@@ -303,6 +303,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--address",
+        "--database-url",
         default=None,
         help="PostgreSQL host:port target (defaults to AUTODATA_DB_ADDRESS or local probe)",
     )

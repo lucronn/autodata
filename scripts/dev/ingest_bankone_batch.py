@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -31,9 +32,18 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--selector-json", type=Path)
     parser.add_argument("--region", default="US")
     parser.add_argument("--source-version", default="autoapi-local-v1")
+    parser.add_argument(
+        "--address",
+        "--database-url",
+        default=None,
+        help="PostgreSQL host:port address override",
+    )
     parser.add_argument("--limit", type=int, default=None, help="Maximum vehicle batches to ingest")
     parser.add_argument("--persist", action="store_true")
     args = parser.parse_args(argv)
+
+    if args.address:
+        os.environ["AUTODATA_DB_ADDRESS"] = args.address
 
     selector_rows = load_selector_rows(args.selector_json) if args.selector_json else None
     if selector_rows is None:

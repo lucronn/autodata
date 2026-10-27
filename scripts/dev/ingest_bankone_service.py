@@ -135,10 +135,19 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--region", default=os.getenv("AUTODATA_SOURCE_REGION", "US"))
     parser.add_argument("--year", type=int, default=None, help="Target year to filter traversal")
     parser.add_argument("--make", default=None, help="Target make to filter traversal")
+    parser.add_argument(
+        "--address",
+        "--database-url",
+        default=None,
+        help="PostgreSQL host:port address override",
+    )
     parser.add_argument("--limit", type=int, default=None, help="Maximum vehicle batches to ingest")
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
     parser.add_argument("--persist", action="store_true")
     args = parser.parse_args(argv)
+
+    if args.address:
+        os.environ["AUTODATA_DB_ADDRESS"] = args.address
 
     connector = SourceConnectorClient(
         args.base_url,

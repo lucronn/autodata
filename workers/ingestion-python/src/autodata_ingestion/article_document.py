@@ -186,6 +186,9 @@ def build_ordered_document(
                             for child in cell.get("blocks") or []:
                                 if isinstance(child, Mapping) and str(child.get("kind") or child.get("type") or "").casefold() == "image":
                                     seen_image_keys.update(_image_identities(child))
+            for block_img in block.get("images") or []:
+                if isinstance(block_img, Mapping):
+                    seen_image_keys.update(_image_identities(block_img))
 
     output: list[dict[str, Any]] = []
     figure_queue = [
@@ -262,6 +265,14 @@ def build_ordered_document(
         if not text:
             output.append(_unknown_block(article, source_index, raw))
             continue
+        images_raw = raw.get("images")
+        extra_fields: dict[str, Any] = {}
+        if isinstance(images_raw, list):
+            clean_images = [
+                _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
+            ]
+            if clean_images:
+                extra_fields["images"] = clean_images
         explicit_number = _numbered_text(text)
         if explicit_number is not None:
             number, text = explicit_number
@@ -273,19 +284,12 @@ def build_ordered_document(
                     text=text,
                     number=number,
                     evidence_ids=evidence_ids,
+                    **extra_fields,
                 )
             )
         elif _looks_like_heading(text):
             output.append(_base_block(article, source_index, "heading", text=text, level=2, evidence_ids=evidence_ids))
         else:
-            images_raw = raw.get("images")
-            extra_fields: dict[str, Any] = {}
-            if isinstance(images_raw, list):
-                clean_images = [
-                    _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
-                ]
-                if clean_images:
-                    extra_fields["images"] = clean_images
             output.append(_base_block(article, source_index, "paragraph", text=text, evidence_ids=evidence_ids, **extra_fields))
         if figure_queue and re.search(r"\bFigure\s+\d+\b", text, re.IGNORECASE):
             fig = figure_queue.pop(0)
@@ -544,9 +548,23 @@ def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
     ]
     instructions = raw.get("instructions")
     if isinstance(instructions, list):
-        joined_instructions = " ".join(_clean_text(item) for item in instructions if _clean_text(item))
-        if joined_instructions:
-            text_candidates.append(joined_instructions)
+        cleaned_instructions: list[str] = []
+        for item in instructions:
+            if isinstance(item, Mapping):
+                item_text = _clean_text(
+                    item.get("text")
+                    or item.get("action")
+                    or item.get("instruction")
+                    or item.get("value")
+                    or item.get("content")
+                    or item.get("body")
+                )
+            else:
+                item_text = _clean_text(item)
+            if item_text:
+                cleaned_instructions.append(item_text)
+        if cleaned_instructions:
+            text_candidates.append(" ".join(cleaned_instructions))
 
     text = ""
     for candidate in text_candidates:
