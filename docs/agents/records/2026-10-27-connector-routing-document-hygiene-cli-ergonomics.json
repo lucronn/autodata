@@ -1,0 +1,23 @@
+{
+  "goal": "Hardening for connector routing resilience, document block image hygiene, list normalization, and ingestion smoke CLI ergonomics.",
+  "plan_ref": "docs/superpowers/plans/2026-10-27-connector-routing-document-hygiene-cli-ergonomics.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/165",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "todo": [
+    "Enhance _read_asset_resource in autodata_ingestion.procedure_images with dynamic connector prefix routing and descriptive error handling.",
+    "Enhance _collect_image_records and _rewrite_document_images in procedure_images.py to handle direct block images lists and child blocks.",
+    "Fix dictionary list item normalization in article_document._list_block and expand text keys in _callout_block.",
+    "Add --address, --s3-endpoint, and --nats-url arguments in scripts/dev/ingestion_smoke.py.",
+    "Add unit tests in workers/ingestion-python/tests/test_procedure_images.py.",
+    "Add unit tests in workers/ingestion-python/tests/test_article_document.py.",
+    "Expand CLI argument assertion in scripts/dev/test_storage_messaging_operations.py.",
+    "Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.",
+    "Record delivery in docs/agents/records/2026-10-27-connector-routing-document-hygiene-cli-ergonomics.json.",
+    "Prune merged remote git branches."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-27T19:05:00Z"
+}
