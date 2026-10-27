@@ -9,8 +9,10 @@ sys.path.insert(0, str(ROOT / "src"))
 from autodata_ingestion.article_document import (
     NORMALIZATION_VERSION,
     build_ordered_document,
+    segment_plain_article_text,
     validate_ordered_document,
 )
+from autodata_ingestion.procedure_normalize import normalize_procedure_article
 
 
 def test_document_preserves_mixed_source_order_and_nested_table_images():
@@ -50,3 +52,60 @@ def test_document_validation_rejects_reordered_or_unresolved_blocks():
     errors = validate_ordered_document(document)
     assert "block 1 has invalid source_order" in errors
     assert "block 1 has no image status" in errors
+
+
+def test_collapsed_tsb_pdf_text_is_segmented_for_workshop_display():
+    body = (
+        "Technical Service Bulletin 00 Oil draining - cleanliness 00 14 59 2029737/2 "
+        "February 20, 2014. Condition The process of draining oil through the drain plug "
+        "is not always tidy. Technical Background When oil is drained through the drain "
+        "plug, the oil might spill. Production Solution Not applicable. Service 1. When "
+        "necessary, use flexible oil funnel VAS 6675. 2. Clean any oil residue off of "
+        "components. Note: Capture any spilled oil. Figure 1. Oil funnel VAS 6675. "
+        "Warranty This TSB is informational only. Required Parts and Tools VAS 6675 "
+        "Flexible oil funnel 1 Additional Information Always check with your Parts "
+        "Department."
+    )
+
+    segments = segment_plain_article_text(body)
+    kinds = [segment["kind"] for segment in segments]
+    assert "heading" in kinds
+    assert "note" in kinds
+    assert any(str(segment.get("text") or "").startswith("1.") for segment in segments)
+    assert any(str(segment.get("text") or "").startswith("2.") for segment in segments)
+
+    article = normalize_procedure_article(
+        {
+            "article_id": "autoapi:vehicle:article",
+            "title": "00 Oil draining - cleanliness",
+            "body": body,
+            "steps": [
+                {
+                    "action": body,
+                    "instructions": [body],
+                    "components": ["service"],
+                    "phase": "procedure",
+                }
+            ],
+            "normalized_document": {
+                "schema_version": 1,
+                "normalization_version": NORMALIZATION_VERSION,
+                "blocks": [
+                    {
+                        "block_id": "b1",
+                        "source_order": 1,
+                        "type": "paragraph",
+                        "text": body,
+                        "evidence_ids": [],
+                    }
+                ],
+            },
+            "content_status": "content_complete",
+        }
+    )
+    block_types = [block["type"] for block in article["normalized_document"]["blocks"]]
+    assert "heading" in block_types
+    assert "step" in block_types
+    assert "callout" in block_types
+    assert block_types.count("paragraph") >= 1
+    assert len(article["normalized_document"]["blocks"]) >= 6

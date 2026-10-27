@@ -1,8 +1,13 @@
+import os
+import sys
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).parents[2]
+sys.path.insert(0, str(ROOT / "scripts/dev"))
+
+from smoke_local_stack import default_base_url  # noqa: E402
 
 
 class APIRuntimeContractTests(unittest.TestCase):
@@ -61,6 +66,29 @@ class APIRuntimeContractTests(unittest.TestCase):
         fixture = self.read("workers/ingestion-python/src/autodata_ingestion/ingest_fixture.py")
         self.assertIn("processing_version, organization_id", fixture)
         self.assertIn("request_key,\n                    organization_id", fixture)
+
+    def test_smoke_local_stack_resolves_base_url_from_environment(self):
+        old_base = os.environ.get("AUTODATA_API_BASE_URL")
+        old_addr = os.environ.get("AUTODATA_API_ADDR")
+        try:
+            os.environ["AUTODATA_API_BASE_URL"] = "http://127.0.0.1:18080"
+            self.assertEqual(default_base_url(), "http://127.0.0.1:18080")
+
+            del os.environ["AUTODATA_API_BASE_URL"]
+            os.environ["AUTODATA_API_ADDR"] = ":18080"
+            self.assertEqual(default_base_url(), "http://127.0.0.1:18080")
+
+            del os.environ["AUTODATA_API_ADDR"]
+            self.assertEqual(default_base_url(), "http://127.0.0.1:8080")
+        finally:
+            if old_base is not None:
+                os.environ["AUTODATA_API_BASE_URL"] = old_base
+            else:
+                os.environ.pop("AUTODATA_API_BASE_URL", None)
+            if old_addr is not None:
+                os.environ["AUTODATA_API_ADDR"] = old_addr
+            else:
+                os.environ.pop("AUTODATA_API_ADDR", None)
 
 
 if __name__ == "__main__":

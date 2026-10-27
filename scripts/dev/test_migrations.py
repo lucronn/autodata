@@ -11,6 +11,7 @@ from migration_plan import (  # noqa: E402
     migration_files,
     validate_migration_set,
 )
+from migrate import psql_command  # noqa: E402
 
 
 class MigrationPlanTests(unittest.TestCase):
@@ -200,6 +201,14 @@ class MigrationPlanTests(unittest.TestCase):
         migration = (ROOT / "db/migrations/025_chat_quote_procedure.sql").read_text()
 
         self.assertIn("markup_applied boolean NOT NULL DEFAULT false CHECK (markup_applied = false)", migration)
+
+    def test_psql_command_includes_host_and_port_when_address_provided(self):
+        cmd = psql_command("127.0.0.1:5432")
+        if cmd[0] == "psql":
+            self.assertIn("-h", cmd)
+            self.assertIn("127.0.0.1", cmd)
+            self.assertIn("-p", cmd)
+            self.assertIn("5432", cmd)
 
 
 if __name__ == "__main__":

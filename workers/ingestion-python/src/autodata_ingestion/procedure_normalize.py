@@ -9,6 +9,7 @@ from typing import Any, Mapping
 from .article_document import (
     build_ordered_document,
     document_from_steps,
+    segment_plain_article_text,
     validate_ordered_document,
 )
 
@@ -41,7 +42,12 @@ def normalize_procedure_article(article: Mapping[str, Any]) -> dict[str, Any]:
     out = deepcopy(dict(article))
     _ensure_classification(out)
     if _steps_are_consumer_shaped(out.get("steps")):
-        if not isinstance(out.get("normalized_document"), Mapping):
+        body = str(out.get("body") or "").strip()
+        if _undersegmented_article(out) and body:
+            blocks = segment_plain_article_text(body)
+            out["normalized_document"] = build_ordered_document(out, blocks)
+            out["steps"] = build_consumer_steps(out, blocks)
+        elif not isinstance(out.get("normalized_document"), Mapping):
             out["normalized_document"] = document_from_steps(out)
         out.pop("blocks", None)
         out["content_status"] = _content_status_for(out)
@@ -54,6 +60,14 @@ def normalize_procedure_article(article: Mapping[str, Any]) -> dict[str, Any]:
             blocks = steps_field
         elif isinstance(steps_field, list) and steps_field and _steps_are_consumer_shaped(steps_field):
             out["steps"] = list(steps_field)
+            if _undersegmented_article(out):
+                body = str(out.get("body") or "").strip()
+                rebuild_blocks = segment_plain_article_text(body) if body else None
+                if rebuild_blocks:
+                    out["normalized_document"] = build_ordered_document(out, rebuild_blocks)
+                    out["steps"] = build_consumer_steps(out, rebuild_blocks)
+            elif not isinstance(out.get("normalized_document"), Mapping):
+                out["normalized_document"] = document_from_steps(out)
             out.pop("blocks", None)
             out["content_status"] = _content_status_for(out)
             return out
@@ -61,7 +75,7 @@ def normalize_procedure_article(article: Mapping[str, Any]) -> dict[str, Any]:
             blocks = [{"kind": "text", "text": f"{index}. {step}"} for index, step in enumerate(steps_field, 1)]
         else:
             body = str(out.get("body") or "").strip()
-            blocks = [{"kind": "text", "text": body}] if body else []
+            blocks = segment_plain_article_text(body) if body else []
     elif blocks and all(isinstance(step, str) for step in blocks):
         # AutoAPI detail pages expose ordered <li> items as strings. Keep each
         # item as an independent block so normalization preserves source order.
@@ -258,6 +272,34 @@ def _content_status_for(article: Mapping[str, Any]) -> str:
     if len(body) >= 80:
         return CONTENT_STATUS_COMPLETE
     return CONTENT_STATUS_LIST_ONLY
+
+
+def _undersegmented_article(article: Mapping[str, Any]) -> bool:
+    """True when stored content is one blob that should be re-split for display."""
+
+    body = str(article.get("body") or "").strip()
+    document = article.get("normalized_document")
+    blocks = document.get("blocks") if isinstance(document, Mapping) else None
+    if isinstance(blocks, list) and len(blocks) >= 4:
+        return False
+    if body and (
+        "\n" in body
+        or re.search(
+            r"(?<![A-Za-z0-9])(Condition|Technical Background|Service|Warranty)(?![A-Za-z0-9])",
+            body,
+        )
+    ):
+        return True
+    steps = article.get("steps")
+    if isinstance(steps, list) and len(steps) == 1 and isinstance(steps[0], Mapping):
+        blob = " ".join(
+            [
+                str(steps[0].get("action") or ""),
+                *[str(value) for value in steps[0].get("instructions") or []],
+            ]
+        )
+        return len(blob) > 400
+    return isinstance(blocks, list) and len(blocks) <= 1 and len(body) > 400
 
 
 def _steps_are_consumer_shaped(steps: Any) -> bool:

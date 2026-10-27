@@ -729,7 +729,11 @@ def _adapt_pdf_resource(
     page_errors: list[dict[str, str]] = []
     for index, page in enumerate(pages, start=1):
         try:
-            text = re.sub(r"\s+", " ", str(page.extract_text() or "")).strip()
+            # Keep line breaks so TSB/PDF text can be segmented into headings,
+            # steps, and notes instead of one collapsed workshop paragraph.
+            raw_text = str(page.extract_text() or "")
+            lines = [re.sub(r"[ \t]+", " ", line).strip() for line in raw_text.splitlines()]
+            text = "\n".join(line for line in lines if line)
         except Exception as error:
             page_errors.append({"locator": f"page:{index}", "error": str(error)})
             continue

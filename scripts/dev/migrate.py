@@ -33,11 +33,16 @@ def migration_files(directory: Path) -> list[Path]:
     return sorted(directory.glob("[0-9][0-9][0-9]_*.sql"))
 
 
-def psql_command() -> list[str]:
+def psql_command(address: str | None = None) -> list[str]:
     user = os.getenv("AUTODATA_POSTGRES_USER", "autodata")
     database = os.getenv("AUTODATA_POSTGRES_DB", "autodata")
+    target_address = address or os.getenv("AUTODATA_DB_ADDRESS")
     if shutil.which("psql"):
-        return ["psql", "-U", user, "-d", database]
+        command = ["psql", "-U", user, "-d", database]
+        if target_address:
+            host, port = parse_address(target_address)
+            command.extend(["-h", host, "-p", str(port)])
+        return command
     compose_file = os.getenv("AUTODATA_COMPOSE_FILE", "infra/compose/compose.yaml")
     return [
         "docker",
@@ -55,12 +60,16 @@ def psql_command() -> list[str]:
     ]
 
 
-def apply_migrations(root: Path) -> list[str]:
+def apply_migrations(root: Path, address: str | None = None) -> list[str]:
     files = migration_files(root / "db/migrations")
     if not files:
         raise FileNotFoundError("no numbered migrations found")
-    command = psql_command()
+    command = psql_command(address)
     completed: list[str] = []
+    env = {
+        **os.environ,
+        "PGPASSWORD": os.getenv("PGPASSWORD", os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")),
+    }
     for migration in files:
         in_container = command[0] == "docker"
         migration_path = "/workspace/db/migrations/" + migration.name if in_container else str(migration)
@@ -76,6 +85,7 @@ def apply_migrations(root: Path) -> list[str]:
             capture_output=True,
             text=True,
             input=input_sql,
+            env=env,
         )
         if result.returncode:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip())
@@ -88,7 +98,7 @@ def main() -> None:
     address = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432")
     timeout_seconds = int(os.getenv("AUTODATA_MIGRATION_WAIT_SECONDS", "60"))
     wait_for_database(address, timeout_seconds)
-    completed = apply_migrations(root)
+    completed = apply_migrations(root, address=address)
     print(f"applied migrations: {', '.join(completed)}")
 
 

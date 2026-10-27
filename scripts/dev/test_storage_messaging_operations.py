@@ -1,5 +1,10 @@
+import sys
 import unittest
+from pathlib import Path
 
+
+ROOT = Path(__file__).parents[2]
+sys.path.insert(0, str(ROOT / "scripts/dev"))
 
 from nats_health import normalize_stream_info
 from replay_outbox import replay_target
@@ -33,6 +38,16 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             replay_target(None, None)
         with self.assertRaises(ValueError):
             replay_target("event-1", "job-1")
+
+    def test_health_and_reconcile_scripts_use_safe_env_defaults(self):
+        obj_health = (ROOT / "scripts/dev/object_storage_health.py").read_text()
+        self.assertIn('os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin")', obj_health)
+        self.assertIn('os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password")', obj_health)
+        self.assertIn("workers/ingestion-python/src", obj_health)
+
+        reconcile = (ROOT / "scripts/dev/reconcile_payments.py").read_text()
+        self.assertIn('os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")', reconcile)
+        self.assertIn("workers/ingestion-python/src", reconcile)
 
 
 if __name__ == "__main__":
