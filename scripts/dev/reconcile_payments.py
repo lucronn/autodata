@@ -33,10 +33,10 @@ def resolve_database_address(address: str | None = None) -> str:
     return "postgres:5432"
 
 
-def db_connection():
+def db_connection(address: str | None = None):
     import psycopg
 
-    host, port_text = resolve_database_address().rsplit(":", 1)
+    host, port_text = resolve_database_address(address).rsplit(":", 1)
     return psycopg.connect(
         host=host,
         port=int(port_text),
@@ -46,9 +46,9 @@ def db_connection():
     )
 
 
-def run_once(batch_size: int | None = None) -> list[dict[str, object]]:
+def run_once(batch_size: int | None = None, address: str | None = None) -> list[dict[str, object]]:
     size = batch_size if batch_size is not None else int(os.getenv("AUTODATA_PAYMENT_RECONCILE_BATCH_SIZE", "50"))
-    with db_connection() as connection:
+    with db_connection(address) as connection:
         return reconcile_pending_payments(
             connection,
             size,
@@ -59,6 +59,12 @@ def main(argv: list[str] | None = None) -> None:
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--address",
+        "--database-url",
+        default=None,
+        help="PostgreSQL host:port address override",
+    )
     parser.add_argument(
         "--once",
         action="store_true",
@@ -80,10 +86,10 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.once:
-        print(run_once(batch_size=args.batch_size), flush=True)
+        print(run_once(batch_size=args.batch_size, address=args.address), flush=True)
         return
     while True:
-        results = run_once(batch_size=args.batch_size)
+        results = run_once(batch_size=args.batch_size, address=args.address)
         if results:
             print(results, flush=True)
         time.sleep(args.poll_seconds)

@@ -113,7 +113,12 @@ def cleanup(connection, provider_event_id: str) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--address", default=None, help="Database host:port address")
+    parser.add_argument(
+        "--address",
+        "--database-url",
+        default=None,
+        help="Database host:port address override",
+    )
     args = parser.parse_args(argv)
     provider = FakePaymentProvider(os.getenv("AUTODATA_FAKE_PAYMENT_SIGNING_SECRET", "local-fixture-signing-key"))
     session = provider.create_checkout_session(
