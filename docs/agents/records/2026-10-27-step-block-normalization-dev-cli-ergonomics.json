@@ -1,0 +1,24 @@
+{
+  "goal": "Hardening for step block normalization, paragraph content fallback, and dev CLI ergonomics.",
+  "plan_ref": "docs/superpowers/plans/2026-10-27-step-block-normalization-dev-cli-ergonomics.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/170",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "todo": [
+    "Add _step_block handler in autodata_ingestion.article_document supporting action, instruction, instructions, number, and direct images.",
+    "Expand paragraph and heading fallback text resolution to inspect content and body keys and preserve direct images in article_document.",
+    "Add --address and --database-url arguments in scripts/dev/deep_lane_smoke.py.",
+    "Add --address and --database-url arguments in scripts/dev/reconcile_payments.py.",
+    "Support --database-url alias in scripts/dev/operational_metrics.py and payment_reconciliation_smoke.py.",
+    "Add unit tests in workers/ingestion-python/tests/test_article_document.py.",
+    "Expand CLI argument assertions in scripts/dev/test_storage_messaging_operations.py.",
+    "Add payment reconciliation variables to .env.example.",
+    "Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.",
+    "Record delivery in docs/agents/records/2026-10-27-step-block-normalization-dev-cli-ergonomics.json.",
+    "Prune merged remote git branches."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-27T21:10:00Z"
+}
