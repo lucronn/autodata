@@ -1,0 +1,21 @@
+{
+  "goal": "Resilience and developer tooling improvements across ingestion persistence endpoints, provider-neutral bank batch CLI, developer scripts ergonomics, and documentation.",
+  "plan_ref": "docs/superpowers/plans/2026-10-27-ingestion-persistence-resilience-cli-ergonomics.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/153",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/architecture/independent-bank-connectors.md"
+  ],
+  "todo": [
+    "Add _resolve_database_address to bankone_job_persistence, catalog_sync, knowledge_catalog, catalog_service, chat_durable_runtime, knowledge_fallback_runtime, and ingest_fixture.",
+    "Add _resolve_s3_endpoint to procedure_images and ingest_fixture.",
+    "Add worker venv discovery, --limit, provider-neutral BankBatch aliases, and main(argv) to ingest_bankone_batch.py.",
+    "Update ingest_bankone_service.py to use provider-neutral BankBatch and execute_bank_batch.",
+    "Add worker venv discovery and main(argv) to replay_outbox.py and fake_integrations_smoke.py.",
+    "Add unit tests in test_storage_messaging_operations.py and test_bank_topology.py.",
+    "Update canonical architecture documentation."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-27T13:10:00Z"
+}

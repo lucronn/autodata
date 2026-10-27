@@ -54,7 +54,9 @@ def load_vehicle_knowledge_catalog(
     except ImportError:
         return []
 
-    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    from autodata_ingestion.bundle_persistence import _resolve_database_address
+
+    host, port_text = _resolve_database_address().rsplit(":", 1)
     conninfo = {
         "host": host,
         "port": int(port_text),

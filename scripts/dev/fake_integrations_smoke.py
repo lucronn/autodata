@@ -2,26 +2,35 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
 from pathlib import Path
 
 
-ROOT = Path(__file__).parents[2]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "packages/contracts/python"))
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 from autodata_contracts.fakes import FakePaymentProvider, FakePrimarySource  # noqa: E402
 
 
-def main() -> None:
-    source = FakePrimarySource()
-    snapshot = source.fetch("Toyota", "Corolla", 2024, "US", "fixture-v1")
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--signing-secret", default=os.getenv("AUTODATA_FAKE_PAYMENT_SIGNING_SECRET", "local-fixture-signing-key"))
+    parser.add_argument("--org-id", default="fixture-org")
+    parser.add_argument("--region", default="US")
+    parser.add_argument("--source-version", default="fixture-v1")
+    args = parser.parse_args(argv)
 
-    provider = FakePaymentProvider(
-        signing_secret=os.getenv("AUTODATA_FAKE_PAYMENT_SIGNING_SECRET", "local-fixture-signing-key")
-    )
-    session = provider.create_checkout_session("vehicle-core-fixture", "fixture-org")
+    source = FakePrimarySource()
+    snapshot = source.fetch("Toyota", "Corolla", 2024, args.region, args.source_version)
+
+    provider = FakePaymentProvider(signing_secret=args.signing_secret)
+    session = provider.create_checkout_session("vehicle-core-fixture", args.org_id)
     event = provider.record_payment_event(
         provider.verify_webhook(session["headers"], session["body"])
     )

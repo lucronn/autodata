@@ -317,9 +317,10 @@ def _store_image_bytes(
 def _put_object(storage_key: str, payload: bytes, media_type: str) -> None:
     from minio import Minio
     from minio.error import S3Error
+    from autodata_ingestion.bundle_persistence import _resolve_s3_endpoint
 
     client = Minio(
-        os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
+        _resolve_s3_endpoint(),
         access_key=os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin"),
         secret_key=os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password"),
         secure=False,
@@ -344,11 +345,12 @@ def _put_object(storage_key: str, payload: bytes, media_type: str) -> None:
 def _read_storage_bytes(storage_key: str) -> bytes:
     try:
         from minio import Minio
+        from autodata_ingestion.bundle_persistence import _resolve_s3_endpoint
     except ImportError:
         return b""
     try:
         client = Minio(
-            os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
+            _resolve_s3_endpoint(),
             access_key=os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin"),
             secret_key=os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password"),
             secure=False,

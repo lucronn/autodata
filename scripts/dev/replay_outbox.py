@@ -5,7 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
+from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[2]
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 
 def replay_target(event_id: str | None, job_id: str | None) -> tuple[str, str]:
@@ -96,12 +103,12 @@ def replay_dead_letter(connection: Any, kind: str, identifier: str) -> dict[str,
             raise ValueError(f"unsupported replay target: {kind}")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--event-id")
     group.add_argument("--job-id")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     kind, identifier = replay_target(args.event_id, args.job_id)
     with _db_connection() as connection:
         print(json.dumps(replay_dead_letter(connection, kind, identifier), sort_keys=True))

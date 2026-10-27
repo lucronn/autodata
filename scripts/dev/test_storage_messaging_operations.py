@@ -129,6 +129,31 @@ class StorageMessagingOperationsTests(unittest.TestCase):
         derived_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/derived_article_persistence.py").read_text()
         self.assertIn("_resolve_database_address", derived_src)
 
+        bankone_jobs_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/bankone_job_persistence.py").read_text()
+        self.assertIn("_resolve_database_address", bankone_jobs_src)
+
+        proc_images_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/procedure_images.py").read_text()
+        self.assertIn("_resolve_s3_endpoint", proc_images_src)
+
+        catalog_sync_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/catalog_sync.py").read_text()
+        self.assertIn("_resolve_database_address", catalog_sync_src)
+
+        knowledge_catalog_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/knowledge_catalog.py").read_text()
+        self.assertIn("_resolve_database_address", knowledge_catalog_src)
+
+        catalog_service_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/catalog_service.py").read_text()
+        self.assertIn("_resolve_database_address", catalog_service_src)
+
+        chat_runtime_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/chat_durable_runtime.py").read_text()
+        self.assertIn("_resolve_database_address", chat_runtime_src)
+
+        fallback_runtime_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/knowledge_fallback_runtime.py").read_text()
+        self.assertIn("_resolve_database_address", fallback_runtime_src)
+
+        fixture_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/ingest_fixture.py").read_text()
+        self.assertIn("_resolve_database_address", fixture_src)
+        self.assertIn("_resolve_s3_endpoint", fixture_src)
+
     def test_normalize_source_directory_cli_limit(self):
         import subprocess
 
@@ -139,6 +164,41 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             check=True,
         )
         self.assertIn("--limit", result.stdout)
+
+    def test_ingest_bankone_batch_cli_limit_and_aliases(self):
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/dev/ingest_bankone_batch.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("--limit", result.stdout)
+
+    def test_replay_outbox_cli_argv(self):
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/dev/replay_outbox.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("--event-id", result.stdout)
+        self.assertIn("--job-id", result.stdout)
+
+    def test_fake_integrations_smoke_cli_argv(self):
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/dev/fake_integrations_smoke.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("--signing-secret", result.stdout)
+        self.assertIn("--org-id", result.stdout)
 
 
 if __name__ == "__main__":

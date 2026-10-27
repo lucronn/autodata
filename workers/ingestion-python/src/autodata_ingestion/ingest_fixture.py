@@ -71,8 +71,10 @@ def store_source_object(snapshot: SourceSnapshot) -> SourceArtifact:
         metadata=snapshot.attribution,
     )
     artifact = adapt_source_resource(resource)
+    from autodata_ingestion.bundle_persistence import _resolve_s3_endpoint
+
     client = Minio(
-        os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
+        _resolve_s3_endpoint(),
         access_key=os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin"),
         secret_key=os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password"),
         secure=False,
@@ -94,8 +96,9 @@ def persist_fast_lane(
 
     import psycopg
     from psycopg.types.json import Jsonb
+    from autodata_ingestion.bundle_persistence import _resolve_database_address
 
-    db_address = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432")
+    db_address = _resolve_database_address()
     host, port_text = db_address.rsplit(":", 1)
     product_id = _stable_uuid(f"product:{PRODUCT_KEY}:1")
     payment_provider = FakePaymentProvider(
@@ -414,8 +417,9 @@ async def publish_viewable_event(result: dict[str, str], normalized: NormalizedV
             await connection.close()
 
     import psycopg
+    from autodata_ingestion.bundle_persistence import _resolve_database_address
 
-    db_address = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432")
+    db_address = _resolve_database_address()
     host, port_text = db_address.rsplit(":", 1)
     with psycopg.connect(
         host=host,
