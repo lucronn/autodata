@@ -129,6 +129,15 @@ test smoke              Run purchase -> viewable -> deep enrichment flow
 
 `db reset` is local-only and must require an explicit destructive confirmation. It must never target a shared or production database.
 
+### Local Workspace Service Configuration and Smoke Probes
+
+The local development environment accommodates both containerized Compose stacks and direct host execution:
+
+- **API Ports:** Docker Compose defaults to port `:8080`, while the host systemd service (`autodata-api.service`) defaults to port `:18080` (configured via `AUTODATA_API_ADDR=:18080` and `AUTODATA_API_BASE_URL=http://127.0.0.1:18080` in `.env.example`).
+- **Migration Runner Resilience:** `scripts/dev/migrate.py` automatically resolves the PostgreSQL address. When `AUTODATA_DB_ADDRESS` is not explicitly exported, it probes `127.0.0.1:5432` for host execution and falls back to `postgres:5432` when operating inside a Docker network.
+- **Unified Smoke Probing:** `scripts/dev/smoke_local_stack.py` and `scripts/dev/api_runtime_smoke.py` accept `--base-url`, respect `AUTODATA_API_BASE_URL` and `AUTODATA_API_ADDR`, and probe port `18080` as an automatic fallback if port `8080` is not active on `127.0.0.1`.
+- **Fast-Lane Fixture Seeding:** `autodata_ingestion.ingest_fixture` defaults `AUTODATA_FAKE_PAYMENT_SIGNING_SECRET` to `"local-fixture-signing-key"` and handles optional NATS event broadcasting gracefully during standalone or offline local database seeding.
+
 The first-success developer path is:
 
 1. Start Compose.

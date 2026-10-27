@@ -24,6 +24,19 @@ class IngestFixtureTests(unittest.TestCase):
         self.assertEqual(content["specifications"][0]["name"], "engine_displacement_l")
         self.assertEqual(content["specifications"][0]["unit"], "L")
 
+    def test_fixture_payment_provider_defaults_signing_secret(self):
+        import os
+        from autodata_contracts.fakes import FakePaymentProvider
+
+        old = os.environ.pop("AUTODATA_FAKE_PAYMENT_SIGNING_SECRET", None)
+        try:
+            secret = os.getenv("AUTODATA_FAKE_PAYMENT_SIGNING_SECRET", "local-fixture-signing-key")
+            provider = FakePaymentProvider(signing_secret=secret)
+            self.assertEqual(provider._signing_secret, b"local-fixture-signing-key")
+        finally:
+            if old is not None:
+                os.environ["AUTODATA_FAKE_PAYMENT_SIGNING_SECRET"] = old
+
 
 if __name__ == "__main__":
     unittest.main()

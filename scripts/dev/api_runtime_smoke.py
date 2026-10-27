@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import uuid
@@ -10,7 +11,19 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-API_URL = os.getenv("AUTODATA_API_URL", "http://127.0.0.1:8080").rstrip("/")
+def default_api_url() -> str:
+    url = os.getenv("AUTODATA_API_URL") or os.getenv("AUTODATA_API_BASE_URL")
+    if url:
+        return url.rstrip("/")
+    addr = os.getenv("AUTODATA_API_ADDR")
+    if addr:
+        port = addr.strip().rsplit(":", 1)[-1]
+        if port:
+            return f"http://127.0.0.1:{port}"
+    return "http://127.0.0.1:8080"
+
+
+API_URL = default_api_url()
 ORGANIZATION_ID = os.getenv(
     "AUTODATA_API_ORGANIZATION_ID",
     "41000000-0000-0000-0000-000000000001",
@@ -54,6 +67,23 @@ def require(condition: bool, message: str) -> None:
 
 
 def main() -> None:
+    global API_URL
+    parser = argparse.ArgumentParser(description="Exercise the Go API runtime smoke contract")
+    parser.add_argument("--base-url", "--api-url", dest="base_url", default=None)
+    args = parser.parse_args()
+    if args.base_url:
+        API_URL = args.base_url.rstrip("/")
+    elif API_URL == "http://127.0.0.1:8080":
+        try:
+            with urlopen("http://127.0.0.1:8080/healthz", timeout=1):
+                pass
+        except Exception:
+            try:
+                with urlopen("http://127.0.0.1:18080/healthz", timeout=1):
+                    API_URL = "http://127.0.0.1:18080"
+            except Exception:
+                pass
+
     request_body = {
         "product_id": PRODUCT_ID,
         "vehicle_key": VEHICLE_KEY,

@@ -7,7 +7,7 @@ INSERT INTO dataset_products (
     '{"make":"Toyota","model":"Corolla","year":2024,"region":"US"}',
     '["vehicle_identity","source_metadata","specifications"]',
     0, 'USD'
-) ON CONFLICT (dataset_product_id) DO NOTHING;
+) ON CONFLICT (product_key, product_version) DO NOTHING;
 
 INSERT INTO source_snapshots (
     source_snapshot_id, adapter_name, source_uri, source_version,

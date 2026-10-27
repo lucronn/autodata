@@ -11,7 +11,7 @@ from migration_plan import (  # noqa: E402
     migration_files,
     validate_migration_set,
 )
-from migrate import psql_command  # noqa: E402
+from migrate import psql_command, resolve_database_address  # noqa: E402
 
 
 class MigrationPlanTests(unittest.TestCase):
@@ -209,6 +209,19 @@ class MigrationPlanTests(unittest.TestCase):
             self.assertIn("127.0.0.1", cmd)
             self.assertIn("-p", cmd)
             self.assertIn("5432", cmd)
+
+    def test_resolve_database_address_respects_explicit_and_environment(self):
+        self.assertEqual(resolve_database_address("custom-host:5433"), "custom-host:5433")
+        import os
+        old = os.environ.get("AUTODATA_DB_ADDRESS")
+        try:
+            os.environ["AUTODATA_DB_ADDRESS"] = "env-host:5434"
+            self.assertEqual(resolve_database_address(), "env-host:5434")
+        finally:
+            if old is not None:
+                os.environ["AUTODATA_DB_ADDRESS"] = old
+            else:
+                os.environ.pop("AUTODATA_DB_ADDRESS", None)
 
 
 if __name__ == "__main__":

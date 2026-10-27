@@ -9,7 +9,7 @@ import urllib.request
 
 
 def default_base_url() -> str:
-    url = os.getenv("AUTODATA_API_BASE_URL")
+    url = os.getenv("AUTODATA_API_BASE_URL") or os.getenv("AUTODATA_API_URL")
     if url:
         return url.rstrip("/")
     addr = os.getenv("AUTODATA_API_ADDR")
@@ -27,10 +27,22 @@ def get_json(url: str) -> tuple[int, dict[str, object]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-url", default=default_base_url())
+    parser.add_argument("--base-url", default=None)
     args = parser.parse_args()
-    health_status, health = get_json(f"{args.base_url}/healthz")
-    readiness_status, readiness = get_json(f"{args.base_url}/readyz")
+    base_url = args.base_url or default_base_url()
+    try:
+        health_status, health = get_json(f"{base_url}/healthz")
+    except Exception:
+        if args.base_url is None and base_url == "http://127.0.0.1:8080":
+            try:
+                candidate = "http://127.0.0.1:18080"
+                health_status, health = get_json(f"{candidate}/healthz")
+                base_url = candidate
+            except Exception:
+                raise
+        else:
+            raise
+    readiness_status, readiness = get_json(f"{base_url}/readyz")
     if health_status != 200 or health.get("status") != "ok":
         raise SystemExit(f"health probe failed: {health_status} {health}")
     if readiness_status != 200:
