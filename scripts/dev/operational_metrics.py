@@ -10,9 +10,16 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Iterable
+
+ROOT = Path(__file__).resolve().parents[2]
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 
 @dataclass(frozen=True)
@@ -300,10 +307,10 @@ def resolve_database_address(address: str | None = None) -> str:
     return "postgres:5432"
 
 
-def _db_connection() -> Any:
+def _db_connection(address: str | None = None) -> Any:
     import psycopg
 
-    host, port_text = resolve_database_address().rsplit(":", 1)
+    host, port_text = resolve_database_address(address).rsplit(":", 1)
     return psycopg.connect(
         host=host,
         port=int(port_text),
@@ -313,10 +320,11 @@ def _db_connection() -> Any:
     )
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.parse_args()
-    with _db_connection() as connection:
+    parser.add_argument("--address", default=None, help="Database host:port address")
+    args = parser.parse_args(argv)
+    with _db_connection(args.address) as connection:
         print(render_metrics(collect_metrics(connection)), end="")
 
 

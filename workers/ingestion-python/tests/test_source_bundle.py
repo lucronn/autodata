@@ -812,6 +812,42 @@ class SourceBundleTests(unittest.TestCase):
         self.assertIsNotNone(bundle.vehicle)
         self.assertEqual(bundle.vehicle["vehicle_key"], "toyota-truck-4-runner-4wd-1999-us")
 
+    def test_resolve_document_images_preserves_asset_refs_and_zero_values(self):
+        from autodata_ingestion.source_bundle import _resolve_document_images
+
+        candidate_records = [
+            {
+                "images": [
+                    {
+                        "asset_resource_ref": "asset-opaque-ref-42",
+                        "image_id": "image-42",
+                        "page": 0,
+                        "is_primary": False,
+                    },
+                    {
+                        "image_id": "image-with-url",
+                        "url": "https://source.test/diagram.png",
+                        "storage_key": "procedure-images/diagram",
+                        "page": 1,
+                    },
+                ]
+            }
+        ]
+
+        resolved = _resolve_document_images(candidate_records, {}, {})
+        self.assertEqual(len(resolved), 2)
+        first = resolved[0]
+        self.assertEqual(first["asset_resource_ref"], "asset-opaque-ref-42")
+        self.assertEqual(first["image_id"], "image-42")
+        self.assertEqual(first["page"], 0)
+        self.assertIs(first["is_primary"], False)
+        self.assertEqual(first["alt"], "Source diagram")
+
+        second = resolved[1]
+        self.assertEqual(second["url"], "https://source.test/diagram.png")
+        self.assertEqual(second["storage_key"], "procedure-images/diagram")
+        self.assertEqual(second["page"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

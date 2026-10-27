@@ -136,6 +136,22 @@ def segment_plain_article_text(text: str) -> list[dict[str, Any]]:
     return segments or [{"kind": "text", "text": re.sub(r"\s+", " ", cleaned).strip()}]
 
 
+def _image_identities(image: Mapping[str, Any]) -> set[str]:
+    keys = (
+        image.get("image_id"),
+        image.get("id"),
+        image.get("storage_key"),
+        image.get("artifact_key"),
+        image.get("asset_id"),
+        image.get("content_sha256"),
+        image.get("url"),
+        image.get("src"),
+        image.get("href"),
+        image.get("asset_resource_ref"),
+    )
+    return {str(k).strip() for k in keys if k and str(k).strip()}
+
+
 def build_ordered_document(
     article: Mapping[str, Any],
     blocks: Any = None,
@@ -153,6 +169,24 @@ def build_ordered_document(
     else:
         source_blocks = _expand_plain_source_blocks(source_blocks)
 
+    seen_image_keys: set[str] = set()
+    for block in source_blocks:
+        if isinstance(block, Mapping):
+            bkind = str(block.get("type") or block.get("kind") or "").casefold()
+            if bkind == "image":
+                seen_image_keys.update(_image_identities(block))
+            elif bkind in {"table", "grid"}:
+                for row in block.get("rows") or []:
+                    cells = row if isinstance(row, list) else row.get("cells", []) if isinstance(row, Mapping) else []
+                    for cell in cells:
+                        if isinstance(cell, Mapping):
+                            for cell_img in cell.get("images") or []:
+                                if isinstance(cell_img, Mapping):
+                                    seen_image_keys.update(_image_identities(cell_img))
+                            for child in cell.get("blocks") or []:
+                                if isinstance(child, Mapping) and str(child.get("kind") or child.get("type") or "").casefold() == "image":
+                                    seen_image_keys.update(_image_identities(child))
+
     output: list[dict[str, Any]] = []
     figure_queue = [
         dict(image)
@@ -163,6 +197,7 @@ def build_ordered_document(
             or str(image.get("url") or "").startswith("data:image/")
             or str(image.get("image_id") or "").strip()
         )
+        and not (_image_identities(image) & seen_image_keys)
     ]
     for source_index, raw in enumerate(source_blocks, 1):
         if isinstance(raw, str):
@@ -173,6 +208,7 @@ def build_ordered_document(
         kind = str(raw.get("type") or raw.get("kind") or "text").casefold()
         evidence_ids = _evidence_ids(raw, article)
         if kind == "image":
+            seen_image_keys.update(_image_identities(raw))
             output.append(_image_block(article, source_index, raw, evidence_ids))
             continue
         if kind in {"table", "grid"}:
@@ -229,11 +265,17 @@ def build_ordered_document(
         else:
             output.append(_base_block(article, source_index, "paragraph", text=text, evidence_ids=evidence_ids))
         if figure_queue and re.search(r"\bFigure\s+\d+\b", text, re.IGNORECASE):
-            output.append(_image_block(article, source_index, figure_queue.pop(0), evidence_ids))
+            fig = figure_queue.pop(0)
+            seen_image_keys.update(_image_identities(fig))
+            output.append(_image_block(article, source_index, fig, evidence_ids))
 
     # Append any remaining extracted PDF figures so the workshop still shows them.
     while figure_queue:
-        output.append(_image_block(article, len(output) + 1, figure_queue.pop(0), []))
+        fig = figure_queue.pop(0)
+        if _image_identities(fig) & seen_image_keys:
+            continue
+        seen_image_keys.update(_image_identities(fig))
+        output.append(_image_block(article, len(output) + 1, fig, []))
 
     # Source order / block ids must stay contiguous after figure insertion.
     for order, block in enumerate(output, start=1):

@@ -211,6 +211,12 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             "replay_outbox.py",
             "fake_integrations_smoke.py",
             "object_storage_health.py",
+            "api_runtime_smoke.py",
+            "backup_restore_smoke.py",
+            "operational_metrics.py",
+            "payment_reconciliation_smoke.py",
+            "universal_article_smoke.py",
+            "knowledge_warm_path_benchmark.py",
         ]
         for name in scripts_to_check:
             content = (ROOT / "scripts/dev" / name).read_text()
@@ -225,6 +231,10 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             ("deep_lane_smoke.py", "--processing-version"),
             ("smoke_local_stack.py", "--base-url"),
             ("normalize_source_directory.py", "--persist"),
+            ("api_runtime_smoke.py", "--base-url"),
+            ("backup_restore_smoke.py", "--compose-file"),
+            ("operational_metrics.py", "--address"),
+            ("payment_reconciliation_smoke.py", "--address"),
         ]:
             result = subprocess.run(
                 [sys.executable, str(ROOT / "scripts/dev" / script_name), "--help"],

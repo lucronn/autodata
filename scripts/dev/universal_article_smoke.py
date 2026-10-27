@@ -21,10 +21,13 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
-ROOT = Path(__file__).parents[2]
+ROOT = Path(__file__).resolve().parents[2]
 WORKER_SRC = ROOT / "workers" / "ingestion-python" / "src"
 if str(WORKER_SRC) not in sys.path:
     sys.path.insert(0, str(WORKER_SRC))
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 from autodata_ingestion.article_intake import (  # noqa: E402
     VehicleArticleIntake,

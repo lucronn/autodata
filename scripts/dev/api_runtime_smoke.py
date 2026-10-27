@@ -6,9 +6,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import uuid
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+ROOT = Path(__file__).resolve().parents[2]
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 
 def default_api_url() -> str:
@@ -66,11 +73,11 @@ def require(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     global API_URL
     parser = argparse.ArgumentParser(description="Exercise the Go API runtime smoke contract")
     parser.add_argument("--base-url", "--api-url", dest="base_url", default=None)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.base_url:
         API_URL = args.base_url.rstrip("/")
     elif API_URL == "http://127.0.0.1:8080":
