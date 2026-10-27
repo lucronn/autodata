@@ -25,10 +25,10 @@ def get_json(url: str) -> tuple[int, dict[str, object]]:
         return response.status, json.load(response)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default=None)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     base_url = args.base_url or default_base_url()
     try:
         health_status, health = get_json(f"{base_url}/healthz")

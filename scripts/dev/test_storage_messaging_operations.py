@@ -200,6 +200,40 @@ class StorageMessagingOperationsTests(unittest.TestCase):
         self.assertIn("--signing-secret", result.stdout)
         self.assertIn("--org-id", result.stdout)
 
+    def test_developer_scripts_discover_worker_virtualenvs(self):
+        scripts_to_check = [
+            "normalize_source_directory.py",
+            "reconcile_payments.py",
+            "ingest_bankone_service.py",
+            "ingest_banktwo_service.py",
+            "deep_lane_smoke.py",
+            "ingest_bankone_batch.py",
+            "replay_outbox.py",
+            "fake_integrations_smoke.py",
+            "object_storage_health.py",
+        ]
+        for name in scripts_to_check:
+            content = (ROOT / "scripts/dev" / name).read_text()
+            self.assertIn("venv_site", content, f"missing venv_site discovery in {name}")
+
+    def test_developer_scripts_support_cli_argv(self):
+        import subprocess
+
+        for script_name, expected_flag in [
+            ("ingest_bankone_service.py", "--limit"),
+            ("ingest_banktwo_service.py", "--limit"),
+            ("deep_lane_smoke.py", "--processing-version"),
+            ("smoke_local_stack.py", "--base-url"),
+            ("normalize_source_directory.py", "--persist"),
+        ]:
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts/dev" / script_name), "--help"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            self.assertIn(expected_flag, result.stdout, f"missing {expected_flag} in {script_name}")
+
 
 if __name__ == "__main__":
     unittest.main()

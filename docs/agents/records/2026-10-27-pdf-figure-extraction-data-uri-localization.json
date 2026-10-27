@@ -1,0 +1,22 @@
+{
+  "goal": "Hardening for PDF figure extraction, data-URI image localization into object storage, and developer script ergonomics across the local workspace.",
+  "plan_ref": "docs/superpowers/plans/2026-10-27-pdf-figure-extraction-data-uri-localization.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/155",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "todo": [
+    "Implement browser-safe PDF figure extraction and cross-page deduplication in source_adapters.",
+    "Merge candidate image records across document pages in source_bundle.",
+    "Align figure queues with document blocks on caption reference in article_document.",
+    "Implement _localize_data_uri_image and restore _resolve_s3_endpoint in procedure_images.",
+    "Add worker venv discovery and main(argv) to normalize_source_directory, reconcile_payments, ingest_bankone_service, ingest_banktwo_service, and deep_lane_smoke.",
+    "Clean up duplicate imports in deep_lane_smoke and support main(argv) in smoke_local_stack.",
+    "Relocate scratch scripts to /home/corp/autodata/scratch/.",
+    "Add unit tests in test_procedure_images.py and test_storage_messaging_operations.py.",
+    "Update canonical architecture documentation."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-27T14:10:00Z"
+}

@@ -54,6 +54,26 @@ def test_document_validation_rejects_reordered_or_unresolved_blocks():
     assert "block 1 has no image status" in errors
 
 
+def test_figure_captions_pull_article_images_into_document_blocks():
+    article = {
+        "article_id": "pdf-article",
+        "body": "Service\n1. Use the funnel.\nFigure 1. Oil funnel VAS 6675.\nWarranty Informational only.",
+        "images": [
+            {
+                "image_id": "pdf-page-2-abcdef123456",
+                "url": "data:image/png;base64,aaaa",
+                "alt": "Figure from page 2",
+            }
+        ],
+    }
+    document = build_ordered_document(article, segment_plain_article_text(article["body"]))
+    types = [block["type"] for block in document["blocks"]]
+    assert "image" in types
+    image = next(block for block in document["blocks"] if block["type"] == "image")
+    assert image["image_id"] == "pdf-page-2-abcdef123456"
+    assert image["status"] == "available"
+
+
 def test_collapsed_tsb_pdf_text_is_segmented_for_workshop_display():
     body = (
         "Technical Service Bulletin 00 Oil draining - cleanliness 00 14 59 2029737/2 "

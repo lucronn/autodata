@@ -67,7 +67,11 @@ def localize_procedure_images(
         record.pop("source_url", None)
         url = str(record.get("url") or "").strip()
         if url.startswith("data:image/"):
-            return record
+            localized = _localize_data_uri_image(record, url)
+            if localized is None:
+                record["fetch_failed"] = True
+                return record
+            return localized
         record.pop("url", None)
         if str(record.get("storage_key") or "").strip():
             record["url"] = f"artifact://{record.get('image_id')}" if record.get("image_id") else ""
@@ -286,6 +290,45 @@ def _read_asset_resource(resource_ref: str) -> dict[str, Any]:
             "source_uri": resource.locator,
         },
     }
+
+
+def _localize_data_uri_image(record: Mapping[str, Any], url: str) -> dict[str, Any] | None:
+    """Persist an inline data-URI figure into procedure image object storage."""
+
+    try:
+        header, encoded = url.split(",", 1)
+    except ValueError:
+        return None
+    if ";base64" not in header.casefold():
+        return None
+    media_type = header[5:].split(";", 1)[0].strip() or "image/png"
+    if not media_type.startswith("image/"):
+        return None
+    try:
+        payload = base64.b64decode(encoded, validate=False)
+    except Exception:
+        return None
+    if not payload:
+        return None
+    digest = sha256(payload).hexdigest()
+    storage_key = f"procedure-images/{digest}"
+    try:
+        _put_object(storage_key, payload, media_type)
+    except Exception:
+        return None
+    image_id = str(record.get("image_id") or digest).strip() or digest
+    localized = dict(record)
+    localized.update(
+        {
+            "image_id": image_id,
+            "storage_key": storage_key,
+            "content_sha256": digest,
+            "media_type": media_type,
+            "url": f"artifact://{image_id}",
+        }
+    )
+    localized.pop("fetch_failed", None)
+    return localized
 
 
 def _store_image_bytes(
