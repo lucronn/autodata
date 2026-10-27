@@ -29,7 +29,12 @@ def resolve_nats_url(url: str | None = None) -> str:
             return "nats://127.0.0.1:4222"
     except OSError:
         pass
-    return "nats://nats:4222"
+    try:
+        socket.getaddrinfo("nats", 4222)
+        return "nats://nats:4222"
+    except OSError:
+        pass
+    return "nats://127.0.0.1:4222"
 
 
 def _field(value: Any, name: str, default: Any = None) -> Any:
@@ -63,12 +68,16 @@ async def inspect_stream(url: str, stream: str) -> dict[str, Any]:
             "status": "skipped (nats-py not installed)",
         }
 
+    async def _silent_nats_error(error: Exception) -> None:
+        pass
+
     try:
         connection = await nats.connect(
             url,
             connect_timeout=1,
             max_reconnect_attempts=1,
             allow_reconnect=False,
+            error_cb=_silent_nats_error,
         )
     except Exception as error:
         return {

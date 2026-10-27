@@ -8,10 +8,13 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts/dev"))
+sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
 COMPOSE = ROOT / "infra/compose/compose.yaml"
 K8S = ROOT / "infra/k8s/base.yaml"
 DEFAULT_ORIGINS = {
@@ -131,6 +134,44 @@ class BankTopologyTests(unittest.TestCase):
         self.assertIn('provider="banktwo"', service_script)
         self.assertNotRegex(service_script, r"(?i)AutoAPIConnector")
         self.assertNotRegex(service_script, r"(?i)AUTODATA_AUTOAPI_BASE_URL")
+
+    def test_bankone_and_banktwo_fetch_batches_support_filtering(self):
+        from ingest_bankone_service import fetch_bankone_batches
+        from ingest_banktwo_service import fetch_banktwo_batches
+
+        class DummyPage:
+            def __init__(self, body, source_locator="test"):
+                self.body = body
+                self.source_locator = source_locator
+
+        class MockConnector:
+            def __init__(self, provider="mock"):
+                self.provider = provider
+
+            def catalog(self, scope, selector=None):
+                selector = selector or {}
+                if scope == "years":
+                    return DummyPage({"items": [{"year": 2020}, {"year": 2021}]})
+                elif scope == "makes":
+                    return DummyPage({"items": [{"make": "Acura"}, {"make": "Honda"}]})
+                elif scope == "models":
+                    return DummyPage({"items": [{"model": "ILX"}, {"model": "MDX"}]})
+                elif scope == "configurations":
+                    return DummyPage({"items": [{"label": "Base", "id": "cfg-1"}]})
+                raise ValueError(scope)
+
+        mock = MockConnector()
+        batches_one, rows_one, summary_one = fetch_bankone_batches(mock, target_year=2020)
+        self.assertEqual(summary_one["years"], [2020])
+        self.assertEqual(len(batches_one), 4)
+        self.assertTrue(all(b.vehicle["year"] == 2020 for b in batches_one))
+
+        batches_two, rows_two, summary_two = fetch_banktwo_batches(mock, target_make="acura")
+        self.assertEqual(len(batches_two), 4)
+        self.assertTrue(all(b.vehicle["make"] == "Acura" for b in batches_two))
+
+        batches_limit, _, _ = fetch_bankone_batches(mock, limit=2)
+        self.assertEqual(len(batches_limit), 2)
 
 
 if __name__ == "__main__":

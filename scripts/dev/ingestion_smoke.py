@@ -70,7 +70,12 @@ def resolve_nats_url(url: str | None = None) -> str:
             return "nats://127.0.0.1:4222"
     except OSError:
         pass
-    return "nats://nats:4222"
+    try:
+        socket.getaddrinfo("nats", 4222)
+        return "nats://nats:4222"
+    except OSError:
+        pass
+    return "nats://127.0.0.1:4222"
 
 
 def summarize_source_object(
@@ -245,6 +250,9 @@ async def _read_event(database: dict[str, Any]) -> dict[str, Any]:
             "nats_status": "skipped (nats-py not installed in environment)",
         }
 
+    async def _silent_nats_error(error: Exception) -> None:
+        pass
+
     nats_url = resolve_nats_url()
     try:
         connection = await nats.connect(
@@ -252,6 +260,7 @@ async def _read_event(database: dict[str, Any]) -> dict[str, Any]:
             connect_timeout=1,
             max_reconnect_attempts=1,
             allow_reconnect=False,
+            error_cb=_silent_nats_error,
         )
     except Exception as error:
         return {
