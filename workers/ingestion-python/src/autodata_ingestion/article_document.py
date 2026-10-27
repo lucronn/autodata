@@ -31,6 +31,53 @@ DOCUMENT_TYPES = frozenset(
         "unknown",
     }
 )
+_PLAIN_MULTIWORD_SECTION_HEADERS = (
+    "Technical Background",
+    "Production Solution",
+    "Required Parts and Tools",
+    "Additional Information",
+    "REVISION HISTORY",
+    "Revision History",
+)
+_PLAIN_SINGLE_SECTION_HEADERS = (
+    "Condition",
+    "Service",
+    "Warranty",
+)
+_PLAIN_SECTION_HEADERS = _PLAIN_MULTIWORD_SECTION_HEADERS + _PLAIN_SINGLE_SECTION_HEADERS
+_PLAIN_SECTION_HEADER_KEYS = frozenset(
+    re.sub(r"[^a-z0-9]+", " ", header.casefold()).strip()
+    for header in _PLAIN_SECTION_HEADERS
+)
+_PLAIN_MULTIWORD_SECTION_SPLIT_RE = re.compile(
+    r"(?<![A-Za-z0-9])("
+    + "|".join(re.escape(header) for header in _PLAIN_MULTIWORD_SECTION_HEADERS)
+    + r")(?![A-Za-z0-9])"
+)
+# Single-word headers are common English words ("Service" appears in titles).
+# Only split when they look like a new TSB section start.
+_PLAIN_SINGLE_SECTION_SPLIT_RE = re.compile(
+    r"(?:(?<=^)|(?<=[\.\?\!]\s)|(?<=\n)|(?<=Applicable\s))("
+    + "|".join(re.escape(header) for header in _PLAIN_SINGLE_SECTION_HEADERS)
+    + r")(?=\s+[A-Z0-9])"
+)
+# "Technical Service Bulletin Service 1." page headers: keep title intact, still
+# open the Service section before the first numbered instruction.
+_PLAIN_SERVICE_BEFORE_STEPS_RE = re.compile(
+    r"(?<![A-Za-z0-9])(Service)(?=\s+\d{1,2}[.)]\s+)"
+)
+_PLAIN_CONDITION_BEFORE_SECTION_RE = re.compile(
+    r"(?<![A-Za-z0-9])(Condition)(?=\s+(?:REVISION\b|The\s|When\s|If\s))"
+)
+_PLAIN_NOTE_SPLIT_RE = re.compile(r"(?<![A-Za-z0-9])(Note:)\s*", re.IGNORECASE)
+_PLAIN_FIGURE_SPLIT_RE = re.compile(r"(?<![A-Za-z0-9])(Figure\s+\d+\.)\s*", re.IGNORECASE)
+# Limit to 1-2 digit step numbers and ignore years like "2014. Supersedes".
+_PLAIN_STEP_SPLIT_RE = re.compile(r"(?<![A-Za-z0-9.])(?<!Figure )(?<!Fig\. )(?<!\d)(\d{1,2}[.)]\s+)")
+_PLAIN_SECTION_SPLIT_RE = re.compile(
+    r"(?<![A-Za-z0-9])("
+    + "|".join(re.escape(header) for header in _PLAIN_SECTION_HEADERS)
+    + r")(?![A-Za-z0-9])"
+)
 
 
 def empty_document() -> dict[str, Any]:
@@ -39,6 +86,54 @@ def empty_document() -> dict[str, Any]:
         "normalization_version": NORMALIZATION_VERSION,
         "blocks": [],
     }
+
+
+def segment_plain_article_text(text: str) -> list[dict[str, Any]]:
+    """Split PDF/TSB plain text into workshop-readable source blocks.
+
+    Bankone bulletin PDFs often arrive as one whitespace-collapsed string.
+    Insert structural boundaries, then classify lines as headings, notes,
+    numbered steps, or paragraphs so the workshop does not render a wall of
+    raw text.
+    """
+
+    cleaned = (
+        str(text or "")
+        .replace("\u0003", " ")
+        .replace("\u00a0", " ")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .strip()
+    )
+    if not cleaned:
+        return []
+    if "\n" not in cleaned and _needs_plain_segmentation(cleaned):
+        cleaned = _insert_plain_text_boundaries(cleaned)
+    elif "\n" not in cleaned:
+        return [{"kind": "text", "text": cleaned}]
+
+    segments: list[dict[str, Any]] = []
+    for raw_line in cleaned.splitlines():
+        line = re.sub(r"[ \t]+", " ", raw_line).strip(" -\t")
+        if not line or _is_plain_boilerplate(line):
+            continue
+        note = re.match(r"^Note:\s*(.+)$", line, re.IGNORECASE)
+        if note:
+            segments.append({"kind": "note", "label": "Note", "text": note.group(1).strip()})
+            continue
+        if _is_plain_section_heading(line):
+            segments.append({"kind": "heading", "text": line, "level": 2})
+            continue
+        if _looks_like_heading(line):
+            segments.append({"kind": "heading", "text": line, "level": 2})
+            continue
+        numbered = _numbered_text(line)
+        if numbered is not None:
+            number, step_text = numbered
+            segments.append({"kind": "text", "text": f"{number}. {step_text}"})
+            continue
+        segments.append({"kind": "text", "text": line})
+    return segments or [{"kind": "text", "text": re.sub(r"\s+", " ", cleaned).strip()}]
 
 
 def build_ordered_document(
@@ -54,7 +149,9 @@ def build_ordered_document(
         source_blocks = _blocks_from_steps(article.get("steps"))
     if not isinstance(source_blocks, list) or not source_blocks:
         body = str(article.get("body") or "").strip()
-        source_blocks = [{"kind": "text", "text": body}] if body else []
+        source_blocks = segment_plain_article_text(body) if body else []
+    else:
+        source_blocks = _expand_plain_source_blocks(source_blocks)
 
     output: list[dict[str, Any]] = []
     for source_index, raw in enumerate(source_blocks, 1):
@@ -355,6 +452,80 @@ def _level(raw: Mapping[str, Any]) -> int:
         return 2
 
 
+def _expand_plain_source_blocks(source_blocks: list[Any]) -> list[Any]:
+    expanded: list[Any] = []
+    for raw in source_blocks:
+        if isinstance(raw, str):
+            raw = {"kind": "text", "text": raw}
+        if not isinstance(raw, Mapping):
+            expanded.append(raw)
+            continue
+        kind = str(raw.get("type") or raw.get("kind") or "text").casefold()
+        if kind not in {"text", "paragraph"}:
+            expanded.append(raw)
+            continue
+        text = str(raw.get("text") or raw.get("value") or "")
+        if not text.strip() or not _needs_plain_segmentation(text):
+            expanded.append(raw)
+            continue
+        segments = segment_plain_article_text(text)
+        if len(segments) <= 1:
+            expanded.append(raw)
+            continue
+        for segment in segments:
+            expanded.append({**dict(raw), **segment})
+    return expanded
+
+
+def _needs_plain_segmentation(text: str) -> bool:
+    if "\n" in text:
+        return True
+    header_hits = len(_PLAIN_SECTION_SPLIT_RE.findall(text))
+    step_hits = len(_PLAIN_STEP_SPLIT_RE.findall(text))
+    note_hits = len(_PLAIN_NOTE_SPLIT_RE.findall(text))
+    return header_hits >= 2 or step_hits >= 2 or (header_hits >= 1 and step_hits >= 1) or note_hits >= 1
+
+
+def _insert_plain_text_boundaries(text: str) -> str:
+    updated = _PLAIN_MULTIWORD_SECTION_SPLIT_RE.sub(r"\n\1\n", text)
+    updated = _PLAIN_CONDITION_BEFORE_SECTION_RE.sub(r"\n\1\n", updated)
+    updated = _PLAIN_SINGLE_SECTION_SPLIT_RE.sub(r"\n\1\n", updated)
+    updated = _PLAIN_SERVICE_BEFORE_STEPS_RE.sub(r"\n\1\n", updated)
+    updated = _PLAIN_NOTE_SPLIT_RE.sub(r"\n\1 ", updated)
+    # Protect "Figure 1." captions before numbered-step splitting.
+    updated = _PLAIN_FIGURE_SPLIT_RE.sub(r"\n\1 ", updated)
+    updated = _PLAIN_STEP_SPLIT_RE.sub(r"\n\1", updated)
+    updated = re.sub(r"\s*©\s*\d{4}[^\n]*", "\n", updated)
+    updated = re.sub(r"\s*Page\s+\d+\s+of\s+\d+[^\n]*", "\n", updated, flags=re.IGNORECASE)
+    # Drop repeated bulletin title lines that appear before the Service section.
+    updated = re.sub(
+        r"(?im)^Technical Service Bulletin\s*$",
+        "",
+        updated,
+    )
+    return updated
+
+
+def _is_plain_section_heading(text: str) -> bool:
+    key = re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip()
+    return key in _PLAIN_SECTION_HEADER_KEYS
+
+
+def _is_plain_boilerplate(text: str) -> bool:
+    lowered = text.casefold()
+    if re.match(r"^page\s+\d+\s+of\s+\d+\b", lowered):
+        return True
+    if lowered.startswith("©") or lowered.startswith("(c)"):
+        return True
+    if "all rights reserved" in lowered and len(text) > 80:
+        return True
+    if "information contained in this document is based on the latest information" in lowered:
+        return True
+    if "no part of this document may be reproduced" in lowered:
+        return True
+    return False
+
+
 __all__ = [
     "DOCUMENT_TYPES",
     "NORMALIZATION_VERSION",
@@ -362,5 +533,6 @@ __all__ = [
     "build_ordered_document",
     "document_from_steps",
     "empty_document",
+    "segment_plain_article_text",
     "validate_ordered_document",
 ]

@@ -5,6 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
 
 from autodata_ingestion.object_storage import ensure_versioned_bucket
 
@@ -25,8 +30,8 @@ def main() -> None:
 
     client = Minio(
         os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
-        access_key=os.environ["AUTODATA_S3_ACCESS_KEY"],
-        secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],
+        access_key=os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin"),
+        secret_key=os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password"),
         secure=False,
     )
     result = [ensure_versioned_bucket(client, bucket) for bucket in buckets]

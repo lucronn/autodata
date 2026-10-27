@@ -39,7 +39,11 @@ def call_api(method: str, path: str, *, organization_id: str, roles: str = "data
         with urlopen(request, timeout=10) as response:
             return response.status, json.loads(response.read())
     except HTTPError as error:
-        return error.code, json.loads(error.read())
+        raw = error.read()
+        try:
+            return error.code, json.loads(raw)
+        except Exception:
+            return error.code, {"error": raw.decode("utf-8", errors="replace")}
     except URLError as error:
         raise RuntimeError(f"API request failed: {error.reason}") from error
 

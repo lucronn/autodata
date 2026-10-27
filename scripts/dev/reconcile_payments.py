@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
 
 from autodata_ingestion.payment_reconciliation import reconcile_pending_payments
 
@@ -17,7 +22,7 @@ def db_connection():
         port=int(port_text),
         dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        password=os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
     )
 
 
