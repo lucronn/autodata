@@ -26,11 +26,18 @@ def run_compose(
     arguments: list[str],
     input_data: bytes | None = None,
 ) -> bytes:
+    env = {
+        **os.environ,
+        "AUTODATA_POSTGRES_PASSWORD": os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
+        "AUTODATA_MINIO_ROOT_USER": os.getenv("AUTODATA_MINIO_ROOT_USER", "localadmin"),
+        "AUTODATA_MINIO_ROOT_PASSWORD": os.getenv("AUTODATA_MINIO_ROOT_PASSWORD", "local-dev-password"),
+    }
     completed = subprocess.run(
         ["docker", "compose", "-f", compose_file, *arguments],
         check=False,
         capture_output=True,
         input=input_data,
+        env=env,
     )
     if completed.returncode != 0:
         raise RuntimeError(f"Docker Compose command failed: {arguments[0]}")

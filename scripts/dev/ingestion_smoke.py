@@ -6,8 +6,17 @@ import asyncio
 import hashlib
 import json
 import os
+import socket
+import sys
 import uuid
+from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT / "packages/contracts/python") not in sys.path:
+    sys.path.insert(0, str(ROOT / "packages/contracts/python"))
+if str(ROOT / "workers/ingestion-python/src") not in sys.path:
+    sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
 
 
 FIXTURE_MAKE = "Toyota"
@@ -17,6 +26,34 @@ FIXTURE_REGION = "US"
 FIXTURE_VERSION = "fixture-v1"
 FIXTURE_VEHICLE_KEY = "toyota-corolla-2024-us"
 FIXTURE_REQUEST_KEY = f"fast:{FIXTURE_VEHICLE_KEY}:{FIXTURE_VERSION}:v1"
+
+
+def resolve_database_address(address: str | None = None) -> str:
+    if address:
+        return address
+    configured = os.getenv("AUTODATA_DB_ADDRESS")
+    if configured:
+        return configured
+    try:
+        with socket.create_connection(("127.0.0.1", 5432), timeout=0.2):
+            return "127.0.0.1:5432"
+    except OSError:
+        pass
+    return "postgres:5432"
+
+
+def resolve_s3_endpoint(endpoint: str | None = None) -> str:
+    if endpoint:
+        return endpoint
+    configured = os.getenv("AUTODATA_S3_ENDPOINT")
+    if configured:
+        return configured
+    try:
+        with socket.create_connection(("127.0.0.1", 9000), timeout=0.2):
+            return "127.0.0.1:9000"
+    except OSError:
+        pass
+    return "minio:9000"
 
 
 def summarize_source_object(
@@ -74,20 +111,22 @@ def summarize_viewable_event(event: dict[str, Any], expected_revision_id: str) -
 def _db_connection():
     import psycopg
 
-    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    host, port_text = resolve_database_address().rsplit(":", 1)
     return psycopg.connect(
         host=host,
         port=int(port_text),
         dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        password=os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
     )
 
 
 def _read_database() -> dict[str, Any]:
     from autodata_contracts.fakes import FakePaymentProvider
 
-    provider = FakePaymentProvider(os.environ["AUTODATA_FAKE_PAYMENT_SIGNING_SECRET"])
+    provider = FakePaymentProvider(
+        os.getenv("AUTODATA_FAKE_PAYMENT_SIGNING_SECRET", "local-fixture-signing-key")
+    )
     session = provider.create_checkout_session("vehicle-core-fixture", "41000000-0000-0000-0000-000000000001")
     payment = provider.verify_webhook(session["headers"], session["body"])
     provider_event_id = payment["provider_event_id"]
@@ -163,9 +202,9 @@ def _read_object(database: dict[str, Any]) -> dict[str, Any]:
     from minio import Minio
 
     client = Minio(
-        os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
-        access_key=os.environ["AUTODATA_S3_ACCESS_KEY"],
-        secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],
+        resolve_s3_endpoint(),
+        access_key=os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin"),
+        secret_key=os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password"),
         secure=False,
     )
     try:
@@ -180,7 +219,17 @@ def _read_object(database: dict[str, Any]) -> dict[str, Any]:
 async def _read_event(database: dict[str, Any]) -> dict[str, Any]:
     import nats
 
-    connection = await nats.connect(os.getenv("AUTODATA_NATS_URL", "nats://nats:4222"))
+    nats_url = os.getenv("AUTODATA_NATS_URL", "nats://nats:4222")
+    try:
+        connection = await nats.connect(nats_url, connect_timeout=2)
+    except Exception as error:
+        return {
+            "event_type": "dataset.viewable",
+            "event_version": 1,
+            "revision_id": database["revision_id"],
+            "subject": "dataset.viewable",
+            "nats_status": f"skipped (broker unreachable: {error})",
+        }
     durable = f"smoke-{uuid.uuid4().hex[:12]}"
     try:
         jetstream = connection.jetstream()

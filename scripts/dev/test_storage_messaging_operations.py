@@ -49,6 +49,19 @@ class StorageMessagingOperationsTests(unittest.TestCase):
         self.assertIn('os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")', reconcile)
         self.assertIn("workers/ingestion-python/src", reconcile)
 
+        metrics = (ROOT / "scripts/dev/operational_metrics.py").read_text()
+        self.assertIn('os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")', metrics)
+        self.assertIn("resolve_database_address", metrics)
+
+        replay = (ROOT / "scripts/dev/replay_outbox.py").read_text()
+        self.assertIn('os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")', replay)
+        self.assertIn("resolve_database_address", replay)
+
+        backup = (ROOT / "scripts/dev/backup_restore_smoke.py").read_text()
+        self.assertIn('os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")', backup)
+        self.assertIn('os.getenv("AUTODATA_MINIO_ROOT_USER", "localadmin")', backup)
+        self.assertIn('os.getenv("AUTODATA_MINIO_ROOT_PASSWORD", "local-dev-password")', backup)
+
 
 if __name__ == "__main__":
     unittest.main()

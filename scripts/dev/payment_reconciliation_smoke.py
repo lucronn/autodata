@@ -21,21 +21,38 @@ from autodata_ingestion.payment_reconciliation import (  # noqa: E402
 
 
 REQUEST_ID = "91000000-0000-0000-0000-000000000004"
+SNAPSHOT_ID = "91000000-0000-0000-0000-000000000003"
 ORGANIZATION_ID = "91000000-0000-0000-0000-000000000005"
 CORRELATION_ID = "91000000-0000-0000-0000-000000000006"
 IDEMPOTENCY_KEY = "payment-reconciliation-smoke-004"
 
 
+def resolve_database_address(address: str | None = None) -> str:
+    if address:
+        return address
+    configured = os.getenv("AUTODATA_DB_ADDRESS")
+    if configured:
+        return configured
+    import socket
+
+    try:
+        with socket.create_connection(("127.0.0.1", 5432), timeout=0.2):
+            return "127.0.0.1:5432"
+    except OSError:
+        pass
+    return "postgres:5432"
+
+
 def db_connection():
     import psycopg
 
-    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    host, port_text = resolve_database_address().rsplit(":", 1)
     return psycopg.connect(
         host=host,
         port=int(port_text),
         dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        password=os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
     )
 
 
@@ -84,6 +101,10 @@ def cleanup(connection, provider_event_id: str) -> None:
                 "DELETE FROM payment_events WHERE provider_event_id = %s",
                 (provider_event_id,),
             )
+            cursor.execute(
+                "DELETE FROM source_snapshots WHERE source_snapshot_id = %s",
+                (SNAPSHOT_ID,),
+            )
 
 
 def main() -> None:
@@ -103,15 +124,27 @@ def main() -> None:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
+                    INSERT INTO source_snapshots
+                        (source_snapshot_id, adapter_name, source_uri, source_version,
+                         content_sha256, object_key, license_metadata, retrieved_at)
+                    VALUES (%s, 'fake-smoke', 'https://source.example/smoke', 'smoke-v1',
+                            '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+                            'smoke-key', '{}'::jsonb, now())
+                    ON CONFLICT (content_sha256) DO NOTHING
+                    """,
+                    (SNAPSHOT_ID,),
+                )
+                cursor.execute(
+                    """
                     INSERT INTO dataset_requests
-                        (dataset_request_id, dataset_product_id, vehicle_key, region,
+                        (dataset_request_id, dataset_product_id, source_snapshot_id, vehicle_key, region,
                          status, lane, correlation_id, idempotency_key, processing_version)
-                    SELECT %s, dataset_product_id, 'payment-smoke-vehicle', 'US',
+                    SELECT %s, dataset_product_id, %s, 'payment-smoke-vehicle', 'US',
                            'purchased', 'fast', %s, %s, 'payment-smoke-v1'
                     FROM dataset_products
                     WHERE product_key = 'vehicle-core-fixture' AND product_version = 1
                     """,
-                    (REQUEST_ID, CORRELATION_ID, IDEMPOTENCY_KEY),
+                    (REQUEST_ID, SNAPSHOT_ID, CORRELATION_ID, IDEMPOTENCY_KEY),
                 )
         fulfilled_results = reconcile_pending_payments(connection)
         fulfilled = next(

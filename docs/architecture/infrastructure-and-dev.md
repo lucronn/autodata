@@ -137,6 +137,10 @@ The local development environment accommodates both containerized Compose stacks
 - **Migration Runner Resilience:** `scripts/dev/migrate.py` automatically resolves the PostgreSQL address. When `AUTODATA_DB_ADDRESS` is not explicitly exported, it probes `127.0.0.1:5432` for host execution and falls back to `postgres:5432` when operating inside a Docker network.
 - **Unified Smoke Probing:** `scripts/dev/smoke_local_stack.py` and `scripts/dev/api_runtime_smoke.py` accept `--base-url`, respect `AUTODATA_API_BASE_URL` and `AUTODATA_API_ADDR`, and probe port `18080` as an automatic fallback if port `8080` is not active on `127.0.0.1`.
 - **Fast-Lane Fixture Seeding:** `autodata_ingestion.ingest_fixture` defaults `AUTODATA_FAKE_PAYMENT_SIGNING_SECRET` to `"local-fixture-signing-key"` and handles optional NATS event broadcasting gracefully during standalone or offline local database seeding.
+- **Payment Reconciliation Smoke:** `scripts/dev/payment_reconciliation_smoke.py` automatically resolves `127.0.0.1:5432`, defaults credentials to `"local-dev-only"`, seeds a clean temporary source snapshot fixture for `dataset_requests` linkage, and validates fulfillment and entitlement revocation without requiring manual arguments.
+- **Developer Operations Scripts:** `scripts/dev/operational_metrics.py`, `scripts/dev/replay_outbox.py`, and `scripts/dev/backup_restore_smoke.py` default to `"local-dev-only"` password and automatically probe local database and S3 ports, supporting immediate execution on host developer workstations.
+- **Ingestion Smoke Hardening:** `scripts/dev/ingestion_smoke.py` includes contract and worker package path resolution, automatic `127.0.0.1` database and S3 endpoint probing, and graceful NATS broker reachability detection.
+- **Independent Bankone Service Ingest:** `scripts/dev/ingest_bankone_service.py` is modernized to use `SourceConnectorClient` and `BANKONE_BASE_URL` (`https://bankone.cars.tk`), retiring legacy AutoAPI connector bindings.
 
 The first-success developer path is:
 
