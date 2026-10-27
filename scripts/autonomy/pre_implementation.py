@@ -149,3 +149,95 @@ def validate_record(
             errors.append("pre_implementation.plan_ref does not record todo")
 
     return errors
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    import json
+    import sys
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--record",
+        required=True,
+        help="path to pre-implementation JSON record file",
+    )
+    parser.add_argument(
+        "--base-sha",
+        default=None,
+        help="base commit SHA to check against (defaults to git rev-parse HEAD)",
+    )
+    parser.add_argument(
+        "--repo-root",
+        default=None,
+        help="path to repository root (defaults to auto-detected repository)",
+    )
+    parser.add_argument(
+        "--policy",
+        default=None,
+        help="path to .autodata-autonomy-policy.json (defaults to repository root policy)",
+    )
+    args = parser.parse_args(argv)
+
+    repo_root = (
+        Path(args.repo_root).resolve()
+        if args.repo_root
+        else Path(__file__).resolve().parents[2]
+    )
+
+    base_sha = args.base_sha
+    if not base_sha:
+        sha_proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if sha_proc.returncode != 0:
+            print("Failed to resolve git HEAD SHA", file=sys.stderr)
+            return 1
+        base_sha = sha_proc.stdout.strip()
+
+    policy_path = (
+        Path(args.policy).resolve()
+        if args.policy
+        else repo_root / ".autodata-autonomy-policy.json"
+    )
+    if not policy_path.is_file():
+        print(f"Policy file not found: {policy_path}", file=sys.stderr)
+        return 1
+
+    try:
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"Failed to read policy JSON: {exc}", file=sys.stderr)
+        return 1
+
+    record_path = Path(args.record)
+    if not record_path.is_absolute():
+        record_path = repo_root / record_path
+    if not record_path.is_file():
+        print(f"Record file not found: {record_path}", file=sys.stderr)
+        return 1
+
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"Failed to read record JSON: {exc}", file=sys.stderr)
+        return 1
+
+    errors = validate_record(record, repo_root, base_sha, policy)
+    if errors:
+        for err in errors:
+            print(f"Pre-implementation validation error: {err}", file=sys.stderr)
+        return 1
+
+    print(json.dumps({"status": "synchronized", "errors": []}))
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())

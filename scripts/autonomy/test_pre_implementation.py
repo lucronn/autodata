@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 
-from pre_implementation import validate_record
+from pre_implementation import main, validate_record
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -83,6 +83,32 @@ class PreImplementationTests(unittest.TestCase):
 
         self.assertIn("pre_implementation.plan_ref is outside the configured plan paths", errors)
         self.assertIn("pre_implementation.repository_doc_refs[0] is absent at base_sha", errors)
+
+    def test_main_cli_with_valid_record_returns_zero(self):
+        exit_code = main(["--record", "docs/agents/records/2026-10-27-document-image-localization-preflight-cli.json"])
+        self.assertEqual(exit_code, 0)
+
+    def test_main_cli_with_invalid_record_returns_one(self):
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
+            f.write(json.dumps({"goal": ""}))
+            f.flush()
+            exit_code = main(["--record", f.name])
+            self.assertEqual(exit_code, 1)
+
+    def test_main_cli_with_nonexistent_record_returns_one(self):
+        exit_code = main(["--record", "does/not/exist.json"])
+        self.assertEqual(exit_code, 1)
+
+    def test_main_cli_with_custom_base_sha(self):
+        exit_code = main([
+            "--record",
+            "docs/agents/records/2026-10-27-document-image-localization-preflight-cli.json",
+            "--base-sha",
+            BASE_SHA,
+        ])
+        self.assertEqual(exit_code, 0)
 
 
 if __name__ == "__main__":
