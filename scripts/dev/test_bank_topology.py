@@ -173,6 +173,20 @@ class BankTopologyTests(unittest.TestCase):
         batches_limit, _, _ = fetch_bankone_batches(mock, limit=2)
         self.assertEqual(len(batches_limit), 2)
 
+    def test_provider_neutral_bank_batch_exports(self):
+        from autodata_ingestion.bankone_batch import (
+            BankBatch,
+            BankoneBatch,
+            build_bank_batch_plan,
+            build_bankone_batch_plan,
+            execute_bank_batch,
+            execute_bankone_batch,
+        )
+
+        self.assertIs(BankBatch, BankoneBatch)
+        self.assertIs(build_bank_batch_plan, build_bankone_batch_plan)
+        self.assertIs(execute_bank_batch, execute_bankone_batch)
+
 
 if __name__ == "__main__":
     unittest.main()

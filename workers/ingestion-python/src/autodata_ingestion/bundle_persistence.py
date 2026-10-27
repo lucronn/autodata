@@ -36,10 +36,13 @@ def persist_source_bundle(
     import psycopg
     from psycopg.types.json import Jsonb
 
-    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    address = _resolve_database_address()
+    host, separator, port = address.rpartition(":")
+    if not separator:
+        host, port = address, "5432"
     conninfo = {
         "host": host,
-        "port": int(port_text),
+        "port": int(port),
         "dbname": os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         "user": os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
         "password": os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
@@ -389,11 +392,42 @@ def _review_evidence_ids(item: Mapping[str, Any]) -> list[str]:
     return list(dict.fromkeys(result))
 
 
+def _resolve_database_address(address: str | None = None) -> str:
+    if address:
+        return address
+    configured = os.getenv("AUTODATA_DB_ADDRESS")
+    if configured:
+        return configured
+    try:
+        import socket
+        with socket.create_connection(("127.0.0.1", 5432), timeout=0.2):
+            return "127.0.0.1:5432"
+    except OSError:
+        pass
+    return "postgres:5432"
+
+
+def _resolve_s3_endpoint(endpoint: str | None = None) -> str:
+    if endpoint:
+        return endpoint
+    configured = os.getenv("AUTODATA_S3_ENDPOINT")
+    if configured:
+        return configured
+    try:
+        import socket
+        with socket.create_connection(("127.0.0.1", 9000), timeout=0.2):
+            return "127.0.0.1:9000"
+    except OSError:
+        pass
+    return "minio:9000"
+
+
 def store_source_artifacts(artifacts: Iterable[SourceArtifact]) -> None:
     from minio import Minio
 
+    endpoint = _resolve_s3_endpoint()
     client = Minio(
-        os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
+        endpoint,
         access_key=os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin"),
         secret_key=os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password"),
         secure=False,

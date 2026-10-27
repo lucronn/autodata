@@ -112,7 +112,27 @@ async def relay_pending_events(limit: int = 10, max_attempts: int = 3) -> dict[s
 
     import nats
 
-    connection = await nats.connect(os.getenv("AUTODATA_NATS_URL", "nats://nats:4222"))
+    nats_url = _resolve_nats_url()
+
+    async def _silent_nats_error(error: Exception) -> None:
+        pass
+
+    try:
+        connection = await nats.connect(
+            nats_url,
+            connect_timeout=1,
+            max_reconnect_attempts=1,
+            allow_reconnect=False,
+            error_cb=_silent_nats_error,
+        )
+    except Exception as error:
+        return {
+            "status": f"skipped (broker unreachable: {error})",
+            "claimed": 0,
+            "published": 0,
+            "failed": 0,
+            "dead_lettered": 0,
+        }
     try:
         jetstream = connection.jetstream()
         await _ensure_stream(jetstream)
@@ -259,6 +279,27 @@ def _resolve_database_address(address: str | None = None) -> str:
     except OSError:
         pass
     return "postgres:5432"
+
+
+def _resolve_nats_url(url: str | None = None) -> str:
+    if url:
+        return url
+    configured = os.getenv("AUTODATA_NATS_URL")
+    if configured:
+        return configured
+    try:
+        import socket
+        with socket.create_connection(("127.0.0.1", 4222), timeout=0.2):
+            return "nats://127.0.0.1:4222"
+    except OSError:
+        pass
+    try:
+        import socket
+        socket.getaddrinfo("nats", 4222)
+        return "nats://nats:4222"
+    except OSError:
+        pass
+    return "nats://127.0.0.1:4222"
 
 
 def _connection_kwargs() -> dict[str, Any]:

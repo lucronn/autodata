@@ -9,6 +9,8 @@ import os
 import uuid
 from typing import Any, Mapping
 
+from .bundle_persistence import _resolve_database_address
+
 
 DERIVED_ARTICLE_CONTRACT_VERSION = 3
 
@@ -145,10 +147,13 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
     import psycopg
     from psycopg.types.json import Jsonb
 
-    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    address = _resolve_database_address()
+    host, separator, port = address.rpartition(":")
+    if not separator:
+        host, port = address, "5432"
     conninfo = {
         "host": host,
-        "port": int(port_text),
+        "port": int(port),
         "dbname": os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         "user": os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
         "password": password,

@@ -1,0 +1,20 @@
+{
+  "goal": "Resilience and developer tooling improvements across outbox relay CLI, persistence endpoint resolution, provider-neutral batch aliases, and directory normalizer.",
+  "plan_ref": "docs/superpowers/plans/2026-10-27-outbox-relay-persistence-resilience.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/151",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/architecture/independent-bank-connectors.md"
+  ],
+  "todo": [
+    "Add worker sys.path resolution and argparse CLI parsing (--once, --limit, --max-attempts, --poll-seconds) to outbox_relay.py.",
+    "Harden outbox.py with _resolve_nats_url and silent error callback for unreachable brokers.",
+    "Add _resolve_database_address and _resolve_s3_endpoint across bundle_persistence, vehicle_selection_persistence, and derived_article_persistence.",
+    "Export provider-neutral BankBatch, execute_bank_batch, and build_bank_batch_plan aliases and update ingest_banktwo_service.py.",
+    "Add --limit CLI option to normalize_source_directory.py.",
+    "Add unit tests in test_storage_messaging_operations.py and test_bank_topology.py."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-27T12:15:00Z"
+}
