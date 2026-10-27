@@ -424,7 +424,17 @@ def _adapt_embedded_json_resources(
     body = document.get("body") if isinstance(document, dict) and "body" in document else document
     if not isinstance(body, dict):
         return [], {}
-    document_id = _field(body, "document_id", "documentId", "id") or "embedded"
+    # Bankone article resources often wrap a PDF/HTML payload without a
+    # documentId. When the connector fetch tagged the resource with the
+    # caller's article id, use that id's final opaque segment so
+    # ``_attach_document_content`` can join extracted text to the index row.
+    document_id = _field(body, "document_id", "documentId", "id")
+    if not document_id:
+        target_article_id = str(resource.metadata.get("target_article_id") or "").strip()
+        if target_article_id:
+            document_id = target_article_id.rsplit(":", 1)[-1].strip() or target_article_id
+        else:
+            document_id = "embedded"
     candidates: list[NormalizationCandidate] = []
     resources: list[dict[str, Any]] = []
     needs_review = False

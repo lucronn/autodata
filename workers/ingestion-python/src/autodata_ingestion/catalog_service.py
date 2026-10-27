@@ -273,7 +273,11 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             vehicle["make"], vehicle["model"], vehicle["model_year"], vehicle["region"],
             vehicle.get("trim"), None,
         )
+        from .procedure_normalize import article_is_content_complete
+
         primary_error = None
+        matched: list[dict[str, Any]] = []
+        metadata: dict[str, Any] = {}
         try:
             records, metadata = _load_autoapi_job_catalog(vehicle, target, query=query)
             matched = [
@@ -281,7 +285,20 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
                 if str(record.get("article", {}).get("article_id", "")) in {source_article_id, str(request.get("article_id", ""))}
                 or str(record.get("article", {}).get("title", "")).casefold() == str(request.get("title", "")).casefold()
             ]
-            if not matched:
+            # Index-only rows share titles with the selected article. Treat a
+            # match without readable body/steps as a miss so Banktwo can run
+            # and so the API does not cache a false "complete" hydration.
+            content_matched = [
+                record
+                for record in matched
+                if article_is_content_complete(record.get("article") or {})
+            ]
+            if content_matched:
+                matched = content_matched
+            elif matched:
+                primary_error = RuntimeError("primary article detail had no readable content")
+                matched = []
+            else:
                 primary_error = RuntimeError("primary article detail was not found")
         except Exception as error:  # noqa: BLE001 - try the second source
             primary_error = error
@@ -289,6 +306,11 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
         if primary_error is not None:
             try:
                 matched, metadata = _load_autoapitwo_article_detail(request, vehicle)
+                matched = [
+                    record
+                    for record in matched
+                    if article_is_content_complete(record.get("article") or {})
+                ] or matched
             except Exception as fallback_error:  # noqa: BLE001 - source failure is a retryable miss
                 result = {
                     "status": "source_unavailable",
@@ -300,6 +322,7 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
                     "metadata": {
                         "reason": type(fallback_error).__name__,
                         "primary_source_reason": type(primary_error).__name__,
+                        "primary_detail": str(primary_error),
                     },
                 }
                 with _HYDRATION_LOCK:
@@ -1116,10 +1139,17 @@ def _persist_resolved_catalog_rows(
 
     if os.getenv("AUTODATA_SOURCE_PERSIST", "1") != "1":
         return {"status": "disabled", "row_count": 0}
+    default_region = os.getenv("AUTODATA_SOURCE_REGION", "US").strip().upper() or "US"
+    normalized_rows: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        if scope == "configurations" and item.get("region") in (None, ""):
+            item["region"] = default_region
+        normalized_rows.append(item)
     persistable = [
-        dict(row)
-        for row in rows
-        if all(row.get(key) not in (None, "") for key in ("year", "make", "model", "region"))
+        item
+        for item in normalized_rows
+        if all(item.get(key) not in (None, "") for key in ("year", "make", "model", "region"))
     ]
     if not persistable:
         return {"status": "no_persistable_rows", "row_count": 0}
