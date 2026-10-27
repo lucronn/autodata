@@ -1,0 +1,24 @@
+{
+  "goal": "Hardening for document block image hydration, list normalization, outbox CLI ergonomics, and dev resilience.",
+  "plan_ref": "docs/superpowers/plans/2026-10-27-document-block-image-hydration-outbox-cli-ergonomics.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/168",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "todo": [
+    "Enhance hydrate_article_image_urls in autodata_ingestion.procedure_images to hydrate direct block images lists and traverse children blocks.",
+    "Expand dictionary list item normalization keys in article_document._list_block and support callout images in _callout_block.",
+    "Add --address and --database-url arguments in scripts/dev/replay_outbox.py.",
+    "Add --address, --database-url, and --nats-url arguments in scripts/dev/outbox_relay.py.",
+    "Add unit tests in workers/ingestion-python/tests/test_procedure_images.py.",
+    "Add unit tests in workers/ingestion-python/tests/test_article_document.py.",
+    "Expand virtualenv discovery and CLI argument assertions in scripts/dev/test_storage_messaging_operations.py.",
+    "Add template variables to .env.example.",
+    "Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.",
+    "Record delivery in docs/agents/records/2026-10-27-document-block-image-hydration-outbox-cli-ergonomics.json.",
+    "Prune merged remote git branches."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-27T20:08:00Z"
+}

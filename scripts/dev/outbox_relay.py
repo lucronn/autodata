@@ -22,6 +22,18 @@ from autodata_enrichment.outbox import relay_pending_events  # noqa: E402
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--address",
+        "--database-url",
+        dest="address",
+        default=None,
+        help="PostgreSQL host:port address override",
+    )
+    parser.add_argument(
+        "--nats-url",
+        default=None,
+        help="NATS broker URL override",
+    )
+    parser.add_argument(
         "--once",
         action="store_true",
         default=(os.getenv("AUTODATA_OUTBOX_ONCE") == "1"),
@@ -48,6 +60,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Polling interval in seconds between batches",
     )
     args = parser.parse_args(argv)
+
+    if args.address:
+        os.environ["AUTODATA_DB_ADDRESS"] = args.address
+    if args.nats_url:
+        os.environ["AUTODATA_NATS_URL"] = args.nats_url
 
     while True:
         result = asyncio.run(

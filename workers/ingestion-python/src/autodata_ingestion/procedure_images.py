@@ -209,7 +209,14 @@ def hydrate_article_image_urls(
                                 ]
                             for child in cell.get("blocks") or []:
                                 hydrate_block(child)
+            block_images = block.get("images")
+            if isinstance(block_images, list):
+                block["images"] = [
+                    hydrate(img) for img in block_images if isinstance(img, Mapping)
+                ]
             for child in block.get("blocks") or []:
+                hydrate_block(child)
+            for child in block.get("children") or []:
                 hydrate_block(child)
 
         for block in doc_out.get("blocks") or []:

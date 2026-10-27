@@ -340,3 +340,56 @@ def test_callout_block_extracts_message_content_and_body():
     assert document["blocks"][1]["text"] == "Do not reuse the cylinder head bolts."
     assert document["blocks"][2]["label"] == "NOTE"
     assert document["blocks"][2]["text"] == "Apply clean engine oil to threads prior to torqueing."
+
+
+def test_list_block_extracts_clean_text_from_content_body_and_message():
+    article = {"article_id": "test-list-expanded"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "ordered_list",
+                "items": [
+                    {"content": "Step 1: Drain cooling system."},
+                    {"body": "Step 2: Disconnect upper radiator hose."},
+                    {"message": "Step 3: Unbolt thermostat housing."},
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    block = document["blocks"][0]
+    assert block["type"] == "ordered_list"
+    assert block["items"] == [
+        "Step 1: Drain cooling system.",
+        "Step 2: Disconnect upper radiator hose.",
+        "Step 3: Unbolt thermostat housing.",
+    ]
+
+
+def test_callout_block_preserves_images():
+    article = {"article_id": "test-callout-images"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "warning",
+                "text": "Wear protective gear during handling.",
+                "images": [
+                    {
+                        "image_id": "warning-icon",
+                        "storage_key": "procedure-images/warn1",
+                        "url": "https://source.test/warn.png",
+                    }
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    block = document["blocks"][0]
+    assert block["type"] == "callout"
+    assert block["text"] == "Wear protective gear during handling."
+    assert "images" in block
+    assert block["images"][0]["image_id"] == "warning-icon"
+    assert block["images"][0]["storage_key"] == "procedure-images/warn1"
+    assert block["images"][0]["status"] == "available"

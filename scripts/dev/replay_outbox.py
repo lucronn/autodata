@@ -39,10 +39,10 @@ def resolve_database_address(address: str | None = None) -> str:
     return "postgres:5432"
 
 
-def _db_connection() -> Any:
+def _db_connection(address: str | None = None) -> Any:
     import psycopg
 
-    host, port_text = resolve_database_address().rsplit(":", 1)
+    host, port_text = resolve_database_address(address).rsplit(":", 1)
     return psycopg.connect(
         host=host,
         port=int(port_text),
@@ -105,12 +105,19 @@ def replay_dead_letter(connection: Any, kind: str, identifier: str) -> dict[str,
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--address",
+        "--database-url",
+        dest="address",
+        default=None,
+        help="PostgreSQL host:port address override",
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--event-id")
     group.add_argument("--job-id")
     args = parser.parse_args(argv)
     kind, identifier = replay_target(args.event_id, args.job_id)
-    with _db_connection() as connection:
+    with _db_connection(args.address) as connection:
         print(json.dumps(replay_dead_letter(connection, kind, identifier), sort_keys=True))
 
 
