@@ -12,6 +12,7 @@ from .source_connector_client import (
     SourceConnectorError,
     SourceEnvelopeV1,
     source_connector_registry,
+    source_connector_token,
 )
 
 
@@ -216,7 +217,7 @@ class BanktwoConnector:
             configured = os.getenv("BANKTWO_BASE_URL", "https://banktwo.cars.tk")
             self.client = SourceConnectorClient(
                 base_url or configured,
-                token=os.getenv("BANKTWO_API_TOKEN") or None,
+                token=source_connector_token("banktwo"),
                 timeout=timeout,
                 max_bytes=max_bytes,
                 provider="banktwo",

@@ -24,6 +24,14 @@ from xml.etree import ElementTree
 
 
 _JSON_TYPES = {"application/json", "application/problem+json", "text/json"}
+
+
+def _is_json_media_type(media_type: str) -> bool:
+    """Accept JSON suffix types (e.g. application/hal+json) as JSON."""
+
+    return media_type in _JSON_TYPES or (
+        media_type.startswith("application/") and media_type.endswith("+json")
+    )
 _STRUCTURED_TYPES = _JSON_TYPES | {"application/xml", "text/xml", "text/csv"}
 _DOCUMENT_TYPES = {"text/html", "application/pdf", "text/plain"}
 _DIAGRAM_TYPES = {"image/svg+xml"}
@@ -195,7 +203,7 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
     custom_adapter = _MEDIA_TYPE_ADAPTERS.get(resource.media_type)
     if custom_adapter is not None:
         return custom_adapter(resource, metadata)
-    if resource.media_type in _JSON_TYPES:
+    if _is_json_media_type(resource.media_type):
         try:
             document = json.loads(resource.payload)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -255,6 +263,34 @@ def adapt_source_resource(resource: SourceResource) -> SourceArtifact:
     return _binary_artifact("quarantine", resource, {**metadata, "quarantine_reason": "unsupported_media_type"})
 
 
+def _embedded_hal_article(body: dict[str, Any]) -> NormalizationCandidate | None:
+    """Build an article candidate from a HAL ``_embedded.data.article`` record."""
+
+    embedded = body.get("_embedded")
+    if not isinstance(embedded, dict):
+        return None
+    data = embedded.get("data")
+    if not isinstance(data, dict):
+        return None
+    article = data.get("article")
+    if not isinstance(article, dict):
+        return None
+    record = {
+        **article,
+        "id": article.get("id") or body.get("id"),
+        "title": article.get("title") or body.get("title"),
+    }
+    content = record.get("content")
+    if isinstance(content, str) and "<" in content and ">" in content:
+        # HAL article bodies are full HTML documents; persist readable lines
+        # so downstream normalization can build ordered steps from them.
+        record["content"] = _html_lines(content.encode("utf-8"))
+    candidate = _candidate_from_record(record, "body._embedded.data.article")
+    if candidate is None or candidate.kind != "article":
+        return None
+    return candidate
+
+
 def classify_json_candidates(
     document: Any,
     *,
@@ -283,13 +319,19 @@ def classify_json_candidates(
 
     if isinstance(body, dict):
         vehicle_candidate = _candidate_from_record(body, "body")
+        # HAL-style payloads carry the full article (including its HTML body)
+        # under _embedded.data.article while the top level only repeats the
+        # title/id; prefer the embedded record over the thin top-level one.
+        embedded_article = _embedded_hal_article(body)
+        if embedded_article is not None and vehicle_candidate is not None and vehicle_candidate.kind == "article":
+            vehicle_candidate = embedded_article
         if vehicle_candidate is not None:
             candidates.append(vehicle_candidate)
-        else:
+        if vehicle_candidate is None or vehicle_candidate.kind != "vehicle_identity":
             # Many APIs wrap the actual record under a vehicle-shaped key.
             # Inspect only known identity wrappers so arbitrary nested JSON is
             # not mistaken for canonical vehicle data.
-            for key in ("vehicle", "vehicleIdentity", "vehicle_identity"):
+            for key in ("vehicle", "vehicleIdentity", "vehicle_identity", "car"):
                 nested = body.get(key)
                 if isinstance(nested, dict):
                     nested_candidate = _candidate_from_record(nested, f"body.{key}")
@@ -888,6 +930,34 @@ def _html_text(payload: bytes) -> str:
     parser.feed(payload.decode("utf-8-sig"))
     parser.close()
     return re.sub(r"\s+", " ", " ".join(parser.parts)).strip()
+
+
+class _VisibleLinesParser(_VisibleTextParser):
+    """Visible-text extraction that keeps block boundaries as line breaks."""
+
+    _BLOCK_TAGS = {"p", "div", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6", "table", "ul", "ol", "section", "article"}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        super().handle_starttag(tag, attrs)
+        if tag.casefold() == "br":
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        super().handle_endtag(tag)
+        if tag.casefold() in self._BLOCK_TAGS:
+            self.parts.append("\n")
+
+
+def _html_lines(payload: bytes) -> str:
+    parser = _VisibleLinesParser()
+    parser.feed(payload.decode("utf-8-sig"))
+    parser.close()
+    lines = []
+    for raw in "".join(parser.parts).splitlines():
+        line = re.sub(r"\s+", " ", raw).strip()
+        if line:
+            lines.append(line)
+    return "\n".join(lines)
 
 
 def _html_media_references(resource: SourceResource) -> list[dict[str, str]]:

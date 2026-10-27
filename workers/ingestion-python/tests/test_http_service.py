@@ -74,6 +74,47 @@ class HTTPServiceTests(unittest.TestCase):
         self.assertEqual(result["status"], "ready")
         self.assertEqual(calls[0]["query"], "replace alternator and starter")
 
+    def test_catalog_ensure_dispatches_years_to_year_manifest(self):
+        calls = []
+
+        def catalog_years_runner(serialized_request):
+            calls.append(json.loads(serialized_request))
+            return {"status": "scheduled", "scope": "years"}
+
+        result = dispatch_request(
+            "/v1/catalog/ensure",
+            {"scope": "years", "idempotency_key": "catalog-hydration:years"},
+            catalog_years_runner=catalog_years_runner,
+        )
+
+        self.assertEqual(result["status"], "scheduled")
+        self.assertEqual(calls[0]["scope"], "years")
+
+    def test_catalog_ensure_dispatches_scoped_hydration(self):
+        calls = []
+
+        def catalog_runner(serialized_request):
+            calls.append(json.loads(serialized_request))
+            return {"status": "hydrated", "scope": "makes"}
+
+        result = dispatch_request(
+            "/v1/catalog/ensure",
+            {"scope": "makes", "year": 2020, "idempotency_key": "catalog-hydration:makes"},
+            catalog_runner=catalog_runner,
+        )
+
+        self.assertEqual(result["status"], "hydrated")
+        self.assertEqual(calls[0]["year"], 2020)
+
+    def test_catalog_ensure_requires_key_and_known_scope(self):
+        with self.assertRaises(ValueError):
+            dispatch_request("/v1/catalog/ensure", {"scope": "years"})
+        with self.assertRaises(ValueError):
+            dispatch_request(
+                "/v1/catalog/ensure",
+                {"scope": "unknown", "idempotency_key": "catalog-hydration:x"},
+            )
+
     def test_dispatch_rejects_unknown_routes_and_invalid_shapes(self):
         with self.assertRaises(ValueError):
             dispatch_request("/v1/unknown", {})
