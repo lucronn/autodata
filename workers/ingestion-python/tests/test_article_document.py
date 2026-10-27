@@ -616,3 +616,130 @@ def test_step_block_handles_mapping_instructions():
     assert step_block["number"] == 2
     assert step_block["text"] == "Remove retaining clip. Pull wiring harness plug firmly."
 
+
+def test_document_from_steps_handles_mapping_instructions():
+    from autodata_ingestion.article_document import document_from_steps
+
+    article = {
+        "article_id": "test-legacy-steps-mapping",
+        "steps": [
+            {
+                "heading": "Remove intake manifold",
+                "number": 1,
+                "instructions": [
+                    {"action": "Unbolt throttle body bolts."},
+                    {"text": "Disconnect vacuum line."},
+                    "Inspect gasket for damage.",
+                ],
+            }
+        ],
+    }
+    document = document_from_steps(article)
+    assert validate_ordered_document(document) == []
+    blocks = document["blocks"]
+    assert len(blocks) == 4
+    assert blocks[0]["type"] == "step"
+    assert blocks[0]["number"] == 1
+    assert blocks[0]["text"] == "Remove intake manifold"
+    assert blocks[1]["type"] == "paragraph"
+    assert blocks[1]["text"] == "Unbolt throttle body bolts."
+    assert blocks[2]["type"] == "paragraph"
+    assert blocks[2]["text"] == "Disconnect vacuum line."
+    assert blocks[3]["type"] == "paragraph"
+    assert blocks[3]["text"] == "Inspect gasket for damage."
+
+
+def test_blocks_from_steps_handles_mapping_instructions():
+    from autodata_ingestion.article_document import _blocks_from_steps
+
+    steps = [
+        {
+            "action": "Loosen bracket",
+            "instructions": [
+                {"instruction": "Use 10mm socket."},
+                {"value": "Turn counter-clockwise."},
+            ],
+            "evidence_ids": ["ev-1"],
+        }
+    ]
+    blocks = _blocks_from_steps(steps)
+    assert blocks is not None
+    assert len(blocks) == 3
+    assert blocks[0]["text"] == "Loosen bracket"
+    assert blocks[1]["text"] == "Use 10mm socket."
+    assert blocks[2]["text"] == "Turn counter-clockwise."
+
+
+def test_list_block_preserves_attached_images():
+    article = {"article_id": "test-list-images"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "unordered_list",
+                "items": ["Torx T20", "Flathead screwdriver"],
+                "images": [
+                    {
+                        "image_id": "tool-set-fig",
+                        "storage_key": "procedure-images/tools",
+                        "alt": "Required hand tools",
+                    }
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    list_block = document["blocks"][0]
+    assert list_block["type"] == "unordered_list"
+    assert list_block["items"] == ["Torx T20", "Flathead screwdriver"]
+    assert "images" in list_block
+    assert list_block["images"][0]["image_id"] == "tool-set-fig"
+    assert list_block["images"][0]["status"] == "available"
+
+
+def test_list_item_images_prescan_deduplication():
+    article = {
+        "article_id": "test-list-item-img-dedup",
+        "images": [
+            {
+                "image_id": "item-fig-1",
+                "storage_key": "procedure-images/fuse-box",
+                "alt": "Fuse box diagram",
+            },
+            {
+                "image_id": "trailing-fig-2",
+                "storage_key": "procedure-images/wiring-schematic",
+                "alt": "Wiring schematic",
+            },
+        ],
+    }
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "ordered_list",
+                "items": [
+                    {
+                        "text": "Check 15A horn fuse.",
+                        "images": [
+                            {
+                                "image_id": "item-fig-1",
+                                "storage_key": "procedure-images/fuse-box",
+                            }
+                        ],
+                    },
+                    "Check relay socket pins.",
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    blocks = document["blocks"]
+    # item-fig-1 was pre-scanned and not inserted as a trailing figure.
+    # trailing-fig-2 was not in the blocks, so it gets appended by figure_queue.
+    assert len(blocks) == 2
+    assert blocks[0]["type"] == "ordered_list"
+    assert blocks[0]["items"] == ["Check 15A horn fuse.", "Check relay socket pins."]
+    assert blocks[1]["type"] == "image"
+    assert blocks[1]["image_id"] == "trailing-fig-2"

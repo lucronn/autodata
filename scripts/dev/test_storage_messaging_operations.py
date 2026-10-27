@@ -43,6 +43,7 @@ class StorageMessagingOperationsTests(unittest.TestCase):
         obj_health = (ROOT / "scripts/dev/object_storage_health.py").read_text()
         self.assertIn('os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin")', obj_health)
         self.assertIn('os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password")', obj_health)
+        self.assertIn("resolve_s3_endpoint", obj_health)
         self.assertIn("workers/ingestion-python/src", obj_health)
 
         reconcile = (ROOT / "scripts/dev/reconcile_payments.py").read_text()
@@ -67,11 +68,6 @@ class StorageMessagingOperationsTests(unittest.TestCase):
         self.assertIn('os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")', deep)
         self.assertIn("resolve_database_address", deep)
         self.assertIn("resolve_viewable_projection_id", deep)
-
-        obj_health = (ROOT / "scripts/dev/object_storage_health.py").read_text()
-        self.assertIn('os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin")', obj_health)
-        self.assertIn('os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password")', obj_health)
-        self.assertIn("resolve_s3_endpoint", obj_health)
 
     def test_nats_url_resolution_and_silent_offline_handling(self):
         from nats_health import resolve_nats_url
@@ -153,6 +149,9 @@ class StorageMessagingOperationsTests(unittest.TestCase):
         fixture_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/ingest_fixture.py").read_text()
         self.assertIn("_resolve_database_address", fixture_src)
         self.assertIn("_resolve_s3_endpoint", fixture_src)
+
+        enrich_pub_src = (ROOT / "workers/enrichment-python/src/autodata_enrichment/publisher.py").read_text()
+        self.assertIn("_resolve_database_address", enrich_pub_src)
 
     def test_normalize_source_directory_cli_limit(self):
         import subprocess
@@ -240,13 +239,21 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             ("ingest_bankone_batch.py", "--address"),
             ("deep_lane_smoke.py", "--processing-version"),
             ("deep_lane_smoke.py", "--address"),
+            ("deep_lane_smoke.py", "--database-url"),
             ("smoke_local_stack.py", "--base-url"),
+            ("smoke_local_stack.py", "--api-url"),
             ("normalize_source_directory.py", "--persist"),
             ("api_runtime_smoke.py", "--base-url"),
+            ("api_runtime_smoke.py", "--api-url"),
+            ("fake_integrations_smoke.py", "--base-url"),
+            ("fake_integrations_smoke.py", "--api-url"),
             ("backup_restore_smoke.py", "--compose-file"),
             ("operational_metrics.py", "--address"),
+            ("operational_metrics.py", "--database-url"),
             ("payment_reconciliation_smoke.py", "--address"),
+            ("payment_reconciliation_smoke.py", "--database-url"),
             ("reconcile_payments.py", "--address"),
+            ("reconcile_payments.py", "--database-url"),
             ("migrate.py", "--address"),
             ("migrate.py", "--database-url"),
             ("migration_plan.py", "--migrations-dir"),
@@ -259,11 +266,16 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             ("ingestion_smoke.py", "--s3-endpoint"),
             ("ingestion_smoke.py", "--nats-url"),
             ("replay_outbox.py", "--address"),
+            ("replay_outbox.py", "--database-url"),
             ("replay_outbox.py", "--event-id"),
             ("outbox_relay.py", "--address"),
+            ("outbox_relay.py", "--database-url"),
             ("outbox_relay.py", "--nats-url"),
             ("universal_article_smoke.py", "--live-url"),
             ("knowledge_warm_path_benchmark.py", "--query"),
+            ("ingest_bankone_batch.py", "--database-url"),
+            ("ingest_bankone_service.py", "--database-url"),
+            ("ingest_banktwo_service.py", "--database-url"),
         ]:
             result = subprocess.run(
                 [sys.executable, str(ROOT / "scripts/dev" / script_name), "--help"],

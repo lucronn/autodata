@@ -186,6 +186,12 @@ def build_ordered_document(
                             for child in cell.get("blocks") or []:
                                 if isinstance(child, Mapping) and str(child.get("kind") or child.get("type") or "").casefold() == "image":
                                     seen_image_keys.update(_image_identities(child))
+            elif bkind in {"ordered_list", "unordered_list", "list"}:
+                for item in block.get("items") or block.get("values") or []:
+                    if isinstance(item, Mapping):
+                        for item_img in item.get("images") or []:
+                            if isinstance(item_img, Mapping):
+                                seen_image_keys.update(_image_identities(item_img))
             for block_img in block.get("images") or []:
                 if isinstance(block_img, Mapping):
                     seen_image_keys.update(_image_identities(block_img))
@@ -327,11 +333,21 @@ def document_from_steps(article: Mapping[str, Any]) -> dict[str, Any]:
                 blocks.append({"kind": "text", "text": text})
             continue
         heading = _clean_text(step.get("heading") or step.get("action"))
-        instructions = [
-            _clean_text(value)
-            for value in step.get("instructions") or []
-            if _clean_text(value)
-        ]
+        instructions = []
+        for value in step.get("instructions") or []:
+            if isinstance(value, Mapping):
+                val_text = _clean_text(
+                    value.get("text")
+                    or value.get("action")
+                    or value.get("instruction")
+                    or value.get("value")
+                    or value.get("content")
+                    or value.get("body")
+                )
+            else:
+                val_text = _clean_text(value)
+            if val_text:
+                instructions.append(val_text)
         if heading:
             blocks.append({"kind": "text", "text": f"{step.get('number') or index}. {heading}"})
         for instruction in instructions:
@@ -508,12 +524,21 @@ def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
             item_text = _clean_text(value)
         if item_text:
             clean_items.append(item_text)
+    images_raw = raw.get("images")
+    extra_fields: dict[str, Any] = {}
+    if isinstance(images_raw, list):
+        clean_images = [
+            _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
+        ]
+        if clean_images:
+            extra_fields["images"] = clean_images
     return _base_block(
         article,
         source_order,
         "ordered_list" if kind == "ordered_list" else "unordered_list",
         items=clean_items,
         evidence_ids=evidence_ids,
+        **extra_fields,
     )
 
 
@@ -622,9 +647,23 @@ def _blocks_from_steps(steps: Any) -> list[dict[str, Any]] | None:
     result = []
     for step in steps:
         if isinstance(step, Mapping):
+            ev_ids = step.get("evidence_ids", [])
             if step.get("action"):
-                result.append({"kind": "text", "text": step.get("action"), "evidence_ids": step.get("evidence_ids", [])})
-            result.extend({"kind": "text", "text": value, "evidence_ids": step.get("evidence_ids", [])} for value in step.get("instructions") or [])
+                result.append({"kind": "text", "text": str(step.get("action")), "evidence_ids": ev_ids})
+            for value in step.get("instructions") or []:
+                if isinstance(value, Mapping):
+                    val_text = _clean_text(
+                        value.get("text")
+                        or value.get("action")
+                        or value.get("instruction")
+                        or value.get("value")
+                        or value.get("content")
+                        or value.get("body")
+                    )
+                else:
+                    val_text = _clean_text(value)
+                if val_text:
+                    result.append({"kind": "text", "text": val_text, "evidence_ids": ev_ids})
             result.extend({"kind": "image", **dict(image)} for image in step.get("images") or [] if isinstance(image, Mapping))
         elif str(step).strip():
             result.append({"kind": "text", "text": str(step)})

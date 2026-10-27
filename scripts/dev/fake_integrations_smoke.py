@@ -20,6 +20,7 @@ from autodata_contracts.fakes import FakePaymentProvider, FakePrimarySource  # n
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base-url", "--api-url", dest="base_url", default=os.getenv("AUTODATA_API_BASE_URL", "http://127.0.0.1:8080"))
     parser.add_argument("--signing-secret", default=os.getenv("AUTODATA_FAKE_PAYMENT_SIGNING_SECRET", "local-fixture-signing-key"))
     parser.add_argument("--org-id", default="fixture-org")
     parser.add_argument("--region", default="US")
