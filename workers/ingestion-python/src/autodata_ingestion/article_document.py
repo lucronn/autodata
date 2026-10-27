@@ -345,6 +345,8 @@ def validate_ordered_document(document: Any) -> list[str]:
             errors.append(f"block {expected_order} has no readable text")
         if block_type == "table" and not isinstance(block.get("rows"), list):
             errors.append(f"block {expected_order} has no table rows")
+        if block_type in {"ordered_list", "unordered_list"} and not isinstance(block.get("items"), list):
+            errors.append(f"block {expected_order} has no list items")
         if block_type == "image" and block.get("status") not in {"available", "unavailable"}:
             errors.append(f"block {expected_order} has no image status")
         expected_order += 1
@@ -402,36 +404,54 @@ def _table_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
     )
 
 
+def _normalize_cell_image(raw: Mapping[str, Any]) -> dict[str, Any]:
+    source_url = _clean_text(raw.get("url") or raw.get("src") or raw.get("href"))
+    image_id = _clean_text(raw.get("image_id") or raw.get("id"))
+    storage_key = _clean_text(raw.get("storage_key") or raw.get("artifact_key"))
+    asset_resource_ref = _clean_text(raw.get("asset_resource_ref"))
+    asset_id = storage_key or image_id or asset_resource_ref or (sha256(source_url.encode()).hexdigest() if source_url else "")
+    out: dict[str, Any] = {
+        "asset_id": asset_id or None,
+        "image_id": image_id or asset_id or None,
+        "alt": _clean_text(raw.get("alt") or raw.get("title")) or "Article illustration",
+        "status": "available" if (source_url or storage_key or asset_resource_ref) else "unavailable",
+    }
+    if storage_key:
+        out["storage_key"] = storage_key
+    if source_url:
+        out["url"] = source_url
+    if asset_resource_ref:
+        out["asset_resource_ref"] = asset_resource_ref
+    return out
+
+
 def _table_cell(value: Any) -> Any:
     if not isinstance(value, Mapping):
         return _clean_text(value)
-    nested = value.get("blocks")
-    if not isinstance(nested, list):
-        return _clean_text(value.get("text") or value.get("value"))
     text_parts: list[str] = []
+    direct_text = _clean_text(value.get("text") or value.get("value"))
+    if direct_text:
+        text_parts.append(direct_text)
     images: list[dict[str, Any]] = []
-    for child in nested:
-        if not isinstance(child, Mapping):
-            continue
-        if child.get("kind") == "image":
-            source_url = _clean_text(child.get("url") or child.get("src"))
-            image_id = _clean_text(child.get("image_id") or child.get("id"))
-            storage_key = _clean_text(child.get("storage_key") or child.get("artifact_key"))
-            asset_id = storage_key or image_id or (sha256(source_url.encode()).hexdigest() if source_url else "")
-            images.append({
-                "asset_id": asset_id,
-                "image_id": image_id or asset_id,
-                "alt": _clean_text(child.get("alt") or child.get("title")) or "Article illustration",
-                "status": "available" if source_url or storage_key else "unavailable",
-            })
-        else:
-            text = _clean_text(child.get("text") or child.get("value"))
-            if text:
-                text_parts.append(text)
-    result: dict[str, Any] = {"text": " ".join(text_parts)}
+    for direct_img in value.get("images") or []:
+        if isinstance(direct_img, Mapping):
+            images.append(_normalize_cell_image(direct_img))
+    nested = value.get("blocks")
+    if isinstance(nested, list):
+        for child in nested:
+            if not isinstance(child, Mapping):
+                continue
+            child_kind = str(child.get("kind") or child.get("type") or "").casefold()
+            if child_kind == "image":
+                images.append(_normalize_cell_image(child))
+            else:
+                text = _clean_text(child.get("text") or child.get("value"))
+                if text:
+                    text_parts.append(text)
+    combined_text = " ".join(part for part in text_parts if part).strip()
     if images:
-        result["images"] = images
-    return result
+        return {"text": combined_text, "images": images}
+    return combined_text
 
 
 def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str], kind: str) -> dict[str, Any]:
@@ -504,7 +524,12 @@ def _clean_text(value: Any) -> str:
 
 def _safe_link(value: Any) -> str:
     href = _clean_text(value)
-    return "" if href.startswith("#") else href
+    if not href or href.startswith("#"):
+        return ""
+    scheme = href.split(":", 1)[0].lower() if ":" in href else ""
+    if scheme in {"javascript", "vbscript", "data"}:
+        return ""
+    return href
 
 
 def _level(raw: Mapping[str, Any]) -> int:

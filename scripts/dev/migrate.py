@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import shutil
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 
 def parse_address(value: str) -> tuple[str, int]:
@@ -109,10 +116,18 @@ def apply_migrations(root: Path, address: str | None = None) -> list[str]:
     return completed
 
 
-def main() -> None:
-    root = Path(__file__).parents[2]
-    address = resolve_database_address()
-    timeout_seconds = int(os.getenv("AUTODATA_MIGRATION_WAIT_SECONDS", "60"))
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Wait for local database and apply numbered migrations")
+    parser.add_argument("--address", default=None, help="Target PostgreSQL host:port")
+    parser.add_argument("--timeout", type=int, default=None, help="Wait timeout in seconds")
+    parser.add_argument("--compose-file", default=None, help="Docker Compose file for containerized psql execution")
+    args = parser.parse_args(argv)
+
+    root = ROOT
+    if args.compose_file:
+        os.environ["AUTODATA_COMPOSE_FILE"] = args.compose_file
+    address = resolve_database_address(args.address)
+    timeout_seconds = args.timeout if args.timeout is not None else int(os.getenv("AUTODATA_MIGRATION_WAIT_SECONDS", "60"))
     wait_for_database(address, timeout_seconds)
     completed = apply_migrations(root, address=address)
     print(f"applied migrations: {', '.join(completed)}")

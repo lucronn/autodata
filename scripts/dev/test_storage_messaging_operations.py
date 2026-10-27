@@ -217,6 +217,10 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             "payment_reconciliation_smoke.py",
             "universal_article_smoke.py",
             "knowledge_warm_path_benchmark.py",
+            "smoke_local_stack.py",
+            "migrate.py",
+            "migration_plan.py",
+            "consumer_agent.py",
         ]
         for name in scripts_to_check:
             content = (ROOT / "scripts/dev" / name).read_text()
@@ -235,6 +239,8 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             ("backup_restore_smoke.py", "--compose-file"),
             ("operational_metrics.py", "--address"),
             ("payment_reconciliation_smoke.py", "--address"),
+            ("migrate.py", "--address"),
+            ("migration_plan.py", "--migrations-dir"),
         ]:
             result = subprocess.run(
                 [sys.executable, str(ROOT / "scripts/dev" / script_name), "--help"],

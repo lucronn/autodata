@@ -211,19 +211,50 @@ def _rewrite_document_images(article: dict[str, Any], original_images: list[dict
         return
     by_ref: dict[str, dict[str, Any]] = {}
     for image in original_images:
-        for key in (image.get("image_id"), image.get("asset_id"), image.get("url"), image.get("storage_key")):
-            if key:
-                by_ref[str(key)] = image
+        for key in (
+            image.get("image_id"),
+            image.get("id"),
+            image.get("storage_key"),
+            image.get("artifact_key"),
+            image.get("asset_id"),
+            image.get("content_sha256"),
+            image.get("url"),
+            image.get("src"),
+            image.get("href"),
+            image.get("asset_resource_ref"),
+        ):
+            if key and str(key).strip():
+                by_ref[str(key).strip()] = image
+
+    def _lookup(obj: Mapping[str, Any]) -> dict[str, Any] | None:
+        for key in (
+            obj.get("image_id"),
+            obj.get("id"),
+            obj.get("asset_id"),
+            obj.get("storage_key"),
+            obj.get("artifact_key"),
+            obj.get("asset_resource_ref"),
+            obj.get("url"),
+            obj.get("content_sha256"),
+        ):
+            if key and str(key).strip() in by_ref:
+                return by_ref[str(key).strip()]
+        return None
 
     def rewrite(block: Any) -> None:
         if not isinstance(block, dict):
             return
-        if block.get("type") == "image":
+        bkind = str(block.get("type") or block.get("kind") or "").casefold()
+        if bkind == "image":
+            image = _lookup(block)
             reference = str(block.get("image_id") or block.get("asset_id") or "")
-            image = by_ref.get(reference)
             if image is None:
-                block["status"] = "unavailable"
-                block["unavailable_reason"] = "image was not materialized during ingest"
+                if block.get("storage_key") or str(block.get("url") or "").startswith("data:image/"):
+                    block["status"] = "available"
+                    block.pop("unavailable_reason", None)
+                else:
+                    block["status"] = "unavailable"
+                    block["unavailable_reason"] = "image was not materialized during ingest"
             elif image.get("storage_key") or str(image.get("url") or "").startswith("data:image/"):
                 block["asset_id"] = image.get("storage_key") or image.get("image_id") or reference
                 block["image_id"] = image.get("image_id") or block.get("image_id") or reference
@@ -233,22 +264,28 @@ def _rewrite_document_images(article: dict[str, Any], original_images: list[dict
                 block["status"] = "unavailable"
                 block["unavailable_reason"] = "image could not be materialized"
             return
-        if block.get("type") == "table":
+        if bkind in {"table", "grid"}:
             for row in block.get("rows") or []:
                 cells = row if isinstance(row, list) else row.get("cells", []) if isinstance(row, Mapping) else []
                 for cell in cells:
                     if isinstance(cell, Mapping):
                         for image in cell.get("images") or []:
                             if isinstance(image, dict):
+                                localized = _lookup(image)
                                 reference = str(image.get("image_id") or image.get("asset_id") or "")
-                                localized = by_ref.get(reference)
-                                if localized and localized.get("storage_key"):
-                                    image["asset_id"] = localized["storage_key"]
-                                    image["image_id"] = localized.get("image_id") or reference
+                                if localized and (localized.get("storage_key") or str(localized.get("url") or "").startswith("data:image/")):
+                                    image["asset_id"] = localized.get("storage_key") or localized.get("image_id") or reference
+                                    image["image_id"] = localized.get("image_id") or image.get("image_id") or reference
                                     image["status"] = "available"
+                                    image.pop("unavailable_reason", None)
+                                elif image.get("storage_key") or str(image.get("url") or "").startswith("data:image/"):
+                                    image["status"] = "available"
+                                    image.pop("unavailable_reason", None)
                                 else:
                                     image["status"] = "unavailable"
                                     image["unavailable_reason"] = "image could not be materialized"
+                        for child in cell.get("blocks") or []:
+                            rewrite(child)
         for child in block.get("blocks") or []:
             rewrite(child)
 
