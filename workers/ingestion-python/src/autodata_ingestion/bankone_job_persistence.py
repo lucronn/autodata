@@ -45,7 +45,7 @@ def persist_bankone_article_fetch_jobs(
         "port": int(port_text),
         "dbname": os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         "user": os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        "password": os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        "password": os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
     }
     now = datetime.now(UTC).replace(microsecond=0)
     selector_snapshot_id = selector_persistence.get("source_snapshot_id")
@@ -294,7 +294,7 @@ def _connection() -> Any:
         port=int(port_text),
         dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        password=os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
     )
 
 

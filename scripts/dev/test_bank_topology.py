@@ -124,6 +124,14 @@ class BankTopologyTests(unittest.TestCase):
         self.assertNotRegex(service_script, r"(?i)AutoAPIConnector")
         self.assertNotRegex(service_script, r"(?i)AUTODATA_AUTOAPI_BASE_URL")
 
+    def test_banktwo_service_ingest_uses_independent_connector_and_origins(self):
+        service_script = (ROOT / "scripts/dev/ingest_banktwo_service.py").read_text()
+        self.assertIn("SourceConnectorClient", service_script)
+        self.assertIn("BANKTWO_BASE_URL", service_script)
+        self.assertIn('provider="banktwo"', service_script)
+        self.assertNotRegex(service_script, r"(?i)AutoAPIConnector")
+        self.assertNotRegex(service_script, r"(?i)AUTODATA_AUTOAPI_BASE_URL")
+
 
 if __name__ == "__main__":
     unittest.main()

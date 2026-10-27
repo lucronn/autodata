@@ -47,6 +47,7 @@ class StorageMessagingOperationsTests(unittest.TestCase):
 
         reconcile = (ROOT / "scripts/dev/reconcile_payments.py").read_text()
         self.assertIn('os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")', reconcile)
+        self.assertIn("resolve_database_address", reconcile)
         self.assertIn("workers/ingestion-python/src", reconcile)
 
         metrics = (ROOT / "scripts/dev/operational_metrics.py").read_text()
@@ -61,6 +62,16 @@ class StorageMessagingOperationsTests(unittest.TestCase):
         self.assertIn('os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")', backup)
         self.assertIn('os.getenv("AUTODATA_MINIO_ROOT_USER", "localadmin")', backup)
         self.assertIn('os.getenv("AUTODATA_MINIO_ROOT_PASSWORD", "local-dev-password")', backup)
+
+        deep = (ROOT / "scripts/dev/deep_lane_smoke.py").read_text()
+        self.assertIn('os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")', deep)
+        self.assertIn("resolve_database_address", deep)
+        self.assertIn("resolve_viewable_projection_id", deep)
+
+        obj_health = (ROOT / "scripts/dev/object_storage_health.py").read_text()
+        self.assertIn('os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin")', obj_health)
+        self.assertIn('os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password")', obj_health)
+        self.assertIn("resolve_s3_endpoint", obj_health)
 
 
 if __name__ == "__main__":

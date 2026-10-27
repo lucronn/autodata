@@ -100,10 +100,11 @@ class IngestionSmokeContractTests(unittest.TestCase):
             summarize_viewable_event({"event_type": "dataset.deep.requested"}, "revision-1")
 
     def test_ingestion_smoke_resolves_local_addresses_and_defaults(self):
-        from ingestion_smoke import resolve_database_address, resolve_s3_endpoint
+        from ingestion_smoke import resolve_database_address, resolve_s3_endpoint, resolve_nats_url
 
         self.assertEqual(resolve_database_address("custom:5432"), "custom:5432")
         self.assertEqual(resolve_s3_endpoint("custom:9000"), "custom:9000")
+        self.assertEqual(resolve_nats_url("nats://custom:4222"), "nats://custom:4222")
 
         smoke_src = (ROOT / "scripts/dev/ingestion_smoke.py").read_text()
         self.assertIn('os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")', smoke_src)

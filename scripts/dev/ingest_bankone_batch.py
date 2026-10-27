@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ingest one AutoAPI source bundle per vehicle from a local source root."""
+"""Ingest one Bankone source bundle per vehicle from a local source root."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
 
 from autodata_ingestion.bankone_batch import (  # noqa: E402
     build_bankone_batch_plan,
-    collect_autoapi_selection_rows,
+    collect_bankone_selection_rows,
     execute_bankone_batch,
     load_selector_rows,
 )
@@ -31,7 +31,7 @@ def main() -> None:
 
     selector_rows = load_selector_rows(args.selector_json) if args.selector_json else None
     if selector_rows is None:
-        selector_rows = collect_autoapi_selection_rows(
+        selector_rows = collect_bankone_selection_rows(
             args.source_root,
             default_region=args.region,
             source_version=args.source_version,

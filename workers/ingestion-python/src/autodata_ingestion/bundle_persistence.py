@@ -42,7 +42,7 @@ def persist_source_bundle(
         "port": int(port_text),
         "dbname": os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         "user": os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        "password": os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        "password": os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
     }
     now = datetime.now(UTC).replace(microsecond=0)
     evidence_by_id = {item["evidence_id"]: item for item in bundle.evidence}

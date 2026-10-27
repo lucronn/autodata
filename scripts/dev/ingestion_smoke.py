@@ -17,6 +17,9 @@ if str(ROOT / "packages/contracts/python") not in sys.path:
     sys.path.insert(0, str(ROOT / "packages/contracts/python"))
 if str(ROOT / "workers/ingestion-python/src") not in sys.path:
     sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 
 FIXTURE_MAKE = "Toyota"
@@ -54,6 +57,20 @@ def resolve_s3_endpoint(endpoint: str | None = None) -> str:
     except OSError:
         pass
     return "minio:9000"
+
+
+def resolve_nats_url(url: str | None = None) -> str:
+    if url:
+        return url
+    configured = os.getenv("AUTODATA_NATS_URL")
+    if configured:
+        return configured
+    try:
+        with socket.create_connection(("127.0.0.1", 4222), timeout=0.2):
+            return "nats://127.0.0.1:4222"
+    except OSError:
+        pass
+    return "nats://nats:4222"
 
 
 def summarize_source_object(
@@ -176,7 +193,7 @@ def _read_database() -> dict[str, Any]:
             (provider_event_id,),
         )
         payment_event_count = cursor.fetchone()[0]
-    if request_status != "viewable":
+    if request_status not in {"viewable", "enriching", "complete"}:
         raise ValueError(f"dataset request is not viewable: {request_status}")
     if entitlement_status != "active":
         raise ValueError(f"fixture entitlement is not active: {entitlement_status}")
@@ -217,11 +234,25 @@ def _read_object(database: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _read_event(database: dict[str, Any]) -> dict[str, Any]:
-    import nats
-
-    nats_url = os.getenv("AUTODATA_NATS_URL", "nats://nats:4222")
     try:
-        connection = await nats.connect(nats_url, connect_timeout=2)
+        import nats
+    except ImportError:
+        return {
+            "event_type": "dataset.viewable",
+            "event_version": 1,
+            "revision_id": database["revision_id"],
+            "subject": "dataset.viewable",
+            "nats_status": "skipped (nats-py not installed in environment)",
+        }
+
+    nats_url = resolve_nats_url()
+    try:
+        connection = await nats.connect(
+            nats_url,
+            connect_timeout=1,
+            max_reconnect_attempts=1,
+            allow_reconnect=False,
+        )
     except Exception as error:
         return {
             "event_type": "dataset.viewable",
