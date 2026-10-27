@@ -192,17 +192,27 @@ def normalize_source_bundle(
                 if article_id and operations:
                     article_operations.setdefault(article_id, []).extend(operations)
             elif candidate.kind == "document_text":
-                document_text_records.append(
-                    {
-                        "text": candidate.data.get("text"),
-                        "images": candidate.data.get("images", []),
-                        "evidence_id": evidence_item["evidence_id"],
-                        "locator": evidence_item["locator"],
-                        "source_uri": artifact.source_uri,
-                        "source_version": artifact.source_version,
-                        "content_sha256": artifact.content_sha256,
-                    }
-                )
+                document_text_record = {
+                    "text": candidate.data.get("text"),
+                    "images": candidate.data.get("images", []),
+                    "evidence_id": evidence_item["evidence_id"],
+                    "locator": evidence_item["locator"],
+                    "source_uri": artifact.source_uri,
+                    "source_version": artifact.source_version,
+                    "content_sha256": artifact.content_sha256,
+                }
+                # Bankone selected-article fetches stamp the opaque catalog id on
+                # the resource. Prefer that over documentId segment matching when
+                # the provider wraps PDF/HTML under a numeric id that never
+                # appears in the opaque article_id.
+                target_article_id = str(
+                    candidate.data.get("target_article_id")
+                    or artifact.metadata.get("target_article_id")
+                    or ""
+                ).strip()
+                if target_article_id:
+                    document_text_record["target_article_id"] = target_article_id
+                document_text_records.append(document_text_record)
             elif candidate.kind == "document":
                 document_records.append(
                     {
@@ -615,20 +625,36 @@ def _attach_document_content(
     """
 
     by_document_id: dict[str, list[dict[str, Any]]] = {}
+    by_target_article_id: dict[str, list[dict[str, Any]]] = {}
     for record in sorted(document_text_records, key=_document_content_order):
-        locator = str(record.get("locator", ""))
-        if not locator.startswith(("body.html:", "body.pdf:")):
+        if not record.get("text"):
             continue
-        prefix = "body.html:" if locator.startswith("body.html:") else "body.pdf:"
-        document_id = locator.removeprefix(prefix).split(":", 1)[0].strip()
-        if document_id and record.get("text"):
-            by_document_id.setdefault(document_id, []).append(record)
+        locator = str(record.get("locator", ""))
+        if locator.startswith(("body.html:", "body.pdf:")):
+            prefix = "body.html:" if locator.startswith("body.html:") else "body.pdf:"
+            document_id = locator.removeprefix(prefix).split(":", 1)[0].strip()
+            if document_id:
+                by_document_id.setdefault(document_id, []).append(record)
+        target_article_id = str(record.get("target_article_id") or "").strip()
+        if target_article_id:
+            by_target_article_id.setdefault(target_article_id, []).append(record)
 
     aggregate_evidence: list[dict[str, Any]] = []
     for article in articles:
         article_id = str(article.get("article_id") or "")
         article_id_parts = {part.strip() for part in article_id.split(":") if part.strip()}
         content_records = []
+        seen_evidence_ids: set[str] = set()
+
+        def _extend_unique(records_for_document: list[dict[str, Any]]) -> None:
+            for item in records_for_document:
+                evidence_id = str(item.get("evidence_id") or "")
+                if evidence_id and evidence_id in seen_evidence_ids:
+                    continue
+                if evidence_id:
+                    seen_evidence_ids.add(evidence_id)
+                content_records.append(item)
+
         for document_id, records_for_document in by_document_id.items():
             # AutoAPI uses more than one article-id shape. Some indexes use
             # ``document-id:content-id`` while procedure rows use a provider
@@ -636,7 +662,9 @@ def _attach_document_content(
             # to join when its document id is an exact id segment, preserving
             # the source evidence while avoiding title-based guesses.
             if document_id in article_id_parts or document_id == article_id:
-                content_records.extend(records_for_document)
+                _extend_unique(records_for_document)
+        if article_id in by_target_article_id:
+            _extend_unique(by_target_article_id[article_id])
         if not content_records:
             continue
         html_records = [

@@ -471,6 +471,7 @@ func (s *postgresCatalogStore) Models(ctx context.Context, _ Principal, year int
 	rows, err := s.pool.Query(ctx, `
 		SELECT DISTINCT model FROM vehicle_identity_bases
 		WHERE model_year = $1 AND LOWER(make) = LOWER($2) AND ($3 = '' OR region = $3) AND reviewer_state <> 'rejected'
+		  AND model NOT LIKE '\_%'
 		ORDER BY model`, year, makeName, region)
 	if err != nil {
 		return nil, err

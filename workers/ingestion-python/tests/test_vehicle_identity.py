@@ -364,6 +364,31 @@ class VehicleIdentityTests(unittest.TestCase):
         self.assertTrue(review.ambiguous)
         self.assertIsNone(review.selected_candidate_key)
 
+    def test_electric_vehicle_engine_normalizes_to_none(self):
+        module = self._module()
+
+        for raw_engine in (
+            "ELE-Electric Engine",
+            "Electric",
+            "Electric Motor",
+            "EV",
+            "Dual Motor",
+            "Hydrogen Fuel Cell",
+        ):
+            observation = module.canonicalize_vehicle_observation(
+                {
+                    "year": 2023,
+                    "make": "Tesla",
+                    "model": "Model 3 AWD",
+                    "region": "US",
+                    "engine": raw_engine,
+                }
+            )
+            self.assertIsNone(
+                observation.engine_displacement_l,
+                f"Expected engine {raw_engine} to normalize to None displacement",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

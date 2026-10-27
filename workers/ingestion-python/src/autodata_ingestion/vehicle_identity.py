@@ -401,6 +401,16 @@ def _normalize_drivetrain(raw_drivetrain: Any, aliases: list[VehicleAlias]) -> s
     return canonical
 
 
+_ELECTRIC_ENGINE_PATTERN = re.compile(
+    r"\b(electric|ele|ev|bev|fcev|motor|hydrogen|fuel\s*cell|zero\s*emission|n/?a|none)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_electric_engine(text: str) -> bool:
+    return bool(_ELECTRIC_ENGINE_PATTERN.search(text))
+
+
 def _normalize_engine(raw_engine: Any, aliases: list[VehicleAlias]) -> float | None:
     if raw_engine is None:
         return None
@@ -413,12 +423,14 @@ def _normalize_engine(raw_engine: Any, aliases: list[VehicleAlias]) -> float | N
     if not text:
         return None
     value = _extract_engine_displacement(text)
-    if value is None:
-        raise ValueError("engine displacement could not be normalized")
-    canonical = _format_engine_displacement(value)
-    if text != canonical:
-        aliases.append(VehicleAlias("engine_displacement", text, canonical))
-    return value
+    if value is not None:
+        canonical = _format_engine_displacement(value)
+        if text != canonical:
+            aliases.append(VehicleAlias("engine_displacement", text, canonical))
+        return value
+    if _is_electric_engine(text):
+        return None
+    raise ValueError("engine displacement could not be normalized")
 
 
 def _first_non_empty(*values: Any) -> Any:

@@ -457,6 +457,113 @@ class SourceBundleTests(unittest.TestCase):
         )
         self.assertEqual(aggregate["extracted_text"], "Page one\n\nPage two")
 
+    def test_bankone_pdf_without_document_id_joins_via_target_article_id(self):
+        """Bankone wraps PDFs as ``{"pdf":...}`` with no documentId.
+
+        The selected-article fetch stamps ``target_article_id`` so extracted
+        page text can join the opaque index row.
+        """
+
+        class FakePage:
+            def __init__(self, text):
+                self._text = text
+
+            def extract_text(self):
+                return self._text
+
+        class FakeReader:
+            def __init__(self, _stream):
+                self.pages = [FakePage("Drain oil only when warm.")]
+
+        article_id = (
+            "autoapi:b1.v1.vehicleOpaqueRef:b1.v1.articleOpaqueRef"
+        )
+        index_resource = SourceResource.from_bytes(
+            "file://bankone-index.json",
+            "bankone-v1",
+            json.dumps(
+                {
+                    "body": {
+                        "articleDetails": [
+                            {
+                                "id": article_id,
+                                "title": "00 Oil draining - cleanliness",
+                            }
+                        ]
+                    }
+                }
+            ).encode(),
+            "application/json",
+        )
+        encoded_pdf = base64.b64encode(b"%PDF-1.7 bankone").decode()
+        document_resource = SourceResource.from_bytes(
+            "file://bankone-article.json",
+            "bankone-v1",
+            json.dumps({"pdf": encoded_pdf}).encode(),
+            "application/json",
+            metadata={"target_article_id": article_id},
+        )
+
+        with patch.dict(sys.modules, {"pypdf": types.SimpleNamespace(PdfReader=FakeReader)}):
+            bundle = normalize_source_bundle(
+                [adapt_source_resource(index_resource), adapt_source_resource(document_resource)],
+                "US",
+            )
+
+        article = bundle.articles[0]
+        self.assertEqual(article["article_id"], article_id)
+        self.assertIn("Drain oil only when warm.", article["body"])
+        self.assertTrue(str(article["content_locator"]).startswith("body.pdf:"))
+
+    def test_bankone_pdf_with_unrelated_document_id_joins_via_target_article_id(self):
+        """Bankone keeps a numeric AutoAPI documentId that is absent from opaque ids."""
+
+        class FakePage:
+            def __init__(self, text):
+                self._text = text
+
+            def extract_text(self):
+                return self._text
+
+        class FakeReader:
+            def __init__(self, _stream):
+                self.pages = [FakePage("Use funnel VAS 6675 when draining.")]
+
+        article_id = "autoapi:b1.v1.vehicleOpaque:b1.v1.articleOpaque"
+        index_resource = SourceResource.from_bytes(
+            "file://bankone-index.json",
+            "bankone-v1",
+            json.dumps(
+                {
+                    "body": {
+                        "articleDetails": [
+                            {"id": article_id, "title": "00 Oil draining - cleanliness"}
+                        ]
+                    }
+                }
+            ).encode(),
+            "application/json",
+        )
+        encoded_pdf = base64.b64encode(b"%PDF-1.7 bankone-docid").decode()
+        document_resource = SourceResource.from_bytes(
+            "file://bankone-article.json",
+            "bankone-v1",
+            json.dumps({"documentId": 475765299, "pdf": encoded_pdf}).encode(),
+            "application/json",
+            metadata={"target_article_id": article_id},
+        )
+
+        with patch.dict(sys.modules, {"pypdf": types.SimpleNamespace(PdfReader=FakeReader)}):
+            bundle = normalize_source_bundle(
+                [adapt_source_resource(index_resource), adapt_source_resource(document_resource)],
+                "US",
+            )
+
+        article = bundle.articles[0]
+        self.assertEqual(article["article_id"], article_id)
+        self.assertIn("Use funnel VAS 6675 when draining.", article["body"])
+        self.assertTrue(str(article["content_locator"]).startswith("body.pdf:475765299"))
+
     def test_embedded_guide_links_mtr_image_to_the_original_diagram_artifact(self):
         index_resource = SourceResource.from_bytes(
             "file://v2.json",
