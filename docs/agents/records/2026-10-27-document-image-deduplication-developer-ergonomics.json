@@ -1,0 +1,20 @@
+{
+  "goal": "Hardening for document image deduplication, asset reference preservation, and developer script ergonomics across the local workspace.",
+  "plan_ref": "docs/superpowers/plans/2026-10-27-document-image-deduplication-developer-ergonomics.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/157",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "todo": [
+    "Track pre-existing image and table cell blocks to eliminate duplicate figure queue insertions in article_document.",
+    "Preserve asset_resource_ref and non-empty falsy attributes in source_bundle image normalization.",
+    "Add worker venv discovery and main(argv) to api_runtime_smoke, backup_restore_smoke, and operational_metrics.",
+    "Add worker venv discovery to payment_reconciliation_smoke, universal_article_smoke, and knowledge_warm_path_benchmark.",
+    "Add unit tests in test_article_document.py and test_source_bundle.py.",
+    "Expand test_storage_messaging_operations.py for venv discovery and CLI parsing across all modernized developer scripts.",
+    "Update canonical architecture documentation in infrastructure-and-dev.md."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-27T15:10:00Z"
+}

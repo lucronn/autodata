@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
 from pathlib import Path
 
 
-ROOT = Path(__file__).parents[2]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "packages/contracts/python"))
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 from autodata_contracts.fakes import FakePaymentProvider  # noqa: E402
 from autodata_ingestion.payment_reconciliation import (  # noqa: E402
@@ -43,10 +47,10 @@ def resolve_database_address(address: str | None = None) -> str:
     return "postgres:5432"
 
 
-def db_connection():
+def db_connection(address: str | None = None):
     import psycopg
 
-    host, port_text = resolve_database_address().rsplit(":", 1)
+    host, port_text = resolve_database_address(address).rsplit(":", 1)
     return psycopg.connect(
         host=host,
         port=int(port_text),
@@ -107,7 +111,10 @@ def cleanup(connection, provider_event_id: str) -> None:
             )
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--address", default=None, help="Database host:port address")
+    args = parser.parse_args(argv)
     provider = FakePaymentProvider(os.getenv("AUTODATA_FAKE_PAYMENT_SIGNING_SECRET", "local-fixture-signing-key"))
     session = provider.create_checkout_session(
         "vehicle-core-fixture",
@@ -117,7 +124,7 @@ def main() -> None:
     event = provider.verify_webhook(session["headers"], session["body"])
     provider_event_id = event["provider_event_id"]
 
-    with db_connection() as connection:
+    with db_connection(args.address) as connection:
         cleanup(connection, provider_event_id)
         pending = reconcile_payment_event(connection, event)
         with connection.transaction():

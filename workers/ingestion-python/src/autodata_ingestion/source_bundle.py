@@ -745,14 +745,16 @@ def _resolve_document_images(
                     image["evidence_id"] = evidence_id
             url = str(image.get("url") or "").strip()
             storage_key = str(image.get("storage_key") or image.get("artifact_key") or "").strip()
-            identity = storage_key or url
+            asset_resource_ref = str(image.get("asset_resource_ref") or "").strip()
+            image_id = str(image.get("image_id") or "").strip()
+            identity = storage_key or url or asset_resource_ref or image_id
             if not identity or identity in seen:
                 continue
             if url:
                 image["url"] = url
             image.setdefault("alt", "Source diagram")
             seen.add(identity)
-            images.append({key: value for key, value in image.items() if value})
+            images.append({key: value for key, value in image.items() if value is not None and value != ""})
     return images
 
 
@@ -795,6 +797,7 @@ def _document_content_record(
                 image.get("image_id")
                 or image.get("content_sha256")
                 or image.get("storage_key")
+                or image.get("asset_resource_ref")
                 or image.get("url")
                 or ""
             )

@@ -129,3 +129,70 @@ def test_collapsed_tsb_pdf_text_is_segmented_for_workshop_display():
     assert "callout" in block_types
     assert block_types.count("paragraph") >= 1
     assert len(article["normalized_document"]["blocks"]) >= 6
+
+
+def test_document_figure_queue_does_not_duplicate_existing_image_blocks():
+    article = {
+        "article_id": "test-article",
+        "evidence_ids": ["e-1"],
+        "images": [
+            {
+                "image_id": "figure-seal",
+                "url": "data:image/png;base64,aaaa",
+                "alt": "Seal replacement",
+            },
+            {
+                "image_id": "figure-unplaced",
+                "url": "data:image/png;base64,bbbb",
+                "alt": "Unplaced extra figure",
+            },
+        ],
+    }
+    document = build_ordered_document(
+        article,
+        [
+            {"kind": "text", "text": "1. Remove the front wheel."},
+            {"kind": "image", "image_id": "figure-seal", "alt": "Seal replacement"},
+            {"kind": "text", "text": "2. Inspect the hub."},
+        ],
+    )
+
+    image_blocks = [b for b in document["blocks"] if b["type"] == "image"]
+    assert len(image_blocks) == 2
+    assert [b["image_id"] for b in image_blocks] == ["figure-seal", "figure-unplaced"]
+    assert [b["source_order"] for b in document["blocks"]] == [1, 2, 3, 4]
+    assert validate_ordered_document(document) == []
+
+
+def test_document_figure_queue_does_not_duplicate_table_images():
+    article = {
+        "article_id": "table-article",
+        "evidence_ids": ["e-2"],
+        "images": [
+            {
+                "image_id": "tool-in-table",
+                "url": "data:image/png;base64,cccc",
+                "alt": "Tool in table cell",
+            }
+        ],
+    }
+    document = build_ordered_document(
+        article,
+        [
+            {"kind": "text", "text": "REQUIRED TOOLS"},
+            {
+                "kind": "table",
+                "rows": [[
+                    {"blocks": [{"kind": "image", "image_id": "tool-in-table", "alt": "Tool in table cell"}]},
+                    {"blocks": [{"kind": "text", "text": "T10050 Tool"}]},
+                ]],
+            },
+            {"kind": "text", "text": "Use the tool to lock timing."},
+        ],
+    )
+
+    image_blocks = [b for b in document["blocks"] if b["type"] == "image"]
+    assert len(image_blocks) == 0
+    assert document["blocks"][1]["rows"][0][0]["images"][0]["image_id"] == "tool-in-table"
+    assert [b["source_order"] for b in document["blocks"]] == [1, 2, 3]
+    assert validate_ordered_document(document) == []

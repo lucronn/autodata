@@ -7,10 +7,14 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 
-ROOT = Path(__file__).parents[2]
+ROOT = Path(__file__).resolve().parents[2]
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 
 def temporary_database_name(process_id: int) -> str:
@@ -44,7 +48,7 @@ def run_compose(
     return completed.stdout
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     if shutil.which("docker") is None:
         raise SystemExit("backup/restore verification must run on a host with Docker Compose")
     parser = argparse.ArgumentParser(description=__doc__)
@@ -54,7 +58,7 @@ def main() -> None:
     )
     parser.add_argument("--database", default=os.getenv("AUTODATA_POSTGRES_DB", "autodata"))
     parser.add_argument("--user", default=os.getenv("AUTODATA_POSTGRES_USER", "autodata"))
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     restore_database = temporary_database_name(os.getpid())
     created = False
