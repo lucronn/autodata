@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 from orchestrator import GATE_AGENTS, aggregate_gate_reports, orchestrate_task, validate_task_contract
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 def valid_pre_implementation_record():
     return {
@@ -69,7 +71,7 @@ class OrchestratorTests(unittest.TestCase):
             "orchestrator.run_agent", fake_run_agent
         ):
             code, decision_path = orchestrate_task(
-                Path.cwd(), task, "local-cli", Path(directory) / "run", 1
+                REPO_ROOT, task, "local-cli", Path(directory) / "run", 1
             )
             decision = json.loads(decision_path.read_text(encoding="utf-8"))
 
@@ -176,7 +178,7 @@ class OrchestratorTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory, patch("orchestrator.run_agent", fake_run_agent):
             code, manifest_path = orchestrate_task(
-                Path.cwd(), task, "local-cli", Path(directory) / "run", 1
+                REPO_ROOT, task, "local-cli", Path(directory) / "run", 1
             )
             final = json.loads(manifest_path.read_text(encoding="utf-8"))
 
