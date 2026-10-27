@@ -41,15 +41,15 @@
 
 ## Concrete Todo
 
-- [ ] Extract clean text from mapping instructions in document_from_steps and _blocks_from_steps in article_document.py.
-- [ ] Preserve attached images on _list_block and pre-scan list item images in build_ordered_document.
-- [ ] Add --api-url alias to scripts/dev/smoke_local_stack.py and --base-url/--api-url to fake_integrations_smoke.py.
-- [ ] Expand CLI argument assertions and enrich publisher checks in scripts/dev/test_storage_messaging_operations.py.
-- [ ] Add unit tests for step mapping instructions, list images, and pre-scan deduplication in workers/ingestion-python/tests/test_article_document.py.
-- [ ] Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.
-- [ ] Update .env.example with API URL options.
-- [ ] Record delivery in docs/agents/records/2026-10-27-document-normalization-list-images-cli-uniformity.json.
-- [ ] Prune merged remote git branches.
+- [x] Extract clean text from mapping instructions in document_from_steps and _blocks_from_steps in article_document.py.
+- [x] Preserve attached images on _list_block and pre-scan list item images in build_ordered_document.
+- [x] Add --api-url alias to scripts/dev/smoke_local_stack.py and --base-url/--api-url to fake_integrations_smoke.py.
+- [x] Expand CLI argument assertions and enrich publisher checks in scripts/dev/test_storage_messaging_operations.py.
+- [x] Add unit tests for step mapping instructions, list images, and pre-scan deduplication in workers/ingestion-python/tests/test_article_document.py.
+- [x] Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.
+- [x] Update .env.example with API URL options.
+- [x] Record delivery in docs/agents/records/2026-10-27-document-normalization-list-images-cli-uniformity.json.
+- [x] Prune merged remote git branches.
 
 ## Security and Credential Isolation Rules
 
