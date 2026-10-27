@@ -10,7 +10,7 @@ import os
 import re
 import time
 from copy import deepcopy
-from threading import RLock
+from threading import RLock, Thread
 from typing import Any, Callable, Iterable, Mapping
 from urllib.parse import quote
 
@@ -109,7 +109,12 @@ class CacheFirstCatalogService:
 
 
 _HYDRATION_LOCK = RLock()
-_HYDRATION_RESULTS: dict[str, dict[str, Any]] = {}
+_HYDRATION_RESULTS: dict[str, tuple[float, dict[str, Any]]] = {}
+# Incomplete or failed hydration results are only replayed briefly so a
+# polling caller does not re-traverse providers on every request, while a
+# transient source failure (rate limit, upstream outage) must never brick
+# the scope for the lifetime of the process.
+_HYDRATION_INCOMPLETE_TTL_SECONDS = 20.0
 
 
 class _ArticleCatalogProgress:
@@ -218,7 +223,11 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
     with _HYDRATION_LOCK:
         previous = _HYDRATION_RESULTS.get(key)
         if previous is not None:
-            return deepcopy(previous)
+            cached_at, cached_result = previous
+            if cached_result.get("complete") or (
+                time.monotonic() - cached_at < _HYDRATION_INCOMPLETE_TTL_SECONDS
+            ):
+                return deepcopy(cached_result)
 
     cached = request.get("cache")
     if not isinstance(cached, Mapping):
@@ -235,7 +244,7 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             "provenance": list(resolved.provenance),
         }
         with _HYDRATION_LOCK:
-            _HYDRATION_RESULTS[key] = deepcopy(result)
+            _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
         return result
 
     # Article detail is a selected, vehicle-scoped miss. Use the existing
@@ -253,9 +262,9 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             "model": str(request["model"]),
             "region": str(request.get("region") or "US"),
         }
-        for key in ("trim", "engine"):
-            if request.get(key) not in (None, ""):
-                vehicle[key] = request[key]
+        for field in ("trim", "engine"):
+            if request.get(field) not in (None, ""):
+                vehicle[field] = request[field]
         source_article_id = str(request.get("source_article_id") or "").strip()
         if source_article_id:
             vehicle["requested_article_id"] = source_article_id
@@ -294,7 +303,7 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
                     },
                 }
                 with _HYDRATION_LOCK:
-                    _HYDRATION_RESULTS[key] = deepcopy(result)
+                    _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
                 return result
         result = {
             "status": "hydrated" if matched else "source_miss",
@@ -306,7 +315,7 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             "metadata": metadata,
         }
         with _HYDRATION_LOCK:
-            _HYDRATION_RESULTS[key] = deepcopy(result)
+            _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
         return result
 
 
@@ -317,7 +326,7 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
     if scope == "articles":
         result = _hydrate_article_catalog(request, key)
         with _HYDRATION_LOCK:
-            _HYDRATION_RESULTS[key] = deepcopy(result)
+            _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
         return result
 
     providers = _configured_catalog_providers()
@@ -362,9 +371,95 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             "persistence": persistence,
             "coverage": coverage,
         }
+        if scope in {"makes", "models"} and resolved.rows:
+            result["deepening"] = _schedule_selector_deepening(request, scope, resolved.rows)
     with _HYDRATION_LOCK:
-        _HYDRATION_RESULTS[key] = deepcopy(result)
+        _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
     return result
+
+
+_DEEPEN_LOCK = RLock()
+_DEEPEN_IN_FLIGHT: set[str] = set()
+
+
+def _schedule_selector_deepening(
+    request: Mapping[str, Any], scope: str, rows: Iterable[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """Persist full vehicle rows behind a sparse makes/models scope.
+
+    Selector rows for makes and models lack the model/configuration fields
+    the identity store requires, so a scoped read alone can never populate
+    the API's selector tables. Walk the scope to configurations in a
+    detached thread and persist each complete vehicle row as it lands.
+    """
+
+    year = int(request.get("year", 0))
+    region = str(request.get("region") or "US").strip().upper()
+    make = str(request.get("make", "")).strip()
+    key = "|".join((scope, str(year), make.casefold(), region))
+    with _DEEPEN_LOCK:
+        if key in _DEEPEN_IN_FLIGHT:
+            return {"status": "already_running", "key": key}
+        _DEEPEN_IN_FLIGHT.add(key)
+    Thread(
+        target=_deepen_selector_scope,
+        args=(dict(request), scope, [dict(row) for row in rows], key),
+        name=f"catalog-deepen-{key}",
+        daemon=True,
+    ).start()
+    return {"status": "scheduled", "key": key}
+
+
+def _deepen_selector_scope(
+    request: Mapping[str, Any], scope: str, rows: list[dict[str, Any]], key: str
+) -> None:
+    try:
+        providers = _configured_catalog_providers()
+        if not providers:
+            return
+        service = CacheFirstCatalogService(
+            cache_reader=lambda _request: {"complete": False, "missing_scopes": [], "rows": []},
+            providers=providers,
+        )
+        year = int(request.get("year", 0))
+        region = str(request.get("region") or "US")
+        if scope == "makes":
+            makes = sorted({str(row.get("make")) for row in rows if row.get("make")})
+        else:
+            makes = [str(request.get("make", "")).strip()]
+        for make in makes:
+            if not make:
+                continue
+            try:
+                models_result = service.resolve(
+                    CatalogRequest(year, make, "unknown", region, scope="models")
+                )
+            except Exception:  # noqa: BLE001 - one make must not stop the walk
+                continue
+            models = sorted({str(row.get("model")) for row in models_result.rows if row.get("model")})
+            for model in models:
+                try:
+                    configurations = service.resolve(
+                        CatalogRequest(year, make, model, region, scope="configurations")
+                    )
+                except Exception:  # noqa: BLE001 - skip an unavailable model
+                    continue
+                if configurations.rows:
+                    try:
+                        _persist_resolved_catalog_rows(
+                            configurations.rows,
+                            scope="configurations",
+                            provenance=configurations.provenance,
+                        )
+                    except Exception as error:  # noqa: BLE001 - one model must not stop the walk
+                        print(
+                            f"catalog deepening persist failed for {year} {make} {model}: "
+                            f"{type(error).__name__}: {error}",
+                            flush=True,
+                        )
+    finally:
+        with _DEEPEN_LOCK:
+            _DEEPEN_IN_FLIGHT.discard(key)
 
 
 def _load_autoapitwo_article_detail(

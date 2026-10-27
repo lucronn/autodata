@@ -26,6 +26,7 @@ from autodata_ingestion.catalog_service import (
 from autodata_ingestion.catalog_years import _read_year_pages
 from autodata_ingestion.catalog_sync import _iter_catalog_rows
 from autodata_ingestion import catalog_sync, catalog_years
+from autodata_ingestion.banktwo_connector import BanktwoConnector
 
 
 class _Response:
@@ -62,6 +63,46 @@ def _envelope(provider="bankone", **extra):
 
 
 class SourceConnectorClientTests(unittest.TestCase):
+    def test_managed_keys_reach_only_the_matching_bank_and_override_legacy_tokens(self):
+        env = {
+            "AUTODATA_BANKONE_API_KEY": "managed-one-test",
+            "AUTODATA_BANKTWO_API_KEY": "managed-two-test",
+            "BANKONE_API_TOKEN": "legacy-one-test",
+            "BANKTWO_API_TOKEN": "legacy-two-test",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            registry = source_connector_registry(include_defaults=True)
+        for provider, client in registry.items():
+            def capture(request, timeout, provider=provider):
+                self.assertEqual(request.host, f"{provider}.cars.tk")
+                expected = "managed-one-test" if provider == "bankone" else "managed-two-test"
+                self.assertEqual(request.get_header("Authorization"), f"Bearer {expected}")
+                return _Response(_envelope(provider, capabilities=["catalog"]), url=request.full_url)
+            client._opener = capture
+            self.assertEqual(client.capabilities().provider, provider)
+
+    def test_blank_managed_key_uses_only_its_own_legacy_token(self):
+        env = {
+            "AUTODATA_BANKONE_API_KEY": " ",
+            "BANKONE_API_TOKEN": "legacy-one-test",
+            "AUTODATA_BANKTWO_API_KEY": "managed-two-test",
+        }
+        def capture(request, timeout):
+            self.assertEqual(request.get_header("Authorization"), "Bearer legacy-one-test")
+            return _Response(_envelope(capabilities=["catalog"]), url=request.full_url)
+        with patch.dict("os.environ", env, clear=True):
+            client = source_connector_registry(include_defaults=True)["bankone"]
+        client._opener = capture
+        client.capabilities()
+
+    def test_banktwo_custom_origin_facade_uses_the_managed_banktwo_key(self):
+        def capture(request, timeout):
+            self.assertEqual(request.get_header("Authorization"), "Bearer managed-two-test")
+            return _Response(_envelope("banktwo", capabilities=["catalog"]), url=request.full_url)
+        with patch.dict("os.environ", {"AUTODATA_BANKTWO_API_KEY": "managed-two-test"}, clear=True):
+            connector = BanktwoConnector("http://127.0.0.1:4202", opener=capture)
+        self.assertEqual(connector.client.capabilities().provider, "banktwo")
+
     def test_registry_uses_separate_origins_and_tokens(self):
         env = {
             "BANKONE_BASE_URL": "https://bankone.cars.tk",

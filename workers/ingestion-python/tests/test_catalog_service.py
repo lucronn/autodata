@@ -326,6 +326,27 @@ class CatalogServiceTests(unittest.TestCase):
         self.assertEqual(first["status"], "accepted")
         self.assertEqual(first["missing_scopes"], ["models"])
 
+    def test_http_hydration_retries_after_incomplete_result_ttl(self):
+        request = json.dumps({
+            "scope": "articles",
+            "idempotency_key": "catalog-http-retry-1",
+            "vehicle_id": "vehicle-1",
+            "year": 2020,
+            "make": "Acura",
+            "model": "ILX",
+        })
+        failed = {"status": "source_unavailable", "complete": False, "missing_scopes": ["articles"], "rows": []}
+        hydrated = {"status": "hydrated", "complete": True, "missing_scopes": [], "rows": [{"article": {}}]}
+
+        with patch("autodata_ingestion.catalog_service._hydrate_article_catalog", side_effect=[failed, hydrated]) as loader, \
+            patch("autodata_ingestion.catalog_service._HYDRATION_INCOMPLETE_TTL_SECONDS", -1.0):
+            first = ensure_catalog_hydration(request)
+            second = ensure_catalog_hydration(request)
+
+        self.assertEqual(loader.call_count, 2)
+        self.assertFalse(first["complete"])
+        self.assertTrue(second["complete"])
+
     def test_http_hydration_complete_cache_is_provider_free(self):
         result = ensure_catalog_hydration(json.dumps({
             "scope": "configurations",

@@ -74,6 +74,36 @@ class SourceAdapterTests(unittest.TestCase):
             media_type="application/json",
         ).content_sha256)
 
+    def test_hal_json_media_type_is_adapted_as_json(self):
+        resource = SourceResource.from_bytes(
+            source_uri="https://source.example/content/carids/12/nonstandards/42",
+            source_version="2026-09-03T12:00:00Z",
+            payload=b'{"vehicle":{"year":2020,"make":"Acura","model":"ILX"}}',
+            media_type="application/hal+json;charset=UTF-8",
+        )
+
+        artifact = adapt_source_resource(resource)
+
+        self.assertEqual(artifact.kind, "structured")
+        self.assertTrue(any(candidate.kind == "vehicle_identity" for candidate in artifact.candidates))
+
+    def test_car_wrapper_yields_vehicle_identity_candidate(self):
+        resource = SourceResource.from_bytes(
+            source_uri="https://source.example/content/carids/12/nonstandards/42",
+            source_version="2026-09-03T12:00:00Z",
+            payload=b'{"title":"Article","type":"NonStandard","id":"42","car":{"year":"2020","make":"Acura","model":"ILX","engine":"L4-2.4L"},"_embedded":{"data":{"article":{"id":"42","title":"Article","content":"<p>Step one</p>"}}}}',
+            media_type="application/hal+json",
+        )
+
+        artifact = adapt_source_resource(resource)
+
+        identities = [candidate for candidate in artifact.candidates if candidate.kind == "vehicle_identity"]
+        self.assertEqual(len(identities), 1)
+        self.assertEqual(identities[0].data["make"], "Acura")
+        articles = [candidate for candidate in artifact.candidates if candidate.kind == "article"]
+        self.assertEqual(len(articles), 1)
+        self.assertEqual(articles[0].data["body"], "Step one")
+
     def test_json_api_envelope_is_unwrapped_without_losing_header_provenance(self):
         resource = SourceResource.from_bytes(
             source_uri="https://source.example/name.json",

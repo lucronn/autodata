@@ -17,6 +17,8 @@ def dispatch_request(
     payload: Mapping[str, object],
     *,
     article_runner: Callable[[str, str], dict[str, object]] | None = None,
+    catalog_runner: Callable[[str], dict[str, object]] | None = None,
+    catalog_years_runner: Callable[[str], dict[str, object]] | None = None,
     knowledge_runner: Callable[[str], dict[str, object]] | None = None,
     job_runner: Callable[[str], dict[str, object]] | None = None,
 ) -> dict[str, object]:
@@ -41,6 +43,25 @@ def dispatch_request(
             source_uri,
             json.dumps(dict(vehicle), ensure_ascii=False, sort_keys=True),
         )
+    if request_path == "/v1/catalog/ensure":
+        idempotency_key = str(payload.get("idempotency_key", "")).strip()
+        if not idempotency_key:
+            raise ValueError("catalog hydration idempotency_key is required")
+        scope = str(payload.get("scope", "")).strip()
+        if scope not in {"years", "makes", "models", "configurations", "articles", "article"}:
+            raise ValueError("catalog hydration scope is invalid")
+        serialized = json.dumps(dict(payload), ensure_ascii=False, sort_keys=True)
+        if scope == "years":
+            if catalog_years_runner is None:
+                from .catalog_years import ensure_catalog_years
+
+                catalog_years_runner = ensure_catalog_years
+            return catalog_years_runner(serialized)
+        if catalog_runner is None:
+            from .catalog_service import ensure_catalog_hydration
+
+            catalog_runner = ensure_catalog_hydration
+        return catalog_runner(serialized)
     if request_path == "/v1/knowledge-queries":
         vehicle = payload.get("vehicle")
         query = str(payload.get("query", "")).strip()
@@ -171,6 +192,7 @@ def _allowed_methods(path: str) -> str:
         return "GET, OPTIONS"
     if path in {
         "/v1/article-intakes",
+        "/v1/catalog/ensure",
         "/v1/knowledge-queries",
         "/v1/job-plans",
     }:

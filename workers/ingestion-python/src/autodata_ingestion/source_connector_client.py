@@ -235,6 +235,19 @@ class SourceConnectorClient:
             raise SourceConnectorError("UPSTREAM_UNAVAILABLE", retryable=True) from None
 
 
+def source_connector_token(provider: str) -> str | None:
+    """Read one bank's server-only managed key, falling back to its legacy token."""
+
+    if provider not in _PROVIDERS:
+        raise ValueError("unknown source connector provider")
+    prefix = provider.upper()
+    for name in (f"AUTODATA_{prefix}_API_KEY", f"{prefix}_API_TOKEN"):
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return None
+
+
 def source_connector_registry(*, include_defaults: bool = False) -> dict[str, SourceConnectorClient]:
     """Create independently configured clients without sharing bank secrets."""
 
@@ -246,7 +259,7 @@ def source_connector_registry(*, include_defaults: bool = False) -> dict[str, So
             continue
         result[provider] = SourceConnectorClient(
             base_url or _ORIGINS[provider],
-            token=os.getenv(f"{prefix}_API_TOKEN") or None,
+            token=source_connector_token(provider),
             provider=provider,
         )
     return result
