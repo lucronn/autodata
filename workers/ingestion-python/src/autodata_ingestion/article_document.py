@@ -469,7 +469,14 @@ def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
     clean_items: list[str] = []
     for value in values:
         if isinstance(value, Mapping):
-            item_text = _clean_text(value.get("text") or value.get("value") or value.get("label"))
+            item_text = _clean_text(
+                value.get("text")
+                or value.get("value")
+                or value.get("label")
+                or value.get("content")
+                or value.get("body")
+                or value.get("message")
+            )
         else:
             item_text = _clean_text(value)
         if item_text:
@@ -492,7 +499,15 @@ def _callout_block(article: Mapping[str, Any], source_order: int, raw: Mapping[s
         or raw.get("content")
         or raw.get("body")
     )
-    return _base_block(article, source_order, "callout", label=label, text=text, evidence_ids=evidence_ids)
+    images_raw = raw.get("images")
+    extra_fields: dict[str, Any] = {}
+    if isinstance(images_raw, list):
+        clean_images = [
+            _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
+        ]
+        if clean_images:
+            extra_fields["images"] = clean_images
+    return _base_block(article, source_order, "callout", label=label, text=text, evidence_ids=evidence_ids, **extra_fields)
 
 
 def _unknown_block(article: Mapping[str, Any], source_order: int, raw: Any) -> dict[str, Any]:

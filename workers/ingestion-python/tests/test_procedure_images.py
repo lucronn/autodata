@@ -476,3 +476,56 @@ def test_collect_and_rewrite_arbitrary_block_images():
     assert step_img["url"] == "artifact://step-img"
     assert step_img["storage_key"] == "procedure-images/step456"
 
+
+def test_hydrate_article_image_urls_hydrates_arbitrary_blocks_and_children(monkeypatch):
+    monkeypatch.setattr(procedure_images, "_read_storage_bytes", lambda key: b"\x89PNG\r\n\x1a\nfake-block-bytes")
+
+    article = {
+        "article_id": "art-block-hydrate",
+        "normalized_document": {
+            "blocks": [
+                {
+                    "type": "callout",
+                    "label": "CAUTION",
+                    "text": "Hot exhaust component",
+                    "images": [
+                        {
+                            "image_id": "callout-fig-1",
+                            "storage_key": "procedure-images/caution-fig",
+                            "media_type": "image/png",
+                        }
+                    ],
+                },
+                {
+                    "type": "section",
+                    "children": [
+                        {
+                            "type": "step",
+                            "text": "Loosen bracket",
+                            "images": [
+                                {
+                                    "image_id": "step-fig-1",
+                                    "storage_key": "procedure-images/step-fig",
+                                    "media_type": "image/png",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            ]
+        },
+    }
+
+    # 1. Default artifact:// hydration
+    hydrated_default = procedure_images.hydrate_article_image_urls(article)
+    callout_img = hydrated_default["normalized_document"]["blocks"][0]["images"][0]
+    assert callout_img["url"] == "artifact://callout-fig-1"
+    step_img = hydrated_default["normalized_document"]["blocks"][1]["children"][0]["images"][0]
+    assert step_img["url"] == "artifact://step-fig-1"
+
+    # 2. Embedded data-URI hydration
+    hydrated_embed = procedure_images.hydrate_article_image_urls(article, embed_data_uri=True)
+    callout_embed = hydrated_embed["normalized_document"]["blocks"][0]["images"][0]
+    assert callout_embed["url"].startswith("data:image/png;base64,")
+    step_embed = hydrated_embed["normalized_document"]["blocks"][1]["children"][0]["images"][0]
+    assert step_embed["url"].startswith("data:image/png;base64,")

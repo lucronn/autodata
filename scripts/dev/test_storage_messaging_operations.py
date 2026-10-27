@@ -223,6 +223,7 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             "consumer_agent.py",
             "nats_health.py",
             "ingestion_smoke.py",
+            "outbox_relay.py",
         ]
         for name in scripts_to_check:
             content = (ROOT / "scripts/dev" / name).read_text()
@@ -248,6 +249,10 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             ("ingestion_smoke.py", "--address"),
             ("ingestion_smoke.py", "--s3-endpoint"),
             ("ingestion_smoke.py", "--nats-url"),
+            ("replay_outbox.py", "--address"),
+            ("replay_outbox.py", "--event-id"),
+            ("outbox_relay.py", "--address"),
+            ("outbox_relay.py", "--nats-url"),
             ("universal_article_smoke.py", "--live-url"),
             ("knowledge_warm_path_benchmark.py", "--query"),
         ]:
