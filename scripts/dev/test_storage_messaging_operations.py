@@ -86,6 +86,11 @@ class StorageMessagingOperationsTests(unittest.TestCase):
         self.assertIn("_silent_nats_error", smoke_src)
         self.assertIn("error_cb=_silent_nats_error", smoke_src)
 
+        outbox_src = (ROOT / "workers/enrichment-python/src/autodata_enrichment/outbox.py").read_text()
+        self.assertIn("_resolve_nats_url", outbox_src)
+        self.assertIn("_silent_nats_error", outbox_src)
+        self.assertIn("error_cb=_silent_nats_error", outbox_src)
+
     def test_reconcile_payments_cli_argument_parsing(self):
         import subprocess
 
@@ -98,6 +103,42 @@ class StorageMessagingOperationsTests(unittest.TestCase):
         self.assertIn("--once", result.stdout)
         self.assertIn("--batch-size", result.stdout)
         self.assertIn("--poll-seconds", result.stdout)
+
+    def test_outbox_relay_cli_argument_parsing(self):
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/dev/outbox_relay.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("--once", result.stdout)
+        self.assertIn("--limit", result.stdout)
+        self.assertIn("--max-attempts", result.stdout)
+        self.assertIn("--poll-seconds", result.stdout)
+
+    def test_persistence_modules_use_database_and_s3_resolvers(self):
+        bundle_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/bundle_persistence.py").read_text()
+        self.assertIn("_resolve_database_address", bundle_src)
+        self.assertIn("_resolve_s3_endpoint", bundle_src)
+
+        selection_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/vehicle_selection_persistence.py").read_text()
+        self.assertIn("_resolve_database_address", selection_src)
+
+        derived_src = (ROOT / "workers/ingestion-python/src/autodata_ingestion/derived_article_persistence.py").read_text()
+        self.assertIn("_resolve_database_address", derived_src)
+
+    def test_normalize_source_directory_cli_limit(self):
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/dev/normalize_source_directory.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("--limit", result.stdout)
 
 
 if __name__ == "__main__":

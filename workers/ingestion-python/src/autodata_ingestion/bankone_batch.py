@@ -528,13 +528,20 @@ def _selection_record_rows(record: Any) -> list[dict[str, Any]]:
     return rows
 
 
+BankBatch = BankoneBatch
+build_bank_batch_plan = build_bankone_batch_plan
+execute_bank_batch = execute_bankone_batch
+
 __all__ = [
+    "BankBatch",
     "BankoneBatch",
+    "build_bank_batch_plan",
     "build_bankone_batch_plan",
     "collect_autoapi_selection_rows",
     "collect_bankone_selection_rows",
     "derive_autoapi_vehicle_rows",
     "discover_autoapi_source_directories",
+    "execute_bank_batch",
     "execute_bankone_batch",
     "load_selector_rows",
     "normalize_vehicle_list_json",

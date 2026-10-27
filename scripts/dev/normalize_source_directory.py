@@ -80,6 +80,7 @@ def main() -> None:
     parser.add_argument("--region", default="US")
     parser.add_argument("--source-version", default="local-directory-v1")
     parser.add_argument("--persist", action="store_true", help="persist local artifacts and normalized records to the configured local stack")
+    parser.add_argument("--limit", type=int, default=None, help="Maximum source resources to adapt and normalize")
     parser.add_argument("--adapter-name", default="local-directory")
     args = parser.parse_args()
     if not args.directory.is_dir():
@@ -88,6 +89,8 @@ def main() -> None:
     artifacts = []
     connector = DirectorySourceConnector(args.directory, args.source_version)
     for resource in connector.fetch({}):
+        if args.limit is not None and len(artifacts) >= args.limit:
+            break
         try:
             artifacts.append(adapt_source_resource(resource))
         except ValueError as error:

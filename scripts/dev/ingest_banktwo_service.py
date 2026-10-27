@@ -14,8 +14,8 @@ ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
 
 from autodata_ingestion.bankone_batch import (  # noqa: E402
-    BankoneBatch,
-    execute_bankone_batch,
+    BankBatch,
+    execute_bank_batch,
 )
 from autodata_ingestion.source_connector_client import (  # noqa: E402
     SourceConnectorClient,
@@ -31,9 +31,9 @@ def fetch_banktwo_batches(
     target_year: int | None = None,
     target_make: str | None = None,
     limit: int | None = None,
-) -> tuple[list[BankoneBatch], list[dict[str, object]], dict[str, object]]:
+) -> tuple[list[BankBatch], list[dict[str, object]], dict[str, object]]:
     """Traverse the Banktwo connector to assemble vehicle batches and selection rows."""
-    batches: list[BankoneBatch] = []
+    batches: list[BankBatch] = []
     selection_rows: list[dict[str, object]] = []
     years: list[int] = []
     errors: list[dict[str, str]] = []
@@ -96,7 +96,7 @@ def fetch_banktwo_batches(
                         })
 
                     batches.append(
-                        BankoneBatch(
+                        BankBatch(
                             vehicle_key=vehicle_key,
                             vehicle=vehicle_obj,
                             source_directory=None,
@@ -149,7 +149,7 @@ def main() -> None:
         target_make=args.make,
         limit=args.limit,
     )
-    output = execute_bankone_batch(
+    output = execute_bank_batch(
         batches,
         source_version=args.source_version,
         persist=args.persist,

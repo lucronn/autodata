@@ -143,6 +143,10 @@ The local development environment accommodates both containerized Compose stacks
 - **Ingestion Smoke Hardening:** `scripts/dev/ingestion_smoke.py` includes contract and worker package path resolution, automatic `127.0.0.1` database and S3 endpoint probing, non-blocking NATS broker probing, and silent error callback handling for offline brokers without stderr tracebacks.
 - **Object Storage & NATS Health Probing:** `scripts/dev/object_storage_health.py` and `scripts/dev/nats_health.py` auto-discover worker virtual environment site-packages, probe local ports (`9000` and `4222`), verify hostname DNS resolution before attempting container endpoints, and handle offline brokers safely without hanging or dumping tracebacks.
 - **Independent Bank Service Ingestion:** `scripts/dev/ingest_bankone_service.py` and `scripts/dev/ingest_banktwo_service.py` use `SourceConnectorClient` and respective base URLs (`BANKONE_BASE_URL` at `https://bankone.cars.tk` and `BANKTWO_BASE_URL` at `https://banktwo.cars.tk`), retiring legacy AutoAPI connector bindings, and support `--year`, `--make`, and `--limit` arguments for targeted catalog ingestion.
+- **Outbox Relay CLI Ergonomics & NATS Resilience:** `scripts/dev/outbox_relay.py` resolves worker virtual environments, supports `--once`, `--limit`/`--batch-size`, `--max-attempts`, and `--poll-seconds` CLI flags, and handles offline or unreachable NATS brokers safely without stderr tracebacks.
+- **Ingestion Persistence Endpoint Resilience:** `autodata_ingestion.bundle_persistence`, `vehicle_selection_persistence`, and `derived_article_persistence` automatically probe `127.0.0.1:5432` and `127.0.0.1:9000` when running directly on the host, eliminating connection failures when container DNS names are unexported.
+- **Provider-Neutral Bank Batch Ingestion:** `autodata_ingestion.bankone_batch` exports canonical provider-neutral aliases `BankBatch`, `execute_bank_batch`, and `build_bank_batch_plan`, enabling `scripts/dev/ingest_banktwo_service.py` and future multi-bank connectors to ingest catalog batches neutrally.
+- **Directory Normalization Filtering:** `scripts/dev/normalize_source_directory.py` supports `--limit` to bound source resource adaptation and extraction during quick local exploratory inspections.
 
 The first-success developer path is:
 
@@ -316,9 +320,12 @@ docker compose -f infra/compose/compose.yaml run --rm --no-deps \
   -e AUTODATA_OUTBOX_BATCH_SIZE=50 \
   -e AUTODATA_OUTBOX_ONCE=1 \
   enrichment-worker python /app/scripts/outbox_relay.py
+
+# Or directly on host with CLI flags:
+python3 scripts/dev/outbox_relay.py --once --limit 50
 ```
 
-`docker compose up` also starts `outbox-relay` as a continuously polling local service. Use `AUTODATA_OUTBOX_POLL_SECONDS` to change its interval. The command above sets `AUTODATA_OUTBOX_ONCE=1` for a bounded smoke run. Use `AUTODATA_OUTBOX_MAX_ATTEMPTS` to bound delivery retries. A failed event is retried on a later invocation until that limit is reached, then is marked `dead_letter` with its last error preserved. Outbox claiming and NATS publication are separate commits, so operational monitoring must treat duplicate delivery as normal and inspect `delivery_attempts`, `delivery_status`, and `delivered_at` when reconciling the database with JetStream.
+`docker compose up` also starts `outbox-relay` as a continuously polling local service. Use `AUTODATA_OUTBOX_POLL_SECONDS` (or `--poll-seconds`) to change its interval. The command above sets `AUTODATA_OUTBOX_ONCE=1` (or `--once`) for a bounded smoke run. Use `AUTODATA_OUTBOX_MAX_ATTEMPTS` (or `--max-attempts`) to bound delivery retries. A failed event is retried on a later invocation until that limit is reached, then is marked `dead_letter` with its last error preserved. Outbox claiming and NATS publication are separate commits, so operational monitoring must treat duplicate delivery as normal and inspect `delivery_attempts`, `delivery_status`, and `delivered_at` when reconciling the database with JetStream.
 
 The asynchronous and object-storage probes are bounded operational commands. The NATS probe is read-only and reports the configured JetStream stream; the object-storage probe creates missing configured buckets and upgrades them to versioning, which is required before source artifacts are accepted:
 

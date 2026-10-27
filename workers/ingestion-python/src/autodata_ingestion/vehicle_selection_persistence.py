@@ -12,6 +12,7 @@ from .bundle_persistence import (
     _persist_artifact_rows,
     _persist_extraction_evidence,
     _persist_snapshots,
+    _resolve_database_address,
     _stable_uuid,
     store_source_artifacts,
 )
@@ -56,10 +57,13 @@ def persist_vehicle_selection_list(
     import psycopg
     from psycopg.types.json import Jsonb
 
-    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    address = _resolve_database_address()
+    host, separator, port = address.rpartition(":")
+    if not separator:
+        host, port = address, "5432"
     conninfo = {
         "host": host,
-        "port": int(port_text),
+        "port": int(port),
         "dbname": os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         "user": os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
         "password": os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
