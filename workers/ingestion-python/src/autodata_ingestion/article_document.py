@@ -220,8 +220,18 @@ def build_ordered_document(
         if kind in {"callout", "note", "warning", "caution", "hint", "important"}:
             output.append(_callout_block(article, source_index, raw, evidence_ids, kind))
             continue
+        if kind in {"step", "instruction"}:
+            output.append(_step_block(article, source_index, raw, evidence_ids))
+            continue
         if kind in {"heading", "title", "section"}:
-            text = _clean_text(raw.get("text") or raw.get("label"))
+            text = _clean_text(
+                raw.get("text")
+                or raw.get("label")
+                or raw.get("title")
+                or raw.get("heading")
+                or raw.get("value")
+                or raw.get("content")
+            )
             if text:
                 output.append(_base_block(article, source_index, "heading", text=text, level=_level(raw), evidence_ids=evidence_ids))
             continue
@@ -243,7 +253,12 @@ def build_ordered_document(
                 )
             continue
 
-        text = _clean_text(raw.get("text") or raw.get("value"))
+        text = _clean_text(
+            raw.get("text")
+            or raw.get("value")
+            or raw.get("content")
+            or raw.get("body")
+        )
         if not text:
             output.append(_unknown_block(article, source_index, raw))
             continue
@@ -263,7 +278,15 @@ def build_ordered_document(
         elif _looks_like_heading(text):
             output.append(_base_block(article, source_index, "heading", text=text, level=2, evidence_ids=evidence_ids))
         else:
-            output.append(_base_block(article, source_index, "paragraph", text=text, evidence_ids=evidence_ids))
+            images_raw = raw.get("images")
+            extra_fields: dict[str, Any] = {}
+            if isinstance(images_raw, list):
+                clean_images = [
+                    _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
+                ]
+                if clean_images:
+                    extra_fields["images"] = clean_images
+            output.append(_base_block(article, source_index, "paragraph", text=text, evidence_ids=evidence_ids, **extra_fields))
         if figure_queue and re.search(r"\bFigure\s+\d+\b", text, re.IGNORECASE):
             fig = figure_queue.pop(0)
             seen_image_keys.update(_image_identities(fig))
@@ -508,6 +531,62 @@ def _callout_block(article: Mapping[str, Any], source_order: int, raw: Mapping[s
         if clean_images:
             extra_fields["images"] = clean_images
     return _base_block(article, source_order, "callout", label=label, text=text, evidence_ids=evidence_ids, **extra_fields)
+
+
+def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str]) -> dict[str, Any]:
+    text_candidates = [
+        raw.get("text"),
+        raw.get("action"),
+        raw.get("instruction"),
+        raw.get("value"),
+        raw.get("content"),
+        raw.get("body"),
+    ]
+    instructions = raw.get("instructions")
+    if isinstance(instructions, list):
+        joined_instructions = " ".join(_clean_text(item) for item in instructions if _clean_text(item))
+        if joined_instructions:
+            text_candidates.append(joined_instructions)
+
+    text = ""
+    for candidate in text_candidates:
+        cleaned = _clean_text(candidate)
+        if cleaned:
+            text = cleaned
+            break
+
+    number = None
+    raw_number = raw.get("number") if raw.get("number") is not None else raw.get("step_number") if raw.get("step_number") is not None else raw.get("index")
+    if raw_number is not None:
+        try:
+            number = int(raw_number)
+        except (ValueError, TypeError):
+            number = None
+
+    if number is None and text:
+        parsed_num = _numbered_text(text)
+        if parsed_num is not None:
+            number, text = parsed_num
+
+    label = _clean_text(raw.get("label") or raw.get("title") or raw.get("heading") or raw.get("action"))
+    extra_fields: dict[str, Any] = {}
+    if label and label != text:
+        extra_fields["label"] = label
+    if number is not None:
+        extra_fields["number"] = number
+
+    images_raw = raw.get("images")
+    if isinstance(images_raw, list):
+        clean_images = [
+            _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
+        ]
+        if clean_images:
+            extra_fields["images"] = clean_images
+
+    if not text:
+        text = label or (f"Step {number}" if number is not None else "Procedure step")
+
+    return _base_block(article, source_order, "step", text=text, evidence_ids=evidence_ids, **extra_fields)
 
 
 def _unknown_block(article: Mapping[str, Any], source_order: int, raw: Any) -> dict[str, Any]:

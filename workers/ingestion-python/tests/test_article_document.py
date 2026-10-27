@@ -393,3 +393,114 @@ def test_callout_block_preserves_images():
     assert block["images"][0]["image_id"] == "warning-icon"
     assert block["images"][0]["storage_key"] == "procedure-images/warn1"
     assert block["images"][0]["status"] == "available"
+
+
+def test_step_block_extracts_action_instruction_and_number():
+    article = {"article_id": "test-step-normalization"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "step",
+                "action": "Remove the oil drain plug.",
+                "step_number": 1,
+            },
+            {
+                "type": "step",
+                "label": "Filter Replacement",
+                "instruction": "Unscrew the oil filter canister.",
+                "number": 2,
+            },
+            {
+                "kind": "instruction",
+                "instructions": ["Drain the oil pan.", "Inspect the crush washer."],
+                "index": 3,
+            },
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    blocks = document["blocks"]
+    assert len(blocks) == 3
+    assert blocks[0]["type"] == "step"
+    assert blocks[0]["text"] == "Remove the oil drain plug."
+    assert blocks[0]["number"] == 1
+
+    assert blocks[1]["type"] == "step"
+    assert blocks[1]["text"] == "Unscrew the oil filter canister."
+    assert blocks[1]["number"] == 2
+    assert blocks[1]["label"] == "Filter Replacement"
+
+    assert blocks[2]["type"] == "step"
+    assert blocks[2]["text"] == "Drain the oil pan. Inspect the crush washer."
+    assert blocks[2]["number"] == 3
+
+
+def test_step_block_preserves_images():
+    article = {"article_id": "test-step-images"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "step",
+                "text": "Disconnect the steering linkage.",
+                "number": 4,
+                "images": [
+                    {
+                        "image_id": "linkage-diagram",
+                        "storage_key": "procedure-images/link1",
+                    }
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    block = document["blocks"][0]
+    assert block["type"] == "step"
+    assert block["number"] == 4
+    assert "images" in block
+    assert block["images"][0]["image_id"] == "linkage-diagram"
+    assert block["images"][0]["storage_key"] == "procedure-images/link1"
+    assert block["images"][0]["status"] == "available"
+
+
+def test_paragraph_block_extracts_content_and_body_and_preserves_images():
+    article = {"article_id": "test-para-expanded"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "paragraph",
+                "content": "Inspect brake pads for uneven wear patterns.",
+                "images": [
+                    {
+                        "image_id": "pad-wear-spec",
+                        "storage_key": "procedure-images/pad1",
+                    }
+                ],
+            },
+            {
+                "type": "paragraph",
+                "body": "Ensure caliper slide pins are free of corrosion.",
+            },
+            {
+                "kind": "heading",
+                "title": "Front Brake Service",
+                "level": 3,
+            },
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    blocks = document["blocks"]
+    assert len(blocks) == 3
+    assert blocks[0]["type"] == "paragraph"
+    assert blocks[0]["text"] == "Inspect brake pads for uneven wear patterns."
+    assert "images" in blocks[0]
+    assert blocks[0]["images"][0]["image_id"] == "pad-wear-spec"
+
+    assert blocks[1]["type"] == "paragraph"
+    assert blocks[1]["text"] == "Ensure caliper slide pins are free of corrosion."
+
+    assert blocks[2]["type"] == "heading"
+    assert blocks[2]["text"] == "Front Brake Service"
+    assert blocks[2]["level"] == 3
+

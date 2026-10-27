@@ -47,7 +47,10 @@ def resolve_database_address(address: str | None = None) -> str:
     return "postgres:5432"
 
 
-def resolve_viewable_projection_id(projection_id: str | None = None) -> str:
+def resolve_viewable_projection_id(
+    projection_id: str | None = None,
+    address: str | None = None,
+) -> str:
     if projection_id:
         return projection_id
     configured = os.getenv("AUTODATA_DEEP_PROJECTION_ID")
@@ -55,7 +58,7 @@ def resolve_viewable_projection_id(projection_id: str | None = None) -> str:
         return configured
     import psycopg
 
-    host, port_text = resolve_database_address().rsplit(":", 1)
+    host, port_text = resolve_database_address(address).rsplit(":", 1)
     try:
         with psycopg.connect(
             host=host,
@@ -85,6 +88,12 @@ def resolve_viewable_projection_id(projection_id: str | None = None) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--address",
+        "--database-url",
+        default=None,
+        help="PostgreSQL host:port address override",
+    )
     parser.add_argument("--projection-id", default=None)
     parser.add_argument("--section", default=os.getenv("AUTODATA_DEEP_SECTION", "diagnostics"))
     parser.add_argument(
@@ -99,7 +108,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--evidence", default=None)
     args = parser.parse_args(argv)
 
-    projection_id = resolve_viewable_projection_id(args.projection_id)
+    if args.address:
+        os.environ["AUTODATA_DB_ADDRESS"] = args.address
+    projection_id = resolve_viewable_projection_id(args.projection_id, address=args.address)
     sections = tuple(
         item.strip()
         for item in args.schedule_sections.split(",")
