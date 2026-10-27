@@ -8,4 +8,6 @@ __pycache__/
 .coverage
 htmlcov/
 .mypy_cache/
+.env
+*.env
 

@@ -99,6 +99,20 @@ class IngestionSmokeContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "dataset.viewable"):
             summarize_viewable_event({"event_type": "dataset.deep.requested"}, "revision-1")
 
+    def test_ingestion_smoke_resolves_local_addresses_and_defaults(self):
+        from ingestion_smoke import resolve_database_address, resolve_s3_endpoint
+
+        self.assertEqual(resolve_database_address("custom:5432"), "custom:5432")
+        self.assertEqual(resolve_s3_endpoint("custom:9000"), "custom:9000")
+
+        smoke_src = (ROOT / "scripts/dev/ingestion_smoke.py").read_text()
+        self.assertIn('os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")', smoke_src)
+        self.assertIn('os.getenv("AUTODATA_FAKE_PAYMENT_SIGNING_SECRET", "local-fixture-signing-key")', smoke_src)
+        self.assertIn('os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin")', smoke_src)
+        self.assertIn('os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password")', smoke_src)
+        self.assertIn("packages/contracts/python", smoke_src)
+        self.assertIn("workers/ingestion-python/src", smoke_src)
+
 
 if __name__ == "__main__":
     unittest.main()

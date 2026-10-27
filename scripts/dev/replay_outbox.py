@@ -16,16 +16,32 @@ def replay_target(event_id: str | None, job_id: str | None) -> tuple[str, str]:
     return ("event", event_id) if event_id else ("job", job_id)
 
 
+def resolve_database_address(address: str | None = None) -> str:
+    if address:
+        return address
+    configured = os.getenv("AUTODATA_DB_ADDRESS")
+    if configured:
+        return configured
+    import socket
+
+    try:
+        with socket.create_connection(("127.0.0.1", 5432), timeout=0.2):
+            return "127.0.0.1:5432"
+    except OSError:
+        pass
+    return "postgres:5432"
+
+
 def _db_connection() -> Any:
     import psycopg
 
-    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    host, port_text = resolve_database_address().rsplit(":", 1)
     return psycopg.connect(
         host=host,
         port=int(port_text),
         dbname=os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         user=os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        password=os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        password=os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
     )
 
 

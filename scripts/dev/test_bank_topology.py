@@ -117,6 +117,13 @@ class BankTopologyTests(unittest.TestCase):
     def test_compose_does_not_inject_retired_autoapi_origins(self):
         self.assertNotRegex(COMPOSE.read_text(), r"(?i)AUTODATA_AUTOAPI(?:TWO)?_BASE_URL|autoapi(?:two|-sigma)\.vercel\.app")
 
+    def test_bankone_service_ingest_uses_independent_connector_and_origins(self):
+        service_script = (ROOT / "scripts/dev/ingest_bankone_service.py").read_text()
+        self.assertIn("SourceConnectorClient", service_script)
+        self.assertIn("BANKONE_BASE_URL", service_script)
+        self.assertNotRegex(service_script, r"(?i)AutoAPIConnector")
+        self.assertNotRegex(service_script, r"(?i)AUTODATA_AUTOAPI_BASE_URL")
+
 
 if __name__ == "__main__":
     unittest.main()
