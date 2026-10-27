@@ -10,8 +10,11 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path(__file__).parents[2]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 from autodata_ingestion.bankone_batch import (  # noqa: E402
     BankBatch,
@@ -117,7 +120,7 @@ def fetch_banktwo_batches(
     return batches, selection_rows, summary
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--base-url",
@@ -133,7 +136,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None, help="Maximum vehicle batches to ingest")
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
     parser.add_argument("--persist", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     connector = SourceConnectorClient(
         args.base_url,

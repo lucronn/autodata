@@ -7,7 +7,7 @@ import re
 import uuid
 from copy import deepcopy
 from dataclasses import asdict, dataclass
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from .article_identity import canonicalize_article_identity
 from .source_adapters import NormalizationCandidate, SourceArtifact
@@ -744,12 +744,14 @@ def _resolve_document_images(
                 if evidence_id:
                     image["evidence_id"] = evidence_id
             url = str(image.get("url") or "").strip()
-            if not url or url in seen:
+            storage_key = str(image.get("storage_key") or image.get("artifact_key") or "").strip()
+            identity = storage_key or url
+            if not identity or identity in seen:
                 continue
-            image["url"] = url
-            image.pop("image_id", None)
+            if url:
+                image["url"] = url
             image.setdefault("alt", "Source diagram")
-            seen.add(url)
+            seen.add(identity)
             images.append({key: value for key, value in image.items() if value})
     return images
 
@@ -783,11 +785,30 @@ def _document_content_record(
         "reviewer_state": "pending",
     }
     aggregate_evidence.append(aggregate)
+    merged_images: list[dict[str, Any]] = []
+    seen_image_ids: set[str] = set()
+    for record in records:
+        for image in record.get("images") or []:
+            if not isinstance(image, Mapping):
+                continue
+            identity = str(
+                image.get("image_id")
+                or image.get("content_sha256")
+                or image.get("storage_key")
+                or image.get("url")
+                or ""
+            )
+            if identity and identity in seen_image_ids:
+                continue
+            if identity:
+                seen_image_ids.add(identity)
+            merged_images.append(dict(image))
     return {
         **first,
         "text": aggregate["extracted_text"],
         "evidence_id": evidence_id,
         "locator": locator,
+        "images": merged_images or list(first.get("images") or []),
     }
 
 

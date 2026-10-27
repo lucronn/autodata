@@ -1,6 +1,13 @@
+from __future__ import annotations
+
 import io
+import sys
 from hashlib import sha256
+from pathlib import Path
 from uuid import uuid4
+
+ROOT = Path(__file__).parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 
 from autodata_ingestion import procedure_images
 from autodata_ingestion.source_connector_client import SourceConnectorClient
@@ -94,3 +101,56 @@ def test_invalid_binary_hash_never_reaches_object_storage(monkeypatch):
     assert writes == []
     assert result["images"][0]["fetch_failed"] is True
     assert "url" not in result["images"][0]
+
+
+def test_localize_data_uri_image_persists_payload_and_rewrites_url(monkeypatch):
+    import base64
+
+    payload = b"\x89PNG\r\n\x1a\ninline-data-uri-content"
+    encoded = base64.b64encode(payload).decode("ascii")
+    data_uri = f"data:image/png;base64,{encoded}"
+    digest = sha256(payload).hexdigest()
+
+    stored = []
+    monkeypatch.setattr(procedure_images, "_put_object", lambda key, data, media: stored.append((key, data, media)))
+
+    result = procedure_images.localize_procedure_images({
+        "images": [
+            {
+                "image_id": "inline-figure-1",
+                "url": data_uri,
+                "alt": "Diagnostic schematic",
+            }
+        ],
+        "normalized_document": {
+            "blocks": [{"type": "image", "image_id": "inline-figure-1"}]
+        },
+    })
+
+    assert stored == [(f"procedure-images/{digest}", payload, "image/png")]
+    image = result["images"][0]
+    assert image["image_id"] == "inline-figure-1"
+    assert image["storage_key"] == f"procedure-images/{digest}"
+    assert image["content_sha256"] == digest
+    assert image["media_type"] == "image/png"
+    assert image["url"] == "artifact://inline-figure-1"
+    assert "fetch_failed" not in image
+    assert result["normalized_document"]["blocks"][0]["status"] == "available"
+
+
+def test_localize_data_uri_image_handles_malformed_uris(monkeypatch):
+    stored = []
+    monkeypatch.setattr(procedure_images, "_put_object", lambda key, data, media: stored.append((key, data, media)))
+
+    # Not base64
+    result = procedure_images.localize_procedure_images({
+        "images": [{"image_id": "malformed-1", "url": "data:image/png;charset=utf-8,rawtext"}],
+    })
+    assert stored == []
+    assert result["images"][0]["fetch_failed"] is True
+
+    # Missing comma
+    result2 = procedure_images.localize_procedure_images({
+        "images": [{"image_id": "malformed-2", "url": "data:image/png;base64"}],
+    })
+    assert result2["images"][0]["fetch_failed"] is True

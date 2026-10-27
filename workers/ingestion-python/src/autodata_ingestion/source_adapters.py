@@ -699,6 +699,81 @@ def _adapt_document_resource(
     )
 
 
+def _extract_pdf_page_images(page: Any, *, page_number: int) -> list[dict[str, Any]]:
+    """Return browser-safe embedded images from one PDF page."""
+
+    try:
+        embedded = list(getattr(page, "images", []) or [])
+    except Exception:
+        return []
+    extracted: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, image in enumerate(embedded, start=1):
+        payload = getattr(image, "data", None)
+        if not isinstance(payload, (bytes, bytearray)):
+            continue
+        payload = bytes(payload)
+        if len(payload) < 2_048:
+            continue
+        converted = _browser_safe_image_payload(payload)
+        if converted is None:
+            continue
+        media_type, safe_payload = converted
+        digest = hashlib.sha256(safe_payload).hexdigest()
+        if digest in seen:
+            continue
+        seen.add(digest)
+        source_name = str(getattr(image, "name", "") or f"page-{page_number}-image-{index}")
+        extracted.append(
+            {
+                "page": page_number,
+                "image_id": f"pdf-page-{page_number}-{digest[:12]}",
+                "alt": f"Figure from page {page_number}",
+                "media_type": media_type,
+                "content_sha256": digest,
+                "byte_count": len(safe_payload),
+                "source_name": source_name,
+                "url": (
+                    f"data:{media_type};base64,"
+                    + base64.b64encode(safe_payload).decode("ascii")
+                ),
+            }
+        )
+    return extracted
+
+
+def _browser_safe_image_payload(payload: bytes) -> tuple[str, bytes] | None:
+    """Normalize PDF-embedded images to RGB PNG/JPEG browsers can display."""
+
+    try:
+        from PIL import Image
+    except ImportError:
+        if payload.startswith(b"\x89PNG"):
+            return "image/png", payload
+        if payload.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg", payload
+        return None
+    try:
+        image = Image.open(io.BytesIO(payload))
+        image.load()
+    except Exception:
+        return None
+    width, height = image.size
+    if width < 64 or height < 64:
+        return None
+    if image.mode not in {"RGB", "RGBA", "L"}:
+        image = image.convert("RGB")
+    elif image.mode == "RGBA":
+        background = Image.new("RGB", image.size, (255, 255, 255))
+        background.paste(image, mask=image.split()[-1])
+        image = background
+    elif image.mode == "L":
+        image = image.convert("RGB")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG", optimize=True)
+    return "image/png", buffer.getvalue()
+
+
 def _adapt_pdf_resource(
     resource: SourceResource,
     metadata: dict[str, Any],
@@ -727,6 +802,9 @@ def _adapt_pdf_resource(
             warnings.append(f"PDF text extraction could not read the document: {error}")
 
     page_errors: list[dict[str, str]] = []
+    page_texts: list[tuple[int, str]] = []
+    page_image_digests: dict[str, set[int]] = {}
+    page_image_payloads: dict[str, dict[str, Any]] = {}
     for index, page in enumerate(pages, start=1):
         try:
             # Keep line breaks so TSB/PDF text can be segmented into headings,
@@ -737,16 +815,60 @@ def _adapt_pdf_resource(
         except Exception as error:
             page_errors.append({"locator": f"page:{index}", "error": str(error)})
             continue
+        for extracted in _extract_pdf_page_images(page, page_number=index):
+            digest = str(extracted["content_sha256"])
+            page_image_digests.setdefault(digest, set()).add(index)
+            page_image_payloads.setdefault(digest, extracted)
         if text:
             native_text_pages.add(index)
-            candidates.append(
-                NormalizationCandidate(
-                    "document_text",
-                    f"document-text:{resource.content_sha256}:page:{index}",
-                    {"text": text},
-                    f"page:{index}",
-                )
+            page_texts.append((index, text))
+
+    # Logos/headers often repeat on every page. Keep unique figures that appear
+    # on a single page, plus any sufficiently large image when nothing else remains.
+    kept_images = [
+        payload
+        for digest, payload in page_image_payloads.items()
+        if len(page_image_digests.get(digest, ())) == 1
+    ]
+    if not kept_images:
+        kept_images = [
+            payload
+            for payload in page_image_payloads.values()
+            if int(payload.get("byte_count") or 0) >= 8_000
+        ]
+    figure_records = [
+        {
+            "url": image["url"],
+            "alt": image["alt"],
+            "image_id": image["image_id"],
+            "media_type": image["media_type"],
+            "content_sha256": image["content_sha256"],
+            "page": image["page"],
+        }
+        for image in kept_images
+    ]
+    for index, text in page_texts:
+        payload = {"text": text}
+        # Carry extracted figures on the first text page so article join sees them.
+        if figure_records and index == page_texts[0][0]:
+            payload["images"] = figure_records
+        candidates.append(
+            NormalizationCandidate(
+                "document_text",
+                f"document-text:{resource.content_sha256}:page:{index}",
+                payload,
+                f"page:{index}",
             )
+        )
+    if figure_records and not page_texts:
+        candidates.append(
+            NormalizationCandidate(
+                "document_text",
+                f"document-text:{resource.content_sha256}:figures",
+                {"text": " ", "images": figure_records},
+                "page:figures",
+            )
+        )
 
     missing_pages = set(range(1, len(pages) + 1)) - native_text_pages if pages else set()
     should_rasterize = bool(missing_pages) or not pages

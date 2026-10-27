@@ -10,8 +10,11 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-ROOT = Path(__file__).parents[2]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 from autodata_ingestion.directory_connector import DirectorySourceConnector  # noqa: E402
 from autodata_ingestion.source_adapters import SourceArtifact, adapt_source_resource  # noqa: E402
@@ -74,7 +77,7 @@ def summarize_source_artifacts(artifacts: Iterable[SourceArtifact]) -> list[dict
     return sorted(report, key=lambda item: (item["source_uri"], item["content_sha256"]))
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     parser.add_argument("--region", default="US")
@@ -82,7 +85,7 @@ def main() -> None:
     parser.add_argument("--persist", action="store_true", help="persist local artifacts and normalized records to the configured local stack")
     parser.add_argument("--limit", type=int, default=None, help="Maximum source resources to adapt and normalize")
     parser.add_argument("--adapter-name", default="local-directory")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if not args.directory.is_dir():
         raise SystemExit(f"source directory does not exist: {args.directory}")
 

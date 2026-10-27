@@ -10,14 +10,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).parents[2]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "workers/enrichment-python/src"))
-
-from autodata_enrichment.publisher import (  # noqa: E402
-    DeepSectionJob,
-    publish_deep_section,
-    schedule_deep_sections,
-)
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
 
 from autodata_enrichment.publisher import (  # noqa: E402
     DeepSectionJob,
@@ -86,7 +83,7 @@ def resolve_viewable_projection_id(projection_id: str | None = None) -> str:
     raise ValueError("no viewable dataset projection found in database; run fast-lane fixture first")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--projection-id", default=None)
     parser.add_argument("--section", default=os.getenv("AUTODATA_DEEP_SECTION", "diagnostics"))
@@ -100,7 +97,7 @@ def main() -> None:
     )
     parser.add_argument("--content", default=None)
     parser.add_argument("--evidence", default=None)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     projection_id = resolve_viewable_projection_id(args.projection_id)
     sections = tuple(

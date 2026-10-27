@@ -154,6 +154,16 @@ def build_ordered_document(
         source_blocks = _expand_plain_source_blocks(source_blocks)
 
     output: list[dict[str, Any]] = []
+    figure_queue = [
+        dict(image)
+        for image in (article.get("images") or [])
+        if isinstance(image, Mapping)
+        and (
+            str(image.get("storage_key") or "").strip()
+            or str(image.get("url") or "").startswith("data:image/")
+            or str(image.get("image_id") or "").strip()
+        )
+    ]
     for source_index, raw in enumerate(source_blocks, 1):
         if isinstance(raw, str):
             raw = {"kind": "text", "text": raw}
@@ -218,8 +228,18 @@ def build_ordered_document(
             output.append(_base_block(article, source_index, "heading", text=text, level=2, evidence_ids=evidence_ids))
         else:
             output.append(_base_block(article, source_index, "paragraph", text=text, evidence_ids=evidence_ids))
+        if figure_queue and re.search(r"\bFigure\s+\d+\b", text, re.IGNORECASE):
+            output.append(_image_block(article, source_index, figure_queue.pop(0), evidence_ids))
 
-    # Source order is an invariant.  Do not sort or deduplicate this list.
+    # Append any remaining extracted PDF figures so the workshop still shows them.
+    while figure_queue:
+        output.append(_image_block(article, len(output) + 1, figure_queue.pop(0), []))
+
+    # Source order / block ids must stay contiguous after figure insertion.
+    for order, block in enumerate(output, start=1):
+        block["source_order"] = order
+        block["block_id"] = f"{article.get('article_id') or 'article'}:block:{order:04d}"
+
     return {
         "schema_version": SCHEMA_VERSION,
         "normalization_version": NORMALIZATION_VERSION,
