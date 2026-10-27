@@ -466,18 +466,32 @@ def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
     values = raw.get("items") or raw.get("values") or []
     if not isinstance(values, list):
         values = [values]
+    clean_items: list[str] = []
+    for value in values:
+        if isinstance(value, Mapping):
+            item_text = _clean_text(value.get("text") or value.get("value") or value.get("label"))
+        else:
+            item_text = _clean_text(value)
+        if item_text:
+            clean_items.append(item_text)
     return _base_block(
         article,
         source_order,
         "ordered_list" if kind == "ordered_list" else "unordered_list",
-        items=[_clean_text(value) for value in values if _clean_text(value)],
+        items=clean_items,
         evidence_ids=evidence_ids,
     )
 
 
 def _callout_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str], kind: str) -> dict[str, Any]:
     label = _clean_text(raw.get("label")) or kind.upper()
-    text = _clean_text(raw.get("text") or raw.get("value"))
+    text = _clean_text(
+        raw.get("text")
+        or raw.get("value")
+        or raw.get("message")
+        or raw.get("content")
+        or raw.get("body")
+    )
     return _base_block(article, source_order, "callout", label=label, text=text, evidence_ids=evidence_ids)
 
 
