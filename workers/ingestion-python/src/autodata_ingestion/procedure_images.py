@@ -320,8 +320,8 @@ def _put_object(storage_key: str, payload: bytes, media_type: str) -> None:
 
     client = Minio(
         os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
-        access_key=os.environ["AUTODATA_S3_ACCESS_KEY"],
-        secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],
+        access_key=os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin"),
+        secret_key=os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password"),
         secure=False,
     )
     bucket = os.getenv("AUTODATA_SOURCE_BUCKET", "autodata-sources")
@@ -349,8 +349,8 @@ def _read_storage_bytes(storage_key: str) -> bytes:
     try:
         client = Minio(
             os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
-            access_key=os.environ["AUTODATA_S3_ACCESS_KEY"],
-            secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],
+            access_key=os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin"),
+            secret_key=os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password"),
             secure=False,
         )
         bucket = os.getenv("AUTODATA_SOURCE_BUCKET", "autodata-sources")
