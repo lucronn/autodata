@@ -1,0 +1,25 @@
+{
+  "goal": "Hardening for document image pre-scan deduplication, numbered step image preservation, and dev CLI uniformity.",
+  "plan_ref": "docs/superpowers/plans/2026-10-27-document-image-dedup-dev-cli-uniformity.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/172",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "todo": [
+    "Enhance build_ordered_document in article_document.py to pre-scan images on all source blocks and preserve images on numbered paragraphs.",
+    "Support mapping elements in instructions lists in _step_block.",
+    "Add --address and --database-url arguments to scripts/dev/ingest_bankone_batch.py.",
+    "Add --address and --database-url arguments to scripts/dev/ingest_bankone_service.py and ingest_banktwo_service.py.",
+    "Support --database-url alias in scripts/dev/migrate.py and scripts/dev/ingestion_smoke.py.",
+    "Support --nats-url alias in scripts/dev/nats_health.py and --s3-endpoint alias in scripts/dev/object_storage_health.py.",
+    "Add unit tests in workers/ingestion-python/tests/test_article_document.py.",
+    "Expand CLI argument assertions in scripts/dev/test_storage_messaging_operations.",
+    "Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.",
+    "Update .env.example with developer CLI options.",
+    "Record delivery in docs/agents/records/2026-10-27-document-image-dedup-dev-cli-uniformity.json.",
+    "Prune merged remote git branches."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-27T22:08:00Z"
+}
