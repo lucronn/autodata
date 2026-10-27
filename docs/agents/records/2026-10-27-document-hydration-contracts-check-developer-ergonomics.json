@@ -1,0 +1,23 @@
+{
+  "goal": "Hardening for document image hydration, contract check mode, and developer ergonomics across the local workspace.",
+  "plan_ref": "docs/superpowers/plans/2026-10-27-document-hydration-contracts-check-developer-ergonomics.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/161",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "todo": [
+    "Update _image_block in autodata_ingestion.article_document to support asset_resource_ref and preserve image attributes.",
+    "Update hydrate_article_image_urls in autodata_ingestion.procedure_images to hydrate images in normalized_document.",
+    "Add programmatic main(argv) and --check drift verification to scripts/contracts/generate.py.",
+    "Standardize programmatic main(argv) across scripts/dev/nats_health.py, scripts/dev/object_storage_health.py, and scripts/dev/ingestion_smoke.py.",
+    "Align AUTODATA_IMAGE_URL_KEY in compose/.env with config/api.env.",
+    "Clean up transient scratch scripts in autodata/scratch/.",
+    "Add unit tests in workers/ingestion-python/tests/test_article_document.py and test_procedure_images.py.",
+    "Add unit tests in scripts/contracts/test_contracts.py.",
+    "Expand scripts/dev/test_storage_messaging_operations.py for virtualenv discovery and CLI parsing across all scripts.",
+    "Update canonical architecture documentation in infrastructure-and-dev.md."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-27T17:09:00Z"
+}

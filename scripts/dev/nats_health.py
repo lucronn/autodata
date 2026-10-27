@@ -91,11 +91,11 @@ async def inspect_stream(url: str, stream: str) -> dict[str, Any]:
         await connection.close()
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=None)
     parser.add_argument("--stream", default=os.getenv("AUTODATA_NATS_STREAM", "AUTODATA"))
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     url = resolve_nats_url(args.url)
     result = asyncio.run(inspect_stream(url, args.stream))
     if result["name"] != args.stream:

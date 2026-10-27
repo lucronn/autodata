@@ -368,14 +368,22 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
     source_url = _clean_text(raw.get("url") or raw.get("src") or raw.get("href"))
     image_id = _clean_text(raw.get("image_id") or raw.get("id"))
     storage_key = _clean_text(raw.get("storage_key") or raw.get("artifact_key"))
-    asset_id = storage_key or image_id or (sha256(source_url.encode()).hexdigest() if source_url else "")
+    asset_resource_ref = _clean_text(raw.get("asset_resource_ref"))
+    asset_id = storage_key or image_id or asset_resource_ref or (sha256(source_url.encode()).hexdigest() if source_url else "")
+    is_available = bool(source_url or storage_key or asset_resource_ref)
     fields: dict[str, Any] = {
         "asset_id": asset_id or None,
         "image_id": image_id or asset_id or None,
         "alt": _clean_text(raw.get("alt") or raw.get("title")) or "Article illustration",
-        "status": "available" if source_url or storage_key else "unavailable",
-        "unavailable_reason": None if source_url or storage_key else "source image reference is missing",
+        "status": "available" if is_available else "unavailable",
+        "unavailable_reason": None if is_available else "source image reference is missing",
     }
+    if storage_key:
+        fields["storage_key"] = storage_key
+    if source_url:
+        fields["url"] = source_url
+    if asset_resource_ref:
+        fields["asset_resource_ref"] = asset_resource_ref
     return _base_block(article, source_order, "image", evidence_ids=evidence_ids, **fields)
 
 

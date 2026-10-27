@@ -185,3 +185,57 @@ def test_rewrite_document_images_handles_table_cells():
     assert cell_img["status"] == "available"
     assert cell_img["asset_id"] == "procedure-images/abcd1234"
     assert cell_img["image_id"] == "cell-img-1"
+
+
+def test_hydrate_article_image_urls_hydrates_normalized_document(monkeypatch):
+    monkeypatch.setattr(procedure_images, "_read_storage_bytes", lambda key: b"\x89PNG\r\n\x1a\nfake-bytes")
+
+    article = {
+        "article_id": "art-doc-hydrate",
+        "images": [
+            {
+                "image_id": "img-main",
+                "storage_key": "procedure-images/1111",
+                "media_type": "image/png",
+            }
+        ],
+        "normalized_document": {
+            "blocks": [
+                {
+                    "type": "image",
+                    "image_id": "img-main",
+                    "storage_key": "procedure-images/1111",
+                    "media_type": "image/png",
+                },
+                {
+                    "type": "table",
+                    "rows": [
+                        [
+                            {
+                                "text": "Cell diagram",
+                                "images": [
+                                    {
+                                        "image_id": "img-cell",
+                                        "storage_key": "procedure-images/2222",
+                                        "media_type": "image/png",
+                                    }
+                                ],
+                            }
+                        ]
+                    ],
+                },
+            ]
+        },
+    }
+
+    # 1. Default artifact:// hydration
+    hydrated_default = procedure_images.hydrate_article_image_urls(article)
+    assert hydrated_default["images"][0]["url"] == "artifact://img-main"
+    assert hydrated_default["normalized_document"]["blocks"][0]["url"] == "artifact://img-main"
+    assert hydrated_default["normalized_document"]["blocks"][1]["rows"][0][0]["images"][0]["url"] == "artifact://img-cell"
+
+    # 2. Embedded data-URI hydration for offline PDF/HTML
+    hydrated_embed = procedure_images.hydrate_article_image_urls(article, embed_data_uri=True)
+    assert hydrated_embed["images"][0]["url"].startswith("data:image/png;base64,")
+    assert hydrated_embed["normalized_document"]["blocks"][0]["url"].startswith("data:image/png;base64,")
+    assert hydrated_embed["normalized_document"]["blocks"][1]["rows"][0][0]["images"][0]["url"].startswith("data:image/png;base64,")

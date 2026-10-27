@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
 from typing import Any
 
@@ -719,14 +721,37 @@ class ChatSelection:
     }
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="verify that generated Go and Python contracts match canonical contract source without writing",
+    )
+    args = parser.parse_args(argv)
+
     root = Path(__file__).parents[2]
     contract = load_contract(root / "packages/contracts/contract.json")
     go_path = root / "packages/contracts/go/contracts.go"
     python_path = root / "packages/contracts/python/autodata_contracts/contracts.py"
-    write_generated(go_path, render_go(contract))
-    write_generated(python_path, render_python(contract))
+    rendered_go = render_go(contract)
+    rendered_python = render_python(contract)
+
+    if args.check:
+        go_current = go_path.read_text() if go_path.is_file() else ""
+        python_current = python_path.read_text() if python_path.is_file() else ""
+        if go_current != rendered_go:
+            print(f"Contract drift detected in {go_path}", file=sys.stderr)
+            return 1
+        if python_current != rendered_python:
+            print(f"Contract drift detected in {python_path}", file=sys.stderr)
+            return 1
+        return 0
+
+    write_generated(go_path, rendered_go)
+    write_generated(python_path, rendered_python)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

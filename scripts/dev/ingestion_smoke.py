@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import hashlib
 import json
@@ -298,7 +299,9 @@ async def _read_event(database: dict[str, Any]) -> dict[str, Any]:
         await connection.close()
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.parse_args(argv)
     try:
         database = _read_database()
         object_summary = _read_object(database)
