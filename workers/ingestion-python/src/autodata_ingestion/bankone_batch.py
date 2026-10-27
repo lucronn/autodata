@@ -251,6 +251,9 @@ def collect_autoapi_selection_rows(
     return rows
 
 
+collect_bankone_selection_rows = collect_autoapi_selection_rows
+
+
 def execute_bankone_batch(
     plan: Iterable[BankoneBatch],
     *,
@@ -529,6 +532,7 @@ __all__ = [
     "BankoneBatch",
     "build_bankone_batch_plan",
     "collect_autoapi_selection_rows",
+    "collect_bankone_selection_rows",
     "derive_autoapi_vehicle_rows",
     "discover_autoapi_source_directories",
     "execute_bankone_batch",

@@ -1443,5 +1443,5 @@ def _conninfo() -> dict[str, Any]:
         "port": int(port),
         "dbname": os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         "user": os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        "password": os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        "password": os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
     }

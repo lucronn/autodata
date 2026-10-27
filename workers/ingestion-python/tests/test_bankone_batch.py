@@ -8,6 +8,7 @@ from autodata_ingestion.bankone_batch import (
     BankoneBatch,
     build_bankone_batch_plan,
     collect_autoapi_selection_rows,
+    collect_bankone_selection_rows,
     derive_autoapi_vehicle_rows,
     execute_bankone_batch,
     load_selector_rows,
@@ -104,8 +105,10 @@ class BankoneBatchTests(unittest.TestCase):
             )
 
             rows = collect_autoapi_selection_rows(root, default_region="US")
+            bankone_rows = collect_bankone_selection_rows(root, default_region="US")
 
         self.assertEqual(len(rows), 1)
+        self.assertEqual(rows, bankone_rows)
         self.assertEqual(rows[0]["vehicle_key"], "cadillac-escalade-esv-2019-us")
         self.assertEqual(rows[0]["engine"], "6.2L")
 

@@ -10,12 +10,32 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
+for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
+    if str(venv_site) not in sys.path:
+        sys.path.append(str(venv_site))
+
+import socket
 
 from autodata_ingestion.object_storage import ensure_versioned_bucket
 
 
+def resolve_s3_endpoint(endpoint: str | None = None) -> str:
+    if endpoint:
+        return endpoint
+    configured = os.getenv("AUTODATA_S3_ENDPOINT") or os.getenv("AUTODATA_S3_ADDRESS")
+    if configured:
+        return configured
+    try:
+        with socket.create_connection(("127.0.0.1", 9000), timeout=0.2):
+            return "127.0.0.1:9000"
+    except OSError:
+        pass
+    return "minio:9000"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--endpoint", default=None)
     parser.add_argument("--bucket", action="append", dest="buckets")
     args = parser.parse_args()
     buckets = args.buckets or [
@@ -28,8 +48,9 @@ def main() -> None:
 
     from minio import Minio
 
+    endpoint = resolve_s3_endpoint(args.endpoint)
     client = Minio(
-        os.getenv("AUTODATA_S3_ENDPOINT", "minio:9000"),
+        endpoint,
         access_key=os.getenv("AUTODATA_S3_ACCESS_KEY", "localadmin"),
         secret_key=os.getenv("AUTODATA_S3_SECRET_KEY", "local-dev-password"),
         secure=False,

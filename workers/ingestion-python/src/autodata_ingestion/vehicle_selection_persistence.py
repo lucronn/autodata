@@ -62,7 +62,7 @@ def persist_vehicle_selection_list(
         "port": int(port_text),
         "dbname": os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         "user": os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        "password": os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        "password": os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
     }
     now = datetime.now(UTC).replace(microsecond=0)
     source_region = str(region).strip().upper() if region is not None else None

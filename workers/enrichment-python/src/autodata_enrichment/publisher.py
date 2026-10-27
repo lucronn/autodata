@@ -542,8 +542,23 @@ def _load_latest_revision(cursor: Any, projection_id: str) -> tuple[str, int, di
     return str(row[0]), int(row[1]), content
 
 
+def _resolve_database_address(address: str | None = None) -> str:
+    if address:
+        return address
+    configured = os.getenv("AUTODATA_DB_ADDRESS")
+    if configured:
+        return configured
+    try:
+        import socket
+        with socket.create_connection(("127.0.0.1", 5432), timeout=0.2):
+            return "127.0.0.1:5432"
+    except OSError:
+        pass
+    return "postgres:5432"
+
+
 def _connection_kwargs() -> dict[str, Any]:
-    address = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432")
+    address = _resolve_database_address()
     host, separator, port = address.rpartition(":")
     if not separator:
         host, port = address, "5432"
@@ -552,7 +567,7 @@ def _connection_kwargs() -> dict[str, Any]:
         "port": int(port),
         "dbname": os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
         "user": os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        "password": os.environ["AUTODATA_POSTGRES_PASSWORD"],
+        "password": os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
     }
 
 
