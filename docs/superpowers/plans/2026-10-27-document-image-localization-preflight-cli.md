@@ -33,16 +33,16 @@
 
 ## Concrete Todo
 
-- [ ] Enhance `_collect_image_records` in `autodata_ingestion.procedure_images` to collect images from `normalized_document` blocks and table/grid cells.
-- [ ] Enhance `localize_procedure_images` and `_rewrite_document_images` to localize and persist images discovered in `normalized_document`.
-- [ ] Implement programmatic `main(argv)` and CLI argument parsing in `scripts/autonomy/pre_implementation.py`.
-- [ ] Improve connection failure handling in `scripts/dev/smoke_local_stack.py`.
-- [ ] Add unit tests in `workers/ingestion-python/tests/test_procedure_images.py`.
-- [ ] Add unit tests in `scripts/autonomy/test_pre_implementation.py`.
-- [ ] Expand CLI argument validation in `scripts/dev/test_storage_messaging_operations.py`.
-- [ ] Update canonical architecture documentation in `docs/architecture/infrastructure-and-dev.md`.
-- [ ] Record delivery in `docs/agents/records/2026-10-27-document-image-localization-preflight-cli.json`.
-- [ ] Prune merged remote git branches.
+- [x] Enhance `_collect_image_records` in `autodata_ingestion.procedure_images` to collect images from `normalized_document` blocks and table/grid cells.
+- [x] Enhance `localize_procedure_images` and `_rewrite_document_images` to localize and persist images discovered in `normalized_document`.
+- [x] Implement programmatic `main(argv)` and CLI argument parsing in `scripts/autonomy/pre_implementation.py`.
+- [x] Improve connection failure handling in `scripts/dev/smoke_local_stack.py`.
+- [x] Add unit tests in `workers/ingestion-python/tests/test_procedure_images.py`.
+- [x] Add unit tests in `scripts/autonomy/test_pre_implementation.py`.
+- [x] Expand CLI argument validation in `scripts/dev/test_storage_messaging_operations.py`.
+- [x] Update canonical architecture documentation in `docs/architecture/infrastructure-and-dev.md`.
+- [x] Record delivery in `docs/agents/records/2026-10-27-document-image-localization-preflight-cli.json`.
+- [x] Prune merged remote git branches.
 
 ## Security and Credential Isolation Rules
 

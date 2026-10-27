@@ -246,6 +246,8 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             ("nats_health.py", "--stream"),
             ("object_storage_health.py", "--bucket"),
             ("ingestion_smoke.py", "--help"),
+            ("universal_article_smoke.py", "--live-url"),
+            ("knowledge_warm_path_benchmark.py", "--query"),
         ]:
             result = subprocess.run(
                 [sys.executable, str(ROOT / "scripts/dev" / script_name), "--help"],

@@ -39,17 +39,22 @@ def main(argv: list[str] | None = None) -> None:
     base_url = args.base_url or default_base_url()
     try:
         health_status, health = get_json(f"{base_url}/healthz")
-    except Exception:
+    except Exception as exc:
         if args.base_url is None and base_url == "http://127.0.0.1:8080":
             try:
                 candidate = "http://127.0.0.1:18080"
                 health_status, health = get_json(f"{candidate}/healthz")
                 base_url = candidate
-            except Exception:
-                raise
+            except Exception as candidate_exc:
+                raise SystemExit(
+                    f"failed to connect to local API at {base_url} or {candidate}: {candidate_exc}"
+                )
         else:
-            raise
-    readiness_status, readiness = get_json(f"{base_url}/readyz")
+            raise SystemExit(f"failed to probe health endpoint at {base_url}/healthz: {exc}")
+    try:
+        readiness_status, readiness = get_json(f"{base_url}/readyz")
+    except Exception as exc:
+        raise SystemExit(f"failed to probe readiness endpoint at {base_url}/readyz: {exc}")
     if health_status != 200 or health.get("status") != "ok":
         raise SystemExit(f"health probe failed: {health_status} {health}")
     if readiness_status != 200:

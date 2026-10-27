@@ -239,3 +239,131 @@ def test_hydrate_article_image_urls_hydrates_normalized_document(monkeypatch):
     assert hydrated_embed["images"][0]["url"].startswith("data:image/png;base64,")
     assert hydrated_embed["normalized_document"]["blocks"][0]["url"].startswith("data:image/png;base64,")
     assert hydrated_embed["normalized_document"]["blocks"][1]["rows"][0][0]["images"][0]["url"].startswith("data:image/png;base64,")
+
+
+def test_collect_image_records_includes_document_and_table_cells():
+    article = {
+        "images": [{"image_id": "top-img"}],
+        "steps": [{"images": [{"image_id": "step-img"}]}],
+        "normalized_document": {
+            "blocks": [
+                {"type": "image", "image_id": "doc-img"},
+                {
+                    "type": "table",
+                    "rows": [
+                        [
+                            {
+                                "images": [{"image_id": "cell-img"}],
+                                "blocks": [{"type": "image", "image_id": "nested-cell-img"}],
+                            }
+                        ]
+                    ],
+                },
+            ]
+        },
+    }
+    records = procedure_images._collect_image_records(article)
+    image_ids = [r.get("image_id") for r in records]
+    assert "top-img" in image_ids
+    assert "step-img" in image_ids
+    assert "doc-img" in image_ids
+    assert "cell-img" in image_ids
+    assert "nested-cell-img" in image_ids
+
+
+def test_localization_localizes_document_only_article_with_opaque_asset_ref(monkeypatch):
+    payload = b"\x89PNG\r\n\x1a\ndoc-only-image"
+    digest = sha256(payload).hexdigest()
+
+    def opener(request, timeout):
+        headers = {
+            "Content-Type": "application/octet-stream",
+            "X-Request-Id": str(uuid4()),
+            "X-Provider": "banktwo",
+            "X-Source-Revision": "doc-rev-1",
+            "X-Fetched-At": "2026-10-08T12:00:00Z",
+            "X-Source-Locator": "https://banktwo.cars.tk/source/assets/doc-figure",
+            "X-Source-Sha256": digest,
+            "X-Source-Media-Type": "image/png",
+        }
+        return BinaryResponse(payload, url=request.full_url, headers=headers)
+
+    client = SourceConnectorClient("https://banktwo.cars.tk", provider="banktwo", opener=opener)
+    monkeypatch.setattr(
+        "autodata_ingestion.source_connector_client.source_connector_registry",
+        lambda **_kwargs: {"banktwo": client},
+    )
+    stored = []
+    monkeypatch.setattr(procedure_images, "_put_object", lambda key, data, media: stored.append((key, data, media)))
+
+    article = {
+        "article_id": "doc-only-article",
+        "normalized_document": {
+            "blocks": [
+                {
+                    "type": "image",
+                    "image_id": "doc-figure-1",
+                    "asset_resource_ref": "opaque-doc-asset",
+                    "alt": "Diagram in doc",
+                }
+            ]
+        },
+    }
+    result = procedure_images.localize_procedure_images(article)
+    assert stored == [(f"procedure-images/{digest}", payload, "image/png")]
+    block = result["normalized_document"]["blocks"][0]
+    assert block["status"] == "available"
+    assert block["storage_key"] == f"procedure-images/{digest}"
+    assert block["url"] == "artifact://doc-figure-1"
+
+
+def test_localization_localizes_document_and_cell_data_uris(monkeypatch):
+    import base64
+
+    payload1 = b"\x89PNG\r\n\x1a\ndoc-data-uri"
+    payload2 = b"\x89PNG\r\n\x1a\ncell-data-uri"
+    digest1 = sha256(payload1).hexdigest()
+    digest2 = sha256(payload2).hexdigest()
+    data_uri1 = f"data:image/png;base64,{base64.b64encode(payload1).decode('ascii')}"
+    data_uri2 = f"data:image/png;base64,{base64.b64encode(payload2).decode('ascii')}"
+
+    stored = []
+    monkeypatch.setattr(procedure_images, "_put_object", lambda key, data, media: stored.append((key, data, media)))
+
+    article = {
+        "normalized_document": {
+            "blocks": [
+                {
+                    "type": "image",
+                    "image_id": "uri-doc-1",
+                    "url": data_uri1,
+                },
+                {
+                    "type": "table",
+                    "rows": [
+                        [
+                            {
+                                "images": [
+                                    {
+                                        "image_id": "uri-cell-1",
+                                        "url": data_uri2,
+                                    }
+                                ]
+                            }
+                        ]
+                    ],
+                },
+            ]
+        }
+    }
+    result = procedure_images.localize_procedure_images(article)
+    assert (f"procedure-images/{digest1}", payload1, "image/png") in stored
+    assert (f"procedure-images/{digest2}", payload2, "image/png") in stored
+
+    doc_block = result["normalized_document"]["blocks"][0]
+    cell_img = result["normalized_document"]["blocks"][1]["rows"][0][0]["images"][0]
+    assert doc_block["status"] == "available"
+    assert doc_block["storage_key"] == f"procedure-images/{digest1}"
+    assert cell_img["status"] == "available"
+    assert cell_img["storage_key"] == f"procedure-images/{digest2}"
+
