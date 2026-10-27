@@ -1437,7 +1437,9 @@ def publish_fallback_revision(
 
 
 def _conninfo() -> dict[str, Any]:
-    host, port = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    from autodata_ingestion.bundle_persistence import _resolve_database_address
+
+    host, port = _resolve_database_address().rsplit(":", 1)
     return {
         "host": host,
         "port": int(port),

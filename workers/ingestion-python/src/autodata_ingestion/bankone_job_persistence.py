@@ -38,8 +38,9 @@ def persist_bankone_article_fetch_jobs(
 
     import psycopg
     from psycopg.types.json import Jsonb
+    from autodata_ingestion.bundle_persistence import _resolve_database_address
 
-    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    host, port_text = _resolve_database_address().rsplit(":", 1)
     conninfo = {
         "host": host,
         "port": int(port_text),
@@ -287,8 +288,9 @@ def _source_locations(batch: Any) -> list[str]:
 
 def _connection() -> Any:
     import psycopg
+    from autodata_ingestion.bundle_persistence import _resolve_database_address
 
-    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    host, port_text = _resolve_database_address().rsplit(":", 1)
     return psycopg.connect(
         host=host,
         port=int(port_text),

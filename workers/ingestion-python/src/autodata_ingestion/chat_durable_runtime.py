@@ -715,10 +715,9 @@ def build_postgres_chat_runtime(
 
 def _open_postgres_from_environment() -> Any:
     import psycopg
+    from autodata_ingestion.bundle_persistence import _resolve_database_address
 
-    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(
-        ":", 1
-    )
+    host, port_text = _resolve_database_address().rsplit(":", 1)
     return psycopg.connect(
         host=host,
         port=int(port_text),

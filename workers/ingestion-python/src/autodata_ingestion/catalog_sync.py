@@ -213,7 +213,9 @@ def _record_scopes(sync_id: str, rows: list[dict[str, object]]) -> None:
 
 
 def _conninfo() -> dict[str, Any]:
-    host, port_text = os.getenv("AUTODATA_DB_ADDRESS", "postgres:5432").rsplit(":", 1)
+    from autodata_ingestion.bundle_persistence import _resolve_database_address
+
+    host, port_text = _resolve_database_address().rsplit(":", 1)
     return {
         "host": host,
         "port": int(port_text),

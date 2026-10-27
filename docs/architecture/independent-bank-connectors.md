@@ -34,6 +34,7 @@ the contract is not a runtime service.
 | Contract inventory and persisted provider mapping | [`packages/contracts/contract.json`](../../packages/contracts/contract.json) |
 | AutoData HTTP client, validation, and provider registry | `workers/ingestion-python/src/autodata_ingestion/source_connector_client.py` |
 | AutoData catalog callers | `workers/ingestion-python/src/autodata_ingestion/catalog_service.py`, `catalog_sync.py`, `catalog_years.py` |
+| AutoData bank batch execution and tooling | `workers/ingestion-python/src/autodata_ingestion/bankone_batch.py` (canonical aliases `BankBatch`, `execute_bank_batch`, `build_bank_batch_plan`), `scripts/dev/ingest_bankone_service.py`, `scripts/dev/ingest_bankone_batch.py`, `scripts/dev/ingest_banktwo_service.py` |
 | AutoData generic fetch-job store and additive import | `workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py`, `db/migrations/036_source_fetch_jobs.sql` |
 | AutoData runtime origin defaults | `.env.example`, `infra/compose/compose.yaml`, `infra/k8s/base.yaml` |
 | Bankone source API and deployment | Independent repository [`lucronn/bankone`](https://github.com/lucronn/bankone); its checkout is not part of this AutoData tree |

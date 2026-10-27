@@ -187,6 +187,14 @@ class BankTopologyTests(unittest.TestCase):
         self.assertIs(build_bank_batch_plan, build_bankone_batch_plan)
         self.assertIs(execute_bank_batch, execute_bankone_batch)
 
+        bankone_service_src = (ROOT / "scripts/dev/ingest_bankone_service.py").read_text()
+        self.assertIn("BankBatch", bankone_service_src)
+        self.assertIn("execute_bank_batch(", bankone_service_src)
+
+        bankone_batch_src = (ROOT / "scripts/dev/ingest_bankone_batch.py").read_text()
+        self.assertIn("BankBatch", bankone_batch_src)
+        self.assertIn("execute_bank_batch(", bankone_batch_src)
+
 
 if __name__ == "__main__":
     unittest.main()
