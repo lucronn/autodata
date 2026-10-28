@@ -212,10 +212,13 @@ def _record_scopes(sync_id: str, rows: list[dict[str, object]]) -> None:
         connection.commit()
 
 
-def _conninfo() -> dict[str, Any]:
+def _conninfo(address: str | None = None) -> dict[str, Any]:
     from autodata_ingestion.bundle_persistence import _resolve_database_address
 
-    host, port_text = _resolve_database_address().rsplit(":", 1)
+    resolved = _resolve_database_address(address)
+    host, separator, port_text = resolved.rpartition(":")
+    if not separator:
+        host, port_text = resolved, "5432"
     return {
         "host": host,
         "port": int(port_text),
@@ -225,13 +228,13 @@ def _conninfo() -> dict[str, Any]:
     }
 
 
-def _claim(source_version: str, traversal_version: str) -> dict[str, object]:
+def _claim(source_version: str, traversal_version: str, address: str | None = None) -> dict[str, object]:
     import psycopg
 
     now = datetime.now(UTC).replace(microsecond=0)
     stale_before = now - _STALE_RUNNING_AFTER
     max_attempts = int(os.getenv("BANKTWO_CATALOG_MAX_ATTEMPTS", str(DEFAULT_MAX_ATTEMPTS)))
-    with psycopg.connect(**_conninfo()) as connection:
+    with psycopg.connect(**_conninfo(address=address)) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -291,11 +294,12 @@ def _finish(
     row_count: int,
     checkpoint: dict[str, object],
     error: str | None = None,
+    address: str | None = None,
 ) -> None:
     import psycopg
     from psycopg.types.json import Jsonb
 
-    with psycopg.connect(**_conninfo()) as connection:
+    with psycopg.connect(**_conninfo(address=address)) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """

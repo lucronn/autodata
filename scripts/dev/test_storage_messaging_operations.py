@@ -273,24 +273,35 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             ("migration_plan.py", "--migrations-dir"),
             ("nats_health.py", "--stream"),
             ("nats_health.py", "--nats-url"),
+            ("nats_health.py", "--url"),
+            ("nats_health.py", "--address"),
+            ("nats_health.py", "--nats-address"),
             ("object_storage_health.py", "--bucket"),
             ("object_storage_health.py", "--s3-endpoint"),
+            ("object_storage_health.py", "--endpoint"),
+            ("object_storage_health.py", "--address"),
+            ("object_storage_health.py", "--s3-address"),
             ("ingestion_smoke.py", "--address"),
             ("ingestion_smoke.py", "--database-url"),
             ("ingestion_smoke.py", "--s3-endpoint"),
+            ("ingestion_smoke.py", "--endpoint"),
+            ("ingestion_smoke.py", "--s3-address"),
             ("ingestion_smoke.py", "--nats-url"),
+            ("ingestion_smoke.py", "--url"),
             ("replay_outbox.py", "--address"),
             ("replay_outbox.py", "--database-url"),
             ("replay_outbox.py", "--event-id"),
             ("outbox_relay.py", "--address"),
             ("outbox_relay.py", "--database-url"),
             ("outbox_relay.py", "--nats-url"),
+            ("outbox_relay.py", "--url"),
             ("universal_article_smoke.py", "--live-url"),
             ("universal_article_smoke.py", "--api-url"),
             ("universal_article_smoke.py", "--base-url"),
             ("universal_article_smoke.py", "--knowledge-url"),
             ("universal_article_smoke.py", "--url"),
             ("knowledge_warm_path_benchmark.py", "--query"),
+            ("knowledge_warm_path_benchmark.py", "-q"),
             ("ingest_bankone_batch.py", "--database-url"),
             ("ingest_bankone_service.py", "--database-url"),
             ("ingest_banktwo_service.py", "--database-url"),
@@ -319,6 +330,30 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             self.assertIn("--limit", result.stdout)
             self.assertIn("--timeout-seconds", result.stdout)
             self.assertIn("--persist", result.stdout)
+
+
+    def test_nats_health_url_scheme_normalization(self):
+        from nats_health import resolve_nats_url
+
+        self.assertEqual(resolve_nats_url("127.0.0.1:4222"), "nats://127.0.0.1:4222")
+        self.assertEqual(resolve_nats_url("nats://127.0.0.1:4222"), "nats://127.0.0.1:4222")
+        self.assertEqual(resolve_nats_url("tls://nats.internal:4222"), "tls://nats.internal:4222")
+
+    def test_outbox_connection_kwargs_address_override(self):
+        sys.path.insert(0, str(ROOT / "workers/enrichment-python/src"))
+        from autodata_enrichment.outbox import _connection_kwargs
+
+        kwargs = _connection_kwargs(address="db.custom:5439")
+        self.assertEqual(kwargs["host"], "db.custom")
+        self.assertEqual(kwargs["port"], 5439)
+
+    def test_catalog_sync_conninfo_address_override(self):
+        sys.path.insert(0, str(ROOT / "workers/ingestion-python/src"))
+        from autodata_ingestion.catalog_sync import _conninfo
+
+        conn = _conninfo(address="db.sync:5438")
+        self.assertEqual(conn["host"], "db.sync")
+        self.assertEqual(conn["port"], 5438)
 
 
 if __name__ == "__main__":

@@ -20,7 +20,10 @@ for venv_site in (ROOT / "workers").glob("*/.venv/lib/python*/site-packages"):
 
 def resolve_nats_url(url: str | None = None) -> str:
     if url:
-        return url
+        raw = url.strip()
+        if "://" not in raw:
+            return f"nats://{raw}"
+        return raw
     configured = os.getenv("AUTODATA_NATS_URL")
     if configured:
         return configured
@@ -93,7 +96,14 @@ async def inspect_stream(url: str, stream: str) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", "--nats-url", default=None)
+    parser.add_argument(
+        "--url",
+        "--nats-url",
+        "--address",
+        "--nats-address",
+        dest="url",
+        default=None,
+    )
     parser.add_argument("--stream", default=os.getenv("AUTODATA_NATS_STREAM", "AUTODATA"))
     args = parser.parse_args(argv)
     url = resolve_nats_url(args.url)

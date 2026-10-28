@@ -67,29 +67,29 @@
 
 ## Concrete Todo
 
-- [ ] Support row-level attached images in _table_block in article_document.py.
-- [ ] Deduplicate clean_images using _image_identities in _table_block in article_document.py.
-- [ ] Deduplicate clean_images using _image_identities in paragraph blocks in article_document.py.
-- [ ] Support singular evidence_id in _evidence_ids in article_document.py.
-- [ ] Support title fallback for caption in _image_block in article_document.py.
-- [ ] Add address parameter to persist_vehicle_selection_list in vehicle_selection_persistence.py.
-- [ ] Add address parameter to _conninfo in catalog_sync.py and propagate to _claim, _finish, and _persist_batch.
-- [ ] Add address parameter to persist_catalog_years in catalog_years.py.
-- [ ] Add address parameter to persist_fast_lane in ingest_fixture.py.
-- [ ] Add address and nats_url parameters to relay_pending_events, claim_pending_events, and delivery helpers in outbox.py.
-- [ ] Forward address and nats_url arguments from outbox_relay.py to relay_pending_events.
-- [ ] Add --address and --s3-address CLI arguments to object_storage_health.py.
-- [ ] Add --address and --nats-address CLI arguments to nats_health.py and normalize scheme.
-- [ ] Add --endpoint, --s3-address, and --url CLI arguments to ingestion_smoke.py.
-- [ ] Add --url CLI argument to outbox_relay.py.
-- [ ] Add -q short option for --query in knowledge_warm_path_benchmark.py.
-- [ ] Add unit tests for table row images, table image dedup, paragraph image dedup, singular evidence_id, and image block title caption fallback in test_article_document.py.
-- [ ] Add unit test for persist_vehicle_selection_list address parameter in test_vehicle_selection_persistence.py.
-- [ ] Expand CLI argument and persistence assertions in test_storage_messaging_operations.py.
-- [ ] Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.
-- [ ] Update .env.example with developer CLI options.
-- [ ] Record delivery in docs/agents/records/2026-10-27-table-paragraph-images-persistence-address-cli.json.
-- [ ] Prune merged remote git branches.
+- [x] Support row-level attached images in _table_block in article_document.py.
+- [x] Deduplicate clean_images using _image_identities in _table_block in article_document.py.
+- [x] Deduplicate clean_images using _image_identities in paragraph blocks in article_document.py.
+- [x] Support singular evidence_id in _evidence_ids in article_document.py.
+- [x] Support title fallback for caption in _image_block in article_document.py.
+- [x] Add address parameter to persist_vehicle_selection_list in vehicle_selection_persistence.py.
+- [x] Add address parameter to _conninfo in catalog_sync.py and propagate to _claim, _finish, and _persist_batch.
+- [x] Add address parameter to persist_catalog_years in catalog_years.py.
+- [x] Add address parameter to persist_fast_lane in ingest_fixture.py.
+- [x] Add address and nats_url parameters to relay_pending_events, claim_pending_events, and delivery helpers in outbox.py.
+- [x] Forward address and nats_url arguments from outbox_relay.py to relay_pending_events.
+- [x] Add --address and --s3-address CLI arguments to object_storage_health.py.
+- [x] Add --address and --nats-address CLI arguments to nats_health.py and normalize scheme.
+- [x] Add --endpoint, --s3-address, and --url CLI arguments to ingestion_smoke.py.
+- [x] Add --url CLI argument to outbox_relay.py.
+- [x] Add -q short option for --query in knowledge_warm_path_benchmark.py.
+- [x] Add unit tests for table row images, table image dedup, paragraph image dedup, singular evidence_id, and image block title caption fallback in test_article_document.py.
+- [x] Add unit test for persist_vehicle_selection_list address parameter in test_vehicle_selection_persistence.py.
+- [x] Expand CLI argument and persistence assertions in test_storage_messaging_operations.py.
+- [x] Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.
+- [x] Update .env.example with developer CLI options.
+- [x] Record delivery in docs/agents/records/2026-10-27-table-paragraph-images-persistence-address-cli.json.
+- [x] Prune merged remote git branches.
 
 ## Security and Credential Isolation Rules
 
