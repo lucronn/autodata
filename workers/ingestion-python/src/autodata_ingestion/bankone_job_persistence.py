@@ -20,6 +20,7 @@ def persist_bankone_article_fetch_jobs(
     selector_persistence: Mapping[str, Any] | None,
     source_version: str,
     adapter_name: str = "bankone-local",
+    address: str | None = None,
 ) -> dict[str, Any]:
     """Persist one replayable all-articles job for every planned vehicle.
 
@@ -40,7 +41,7 @@ def persist_bankone_article_fetch_jobs(
     from psycopg.types.json import Jsonb
     from autodata_ingestion.bundle_persistence import _resolve_database_address
 
-    host, port_text = _resolve_database_address().rsplit(":", 1)
+    host, port_text = _resolve_database_address(address).rsplit(":", 1)
     conninfo = {
         "host": host,
         "port": int(port_text),
@@ -286,11 +287,11 @@ def _source_locations(batch: Any) -> list[str]:
     return sorted({str(Path(directory)) for directory in directories})
 
 
-def _connection() -> Any:
+def _connection(address: str | None = None) -> Any:
     import psycopg
     from autodata_ingestion.bundle_persistence import _resolve_database_address
 
-    host, port_text = _resolve_database_address().rsplit(":", 1)
+    host, port_text = _resolve_database_address(address).rsplit(":", 1)
     return psycopg.connect(
         host=host,
         port=int(port_text),

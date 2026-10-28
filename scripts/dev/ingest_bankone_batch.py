@@ -65,6 +65,7 @@ def main(argv: list[str] | None = None) -> None:
         source_version=args.source_version,
         persist=args.persist,
         selector_rows=selector_rows,
+        address=args.address,
     )
     output["plan"] = [
         {

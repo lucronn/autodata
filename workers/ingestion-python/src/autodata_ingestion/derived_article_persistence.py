@@ -137,7 +137,12 @@ def _identity_labor(labor: Mapping[str, Any]) -> dict[str, Any]:
     return identity
 
 
-def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, Any]) -> dict[str, Any]:
+def persist_derived_article(
+    result: Mapping[str, Any],
+    *,
+    vehicle: Mapping[str, Any],
+    address: str | None = None,
+) -> dict[str, Any]:
     """Insert or replay a composed article revision in PostgreSQL."""
 
     article_id, fingerprint = derived_article_identity(result)
@@ -147,8 +152,8 @@ def persist_derived_article(result: Mapping[str, Any], *, vehicle: Mapping[str, 
     import psycopg
     from psycopg.types.json import Jsonb
 
-    address = _resolve_database_address()
-    host, separator, port = address.rpartition(":")
+    db_address = _resolve_database_address(address)
+    host, separator, port = db_address.rpartition(":")
     if not separator:
         host, port = address, "5432"
     conninfo = {

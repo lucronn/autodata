@@ -280,3 +280,32 @@ def test_replaying_non_current_revision_does_not_publish_parent_state():
     assert persisted["status"] == "replayed"
     assert not any("INSERT INTO derived_articles" in query for query, _ in cursor.statements)
     assert not any("UPDATE derived_articles SET current_revision_number" in query for query, _ in cursor.statements)
+
+
+def test_persist_derived_article_supports_explicit_address_parameter():
+    recorded_conninfo = {}
+
+    def fake_connect(**kwargs):
+        recorded_conninfo.update(kwargs)
+        raise RuntimeError("database connection intercepted")
+
+    fake_psycopg = types.ModuleType("psycopg")
+    fake_psycopg.connect = fake_connect
+    fake_json = types.ModuleType("psycopg.types.json")
+    fake_json.Jsonb = lambda value: value
+    fake_types = types.ModuleType("psycopg.types")
+    fake_types.json = fake_json
+    result = {
+        "status": "ready",
+        "canonical_vehicle": {"vehicle_id": "00000000-0000-0000-0000-000000000001", "make": "Toyota", "model": "RAV4"},
+        "derived_article": {"article_id": "combined:address-test"},
+        "selected_articles": ["source-1"],
+        "procedure": {"title": "Address override", "steps": []},
+    }
+    with patch.dict(sys.modules, {"psycopg": fake_psycopg, "psycopg.types": fake_types, "psycopg.types.json": fake_json}), patch.dict(os.environ, {"AUTODATA_POSTGRES_PASSWORD": "test-password"}, clear=False):
+        try:
+            persist_derived_article(result, vehicle=result["canonical_vehicle"], address="custom-db.internal:5433")
+        except RuntimeError as err:
+            assert str(err) == "database connection intercepted"
+    assert recorded_conninfo["host"] == "custom-db.internal"
+    assert recorded_conninfo["port"] == 5433

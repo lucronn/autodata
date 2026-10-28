@@ -1,0 +1,32 @@
+{
+  "goal": "Hardening for callout/step images, image lookup resilience, persistence address propagation, and CLI uniformity.",
+  "plan_ref": "docs/superpowers/plans/2026-10-27-callout-step-images-persistence-address-cli.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/180",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "todo": [
+    "Add uri and path to _image_identities in article_document.py.",
+    "Support title fallback for caption in _normalize_cell_image in article_document.py.",
+    "Support attached item-level images in _callout_block in article_document.py.",
+    "Support attached item-level images in _step_block in article_document.py.",
+    "Add source_url, src, href, uri, path to image rewriting lookup in procedure_images.py.",
+    "Include source_url in image identity resolution in source_bundle.py.",
+    "Add address parameter to persist_derived_article in derived_article_persistence.py.",
+    "Add address parameter to persist_bankone_article_fetch_jobs in bankone_job_persistence.py.",
+    "Add address parameter to execute_bankone_batch in bankone_batch.py and pass from ingest_bankone_batch.py.",
+    "Add --address and --database-url CLI options in backup_restore_smoke.py.",
+    "Expand CLI argument and persistence assertions in test_storage_messaging_operations.py.",
+    "Add unit tests for callout item images, step item images, image identities uri/path, and cell image caption title fallback in test_article_document.py.",
+    "Add unit test for procedure_images source_url, src, href resolution in test_procedure_images.py.",
+    "Add unit test for persist_derived_article address parameter in test_derived_article_persistence.py.",
+    "Add unit test for persist_bankone_article_fetch_jobs address parameter in test_bankone_job_persistence.py.",
+    "Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.",
+    "Update .env.example with developer CLI options.",
+    "Record delivery in docs/agents/records/2026-10-27-callout-step-images-persistence-address-cli.json.",
+    "Prune merged remote git branches."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-10-28T02:15:00Z"
+}

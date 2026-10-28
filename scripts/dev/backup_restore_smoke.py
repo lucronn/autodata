@@ -56,9 +56,18 @@ def main(argv: list[str] | None = None) -> None:
         "--compose-file",
         default=str(ROOT / "infra/compose/compose.yaml"),
     )
+    parser.add_argument(
+        "--address",
+        "--database-url",
+        default=os.getenv("AUTODATA_DB_ADDRESS", "127.0.0.1:5432"),
+        help="PostgreSQL host:port address override",
+    )
     parser.add_argument("--database", default=os.getenv("AUTODATA_POSTGRES_DB", "autodata"))
     parser.add_argument("--user", default=os.getenv("AUTODATA_POSTGRES_USER", "autodata"))
     args = parser.parse_args(argv)
+
+    if args.address:
+        os.environ["AUTODATA_DB_ADDRESS"] = args.address
 
     restore_database = temporary_database_name(os.getpid())
     created = False

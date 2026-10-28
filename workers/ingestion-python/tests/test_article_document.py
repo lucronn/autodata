@@ -1075,3 +1075,146 @@ def test_link_block_title_name_and_url_target_fallbacks():
     assert link2["type"] == "link"
     assert link2["text"] == "Diagnostic Flowchart PDF"
     assert link2["href"] == "https://service.auto.test/diagram.pdf"
+
+
+def test_image_identities_includes_uri_and_path_and_deduplicates():
+    from autodata_ingestion.article_document import _image_identities
+
+    img1 = {"uri": "file:///var/data/images/alternator.png"}
+    img2 = {"path": "images/caliper.svg"}
+    assert "file:///var/data/images/alternator.png" in _image_identities(img1)
+    assert "images/caliper.svg" in _image_identities(img2)
+
+    article = {
+        "article_id": "test-uri-path-dedup",
+        "images": [
+            {
+                "image_id": "img-uri-01",
+                "uri": "file:///var/data/images/alternator.png",
+                "storage_key": "procedure-images/alt1",
+            }
+        ],
+    }
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "image",
+                "uri": "file:///var/data/images/alternator.png",
+                "url": "https://source.test/alt.png",
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    image_blocks = [b for b in document["blocks"] if b["type"] == "image"]
+    assert len(image_blocks) == 1
+    assert image_blocks[0]["uri"] == "file:///var/data/images/alternator.png"
+
+
+def test_normalize_cell_image_caption_fallback_to_title():
+    from autodata_ingestion.article_document import _normalize_cell_image
+
+    normalized = _normalize_cell_image({
+        "url": "https://source.test/cell-fig.png",
+        "title": "Front Suspension Geometry Schematic",
+    })
+    assert normalized["caption"] == "Front Suspension Geometry Schematic"
+    assert normalized["alt"] == "Front Suspension Geometry Schematic"
+
+
+def test_callout_block_aggregates_item_images_and_deduplicates():
+    article = {"article_id": "test-callout-images"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "warning",
+                "title": "High Voltage Safety Precaution",
+                "items": [
+                    {
+                        "text": "Disconnect 12V auxiliary battery before servicing hybrid fuse.",
+                        "images": [
+                            {
+                                "image_id": "hybrid-fuse-01",
+                                "storage_key": "procedure-images/hybrid-fuse",
+                            }
+                        ],
+                    },
+                    {
+                        "text": "Wear Class 0 insulated gloves.",
+                        "images": [
+                            {
+                                "image_id": "hybrid-fuse-01",
+                                "storage_key": "procedure-images/hybrid-fuse",
+                            },
+                            {
+                                "image_id": "gloves-02",
+                                "storage_key": "procedure-images/gloves",
+                            },
+                        ],
+                    },
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    callout = document["blocks"][0]
+    assert callout["type"] == "callout"
+    assert callout["label"] == "High Voltage Safety Precaution"
+    assert "Disconnect 12V auxiliary battery" in callout["text"]
+    assert "images" in callout
+    # 2 unique images, deduplicated from 3 item-level image entries
+    assert len(callout["images"]) == 2
+    assert callout["images"][0]["image_id"] == "hybrid-fuse-01"
+    assert callout["images"][1]["image_id"] == "gloves-02"
+
+
+def test_step_block_aggregates_instruction_images_and_deduplicates():
+    article = {"article_id": "test-step-images"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "step",
+                "number": 4,
+                "label": "Remove Timing Belt Cover",
+                "instructions": [
+                    {
+                        "action": "Unbolt upper timing belt cover fasteners.",
+                        "images": [
+                            {
+                                "image_id": "timing-cover-bolts",
+                                "storage_key": "procedure-images/timing-bolts",
+                            }
+                        ],
+                    },
+                    {
+                        "instruction": "Detach wiring harness bracket.",
+                        "images": [
+                            {
+                                "image_id": "timing-cover-bolts",
+                                "storage_key": "procedure-images/timing-bolts",
+                            },
+                            {
+                                "image_id": "bracket-clip",
+                                "storage_key": "procedure-images/bracket-clip",
+                            },
+                        ],
+                    },
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    step = document["blocks"][0]
+    assert step["type"] == "step"
+    assert step["number"] == 4
+    assert step["label"] == "Remove Timing Belt Cover"
+    assert "Unbolt upper timing belt cover fasteners." in step["text"]
+    assert "images" in step
+    # 2 unique images, deduplicated from 3 instruction image entries
+    assert len(step["images"]) == 2
+    assert step["images"][0]["image_id"] == "timing-cover-bolts"
+    assert step["images"][1]["image_id"] == "bracket-clip"
