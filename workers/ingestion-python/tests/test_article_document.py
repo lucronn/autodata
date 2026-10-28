@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from autodata_ingestion.article_document import (
     NORMALIZATION_VERSION,
     build_ordered_document,
+    document_from_steps,
     segment_plain_article_text,
     validate_ordered_document,
 )
@@ -743,3 +744,188 @@ def test_list_item_images_prescan_deduplication():
     assert blocks[0]["items"] == ["Check 15A horn fuse.", "Check relay socket pins."]
     assert blocks[1]["type"] == "image"
     assert blocks[1]["image_id"] == "trailing-fig-2"
+
+
+def test_table_block_direct_images_and_title_heading_label():
+    article = {"article_id": "test-table-images-and-title"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "table",
+                "title": "Fastener Torque Specifications",
+                "columns": ["Component", "Torque"],
+                "rows": [
+                    ["Caliper bracket bolts", "115 Nm"],
+                    ["Guide pin bolts", "38 Nm"],
+                ],
+                "images": [
+                    {
+                        "image_id": "torque-spec-fig",
+                        "storage_key": "procedure-images/torque-spec",
+                        "alt": "Torque chart diagram",
+                    }
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    tbl = document["blocks"][0]
+    assert tbl["type"] == "table"
+    assert tbl["label"] == "Fastener Torque Specifications"
+    assert tbl["columns"] == ["Component", "Torque"]
+    assert tbl["rows"] == [["Caliper bracket bolts", "115 Nm"], ["Guide pin bolts", "38 Nm"]]
+    assert "images" in tbl
+    assert tbl["images"][0]["image_id"] == "torque-spec-fig"
+    assert tbl["images"][0]["status"] == "available"
+
+
+def test_table_cell_content_body_label_normalization():
+    article = {"article_id": "test-table-cell-content-body"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "table",
+                "heading": "Diagnostic Readings",
+                "rows": [
+                    {
+                        "cells": [
+                            {"content": "Sensor A voltage"},
+                            {"body": "4.95 V"},
+                            {"label": "Pass"},
+                        ]
+                    },
+                    {
+                        "cells": [
+                            {
+                                "blocks": [
+                                    {"kind": "text", "content": "Sensor B resistance"},
+                                    {"kind": "text", "body": "(cold)"},
+                                ]
+                            },
+                            {"content": "1.2 kOhm"},
+                            {"label": "Pass"},
+                        ]
+                    },
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    tbl = document["blocks"][0]
+    assert tbl["type"] == "table"
+    assert tbl["label"] == "Diagnostic Readings"
+    assert tbl["rows"][0] == ["Sensor A voltage", "4.95 V", "Pass"]
+    assert tbl["rows"][1] == ["Sensor B resistance (cold)", "1.2 kOhm", "Pass"]
+
+
+def test_callout_block_custom_title_and_items_composite_text():
+    article = {"article_id": "test-callout-title-items"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "warning",
+                "title": "HIGH VOLTAGE SYSTEM",
+                "items": [
+                    {"content": "Disconnect 12V auxiliary battery first."},
+                    {"body": "Remove high-voltage service disconnect plug."},
+                    "Wait 5 minutes for capacitor discharge.",
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    callout = document["blocks"][0]
+    assert callout["type"] == "callout"
+    assert callout["label"] == "HIGH VOLTAGE SYSTEM"
+    assert (
+        callout["text"]
+        == "Disconnect 12V auxiliary battery first. Remove high-voltage service disconnect plug. Wait 5 minutes for capacitor discharge."
+    )
+
+
+def test_document_from_steps_title_name_text_fallback():
+    article = {
+        "article_id": "test-steps-title-name-text",
+        "steps": [
+            {
+                "number": 1,
+                "title": "Inspect high-pressure fuel pump",
+                "instructions": ["Check for visible leaks around the flange."],
+            },
+            {
+                "number": 2,
+                "name": "Verify fuel rail pressure",
+                "instructions": ["Monitor live scan data at 2500 RPM."],
+            },
+            {
+                "number": 3,
+                "text": "Clear diagnostic trouble codes upon completion.",
+            },
+        ],
+    }
+    document = document_from_steps(article)
+    assert validate_ordered_document(document) == []
+    blocks = document["blocks"]
+    assert len(blocks) == 5
+    assert blocks[0]["type"] == "step"
+    assert blocks[0]["number"] == 1
+    assert blocks[0]["text"] == "Inspect high-pressure fuel pump"
+    assert blocks[1]["type"] == "paragraph"
+    assert blocks[1]["text"] == "Check for visible leaks around the flange."
+    assert blocks[2]["type"] == "step"
+    assert blocks[2]["number"] == 2
+    assert blocks[2]["text"] == "Verify fuel rail pressure"
+    assert blocks[3]["type"] == "paragraph"
+    assert blocks[3]["text"] == "Monitor live scan data at 2500 RPM."
+    assert blocks[4]["type"] == "step"
+    assert blocks[4]["number"] == 3
+    assert blocks[4]["text"] == "Clear diagnostic trouble codes upon completion."
+
+
+def test_blocks_from_steps_heading_title_text_fallback():
+    from autodata_ingestion.article_document import _blocks_from_steps
+
+    steps = [
+        {
+            "heading": "Disconnect negative battery cable",
+            "evidence_ids": ["ev-1"],
+            "instructions": ["Use a 10mm socket."],
+        },
+        {
+            "title": "Remove drive belt",
+            "evidence_ids": ["ev-2"],
+        },
+        {
+            "text": "Inspect belt for cracking or glazing.",
+            "evidence_ids": ["ev-3"],
+        },
+    ]
+    raw_blocks = _blocks_from_steps(steps)
+    assert raw_blocks is not None
+    assert len(raw_blocks) == 4
+    assert raw_blocks[0] == {
+        "kind": "text",
+        "text": "Disconnect negative battery cable",
+        "evidence_ids": ["ev-1"],
+    }
+    assert raw_blocks[1] == {
+        "kind": "text",
+        "text": "Use a 10mm socket.",
+        "evidence_ids": ["ev-1"],
+    }
+    assert raw_blocks[2] == {
+        "kind": "text",
+        "text": "Remove drive belt",
+        "evidence_ids": ["ev-2"],
+    }
+    assert raw_blocks[3] == {
+        "kind": "text",
+        "text": "Inspect belt for cracking or glazing.",
+        "evidence_ids": ["ev-3"],
+    }

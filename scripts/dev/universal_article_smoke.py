@@ -489,7 +489,16 @@ def _copy_json(value: Any) -> Any:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--live-url", default=os.getenv("AUTODATA_KNOWLEDGE_SMOKE_URL"))
+    parser.add_argument(
+        "--live-url",
+        "--api-url",
+        "--base-url",
+        "--knowledge-url",
+        "--url",
+        dest="live_url",
+        default=os.getenv("AUTODATA_KNOWLEDGE_SMOKE_URL"),
+        help="Live knowledge lookup URL override",
+    )
     parser.add_argument("--query", default="brake caliper")
     args = parser.parse_args(argv)
     try:
