@@ -48,20 +48,20 @@
 
 ## Concrete Todo
 
-- [ ] Add asset_resource_ref to _image_identities in article_document.py.
-- [ ] Support description, legend, and title in _image_block caption and alt in article_document.py.
-- [ ] Preserve label, title, and heading and collect item-level images in _list_block in article_document.py.
-- [ ] Support title, name, and url, link, target fallbacks in link blocks in article_document.py.
-- [ ] Add address parameter to persist_source_bundle in bundle_persistence.py.
-- [ ] Add --address and --database-url CLI options in normalize_source_directory.py.
-- [ ] Add --base-url, --api-url, and --url aliases to consumer_agent.py.
-- [ ] Expand CLI argument and persistence assertions in test_storage_messaging_operations.py.
-- [ ] Add unit tests for list labels, item images, asset_resource_ref identities, image captions, and links in test_article_document.py.
-- [ ] Add unit test for persist_source_bundle address parameter in test_bundle_persistence.py.
-- [ ] Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.
-- [ ] Update .env.example with developer CLI options.
-- [ ] Record delivery in docs/agents/records/2026-10-27-list-labels-asset-refs-cli-uniformity.json.
-- [ ] Prune merged remote git branches.
+- [x] Add asset_resource_ref to _image_identities in article_document.py.
+- [x] Support description, legend, and title in _image_block caption and alt in article_document.py.
+- [x] Preserve label, title, and heading and collect item-level images in _list_block in article_document.py.
+- [x] Support title, name, and url, link, target fallbacks in link blocks in article_document.py.
+- [x] Add address parameter to persist_source_bundle in bundle_persistence.py.
+- [x] Add --address and --database-url CLI options in normalize_source_directory.py.
+- [x] Add --base-url, --api-url, and --url aliases to consumer_agent.py.
+- [x] Expand CLI argument and persistence assertions in test_storage_messaging_operations.py.
+- [x] Add unit tests for list labels, item images, asset_resource_ref identities, image captions, and links in test_article_document.py.
+- [x] Add unit test for persist_source_bundle address parameter in test_bundle_persistence.py.
+- [x] Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.
+- [x] Update .env.example with developer CLI options.
+- [x] Record delivery in docs/agents/records/2026-10-27-list-labels-asset-refs-cli-uniformity.json.
+- [x] Prune merged remote git branches.
 
 ## Security and Credential Isolation Rules
 

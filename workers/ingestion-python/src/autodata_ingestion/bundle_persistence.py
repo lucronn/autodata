@@ -23,6 +23,7 @@ def persist_source_bundle(
     artifacts: Iterable[SourceArtifact],
     adapter_name: str = "source-connector",
     publication: FastLanePublication | None = None,
+    address: str | None = None,
 ) -> dict[str, Any]:
     """Store resources first, then atomically persist normalized records.
 
@@ -36,10 +37,10 @@ def persist_source_bundle(
     import psycopg
     from psycopg.types.json import Jsonb
 
-    address = _resolve_database_address()
-    host, separator, port = address.rpartition(":")
+    resolved_address = _resolve_database_address(address)
+    host, separator, port = resolved_address.rpartition(":")
     if not separator:
-        host, port = address, "5432"
+        host, port = resolved_address, "5432"
     conninfo = {
         "host": host,
         "port": int(port),

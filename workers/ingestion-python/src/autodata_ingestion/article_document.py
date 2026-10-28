@@ -145,6 +145,7 @@ def _image_identities(image: Mapping[str, Any]) -> set[str]:
         image.get("asset_id"),
         image.get("content_sha256"),
         image.get("url"),
+        image.get("source_url"),
         image.get("src"),
         image.get("href"),
         image.get("asset_resource_ref"),
@@ -248,7 +249,20 @@ def build_ordered_document(
             output.append(_base_block(article, source_index, "break", evidence_ids=evidence_ids))
             continue
         if kind in {"link", "anchor"}:
-            text = _clean_text(raw.get("text") or raw.get("label"))
+            text = _clean_text(
+                raw.get("text")
+                or raw.get("label")
+                or raw.get("title")
+                or raw.get("name")
+                or raw.get("value")
+                or raw.get("content")
+            )
+            href = _safe_link(
+                raw.get("href")
+                or raw.get("url")
+                or raw.get("link")
+                or raw.get("target")
+            )
             if text:
                 output.append(
                     _base_block(
@@ -256,7 +270,7 @@ def build_ordered_document(
                         source_index,
                         "link",
                         text=text,
-                        href=_safe_link(raw.get("href")),
+                        href=href,
                         evidence_ids=evidence_ids,
                     )
                 )
@@ -432,10 +446,14 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
     fields: dict[str, Any] = {
         "asset_id": asset_id or None,
         "image_id": image_id or asset_id or None,
-        "alt": _clean_text(raw.get("alt") or raw.get("title")) or "Article illustration",
+        "alt": _clean_text(raw.get("alt") or raw.get("title") or raw.get("description") or raw.get("legend")) or "Article illustration",
+        "caption": _clean_text(raw.get("caption") or raw.get("label") or raw.get("description") or raw.get("legend")),
         "status": "available" if is_available else "unavailable",
         "unavailable_reason": None if is_available else "source image reference is missing",
     }
+    content_sha256 = _clean_text(raw.get("content_sha256"))
+    if content_sha256:
+        fields["content_sha256"] = content_sha256
     if storage_key:
         fields["storage_key"] = storage_key
     if source_url:
@@ -493,15 +511,21 @@ def _normalize_cell_image(raw: Mapping[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {
         "asset_id": asset_id or None,
         "image_id": image_id or asset_id or None,
-        "alt": _clean_text(raw.get("alt") or raw.get("title")) or "Article illustration",
+        "alt": _clean_text(raw.get("alt") or raw.get("title") or raw.get("description") or raw.get("legend")) or "Article illustration",
         "status": "available" if (source_url or storage_key or asset_resource_ref) else "unavailable",
     }
+    content_sha256 = _clean_text(raw.get("content_sha256"))
+    if content_sha256:
+        out["content_sha256"] = content_sha256
     if storage_key:
         out["storage_key"] = storage_key
     if source_url:
         out["url"] = source_url
     if asset_resource_ref:
         out["asset_resource_ref"] = asset_resource_ref
+    caption = _clean_text(raw.get("caption") or raw.get("label") or raw.get("description") or raw.get("legend"))
+    if caption:
+        out["caption"] = caption
     return out
 
 
@@ -551,6 +575,7 @@ def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
     if not isinstance(values, list):
         values = [values]
     clean_items: list[str] = []
+    item_images: list[dict[str, Any]] = []
     for value in values:
         if isinstance(value, Mapping):
             item_text = _clean_text(
@@ -561,18 +586,35 @@ def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
                 or value.get("body")
                 or value.get("message")
             )
+            for img in value.get("images") or []:
+                if isinstance(img, Mapping):
+                    item_images.append(_normalize_cell_image(img))
         else:
             item_text = _clean_text(value)
         if item_text:
             clean_items.append(item_text)
     images_raw = raw.get("images")
-    extra_fields: dict[str, Any] = {}
+    clean_images: list[dict[str, Any]] = []
     if isinstance(images_raw, list):
-        clean_images = [
+        clean_images.extend(
             _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
-        ]
-        if clean_images:
-            extra_fields["images"] = clean_images
+        )
+    clean_images.extend(item_images)
+    extra_fields: dict[str, Any] = {}
+    if clean_images:
+        seen_keys: set[str] = set()
+        deduped_images: list[dict[str, Any]] = []
+        for img in clean_images:
+            keys = _image_identities(img)
+            if keys and keys & seen_keys:
+                continue
+            seen_keys.update(keys)
+            deduped_images.append(img)
+        if deduped_images:
+            extra_fields["images"] = deduped_images
+    label = _clean_text(raw.get("label") or raw.get("title") or raw.get("heading"))
+    if label:
+        extra_fields["label"] = label
     return _base_block(
         article,
         source_order,
@@ -776,6 +818,8 @@ def _clean_text(value: Any) -> str:
 
 
 def _safe_link(value: Any) -> str:
+    if isinstance(value, Mapping):
+        value = value.get("href") or value.get("url") or value.get("link") or value.get("target")
     href = _clean_text(value)
     if not href or href.startswith("#"):
         return ""

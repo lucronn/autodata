@@ -273,6 +273,15 @@ class BundlePersistenceTests(unittest.TestCase):
         self.assertIn("INSERT INTO schema_migrations (version)", migration)
         self.assertIn("014_normalized_article_content", migration)
 
+    def test_persist_source_bundle_signature_and_address_resolution(self):
+        import inspect
+        from autodata_ingestion.bundle_persistence import persist_source_bundle, _resolve_database_address
+
+        sig = inspect.signature(persist_source_bundle)
+        self.assertIn("address", sig.parameters)
+        self.assertIsNone(sig.parameters["address"].default)
+        self.assertEqual(_resolve_database_address("postgres.custom.lan:5433"), "postgres.custom.lan:5433")
+
 
 if __name__ == "__main__":
     unittest.main()

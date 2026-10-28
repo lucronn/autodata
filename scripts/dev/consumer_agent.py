@@ -717,7 +717,14 @@ def _git_sha() -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--api-base-url", default=os.getenv("AUTODATA_CHAT_BASE_URL", "http://127.0.0.1:8080"))
+    parser.add_argument(
+        "--api-base-url",
+        "--base-url",
+        "--api-url",
+        "--url",
+        dest="api_base_url",
+        default=os.getenv("AUTODATA_CHAT_BASE_URL", "http://127.0.0.1:8080"),
+    )
     parser.add_argument("--case-file", type=Path, action="append", required=True)
     parser.add_argument("--report-dir", type=Path, required=True)
     parser.add_argument("--implementation-sha", default="")

@@ -153,6 +153,9 @@ class StorageMessagingOperationsTests(unittest.TestCase):
         enrich_pub_src = (ROOT / "workers/enrichment-python/src/autodata_enrichment/publisher.py").read_text()
         self.assertIn("_resolve_database_address", enrich_pub_src)
 
+        outbox_src = (ROOT / "workers/enrichment-python/src/autodata_enrichment/outbox.py").read_text()
+        self.assertIn("_resolve_database_address", outbox_src)
+
     def test_normalize_source_directory_cli_limit(self):
         import subprocess
 
@@ -244,6 +247,12 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             ("smoke_local_stack.py", "--api-url"),
             ("smoke_local_stack.py", "--url"),
             ("normalize_source_directory.py", "--persist"),
+            ("normalize_source_directory.py", "--address"),
+            ("normalize_source_directory.py", "--database-url"),
+            ("consumer_agent.py", "--api-base-url"),
+            ("consumer_agent.py", "--base-url"),
+            ("consumer_agent.py", "--api-url"),
+            ("consumer_agent.py", "--url"),
             ("api_runtime_smoke.py", "--base-url"),
             ("api_runtime_smoke.py", "--api-url"),
             ("api_runtime_smoke.py", "--url"),
