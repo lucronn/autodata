@@ -34,7 +34,7 @@ def get_json(url: str) -> tuple[int, dict[str, object]]:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-url", "--api-url", dest="base_url", default=None)
+    parser.add_argument("--base-url", "--api-url", "--url", dest="base_url", default=None)
     args = parser.parse_args(argv)
     base_url = args.base_url or default_base_url()
     try:

@@ -50,17 +50,17 @@
 
 ## Concrete Todo
 
-- [ ] Support direct attached images and title/heading labels in _table_block in article_document.py.
-- [ ] Normalize cell content, body, and label in _table_cell in article_document.py.
-- [ ] Preserve custom titles/headings and extract bullet items in _callout_block in article_document.py.
-- [ ] Support step title, name, and text fallbacks in document_from_steps and _blocks_from_steps in article_document.py.
-- [ ] Add --url, --api-url, --base-url, and --knowledge-url aliases in scripts/dev/universal_article_smoke.py, smoke_local_stack.py, api_runtime_smoke.py, and fake_integrations_smoke.py.
-- [ ] Expand CLI argument assertions in scripts/dev/test_storage_messaging_operations.py.
-- [ ] Add unit tests for table figures, cell normalization, callout titles, and step fallbacks in workers/ingestion-python/tests/test_article_document.py.
-- [ ] Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.
-- [ ] Update .env.example with universal article smoke URL options.
-- [ ] Record delivery in docs/agents/records/2026-10-27-table-figures-callouts-dev-cli-uniformity.json.
-- [ ] Prune merged remote git branches.
+- [x] Support direct attached images and title/heading labels in _table_block in article_document.py.
+- [x] Normalize cell content, body, and label in _table_cell in article_document.py.
+- [x] Preserve custom titles/headings and extract bullet items in _callout_block in article_document.py.
+- [x] Support step title, name, and text fallbacks in document_from_steps and _blocks_from_steps in article_document.py.
+- [x] Add --url, --api-url, --base-url, and --knowledge-url aliases in scripts/dev/universal_article_smoke.py, smoke_local_stack.py, api_runtime_smoke.py, and fake_integrations_smoke.py.
+- [x] Expand CLI argument assertions in scripts/dev/test_storage_messaging_operations.py.
+- [x] Add unit tests for table figures, cell normalization, callout titles, and step fallbacks in workers/ingestion-python/tests/test_article_document.py.
+- [x] Update canonical architecture documentation in docs/architecture/infrastructure-and-dev.md.
+- [x] Update .env.example with universal article smoke URL options.
+- [x] Record delivery in docs/agents/records/2026-10-27-table-figures-callouts-dev-cli-uniformity.json.
+- [x] Prune merged remote git branches.
 
 ## Security and Credential Isolation Rules
 

@@ -76,7 +76,7 @@ def require(condition: bool, message: str) -> None:
 def main(argv: list[str] | None = None) -> None:
     global API_URL
     parser = argparse.ArgumentParser(description="Exercise the Go API runtime smoke contract")
-    parser.add_argument("--base-url", "--api-url", dest="base_url", default=None)
+    parser.add_argument("--base-url", "--api-url", "--url", dest="base_url", default=None)
     args = parser.parse_args(argv)
     if args.base_url:
         API_URL = args.base_url.rstrip("/")
