@@ -929,3 +929,149 @@ def test_blocks_from_steps_heading_title_text_fallback():
         "text": "Inspect belt for cracking or glazing.",
         "evidence_ids": ["ev-3"],
     }
+
+
+def test_image_identities_includes_asset_resource_ref_and_deduplicates():
+    from autodata_ingestion.article_document import _image_identities
+
+    image = {"asset_resource_ref": "urn:asset:brake-rotor-01"}
+    identities = _image_identities(image)
+    assert "urn:asset:brake-rotor-01" in identities
+
+    article = {
+        "article_id": "test-asset-ref-dedup",
+        "images": [
+            {
+                "image_id": "img-01",
+                "asset_resource_ref": "urn:asset:brake-rotor-01",
+                "storage_key": "procedure-images/brake1",
+            }
+        ],
+    }
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "image",
+                "asset_resource_ref": "urn:asset:brake-rotor-01",
+                "url": "https://source.test/brake.png",
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    # Should only produce 1 image block, not duplicate via figure_queue
+    image_blocks = [b for b in document["blocks"] if b["type"] == "image"]
+    assert len(image_blocks) == 1
+    assert image_blocks[0]["asset_resource_ref"] == "urn:asset:brake-rotor-01"
+
+
+def test_image_block_caption_fallback_to_description_and_legend():
+    article = {"article_id": "test-img-desc-legend"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "image",
+                "url": "https://source.test/diagram.png",
+                "description": "Wiring schematic for ambient lighting module",
+                "content_sha256": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+            },
+            {
+                "kind": "image",
+                "url": "https://source.test/fuse-box.png",
+                "legend": "Engine compartment fuse block layout",
+            },
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 2
+    b1 = document["blocks"][0]
+    assert b1["type"] == "image"
+    assert b1["caption"] == "Wiring schematic for ambient lighting module"
+    assert b1["alt"] == "Wiring schematic for ambient lighting module"
+    assert b1["content_sha256"] == "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+
+    b2 = document["blocks"][1]
+    assert b2["type"] == "image"
+    assert b2["caption"] == "Engine compartment fuse block layout"
+    assert b2["alt"] == "Engine compartment fuse block layout"
+
+
+def test_list_block_preserves_label_title_heading_and_collects_item_images():
+    article = {"article_id": "test-list-label-images"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "unordered_list",
+                "title": "Special Tools Required",
+                "items": [
+                    {
+                        "text": "Universal pulley holder",
+                        "images": [
+                            {
+                                "image_id": "tool-holder-01",
+                                "storage_key": "procedure-images/tool1",
+                            }
+                        ],
+                    },
+                    "19mm deep socket",
+                ],
+            },
+            {
+                "kind": "ordered_list",
+                "heading": "Torque Specifications",
+                "items": [
+                    "Cylinder head bolts: 45 Nm + 90 degrees",
+                    "Camshaft caps: 12 Nm",
+                ],
+            },
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 2
+    l1 = document["blocks"][0]
+    assert l1["type"] == "unordered_list"
+    assert l1["label"] == "Special Tools Required"
+    assert l1["items"] == ["Universal pulley holder", "19mm deep socket"]
+    assert "images" in l1
+    assert l1["images"][0]["image_id"] == "tool-holder-01"
+    assert l1["images"][0]["storage_key"] == "procedure-images/tool1"
+
+    l2 = document["blocks"][1]
+    assert l2["type"] == "ordered_list"
+    assert l2["label"] == "Torque Specifications"
+    assert l2["items"] == [
+        "Cylinder head bolts: 45 Nm + 90 degrees",
+        "Camshaft caps: 12 Nm",
+    ]
+
+
+def test_link_block_title_name_and_url_target_fallbacks():
+    article = {"article_id": "test-link-fallbacks"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "link",
+                "title": "Related Service Bulletin TSB-101",
+                "url": "https://service.auto.test/tsb-101",
+            },
+            {
+                "kind": "anchor",
+                "name": "Diagnostic Flowchart PDF",
+                "target": "https://service.auto.test/diagram.pdf",
+            },
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 2
+    link1 = document["blocks"][0]
+    assert link1["type"] == "link"
+    assert link1["text"] == "Related Service Bulletin TSB-101"
+    assert link1["href"] == "https://service.auto.test/tsb-101"
+
+    link2 = document["blocks"][1]
+    assert link2["type"] == "link"
+    assert link2["text"] == "Diagnostic Flowchart PDF"
+    assert link2["href"] == "https://service.auto.test/diagram.pdf"

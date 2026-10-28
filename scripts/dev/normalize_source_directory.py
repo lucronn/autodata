@@ -85,6 +85,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--persist", action="store_true", help="persist local artifacts and normalized records to the configured local stack")
     parser.add_argument("--limit", type=int, default=None, help="Maximum source resources to adapt and normalize")
     parser.add_argument("--adapter-name", default="local-directory")
+    parser.add_argument(
+        "--address",
+        "--database-url",
+        default=None,
+        help="PostgreSQL host:port target (defaults to AUTODATA_DB_ADDRESS or local probe)",
+    )
     args = parser.parse_args(argv)
     if not args.directory.is_dir():
         raise SystemExit(f"source directory does not exist: {args.directory}")
@@ -106,7 +112,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.persist:
         from autodata_ingestion.bundle_persistence import persist_source_bundle
 
-        persistence = persist_source_bundle(bundle, artifacts, adapter_name=args.adapter_name)
+        persistence = persist_source_bundle(
+            bundle, artifacts, adapter_name=args.adapter_name, address=args.address
+        )
     print(
         json.dumps(
             {
