@@ -157,6 +157,41 @@ class VehicleSelectionPersistenceTests(unittest.TestCase):
             "chevrolet-silverado-1500-1999-us",
         )
 
+    def test_persist_vehicle_selection_list_address_parameter(self):
+        cursor = RecordingCursor()
+        connection = RecordingConnection(cursor)
+        captured_conninfo = {}
+
+        def fake_connect(**kwargs):
+            captured_conninfo.update(kwargs)
+            return connection
+
+        fake_json = types.ModuleType("psycopg.types.json")
+        fake_json.Jsonb = lambda value: value
+        fake_types = types.ModuleType("psycopg.types")
+        fake_types.json = fake_json
+        fake_psycopg = types.ModuleType("psycopg")
+        fake_psycopg.connect = fake_connect
+
+        with patch("autodata_ingestion.vehicle_selection_persistence.store_source_artifacts"):
+            with patch.dict(
+                sys.modules,
+                {
+                    "psycopg": fake_psycopg,
+                    "psycopg.types": fake_types,
+                    "psycopg.types.json": fake_json,
+                },
+            ):
+                result = persist_vehicle_selection_list(
+                    ["1999 Chevy Silverado 1500 2wd"],
+                    region="US",
+                    address="custom-db.internal:5499",
+                )
+
+        self.assertEqual(result["status"], "persisted")
+        self.assertEqual(captured_conninfo.get("host"), "custom-db.internal")
+        self.assertEqual(captured_conninfo.get("port"), 5499)
+
 
 if __name__ == "__main__":
     unittest.main()

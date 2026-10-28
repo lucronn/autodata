@@ -28,6 +28,7 @@ def persist_vehicle_selection_list(
     source_uri: str = "input://vehicle-list",
     source_version: str = "vehicle-list-v1",
     region: str | None = None,
+    address: str | None = None,
 ) -> dict[str, Any]:
     """Persist a vehicle list as source evidence and identity graph facts.
 
@@ -57,8 +58,8 @@ def persist_vehicle_selection_list(
     import psycopg
     from psycopg.types.json import Jsonb
 
-    address = _resolve_database_address()
-    host, separator, port = address.rpartition(":")
+    resolved_address = _resolve_database_address(address)
+    host, separator, port = resolved_address.rpartition(":")
     if not separator:
         host, port = address, "5432"
     conninfo = {

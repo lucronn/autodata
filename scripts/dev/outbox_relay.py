@@ -30,6 +30,8 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--nats-url",
+        "--url",
+        dest="nats_url",
         default=None,
         help="NATS broker URL override",
     )
@@ -71,6 +73,8 @@ def main(argv: list[str] | None = None) -> None:
             relay_pending_events(
                 limit=args.limit,
                 max_attempts=args.max_attempts,
+                address=args.address,
+                nats_url=args.nats_url,
             )
         )
         print(json.dumps(result, sort_keys=True), flush=True)

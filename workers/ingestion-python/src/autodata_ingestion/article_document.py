@@ -294,7 +294,16 @@ def build_ordered_document(
                 _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
             ]
             if clean_images:
-                extra_fields["images"] = clean_images
+                seen_keys: set[str] = set()
+                deduped_images: list[dict[str, Any]] = []
+                for img in clean_images:
+                    keys = _image_identities(img)
+                    if keys and keys & seen_keys:
+                        continue
+                    seen_keys.update(keys)
+                    deduped_images.append(img)
+                if deduped_images:
+                    extra_fields["images"] = deduped_images
         explicit_number = _numbered_text(text)
         if explicit_number is not None:
             number, text = explicit_number
@@ -451,7 +460,13 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
         "asset_id": asset_id or None,
         "image_id": image_id or asset_id or None,
         "alt": _clean_text(raw.get("alt") or raw.get("title") or raw.get("description") or raw.get("legend")) or "Article illustration",
-        "caption": _clean_text(raw.get("caption") or raw.get("label") or raw.get("description") or raw.get("legend")),
+        "caption": _clean_text(
+            raw.get("caption")
+            or raw.get("label")
+            or raw.get("description")
+            or raw.get("legend")
+            or raw.get("title")
+        ),
         "status": "available" if is_available else "unavailable",
         "unavailable_reason": None if is_available else "source image reference is missing",
     }
@@ -476,9 +491,13 @@ def _table_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
     if not isinstance(rows, list):
         rows = []
     clean_rows = []
+    row_images: list[dict[str, Any]] = []
     for row in rows:
         if isinstance(row, Mapping):
             values = row.get("cells") or row.get("values") or row.get("blocks") or []
+            for img in row.get("images") or []:
+                if isinstance(img, Mapping):
+                    row_images.append(_normalize_cell_image(img))
         else:
             values = row
         if not isinstance(values, list):
@@ -486,13 +505,24 @@ def _table_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
         clean_rows.append([_table_cell(value) for value in values])
     columns = raw.get("columns") if isinstance(raw.get("columns"), list) else []
     images_raw = raw.get("images")
-    extra_fields: dict[str, Any] = {}
+    clean_images: list[dict[str, Any]] = []
     if isinstance(images_raw, list):
-        clean_images = [
+        clean_images.extend(
             _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
-        ]
-        if clean_images:
-            extra_fields["images"] = clean_images
+        )
+    clean_images.extend(row_images)
+    extra_fields: dict[str, Any] = {}
+    if clean_images:
+        seen_keys: set[str] = set()
+        deduped_images: list[dict[str, Any]] = []
+        for img in clean_images:
+            keys = _image_identities(img)
+            if keys and keys & seen_keys:
+                continue
+            seen_keys.update(keys)
+            deduped_images.append(img)
+        if deduped_images:
+            extra_fields["images"] = deduped_images
     return _base_block(
         article,
         source_order,
@@ -843,7 +873,13 @@ def _blocks_from_steps(steps: Any) -> list[dict[str, Any]] | None:
 
 
 def _evidence_ids(raw: Mapping[str, Any], article: Mapping[str, Any]) -> list[str]:
-    values = raw.get("evidence_ids", article.get("evidence_ids", []))
+    values = (
+        raw.get("evidence_ids")
+        or raw.get("evidence_id")
+        or article.get("evidence_ids")
+        or article.get("evidence_id")
+        or []
+    )
     if not isinstance(values, list):
         values = [values]
     return sorted({str(value).strip() for value in values if str(value).strip()})

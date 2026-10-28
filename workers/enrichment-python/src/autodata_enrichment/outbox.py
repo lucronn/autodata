@@ -97,7 +97,13 @@ async def publish_event(event: OutboxEvent, jetstream: Any) -> Any:
     )
 
 
-async def relay_pending_events(limit: int = 10, max_attempts: int = 3) -> dict[str, Any]:
+async def relay_pending_events(
+    limit: int = 10,
+    max_attempts: int = 3,
+    *,
+    address: str | None = None,
+    nats_url: str | None = None,
+) -> dict[str, Any]:
     """Claim, publish, and record a bounded batch of pending outbox events.
 
     PostgreSQL claiming and NATS publication are intentionally separate commits.
@@ -112,14 +118,14 @@ async def relay_pending_events(limit: int = 10, max_attempts: int = 3) -> dict[s
 
     import nats
 
-    nats_url = _resolve_nats_url()
+    resolved_nats_url = _resolve_nats_url(nats_url)
 
     async def _silent_nats_error(error: Exception) -> None:
         pass
 
     try:
         connection = await nats.connect(
-            nats_url,
+            resolved_nats_url,
             connect_timeout=1,
             max_reconnect_attempts=1,
             allow_reconnect=False,
@@ -140,19 +146,19 @@ async def relay_pending_events(limit: int = 10, max_attempts: int = 3) -> dict[s
         failed = 0
         dead_lettered = 0
         while published + failed + dead_lettered < limit:
-            event = _claim_next_event(max_attempts)
+            event = _claim_next_event(max_attempts, address=address)
             if event is None:
                 break
             try:
                 await publish_event(event, jetstream)
             except Exception as error:  # noqa: BLE001 - boundary records all delivery errors
-                status = _record_delivery_failure(event, str(error), max_attempts)
+                status = _record_delivery_failure(event, str(error), max_attempts, address=address)
                 if status == "dead_letter":
                     dead_lettered += 1
                 else:
                     failed += 1
             else:
-                _mark_delivered(event)
+                _mark_delivered(event, address=address)
                 published += 1
         await connection.flush()
         return {
@@ -175,10 +181,10 @@ async def _ensure_stream(jetstream: Any) -> None:
         await jetstream.add_stream(name="AUTODATA", subjects=["dataset.>"])
 
 
-def _claim_next_event(max_attempts: int) -> OutboxEvent | None:
+def _claim_next_event(max_attempts: int, address: str | None = None) -> OutboxEvent | None:
     import psycopg
 
-    with psycopg.connect(**_connection_kwargs()) as connection:
+    with psycopg.connect(**_connection_kwargs(address=address)) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -227,10 +233,10 @@ def _event_from_row(row: tuple[Any, ...]) -> OutboxEvent:
     )
 
 
-def _mark_delivered(event: OutboxEvent) -> None:
+def _mark_delivered(event: OutboxEvent, address: str | None = None) -> None:
     import psycopg
 
-    with psycopg.connect(**_connection_kwargs()) as connection:
+    with psycopg.connect(**_connection_kwargs(address=address)) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -245,12 +251,12 @@ def _mark_delivered(event: OutboxEvent) -> None:
         connection.commit()
 
 
-def _record_delivery_failure(event: OutboxEvent, message: str, max_attempts: int) -> str:
+def _record_delivery_failure(event: OutboxEvent, message: str, max_attempts: int, address: str | None = None) -> str:
     import psycopg
     from psycopg.types.json import Jsonb
 
     status = delivery_status_after_failure(event.delivery_attempts, max_attempts)
-    with psycopg.connect(**_connection_kwargs()) as connection:
+    with psycopg.connect(**_connection_kwargs(address=address)) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -302,11 +308,11 @@ def _resolve_nats_url(url: str | None = None) -> str:
     return "nats://127.0.0.1:4222"
 
 
-def _connection_kwargs() -> dict[str, Any]:
-    address = _resolve_database_address()
-    host, separator, port = address.rpartition(":")
+def _connection_kwargs(address: str | None = None) -> dict[str, Any]:
+    resolved = _resolve_database_address(address)
+    host, separator, port = resolved.rpartition(":")
     if not separator:
-        host, port = address, "5432"
+        host, port = resolved, "5432"
     return {
         "host": host,
         "port": int(port),

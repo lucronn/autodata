@@ -91,6 +91,7 @@ def persist_fast_lane(
     snapshot: SourceSnapshot,
     organization_id: str = ORGANIZATION_ID,
     object_key: str | None = None,
+    address: str | None = None,
 ) -> dict[str, str]:
     """Persist canonical records and one immutable viewable revision atomically."""
 
@@ -98,8 +99,10 @@ def persist_fast_lane(
     from psycopg.types.json import Jsonb
     from autodata_ingestion.bundle_persistence import _resolve_database_address
 
-    db_address = _resolve_database_address()
-    host, port_text = db_address.rsplit(":", 1)
+    db_address = _resolve_database_address(address)
+    host, separator, port_text = db_address.rpartition(":")
+    if not separator:
+        host, port_text = db_address, "5432"
     product_id = _stable_uuid(f"product:{PRODUCT_KEY}:1")
     payment_provider = FakePaymentProvider(
         signing_secret=os.getenv("AUTODATA_FAKE_PAYMENT_SIGNING_SECRET", "local-fixture-signing-key")

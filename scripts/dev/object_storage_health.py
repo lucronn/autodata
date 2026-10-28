@@ -35,7 +35,14 @@ def resolve_s3_endpoint(endpoint: str | None = None) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--endpoint", "--s3-endpoint", default=None)
+    parser.add_argument(
+        "--endpoint",
+        "--s3-endpoint",
+        "--address",
+        "--s3-address",
+        dest="endpoint",
+        default=None,
+    )
     parser.add_argument("--bucket", action="append", dest="buckets")
     args = parser.parse_args(argv)
     buckets = args.buckets or [

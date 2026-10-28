@@ -1218,3 +1218,127 @@ def test_step_block_aggregates_instruction_images_and_deduplicates():
     assert len(step["images"]) == 2
     assert step["images"][0]["image_id"] == "timing-cover-bolts"
     assert step["images"][1]["image_id"] == "bracket-clip"
+
+
+def test_table_block_aggregates_row_images_and_deduplicates():
+    article = {"article_id": "test-table-row-images"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "table",
+                "label": "Torque Specifications",
+                "columns": ["Component", "Torque"],
+                "images": [
+                    {
+                        "image_id": "torque-chart-img",
+                        "storage_key": "procedure-images/torque-chart",
+                        "caption": "Torque Chart",
+                    }
+                ],
+                "rows": [
+                    {
+                        "cells": ["Caliper Guide Pins", "28 Nm"],
+                        "images": [
+                            {
+                                "image_id": "torque-chart-img",
+                                "storage_key": "procedure-images/torque-chart",
+                            },
+                            {
+                                "image_id": "caliper-pin-img",
+                                "storage_key": "procedure-images/caliper-pin",
+                                "title": "Guide Pin Location",
+                            },
+                        ],
+                    },
+                    {
+                        "cells": ["Mounting Bracket", "85 Nm"],
+                        "images": [
+                            {
+                                "image_id": "bracket-bolt-img",
+                                "url": "https://source.test/bracket.jpg",
+                            }
+                        ],
+                    },
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    table = document["blocks"][0]
+    assert table["type"] == "table"
+    assert table["label"] == "Torque Specifications"
+    assert "images" in table
+    # 3 unique images (torque-chart deduplicated, caliper-pin, bracket-bolt)
+    assert len(table["images"]) == 3
+    assert table["images"][0]["image_id"] == "torque-chart-img"
+    assert table["images"][1]["image_id"] == "caliper-pin-img"
+    assert table["images"][1]["caption"] == "Guide Pin Location"
+    assert table["images"][2]["image_id"] == "bracket-bolt-img"
+
+
+def test_paragraph_block_deduplicates_attached_images():
+    article = {"article_id": "test-paragraph-image-dedup"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "text",
+                "text": "Inspect the brake caliper slide pins for corrosion or sticking.",
+                "images": [
+                    {
+                        "image_id": "slide-pins-img",
+                        "storage_key": "procedure-images/pins",
+                    },
+                    {
+                        "image_id": "slide-pins-img",
+                        "storage_key": "procedure-images/pins",
+                    },
+                    {
+                        "image_id": "grease-tube-img",
+                        "storage_key": "procedure-images/silicone-grease",
+                    },
+                ],
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    para = document["blocks"][0]
+    assert para["type"] == "paragraph"
+    assert "images" in para
+    assert len(para["images"]) == 2
+    assert para["images"][0]["image_id"] == "slide-pins-img"
+    assert para["images"][1]["image_id"] == "grease-tube-img"
+
+
+def test_evidence_ids_extracts_singular_evidence_id():
+    from autodata_ingestion.article_document import _evidence_ids
+
+    # Block-level singular evidence_id
+    assert _evidence_ids({"evidence_id": "ev-single-1"}, {}) == ["ev-single-1"]
+    # Article-level singular evidence_id
+    assert _evidence_ids({}, {"evidence_id": "ev-article-single"}) == ["ev-article-single"]
+    # Block-level plural overrides article
+    assert _evidence_ids({"evidence_ids": ["ev-a", "ev-b"]}, {"evidence_id": "ev-article"}) == ["ev-a", "ev-b"]
+
+
+def test_image_block_caption_fallback_to_title():
+    article = {"article_id": "test-image-caption-title"}
+    document = build_ordered_document(
+        article,
+        [
+            {
+                "kind": "image",
+                "image_id": "caliper-diagram",
+                "storage_key": "procedure-images/caliper",
+                "title": "Front Brake Caliper Exploded View",
+            }
+        ],
+    )
+    assert validate_ordered_document(document) == []
+    img = document["blocks"][0]
+    assert img["type"] == "image"
+    assert img["caption"] == "Front Brake Caliper Exploded View"
+    assert img["alt"] == "Front Brake Caliper Exploded View"

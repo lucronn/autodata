@@ -309,11 +309,16 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--s3-endpoint",
+        "--endpoint",
+        "--s3-address",
+        dest="s3_endpoint",
         default=None,
         help="S3 / MinIO host:port endpoint (defaults to AUTODATA_S3_ENDPOINT or local probe)",
     )
     parser.add_argument(
         "--nats-url",
+        "--url",
+        dest="nats_url",
         default=None,
         help="NATS URL (defaults to AUTODATA_NATS_URL or local probe)",
     )

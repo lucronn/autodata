@@ -111,6 +111,7 @@ def persist_catalog_years(
     *,
     source_uri: str,
     source_version: str,
+    address: str | None = None,
 ) -> dict[str, object]:
     """Persist a source-backed, de-duplicated year manifest."""
 
@@ -144,7 +145,7 @@ def persist_catalog_years(
 
     now = datetime.now(UTC).replace(microsecond=0)
     response_hash = resource.content_sha256
-    with psycopg.connect(**_conninfo()) as connection:
+    with psycopg.connect(**_conninfo(address=address)) as connection:
         with connection.cursor() as cursor:
             snapshot_ids = _persist_snapshots(cursor, [artifact], "autoapitwo-catalog-years", now, Jsonb)
             _persist_artifact_rows(

@@ -406,7 +406,7 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--query", default=DEFAULT_QUERY)
+    parser.add_argument("--query", "-q", default=DEFAULT_QUERY)
     args = parser.parse_args(argv)
     try:
         report = run_benchmark(query=args.query)
