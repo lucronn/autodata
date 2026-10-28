@@ -262,6 +262,7 @@ def execute_bankone_batch(
     adapter_name: str = "bankone-local",
     selector_rows: Iterable[Mapping[str, Any] | str] | None = None,
     selector_source_uri: str = "autoapi://local/selector-list",
+    address: str | None = None,
 ) -> dict[str, Any]:
     """Normalize each planned vehicle's merged source drops and continue after failures."""
 
@@ -314,6 +315,7 @@ def execute_bankone_batch(
                     bundle,
                     artifacts,
                     adapter_name=adapter_name,
+                    address=address,
                 )
             result: dict[str, Any] = {
                 "vehicle_key": batch.vehicle_key,
@@ -369,6 +371,7 @@ def execute_bankone_batch(
             selector_persistence=selection_persistence,
             source_version=source_version,
             adapter_name=adapter_name,
+            address=address,
         )
     return output
 

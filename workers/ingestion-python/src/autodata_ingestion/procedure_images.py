@@ -112,7 +112,7 @@ def localize_procedure_images(
                 ]
             rewritten_steps.append(step_out)
         out["steps"] = rewritten_steps
-    _rewrite_document_images(out, _collect_image_records(out), stored=stored)
+    _rewrite_document_images(out, images + _collect_image_records(out), stored=stored)
     return out
 
 
@@ -299,9 +299,12 @@ def _rewrite_document_images(
             image.get("asset_id"),
             image.get("content_sha256"),
             image.get("url"),
+            image.get("source_url"),
             image.get("src"),
             image.get("href"),
             image.get("asset_resource_ref"),
+            image.get("uri"),
+            image.get("path"),
         ):
             if key and str(key).strip():
                 skey = str(key).strip()
@@ -334,6 +337,11 @@ def _rewrite_document_images(
             obj.get("artifact_key"),
             obj.get("asset_resource_ref"),
             obj.get("url"),
+            obj.get("source_url"),
+            obj.get("src"),
+            obj.get("href"),
+            obj.get("uri"),
+            obj.get("path"),
             obj.get("content_sha256"),
         ):
             if key and str(key).strip() in by_ref:

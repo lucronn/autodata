@@ -529,3 +529,44 @@ def test_hydrate_article_image_urls_hydrates_arbitrary_blocks_and_children(monke
     assert callout_embed["url"].startswith("data:image/png;base64,")
     step_embed = hydrated_embed["normalized_document"]["blocks"][1]["children"][0]["images"][0]
     assert step_embed["url"].startswith("data:image/png;base64,")
+
+
+def test_rewrite_document_images_resolves_source_url_src_and_href():
+    article = {
+        "article_id": "art-source-url-lookup",
+        "images": [
+            {
+                "image_id": "fig-source-url",
+                "source_url": "https://cdn.auto.test/images/steering-rack.png",
+                "storage_key": "procedure-images/steering123",
+            },
+            {
+                "image_id": "fig-src-url",
+                "src": "https://cdn.auto.test/images/tie-rod.png",
+                "storage_key": "procedure-images/tierod456",
+            },
+        ],
+        "normalized_document": {
+            "blocks": [
+                {
+                    "type": "image",
+                    "source_url": "https://cdn.auto.test/images/steering-rack.png",
+                },
+                {
+                    "type": "image",
+                    "src": "https://cdn.auto.test/images/tie-rod.png",
+                },
+            ]
+        },
+    }
+
+    localized = procedure_images.localize_procedure_images(article)
+    b0 = localized["normalized_document"]["blocks"][0]
+    assert b0["status"] == "available"
+    assert b0["storage_key"] == "procedure-images/steering123"
+    assert b0["url"] == "artifact://fig-source-url"
+
+    b1 = localized["normalized_document"]["blocks"][1]
+    assert b1["status"] == "available"
+    assert b1["storage_key"] == "procedure-images/tierod456"
+    assert b1["url"] == "artifact://fig-src-url"

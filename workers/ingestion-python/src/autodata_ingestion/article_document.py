@@ -149,6 +149,8 @@ def _image_identities(image: Mapping[str, Any]) -> set[str]:
         image.get("src"),
         image.get("href"),
         image.get("asset_resource_ref"),
+        image.get("uri"),
+        image.get("path"),
     )
     return {str(k).strip() for k in keys if k and str(k).strip()}
 
@@ -441,8 +443,10 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
     image_id = _clean_text(raw.get("image_id") or raw.get("id"))
     storage_key = _clean_text(raw.get("storage_key") or raw.get("artifact_key"))
     asset_resource_ref = _clean_text(raw.get("asset_resource_ref"))
-    asset_id = storage_key or image_id or asset_resource_ref or (sha256(source_url.encode()).hexdigest() if source_url else "")
-    is_available = bool(source_url or storage_key or asset_resource_ref)
+    uri = _clean_text(raw.get("uri"))
+    path = _clean_text(raw.get("path"))
+    asset_id = storage_key or image_id or asset_resource_ref or uri or path or (sha256(source_url.encode()).hexdigest() if source_url else "")
+    is_available = bool(source_url or storage_key or asset_resource_ref or uri or path)
     fields: dict[str, Any] = {
         "asset_id": asset_id or None,
         "image_id": image_id or asset_id or None,
@@ -460,6 +464,10 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
         fields["url"] = source_url
     if asset_resource_ref:
         fields["asset_resource_ref"] = asset_resource_ref
+    if uri:
+        fields["uri"] = uri
+    if path:
+        fields["path"] = path
     return _base_block(article, source_order, "image", evidence_ids=evidence_ids, **fields)
 
 
@@ -507,12 +515,14 @@ def _normalize_cell_image(raw: Mapping[str, Any]) -> dict[str, Any]:
     image_id = _clean_text(raw.get("image_id") or raw.get("id"))
     storage_key = _clean_text(raw.get("storage_key") or raw.get("artifact_key"))
     asset_resource_ref = _clean_text(raw.get("asset_resource_ref"))
-    asset_id = storage_key or image_id or asset_resource_ref or (sha256(source_url.encode()).hexdigest() if source_url else "")
+    uri = _clean_text(raw.get("uri"))
+    path = _clean_text(raw.get("path"))
+    asset_id = storage_key or image_id or asset_resource_ref or uri or path or (sha256(source_url.encode()).hexdigest() if source_url else "")
     out: dict[str, Any] = {
         "asset_id": asset_id or None,
         "image_id": image_id or asset_id or None,
         "alt": _clean_text(raw.get("alt") or raw.get("title") or raw.get("description") or raw.get("legend")) or "Article illustration",
-        "status": "available" if (source_url or storage_key or asset_resource_ref) else "unavailable",
+        "status": "available" if (source_url or storage_key or asset_resource_ref or uri or path) else "unavailable",
     }
     content_sha256 = _clean_text(raw.get("content_sha256"))
     if content_sha256:
@@ -523,7 +533,11 @@ def _normalize_cell_image(raw: Mapping[str, Any]) -> dict[str, Any]:
         out["url"] = source_url
     if asset_resource_ref:
         out["asset_resource_ref"] = asset_resource_ref
-    caption = _clean_text(raw.get("caption") or raw.get("label") or raw.get("description") or raw.get("legend"))
+    if uri:
+        out["uri"] = uri
+    if path:
+        out["path"] = path
+    caption = _clean_text(raw.get("caption") or raw.get("label") or raw.get("description") or raw.get("legend") or raw.get("title"))
     if caption:
         out["caption"] = caption
     return out
@@ -638,6 +652,7 @@ def _callout_block(article: Mapping[str, Any], source_order: int, raw: Mapping[s
         or raw.get("content")
         or raw.get("body")
     )
+    item_images: list[dict[str, Any]] = []
     if not text and isinstance(raw.get("items"), list):
         item_parts: list[str] = []
         for item in raw["items"]:
@@ -649,20 +664,40 @@ def _callout_block(article: Mapping[str, Any], source_order: int, raw: Mapping[s
                     or item.get("body")
                     or item.get("message")
                 )
+                for img in item.get("images") or []:
+                    if isinstance(img, Mapping):
+                        item_images.append(_normalize_cell_image(img))
             else:
                 it = _clean_text(item)
             if it:
                 item_parts.append(it)
         if item_parts:
             text = " ".join(item_parts)
+    elif isinstance(raw.get("items"), list):
+        for item in raw["items"]:
+            if isinstance(item, Mapping):
+                for img in item.get("images") or []:
+                    if isinstance(img, Mapping):
+                        item_images.append(_normalize_cell_image(img))
     images_raw = raw.get("images")
-    extra_fields: dict[str, Any] = {}
+    clean_images: list[dict[str, Any]] = []
     if isinstance(images_raw, list):
-        clean_images = [
+        clean_images.extend(
             _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
-        ]
-        if clean_images:
-            extra_fields["images"] = clean_images
+        )
+    clean_images.extend(item_images)
+    extra_fields: dict[str, Any] = {}
+    if clean_images:
+        seen_keys: set[str] = set()
+        deduped_images: list[dict[str, Any]] = []
+        for img in clean_images:
+            keys = _image_identities(img)
+            if keys and keys & seen_keys:
+                continue
+            seen_keys.update(keys)
+            deduped_images.append(img)
+        if deduped_images:
+            extra_fields["images"] = deduped_images
     return _base_block(article, source_order, "callout", label=label, text=text, evidence_ids=evidence_ids, **extra_fields)
 
 
@@ -675,6 +710,7 @@ def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
         raw.get("content"),
         raw.get("body"),
     ]
+    instruction_images: list[dict[str, Any]] = []
     instructions = raw.get("instructions")
     if isinstance(instructions, list):
         cleaned_instructions: list[str] = []
@@ -688,6 +724,9 @@ def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
                     or item.get("content")
                     or item.get("body")
                 )
+                for img in item.get("images") or []:
+                    if isinstance(img, Mapping):
+                        instruction_images.append(_normalize_cell_image(img))
             else:
                 item_text = _clean_text(item)
             if item_text:
@@ -723,12 +762,23 @@ def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
         extra_fields["number"] = number
 
     images_raw = raw.get("images")
+    clean_images: list[dict[str, Any]] = []
     if isinstance(images_raw, list):
-        clean_images = [
+        clean_images.extend(
             _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
-        ]
-        if clean_images:
-            extra_fields["images"] = clean_images
+        )
+    clean_images.extend(instruction_images)
+    if clean_images:
+        seen_keys: set[str] = set()
+        deduped_images: list[dict[str, Any]] = []
+        for img in clean_images:
+            keys = _image_identities(img)
+            if keys and keys & seen_keys:
+                continue
+            seen_keys.update(keys)
+            deduped_images.append(img)
+        if deduped_images:
+            extra_fields["images"] = deduped_images
 
     if not text:
         text = label or (f"Step {number}" if number is not None else "Procedure step")

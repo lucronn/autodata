@@ -260,6 +260,8 @@ class StorageMessagingOperationsTests(unittest.TestCase):
             ("fake_integrations_smoke.py", "--api-url"),
             ("fake_integrations_smoke.py", "--url"),
             ("backup_restore_smoke.py", "--compose-file"),
+            ("backup_restore_smoke.py", "--address"),
+            ("backup_restore_smoke.py", "--database-url"),
             ("operational_metrics.py", "--address"),
             ("operational_metrics.py", "--database-url"),
             ("payment_reconciliation_smoke.py", "--address"),

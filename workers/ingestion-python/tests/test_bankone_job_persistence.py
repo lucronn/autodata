@@ -233,6 +233,53 @@ class AutoAPIJobPersistenceTests(unittest.TestCase):
         ]
         self.assertEqual(insert_calls[0][1][5], "catalog/first|catalog/second")
 
+    def test_persist_bankone_article_fetch_jobs_supports_address_parameter(self):
+        recorded_conninfo = {}
+
+        def fake_connect(**kwargs):
+            recorded_conninfo.update(kwargs)
+            raise RuntimeError("intercepted connection")
+
+        fake_json = types.ModuleType("psycopg.types.json")
+        fake_json.Jsonb = lambda value: value
+        fake_types = types.ModuleType("psycopg.types")
+        fake_types.json = fake_json
+        fake_psycopg = types.ModuleType("psycopg")
+        fake_psycopg.connect = fake_connect
+        fake_psycopg.types = fake_types
+        batches = [
+            BankoneBatch(
+                vehicle_key="ford-f-150-2020-us",
+                vehicle={"year": 2020, "make": "Ford", "model": "F-150", "region": "US"},
+                source_directory=None,
+                configurations=(),
+            ),
+        ]
+        selector_persistence = {
+            "source_snapshot_id": "selector-snapshot-1",
+            "observations": [
+                {"vehicle_key": "ford-f-150-2020-us", "vehicle_id": "vehicle-ford"},
+            ],
+        }
+        with patch.dict(
+            sys.modules,
+            {
+                "psycopg": fake_psycopg,
+                "psycopg.types": fake_types,
+                "psycopg.types.json": fake_json,
+            },
+        ):
+            with self.assertRaises(RuntimeError):
+                persist_bankone_article_fetch_jobs(
+                    batches,
+                    [{"vehicle_key": "ford-f-150-2020-us", "status": "pending_source"}],
+                    selector_persistence=selector_persistence,
+                    source_version="v1",
+                    address="db.cluster.internal:5434",
+                )
+        self.assertEqual(recorded_conninfo["host"], "db.cluster.internal")
+        self.assertEqual(recorded_conninfo["port"], 5434)
+
 
 if __name__ == "__main__":
     unittest.main()
