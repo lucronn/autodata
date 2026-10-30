@@ -1,0 +1,237 @@
+# Base44 development environment for the AutoData monorepo.
+#
+# Every application process runs from the bind-mounted checkout with a plain
+# runtime image (Go toolchain / Python slim), never from a prebuilt app image,
+# so edits in the repository are what the running stack serves. Infrastructure
+# (PostgreSQL + pgvector, NATS JetStream, S3) uses pinned upstream images.
+#
+# The deterministic local path needs no external credentials: sources are fake
+# fixtures and payments use the fake provider. The bank connectors
+# (BANKONE_BASE_URL / BANKTWO_BASE_URL) and the Mercury-2 extraction feature
+# flags stay off unless real values are supplied through `/run/base44/app.env`.
+name: autodata
+
+x-database-env: &database-env
+  AUTODATA_DB_ADDRESS: postgres:5432
+  AUTODATA_POSTGRES_DB: autodata
+  AUTODATA_POSTGRES_USER: autodata
+  AUTODATA_POSTGRES_PASSWORD: local-dev-only
+
+x-object-storage-env: &object-storage-env
+  AUTODATA_S3_ADDRESS: minio:9000
+  AUTODATA_S3_ENDPOINT: minio:9000
+  AUTODATA_S3_ACCESS_KEY: localadmin
+  AUTODATA_S3_SECRET_KEY: local-dev-password
+  AUTODATA_SOURCE_BUCKET: autodata-sources
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: autodata
+      POSTGRES_USER: autodata
+      POSTGRES_PASSWORD: local-dev-only
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autodata -d autodata"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: on-failure
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8222/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: on-failure
+
+  # The service keeps the name `minio` because the API and workers address S3 as
+  # `minio:9000`. The image is the public S3-compatible SeaweedFS the repository
+  # already pins for CI (the MinIO image is no longer publicly pullable).
+  minio:
+    image: ghcr.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    command: ["mini", "-dir=/data", "-s3.port=9000"]
+    environment:
+      AWS_ACCESS_KEY_ID: localadmin
+      AWS_SECRET_ACCESS_KEY: local-dev-password
+      S3_BUCKET: autodata-sources
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9333/cluster/status >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: on-failure
+
+  # Forward-only schema migrations. Every migration is idempotent, so re-running
+  # them against the persistent volume is safe on each `up`.
+  migration-runner:
+    image: postgres:17-alpine
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: autodata
+      PGUSER: autodata
+      PGPASSWORD: local-dev-only
+    command:
+      [
+        "sh",
+        "-c",
+        "set -eu; for migration in /workspace/db/migrations/[0-9][0-9][0-9]_*.sql; do echo applying $${migration}; psql --set ON_ERROR_STOP=1 --file $${migration}; done",
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Internal ingestion gateway the API forwards article intake and knowledge
+  # queries to. Same dev image as the workers; source comes from the checkout.
+  ingestion-http:
+    build:
+      context: .
+      dockerfile: .base44/ingestion-dev.Dockerfile
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      <<: [*database-env, *object-storage-env]
+      AUTODATA_INGESTION_HTTP_ADDR: ":8081"
+      AUTODATA_NATS_ADDRESS: nats:4222
+      AUTODATA_NATS_URL: nats://nats:4222
+      AUTODATA_SOURCE_PERSIST: "1"
+      AUTODATA_SOURCE_REGION: US
+      AUTODATA_SOURCE_VERSION: local-http-v1
+      AUTODATA_EMBEDDING_MODE: deterministic-fake
+      BANKONE_BASE_URL: ${BANKONE_BASE_URL:-https://bankone.cars.tk}
+      BANKTWO_BASE_URL: ${BANKTWO_BASE_URL:-https://banktwo.cars.tk}
+    command: ["python", "-m", "autodata_ingestion.http_service"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: on-failure
+
+  # The Go API serves the whole user-facing surface: `/dashboard/`, `/workshop/`,
+  # `/swagger/`, `/openapi.json` and the `/v1/catalog/*` routes. It embeds its
+  # static assets, so a source change needs `docker compose restart api`.
+  api:
+    image: golang:1.26-bookworm
+    working_dir: /src/apps/api-go
+    volumes:
+      - .:/src
+      - go-mod-cache:/go/pkg/mod
+    environment:
+      <<: [*database-env, *object-storage-env]
+      AUTODATA_API_ADDR: ":8080"
+      AUTODATA_PROJECTION_STORE: postgres
+      AUTODATA_NATS_ADDRESS: nats:4222
+      AUTODATA_INGESTION_URL: http://ingestion-http:8081
+      # Local signing key for opaque catalog-media URLs. Development value only;
+      # production replicas must share a real secret.
+      AUTODATA_IMAGE_URL_KEY: local-dev-image-url-key
+      BASE44_PREVIEW_MODE: ${BASE44_PREVIEW_MODE:-}
+    command: ["sh", "-ec", "go mod download && exec go run ."]
+    ports:
+      - "3000:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      ingestion-http:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 18
+    restart: on-failure
+    labels:
+      base44.project: "AutoData API"
+      base44.kind: web
+      base44.port: "3000"
+      base44.docs: /swagger/
+
+  # One-shot deterministic fixture and smoke checks from the README, available
+  # with `--profile smoke` but not started by the default `up`.
+  ingest-fixture:
+    profiles: ["smoke"]
+    build:
+      context: .
+      dockerfile: .base44/ingestion-dev.Dockerfile
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      <<: [*database-env, *object-storage-env]
+      AUTODATA_NATS_URL: nats://nats:4222
+      AUTODATA_FAKE_PAYMENT_SIGNING_SECRET: local-fixture-signing-key
+    command: ["python", "-m", "autodata_ingestion.ingest_fixture"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+
+  ingestion-smoke:
+    profiles: ["smoke"]
+    build:
+      context: .
+      dockerfile: .base44/ingestion-dev.Dockerfile
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      <<: [*database-env, *object-storage-env]
+      AUTODATA_NATS_URL: nats://nats:4222
+      AUTODATA_FAKE_PAYMENT_SIGNING_SECRET: local-fixture-signing-key
+    command: ["python", "scripts/dev/ingestion_smoke.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:
+  nats-data:
+  seaweedfs-data:
+  go-mod-cache:
