@@ -1,0 +1,32 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/healthz",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "INCEPTION_API_KEY",
+      "description": "Inception Labs API key used by the Mercury-2 article rewrite/extraction paths. Get it from https://platform.inceptionlabs.ai (API keys).",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "BANKONE_BASE_URL",
+      "description": "Base URL of the Bankone source connector service used to hydrate the vehicle catalog.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "BANKTWO_BASE_URL",
+      "description": "Base URL of the Banktwo source connector service used to hydrate the vehicle catalog.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "AUTODATA_BANKONE_API_KEY",
+      "description": "Bearer token for the Bankone source connector. Both connectors answer /healthz without auth but return 401 on /v1/catalog/* until a token is supplied.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "AUTODATA_BANKTWO_API_KEY",
+      "description": "Bearer token for the Banktwo source connector. Both connectors answer /healthz without auth but return 401 on /v1/catalog/* until a token is supplied.",
+      "requiredAtBoot": false
+    }
+  ]
+}
