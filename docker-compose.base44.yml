@@ -7,8 +7,9 @@
 #
 # The deterministic local path needs no external credentials: sources are fake
 # fixtures and payments use the fake provider. The bank connectors
-# (BANKONE_BASE_URL / BANKTWO_BASE_URL) and the Mercury-2 extraction feature
-# flags stay off unless real values are supplied through `/run/base44/app.env`.
+# (BANKONE_BASE_URL / BANKTWO_BASE_URL) and the Mercury-2 rewrite paths read
+# their values from the platform-managed secrets file `/run/base44/app.env`,
+# loaded after `.env.base44-defaults` so dashboard values always win.
 name: autodata
 
 x-database-env: &database-env
@@ -103,6 +104,12 @@ services:
     working_dir: /app
     volumes:
       - .:/app
+    # Provider credentials (INCEPTION_API_KEY, BANKONE_BASE_URL, BANKTWO_BASE_URL)
+    # come from the platform-managed secrets file, which is listed last so the
+    # dashboard value always wins. Non-secret tuning stays under `environment:`.
+    env_file:
+      - ./.env.base44-defaults
+      - /run/base44/app.env
     environment:
       <<: [*database-env, *object-storage-env]
       AUTODATA_INGESTION_HTTP_ADDR: ":8081"
@@ -112,8 +119,14 @@ services:
       AUTODATA_SOURCE_REGION: US
       AUTODATA_SOURCE_VERSION: local-http-v1
       AUTODATA_EMBEDDING_MODE: deterministic-fake
-      BANKONE_BASE_URL: ${BANKONE_BASE_URL:-https://bankone.cars.tk}
-      BANKTWO_BASE_URL: ${BANKTWO_BASE_URL:-https://banktwo.cars.tk}
+      BANKTWO_CATALOG_SOURCE_VERSION: ${BANKTWO_CATALOG_SOURCE_VERSION:-autoapitwo-fleet-v1}
+      BANKTWO_CATALOG_MAX_ATTEMPTS: ${BANKTWO_CATALOG_MAX_ATTEMPTS:-3}
+      AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED: ${AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED:-1}
+      INCEPTION_API_BASE_URL: ${INCEPTION_API_BASE_URL:-https://api.inceptionlabs.ai/v1}
+      INCEPTION_MODEL: ${INCEPTION_MODEL:-mercury-2}
+      INCEPTION_API_TIMEOUT_SECONDS: ${INCEPTION_API_TIMEOUT_SECONDS:-45}
+      AUTODATA_MERCURY2_JOB_PLANS_ENABLED: ${AUTODATA_MERCURY2_JOB_PLANS_ENABLED:-1}
+      AUTODATA_MERCURY2_PROCEDURE_COMPOSITION_ENABLED: ${AUTODATA_MERCURY2_PROCEDURE_COMPOSITION_ENABLED:-1}
     command: ["python", "-m", "autodata_ingestion.http_service"]
     depends_on:
       postgres:

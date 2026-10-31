@@ -31,3 +31,9 @@ replace `infra/compose/compose.yaml`.
   Connector services (`BANKONE_BASE_URL` / `BANKTWO_BASE_URL`). Without a
   reachable connector `/v1/catalog/years` correctly returns `{"items":[]}`, so
   the vehicle cascade stays empty even though the API is healthy.
+- Provider credentials are platform secrets, delivered outside the repo at
+  `/run/base44/app.env`. `ingestion-http` loads that file last (after the
+  committed `.env.base44-defaults` placeholders), so dashboard values always
+  win; never add `INCEPTION_API_KEY`, `BANKONE_BASE_URL` or `BANKTWO_BASE_URL`
+  under compose `environment:`. The non-secret Mercury-2 tuning flags
+  (`AUTODATA_MERCURY2_*`, `INCEPTION_MODEL`, ...) mirror `infra/compose`.
