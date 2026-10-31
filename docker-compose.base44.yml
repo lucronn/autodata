@@ -1,0 +1,352 @@
+# Base44 preview environment for AutoData.
+#
+# Every application service runs from the bind-mounted checkout with a
+# live-reload command, so edits in the sandbox are reflected without an image
+# rebuild. Only PostgreSQL, NATS and MinIO use prebuilt upstream images.
+#
+# Web entry point: host port 3000 -> Go API :8080 (dashboard, Workshop,
+# Swagger UI and the /v1 catalog API are all served by that single process).
+#
+# Local infrastructure credentials below are sandbox-local only. Credentials
+# for external services (bank connectors, Inception/Mercury2) are delivered by
+# the platform through /run/base44/app.env and are never set here, because
+# Compose `environment:` would permanently outrank them.
+name: autodata-base44
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: on-failure
+    environment:
+      POSTGRES_DB: autodata
+      POSTGRES_USER: autodata
+      POSTGRES_PASSWORD: local-dev-only
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autodata -d autodata"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  nats:
+    image: nats:2.10-alpine
+    restart: on-failure
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8222/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # S3-compatible object storage. The application needs bucket versioning, so
+  # LocalStack's S3 implementation stands in for MinIO (MinIO images are no
+  # longer publicly distributable).
+  object-storage:
+    image: localstack/localstack:4
+    restart: on-failure
+    environment:
+      SERVICES: s3
+      EAGER_SERVICE_LOADING: "1"
+      PERSISTENCE: "1"
+      DEBUG: "0"
+      AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      - object-storage-data:/var/lib/localstack
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4566/_localstack/health', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  # Applies db/migrations/*.sql once, in order, then exits.
+  migration-runner:
+    image: postgres:17-alpine
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace:ro
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: autodata
+      PGUSER: autodata
+      PGPASSWORD: local-dev-only
+    command:
+      - sh
+      - -c
+      - >-
+        set -eu;
+        for migration in /workspace/db/migrations/[0-9][0-9][0-9]_*.sql; do
+        echo "applying $${migration}";
+        psql --set ON_ERROR_STOP=1 --file "$${migration}" >/dev/null;
+        done;
+        echo "migrations applied"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/base44/api.dev.Dockerfile
+    restart: on-failure
+    working_dir: /src/apps/api-go
+    volumes:
+      - ./:/src
+    environment:
+      AUTODATA_API_ADDR: ":8080"
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_POSTGRES_DB: autodata
+      AUTODATA_POSTGRES_USER: autodata
+      AUTODATA_POSTGRES_PASSWORD: local-dev-only
+      AUTODATA_PROJECTION_STORE: "postgres"
+      AUTODATA_NATS_ADDRESS: "nats:4222"
+      AUTODATA_S3_ADDRESS: "object-storage:4566"
+      AUTODATA_S3_ENDPOINT: "object-storage:4566"
+      AUTODATA_S3_ACCESS_KEY: localadmin
+      AUTODATA_S3_SECRET_KEY: local-dev-password
+      AUTODATA_SOURCE_BUCKET: "autodata-sources"
+      AUTODATA_INGESTION_URL: "http://ingestion-http:8081"
+      AUTODATA_INGESTION_INTERNAL_TOKEN: local-ingestion-token
+      AUTODATA_IMAGE_URL_KEY: local-dev-image-url-key
+      AUTODATA_INGESTION_TIMEOUT_SECONDS: "120"
+    ports:
+      - "3000:8080"
+    command:
+      - air
+      - -tmp_dir=/tmp/air
+      - -build.poll=true
+      - -build.poll_interval=1000
+      - -build.delay=500
+      - -build.include_ext=go,html,mjs,css,json,yaml,ttf
+      - -build.cmd=go build -o /tmp/air/autodata-api .
+      - -build.bin=/tmp/air/autodata-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      object-storage:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+      ingestion-http:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 90s
+
+  # Internal HTTP adapter the API calls for catalog hydration and article intake.
+  ingestion-http:
+    build:
+      context: .
+      dockerfile: infra/base44/ingestion-python.dev.Dockerfile
+    restart: on-failure
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    env_file:
+      - ./.env.base44-defaults
+      - /run/base44/app.env
+    environment:
+      AUTODATA_INGESTION_HTTP_ADDR: ":8081"
+      AUTODATA_INGESTION_INTERNAL_TOKEN: local-ingestion-token
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_POSTGRES_DB: autodata
+      AUTODATA_POSTGRES_USER: autodata
+      AUTODATA_POSTGRES_PASSWORD: local-dev-only
+      AUTODATA_S3_ADDRESS: "object-storage:4566"
+      AUTODATA_S3_ENDPOINT: "object-storage:4566"
+      AUTODATA_S3_ACCESS_KEY: localadmin
+      AUTODATA_S3_SECRET_KEY: local-dev-password
+      AUTODATA_SOURCE_BUCKET: "autodata-sources"
+      AUTODATA_SOURCE_PERSIST: "1"
+      AUTODATA_SOURCE_REGION: "US"
+      AUTODATA_SOURCE_VERSION: "local-http-v1"
+      AUTODATA_EMBEDDING_MODE: "deterministic-fake"
+      AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED: "1"
+      AUTODATA_MERCURY2_JOB_PLANS_ENABLED: "1"
+      AUTODATA_MERCURY2_PROCEDURE_COMPOSITION_ENABLED: "1"
+    command: ["python", "-m", "autodata_ingestion.http_service"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      object-storage:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  ingestion-worker:
+    build:
+      context: .
+      dockerfile: infra/base44/ingestion-python.dev.Dockerfile
+    restart: on-failure
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    env_file:
+      - ./.env.base44-defaults
+      - /run/base44/app.env
+    environment:
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_POSTGRES_DB: autodata
+      AUTODATA_POSTGRES_USER: autodata
+      AUTODATA_POSTGRES_PASSWORD: local-dev-only
+      AUTODATA_NATS_ADDRESS: "nats:4222"
+      AUTODATA_NATS_URL: "nats://nats:4222"
+      AUTODATA_S3_ADDRESS: "object-storage:4566"
+      AUTODATA_S3_ENDPOINT: "object-storage:4566"
+      AUTODATA_S3_ACCESS_KEY: localadmin
+      AUTODATA_S3_SECRET_KEY: local-dev-password
+      AUTODATA_SOURCE_BUCKET: "autodata-sources"
+      AUTODATA_SOURCE_PERSIST: "1"
+      AUTODATA_SOURCE_REGION: "US"
+      AUTODATA_EMBEDDING_MODE: "deterministic-fake"
+      AUTODATA_FAST_CONSUMER_ENABLED: "0"
+      AUTODATA_KNOWLEDGE_CONSUMER_ENABLED: "0"
+      AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED: "1"
+      AUTODATA_MERCURY2_JOB_PLANS_ENABLED: "1"
+      AUTODATA_MERCURY2_PROCEDURE_COMPOSITION_ENABLED: "1"
+    command: ["python", "-m", "autodata_ingestion.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      object-storage:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "from autodata_ingestion.worker import run_once; assert run_once()['status'] == 'idle'"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 30s
+
+  enrichment-worker:
+    build:
+      context: .
+      dockerfile: infra/base44/enrichment-python.dev.Dockerfile
+    restart: on-failure
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    environment:
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_POSTGRES_DB: autodata
+      AUTODATA_POSTGRES_USER: autodata
+      AUTODATA_POSTGRES_PASSWORD: local-dev-only
+      AUTODATA_NATS_ADDRESS: "nats:4222"
+      AUTODATA_S3_ADDRESS: "object-storage:4566"
+      AUTODATA_EMBEDDING_MODE: "deterministic-fake"
+      AUTODATA_VIEWABLE_CONSUMER_ENABLED: "0"
+      AUTODATA_DEEP_CONSUMER_ENABLED: "0"
+    command: ["python", "-m", "autodata_enrichment.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      object-storage:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "from autodata_enrichment.worker import run_once; assert run_once()['status'] == 'idle'"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 20s
+
+  outbox-relay:
+    build:
+      context: .
+      dockerfile: infra/base44/enrichment-python.dev.Dockerfile
+    restart: on-failure
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    environment:
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_POSTGRES_DB: autodata
+      AUTODATA_POSTGRES_USER: autodata
+      AUTODATA_POSTGRES_PASSWORD: local-dev-only
+      AUTODATA_NATS_URL: "nats://nats:4222"
+      AUTODATA_EMBEDDING_MODE: "deterministic-fake"
+      AUTODATA_OUTBOX_BATCH_SIZE: "50"
+      AUTODATA_OUTBOX_MAX_ATTEMPTS: "3"
+      AUTODATA_OUTBOX_POLL_SECONDS: "5"
+    command: ["python", "scripts/dev/outbox_relay.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import psycopg, socket; socket.create_connection(('postgres', 5432), timeout=2); psycopg.connect('host=postgres port=5432 dbname=autodata user=autodata password=local-dev-only').close()
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 20s
+
+  payment-reconciler:
+    build:
+      context: .
+      dockerfile: infra/base44/ingestion-python.dev.Dockerfile
+    restart: on-failure
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    environment:
+      AUTODATA_DB_ADDRESS: "postgres:5432"
+      AUTODATA_POSTGRES_DB: autodata
+      AUTODATA_POSTGRES_USER: autodata
+      AUTODATA_POSTGRES_PASSWORD: local-dev-only
+      AUTODATA_PAYMENT_RECONCILE_POLL_SECONDS: "15"
+      AUTODATA_PAYMENT_RECONCILE_BATCH_SIZE: "50"
+    command: ["python", "scripts/dev/reconcile_payments.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration-runner:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import psycopg; psycopg.connect('host=postgres port=5432 dbname=autodata user=autodata password=local-dev-only').close()
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  postgres-data:
+  nats-data:
+  object-storage-data:

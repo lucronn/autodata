@@ -1,0 +1,22 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/healthz",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "AUTODATA_BANKTWO_API_KEY",
+      "description": "Banktwo source-connector API key (https://banktwo.cars.tk). Required to hydrate the vehicle catalog that the Workshop and /v1/catalog/* browse. The stack boots without it, but catalog lookups return no years until it is set.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "AUTODATA_BANKONE_API_KEY",
+      "description": "Bankone source-connector API key (https://bankone.cars.tk). Used by the bankone batch/article ingestion paths; optional for browsing the preview.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "INCEPTION_API_KEY",
+      "description": "Inception Labs API key for the Mercury2 job-plan and procedure-composition features. Optional: the deterministic local path does not need it.",
+      "requiredAtBoot": false
+    }
+  ]
+}
