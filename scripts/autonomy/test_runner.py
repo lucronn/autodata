@@ -19,6 +19,13 @@ from runner import (
 
 
 class RunnerTests(unittest.TestCase):
+    def _frozen_review_prompt(self):
+        prompt = (Path(__file__).resolve().parents[2] / '.cursor/agents/autodata-review-agent.md').read_bytes()
+        # Bind the complete prompt at gated base 5da393 without requiring its Git object in shallow CI.
+        self.assertEqual(hashlib.sha256(prompt).hexdigest(),
+                         'd43f9a584cd5e65b823b1ee401b744e5e4d9923b2e57cd9517cdd7832ade09ed')
+        return prompt.decode('utf-8', errors='strict')
+
     def _environment_fixture(self, *, nested=False, source_output=False):
         from test_app_server_adapter import fake_codex, boundary
         with tempfile.TemporaryDirectory() as directory:
@@ -122,7 +129,7 @@ print('nested owned cleanup and provider guards verified')
         self._environment_fixture(source_output=True)
 
     def test_runtime_fixture_assigned_verifier_prompt_scopes_local_decision(self):
-        base=r._run_git(Path(__file__).resolve().parents[2],['show','5da393f3bf9e974c64457290cffb1a6dfdd4f92e:.cursor/agents/autodata-review-agent.md'])
+        base=self._frozen_review_prompt()
         task=json.loads((Path(__file__).resolve().parents[2]/'docs/agents/tasks/2026-11-03-production-release/runtime-fixture.json').read_text())
         assigned=[c['check_id'] for c in task['verification']['checks'] if c['gate']=='independent_review']
         commands=[{'check_id':assigned[0],'status':'completed','exit_code':0}]
@@ -143,7 +150,7 @@ print('nested owned cleanup and provider guards verified')
         self.assertNotIn('UPSTREAM GATE REPORTS:',prompt)
 
     def test_nonfixture_review_retains_full_review_duty(self):
-        base=r._run_git(Path(__file__).resolve().parents[2],['show','5da393f3bf9e974c64457290cffb1a6dfdd4f92e:.cursor/agents/autodata-review-agent.md'])
+        base=self._frozen_review_prompt()
         for task_id,role,ids in (('release-task','verification',['check']),('production-release-runtime-fixture','architecture',[]),('production-release-runtime-fixture','implementation',[])):
             prompt=r.build_agent_prompt(base,{'task_id':task_id},[],[],{},role=role,check_ids=ids)
             self.assertTrue(prompt.startswith(base))
