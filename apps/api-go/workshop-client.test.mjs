@@ -229,6 +229,192 @@ test('confirmed cookie-only logout prepares memory-only SDK for the next explici
   assert.equal(loaded, 1);
 });
 
+// Keep SDK/browser transport external while exercising the real session state machine.
+function deferredAuthOperation() {
+  let resolve, reject;
+  const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
+}
+
+async function sessionPreparationHarness({ authenticated = false, persistence = async () => {}, constructProvider = () => {}, popup } = {}) {
+  const { createSession } = await import('./workshop/auth.mjs');
+  const calls = { loads: 0, initializations: 0, providers: 0, persistence: 0, popups: 0, signouts: 0, exchanges: 0 };
+  const changes = [], user = {}, auth = {};
+  let provider;
+  const sdk = {
+    initializeApp: () => ({}),
+    initializeAuth: (_app, options) => {
+      assert.equal(options.persistence, sdk.inMemoryPersistence);
+      assert.equal(options.popupRedirectResolver, sdk.browserPopupRedirectResolver);
+      calls.initializations++;
+      return auth;
+    },
+    inMemoryPersistence: {}, browserPopupRedirectResolver: {},
+    setPersistence: (actualAuth, value) => {
+      assert.equal(actualAuth, auth);
+      assert.equal(value, sdk.inMemoryPersistence);
+      return persistence(++calls.persistence);
+    },
+    GoogleAuthProvider: class {
+      constructor() { constructProvider(++calls.providers); provider = this; }
+    },
+    signInWithPopup: (actualAuth, actualProvider) => {
+      calls.popups++;
+      assert.equal(actualAuth, auth);
+      assert.ok(actualProvider instanceof sdk.GoogleAuthProvider);
+      assert.equal(actualProvider, provider);
+      return popup ? popup() : Promise.resolve({ user });
+    },
+    getIdTokenResult: async (actualUser, forceRefresh) => {
+      assert.equal(actualUser, user);
+      assert.equal(forceRefresh, true);
+      return { token: 'synthetic-token', authTime: new Date().toISOString() };
+    },
+    signOut: async actualAuth => { assert.equal(actualAuth, auth); calls.signouts++; },
+  };
+  const session = createSession({
+    loadSDK: async () => { calls.loads++; return sdk; },
+    onChange: state => changes.push({ ...state, providerPresent: provider !== undefined }),
+    request: async (path, options) => {
+      if (path === '/auth/config') return { version: 'v1', mode: 'firebase', login_available: true, providers: ['google.com'], firebase: { apiKey: 'fixture', authDomain: 'fixture-project.firebaseapp.com', projectId: 'fixture-project', appId: '1:123:web:abc' } };
+      if (path === '/auth/session') {
+        if (!authenticated) throw Object.assign(new Error('signed out'), { status: 401 });
+        return { authenticated: true, roles: ['dataset_viewer'], csrf_token: 'cookie-csrf', expires_at: '2099-01-01T00:00:00Z' };
+      }
+      if (path === '/auth/logout') {
+        assert.equal(options.headers['X-CSRF-Token'], 'cookie-csrf');
+        authenticated = false;
+        return null;
+      }
+      assert.equal(path, '/auth/firebase/session');
+      assert.equal(options.method, 'POST');
+      assert.deepEqual(options.body, { id_token: 'synthetic-token' });
+      assert.deepEqual(options.headers, { 'X-Autodata-Session-Exchange': '1' });
+      calls.exchanges++;
+      authenticated = true;
+      return null;
+    },
+  });
+  return { session, calls, changes };
+}
+
+test('logout preparation preserves provider readiness across an epoch-changing bootstrap', async () => {
+  const started = deferredAuthOperation(), firstPersistence = deferredAuthOperation();
+  const { session, calls, changes } = await sessionPreparationHarness({
+    authenticated: true,
+    persistence: attempt => {
+      if (attempt === 1) { started.resolve(); return firstPersistence.promise; }
+      return Promise.resolve();
+    },
+  });
+  await session.bootstrap();
+  assert.equal(calls.loads, 0, 'cookie authority needs no SDK recovery');
+  const logout = session.logout();
+  await started.promise;
+  assert.equal(session.state.ready, false);
+  try {
+    await session.bootstrap();
+    assert.equal(session.state.ready, true);
+    assert.equal(calls.providers, 1, 'ready must include a Google provider');
+  } finally {
+    firstPersistence.resolve();
+    assert.equal(await logout, true);
+  }
+  assert.ok(changes.filter(state => state.ready).every(state => state.providerPresent));
+  const signingIn = session.signIn();
+  assert.equal(calls.popups, 1, 'popup starts before yielding');
+  await signingIn;
+  assert.equal(calls.initializations, 1);
+  assert.equal(calls.providers, 1);
+  assert.equal(calls.exchanges, 1);
+  assert.equal(session.state.authenticated, true);
+  assert.equal(session.state.csrf, 'cookie-csrf');
+});
+
+test('provider constructor failures stay unavailable until an existing-auth retry succeeds', async () => {
+  const { session, calls, changes } = await sessionPreparationHarness({
+    constructProvider: attempt => { if (attempt <= 2) throw new Error('private constructor detail'); },
+  });
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await assert.doesNotReject(session.bootstrap());
+    assert.equal(session.state.ready, false);
+    assert.equal(session.state.message, 'Google sign-in is unavailable. You can keep browsing.');
+    await assert.rejects(session.signIn(), /Sign-in is unavailable/);
+    assert.equal(calls.popups, 0);
+  }
+  await session.bootstrap();
+  assert.equal(session.state.ready, true);
+  assert.equal(calls.initializations, 1);
+  assert.equal(calls.providers, 3);
+  assert.ok(changes.filter(state => state.ready).every(state => state.providerPresent));
+  await session.signIn();
+  assert.equal(session.state.authenticated, true);
+  assert.equal(calls.exchanges, 1);
+});
+
+test('existing-auth persistence failure stays unavailable and permits a later retry', async () => {
+  const { session, calls } = await sessionPreparationHarness({
+    persistence: async attempt => { if (attempt === 2) throw new Error('private persistence detail'); },
+  });
+  await session.bootstrap();
+  assert.equal(session.state.ready, true);
+  await assert.doesNotReject(session.bootstrap());
+  assert.equal(session.state.ready, false);
+  assert.equal(session.state.message, 'Google sign-in is unavailable. You can keep browsing.');
+  await assert.rejects(session.signIn(), /Sign-in is unavailable/);
+  assert.equal(calls.popups, 0);
+  await session.bootstrap();
+  assert.equal(session.state.ready, true);
+  await session.signIn();
+  assert.equal(session.state.authenticated, true);
+});
+
+for (const pausedAttempt of [1, 2]) {
+  test(`stale ${pausedAttempt === 1 ? 'initial' : 'existing-auth'} preparation failure cannot overwrite current readiness`, async () => {
+    const started = deferredAuthOperation(), pendingPersistence = deferredAuthOperation();
+    const { session, changes } = await sessionPreparationHarness({
+      persistence: attempt => {
+        if (attempt === pausedAttempt) { started.resolve(); return pendingPersistence.promise; }
+        return Promise.resolve();
+      },
+    });
+    if (pausedAttempt === 2) await session.bootstrap();
+    const staleBootstrap = session.bootstrap();
+    await started.promise;
+    await session.bootstrap();
+    assert.equal(session.state.ready, true);
+    const currentState = { ...session.state }, changeCount = changes.length;
+    pendingPersistence.reject(new Error('private stale failure'));
+    await assert.doesNotReject(staleBootstrap);
+    assert.deepEqual(session.state, currentState);
+    assert.equal(changes.length, changeCount);
+    await session.signIn();
+    assert.equal(session.state.authenticated, true);
+  });
+}
+
+for (const mode of ['synchronous popup invocation', 'asynchronous popup rejection']) {
+  test(`${mode} failure restores readiness without deferring the popup`, async () => {
+    const error = Object.assign(new Error('private popup detail'), { code: 'auth/internal-error' });
+    const { session, calls } = await sessionPreparationHarness({
+      popup: () => { if (mode === 'synchronous popup invocation') throw error; return Promise.reject(error); },
+    });
+    await session.bootstrap();
+    let signingIn;
+    assert.doesNotThrow(() => { signingIn = session.signIn(); });
+    assert.ok(signingIn instanceof Promise);
+    assert.equal(calls.popups, 1, 'popup starts before yielding');
+    assert.equal(session.state.ready, false);
+    await assert.doesNotReject(signingIn);
+    assert.equal(session.state.ready, true);
+    assert.equal(session.state.authenticated, false);
+    assert.equal(session.state.csrf, '');
+    assert.equal(session.state.message, 'Google sign-in is unavailable. You can keep browsing.');
+    assert.equal(calls.signouts, 1);
+    assert.equal(calls.exchanges, 0);
+  });
+}
+
 // Execute production app boundaries without starting its browser bootstrap.
 function appSection(start, end) {
   const source = readFileSync(new URL('./workshop/app.mjs', import.meta.url), 'utf8');
