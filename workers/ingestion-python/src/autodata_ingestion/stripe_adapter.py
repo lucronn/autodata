@@ -54,7 +54,7 @@ class StripePaymentProvider:
         if dataset_request_id and dataset_request_id.strip():
             metadata["dataset_request_id"] = dataset_request_id.strip()
 
-        session = self._client.checkout.sessions.create(
+        session = _stripe_dict(self._client.v1.checkout.sessions.create(dict(
             mode="payment",
             line_items=[
                 {
@@ -65,7 +65,7 @@ class StripePaymentProvider:
             success_url=self._success_url,
             cancel_url=self._cancel_url,
             metadata=metadata,
-        )
+        )))
         session_id = str(session.get("id", "")).strip()
         checkout_url = str(session.get("url", "")).strip()
         if not session_id or not checkout_url:
@@ -85,11 +85,12 @@ class StripePaymentProvider:
         if not signature:
             raise ValueError("Stripe-Signature header is required")
         try:
-            event = self._stripe.Webhook.construct_event(
+            event = _stripe_dict(self._stripe.Webhook.construct_event(
                 body,
                 signature,
                 self._webhook_secret,
-            )
+                tolerance=300,
+            ))
         except Exception as exc:  # Stripe SDK raises provider-specific exceptions.
             raise ValueError("Stripe webhook signature verification failed") from exc
 
@@ -118,6 +119,75 @@ class StripePaymentProvider:
         return normalized
 
 
+    def verify_merchant(self, expected_account: str) -> None:
+        account = _stripe_dict(self._client.v1.accounts.retrieve_current())
+        if account.get('id') != expected_account:
+            raise ValueError('Stripe merchant configuration mismatch')
+
+    def create_order_checkout(self, order: Mapping[str, Any]) -> dict[str, Any]:
+        """Only server-stored order parameters enter the official SDK call."""
+        first = order['first_create_attempt_at']
+        stamp = int(first.timestamp()) if hasattr(first, 'timestamp') else int(first)
+        metadata = {'order_id': str(order['order_id'])}
+        return _stripe_dict(self._client.v1.checkout.sessions.create({
+            'mode': 'payment', 'payment_method_types': ['card'],
+            'line_items': [{'price': order['expected_price_id'], 'quantity': 1}],
+            'success_url': self._success_url + '?order=' + str(order['order_id']),
+            'cancel_url': self._cancel_url + '?order=' + str(order['order_id']),
+            'expires_at': stamp + 3600, 'metadata': metadata,
+            'payment_intent_data': {'capture_method': 'automatic', 'metadata': metadata},
+        }, options={'idempotency_key': order['provider_idempotency_key']}))
+
+    def retrieve_order_session(self, session_id: str) -> dict[str, Any]:
+        return _stripe_dict(self._client.v1.checkout.sessions.retrieve(session_id,
+            params={'expand': ['line_items.data.price', 'payment_intent']}))
+
+    def expire_order_session(self, session_id: str) -> dict[str, Any]:
+        return _stripe_dict(self._client.v1.checkout.sessions.expire(session_id))
+
+    def retrieve_payment_intent(self, intent_id: str) -> dict[str, Any]:
+        return _stripe_dict(self._client.v1.payment_intents.retrieve(intent_id))
+
+    def cancel_payment_intent(self, intent_id: str) -> dict[str, Any]:
+        return _stripe_dict(self._client.v1.payment_intents.cancel(intent_id))
+
+    def verify_commerce_webhook(self, headers: Mapping[str, str], body: bytes) -> dict[str, Any]:
+        signature = _stripe_signature(headers)
+        if not signature:
+            raise ValueError('Stripe signature is required')
+        try:
+            event = _stripe_dict(self._stripe.Webhook.construct_event(body, signature, self._webhook_secret, tolerance=300))
+        except Exception:
+            raise ValueError('Stripe signature verification failed') from None
+        event_id, event_type = event.get('id'), event.get('type')
+        if not isinstance(event_id, str) or not event_id or not isinstance(event_type, str):
+            raise ValueError('Stripe event identity is missing')
+        if event_type not in ('checkout.session.completed', 'checkout.session.expired',
+                              'payment_intent.succeeded', 'charge.refunded', 'charge.dispute.closed'):
+            return {'provider_name': 'stripe', 'provider_event_id': event_id, 'event_type': 'ignored'}
+        obj = event.get('data', {}).get('object', {})
+        if not isinstance(obj, Mapping) or type(event.get('livemode')) is not bool or type(event.get('created')) is not int:
+            raise ValueError('Stripe event shape is invalid')
+        metadata = obj.get('metadata', {})
+        intent = obj.get('payment_intent')
+        if isinstance(intent, Mapping):
+            intent = intent.get('id')
+        # Only immutable signed facts belong to the replay payload. Expanded
+        # retrieval observations are never merged into this object.
+        result = {'provider_name': 'stripe', 'provider_event_id': event_id,
+                  'event_type': event_type, 'kind': 'workshop',
+                  'occurred_at': event['created'], 'livemode': event['livemode'],
+                  'order_id': metadata.get('order_id') if isinstance(metadata, Mapping) else None,
+                  'object_id': obj.get('id'),
+                  'checkout_session_id': obj.get('id') if event_type.startswith('checkout.session.') else None,
+                  'payment_intent_id': obj.get('id') if event_type.startswith('payment_intent.') else intent}
+        for key in ('amount', 'amount_total', 'amount_refunded', 'currency', 'refunded', 'status', 'payment_status'):
+            value = obj.get(key)
+            if isinstance(value, (str, int, bool)) or value is None:
+                result[key] = value
+        return result
+
+
 def _stripe_signature(headers: Mapping[str, str] | str) -> str:
     if isinstance(headers, str):
         prefix, separator, value = headers.partition(":")
@@ -128,3 +198,13 @@ def _stripe_signature(headers: Mapping[str, str] | str) -> str:
         if key.lower() == "stripe-signature":
             return str(value).strip()
     return ""
+
+
+def _stripe_dict(value: Any) -> dict[str, Any]:
+    # Stripe16 resources are no longer dict subclasses; to_dict recursively
+    # converts nested StripeObjects. Explicit injected mappings remain supported.
+    if hasattr(value, 'to_dict'):
+        return value.to_dict()
+    if isinstance(value, Mapping):
+        return dict(value)
+    raise ValueError('Stripe response shape is invalid')
