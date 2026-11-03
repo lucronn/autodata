@@ -23,6 +23,9 @@ type PaidArticleIdentity struct {
 	SourceArticleRef        string
 	CurrentSourceRevisionID *string
 }
+type paidArticleDescriptorStore interface {
+	PaidArticleDescriptors(context.Context, Principal, string) ([]CatalogArticle, error)
+}
 type paidArticleIdentityStore interface {
 	PaidArticleIdentity(context.Context, string, string) (PaidArticleIdentity, error)
 }
@@ -86,6 +89,37 @@ func (s *Server) writePaidCatalogError(w http.ResponseWriter, r *http.Request, e
 	// Do not send raw paths/errors to catalog logging: media paths contain tokens.
 	writeAPIError(w, r, status, code, message, retryable)
 }
+
+// Paid descriptors use one metadata-only query, including descriptor rights.
+// Do not call the legacy union or load documents/individual article projections.
+func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Principal, configurationID string) ([]CatalogArticle, error) {
+	if !commerceUUID(configurationID) {
+		return nil, ErrCatalogNotFound
+	}
+	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status FROM canonical_articles a JOIN catalog_article_current c USING(canonical_article_id) JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id WHERE a.vehicle_configuration_id::text=$1 AND `+lifecycleEligibleSQL+` AND c.takedown_status='active' AND descriptor.takedown_status='active' ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []CatalogArticle{}
+	for rows.Next() {
+		var article CatalogArticle
+		if err = rows.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus); err != nil {
+			return nil, err
+		}
+		article.CanonicalArticleID = stringPointer(article.ID)
+		article.VehicleID = configurationID
+		article.Images = []CatalogImage{}
+		article.Complete = article.CanonicalRevisionID != nil
+		article.ContentStatus = "list_only"
+		if article.Complete {
+			article.ContentStatus = "content_complete"
+		}
+		result = append(result, article)
+	}
+	return result, rows.Err()
+}
+
 func (s *postgresCatalogStore) PaidArticleIdentity(ctx context.Context, configurationID, articleID string) (PaidArticleIdentity, error) {
 	var identity PaidArticleIdentity
 	if !commerceUUID(configurationID) || !commerceUUID(articleID) {

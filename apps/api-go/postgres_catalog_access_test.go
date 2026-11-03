@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -51,7 +53,26 @@ type paidFixtureOwner struct {
 	token   string
 	session customerSession
 }
+type paidHTTPObservation struct {
+	Method         string            `json:"method"`
+	Path           string            `json:"path"`
+	OwnerIndex     int               `json:"owner_index"`
+	Status         int               `json:"status"`
+	Headers        map[string]string `json:"headers"`
+	Body           any               `json:"body,omitempty"`
+	BodySHA256     string            `json:"body_sha256"`
+	BodySize       int               `json:"body_size"`
+	BodyTruncated  bool              `json:"body_truncated"`
+	ReaderBefore   int64             `json:"reader_before"`
+	ReaderAfter    int64             `json:"reader_after"`
+	IdentityBefore int64             `json:"identity_before"`
+	IdentityAfter  int64             `json:"identity_after"`
+}
+
 type paidFixture struct {
+	observationMu                                                                             sync.Mutex
+	observations                                                                              []paidHTTPObservation
+	heldModelReceipt                                                                          map[string]any
 	t                                                                                         *testing.T
 	pool                                                                                      *pgxpool.Pool
 	control                                                                                   *r3Fixture
@@ -162,7 +183,7 @@ func paidSetup(t *testing.T) *paidFixture {
 		t.Fatal("control token required")
 	}
 	t.Cleanup(func() {
-		raw, _ := json.MarshalIndent(map[string]any{"phase_snapshots": f.phases, "assertion_results": f.assertions, "observed_views": f.views, "identity_checks": f.verifier.calls.Load(), "reader_calls": f.reader.calls.Load()}, "", "  ")
+		raw, _ := json.MarshalIndent(map[string]any{"phase_snapshots": f.phases, "assertion_results": f.assertions, "observed_views": f.views, "identity_checks": f.verifier.calls.Load(), "reader_calls": f.reader.calls.Load(), "http_observations": f.observations, "held_model_receipt": f.heldModelReceipt}, "", "  ")
 		if err := os.WriteFile(filepath.Join(os.Getenv("AUTODATA_CATALOG_TEST_CASE_DIR"), "go-measurement.json"), raw, 0644); err != nil {
 			t.Error(err)
 		}
@@ -218,6 +239,48 @@ func (f *paidFixture) grant(owner int, configuration, region string) string {
 func (f *paidFixture) path(suffix string) string {
 	return "/v1/catalog/vehicles/" + f.configuration + "/articles" + suffix
 }
+
+// Redact only capability strings. Unexpected keys/private source strings remain
+// visible in the permitted JSON/HTML projection for independent leak detection.
+var paidObservationMediaURL = regexp.MustCompile(`/v1/catalog/images/[A-Za-z0-9_.-]+`)
+
+func paidObservationRedact(value string) string {
+	return paidObservationMediaURL.ReplaceAllStringFunc(value, func(url string) string {
+		sum := sha256.Sum256([]byte(strings.TrimPrefix(url, "/v1/catalog/images/")))
+		return "/v1/catalog/images/[sha256:" + hex.EncodeToString(sum[:]) + "]"
+	})
+}
+func (f *paidFixture) observe(owner int, method, path string, status int, headers http.Header, raw []byte, readerBefore, identityBefore int64) {
+	sum := sha256.Sum256(raw)
+	observation := paidHTTPObservation{Method: method, Path: paidObservationRedact(path), OwnerIndex: owner, Status: status, Headers: map[string]string{}, BodySHA256: hex.EncodeToString(sum[:]), BodySize: len(raw), ReaderBefore: readerBefore, ReaderAfter: f.reader.calls.Load(), IdentityBefore: identityBefore, IdentityAfter: f.verifier.calls.Load()}
+	for _, key := range []string{"Content-Type", "Cache-Control", "Cross-Origin-Resource-Policy", "X-Content-Type-Options", "Content-Security-Policy", "Referrer-Policy", "Retry-After"} {
+		if value := headers.Get(key); value != "" {
+			observation.Headers[key] = value
+		}
+	}
+	contentType := headers.Get("Content-Type")
+	if strings.HasPrefix(contentType, "application/json") || strings.HasPrefix(contentType, "text/html") {
+		projection := raw
+		if len(projection) > 256<<10 {
+			projection = projection[:256<<10]
+			observation.BodyTruncated = true
+		}
+		redacted := paidObservationRedact(string(projection))
+		if strings.HasPrefix(contentType, "application/json") && !observation.BodyTruncated {
+			var body any
+			if json.Unmarshal([]byte(redacted), &body) == nil {
+				observation.Body = body
+			} else {
+				observation.Body = redacted
+			}
+		} else {
+			observation.Body = redacted
+		}
+	}
+	f.observationMu.Lock()
+	defer f.observationMu.Unlock()
+	f.observations = append(f.observations, observation)
+}
 func (f *paidFixture) call(owner int, method, path, body string) (int, []byte, http.Header) {
 	f.t.Helper()
 	index := 0
@@ -242,6 +305,7 @@ func (f *paidFixture) call(owner int, method, path, body string) (int, []byte, h
 	client := *api.Client()
 	client.Timeout = 10 * time.Second
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	readerBefore, identityBefore := f.reader.calls.Load(), f.verifier.calls.Load()
 	response, err := client.Do(r)
 	if err != nil {
 		f.t.Fatal("actual paid HTTP request failed", err)
@@ -256,6 +320,7 @@ func (f *paidFixture) call(owner int, method, path, body string) (int, []byte, h
 			f.t.Fatal("protected response lacks private no-store")
 		}
 	}
+	f.observe(owner, method, path, response.StatusCode, response.Header, raw, readerBefore, identityBefore)
 	return response.StatusCode, raw, response.Header
 }
 func (f *paidFixture) expect(owner int, method, path, body string, want int) []byte {
@@ -335,6 +400,7 @@ func TestPostgresPaidCatalogGrantBeforeWork(t *testing.T) {
 	for _, suffix := range []string{"", "/" + f.article, "/" + f.article + "/source"} {
 		f.expect(1, "GET", f.path(suffix), "", 401)
 	}
+	f.expect(1, "POST", f.path("/"+f.article+"/prepare"), "{}", 401)
 	f.image(1, "/v1/catalog/images/invalid-v2-token", 401)
 	f.check("expired_session_denied_before_work", paidWorkUnchanged(selectors, f.snapshot("expired")))
 	f.grant(0, f.configuration, "US")
@@ -357,9 +423,19 @@ func TestPostgresPaidCatalogExactScopeAndOwnerIsolation(t *testing.T) {
 	f := paidSetup(t)
 	order := f.grant(0, f.configuration, "US")
 	f.grant(1, f.adjacent, "US")
-	f.expect(0, "GET", f.path(""), "", 200)
+	var descriptors CatalogArticlesResponse
+	if json.Unmarshal(f.expect(0, "GET", f.path(""), "", 200), &descriptors) != nil {
+		t.Fatal("exact-scope descriptor JSON invalid")
+	}
+	ids := map[string]bool{}
+	for _, article := range descriptors.Items {
+		ids[article.ID] = true
+		if article.CanonicalArticleID == nil || *article.CanonicalArticleID != article.ID {
+			t.Fatal("paid index exposed unmanaged identity")
+		}
+	}
 	f.expect(1, "GET", f.path(""), "", 403)
-	f.check("exact_scope_grants", true)
+	f.check("exact_scope_grants", len(ids) == 2 && ids[f.article] && ids[f.other])
 	for _, id := range []string{f.vehicle, f.adjacent, f.regionConfiguration} {
 		want := 403
 		if id == f.vehicle {
@@ -419,6 +495,7 @@ func TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse(t *testing.T) {
 	held := f.control.wait("model-held", func(m map[string]any) bool {
 		return r3Int(m, "downstream_waiting") == 1 && m["response_captured"] == true
 	})
+	f.heldModelReceipt = held
 	f.check("actual_model_response_held", held["response_captured"] == true)
 	source := f.detail(0)
 	f.check("source_readable_during_hold", r3Origin(source, "source") && source.Processing != nil)
@@ -553,12 +630,14 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	request, _ := http.NewRequest("GET", f.servers[0].URL+sourcePath, nil)
 	request.Header.Set("Accept", "text/html")
 	request.AddCookie(customerSessionCookie(f.owners[0].token, f.owners[0].session.ExpiresAt, time.Now()))
+	readerBefore, identityBefore := f.reader.calls.Load(), f.verifier.calls.Load()
 	response, err := f.servers[0].Client().Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	html, _ := io.ReadAll(response.Body)
 	response.Body.Close()
+	f.observe(0, "GET", sourcePath, response.StatusCode, response.Header, html, readerBefore, identityBefore)
 	f.check("source_html_json_media", response.StatusCode == 200 && bytes.Contains(html, []byte("<img")))
 	f.controlPaid("refresh-source")
 	f.control.wait("snapshot", func(s map[string]any) bool { return r3Int(r3Map(s, "counts"), "published_revisions") == 2 })
@@ -583,6 +662,15 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	f.expect(0, "GET", f.path("/"+f.article), "", 410)
 	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE content_sha256::text IN (SELECT asset->>'sha256' FROM canonical_article_source_revisions, jsonb_array_elements(resource_manifest) asset WHERE source_revision_id=$1::uuid AND asset->>'role'='asset')`, *fresh.SourceRevisionID)
 	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=(SELECT descriptor_source_snapshot_id FROM canonical_articles WHERE canonical_article_id=$1::uuid)`, f.article)
+	var index CatalogArticlesResponse
+	if json.Unmarshal(f.expect(0, "GET", f.path(""), "", 200), &index) != nil {
+		t.Fatal("descriptor index JSON invalid")
+	}
+	for _, descriptor := range index.Items {
+		if descriptor.ID == f.article {
+			t.Fatal("withdrawn descriptor exposed by paid index")
+		}
+	}
 	f.expect(0, "GET", f.path("/"+f.article), "", 410)
 	f.image(0, fresh.Images[0].URL, 410)
 	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=(SELECT descriptor_source_snapshot_id FROM canonical_articles WHERE canonical_article_id=$1::uuid)`, f.article)
@@ -645,6 +733,7 @@ func TestPostgresPaidCatalogCustomerLegacyRoutesDenied(t *testing.T) {
 	local := catalogServer(catalogFixtureStore())
 	w := httptest.NewRecorder()
 	local.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/vehicle-1/articles/article-1", nil))
+	f.observe(-1, "GET", "/v1/catalog/vehicles/vehicle-1/articles/article-1", w.Code, w.Header(), w.Body.Bytes(), f.reader.calls.Load(), f.verifier.calls.Load())
 	f.check("explicit_local_compatibility", w.Code == 200 && !local.paidCatalogEnabled())
 	f.snapshot("final")
 }

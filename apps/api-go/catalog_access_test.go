@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -104,6 +106,9 @@ func (c *paidHTTPStore) ConfigurationByVehicle(_ context.Context, _ Principal, i
 		}
 	}
 	return CatalogConfiguration{}, ErrCatalogNotFound
+}
+func (c *paidHTTPStore) PaidArticleDescriptors(ctx context.Context, p Principal, id string) ([]CatalogArticle, error) {
+	return c.Articles(ctx, p, id)
 }
 func (c *paidHTTPStore) Articles(ctx context.Context, p Principal, id string) ([]CatalogArticle, error) {
 	c.protected++
@@ -235,5 +240,30 @@ func TestPaidCatalogProductionDependenciesFailClosed(t *testing.T) {
 	s.customerAuth = nil
 	if s.validatePaidCatalogDependencies() != nil {
 		t.Fatal("explicit local injection lost compatibility")
+	}
+}
+
+func TestPaidHTTPObservationPreservesEvidenceAndRedactsCapabilitiesConcurrently(t *testing.T) {
+	f := &paidFixture{reader: &paidFixtureReader{}, verifier: &paidFixtureVerifier{}}
+	const token = "v2.synthetic-private-capability"
+	raw := []byte(`{"images":[{"url":"/v1/catalog/images/` + token + `"}],"unexpected_private_field":"must-remain-visible"}`)
+	headers := http.Header{"Content-Type": []string{"application/json"}, "Cache-Control": []string{"private, no-store"}, "Set-Cookie": []string{"secret-cookie"}}
+	var wg sync.WaitGroup
+	for range 32 {
+		wg.Add(1)
+		go func() { defer wg.Done(); f.observe(0, "GET", "/v1/catalog/images/"+token, 200, headers, raw, 0, 0) }()
+	}
+	wg.Wait()
+	if len(f.observations) != 32 {
+		t.Fatal("lost concurrent HTTP receipts")
+	}
+	encoded, err := json.Marshal(f.observations)
+	if err != nil || strings.Contains(string(encoded), token) || strings.Contains(string(encoded), "secret-cookie") || !strings.Contains(string(encoded), "must-remain-visible") || !strings.Contains(string(encoded), "[sha256:") {
+		t.Fatal("HTTP evidence lost fields or leaked a capability")
+	}
+	for _, observation := range f.observations {
+		if observation.BodySize != len(raw) || len(observation.BodySHA256) != 64 || observation.Headers["Cache-Control"] != "private, no-store" || observation.BodyTruncated {
+			t.Fatal("HTTP receipt integrity lost")
+		}
 	}
 }
