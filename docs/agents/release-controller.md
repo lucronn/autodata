@@ -180,7 +180,9 @@ it contains no PR create, PR merge or Review transition.
 
 Repair replays the immutable bundle and rediscovers Issue/Project identities.
 It requires remote `MERGED`, the exact candidate/head/base, merge commit and
-merge time. It compares these with a retained receipt. If the process died
+merge time. It compares these with a retained receipt before returning read-only validation
+success as well as before execution. A matching or missing receipt permits
+read-only validation without saving any state. If the process died
 after merge before saving a receipt, repair reconstructs one from the verified
 remote metadata before updating tracking. Closed-unmerged PRs, another merged
 head, wrong target or conflicting receipt block. OPEN/draft/check readiness

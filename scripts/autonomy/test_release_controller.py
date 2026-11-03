@@ -488,6 +488,44 @@ class ReleaseControllerTests(unittest.TestCase):
         self.assertEqual(self.fake.mutations, [])
         self.assertEqual(path.read_bytes(), before)
 
+    def test_readonly_repair_rejects_conflicting_receipt_after_successful_discovery(self):
+        self.fake.pr.update(state='MERGED', mergedAt='2026-11-03T12:00:00Z',
+                            mergeCommit={'oid': 'e'*40})
+        self.assertEqual(self.execute(repair=True)['decision'], 'tracking_repaired')
+        path = self.receipt_root / 'release-receipt.json'
+        receipt = json.loads(path.read_text())
+        receipt['merge_commit'] = 'f'*40
+        path.write_text(json.dumps(receipt))
+        before = {entry.name: entry.read_bytes() for entry in self.receipt_root.iterdir()}
+        self.fake.calls.clear(); self.fake.mutations.clear()
+        plan = rc.build_release_plan(self.manifest, self.context, repair_tracking=True)
+        result = rc.execute_release_plan(plan, self.fake, trusted=self.trusted,
+            evidence_root=self.bundle, state_root=self.receipt_root,
+            repair_tracking=True, execute=False)
+        self.assertEqual(result['decision'], 'blocked', result['failures'])
+        self.assertIn('retained merge receipt differs from remote identity/target/merge', result['failures'])
+        self.assertEqual(self.fake.calls[-1][:3], ['gh', 'issue', 'view'])
+        self.assertEqual(self.fake.mutations, [])
+        self.assertEqual({entry.name: entry.read_bytes() for entry in self.receipt_root.iterdir()}, before)
+
+    def test_readonly_repair_validates_missing_and_matching_receipt_without_writes(self):
+        self.fake.pr.update(state='MERGED', mergedAt='2026-11-03T12:00:00Z',
+                            mergeCommit={'oid': 'e'*40})
+        plan = rc.build_release_plan(self.manifest, self.context, repair_tracking=True)
+        for retained in (False, True):
+            if retained:
+                self.assertEqual(self.execute(repair=True)['decision'], 'tracking_repaired')
+            before = {entry.name: entry.read_bytes() for entry in self.receipt_root.iterdir()}
+            self.fake.mutations.clear()
+            result = rc.execute_release_plan(plan, self.fake, trusted=self.trusted,
+                evidence_root=self.bundle, state_root=self.receipt_root,
+                repair_tracking=True, execute=False)
+            with self.subTest(retained=retained):
+                self.assertEqual(result['decision'], 'validated', result['failures'])
+                self.assertEqual(result['failures'], [])
+                self.assertEqual(self.fake.mutations, [])
+                self.assertEqual({entry.name: entry.read_bytes() for entry in self.receipt_root.iterdir()}, before)
+
     def test_guard_and_denied_policy_block_before_discovery(self):
         with patch.dict(os.environ, {}, clear=True):
             result = rc.execute_release_plan(self.plan, self.fake, trusted=self.trusted,

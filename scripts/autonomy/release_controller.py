@@ -513,13 +513,14 @@ def _execute_release_plan(plan, run_command, *, trusted, evidence_root, state_ro
                 result.update(decision='merged_tracking_failed', receipt=receipt,
                               retry='--repair-tracking')
             return result
-        if not execute:
-            return {**result, 'decision': 'validated', 'plan': plan, 'measurements': validation['measurements']}
         if repair_tracking:
             receipt = _receipt(plan, remote['pr'])
             if retained is not None and retained != receipt:
                 receipt = None
                 raise ReleaseBlocked('retained merge receipt differs from remote identity/target/merge')
+        if not execute:
+            return {**result, 'decision': 'validated', 'plan': plan, 'measurements': validation['measurements']}
+        if repair_tracking:
             _save(receipt_path, receipt)  # Survives another tracking failure or process death.
             phase = 'repair_tracking'
             mutations = []
