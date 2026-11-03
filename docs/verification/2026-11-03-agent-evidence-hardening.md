@@ -96,3 +96,14 @@ R0 release-controller implementation may consume the independently verified
 validator interface through a freshly synchronized direct-dispatch checkpoint.
 Its own tests and review remain required. R6 requires its separately verified
 staging adapter and real application acceptance evidence.
+
+The separate [path-schema repair](../superpowers/plans/2026-11-03-provider-path-schema-compatibility.md)
+passed independent exact-SHA review and coordinator verification at
+`d437eff812b0efb0d3dbdf8388cd2f9c7916f12d`: **107 autonomy tests passed** in
+14.789 seconds. Only seven unsupported lookaround patterns were removed; all
+other parsed schema values are unchanged. Actual finding/artifact/command/
+verification/trusted-input path checks remain enforced, including real unusual
+filenames and committed planning blobs. The candidate was promoted unchanged
+by fast-forward. Log: `/tmp/autodata-r0-path-schema-independent-d437-tests.log`.
+The third bounded real CLI fixture is running at this exact checkpoint with
+preflight errors=[]; runtime certification is not yet established.

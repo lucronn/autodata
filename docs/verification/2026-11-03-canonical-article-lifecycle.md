@@ -55,3 +55,17 @@ zero automatic retries; bounded caller waits alone do not stop upload threads.
 Warm-read, source-to-canonical API/browser behavior and authenticated real-bank
 staging acceptance are later workstreams. This record certifies the R1 fixture
 scope only and does not claim production readiness.
+
+## CI dependency setup follow-up
+
+GitHub runs [41617122268](https://github.com/lucronn/autodata/actions/runs/41617122268)
+and [41617440987](https://github.com/lucronn/autodata/actions/runs/41617440987)
+failed ingestion collection because their pytest-only setup omitted declared
+runtime dependencies. A clean Python 3.12 reproduction retained under
+`/tmp/autodata-ci-dependency-repro` confirms exit 2 before dependency setup and
+**594 passed, 50 skipped, 25 subtests passed** in 35.13 seconds after installing
+the unchanged pyproject dependencies. Those 50 cases require the separately
+verified isolated PostgreSQL runner; skips are not database acceptance.
+The [reviewed one-file CI repair](../superpowers/plans/2026-11-03-ingestion-ci-dependencies.md)
+preserves all test commands and release gates. Actual GitHub verification
+remains failing until that repair and a successful exact-head run are recorded.

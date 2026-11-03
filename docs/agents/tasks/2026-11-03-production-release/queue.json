@@ -25,9 +25,9 @@
       "integrated_sha": "643b8d3fc762cfdc9b456d28a47b7a4a9cde6402",
       "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md",
       "provider_runtime_validation": {
-        "status": "blocked",
-        "reason": "invalid_json_schema: regex lookaround unsupported by provider",
-        "attempt_base_sha": "e90047f2d50829ae0bcdc68c0dc8ed69c998cb4a"
+        "status": "running",
+        "reason": "Third isolated CLI attempt after independently verified path-schema compatibility repair",
+        "attempt_base_sha": "d437eff812b0efb0d3dbdf8388cd2f9c7916f12d"
       }
     },
     {
@@ -160,10 +160,25 @@
     {
       "id": "r0-provider-path-schema",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-provider-path-schema.json",
-      "state": "ready",
+      "state": "verified",
       "depends_on": [
         "r0-evidence"
       ],
+      "release_state": "unverified",
+      "implementation_base_sha": "9157abb823e440d300c84bc16d243898d55eb956",
+      "verified_candidate_sha": "d437eff812b0efb0d3dbdf8388cd2f9c7916f12d",
+      "integrated_sha": "d437eff812b0efb0d3dbdf8388cd2f9c7916f12d",
+      "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md"
+    },
+    {
+      "id": "ci-dependencies",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/ci-dependencies.json",
+      "state": "ready",
+      "depends_on": [
+        "r1-connectors"
+      ],
+      "dispatch_mode": "coordinator_direct",
+      "verification_workflow": "Independently reviewed protected workflow-only setup repair; unchanged gates and tests, clean Python3.12 reproduction plus actual GitHub CI run.",
       "release_state": "unverified"
     }
   ]
