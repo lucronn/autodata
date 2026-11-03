@@ -213,3 +213,9 @@ The final commerce library includes revoked order tombstones even if the full
 refund preceded any grant. `granted_at` is nullable only for that revoked,
 never-granted case; display refunded/revoked honestly without inventing a purchase
 activation time. Every granted item retains its actual grant timestamp.
+
+
+## Parallel implementation todo
+
+- [ ] Pass this synchronized exact-base preflight, then implement the thirty-two exclusively assigned UI paths under the parallel delivery plan.
+- [ ] Coordinate only committed backend interfaces; keep all141 browser cases and separate backend/image/CI acceptance before release.
