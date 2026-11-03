@@ -611,7 +611,7 @@ class RawPrimitiveTests(unittest.TestCase):
                 with patch.multiple(assembler, strict_raw_json=DEFAULT, strict_jsonl=DEFAULT,
                         strict_junit_xml=DEFAULT, strict_dto_archive=DEFAULT,
                         paid_case_identities=DEFAULT, dto_case_identities=DEFAULT,
-                        inspect_paid_common=DEFAULT) as mocks:
+                        inspect_paid_common=DEFAULT, inspect_paid_pg_snapshots=DEFAULT) as mocks:
                     for mock in mocks.values(): mock.side_effect = AssertionError('raw dispatch forbidden')
                     with patch.object(assembler, 'ArtifactStore', side_effect=AssertionError('plan root I/O')):
                         with patch('builtins.print') as output:
@@ -856,6 +856,247 @@ class PaidCommonTests(unittest.TestCase):
                     profile_sha256='1'*64,input_manifest_sha256=hashlib.sha256(b'{}').hexdigest(),
                     host_before_sha256=hashlib.sha256(b'{}').hexdigest(),profile_version='paid-selector-v2')
             self.assertEqual(result['status'],'unavailable');self.assertEqual(result['verified_case_ids'],[])
+
+
+class PaidPGSnapshotTests(unittest.TestCase):
+    """PG binding fixtures keep source/media/migration payload semantics absent."""
+    tables = ('schema_migrations', 'catalog_articles', 'canonical_articles',
+        'canonical_article_source_revisions', 'canonical_article_source_observations',
+        'canonical_article_revisions', 'canonical_article_reviews',
+        'canonical_article_rewrite_attempts', 'source_fetch_jobs', 'publication_events',
+        'source_snapshots', 'catalog_article_provider_scopes', 'catalog_article_index_pages',
+        'canonical_article_aliases', 'customer_accounts', 'auth_sessions',
+        'workshop_orders', 'workshop_checkout_requests')
+
+    def model(self):
+        model = PaidCommonTests().model()
+        for case in model['cases']:
+            article_id = '00000000-0000-0000-0000-000000000001'
+            paid = dict(customer_accounts=[dict(customer_account_id='00000000-0000-0000-0000-00000000000'+str(i),
+                personal_organization_id='00000000-0000-0000-0000-00000000001'+str(i),
+                firebase_project_id='fixture-project', firebase_uid='paid-owner-'+str(i),
+                created_at='2026-11-03T00:00:00Z', status='active') for i in (2,3)],
+                auth_sessions=[dict(customer_account_id='00000000-0000-0000-0000-00000000000'+str(i),
+                    session_token_hash='\\x'+str(i)*64, created_at='2026-11-03T00:00:00Z',
+                    expires_at='2026-11-03T01:00:00Z', firebase_auth_time=1, revoked_at=None) for i in (2,3)],
+                entitlements=[], workshop_orders=[], dataset_requests=[], dataset_projections=[])
+            rows = {table:[] for table in self.tables}
+            rows.update({key:copy.deepcopy(paid[key]) for key in ('customer_accounts','auth_sessions','workshop_orders')})
+            rows['canonical_articles']=[dict(canonical_article_id=article_id, provider_slug=case['bank'])]
+            snapshot = dict(article=dict(canonical_article_id=article_id, provider_slug=case['bank']),
+                immutable_rows=rows, immutable_sha256=hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest(),
+                paid_rows=paid, counts=dict(article_jobs=0, source_revisions=0, canonical_revisions=0,
+                    published_revisions=0, publication_events=0, source_observations=0),
+                ensure=dict(entered=0,completed=0,active=0), ensure_requests=[],
+                selector_ensure=dict(entered=0,completed=0,active=0), selector_ensure_requests=[],
+                model_calls=0, grant_calls=0, payment_calls=0,
+                **{key:dict(bankone=0,banktwo=0) for key in ('provider_calls','source_calls','asset_calls')},
+                provider_traces=dict(bankone=[],banktwo=[]),
+                proxy=dict(request_received=0,upstream_completed=0,downstream_completed=0,
+                    downstream_waiting=0,response_captured=False,errors=[]),workers=[])
+            case['result']['phase_snapshots']={phase:dict(copy.deepcopy(snapshot),reader_calls=0,identity_checks=1)
+                for phase in case['result']['phase_snapshots']}
+            case['runtime']['final_snapshot']=copy.deepcopy(snapshot)
+            case['runtime']['service_probes']=dict(postgres=dict(database=case['result']['fixture_database'],
+                server_version_num=170011,user='lifecycle_test'),
+                s3=dict(bucket='lifecycle-'+'1'*32,roundtrip_ok=True),
+                nats=dict(jetstream_account_info_ok=True))
+        return model
+
+    def files(self, model):
+        for case in model['cases']:
+            case['runtime']['snapshots']=copy.deepcopy(case['result']['phase_snapshots'])
+            case['measurement']['phase_snapshots']=copy.deepcopy(case['result']['phase_snapshots'])
+        raw=PaidCommonTests().files(model)
+        for case in model['cases']:
+            ref='paid-access/'+case['bank']+'/'+case['name']+'/migration-replay-populated.rows.json'
+            raw[ref]=json.dumps(case['runtime']['final_snapshot']['immutable_rows']).encode()
+        self.reseal(raw)
+        return raw
+
+    def reseal(self, raw):
+        collector=json.loads(raw['workshop-paid-access.json'])
+        for case_id,result in collector['case_results'].items():
+            prefix='paid-access/'+result['provider']+'/'+result['go_test_name']+'/'
+            result['artifact_sha256']={ref:hashlib.sha256(raw[prefix+ref]).hexdigest() for ref in assembler.PAID_CASE_FILES}
+            raw[prefix+'result.json']=json.dumps(result).encode()
+        raw['workshop-paid-access.json']=json.dumps(collector).encode()
+
+    def inspect(self, raw):
+        class Store:
+            by_ref={ref:dict(artifact_id=ref) for ref in raw}
+            def read(self, artifact_id): return raw[artifact_id]
+            def read_raw_json(self, artifact_id, **_): return assembler.strict_raw_json(raw[artifact_id])
+            def recheck(self): pass
+        self.assertTrue(callable(getattr(assembler,'inspect_paid_pg_snapshots',None)),
+                        'explicit PG snapshot inspection is missing')
+        return assembler.inspect_paid_pg_snapshots(Store(), candidate_sha=BASE,
+            trusted_base_sha=TRUSTED_BASE,profile_sha256='1'*64,
+            input_manifest_sha256=hashlib.sha256(b'{}').hexdigest(),
+            host_before_sha256=hashlib.sha256(b'{}').hexdigest(),profile_version='paid-selector-v2')
+
+    def test_pg_snapshot_bindings_remain_incomplete(self):
+        result=self.inspect(self.files(self.model()))
+        self.assertEqual(result['status'],'unavailable'); self.assertIs(result['complete'],False)
+        self.assertEqual(result['observed_pg_snapshot_count'],52)
+        self.assertEqual(result['verified_case_ids'],[])
+        self.assertTrue(set(assembler.PAID_MISSING_FAMILIES).issubset(result['missing_validation_families']))
+        self.assertIn('paid_pg_row_semantics',result['missing_validation_families'])
+        self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+
+    def test_pg_phase_and_final_binding_contradictions_reject(self):
+        mutations=[
+            ('unknown_snapshot',lambda s:s.update(unknown=True)),
+            ('bool_counter',lambda s:s.update(model_calls=True)),
+            ('payment_work',lambda s:s.update(payment_calls=1)),
+            ('active_work',lambda s:s['ensure'].update(entered=1,active=1)),
+            ('counter_inventory',lambda s:s['provider_calls'].update(other=0)),
+            ('trace_mismatch',lambda s:s['provider_calls'].update(bankone=1)),
+            ('proxy_order',lambda s:s['proxy'].update(upstream_completed=1)),
+            ('proxy_error',lambda s:s['proxy'].update(errors=['failed'])),
+            ('proxy_bool',lambda s:s['proxy'].update(response_captured=0)),
+            ('table_inventory',lambda s:s['immutable_rows'].update(other=[])),
+            ('row_shape',lambda s:s['immutable_rows']['source_snapshots'].append([])),
+            ('row_hash',lambda s:s.update(immutable_sha256='0'*64)),
+            ('raw_count',lambda s:s['counts'].update(source_revisions=1)),
+            ('bool_count',lambda s:s['counts'].update(source_revisions=False)),
+            ('foreign_article',lambda s:s['article'].update(canonical_article_id='00000000-0000-0000-0000-000000000099')),
+            ('wrong_provider',lambda s:s['article'].update(provider_slug='banktwo')),
+            ('paid_inventory',lambda s:s['paid_rows'].update(other=[])),
+            ('foreign_session',lambda s:s['paid_rows']['auth_sessions'][0].update(customer_account_id='00000000-0000-0000-0000-000000000099')),
+            ('duplicate_account',lambda s:s['paid_rows']['customer_accounts'].append(copy.deepcopy(s['paid_rows']['customer_accounts'][0]))),
+            ('worker_bool',lambda s:s['workers'].append(dict(kind='cli',alive=1,exit_code=None))),
+        ]
+        for final in (False,True):
+            for name,mutate in mutations:
+                model=self.model();case=model['cases'][0]
+                snapshot=case['runtime']['final_snapshot'] if final else case['result']['phase_snapshots']['before']
+                mutate(snapshot)
+                with self.subTest(final=final,mutation=name),self.assertRaises(assembler.ContractError):
+                    self.inspect(self.files(model))
+
+    def test_real_artifact_store_pg_bindings_remain_unavailable(self):
+        raw=self.files(self.model())
+        with tempfile.TemporaryDirectory() as directory:
+            artifacts=[]
+            for index,(ref,data) in enumerate(raw.items()):
+                path=Path(directory)/ref;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+                artifacts.append(dict(artifact_id='raw-'+str(index),kind='raw',ref=ref,
+                    sha256=hashlib.sha256(data).hexdigest(),bytes=len(data),visibility='private'))
+            with assembler.ArtifactStore(directory,artifacts) as store:
+                result=assembler.inspect_paid_pg_snapshots(store,candidate_sha=BASE,trusted_base_sha=TRUSTED_BASE,
+                    profile_sha256='1'*64,input_manifest_sha256=hashlib.sha256(b'{}').hexdigest(),
+                    host_before_sha256=hashlib.sha256(b'{}').hexdigest(),profile_version='paid-selector-v2')
+            self.assertEqual(result['status'],'unavailable');self.assertEqual(result['observed_pg_snapshot_count'],52)
+            self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+
+    def test_pg_counts_derive_from_rows_and_producer_digest_encoding(self):
+        snapshot=copy.deepcopy(self.model()['cases'][0]['runtime']['final_snapshot'])
+        article_id=snapshot['article']['canonical_article_id']; rows=snapshot['immutable_rows']
+        rows['catalog_articles']=[dict(title='Réparation')]
+        rows['source_fetch_jobs']=[dict(canonical_article_id=article_id,job_kind='article'),
+                                  dict(canonical_article_id=None,job_kind='catalog')]
+        rows['canonical_article_source_revisions']=[dict(canonical_article_id=article_id)]
+        rows['canonical_article_revisions']=[dict(canonical_article_id=article_id,status='published'),
+                                            dict(canonical_article_id=article_id,status='draft')]
+        rows['publication_events']=[dict(canonical_article_id=article_id)]
+        rows['canonical_article_source_observations']=[dict(canonical_article_id=article_id)]
+        snapshot['counts']=dict(article_jobs=1,source_revisions=1,canonical_revisions=2,
+            published_revisions=1,publication_events=1,source_observations=1)
+        snapshot['immutable_sha256']=hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest()
+        assembler._paid_pg_snapshot(snapshot,'bankone',final=True)
+        for key in snapshot['counts']:
+            altered=copy.deepcopy(snapshot);altered['counts'][key]+=1
+            with self.subTest(count=key),self.assertRaises(assembler.ContractError):
+                assembler._paid_pg_snapshot(altered,'bankone',final=True)
+        altered=copy.deepcopy(snapshot)
+        altered['immutable_sha256']=hashlib.sha256(assembler.canonical(rows)).hexdigest()
+        with self.assertRaisesRegex(assembler.ContractError,'^paid_pg_row_hash$'):
+            assembler._paid_pg_snapshot(altered,'bankone',final=True)
+        for table in ('source_fetch_jobs','canonical_article_source_revisions','canonical_article_revisions'):
+            altered=copy.deepcopy(snapshot)
+            del altered['immutable_rows'][table][0]['canonical_article_id']
+            altered['immutable_sha256']=hashlib.sha256(json.dumps(altered['immutable_rows'],sort_keys=True).encode()).hexdigest()
+            with self.subTest(table=table),self.assertRaises(assembler.ContractError):
+                assembler._paid_pg_snapshot(altered,'bankone',final=True)
+
+    def owned_rows(self):
+        paid=copy.deepcopy(self.model()['cases'][0]['runtime']['final_snapshot']['paid_rows'])
+        owner=paid['customer_accounts'][0]
+        order=dict(amount_minor=2000, checkout_session_id=None, checkout_url=None,
+            configuration_id='00000000-0000-0000-0000-000000000020', created_at='2026-11-03T00:00:00Z',
+            currency='USD',customer_account_id=owner['customer_account_id'],
+            dataset_product_id='00000000-0000-0000-0000-000000000021',
+            dataset_request_id='00000000-0000-0000-0000-000000000022',
+            entitlement_id='00000000-0000-0000-0000-000000000023',expected_price_id='price_fixture',
+            first_create_attempt_at='2026-11-03T00:00:00Z',last_reconciled_at=None,livemode=False,
+            order_id='00000000-0000-0000-0000-000000000024',organization_id=owner['personal_organization_id'],
+            paid_at='2026-11-03T00:00:00Z',payment_intent_id=None,preparation_attempts=0,
+            preparation_index_job_ids=[],preparation_last_error_code=None,preparation_lease_expires_at=None,
+            preparation_lease_owner=None,preparation_next_attempt_at='2026-11-03T00:00:00Z',
+            preparation_state='pending',provider_expires_at=None,provider_idempotency_key='fixture:order',
+            region='US',revocation_reason_code=None,revoked_at=None,status='paid',stripe_account_id='acct_fixture',
+            terms_version='workshop-v1',updated_at='2026-11-03T00:00:00Z')
+        grant=dict(commerce_order_id=order['order_id'],configuration_id=order['configuration_id'],
+            customer_account_id=owner['customer_account_id'],dataset_request_id=order['dataset_request_id'],
+            entitlement_id=order['entitlement_id'],granted_at='2026-11-03T00:00:00Z',
+            organization_id=owner['personal_organization_id'],payment_event_id=None,provider_event_id='fixture:grant',
+            region='US',revoke_reason=None,revoked_at=None,status='active')
+        paid['workshop_orders']=[order];paid['entitlements']=[grant]
+        return paid
+
+    def test_paid_owner_order_scope_and_scalar_contradictions_reject(self):
+        assembler._paid_pg_rows(self.owned_rows())
+        mutations=[
+            ('unknown_order',lambda p:p['workshop_orders'][0].update(other=1)),
+            ('bool_amount',lambda p:p['workshop_orders'][0].update(amount_minor=True)),
+            ('amount',lambda p:p['workshop_orders'][0].update(amount_minor=1999)),
+            ('currency',lambda p:p['workshop_orders'][0].update(currency='CAD')),
+            ('live',lambda p:p['workshop_orders'][0].update(livemode=True)),
+            ('bool_live',lambda p:p['workshop_orders'][0].update(livemode=0)),
+            ('stripe',lambda p:p['workshop_orders'][0].update(stripe_account_id='acct_other')),
+            ('price',lambda p:p['workshop_orders'][0].update(expected_price_id='price_other')),
+            ('unpaid',lambda p:p['workshop_orders'][0].update(status='pending')),
+            ('scope_owner',lambda p:p['workshop_orders'][0].update(customer_account_id=p['customer_accounts'][1]['customer_account_id'])),
+            ('scope_config',lambda p:p['workshop_orders'][0].update(configuration_id='00000000-0000-0000-0000-000000000099')),
+            ('scope_region',lambda p:p['workshop_orders'][0].update(region='CA')),
+            ('missing_order',lambda p:p['workshop_orders'].clear()),
+            ('duplicate_order',lambda p:p['workshop_orders'].append(copy.deepcopy(p['workshop_orders'][0]))),
+            ('duplicate_scope',lambda p:p['entitlements'].append(dict(p['entitlements'][0],entitlement_id='00000000-0000-0000-0000-000000000099'))),
+            ('active_revoked',lambda p:p['entitlements'][0].update(revoked_at='2026-11-03T00:00:00Z')),
+            ('status',lambda p:p['entitlements'][0].update(status='invented')),
+            ('legacy_scope',lambda p:p['entitlements'][0].update(customer_account_id=None)),
+            ('hash',lambda p:p['auth_sessions'][0].update(session_token_hash='plain-token')),
+            ('bool_auth_time',lambda p:p['auth_sessions'][0].update(firebase_auth_time=True)),
+            ('duplicate_token',lambda p:p['auth_sessions'][0].update(session_token_hash=p['auth_sessions'][1]['session_token_hash'])),
+            ('session_time',lambda p:p['auth_sessions'][0].update(expires_at='2025-11-03T00:00:00Z')),
+        ]
+        for name,mutate in mutations:
+            paid=self.owned_rows();mutate(paid)
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):
+                assembler._paid_pg_rows(paid)
+
+    def test_service_probes_and_populated_row_seam_reject(self):
+        for name,mutate in [
+            ('pg_database',lambda p:p['postgres'].update(database='lifecycle_test_'+'f'*32)),
+            ('pg_version',lambda p:p['postgres'].update(server_version_num=True)),
+            ('pg_major',lambda p:p['postgres'].update(server_version_num=180000)),
+            ('pg_user',lambda p:p['postgres'].update(user='postgres')),
+            ('s3',lambda p:p['s3'].update(roundtrip_ok=False)),
+            ('s3_bucket',lambda p:p['s3'].update(bucket='../bucket')),
+            ('nats',lambda p:p['nats'].update(jetstream_account_info_ok=1)),
+            ('unknown_probe',lambda p:p.update(other={})),
+            ('unknown_pg',lambda p:p['postgres'].update(other=1))]:
+            model=self.model();mutate(model['cases'][0]['runtime']['service_probes'])
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):
+                self.inspect(self.files(model))
+        raw=self.files(self.model())
+        prefix='paid-access/bankone/'+assembler.PAID_GO_ROOTS[0]+'/'
+        rows=json.loads(raw[prefix+'migration-replay-populated.rows.json'])
+        rows['schema_migrations'].append(dict(version='invented'))
+        raw[prefix+'migration-replay-populated.rows.json']=json.dumps(rows).encode()
+        self.reseal(raw)
+        with self.assertRaises(assembler.ContractError):self.inspect(raw)
 
 
 if __name__ == '__main__': unittest.main()

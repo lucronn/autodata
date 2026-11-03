@@ -199,6 +199,41 @@ receipts and a one-case browser pilot cannot satisfy those obligations. A future
 complete fixture result may set only `fixture_verified`, with evaluator unevaluated;
 staging/product/deployment/cutover claims do not follow from it.
 
+The separate internal `inspect_paid_pg_snapshots` API first enforces all common
+outcomes, then checks the 40 phase and 12 final PG snapshot bindings. It validates
+closed snapshot/counter/probe/table-container inventories, nonnegative integer
+counters, settled ensure counts, provider trace lengths, proxy consistency and
+worker receipt scalar shapes. It re-derives all six article counts from the raw
+SQL rows, binds the selected article/provider and checks the immutable row digest
+using the frozen producer's `json.dumps(rows, sort_keys=True)` encoding (default
+spacing and ASCII escaping). The final populated replay rows must equal the
+independently retained final snapshot; this seam alone does not validate replay.
+
+The six paid table formats have closed column inventories and scalar/nullability
+checks. This layer requires two distinct account/organization UUID identities,
+session account coverage and unique hashed token/time records, and structured
+grants bound to an order's customer/configuration/region and fixed TEST payment
+facts. Active grant scopes must be unique. The intentional legacy negative
+fixture retains its unstructured null customer/configuration/order/region scope.
+PG17 database/user, S3 bucket/round-trip and JetStream probe receipts are checked
+against each case's fixture database. Probe booleans are fixture observations;
+they do not authenticate an independent supervisor or live services.
+
+**This API also always remains unavailable/incomplete, with no verified IDs and
+all verification/deployment flags false.** Its `observed_pg_snapshot_count` is a
+binding diagnostic, not a case count or verification result. Every existing
+missing family remains, and `paid_pg_row_semantics` is additionally explicit.
+Lifecycle SQL row payloads and article documents, ensure request details, source
+provenance, full commerce foreign-key/state semantics, source-to-public content,
+media rights/body/security headers, selector/model behavior, migration chain and
+fresh/empty/populated replay outcomes still require their own typed layers.
+Nested lifecycle row/article/request payloads remain opaque bounded JSON here;
+only the explicitly named count/identity fields are interpreted. Worker receipt
+shapes do not establish process ownership or isolation. No DTO work or profile
+promotion is included. Both internal paid APIs remain unselected by CLI plan and
+validate; tests forbid dispatch to either and exercise this PG layer through the
+real confined ArtifactStore with inline synthetic files.
+
 Bounded local checks:
 
 ```sh
