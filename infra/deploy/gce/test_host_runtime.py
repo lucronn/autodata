@@ -1,4 +1,4 @@
-"""Pure v1 contract tests. No subprocess, daemon or network is permitted."""
+"""Offline v1 contract and disposable local script tests; no daemon/network."""
 import copy
 import hashlib
 import importlib.util
@@ -369,6 +369,162 @@ class ContractTests(unittest.TestCase):
             elif isinstance(value, list):
                 for child in value: walk(child)
         walk(schema)
+
+
+
+class EntrypointTests(unittest.TestCase):
+    """Run only a copied wrapper and a harmless local Python child in a temp tree.
+
+    The sole rewritten literal is the fixed secret root; production has no path
+    override. No container, daemon, endpoint, credential or provider is used.
+    """
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.cleanup_tree)
+        self.base = Path(self.temp.name)
+        self.secret_root = self.base / 'secrets'; self.secret_root.mkdir(mode=0o700)
+        self.script = self.base / 'entrypoint.sh'
+        source = HERE / 'runtime-entrypoint.sh'
+        self.assertTrue(source.is_file(), 'secret entrypoint is missing')
+        text = source.read_text()
+        self.assertEqual(text.count('secret_root=/run/autodata'), 1)
+        self.script.write_text(text.replace('secret_root=/run/autodata', 'secret_root=' + str(self.secret_root)))
+        self.rt = load_runtime()
+
+    def cleanup_tree(self):
+        for base, directories, _ in os.walk(self.temp.name):
+            Path(base).chmod(0o700)
+        self.temp.cleanup()
+
+    def provision(self, service):
+        directory = self.secret_root / service; directory.mkdir(mode=0o700)
+        values = {name: 'opaque-$()`;"\\-value' for name in self.rt.SECRET_NAMES[service]}
+        for name, value in values.items():
+            path = directory / name; path.write_text(value); path.chmod(0o400)
+        directory.chmod(0o500)
+        return directory, values
+
+    def run_script(self, service='api', extra=None, command=None):
+        env = {'PATH': '/usr/bin:/bin', 'AUTODATA_RUNTIME_SERVICE': service,
+               'AUTODATA_ENV': 'production', 'AUTODATA_PUBLIC_ORIGIN': 'https://cars.tk'}
+        env.update(extra or {})
+        child = command or ['/usr/bin/python', '-c', 'import os,json; print(json.dumps(dict(os.environ)))']
+        return subprocess.run(['/bin/sh', str(self.script), *child], env=env,
+                              capture_output=True, text=True, timeout=5)
+
+    def test_each_service_loads_literal_approved_values_and_executes_child(self):
+        for service in ('api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'migration', 'bootstrap', 'metrics-probe'):
+            with self.subTest(service=service):
+                _, values = self.provision(service)
+                result = self.run_script(service)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                env = json.loads(result.stdout)
+                self.assertEqual({name: env[name] for name in values}, values)
+                self.assertEqual(env['AUTODATA_PUBLIC_ORIGIN'], 'https://cars.tk')
+                self.assertEqual(result.stderr, '')
+                for names in self.rt.SECRET_NAMES.values():
+                    for name in names:
+                        if name not in values: self.assertNotIn(name, env)
+
+    def test_rejects_missing_extra_empty_multiline_nul_and_oversize_files(self):
+        directory, _ = self.provision('api')
+        target = directory / 'AUTODATA_POSTGRES_PASSWORD'
+        for data in (b'', b'line\nline', b'trailing\n', b'cr\rvalue', b'nul\x00value', b'x' * 16385):
+            with self.subTest(data=data[:20]):
+                target.chmod(0o600); target.write_bytes(data); target.chmod(0o400)
+                result = self.run_script()
+                self.assertEqual(result.returncode, 3)
+                self.assertEqual(result.stdout, '')
+                self.assertEqual(result.stderr, 'runtime entrypoint: invalid secret files\n')
+        target.chmod(0o600); target.write_bytes(b'ok'); target.chmod(0o400)
+        directory.chmod(0o700); target.unlink(); directory.chmod(0o500)
+        self.assertEqual(self.run_script().returncode, 3)
+        directory.chmod(0o700); target.write_bytes(b'ok'); target.chmod(0o400)
+        extra = directory / '.unexpected'; extra.write_bytes(b'do-not-print'); directory.chmod(0o500)
+        self.assertEqual(self.run_script().returncode, 3)
+
+    def test_rejects_symlinks_hardlinks_wrong_mode_and_wrong_directory(self):
+        directory, _ = self.provision('api')
+        target = directory / 'AUTODATA_POSTGRES_PASSWORD'
+        directory.chmod(0o700); target.unlink()
+        outside = self.base / 'outside'; outside.write_bytes(b'private'); outside.chmod(0o400)
+        target.symlink_to(outside); directory.chmod(0o500)
+        self.assertEqual(self.run_script().returncode, 3)
+        directory.chmod(0o700); target.unlink(); os.link(outside, target); directory.chmod(0o500)
+        self.assertEqual(self.run_script().returncode, 3)
+        directory.chmod(0o700); target.unlink(); target.write_bytes(b'private'); target.chmod(0o644); directory.chmod(0o500)
+        self.assertEqual(self.run_script().returncode, 3)
+        target.chmod(0o400); directory.chmod(0o777)
+        self.assertEqual(self.run_script().returncode, 3)
+        directory.chmod(0o700); moved = self.secret_root / 'moved'; directory.rename(moved); directory.symlink_to(moved)
+        self.assertEqual(self.run_script().returncode, 3)
+
+    def test_rejects_ambient_credentials_aliases_and_unknown_service(self):
+        self.provision('api')
+        for name in ('AUTODATA_POSTGRES_PASSWORD', 'INCEPTION_API_KEY', 'BANKONE_API_TOKEN',
+                     'AUTODATA_BANKONE_API_KEY', 'AUTODATA_BANKTWO_API_KEY', 'GOOGLE_APPLICATION_CREDENTIALS',
+                     'CLOUDSDK_AUTH_ACCESS_TOKEN', 'AUTODATA_READINESS_MODE', 'FIREBASE_AUTH_EMULATOR_HOST',
+                     'GOOGLE_API_KEY', 'AWS_SECRET_ACCESS_KEY', 'AUTODATA_STRIPE_SECRET_KEY'):
+            with self.subTest(name=name):
+                result = self.run_script(extra={name: 'do-not-print'})
+                self.assertEqual(result.returncode, 2)
+                self.assertNotIn('do-not-print', result.stdout + result.stderr)
+        for service in ('', '../api', 'postgres', 'unknown'):
+            with self.subTest(service=service): self.assertEqual(self.run_script(service).returncode, 2)
+        self.assertEqual(self.run_script(command=[]).returncode, 0)
+        result = subprocess.run(['/bin/sh', str(self.script)], env={'AUTODATA_RUNTIME_SERVICE':'api'}, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 2)
+
+    def test_migration_build_rejects_floating_base_and_wrong_pg_client(self):
+        definition = HERE / 'migration.Dockerfile'
+        self.assertTrue(definition.is_file())
+        lines = definition.read_text().splitlines()
+        start = next(i for i, line in enumerate(lines) if line.startswith('RUN '))
+        command = lines[start][4:]
+        while command.endswith('\\'):
+            start += 1
+            command = command[:-1] + lines[start]
+        fake = self.base / 'psql'
+        fake.write_text('#!/bin/sh\nprintf "%s\\n" "$FAKE_VERSION"\n'); fake.chmod(0o755)
+        for reference, version, valid in (
+            ('postgres:17', 'psql (PostgreSQL) 17.6', False),
+            ('registry.example/pg@sha256:' + 'a'*64, 'psql (PostgreSQL) 16.9', False),
+            ('registry.example/pg@sha256:' + 'a'*64, 'psql (PostgreSQL) 17.6', True)):
+            result = subprocess.run(['/bin/sh', '-c', command], env={
+                'PATH': str(self.base) + ':/usr/bin:/bin', 'POSTGRES_IMAGE': reference,
+                'FAKE_VERSION': version}, capture_output=True, timeout=5)
+            self.assertEqual(result.returncode == 0, valid)
+
+    def test_child_exit_status_is_preserved(self):
+        self.provision('api')
+        result = self.run_script(command=['/bin/sh', '-c', 'exit 17'])
+        self.assertEqual(result.returncode, 17)
+
+    def test_development_default_keeps_existing_image_commands(self):
+        result = subprocess.run(['/bin/sh', str(self.script), '/bin/echo', 'development'],
+                                env={'PATH': '/usr/bin:/bin'}, capture_output=True, text=True, timeout=5)
+        self.assertEqual((result.returncode, result.stdout), (0, 'development\n'))
+
+    def test_image_definitions_package_wrapper_and_released_sql_without_source_mounts(self):
+        api = (ROOT / 'apps/api-go/Dockerfile').read_text()
+        ingestion = (ROOT / 'workers/ingestion-python/Dockerfile').read_text()
+        migration = HERE / 'migration.Dockerfile'
+        self.assertTrue(migration.is_file(), 'released migration image definition missing')
+        for text in (api, ingestion, migration.read_text()):
+            self.assertIn('COPY --chmod=0555 infra/deploy/gce/runtime-entrypoint.sh /usr/local/bin/autodata-runtime-entrypoint', text)
+            self.assertIn('ENTRYPOINT ["/usr/local/bin/autodata-runtime-entrypoint"]', text)
+        self.assertIn('CMD ["/usr/local/bin/autodata-api"]', api)
+        text = migration.read_text()
+        self.assertIn('ARG POSTGRES_IMAGE', text)
+        self.assertIn('FROM ${POSTGRES_IMAGE}', text)
+        self.assertIn('COPY scripts/dev/migrate_sql.sh /release/scripts/dev/migrate_sql.sh', text)
+        copy_line = next(line for line in text.splitlines() if line.startswith('COPY db/migrations/'))
+        source = copy_line.split()[1]
+        copied = list((ROOT / 'db/migrations').iterdir()) if source.endswith('/') else list(ROOT.glob(source))
+        self.assertEqual(sorted(p.name for p in copied), sorted(p.name for p in (ROOT / 'db/migrations').glob('*.sql')))
+        self.assertGreater(len(copied), 0)
+        self.assertIn('psql --version', text)
+        self.assertIn('USER 1000:1000', text)
 
 
 if __name__ == '__main__':

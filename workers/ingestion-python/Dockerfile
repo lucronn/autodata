@@ -17,4 +17,6 @@ COPY scripts/dev/nats_health.py ./scripts/nats_health.py
 COPY scripts/dev/object_storage_health.py ./scripts/object_storage_health.py
 COPY scripts/dev/replay_outbox.py ./scripts/replay_outbox.py
 ENV PYTHONPATH=/app/src:/app/contracts
+COPY --chmod=0555 infra/deploy/gce/runtime-entrypoint.sh /usr/local/bin/autodata-runtime-entrypoint
+ENTRYPOINT ["/usr/local/bin/autodata-runtime-entrypoint"]
 CMD ["python", "-m", "autodata_ingestion.worker"]
