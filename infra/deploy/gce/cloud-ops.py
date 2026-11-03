@@ -148,7 +148,9 @@ def verify_export(data, manifest, status):
         require(hashlib.sha256(members['postgres.dump']).hexdigest() == status['dump_sha256'])
         require(hashlib.sha256(members['release.json']).hexdigest() == status['manifest_sha256'])
         require(rt.strict_json(members['release.json']) == manifest)
-        require(rt.strict_json(members['backup.json']) == status)
+        # Python object equality collapses JSON bool/int/float distinctions.
+        # Canonical encodings bind nested scalar types as well as field values.
+        require(rt.canonical_bytes(rt.strict_json(members['backup.json'])) == rt.canonical_bytes(status))
         return members
     except (ValueError, UnicodeError, tarfile.TarError, KeyError, OverflowError):
         raise ContractError('invalid backup export') from None
