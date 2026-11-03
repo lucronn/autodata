@@ -607,6 +607,62 @@ def guard_fixture():
             'bridge': {'nftables': [r for r in records if next(iter(r.values()))['family'] == 'bridge']}}
 
 
+
+def upstream_guard_readback(*, chains_first=True, explicit_l4proto=False):
+    """Independent JSON fixture following nftables 1.1.3 output protocol.
+
+    json.c table_print_json_full declares chains before any rules. The first
+    tcp.t.json case contains only tcp dport: delinearization removes the meta
+    dependency. No source tokenizer or production expected-value helper is used.
+    Optional forms isolate each reviewed mismatch in a fake-CLI regression.
+    """
+    def meta(key, value):
+        return {'match': {'op': '==', 'left': {'meta': {'key': key}}, 'right': value}}
+    def payload(protocol, field, value):
+        return {'match': {'op': '==', 'left': {'payload': {'protocol': protocol, 'field': field}}, 'right': value}}
+    def port(value):
+        return ([meta('l4proto', 'tcp')] if explicit_l4proto else []) + [payload('tcp', 'dport', value)]
+    def accept(expressions): return expressions + [{'accept': None}]
+    def drop(expressions): return expressions + [{'drop': None}]
+    def subnet(value): return {'prefix': {'addr': value, 'len': 24}}
+    inet_forward = [
+        accept([meta('iifname', 'br-ad-edge'), payload('ip', 'saddr', '172.30.10.10'), payload('ip', 'daddr', '169.254.169.254')] + port(80)),
+        drop([payload('ip', 'daddr', '169.254.169.254')]),
+        drop([payload('ip6', 'daddr', 'fd20:ce::254')]),
+        drop([meta('iifname', 'br-ad-edge'), meta('nfproto', 'ipv6')]),
+        drop([meta('iifname', 'br-ad-back'), meta('nfproto', 'ipv6')]),
+        drop([meta('iifname', 'br-ad-work'), meta('nfproto', 'ipv6')]),
+        accept([meta('iifname', 'br-ad-edge'), payload('ip', 'saddr', subnet('172.30.10.0')), payload('ip', 'daddr', '172.30.20.40')] + port(9000)),
+        accept([meta('iifname', 'br-ad-back'), payload('ip', 'saddr', subnet('172.30.20.0')), payload('ip', 'daddr', '172.30.20.40')] + port(9000)),
+        accept([meta('iifname', 'br-ad-work'), payload('ip', 'saddr', subnet('172.30.30.0')), payload('ip', 'daddr', '172.30.20.40')] + port(9000)),
+        drop([payload('ip', 'daddr', '172.30.20.40')])]
+    inet_output = [
+        accept([meta('skuid', 0), payload('ip', 'daddr', '169.254.169.254')] + port(80)),
+        drop([payload('ip', 'daddr', '169.254.169.254')]),
+        drop([payload('ip6', 'daddr', 'fd20:ce::254')])]
+    bridge_forward = [
+        drop([meta('ibrname', 'br-ad-edge'), payload('ether', 'type', 'ip6')]),
+        drop([meta('ibrname', 'br-ad-back'), payload('ether', 'type', 'ip6')]),
+        drop([meta('ibrname', 'br-ad-work'), payload('ether', 'type', 'ip6')]),
+        accept([meta('ibrname', 'br-ad-back'), payload('ip', 'saddr', subnet('172.30.20.0')), payload('ip', 'daddr', '172.30.20.40')] + port(9000)),
+        drop([payload('ip', 'daddr', '172.30.20.40')])]
+    snapshots = {}
+    for family, chains in (('inet', [('forward', inet_forward), ('output', inet_output)]),
+                            ('bridge', [('forward', bridge_forward)])):
+        declarations, rules, interleaved = [], [], []
+        for name, expressions in chains:
+            declaration = {'chain': {'family': family, 'table': 'autodata_guard', 'name': name,
+                'type': 'filter', 'hook': name, 'prio': -200, 'policy': 'accept', 'handle': 2}}
+            group = [{'rule': {'family': family, 'table': 'autodata_guard', 'chain': name, 'expr': expr,
+                               'handle': number + 3}} for number, expr in enumerate(expressions)]
+            declarations.append(declaration); rules.extend(group); interleaved.extend([declaration] + group)
+        snapshots[family] = {'nftables': [
+            {'metainfo': {'version': '1.1.3', 'json_schema_version': 1}},
+            {'table': {'family': family, 'name': 'autodata_guard', 'handle': 1}}
+        ] + (declarations + rules if chains_first else interleaved)}
+    return snapshots
+
+
 def packet_verdict(snapshot, chain, **packet):
     for record in snapshot['nftables']:
         rule = record.get('rule')
@@ -751,6 +807,55 @@ class GuardTests(unittest.TestCase):
         with patch.object(os, 'geteuid', return_value=1000):
             self.assertEqual(self.rt.cli(['guard'])[0], 3)
         self.assertEqual(self.rt.cli(['guard', '/tmp/rules'])[0], 2)
+
+    def assert_readback_cli_passes(self, snapshots):
+        def execute(argv, **kwargs):
+            self.assertEqual(argv, ['/usr/sbin/nft', '--json', '--numeric', 'list', 'table', argv[-2], 'autodata_guard'])
+            self.assertIn(argv[-2], ('inet', 'bridge'))
+            return subprocess.CompletedProcess(argv, 0, json.dumps(snapshots[argv[-2]]).encode())
+        with patch.object(os, 'geteuid', return_value=0), patch.object(subprocess, 'run', side_effect=execute):
+            code, result = self.rt.cli(['guard'])
+        self.assertEqual(code, 0)
+        self.assertEqual(result['status'], 'passed')
+        self.assertEqual(result['checks'], {'metadata_guard': True, 'storage_guard': True})
+
+    def test_guard_cli_accepts_upstream_all_chain_declarations_before_rules(self):
+        # Isolate object ordering from the redundant dependency defect.
+        self.assert_readback_cli_passes(upstream_guard_readback(explicit_l4proto=True))
+
+    def test_guard_cli_accepts_tcp_payload_without_redundant_meta_dependency(self):
+        # Isolate dependency removal from the object ordering defect.
+        self.assert_readback_cli_passes(upstream_guard_readback(chains_first=False))
+
+    def test_guard_cli_accepts_combined_upstream_readback_shape(self):
+        self.assert_readback_cli_passes(upstream_guard_readback())
+
+    def test_upstream_readback_rejects_missing_extra_and_changed_predicates(self):
+        baseline = upstream_guard_readback()
+        # Every predicate remaining after legitimate delinearization is required.
+        for family in ('inet', 'bridge'):
+            original = [r['rule'] for r in baseline[family]['nftables'] if 'rule' in r]
+            for rule_index, rule in enumerate(original):
+                for expression_index, expression in enumerate(rule['expr'][:-1]):
+                    for mutation in ('missing', 'extra', 'changed'):
+                        changed = copy.deepcopy(baseline)
+                        target = [r['rule'] for r in changed[family]['nftables'] if 'rule' in r][rule_index]['expr']
+                        if mutation == 'missing': target.pop(expression_index)
+                        elif mutation == 'extra': target.insert(expression_index, copy.deepcopy(expression))
+                        else: target[expression_index]['match']['right'] = 'wrong-protocol-address-port-interface-or-uid'
+                        with self.subTest(family=family, rule=rule_index, expression=expression_index, mutation=mutation), self.assertRaises(self.rt.ContractError):
+                            self.rt.validate_guard_tables(changed)
+        for mutation in ('chain_order', 'rule_order', 'extra_chain', 'extra_rule', 'wrong_transport', 'wrong_dependency'):
+            changed = copy.deepcopy(baseline); records = changed['inet']['nftables']
+            chains = [i for i, r in enumerate(records) if 'chain' in r]
+            rules = [i for i, r in enumerate(records) if 'rule' in r]
+            if mutation == 'chain_order': records[chains[0]], records[chains[1]] = records[chains[1]], records[chains[0]]
+            elif mutation == 'rule_order': records[rules[0]], records[rules[1]] = records[rules[1]], records[rules[0]]
+            elif mutation == 'extra_chain': records.insert(chains[-1], copy.deepcopy(records[chains[0]]))
+            elif mutation == 'extra_rule': records.append(copy.deepcopy(records[rules[-1]]))
+            elif mutation == 'wrong_transport': records[rules[0]]['rule']['expr'][-2]['match']['left']['payload']['protocol'] = 'udp'
+            else: records[rules[0]]['rule']['expr'].insert(-2, {'match': {'op': '==', 'left': {'meta': {'key': 'l4proto'}}, 'right': 'udp'}})
+            with self.subTest(mutation=mutation), self.assertRaises(self.rt.ContractError): self.rt.validate_guard_tables(changed)
 
     def test_systemd_dependencies_fail_closed_before_docker_start(self):
         import configparser
