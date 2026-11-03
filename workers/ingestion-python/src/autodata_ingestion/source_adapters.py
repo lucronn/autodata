@@ -1587,12 +1587,17 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
         value = json.loads(resource.payload)
         if not isinstance(value, dict):
             raise ValueError("invalid article document")
+        identity_layers = [value]
         embedded = value.get("_embedded")
         if isinstance(embedded, dict) and isinstance(embedded.get("data"), dict):
+            identity_layers.append(embedded)
             value = embedded["data"]
-        explicit = value.get("vehicle") or {}
-        if not isinstance(explicit, dict):
-            raise ValueError("wrong applicability")
+            identity_layers.append(value)
+        article = value.get("article", value)
+        if not isinstance(article, dict):
+            raise ValueError("invalid article document")
+        if article is not value:
+            identity_layers.append(article)
         aliases = {
             "model_year": "year",
             "vehicle_id": "vehicle_id",
@@ -1609,16 +1614,21 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
             ),
             "source_vehicle_ref": context.key.source_vehicle_ref,
         }
-        for field, actual in explicit.items():
-            key = aliases.get(field, field)
-            if key in expected and str(actual) != str(expected[key]):
+        for layer in identity_layers:
+            explicit = layer.get("vehicle") or {}
+            if not isinstance(explicit, dict):
                 raise ValueError("wrong applicability")
-        for field in ("vehicle_id", "vehicle_configuration_id", "source_vehicle_ref"):
-            if field in value and str(value[field]) != str(expected[field]):
-                raise ValueError("wrong applicability")
-        article = value.get("article", value)
-        if not isinstance(article, dict):
-            raise ValueError("invalid article document")
+            for field, actual in explicit.items():
+                key = aliases.get(field, field)
+                if key in expected and str(actual) != str(expected[key]):
+                    raise ValueError("wrong applicability")
+            for field in (
+                "vehicle_id",
+                "vehicle_configuration_id",
+                "source_vehicle_ref",
+            ):
+                if field in layer and str(layer[field]) != str(expected[field]):
+                    raise ValueError("wrong applicability")
         blocks = article.get("blocks")
         if not isinstance(blocks, list):
             if article.get("steps"):

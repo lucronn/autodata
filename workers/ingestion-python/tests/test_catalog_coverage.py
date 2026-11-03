@@ -196,3 +196,102 @@ def test_ambiguous_resolution_retains_exact_evidence(fresh_database, capture_fix
         repo, vehicle_id=vehicle, vehicle_configuration_id=None
     )
     assert state["coverage"]["banktwo"]["resolution_source_snapshot_id"] is not None
+
+
+def test_configuration_resolution_sends_human_selector_in_exact_scope(
+    fresh_database, capture_fixture
+):
+    from lifecycle_support import seed_configuration
+    from autodata_ingestion.catalog_coverage import (
+        ensure_article_catalog_jobs,
+        run_catalog_index_job,
+        read_catalog_coverage,
+    )
+
+    repo = fresh_database()
+    vehicle = seed_vehicle(repo)
+    configuration = seed_configuration(repo, vehicle)
+    with repo.connect() as conn:
+        conn.execute(
+            "UPDATE vehicle_configurations SET trim='Touring',engine_displacement_l=2.0 WHERE vehicle_configuration_id=%s",
+            (configuration,),
+        )
+        conn.execute(
+            "UPDATE vehicle_identity_bases SET drivetrain='AWD' WHERE vehicle_id=%s",
+            (vehicle,),
+        )
+    ensure_article_catalog_jobs(
+        repo, vehicle_id=vehicle, vehicle_configuration_id=configuration
+    )
+    for _ in range(2):
+        run_catalog_index_job(
+            repo,
+            claim_source_job(repo, worker_id=uuid.uuid4()),
+            registry=capture_fixture.registry,
+            object_store=capture_fixture.objects,
+        )
+    expected = {
+        "year": 2024,
+        "make": "Example",
+        "model": "Car",
+        "region": "US",
+        "configuration": "Touring 2.0L AWD",
+    }
+    for provider in ("bankone", "banktwo"):
+        assert capture_fixture.servers[provider].resolution_requests == [expected]
+    state = read_catalog_coverage(
+        repo, vehicle_id=vehicle, vehicle_configuration_id=configuration
+    )
+    assert state["complete"] is True
+    assert all(
+        scope["vehicle_configuration_id"] == configuration
+        for scope in state["coverage"].values()
+    )
+
+
+@pytest.mark.parametrize("verified_mapping", [False, True])
+def test_configuration_without_selector_is_never_widened(
+    fresh_database, capture_fixture, verified_mapping
+):
+    from lifecycle_support import seed_configuration
+    from autodata_ingestion.catalog_coverage import (
+        ensure_article_catalog_jobs,
+        run_catalog_index_job,
+        read_catalog_coverage,
+    )
+
+    repo = fresh_database()
+    vehicle = seed_vehicle(repo)
+    configuration = seed_configuration(repo, vehicle)
+    if verified_mapping:
+        with repo.connect() as conn:
+            for provider in ("bankone", "banktwo"):
+                conn.execute(
+                    """INSERT INTO vehicle_provider_mappings(mapping_key,vehicle_id,vehicle_configuration_id,provider,entity_type,provider_id,source_snapshot_id,extraction_evidence_id,source_locator,evidence_locator,evidence_confidence,mapping_status)
+                    SELECT %s,vehicle_id,vehicle_configuration_id,%s,'car','vehicle:fixture',source_snapshot_id,extraction_evidence_id,'fixture','fixture',1,'verified'
+                    FROM vehicle_configurations WHERE vehicle_configuration_id=%s""",
+                    (uuid.uuid4().hex, provider, configuration),
+                )
+    ensure_article_catalog_jobs(
+        repo, vehicle_id=vehicle, vehicle_configuration_id=configuration
+    )
+    for _ in range(2):
+        run_catalog_index_job(
+            repo,
+            claim_source_job(repo, worker_id=uuid.uuid4()),
+            registry=capture_fixture.registry,
+            object_store=capture_fixture.objects,
+        )
+    state = read_catalog_coverage(
+        repo, vehicle_id=vehicle, vehicle_configuration_id=configuration
+    )
+    for provider in ("bankone", "banktwo"):
+        assert capture_fixture.servers[provider].resolution_requests == []
+        assert state["coverage"][provider]["status"] == (
+            "complete" if verified_mapping else "needs_review"
+        )
+        if not verified_mapping:
+            assert capture_fixture.calls(provider) == []
+            assert (
+                state["coverage"][provider]["error_code"] == "UNRESOLVED_CONFIGURATION"
+            )

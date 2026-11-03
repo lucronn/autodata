@@ -77,17 +77,39 @@ def _walk(value):
             yield from _walk(child)
 
 
+def _image_nodes(value, *, image_container=False):
+    """Include kind-less figures in the ordered document's nested images arrays."""
+    if isinstance(value, dict):
+        if (
+            image_container
+            or str(value.get("type") or value.get("kind") or "").casefold() == "image"
+        ):
+            yield value
+        for key, child in list(value.items()):
+            yield from _image_nodes(child, image_container=key == "images")
+    elif isinstance(value, list):
+        for child in value:
+            yield from _image_nodes(child, image_container=image_container)
+
+
 def project_document(document):
     """Compatibility fields derived only from the authoritative ordered document."""
     texts = []
     steps = []
-    images = []
-    for node in _walk(document.get("blocks", [])):
-        if node.get("type") == "image":
-            images.append(deepcopy(node))
-        if isinstance(node.get("text"), str):
-            texts.append(node["text"])
-            if node.get("type") == "step":
+    images = [deepcopy(node) for node in _image_nodes(document.get("blocks", []))]
+
+    def visit(value, *, strings=False):
+        if isinstance(value, str):
+            if strings:
+                texts.append(value)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child, strings=strings)
+        elif isinstance(value, dict):
+            node = value
+            if isinstance(node.get("text"), str):
+                texts.append(node["text"])
+            if node.get("type") == "step" and isinstance(node.get("text"), str):
                 steps.append(
                     {
                         "number": node.get("number", len(steps) + 1),
@@ -95,11 +117,9 @@ def project_document(document):
                         "evidence_ids": node.get("evidence_ids", []),
                     }
                 )
-        if node.get("type") in ("ordered_list", "unordered_list"):
-            for item in node.get("items", []):
-                if isinstance(item, str):
-                    texts.append(item)
-                    if node["type"] == "ordered_list":
+            if node.get("type") == "ordered_list":
+                for item in node.get("items", []):
+                    if isinstance(item, str):
                         steps.append(
                             {
                                 "number": len(steps) + 1,
@@ -107,6 +127,11 @@ def project_document(document):
                                 "evidence_ids": node.get("evidence_ids", []),
                             }
                         )
+            for key, child in node.items():
+                if key not in ("text", "images") and isinstance(child, (dict, list)):
+                    visit(child, strings=key in ("columns", "rows", "items"))
+
+    visit(document.get("blocks", []))
     return "\n".join(texts), steps, images
 
 
@@ -133,6 +158,25 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
         if bound not in cache:
             cache[bound] = client.read_resource(ref, timeout=remaining())
         return cache[bound]
+
+    class BoundedObjects:
+        """Bound caller latency, not an adapter's already-running network request.
+
+        Runtime adapters must configure their own socket timeouts. On timeout the
+        only possible late effect is a content-addressed blob upload; no worker
+        thread can commit lifecycle observations or publish an article.
+        """
+
+        def put_object(self, *args):
+            pool = ThreadPoolExecutor(max_workers=1)
+            try:
+                pool.submit(object_store.put_object, *args).result(timeout=remaining())
+            except TimeoutError:
+                raise SourceConnectorError("CAPTURE_DEADLINE", retryable=True) from None
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
+
+    bounded_objects = BoundedObjects()
 
     body_ref = context.descriptor.get("resource_ref") or context.descriptor.get(
         "body_resource_ref"
@@ -168,6 +212,8 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
     finally:
         parser_pool.shutdown(wait=False, cancel_futures=True)
     blocks = deepcopy(article["blocks"])
+    for node in _image_nodes(blocks):
+        node["kind"] = node["type"] = "image"
     refs = (
         list(context.descriptor.get("asset_resource_refs") or [])
         + list(body.body.get("asset_resource_refs") or [])
@@ -191,7 +237,7 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
     optional = [(ref, "asset") for ref in refs]
     if labor_ref and labor_ref not in refs and labor_ref != body_ref:
         optional.append((labor_ref, "labor"))
-    resources = [upload_resource(body, body_ref, "body", object_store)]
+    resources = [upload_resource(body, body_ref, "body", bounded_objects)]
     manifest = [
         {k: resources[0][k] for k in ("role", "opaque_ref", "sha256", "media_type")}
     ]
@@ -204,7 +250,7 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
         ref, role = pair
         try:
             envelope = read(ref)
-            resource = upload_resource(envelope, ref, role, object_store)
+            resource = upload_resource(envelope, ref, role, bounded_objects)
             if role == "asset" and (
                 not resource["media_type"].startswith("image/")
                 or resource["media_type"] == "image/svg+xml"
@@ -218,6 +264,8 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
                 None,
                 "SOURCE_NOT_FOUND" if error.status == 404 else error.code,
             )
+        except OSError:
+            return ref, role, None, "ASSET_STORAGE_UNAVAILABLE"
 
     pool = ThreadPoolExecutor(max_workers=4)
     futures = [pool.submit(fetch, pair) for pair in optional]
@@ -258,7 +306,7 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
                 payload = base64.b64decode(encoded, validate=True)
                 digest = sha256(payload).hexdigest()
                 key = "sources/" + digest[:16] + "/" + digest
-                object_store.put_object(key, payload, media)
+                bounded_objects.put_object(key, payload, media)
                 ref = "embedded:" + resources[0]["sha256"] + ":" + digest
                 local = {
                     "provider": provider,
@@ -285,11 +333,32 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
                 node["asset_resource_ref"] = ref
             except (ValueError, TypeError):
                 node["reason"] = "INVALID_EMBEDDED_IMAGE"
+            except (OSError, SourceConnectorError) as error:
+                node["reason"] = (
+                    error.code
+                    if isinstance(error, SourceConnectorError)
+                    else "ASSET_STORAGE_UNAVAILABLE"
+                )
     positioned = set()
     image_records = {}
     for node in _walk(blocks):
         # No executable/provider URLs or upstream-supplied source_original enter the projection.
-        for key in ("source_original", "source_url", "href", "url", "src", "locator"):
+        for key in (
+            "source_original",
+            "source_url",
+            "href",
+            "url",
+            "src",
+            "locator",
+            "uri",
+            "path",
+            "storage_key",
+            "artifact_key",
+            "object_key",
+            "asset_id",
+            "content_sha256",
+            "source_snapshot_id",
+        ):
             node.pop(key, None)
         if (node.get("kind") or node.get("type")) == "image":
             ref = node.pop("asset_resource_ref", None)
@@ -324,7 +393,9 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
                 node.update(
                     {
                         "fetch_failed": True,
-                        "reason": failures.get(ref, "UNBOUND_SOURCE_IMAGE"),
+                        "reason": failures.get(
+                            ref, node.get("reason", "UNBOUND_SOURCE_IMAGE")
+                        ),
                     }
                 )
             image_records[node["image_id"]] = deepcopy(node)
@@ -354,7 +425,7 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
         {"article_id": str(article_id(context.key)), "evidence_ids": evidence_ids},
         blocks,
     )
-    for node in _walk(doc["blocks"]):
+    for node in _image_nodes(doc["blocks"]):
         local = image_records.get(node.get("image_id"))
         if local:
             for name in ("status", "media_type", "content_sha256", "storage_key"):

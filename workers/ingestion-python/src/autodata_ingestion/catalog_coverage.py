@@ -158,12 +158,31 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
             "model": vehicle["model"],
             "region": vehicle["region"],
         }
+        configuration_unresolved = False
         if scope["vehicle_configuration_id"]:
             configuration = cur.execute(
-                "SELECT configuration_key FROM vehicle_configurations WHERE vehicle_configuration_id=%s",
+                """SELECT c.trim,c.engine_displacement_l,b.drivetrain FROM vehicle_configurations c
+                JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
+                WHERE c.vehicle_configuration_id=%s""",
                 (scope["vehicle_configuration_id"],),
             ).fetchone()
-            selector["configuration"] = configuration["configuration_key"]
+            label = " ".join(
+                str(value).strip()
+                for value in (
+                    configuration["trim"],
+                    (
+                        f'{configuration["engine_displacement_l"]:.1f}L'
+                        if configuration["engine_displacement_l"] is not None
+                        else None
+                    ),
+                    configuration["drivetrain"],
+                )
+                if value not in (None, "")
+            )
+            if label:
+                selector["configuration"] = label
+            else:
+                configuration_unresolved = True
         cur.execute(
             "UPDATE catalog_article_provider_scopes SET status='running',error_code=NULL,updated_at=clock_timestamp() WHERE catalog_provider_scope_id=%s",
             (lease.catalog_provider_scope_id,),
@@ -203,6 +222,8 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
                 resolution_snapshot = mappings[0]["source_snapshot_id"]
                 resolution_resource = None
             else:
+                if configuration_unresolved:
+                    raise SourceConnectorError("UNRESOLVED_CONFIGURATION")
                 resolution = client.resolve_vehicle(selector)
                 resolution_resource = upload_envelope(
                     resolution, "vehicle_resolution", object_store
@@ -319,7 +340,8 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
             scope = _lock_scope(cur, lease)
             status = (
                 "needs_review"
-                if error.code in ("AMBIGUOUS", "CONFLICTING_DESCRIPTOR")
+                if error.code
+                in ("AMBIGUOUS", "CONFLICTING_DESCRIPTOR", "UNRESOLVED_CONFIGURATION")
                 else ("partial" if scope["row_count"] else "failed")
             )
             cur.execute(

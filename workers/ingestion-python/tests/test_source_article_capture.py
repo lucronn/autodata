@@ -397,3 +397,234 @@ def test_hal_article_content_is_readable_under_bound_scope(capture_fixture):
         object_store=capture_fixture.objects,
     )
     assert captured.source_body == "Remove pump."
+
+
+@pytest.mark.parametrize("intro", ["", "<p>Check the pump.</p>"])
+def test_table_facts_are_readable_in_source_order(capture_fixture, intro):
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    capture_fixture.body(
+        "banktwo",
+        (
+            intro + "<table><tr><td>Torque</td><td>25 Nm</td></tr>"
+            "<tr><td>Tool</td><td>T-123</td></tr></table>"
+        ).encode(),
+    )
+    captured = capture_source_article(
+        capture_fixture.context("banktwo"),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+    assert captured.source_body.splitlines() == (
+        (["Check the pump."] if intro else []) + ["Torque", "25 Nm", "Tool", "T-123"]
+    )
+    assert captured.source_document["blocks"][-1]["rows"] == [
+        ["Torque", "25 Nm"],
+        ["Tool", "T-123"],
+    ]
+
+
+@pytest.mark.parametrize("wrapper", ["article", "hal"])
+@pytest.mark.parametrize(
+    "identity",
+    [
+        {"vehicle": {"year": 1999}},
+        {"vehicle_id": "00000000-0000-0000-0000-000000000000"},
+        {"source_vehicle_ref": "different-vehicle"},
+        {"vehicle_configuration_id": "00000000-0000-0000-0000-000000000000"},
+    ],
+)
+def test_nested_article_applicability_must_match_scope(
+    capture_fixture, wrapper, identity
+):
+    import json
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    payload = {"article": {**identity, "body": "Remove pump."}}
+    if wrapper == "hal":
+        payload = {"_embedded": {"data": payload}}
+    capture_fixture.body("bankone", json.dumps(payload).encode(), "application/json")
+    with pytest.raises(SourceConnectorError, match="applicability"):
+        capture_source_article(
+            capture_fixture.context("bankone"),
+            registry=capture_fixture.registry,
+            object_store=capture_fixture.objects,
+        )
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("localized", [False, True])
+def test_nested_kindless_images_require_verified_provider_bytes(
+    capture_fixture, provider, localized
+):
+    import json
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    image = {
+        "asset_resource_ref": "figure",
+        "storage_key": "fixture-untrusted/object",
+        "artifact_key": "fixture-untrusted/artifact",
+        "uri": "https://untrusted.invalid/image",
+        "path": "/untrusted/image",
+        "object_key": "fixture-untrusted/blob",
+        "image_id": "fixture-untrusted/id",
+        "content_sha256": "f" * 64,
+        "status": "available",
+    }
+    payload = {
+        "blocks": [
+            {"kind": "paragraph", "text": "Check pump."},
+            {"kind": "table", "rows": [[{"text": "Torque 25 Nm", "images": [image]}]]},
+        ]
+    }
+    capture_fixture.body(provider, json.dumps(payload).encode(), "application/json")
+    if localized:
+        capture_fixture.body(
+            provider, provider.encode(), "image/png", ref="figure", kind="asset"
+        )
+    captured = capture_source_article(
+        capture_fixture.context(provider),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+    assert capture_fixture.resource_calls(provider, "figure") == 1
+    assert (
+        capture_fixture.calls("banktwo" if provider == "bankone" else "bankone") == []
+    )
+    assert len(captured.source_images) == 1
+    image = captured.source_document["blocks"][1]["rows"][0][0]["images"][0]
+    assert image["status"] == ("available" if localized else "unavailable")
+    assert image in captured.source_images
+    assert "fixture-untrusted" not in str(captured.source_document)
+    assert "untrusted.invalid" not in str(captured.source_document)
+    assert "/untrusted/" not in str(captured.source_document)
+    if localized:
+        assert image["storage_key"] in capture_fixture.objects.data
+    else:
+        assert not image.get("storage_key")
+        assert captured.projection_status == "partial"
+
+
+def test_unbound_image_cannot_keep_upstream_object_locators(capture_fixture):
+    import json
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    payload = {
+        "blocks": [
+            {"kind": "paragraph", "text": "Check pump."},
+            {
+                "kind": "image",
+                "uri": "https://untrusted.invalid/image",
+                "path": "/untrusted/image",
+                "storage_key": "fixture-untrusted/object",
+                "artifact_key": "fixture-untrusted/artifact",
+            },
+        ]
+    }
+    capture_fixture.body("bankone", json.dumps(payload).encode(), "application/json")
+    captured = capture_source_article(
+        capture_fixture.context("bankone"),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+    assert captured.source_images[0]["status"] == "unavailable"
+    assert not captured.source_images[0].get("storage_key")
+    assert "untrusted" not in str(captured.source_document)
+
+
+def test_optional_asset_upload_failure_preserves_readable_source(capture_fixture):
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    class FailingAssets(Objects):
+        def put_object(self, key, payload, media_type):
+            if media_type.startswith("image/"):
+                raise OSError("private object endpoint unreachable")
+            super().put_object(key, payload, media_type)
+
+    capture_fixture.body(
+        "bankone", b'<p>Check pump.</p><img data-resource-ref="figure" src="figure">'
+    )
+    capture_fixture.body("bankone", b"figure", "image/png", ref="figure", kind="asset")
+    captured = capture_source_article(
+        capture_fixture.context("bankone"),
+        registry=capture_fixture.registry,
+        object_store=FailingAssets(),
+    )
+    assert captured.source_body == "Check pump."
+    assert captured.projection_status == "partial"
+    assert captured.source_images[0]["status"] == "unavailable"
+    assert captured.resource_manifest[-1]["failure_code"] == "ASSET_STORAGE_UNAVAILABLE"
+    assert "private object endpoint" not in str(captured)
+
+
+def test_required_body_upload_obeys_capture_deadline(capture_fixture):
+    import time
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    class SlowObjects(Objects):
+        def put_object(self, *args):
+            time.sleep(0.2)
+            super().put_object(*args)
+
+    capture_fixture.body("bankone", b"<p>Check pump.</p>")
+    started = time.monotonic()
+    with pytest.raises(SourceConnectorError, match="capture_deadline"):
+        capture_source_article(
+            capture_fixture.context("bankone"),
+            registry=capture_fixture.registry,
+            object_store=SlowObjects(),
+            deadline_seconds=0.05,
+        )
+    assert time.monotonic() - started < 0.15
+
+
+def test_embedded_asset_upload_deadline_keeps_partial_source(capture_fixture):
+    import base64
+    import json
+    import time
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    class SlowAssets(Objects):
+        def put_object(self, key, payload, media_type):
+            if media_type.startswith("image/"):
+                time.sleep(0.2)
+            super().put_object(key, payload, media_type)
+
+    payload = {
+        "blocks": [
+            {"kind": "paragraph", "text": "Check pump."},
+            {
+                "kind": "image",
+                "url": "data:image/png;base64," + base64.b64encode(b"figure").decode(),
+            },
+        ]
+    }
+    capture_fixture.body("bankone", json.dumps(payload).encode(), "application/json")
+    started = time.monotonic()
+    captured = capture_source_article(
+        capture_fixture.context("bankone"),
+        registry=capture_fixture.registry,
+        object_store=SlowAssets(),
+        deadline_seconds=0.05,
+    )
+    assert time.monotonic() - started < 0.15
+    assert captured.projection_status == "partial"
+    assert captured.source_body == "Check pump."
+    assert captured.source_images[0]["status"] == "unavailable"
+    assert captured.source_images[0]["unavailable_reason"] == "CAPTURE_DEADLINE"
+
+
+def test_required_body_upload_failure_is_fatal(capture_fixture):
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    class BrokenObjects(Objects):
+        def put_object(self, *args):
+            raise OSError("fixture required body upload failure")
+
+    capture_fixture.body("bankone", b"<p>Check pump.</p>")
+    with pytest.raises(OSError, match="required body"):
+        capture_source_article(
+            capture_fixture.context("bankone"),
+            registry=capture_fixture.registry,
+            object_store=BrokenObjects(),
+        )

@@ -19,6 +19,7 @@ class ConnectorFixture:
         self.token = "fixture-" + provider
         self.resources = {}
         self.calls = []
+        self.resolution_requests = []
         self.pages = []
         self.candidates = [
             {"opaque_ref": "vehicle:fixture", "label": "Fixture car", "confidence": 1}
@@ -44,7 +45,7 @@ class ConnectorFixture:
             **fields,
         }
 
-    def response(self, path):
+    def response(self, path, request_payload=None):
         self.calls.append(path)
         parsed = urlsplit(path)
         if self.error:
@@ -79,8 +80,9 @@ class ConnectorFixture:
                 )
             )
         if parsed.path == "/v1/vehicle-resolutions":
+            self.resolution_requests.append(request_payload)
             return 200, self.envelope(
-                selector={"year": 2024, "make": "Example", "model": "Car"},
+                selector=request_payload,
                 candidates=self.candidates,
             )
         if parsed.path.endswith("/articles"):
@@ -103,12 +105,14 @@ def serve_connector(provider):
             pass
 
         def do_POST(self):
-            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            self.request_payload = json.loads(
+                self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            )
             self.do_GET()
 
         def do_GET(self):
             status, body = (
-                fixture.response(self.path)
+                fixture.response(self.path, getattr(self, "request_payload", None))
                 if self.headers.get("Authorization") == "Bearer " + fixture.token
                 else (401, {})
             )
