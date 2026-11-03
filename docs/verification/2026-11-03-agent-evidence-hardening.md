@@ -190,3 +190,54 @@ is synchronized for a fresh committed-base preflight. It preserves the existing
 supervisor/image/authentication boundary and permits exactly one bounded real
 success-case retry. No new provider invocation has run at this checkpoint.
 Previous failures remain unchanged; runtime/release certification is outstanding.
+
+## Actual full runtime trial at258bdfe remains blocked
+
+The separately gated single trial at
+`258bdfe0eabf76409d4b3f93932f92f8bd548278` ran in
+`/tmp/autodata-appserver-success-wsicu05i`. Architect, builder and all eight
+verification roles were dispatched; all ten provider processes exited0. The
+synthetic builder produced only the fixture file at local candidate
+`5080c93b4d0f0d600ef7bcbaf707d2761b58d488`; this commit is quarantined in
+the disposable clone and must never be integrated or pushed. Startup/profile
+compatibility progressed, but overall validation correctly exited20/blocked.
+Seven assigned commands exited0; the deterministic suite exited1. Required
+evidence verified105 of106 slots, with reliability:response absent. No full
+runtime certification or release acceptance is claimed from provider exits.
+
+Independent offline replay at the original `/evidence/run` path reproduced all
+41 failures and identical measurements. All313 original run files remained
+hash-identical. The replay used a read-only payload, networknone and no auth.
+Evidence: `/tmp/autodata-runtime-wsicu-review.md`,
+`/tmp/autodata-runtime-wsicu-replay.json` and the original root's
+`coordinator-summary.json`. The trial container was removed. No further live
+trial has been run.
+
+Diagnosis identifies bounded contract/environment defects:
+
+- Every actual check resolved python3 to `/usr/bin/python3.11`, while replay's
+  frozen basename list included3.12–3.14 and omitted3.11. Exact argument tails
+  and working directories otherwise matched for all eight commands.
+- Docker's existing `/tmp` tmpfs is noexec. Fake CLI scripts under tempfile
+  therefore could not execute; PATH search reached the installed CLI instead.
+  Nested runner tests also inherited the outer provider Git guard. The
+  authentication-free offline probe retained at
+  `/tmp/autodata-wsicu-offline-tmp-exec.log` proves PermissionError13 and mount
+  flags. A fresh clone run using owned executable `/evidence/tmp` and standard
+  image PATH, with no Codex package/auth/network, eliminates those failures.
+  It still fails105 tests with2 failures and1 setup error caused by the3.11
+  command mismatch; this is diagnostic evidence, not passing acceptance.
+- The independent review's assigned fixture assessment passed, but its generic
+  whole-bundle duty demanded upstream evidence absent from its local scope.
+  Global machine verification must remain authoritative and complete; any
+  clarification must preserve full release-review duties.
+- The reliability role printed an intentional credential-pattern test fixture
+  while broadly reading test source. Redaction correctly invalidated its raw
+  protocol equality. Required reliability13 tests passed. Do not allowlist
+  fixture credentials, weaken redaction or modify the failed transcript.
+
+A separately reviewed, precisely scoped plan is required before repairing
+command matching, check environment and synthetic-role instructions. Preserve
+all container restrictions, `/tmp` noexec, provider guards, exact requested
+execution profile and raw replay. Any subsequent live retry needs another
+committed checkpoint; unavailable-profile and interruption cases remain open.

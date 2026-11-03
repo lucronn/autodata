@@ -137,3 +137,14 @@ integration and before R5 dispatch.
 After deterministic tests and independent review, R6 runs the reviewed candidate in staging with the registered real issuer, HTTPS origin, external secrets and isolated accounts in two organizations. Verify actual browser login/logout, session expiry, mapped viewer/reviewer/operator/admin behavior, a rejected audience/issuer, dataset entitlement revocation, source/canonical transitions from both banks, source-review access and withdrawal denying old media URLs. Verify two replicas share revocation state and ingress/logging do not record callback codes, cookies or bearer credentials. Retain only safe IDs and exact-SHA outcomes in the release record; protected identity/source proof stays in the restricted evidence store. A health endpoint, local issuer, fixture token or connector canary cannot certify user identity integration.
 
 Concrete prerequisites still unresolved at planning time: actual issuer URL, web-client registration/secret, staging/public origin and callback allowlist, issuer organization/role claim names and role mapping, API audience/JWT access-token capability if bearer access is requested, and real test-account provisioning. These are external configuration decisions; none can be inferred from bank credentials. Without them R5 cannot be marked production-verified. If the selected issuer cannot supply this contract, revise and synchronize this plan before implementation rather than inventing an alternate gateway. Deployment remains outside current authority.
+
+## Reviewed migration and session-runtime handoff amendment
+
+The [post-migration amendment](2026-11-03-production-access-migration-handoff.md)
+passed independent planning review. It narrowly adds the shared driver, existing
+real-PG migration test module and migration runbook to R5 ownership, defines039
+as a complete transaction at all four driver dispatch sites, preserves001–038
+and historical-prefix acceptance, and freezes the required five-case real-PG
+session collector. It consumes R3's verified Go image/service instead of adding
+parallel tooling. Actual R3 implementation bindings must be reinspected and
+synchronized before the R5 checkpoint; task status remains blocked.

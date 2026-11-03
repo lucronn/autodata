@@ -42,7 +42,10 @@
     "docs/architecture/infrastructure-and-dev.md",
     "docs/architecture/workshop-interface.md",
     "infra/compose/compose.article-lifecycle-test.yaml",
-    "infra/compose/article-lifecycle-test.Dockerfile"
+    "infra/compose/article-lifecycle-test.Dockerfile",
+    "scripts/dev/migrate_sql.sh",
+    "workers/ingestion-python/tests/test_article_lifecycle_migrations.py",
+    "docs/operations/migration-runner.md"
   ],
   "bounded_contexts": [
     "production identity",
@@ -52,7 +55,8 @@
     "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
     "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
     "docs/superpowers/plans/2026-11-03-production-access.md",
-    "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md"
+    "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md",
+    "docs/superpowers/plans/2026-11-03-production-access-migration-handoff.md"
   ],
   "outputs": [
     "apps/api-go/auth_oidc.go",
@@ -68,7 +72,9 @@
     "Independent deterministic security verification is required; actual staging identities are additionally required before production verification, with sensitive reporting following SECURITY.md.",
     "OIDC code/PKCE and server-side sessions pass deterministic issuer and real-PostgreSQL tests; Workshop consumes the committed same-origin session contract, with live issuer verification recorded separately.",
     "OIDC startup requires a working PostgreSQL pool and migrated auth tables; it never falls back to memory persistence.",
-    "Explicit local mode retains headless bearer clients only; Workshop session login requires configured OIDC, including development."
+    "Explicit local mode retains headless bearer clients only; Workshop session login requires configured OIDC, including development.",
+    "The shared driver accepts exactly001\u2013039, audits039 as a complete transaction at all four dispatch sites, rejects untracked auth-only baselines and preserves all historical001\u2013038 bytes and prefix regressions.",
+    "The private fixture collector executes five mandatory real PostgreSQL Go session subtests, rejects missing dependencies/configuration and all skips, and records exact039 migration and candidate provenance using the independently verified R3 image/service."
   ],
   "forbidden_scope": [
     "Production deployment or production-data changes",
@@ -100,10 +106,12 @@
       "Independent deterministic security verification is required; actual staging identities are additionally required before production verification, with sensitive reporting following SECURITY.md.",
       "OIDC code/PKCE and server-side sessions pass deterministic issuer and real-PostgreSQL tests; Workshop consumes the committed same-origin session contract, with live issuer verification recorded separately.",
       "OIDC startup requires a working PostgreSQL pool and migrated auth tables; it never falls back to memory persistence.",
-      "Explicit local mode retains headless bearer clients only; Workshop session login requires configured OIDC, including development."
+      "Explicit local mode retains headless bearer clients only; Workshop session login requires configured OIDC, including development.",
+      "The shared driver accepts exactly001\u2013039, audits039 as a complete transaction at all four dispatch sites, rejects untracked auth-only baselines and preserves all historical001\u2013038 bytes and prefix regressions.",
+      "The private fixture collector executes five mandatory real PostgreSQL Go session subtests, rejects missing dependencies/configuration and all skips, and records exact039 migration and candidate provenance using the independently verified R3 image/service."
     ],
     "status": "blocked",
-    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+    "updated_at": "2026-11-03T11:33:50.043506+00:00"
   },
   "execution": {
     "model": "gpt-6.1-sol",
