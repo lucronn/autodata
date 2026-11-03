@@ -72,3 +72,19 @@ This verifies the content API lane. Firebase customer identity, paid vehicle
 authorization, session-bound media access, checkout/library UI, live providers,
 backup/recovery and deployment acceptance are still required for the Workshop
 launch. Production readiness is not claimed.
+
+
+## CI follow-through: static privacy assertion
+
+After the unrelated shallow-runtime tests were repaired, actual CI41691331286
+passed Go/contracts/worker checks and failed one of98 developer tests: an exact
+StorageKey field-spacing assertion no longer matches gofmt alignment. The
+field/type/json exclusion tag and Go serialization behavior are unchanged.
+The synchronized one-file catalog-runtime-assertion plan preserves that privacy
+requirement while permitting horizontal whitespace, with red/green, mutation,
+full development/Go privacy checks and independent review/full CI required.
+This static test failure does not relabel the earlier eight R3 runtime cases.
+The first checkpoint9fca22b correctly failed preflight because Project text
+exceeded its limit and its record remained pending_tracking. A concise Project
+update was then saved/read back before this synchronized successor checkpoint;
+no implementation occurred under the failed record.
