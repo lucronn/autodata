@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'src'))
-from lifecycle_support import ROOT, fresh_database, seed_vehicle, seed_configuration
+from lifecycle_support import ROOT, fresh_database, seed_vehicle, seed_configuration, seed_snapshot
 from autodata_ingestion.commerce_service import (CommerceService, CommerceConfig, CommerceError,
     TERMS, reconcile_workshop_preparation)
 from autodata_ingestion.stripe_adapter import StripePaymentProvider
@@ -37,6 +37,7 @@ class StripeFixture:
         import stripe
         self.sessions, self.intents, self.keys, self.calls = {}, {}, {}, []
         self.lock = threading.Lock()
+        self.create_attempts = []
         self.lose_once = False
         self.barrier = None
         outer = self
@@ -72,7 +73,9 @@ class StripeFixture:
                     mode='payment',livemode=False,amount_total=2000,currency='usd',payment_status='unpaid',status='open',
                     expires_at=int(one('expires_at')),line_items={'data':[{'price':{'id':one('line_items[0][price]')},'quantity':1}]},payment_intent=pid)
                 self.keys[key] = sid
-            result = copy.deepcopy(self.sessions[self.keys[key]])
+            sid = self.keys[key]
+            self.create_attempts.append(dict(provider_idempotency_key_sha256=hashlib.sha256(key.encode()).hexdigest(),order_id=self.sessions[sid]['metadata']['order_id'],session_id=sid))
+            result = copy.deepcopy(self.sessions[sid])
             if self.lose_once:
                 self.lose_once = False
                 raise RuntimeError('fixture response lost after remote commit')
@@ -116,7 +119,7 @@ class StripeFixture:
 
 
 @pytest.fixture
-def commerce(fresh_database):
+def commerce(fresh_database, request):
     repo = fresh_database()
     config = str(seed_configuration(repo, seed_vehicle(repo)))
     stripe = StripeFixture()
@@ -125,7 +128,10 @@ def commerce(fresh_database):
     with repo.connect() as conn:
         account = conn.execute("INSERT INTO customer_accounts(firebase_project_id,firebase_uid) VALUES('fixture',%s) RETURNING customer_account_id,personal_organization_id",(uuid.uuid4().hex,)).fetchone()
     owner = (str(account['customer_account_id']),str(account['personal_organization_id']))
-    return repo,service,stripe,owner,config,now
+    value = repo,service,stripe,owner,config,now
+    yield value
+    if os.getenv('AUTODATA_REQUIRE_COMMERCE_INTEGRATION') == '1':
+        export_case_rows(value, request.node.name)
 
 
 def checkout(c, key=None, config=None):
@@ -252,6 +258,8 @@ def test_refund_chargeback_ordering_and_monotonic_revocation(commerce):
     c=commerce;first=checkout(c);sid=order(c,first['order_id'])['checkout_session_id'];c[2].paid(sid)
     assert c[1].webhook(*c[2].event(sid,kind='charge.refunded',refunded=True,amount_refunded=2000))['status']=='accepted'
     assert order(c,first['order_id'])['status']=='revoked'
+    tombstone=c[1].library(*c[3])['items'][0]
+    assert tombstone['access_state']=='revoked' and tombstone['granted_at'] is None
     assert c[1].webhook(*c[2].event(sid))['status']=='accepted' and counts(c)['entitlements']==0
     with pytest.raises(CommerceError) as error:checkout(c)
     assert error.value.code=='ENTITLEMENT_REVOKED'
@@ -303,6 +311,15 @@ def test_library_is_owner_only_and_paginated(commerce):
     assert len(last['items'])==1 and not last['next_cursor'] and page['items'][0]['library_item_id']!=last['items'][0]['library_item_id']
     with pytest.raises(CommerceError):c[1].library(str(uuid.uuid4()),str(uuid.uuid4()),cursor_value=page['next_cursor'])
     text=json.dumps(page);assert 'cs_' not in text and 'pi_' not in text and 'acct_' not in text
+    descriptor,body=seed_readable_source(c)
+    assert next(i for i in c[1].library(*c[3])['items'] if i['configuration_id']==c[4])['access_state']=='viewable'
+    with c[0].connect() as conn:conn.execute("UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=%s",(descriptor,))
+    assert next(i for i in c[1].library(*c[3])['items'] if i['configuration_id']==c[4])['access_state']!='viewable'
+    with c[0].connect() as conn:
+        conn.execute("UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=%s",(descriptor,))
+        conn.execute("UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=%s",(body,))
+    assert next(i for i in c[1].library(*c[3])['items'] if i['configuration_id']==c[4])['access_state']!='viewable'
+
 
 
 def test_grant_check_exact_scope_legacy_and_revoked(commerce):
@@ -314,3 +331,59 @@ def test_grant_check_exact_scope_legacy_and_revoked(commerce):
     sid=order(c,first['order_id'])['checkout_session_id'];c[1].webhook(*c[2].event(sid,kind='charge.refunded',refunded=True,amount_refunded=2000))
     with pytest.raises(CommerceError) as error:c[1].grant_check(*c[3],c[4],'US')
     assert error.value.code=='ENTITLEMENT_REVOKED'
+
+
+SAFE_COLUMNS = {
+    'workshop_orders': ('order_id','customer_account_id','organization_id','configuration_id','region','dataset_product_id','terms_version','amount_minor','currency','stripe_account_id','livemode','expected_price_id','status','checkout_session_id','payment_intent_id','first_create_attempt_at','provider_expires_at','dataset_request_id','entitlement_id','created_at','paid_at','revoked_at','revocation_reason_code','preparation_state','preparation_attempts','preparation_index_job_ids','preparation_last_error_code'),
+    'workshop_checkout_requests': ('customer_account_id','client_idempotency_key','canonical_request_sha256','order_id','created_at'),
+    'entitlements': ('entitlement_id','organization_id','dataset_request_id','payment_event_id','provider_event_id','status','granted_at','revoked_at','revoke_reason','customer_account_id','configuration_id','region','commerce_order_id'),
+    'dataset_requests': ('dataset_request_id','dataset_product_id','vehicle_key','region','status','lane','source_snapshot_id','correlation_id','idempotency_key','processing_version','organization_id'),
+    'dataset_projections': ('dataset_projection_id','dataset_product_id','dataset_request_id','entitlement_id'),
+    'source_fetch_jobs': ('source_fetch_job_id','job_kind','catalog_provider_scope_id','canonical_article_id','status','phase','request_generation'),
+    'catalog_article_provider_scopes': ('catalog_provider_scope_id','vehicle_id','vehicle_configuration_id','provider_slug','scope_key','status'),
+    'payment_events': ('payment_event_id','provider_name','provider_event_id','event_type','verified','fulfillment_status','fulfillment_attempts','last_fulfillment_error','fulfilled_at'),
+}
+
+
+def export_case_rows(c, name):
+    import stripe
+    from autodata_ingestion.payment_reconciliation import canonical_payment_payload
+    artifact=Path('/artifacts/workshop-commerce-migration-rows.json')
+    candidate=os.environ['AUTODATA_R3_CANDIDATE_SHA']
+    output=json.loads(artifact.read_text()) if artifact.exists() else dict(schema_version=1,candidate_sha=candidate,cases={})
+    assert output['candidate_sha']==candidate
+    with c[0].connect() as conn:
+        measured=dict(fixture_database=c[0].database_name,
+            server_version_num=int(conn.execute('SHOW server_version_num').fetchone()['server_version_num']),
+            schema_migrations=conn.execute('SELECT version,applied_at FROM schema_migrations ORDER BY version').fetchall(),
+            stripe_sdk_version=stripe.VERSION,stripe_transport_calls=list(c[2].calls),stripe_create_attempts=list(c[2].create_attempts),
+            stripe_remote_sessions=[dict(session_id=s['id'],order_id=s['metadata']['order_id'],status=s['status'],payment_status=s['payment_status'],amount_total=s['amount_total'],currency=s['currency'],price_id=s['line_items']['data'][0]['price']['id'],quantity=s['line_items']['data'][0]['quantity'],payment_intent_id=s['payment_intent']) for s in c[2].sessions.values()])
+        for table,columns in SAFE_COLUMNS.items():
+            rows=conn.execute('SELECT '+','.join(columns)+' FROM '+table+' ORDER BY 1').fetchall()
+            if table=='workshop_checkout_requests':
+                for row in rows:row['canonical_request_sha256']=bytes(row['canonical_request_sha256']).hex()
+            if table=='payment_events':
+                for row in rows:
+                    payload=conn.execute('SELECT payload FROM payment_events WHERE payment_event_id=%s',(row['payment_event_id'],)).fetchone()['payload']
+                    row['payload_sha256']=hashlib.sha256(canonical_payment_payload(payload).encode()).hexdigest()
+            measured[table]=rows
+    output['cases'][name]=measured
+    artifact.write_text(json.dumps(output,default=str,sort_keys=True,indent=2)+'\n');artifact.chmod(0o644)
+
+
+def seed_readable_source(c):
+    from psycopg.types.json import Jsonb
+    from autodata_ingestion.article_lifecycle_types import ArticleKey
+    from autodata_ingestion.article_lifecycle_store import upsert_article_descriptor
+    descriptor=seed_snapshot(c[0],b'commerce-descriptor-rights')
+    body=seed_snapshot(c[0],b'commerce-readable-body')
+    with c[0].connect() as conn:
+        vehicle=conn.execute('SELECT vehicle_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s',(c[4],)).fetchone()['vehicle_id']
+    aid=upsert_article_descriptor(c[0],ArticleKey('bankone',vehicle,uuid.UUID(c[4]),'fixture-vehicle','fixture-article'),{'title':'Fixture'},descriptor,0)
+    rid=uuid.uuid4()
+    with c[0].connect() as conn:
+        conn.execute("""INSERT INTO canonical_article_source_revisions(source_revision_id,canonical_article_id,source_fingerprint,body_source_snapshot_id,resource_manifest,source_document,source_images,source_body,source_steps,projection_status,evidence_manifest,captured_at)
+            VALUES(%s,%s,%s,%s,'[]',%s,'[]','Fixture readable source','[]','readable','["fixture-evidence"]',now())""",
+            (rid,aid,hashlib.sha256(b'commerce-source').hexdigest(),body,Jsonb({'blocks':[{'type':'paragraph','text':'Fixture readable source','evidence_ids':['fixture-evidence']}]})))
+        conn.execute('UPDATE canonical_articles SET current_source_revision_id=%s WHERE canonical_article_id=%s',(rid,aid))
+    return descriptor,body

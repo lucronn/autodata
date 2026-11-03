@@ -136,3 +136,19 @@ class APIRuntimeContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CommerceRuntimeTests(unittest.TestCase):
+    def test_commerce_mode_is_explicit_and_secrets_are_python_only(self):
+        import yaml
+        for relative in ('infra/compose/compose.yaml','docker-compose.base44.yml'):
+            data=yaml.safe_load((ROOT/relative).read_text())
+            for service in ('api','ingestion-http'):
+                self.assertIn('AUTODATA_COMMERCE_MODE',data['services'][service]['environment'])
+            self.assertNotIn('AUTODATA_STRIPE_SECRET_KEY',data['services']['api']['environment'])
+            self.assertNotIn('AUTODATA_STRIPE_WEBHOOK_SECRET',data['services']['api']['environment'])
+            self.assertIn('AUTODATA_STRIPE_SECRET_KEY',data['services']['ingestion-http']['environment'])
+        project=__import__('tomllib').loads((ROOT/'workers/ingestion-python/pyproject.toml').read_text())
+        self.assertIn('stripe==16.1.0',project['project']['dependencies'])
+        dockerfile=(ROOT/'workers/ingestion-python/Dockerfile').read_text()
+        self.assertIn("p['project']['dependencies']",dockerfile)

@@ -124,6 +124,13 @@ class StripePaymentProvider:
         if account.get('id') != expected_account:
             raise ValueError('Stripe merchant configuration mismatch')
 
+    def verify_price(self, price_id: str, livemode: bool) -> None:
+        price = _stripe_dict(self._client.v1.prices.retrieve(price_id))
+        if (price.get('id') != price_id or price.get('active') is not True or price.get('type') != 'one_time'
+            or price.get('currency') != 'usd' or type(price.get('unit_amount')) is not int or price['unit_amount'] != 2000
+            or type(price.get('livemode')) is not bool or price['livemode'] != livemode):
+            raise ValueError('Stripe price configuration mismatch')
+
     def create_order_checkout(self, order: Mapping[str, Any]) -> dict[str, Any]:
         """Only server-stored order parameters enter the official SDK call."""
         first = order['first_create_attempt_at']

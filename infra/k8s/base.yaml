@@ -5,6 +5,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: autodata
 data:
+  AUTODATA_COMMERCE_MODE: disabled
   AUTODATA_ENV: production
   AUTODATA_AUTH_MODE: firebase
   AUTODATA_PUBLIC_ORIGIN: https://cars.tk

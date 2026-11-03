@@ -97,3 +97,12 @@ class KubernetesManifestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CommerceManifestTests(unittest.TestCase):
+    def test_commerce_is_explicitly_disabled_until_secret_managed_activation(self):
+        documents=list(yaml.safe_load_all(MANIFEST.read_text()))
+        config=next(d for d in documents if d['kind']=='ConfigMap' and d['metadata']['name']=='autodata-config')
+        self.assertEqual(config['data']['AUTODATA_COMMERCE_MODE'],'disabled')
+        self.assertNotIn('AUTODATA_STRIPE_SECRET_KEY',config['data'])
+        self.assertNotIn('AUTODATA_STRIPE_WEBHOOK_SECRET',config['data'])

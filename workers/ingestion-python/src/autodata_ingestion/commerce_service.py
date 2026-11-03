@@ -87,6 +87,8 @@ def checkout_return_origin(environment, value):
                  and (p.scheme == 'https' or (environment == 'test' and p.scheme == 'http' and local)))
         if environment == 'production':
             valid = valid and value == 'https://cars.tk'
+        if any(c.isspace() or ord(c)<32 for c in value) or p.netloc.endswith(':'):
+            valid = False
         if not valid or (port is not None and not 1 <= port <= 65535):
             raise ValueError()
     except (ValueError, TypeError):
@@ -217,7 +219,6 @@ class CommerceService:
         created = False
         with self.transaction() as (_, cursor):
             self._account(cursor, account_id, organization_id)
-            self._scope(cursor, config_id, region)
             self._lock(cursor, account_id, config_id, region)
             cursor.execute('SELECT * FROM workshop_checkout_requests WHERE customer_account_id=%s AND client_idempotency_key=%s', (account_id, key))
             mapping = cursor.fetchone()
@@ -234,6 +235,7 @@ class CommerceService:
                 if live:
                     order = self._order(cursor, live['order_id'])
                 else:
+                    self._scope(cursor, config_id, region)
                     order_id = str(uuid.uuid4())
                     cursor.execute("""INSERT INTO workshop_orders(order_id,customer_account_id,organization_id,configuration_id,region,dataset_product_id,terms_version,
                         amount_minor,currency,stripe_account_id,livemode,expected_price_id,provider_idempotency_key,status,first_create_attempt_at)
@@ -258,7 +260,7 @@ class CommerceService:
                     session = self.provider.create_order_checkout(order)
                     url = validate_checkout_url(session.get('url'))
                     expires = datetime.fromtimestamp(session['expires_at'], UTC)
-                    if not str(session.get('id', '')).startswith('cs_') or session.get('metadata', {}).get('order_id') != str(order['order_id']) or type(session.get('livemode')) is not bool or session['livemode'] != order['livemode']:
+                    if not str(session.get('id', '')).startswith('cs_') or session.get('metadata', {}).get('order_id') != str(order['order_id']) or type(session.get('livemode')) is not bool or session['livemode'] != order['livemode'] or session.get('mode') != 'payment' or type(session.get('amount_total')) is not int or session['amount_total'] != 2000 or session.get('currency') != 'usd':
                         raise CommerceError('PAYMENT_FINANCIAL_CONFLICT', 409)
                 except Exception:
                     return self._response(order)
@@ -444,6 +446,9 @@ class CommerceService:
         with self.transaction() as (_, cursor):
             self._account(cursor, account_id, organization_id)
             validate_uuid(configuration_id); validate_region(region)
+            cursor.execute("SELECT 1 FROM workshop_orders WHERE customer_account_id=%s AND configuration_id=%s AND region=%s AND stripe_account_id=%s AND livemode=%s AND status='revoked' LIMIT 1", (account_id,configuration_id,region,self.config.account_id,self.config.livemode))
+            if cursor.fetchone():
+                raise CommerceError('ENTITLEMENT_REVOKED',403)
             cursor.execute("""SELECT e.entitlement_id,e.status,o.order_id FROM entitlements e JOIN workshop_orders o ON o.order_id=e.commerce_order_id
                 WHERE e.customer_account_id=%s AND e.configuration_id=%s AND e.region=%s AND o.stripe_account_id=%s AND o.livemode=%s
                 ORDER BY e.granted_at DESC LIMIT 1""", (account_id, configuration_id, region, self.config.account_id, self.config.livemode))
@@ -472,8 +477,8 @@ class CommerceService:
             args = [account_id, self.config.account_id, self.config.livemode] + (list(after) if after else []) + [limit + 1]
             cursor.execute("""SELECT o.*,concat_ws(' ',b.make,b.model,b.model_year::text,c.trim) AS label,e.status AS grant_status,e.granted_at
                 FROM workshop_orders o JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
-                JOIN vehicle_identity_bases b USING(vehicle_identity_base_id) JOIN entitlements e ON e.entitlement_id=o.entitlement_id
-                WHERE o.customer_account_id=%s AND o.stripe_account_id=%s AND o.livemode=%s """ + clause + ' ORDER BY o.created_at DESC,o.order_id DESC LIMIT %s', args)
+                JOIN vehicle_identity_bases b USING(vehicle_identity_base_id) LEFT JOIN entitlements e ON e.entitlement_id=o.entitlement_id
+                WHERE o.customer_account_id=%s AND o.stripe_account_id=%s AND o.livemode=%s AND (o.status='revoked' OR e.entitlement_id IS NOT NULL) """ + clause + ' ORDER BY o.created_at DESC,o.order_id DESC LIMIT %s', args)
             rows = cursor.fetchall()
             items = []
             for order in rows[:limit]:
@@ -485,7 +490,7 @@ class CommerceService:
                 elif order['preparation_state'] != 'index_ready' or self._article_pending(cursor, order['configuration_id']):
                     state = 'preparing'
                 item = dict(library_item_id=str(order['order_id']), configuration_id=str(order['configuration_id']), region=order['region'],
-                    label=order['label'], access_state=state, granted_at=order['granted_at'].isoformat())
+                    label=order['label'], access_state=state, granted_at=order['granted_at'].isoformat() if order['granted_at'] else None)
                 if order['revoked_at']:
                     item['revoked_at'] = order['revoked_at'].isoformat()
                 if order['preparation_last_error_code']:
@@ -507,7 +512,7 @@ class CommerceService:
             JOIN vehicle_configurations c ON c.vehicle_configuration_id=a.vehicle_configuration_id
             JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
             WHERE a.vehicle_configuration_id=%s AND b.region=%s AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'
-            AND a.membership_status='active' AND v.takedown_status='active' AND v.availability='available'
+            AND a.membership_status='active' AND EXISTS(SELECT 1 FROM source_snapshots descriptor WHERE descriptor.source_snapshot_id=a.descriptor_source_snapshot_id AND descriptor.takedown_status='active') AND v.takedown_status='active' AND v.availability='available'
             AND jsonb_typeof(v.document->'blocks')='array' AND jsonb_array_length(v.document->'blocks')>0
             AND NOT EXISTS(SELECT 1 FROM source_review_items q WHERE q.item_kind='quarantine' AND q.status<>'approved'
               AND (q.source_snapshot_ids ? a.descriptor_source_snapshot_id::text OR EXISTS(
@@ -547,6 +552,7 @@ def configured_commerce(*, connection_factory=database_connection):
     # This network probe is outside a transaction and must succeed before readiness.
     try:
         provider.verify_merchant(account)
+        provider.verify_price(price,service.config.livemode)
         with service.transaction() as (_, cursor):
             cursor.execute("SELECT 1 FROM schema_migrations WHERE version='040_workshop_commerce'")
             if not cursor.fetchone():

@@ -146,6 +146,22 @@ class StripePaymentProviderTests(unittest.TestCase):
 
 
 class OfficialStripeSDKTests(unittest.TestCase):
+    def test_actual_sdk_price_must_match_immutable_product_before_checkout(self):
+        import stripe,json
+        class Transport(stripe.HTTPClient):
+            name='price-fixture'
+            def __init__(self):super().__init__();self.price={'id':'price_fixture','active':True,'type':'one_time','currency':'usd','unit_amount':2000,'livemode':False}
+            def request(self,method,url,headers,post_data=None,**kwargs):
+                if method!='get' or url!='https://api.stripe.com/v1/prices/price_fixture':raise AssertionError('unexpected destination')
+                return json.dumps(self.price),200,{}
+        transport=Transport()
+        provider=StripePaymentProvider(stripe_module=stripe,client=stripe.StripeClient('sk_test_fixture',max_network_retries=0,http_client=transport),webhook_secret='whsec_fixture',success_url='https://cars.tk/workshop/',cancel_url='https://cars.tk/workshop/')
+        provider.verify_price('price_fixture',False)
+        for key,bad in [('active',False),('type','recurring'),('currency','eur'),('unit_amount',1999),('livemode',True)]:
+            original=transport.price[key];transport.price[key]=bad
+            with self.assertRaises(ValueError,msg=key):provider.verify_price('price_fixture',False)
+            transport.price[key]=original
+
     def test_actual_sdk_params_options_merchant_and_signature_transport(self):
         import hashlib
         import hmac
