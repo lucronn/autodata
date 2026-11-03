@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { NavigationGeneration } from './workshop/article-read.mjs';
+import { uuid, validScope } from './workshop/commerce.mjs';
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
@@ -318,3 +319,158 @@ for (const unavailable of ['article', 'generation', 'canceled generation']) {
     assert.deepEqual(h.state, { content: 'article A', status: 'A ready', view: 'reader' });
   });
 }
+
+const routeConfiguration = '11111111-1111-4111-8111-111111111111';
+const routeArticle = '22222222-2222-4222-8222-222222222222';
+const routeOrder = '33333333-3333-4333-8333-333333333333';
+const previousConfiguration = '44444444-4444-4444-8444-444444444444';
+
+function loginRouteHarness(search, { authenticate = true, signInError = null, login = null, library = null } = {}) {
+  const navigation = new NavigationGeneration();
+  const calls = { signIns: 0, checkoutClears: 0, checkouts: 0, routes: 0,
+    selections: [], libraries: 0, orders: [], options: [], invalidations: 0 };
+  const elements = new Map();
+  const element = name => {
+    if (!elements.has(name)) elements.set(name, { value: '' });
+    return elements.get(name);
+  };
+  const configuration = { id: routeConfiguration, region: 'US' };
+  const context = {
+    URLSearchParams, uuid, validScope,
+    location: { search }, signingIn: false,
+    vehicle: { id: previousConfiguration, region: 'US' }, quote: null,
+    names: ['year', 'make', 'model', 'configuration'],
+    rows: { configuration: [configuration] }, $: element,
+    checkout: { clear() { calls.checkoutClears++; }, start() { calls.checkouts++; } },
+    session: { state: { authenticated: false }, async signIn() {
+      calls.signIns++;
+      if (login) await login();
+      if (signInError) throw signInError;
+      context.session.state.authenticated = authenticate;
+    } },
+    scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
+    invalidate() { calls.invalidations++; navigation.clear(); },
+    show() {}, status() {}, renderPurchase() {},
+    async operation(work) { calls.routes++; return work(navigation.next()); },
+    async library(g) {
+      assert.equal(g.current(), true);
+      calls.libraries++;
+      if (library) await library();
+    },
+    async checkOrder(g, id) {
+      assert.equal(g.current(), true);
+      calls.orders.push(id);
+    },
+    async selectVehicle(g, article = '') {
+      assert.equal(g.current(), true);
+      calls.selections.push({ configuration: context.vehicle.id, region: context.vehicle.region, article });
+    },
+    async loadOptions(name, g, desired) {
+      assert.equal(g.current(), true);
+      calls.options.push({ name, desired });
+      element(name).value = desired;
+    },
+  };
+  runInNewContext(
+    appSection('async function signIn() {', 'async function bootstrap() {') +
+    appSection('async function restoreRoute() {', 'for (const [index, name] of names.entries())'),
+    context,
+  );
+  return { context, calls, element };
+}
+
+const loginRoutes = [
+  { name: 'My vehicles instead of a prior selected configuration', query: '?view=library',
+    libraries: 1, orders: [], selections: [], options: [] },
+  { name: 'the exact article in a direct configuration link',
+    query: `?configuration=${routeConfiguration}&region=US&article=${routeArticle}`,
+    libraries: 0, orders: [],
+    selections: [{ configuration: routeConfiguration, region: 'US', article: routeArticle }], options: [] },
+  { name: 'the article and search in a saved selector hierarchy',
+    query: `?year=2020&make=toyota&model=rav4&configuration=${routeConfiguration}&region=US&article=${routeArticle}&q=brakes`,
+    libraries: 0, orders: [],
+    selections: [{ configuration: routeConfiguration, region: 'US', article: routeArticle }],
+    options: [{ name: 'year', desired: '2020' }, { name: 'make', desired: 'toyota' },
+      { name: 'model', desired: 'rav4' }, { name: 'configuration', desired: routeConfiguration }] },
+  { name: 'the order return before the library or prior configuration',
+    query: `?order=${routeOrder}&view=library&configuration=${routeConfiguration}&region=US&article=${routeArticle}`,
+    libraries: 0, orders: [routeOrder], selections: [], options: [] },
+];
+for (const route of loginRoutes) {
+  test(`login route resumes ${route.name} without checkout replay`, async () => {
+    const h = loginRouteHarness(route.query);
+    await h.context.signIn();
+    assert.equal(h.calls.libraries, route.libraries);
+    assert.deepEqual(h.calls.orders, route.orders);
+    assert.deepEqual(h.calls.selections, route.selections);
+    assert.deepEqual(h.calls.options, route.options);
+    assert.equal(h.calls.routes, 1);
+    assert.equal(h.calls.invalidations, 1);
+    assert.equal(h.calls.signIns, 1);
+    assert.equal(h.calls.checkoutClears, 1);
+    assert.equal(h.calls.checkouts, 0);
+    assert.equal(h.context.signingIn, false);
+    if (route.query.includes('q=brakes')) assert.equal(h.element('search').value, 'brakes');
+  });
+}
+
+for (const outcome of ['canceled', 'failed']) {
+  test(`login route stays put after ${outcome} sign-in without checkout replay`, async () => {
+    const h = loginRouteHarness('?view=library', { authenticate: false });
+    await h.context.signIn();
+    assert.equal(h.calls.signIns, 1);
+    assert.equal(h.calls.routes, 0);
+    assert.equal(h.calls.invalidations, 0);
+    assert.equal(h.calls.libraries, 0);
+    assert.deepEqual(h.calls.selections, []);
+    assert.deepEqual(h.calls.orders, []);
+    assert.deepEqual(h.calls.options, []);
+    assert.equal(h.calls.checkouts, 0);
+    assert.equal(h.context.signingIn, false);
+  });
+}
+
+test('login route preserves a rejected sign-in and resets its guard without restoring', async () => {
+  const error = new Error('Sign-in transport unavailable');
+  const h = loginRouteHarness('?view=library', { signInError: error });
+  await assert.rejects(h.context.signIn(), received => received === error);
+  assert.equal(h.calls.signIns, 1);
+  assert.equal(h.calls.routes, 0);
+  assert.equal(h.calls.invalidations, 0);
+  assert.equal(h.calls.libraries, 0);
+  assert.equal(h.calls.checkouts, 0);
+  assert.equal(h.context.signingIn, false);
+});
+
+test('login route shares the existing sign-in guard rather than starting another popup', async () => {
+  let finish;
+  const login = new Promise(resolve => { finish = resolve; });
+  const h = loginRouteHarness('?view=library', { login: () => login });
+  const first = h.context.signIn();
+  assert.equal(h.context.signingIn, true);
+  await h.context.signIn();
+  assert.equal(h.calls.signIns, 1);
+  assert.equal(h.calls.checkoutClears, 1);
+  assert.equal(h.calls.routes, 0);
+  finish();
+  await first;
+  assert.equal(h.calls.libraries, 1);
+  assert.equal(h.calls.routes, 1);
+  assert.equal(h.calls.checkouts, 0);
+  assert.equal(h.context.signingIn, false);
+});
+
+test('login route awaits restoration completion before signIn resolves', async () => {
+  let finish;
+  const library = new Promise(resolve => { finish = resolve; });
+  const h = loginRouteHarness('?view=library', { library: () => library });
+  let completed = false;
+  const pending = h.context.signIn().then(() => { completed = true; });
+  await new Promise(setImmediate);
+  assert.equal(h.calls.libraries, 1);
+  assert.equal(completed, false);
+  finish();
+  await pending;
+  assert.equal(completed, true);
+  assert.equal(h.calls.checkouts, 0);
+});
