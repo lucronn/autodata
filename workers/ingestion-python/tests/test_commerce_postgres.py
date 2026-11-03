@@ -426,17 +426,22 @@ def seed_readable_source(c):
     from psycopg.types.json import Jsonb
     from autodata_ingestion.article_lifecycle_types import ArticleKey
     from autodata_ingestion.article_lifecycle_store import upsert_article_descriptor
+    from autodata_ingestion.source_job_persistence import ensure_article_job
     descriptor=seed_snapshot(c[0],b'commerce-descriptor-rights')
     body=seed_snapshot(c[0],b'commerce-readable-body')
     with c[0].connect() as conn:
         vehicle=conn.execute('SELECT vehicle_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s',(c[4],)).fetchone()['vehicle_id']
     aid=upsert_article_descriptor(c[0],ArticleKey('bankone',vehicle,uuid.UUID(c[4]),'fixture-vehicle','fixture-article'),{'title':'Fixture'},descriptor,0)
+    prepared=ensure_article_job(c[0],aid,normalization_version='ordered-article-v1',rewrite_profile_version='technical-prose-v1')
+    assert prepared.job_id is not None
     rid=uuid.uuid4()
     with c[0].connect() as conn:
         conn.execute("""INSERT INTO canonical_article_source_revisions(source_revision_id,canonical_article_id,source_fingerprint,body_source_snapshot_id,resource_manifest,source_document,source_images,source_body,source_steps,projection_status,evidence_manifest,captured_at)
             VALUES(%s,%s,%s,%s,'[]',%s,'[]','Fixture readable source','[]','readable','["fixture-evidence"]',now())""",
             (rid,aid,hashlib.sha256(b'commerce-source').hexdigest(),body,Jsonb({'blocks':[{'type':'paragraph','text':'Fixture readable source','evidence_ids':['fixture-evidence']}]})))
         conn.execute('UPDATE canonical_articles SET current_source_revision_id=%s WHERE canonical_article_id=%s',(rid,aid))
+        linked=conn.execute('SELECT current_job_id,current_source_revision_id FROM canonical_articles WHERE canonical_article_id=%s',(aid,)).fetchone()
+        assert linked['current_job_id']==prepared.job_id and linked['current_source_revision_id']==rid
     return descriptor,body
 
 
