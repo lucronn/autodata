@@ -611,7 +611,8 @@ class RawPrimitiveTests(unittest.TestCase):
                 with patch.multiple(assembler, strict_raw_json=DEFAULT, strict_jsonl=DEFAULT,
                         strict_junit_xml=DEFAULT, strict_dto_archive=DEFAULT,
                         paid_case_identities=DEFAULT, dto_case_identities=DEFAULT,
-                        inspect_paid_common=DEFAULT, inspect_paid_pg_snapshots=DEFAULT) as mocks:
+                        inspect_paid_common=DEFAULT, inspect_paid_pg_snapshots=DEFAULT,
+                        inspect_paid_migration_receipts=DEFAULT) as mocks:
                     for mock in mocks.values(): mock.side_effect = AssertionError('raw dispatch forbidden')
                     with patch.object(assembler, 'ArtifactStore', side_effect=AssertionError('plan root I/O')):
                         with patch('builtins.print') as output:
@@ -1097,6 +1098,153 @@ class PaidPGSnapshotTests(unittest.TestCase):
         raw[prefix+'migration-replay-populated.rows.json']=json.dumps(rows).encode()
         self.reseal(raw)
         with self.assertRaises(assembler.ContractError):self.inspect(raw)
+
+
+class PaidMigrationReceiptTests(unittest.TestCase):
+    manifest = ['001_extensions.sql', '002_platform_spine.sql', '003_canonical_vehicle.sql', '004_normalized_source_bundle.sql', '005_preserve_duplicate_article_ids.sql', '006_backfill_article_source_locators.sql', '007_link_evidence_to_revision.sql', '008_publication_outbox_delivery.sql', '009_feedback_evidence_link.sql', '010_evidence_review_metadata.sql', '011_feedback_review_metadata.sql', '012_payment_fulfillment_reconciliation.sql', '013_dataset_request_ownership.sql', '014_normalized_article_content.sql', '015_vehicle_identity_resolution.sql', '016_catalog_article_configuration.sql', '017_knowledge_catalog_evidence_index.sql', '018_source_review_items.sql', '019_article_content_provenance.sql', '020_autoapi_article_fetch_jobs.sql', '021_autoapi_article_fetch_job_retries.sql', '022_job_plan_derived_articles.sql', '023_catalog_article_images.sql', '024_catalog_article_operations.sql', '025_chat_quote_procedure.sql', '026_chat_quote_operation_categories.sql', '027_chat_runtime_durable_state.sql', '028_vehicle_provider_mappings.sql', '029_vehicle_catalog_sync.sql', '030_vehicle_catalog_years.sql', '031_catalog_article_classification.sql', '032_catalog_article_source_original.sql', '033_catalog_scope_coverage.sql', '034_catalog_article_progress.sql', '035_ordered_article_document.sql', '036_source_fetch_jobs.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql']
+    driver = b'-- synthetic already-emitted driver; never executed\n'
+    schema = b'-- synthetic opaque schema; DDL semantics deliberately unavailable\n'
+
+    def files(self):
+        pg=PaidPGSnapshotTests(); model=pg.model()
+        ledger=[dict(version=name[:-4],applied_at='2026-11-03T00:00:00Z') for name in self.manifest]
+        for case in model['cases']:
+            for snap in [*case['result']['phase_snapshots'].values(),case['runtime']['final_snapshot']]:
+                snap['immutable_rows']['schema_migrations']=copy.deepcopy(ledger)
+                snap['immutable_sha256']=self.rows_hash(snap['immutable_rows'])
+        raw=pg.files(model)
+        for case in model['cases']:
+            prefix='paid-access/'+case['bank']+'/'+case['name']+'/'
+            measured=json.loads(raw[prefix+'measured-runtime.json'])
+            fresh={table:[] for table in pg.tables};fresh['schema_migrations']=copy.deepcopy(ledger)
+            populated=measured['final_snapshot']['immutable_rows']
+            migrations=dict(manifest=self.manifest,driver_sha256=hashlib.sha256(self.driver).hexdigest(),driver_exit_code=0)
+            raw[prefix+'migration-driver.sql']=self.driver
+            for phase,stem,rows in [('fresh','fresh',fresh),('empty_replay','replay-empty',fresh),
+                                    ('populated_replay','replay-populated',populated)]:
+                command=dict(exit_code=0,timed_out=False,applied=self.manifest if phase=='fresh' else [],
+                    skipped=[] if phase=='fresh' else self.manifest)
+                hashes=dict(ledger=self.rows_hash(ledger),schema=hashlib.sha256(self.schema).hexdigest(),data=self.rows_hash(rows))
+                migrations[phase]=dict(command,**{key+'_after_sha256':value for key,value in hashes.items()})
+                if phase!='fresh':migrations[phase].update({key+'_before_sha256':value for key,value in hashes.items()})
+                raw[prefix+'migration-'+stem+'.json']=json.dumps(command).encode()
+                raw[prefix+'migration-'+stem+'.rows.json']=json.dumps(rows).encode()
+                raw[prefix+'migration-'+stem+'.schema.sql']=self.schema
+                marker='APPLIED' if phase=='fresh' else 'SKIPPED'
+                raw[prefix+'migration-'+stem+'.stdout']=b''.join(('AUTODATA_'+marker+' '+name+'\n').encode() for name in self.manifest)
+            raw[prefix+'populated-before.rows.json']=json.dumps(populated).encode()
+            raw[prefix+'populated-before.schema.sql']=self.schema
+            measured['migrations']=migrations
+            raw[prefix+'measured-runtime.json']=json.dumps(measured).encode()
+        pg.reseal(raw)
+        return raw
+
+    def rows_hash(self, rows):return hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest()
+
+    def inspect(self, raw, **overrides):
+        class Store:
+            by_ref={ref:dict(artifact_id=ref) for ref in raw}
+            def read(self, artifact_id):return raw[artifact_id]
+            def read_raw_json(self, artifact_id, **_):return assembler.strict_raw_json(raw[artifact_id])
+            def recheck(self):pass
+        self.assertTrue(callable(getattr(assembler,'inspect_paid_migration_receipts',None)),
+                        'explicit migration receipt inspection is missing')
+        args=dict(candidate_sha=BASE,trusted_base_sha=TRUSTED_BASE,profile_sha256='1'*64,
+            input_manifest_sha256=hashlib.sha256(b'{}').hexdigest(),host_before_sha256=hashlib.sha256(b'{}').hexdigest(),
+            profile_version='paid-selector-v2',expected_driver_sha256=hashlib.sha256(self.driver).hexdigest())
+        args.update(overrides)
+        return assembler.inspect_paid_migration_receipts(Store(),**args)
+
+    def test_migration_receipts_stay_unavailable_without_sql_semantics_or_authority(self):
+        result=self.inspect(self.files())
+        self.assertEqual(result['observed_migration_phase_count'],36)
+        self.assertEqual(result['status'],'unavailable');self.assertIs(result['complete'],False)
+        self.assertEqual(result['verified_case_ids'],[])
+        self.assertIn('paid_migration_replay',result['missing_validation_families'])
+        self.assertIn('paid_migration_schema_semantics',result['missing_validation_families'])
+        self.assertIn('paid_migration_driver_provenance',result['missing_validation_families'])
+        self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+
+    def test_migration_phase_and_driver_contradictions_reject(self):
+        baseline=self.files();prefix='paid-access/bankone/'+assembler.PAID_GO_ROOTS[0]+'/'
+        mutations=[('manifest_order',lambda m:m['manifest'].reverse()),
+            ('driver_exit_bool',lambda m:m.update(driver_exit_code=False)),
+            ('driver_exit',lambda m:m.update(driver_exit_code=1)),
+            ('driver_digest',lambda m:m.update(driver_sha256='0'*64)),
+            ('unknown',lambda m:m.update(other=True)),
+            ('phase_unknown',lambda m:m['fresh'].update(other=True)),
+            ('phase_exit_bool',lambda m:m['fresh'].update(exit_code=False)),
+            ('timeout',lambda m:m['empty_replay'].update(timed_out=True)),
+            ('vector',lambda m:m['fresh']['applied'].pop()),
+            ('before_hash',lambda m:m['populated_replay'].update(data_before_sha256='0'*64)),
+            ('after_hash',lambda m:m['fresh'].update(ledger_after_sha256='0'*64))]
+        for name,mutate in mutations:
+            raw=copy.deepcopy(baseline);measured=json.loads(raw[prefix+'measured-runtime.json'])
+            mutate(measured['migrations']);raw[prefix+'measured-runtime.json']=json.dumps(measured).encode()
+            PaidPGSnapshotTests().reseal(raw)
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):self.inspect(raw)
+        with self.assertRaises(assembler.ContractError):self.inspect(baseline,expected_driver_sha256='0'*64)
+
+    def test_raw_receipt_marker_dump_and_schema_contradictions_reject(self):
+        baseline=self.files();prefix='paid-access/bankone/'+assembler.PAID_GO_ROOTS[0]+'/'
+        mutations=[('driver',b'wrong driver'),('fresh.json',b'{"exit_code":false,"timed_out":false,"applied":[],"skipped":[]}'),
+            ('fresh.stdout',b'AUTODATA_APPLIED unknown.sql\n'),
+            ('replay-empty.stdout',b'AUTODATA_SKIPPED '+self.manifest[0].encode()+b' extra\n'),
+            ('replay-populated.stdout',b'AUTODATA_UNKNOWN fixture\n'),
+            ('replay-empty.stdout',baseline[prefix+'migration-replay-empty.stdout'].replace(b'\n',b'\v')),
+            ('fresh.stdout',baseline[prefix+'migration-fresh.stdout'].rstrip(b'\n')),
+            ('fresh.rows.json',b'{}'),('replay-empty.rows.json',b'{}'),
+            ('replay-populated.schema.sql',b'changed schema'),('populated-before.rows.json',b'{}'),
+            ('populated-before.schema.sql',b'changed schema')]
+        for name,data in mutations:
+            raw=copy.deepcopy(baseline)
+            ref=prefix+('migration-driver.sql' if name=='driver' else name if name.startswith('populated-') else 'migration-'+name)
+            raw[ref]=data;PaidPGSnapshotTests().reseal(raw)
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):self.inspect(raw)
+
+    def test_matching_hashes_cannot_hide_nonempty_fresh_and_empty_replay(self):
+        raw=self.files();prefix='paid-access/bankone/'+assembler.PAID_GO_ROOTS[0]+'/'
+        measured=json.loads(raw[prefix+'measured-runtime.json'])
+        for phase,stem in [('fresh','fresh'),('empty_replay','replay-empty')]:
+            ref=prefix+'migration-'+stem+'.rows.json';rows=json.loads(raw[ref])
+            rows['source_snapshots']=[dict(source_snapshot_id='invented fixture data')]
+            raw[ref]=json.dumps(rows).encode()
+            measured['migrations'][phase]['data_after_sha256']=self.rows_hash(rows)
+            if phase!='fresh':measured['migrations'][phase]['data_before_sha256']=self.rows_hash(rows)
+        raw[prefix+'measured-runtime.json']=json.dumps(measured).encode()
+        PaidPGSnapshotTests().reseal(raw)
+        with self.assertRaisesRegex(assembler.ContractError,'^paid_migration_nonempty_fresh$'):self.inspect(raw)
+
+    def test_real_artifact_store_migration_receipts_are_still_unavailable(self):
+        raw=self.files()
+        with tempfile.TemporaryDirectory() as directory:
+            artifacts=[]
+            for index,(ref,data) in enumerate(raw.items()):
+                path=Path(directory)/ref;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+                artifacts.append(dict(artifact_id='raw-'+str(index),kind='raw',ref=ref,
+                    sha256=hashlib.sha256(data).hexdigest(),bytes=len(data),visibility='private'))
+            with assembler.ArtifactStore(directory,artifacts) as store:
+                result=assembler.inspect_paid_migration_receipts(store,candidate_sha=BASE,trusted_base_sha=TRUSTED_BASE,
+                    profile_sha256='1'*64,input_manifest_sha256=hashlib.sha256(b'{}').hexdigest(),
+                    host_before_sha256=hashlib.sha256(b'{}').hexdigest(),profile_version='paid-selector-v2',
+                    expected_driver_sha256=hashlib.sha256(self.driver).hexdigest())
+            self.assertEqual(result['status'],'unavailable');self.assertEqual(result['observed_migration_phase_count'],36)
+            self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+
+    def test_ledger_requires_exact_typed_001_040_inventory(self):
+        self.assertTrue(callable(getattr(assembler,'_paid_migration_rows',None)))
+        raw={table:[] for table in PaidPGSnapshotTests.tables}
+        raw['schema_migrations']=[dict(version=name[:-4],applied_at='2026-11-03T00:00:00Z') for name in self.manifest]
+        assembler._paid_migration_rows(raw)
+        for name,mutate in [('duplicate',lambda r:r['schema_migrations'].__setitem__(1,copy.deepcopy(r['schema_migrations'][0]))),
+            ('missing',lambda r:r['schema_migrations'].pop()),
+            ('unknown_version',lambda r:r['schema_migrations'][0].update(version='001_wrong')),
+            ('timestamp',lambda r:r['schema_migrations'][0].update(applied_at='yesterday')),
+            ('timestamp_type',lambda r:r['schema_migrations'][0].update(applied_at=True)),
+            ('unknown_column',lambda r:r['schema_migrations'][0].update(other=1)),
+            ('table',lambda r:r.update(other=[]))]:
+            altered=copy.deepcopy(raw);mutate(altered)
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):assembler._paid_migration_rows(altered)
 
 
 if __name__ == '__main__': unittest.main()
