@@ -10,6 +10,8 @@ import hmac
 import json
 import os
 import sys
+import subprocess
+import signal
 import threading
 import time
 import uuid
@@ -40,6 +42,7 @@ class StripeFixture:
         self.create_attempts = []
         self.lose_once = False
         self.barrier = None
+        self.go_evidence = None
         outer = self
         class Transport(stripe.HTTPClient):
             name = 'commerce-fixture'
@@ -167,13 +170,16 @@ def test_orders_create_and_owner_scope(commerce):
     def post(path,payload,token='fixture-internal'):
         request=Request(f'http://127.0.0.1:{server.server_port}/internal/commerce/'+path,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','X-Autodata-Internal-Token':token},method='POST')
         with urlopen(request,timeout=5) as response:return response.status,json.load(response)
+    key=str(uuid.uuid4())
     try:
         with pytest.raises(HTTPError) as error:post('quote',dict(configuration_id=c[4],region='US'),token='')
         assert error.value.code==401
         status,quote=post('quote',dict(configuration_id=c[4],region='US'))
         assert status==200 and quote['amount_minor']==2000 and quote['currency']=='USD'
-        status,result=post('checkouts',dict(customer_account_id=c[3][0],organization_id=c[3][1],idempotency_key=str(uuid.uuid4()),configuration_id=c[4],region='US',terms_version=TERMS))
+        status,result=post('checkouts',dict(customer_account_id=c[3][0],organization_id=c[3][1],idempotency_key=key,configuration_id=c[4],region='US',terms_version=TERMS))
         assert status==201 and result['state']=='checkout' and result['checkout_url'].endswith('#fidkdFixtureFragment')
+        if os.getenv('AUTODATA_REQUIRE_COMMERCE_INTEGRATION')=='1':
+            run_go_private_seam(c,server.server_port,key,result['order_id'])
     finally:server.shutdown();server.server_close();thread.join()
 
     assert c[1].order_status(*c[3],result['order_id'])['state']=='open'
@@ -410,6 +416,8 @@ def export_case_rows(c, name):
                     payload=conn.execute('SELECT payload FROM payment_events WHERE payment_event_id=%s',(row['payment_event_id'],)).fetchone()['payload']
                     row['payload_sha256']=hashlib.sha256(canonical_payment_payload(payload).encode()).hexdigest()
             measured[table]=rows
+    if c[2].go_evidence is not None:
+        output.update(c[2].go_evidence)
     output['cases'][name]=measured
     artifact.write_text(json.dumps(output,default=str,sort_keys=True,indent=2)+'\n');artifact.chmod(0o644)
 
@@ -430,3 +438,36 @@ def seed_readable_source(c):
             (rid,aid,hashlib.sha256(b'commerce-source').hexdigest(),body,Jsonb({'blocks':[{'type':'paragraph','text':'Fixture readable source','evidence_ids':['fixture-evidence']}]})))
         conn.execute('UPDATE canonical_articles SET current_source_revision_id=%s WHERE canonical_article_id=%s',(rid,aid))
     return descriptor,body
+
+
+def run_go_private_seam(c,port,key,order_id):
+    root='TestWorkshopCommercePythonIntegration'
+    env={key:os.environ[key] for key in ('PATH',) if key in os.environ}
+    env.update(GOTOOLCHAIN='local',GOPROXY='off',GOFLAGS='-mod=readonly',CGO_ENABLED='0',
+        GOMODCACHE='/opt/go-module-cache',GOCACHE='/tmp/commerce-go-cache',GOTMPDIR='/tmp/commerce-go-tmp',
+        AUTODATA_REQUIRE_COMMERCE_INTEGRATION='1',AUTODATA_COMMERCE_FIXTURE_URL=f'http://127.0.0.1:{port}',
+        AUTODATA_COMMERCE_FIXTURE_ACCOUNT_ID=c[3][0],AUTODATA_COMMERCE_FIXTURE_ORGANIZATION_ID=c[3][1],
+        AUTODATA_COMMERCE_FIXTURE_CONFIGURATION_ID=c[4],AUTODATA_COMMERCE_FIXTURE_IDEMPOTENCY_KEY=key,
+        AUTODATA_COMMERCE_FIXTURE_ORDER_ID=order_id,AUTODATA_COMMERCE_FIXTURE_REGION='US')
+    for name in ('GOCACHE','GOTMPDIR'):Path(env[name]).mkdir(parents=True,exist_ok=True)
+    directory=Path('/artifacts')
+    stdout=directory/'workshop-commerce-go-events.jsonl';stderr=directory/'workshop-commerce-go-stderr.log'
+    code,timed_out=-1,False
+    try:
+        with stdout.open('wb') as output,stderr.open('wb') as errors:
+            process=subprocess.Popen(['go','test','-json','-run','^'+root+'$','-count=1','.'],cwd=ROOT/'apps/api-go',env=env,stdout=output,stderr=errors,start_new_session=True)
+            try:code=process.wait(timeout=120)
+            except subprocess.TimeoutExpired:
+                timed_out=True
+                os.killpg(process.pid,signal.SIGTERM)
+                try:code=process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid,signal.SIGKILL);code=process.wait(timeout=3)
+    finally:
+        c[2].go_evidence=dict(go_root=root,go_exit_code=code,go_timed_out=timed_out)
+        for path in (stdout,stderr):
+            if path.exists():path.chmod(0o644)
+    assert code==0 and not timed_out,stdout.read_text()+stderr.read_text()
+    sys.path.insert(0,str(ROOT/'scripts/dev'))
+    from workshop_commerce_smoke import go_results
+    assert go_results([json.loads(line) for line in stdout.read_text().splitlines()])

@@ -5,10 +5,17 @@ import tempfile
 import unittest
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts/dev'))
-from workshop_commerce_smoke import CASE_NAMES,ASSERTION_KEYS,junit_results,success
+from workshop_commerce_smoke import CASE_NAMES,ASSERTION_KEYS,junit_results,success,GO_ROOT,go_results
 
 
 class CommerceCollectorTests(unittest.TestCase):
+    def test_go_stream_requires_exact_real_root_without_skips_or_failures(self):
+        events=[{'Action':'run','Test':GO_ROOT},{'Action':'pass','Test':GO_ROOT},{'Action':'pass'}]
+        self.assertTrue(go_results(events))
+        for extra in ({'Action':'skip','Test':'Other'},{'Action':'fail'}, {'Action':'pass','Test':'Other'}, {'Action':'skip','Test':GO_ROOT}):
+            self.assertFalse(go_results(events+[extra]))
+        self.assertFalse(go_results(events[1:]))
+
     def test_nonzero_timeout_or_missing_observation_cannot_pass(self):
         flags={key:True for key in ASSERTION_KEYS}
         self.assertTrue(success(0,False,flags))

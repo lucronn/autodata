@@ -51,6 +51,10 @@ Its child runs exactly the approved three pytest modules, setting
 `AUTODATA_LIFECYCLE_TEST=1` and `AUTODATA_REQUIRE_COMMERCE_INTEGRATION=1`.
 All fourteen exact unparameterized commerce cases and the migration cases must
 execute without skips, failures or timeouts. Missing required fixtures fail.
+The first case also executes the exact required Go client root against its actual
+Python HTTP server and PostgreSQL rows, validating quote, existing checkout,
+status, empty library and missing grant without adding an order. Raw Go JSON
+and stderr are required in the ten-file evidence inventory.
 The raw JUnit, stdout/stderr, safe synthetic PostgreSQL rows, actual SDK transport
 observations and before/after input/Git provenance are retained and hashed in an
 allowlisted inventory. A result with missing evidence cannot report success.
