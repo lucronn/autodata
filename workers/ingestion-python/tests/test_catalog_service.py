@@ -456,3 +456,107 @@ def test_lifecycle_ensure_ignores_fabricated_process_cache_and_never_calls_banks
 
 from lifecycle_support import fresh_database
 import pytest
+
+
+@pytest.mark.parametrize("states,retryable,http_status,state",[
+    (("completed","completed"),False,200,"completed"),
+    (("needs_review","needs_review"),False,409,"needs_review"),
+    (("completed","needs_review"),False,409,"needs_review"),
+    (("completed","dead_letter"),False,409,"failed"),
+    (("completed","failed"),False,409,"failed"),
+    (("completed","failed"),True,202,"queued"),
+    (("completed","processing"),False,202,"queued"),
+    (("pending","needs_review"),False,202,"queued"),
+])
+def test_catalog_acknowledgment_reports_all_provider_outcomes(fresh_database,states,retryable,http_status,state):
+    from uuid import uuid4
+    from lifecycle_support import seed_vehicle
+    from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
+    from autodata_ingestion.catalog_service import _ensure_lifecycle_catalog
+    repo=fresh_database();vehicle=seed_vehicle(repo)
+    results=ensure_article_catalog_jobs(repo,vehicle_id=vehicle,vehicle_configuration_id=None)
+    with repo.connect() as conn:
+        for result,status in zip(results,states):
+            conn.execute("""UPDATE source_fetch_jobs SET status=%s,phase=CASE WHEN %s='completed' THEN 'completed' ELSE 'fetching_source' END,
+                retryable=%s,next_attempt_at=CASE WHEN %s THEN clock_timestamp()+interval '1 minute' ELSE NULL END,
+                lease_owner=%s,lease_token=%s,lease_expires_at=CASE WHEN %s THEN clock_timestamp()+interval '90 seconds' ELSE NULL END,
+                heartbeat_at=CASE WHEN %s THEN clock_timestamp() ELSE NULL END WHERE source_fetch_job_id=%s""",
+                (status,status,retryable and status=='failed',retryable and status=='failed',uuid4() if status=='processing' else None,1 if status=='processing' else 0,status=='processing',status=='processing',result.job_id))
+    ack=_ensure_lifecycle_catalog({"scope":"articles","vehicle_id":str(vehicle)},repo=repo)
+    assert ack.http_status==http_status and ack["state"]==state
+    assert [row["job_id"] for row in ack["jobs"]]==[str(result.job_id) for result in results]
+    assert [row["state"] for row in ack["jobs"]]==[{"pending":"queued","dead_letter":"failed"}.get(status,status) for status in states]
+    if retryable:assert 0<ack["jobs"][1]["retry_after_seconds"]<=60
+
+
+def test_unconfigured_catalog_workers_return_terminal_review_ack(fresh_database):
+    from uuid import uuid4
+    from lifecycle_support import seed_vehicle
+    from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.catalog_service import _ensure_lifecycle_catalog
+    repo=fresh_database();vehicle=seed_vehicle(repo)
+    ensure_article_catalog_jobs(repo,vehicle_id=vehicle,vehicle_configuration_id=None)
+    for _ in range(2):assert run_article_worker_once(repo,worker_id=uuid4(),registry={},object_store=None,model_client=None)
+    ack=_ensure_lifecycle_catalog({"scope":"articles","vehicle_id":str(vehicle)},repo=repo)
+    assert ack.http_status==409 and ack["state"]=="needs_review"
+    assert [row["state"] for row in ack["jobs"]]==["needs_review","needs_review"]
+
+
+def test_total_catalog_deadline_rolls_back_first_bank_when_second_waits(runtime,monkeypatch):
+    import threading,time
+    from autodata_ingestion.worker import ArticleRepository
+    from autodata_ingestion.catalog_service import _ensure_lifecycle_catalog,LifecycleSchedulingUnavailable
+    for name,value in runtime.env.items():monkeypatch.setenv(name,value)
+    repo=ArticleRepository()
+    with repo.connect() as conn:
+        conn.execute("UPDATE catalog_article_provider_scopes SET current_job_id=NULL,generation=generation+1,status='pending' WHERE vehicle_id=%s AND provider_slug='bankone'",(runtime.vehicle,))
+        before=conn.execute("SELECT count(*) AS n FROM source_fetch_jobs").fetchone()["n"]
+    with repo.connect() as first,repo.connect() as second:
+        first.execute("SELECT * FROM catalog_article_provider_scopes WHERE vehicle_id=%s AND provider_slug='bankone' FOR UPDATE",(runtime.vehicle,)).fetchall()
+        second.execute("SELECT * FROM catalog_article_provider_scopes WHERE vehicle_id=%s AND provider_slug='banktwo' FOR UPDATE",(runtime.vehicle,)).fetchall()
+        outcome={}
+        def call():
+            started=time.monotonic()
+            try:outcome["ack"]=_ensure_lifecycle_catalog({"scope":"articles","vehicle_id":str(runtime.vehicle)},repo=repo)
+            except Exception as error:outcome["error"]=error
+            outcome["seconds"]=time.monotonic()-started
+        thread=threading.Thread(target=call);thread.start()
+        try:
+            time.sleep(1.1);first.commit()
+            time.sleep(1.1);second.commit()
+        finally:
+            first.rollback();second.rollback();thread.join(4)
+    assert not thread.is_alive()
+    assert outcome["seconds"]<=2,outcome
+    assert isinstance(outcome.get("error"),LifecycleSchedulingUnavailable),outcome
+    with repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM source_fetch_jobs").fetchone()["n"]==before
+        assert conn.execute("SELECT current_job_id FROM catalog_article_provider_scopes WHERE vehicle_id=%s AND provider_slug='bankone'",(runtime.vehicle,)).fetchone()["current_job_id"] is None
+
+
+def test_connection_completing_after_total_deadline_cannot_schedule(fresh_database):
+    import threading,time
+    from lifecycle_support import seed_vehicle
+    from autodata_ingestion.catalog_service import _ensure_lifecycle_catalog,LifecycleSchedulingUnavailable
+    repo=fresh_database();vehicle=seed_vehicle(repo)
+    release=threading.Event();connected=threading.Event()
+    class DelayedRepository:
+        def connect(self):
+            release.wait(3)
+            conn=repo.connect();connected.set()
+            return conn
+    started=time.monotonic()
+    try:
+        with pytest.raises(LifecycleSchedulingUnavailable):
+            _ensure_lifecycle_catalog({"scope":"articles","vehicle_id":str(vehicle)},repo=DelayedRepository())
+        assert time.monotonic()-started<=2
+    finally:release.set()
+    assert connected.wait(3)
+    time.sleep(.05)
+    with repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM catalog_article_provider_scopes").fetchone()["n"]==0
+        assert conn.execute("SELECT count(*) AS n FROM source_fetch_jobs").fetchone()["n"]==0
+
+
+from lifecycle_support import runtime

@@ -17,7 +17,9 @@ REQUIRED = (
     "test_article_lifecycle_schema.py", "test_source_job_persistence.py",
     "test_article_source_persistence.py", "test_article_transform.py",
     "test_article_publication.py", "test_article_worker.py",
-    "test_article_lifecycle_integration.py",
+    "test_article_lifecycle_integration.py", "test_article_document.py",
+    "test_procedure_rewrite.py", "test_mercury2.py",
+    "test_catalog_service.py", "test_http_service.py",
 )
 
 
@@ -60,6 +62,8 @@ def main(argv=None):
     log = args.output.with_suffix(".log")
     command = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--junitxml=" + str(junit)]
     command += ["workers/ingestion-python/tests/" + name for name in REQUIRED]
+    command += ["scripts/dev/test_backfill_article_lifecycle.py", "scripts/dev/test_article_lifecycle_smoke.py",
+                "workers/enrichment-python/tests/test_outbox.py", "scripts/contracts/test_contracts.py"]
     started = datetime.now(timezone.utc).isoformat()
     start_ns = time.time_ns()
     with log.open("w") as stream:

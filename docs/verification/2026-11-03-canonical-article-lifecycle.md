@@ -144,3 +144,21 @@ tests, 10 contract tests and all 15 migration utility tests. The final candidate
 is recorded by the smoke manifest; these earlier logs are retained separately
 and are not substituted for exact-candidate verification. Scope and whitespace
 checks pass. Generated bindings match source and Go contract tests pass.
+
+The `9769105` checkpoint was superseded after independent review found missing
+year/configuration applicability facts, misleading aggregate catalog completion
+and a cumulative scheduling deadline defect. Its exact builder run passed 742
+tests plus 25 subtests (716 ingestion, 6 backfill, 3 smoke utilities, 7 outbox,
+10 contracts), but those passing results did not cover the findings. New real
+worker/DB regressions failed before the repair: 13 applicability/aggregation
+failures and 2 deadline failures. Corrections load normalized year and actual
+configuration facts, preserve partial/terminal provider outcomes, and fence
+connections/statements/commit under one total budget. The two-bank lock test
+also verifies rollback of the first bank's newly inserted job; a delayed-connect
+test verifies no scheduling after expiry. Final smoke acceptance includes these
+catalog/HTTP regressions and the bounded document/Mercury/backfill/contract suites.
+
+The builder's repaired runtime/catalog/HTTP/publication/worker focused suite
+passed **89 tests** in 134.76 seconds (`review-repairs-focused.xml` and log).
+The final exact-candidate full run and smoke manifest remain the authoritative
+acceptance records; independent review must verify the repaired commit.

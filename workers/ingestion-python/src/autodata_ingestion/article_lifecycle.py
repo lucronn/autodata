@@ -45,9 +45,28 @@ def _capture_context(repo,lease):
         if row is None or row["current_job_id"]!=lease.job_id or row["request_generation"]!=lease.generation:
             raise LeaseLost("source capture generation changed")
         if row["resolution_source_snapshot_id"] is None:raise ValueError("SOURCE_BINDING_REVIEW_REQUIRED")
-        vehicle={"make":row["make"],"model":row["model"],"model_year":row["model_year"],"region":row["region"]}
+        # The bound adapter normalizes both source year aliases to `year`.
+        vehicle={"make":row["make"],"model":row["model"],"year":row["model_year"],"model_year":row["model_year"],"region":row["region"]}
+        evidence=[str(row["descriptor_source_snapshot_id"]),str(row["resolution_source_snapshot_id"])]
+        if row["vehicle_configuration_id"] is not None:
+            configuration=cur.execute("""SELECT c.trim,c.engine_displacement_l,b.body_style,b.drivetrain,
+                c.source_snapshot_id,c.extraction_evidence_id,b.source_snapshot_id AS base_snapshot_id,
+                b.extraction_evidence_id AS base_evidence_id FROM vehicle_configurations c
+                JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id AND b.vehicle_id=c.vehicle_id
+                WHERE c.vehicle_configuration_id=%s AND c.vehicle_id=%s""",
+                (row["vehicle_configuration_id"],row["vehicle_id"])).fetchone()
+            if configuration is None:raise ValueError("SOURCE_BINDING_REVIEW_REQUIRED")
+            for name in ("trim","body_style","drivetrain"):
+                if configuration[name] is not None:vehicle[name]=configuration[name]
+            displacement=configuration["engine_displacement_l"]
+            if displacement is not None:vehicle["engine_displacement_l"]=float(displacement)
+            label=" ".join(str(value).strip() for value in (
+                configuration["trim"],f"{displacement:.1f}L" if displacement is not None else None,
+                configuration["drivetrain"]) if value not in (None,""))
+            if label:vehicle["configuration"]=label
+            evidence.extend(str(configuration[name]) for name in ("source_snapshot_id","extraction_evidence_id","base_snapshot_id","base_evidence_id"))
         key=ArticleKey(row["provider_slug"],row["vehicle_id"],row["vehicle_configuration_id"],row["source_vehicle_ref"],row["source_article_ref"])
-        return SourceArticleContext(key,vehicle,row["descriptor"],row["descriptor_source_snapshot_id"],row["resolution_source_snapshot_id"],(str(row["descriptor_source_snapshot_id"]),str(row["resolution_source_snapshot_id"])))
+        return SourceArticleContext(key,vehicle,row["descriptor"],row["descriptor_source_snapshot_id"],row["resolution_source_snapshot_id"],tuple(dict.fromkeys(evidence)))
 
 
 def _hook(hooks,point):

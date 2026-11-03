@@ -146,3 +146,10 @@ the external model request again; external delivery is not exactly once.
 R6 must deploy both worker and relay and validate authenticated real-bank and
 Mercury behavior. The isolated PostgreSQL/S3/NATS fixture evidence certifies
 runtime boundaries and recovery, not production configuration or rollout.
+
+Selected-article capture normalizes both explicit `year` and `model_year`
+against the canonical year. Configuration-scoped capture loads the actual trim,
+engine displacement, body style and drivetrain from the owning configuration
+and identity base, retains their snapshot/evidence references, and compares
+explicit source applicability before storing content or invoking Mercury. That
+captured context remains immutable when configuration records later change.

@@ -1366,7 +1366,114 @@ class LifecycleSchedulingUnavailable(RuntimeError):
     http_status=503
 
 
+class _SchedulingBudget:
+    """One total SQL budget; expiration removes authority to commit."""
+    def __init__(self):
+        import threading,time
+        # Reserve response/rollback overhead inside the two-second HTTP budget.
+        self.deadline=time.monotonic()+1.8
+        self.expired=threading.Event()
+        self.lock=threading.Lock()
+        self.connections=set()
+
+    def remaining(self):
+        import time
+        seconds=self.deadline-time.monotonic()
+        if self.expired.is_set() or seconds<=0:
+            raise LifecycleSchedulingUnavailable("ARTICLE_SCHEDULING_UNAVAILABLE")
+        return seconds
+
+    def register(self,conn):
+        with self.lock:self.connections.add(conn)
+
+    def unregister(self,conn):
+        with self.lock:self.connections.discard(conn)
+
+    def abort(self):
+        from threading import Thread
+        self.expired.set()
+        with self.lock:connections=tuple(self.connections)
+        def cancel(conn):
+            try:
+                safe=getattr(conn,"cancel_safe",None)
+                if safe is not None:safe(timeout=.1)
+                else:conn.cancel()
+            except Exception:pass
+        for conn in connections:Thread(target=cancel,args=(conn,),daemon=True).start()
+
+    def apply(self,cur):
+        milliseconds=max(1,int((self.remaining()-.02)*1000))
+        cur.execute("SELECT set_config('statement_timeout',%s,true),set_config('lock_timeout',%s,true)",
+                    (str(milliseconds),str(milliseconds)))
+        self.remaining()
+
+
+class _SchedulingCursor:
+    def __init__(self,cur,budget):self.cur=cur;self.budget=budget
+    def __enter__(self):self.cur.__enter__();return self
+    def __exit__(self,*args):return self.cur.__exit__(*args)
+    def execute(self,*args,**kwargs):
+        self.budget.apply(self.cur)
+        self.cur.execute(*args,**kwargs)
+        self.budget.remaining()
+        return self
+    def fetchone(self):self.budget.remaining();return self.cur.fetchone()
+    def fetchall(self):self.budget.remaining();return self.cur.fetchall()
+    def __getattr__(self,name):return getattr(self.cur,name)
+
+
+class _SchedulingConnection:
+    def __init__(self,conn,budget):
+        self.conn=conn;self.budget=budget;budget.register(conn)
+    def __enter__(self):
+        try:
+            self.budget.remaining();self.conn.__enter__();return self
+        except BaseException:
+            self.conn.close();self.budget.unregister(self.conn);raise
+    def __exit__(self,kind,error,tb):
+        import sys
+        try:
+            if kind is None:
+                try:
+                    # Refresh the remaining server timeout immediately before
+                    # commit. Expired background work must roll back instead.
+                    with self.conn.cursor() as cur:self.budget.apply(cur)
+                except BaseException:
+                    self.conn.__exit__(*sys.exc_info());raise
+            return self.conn.__exit__(kind,error,tb)
+        finally:self.budget.unregister(self.conn)
+    def cursor(self,*args,**kwargs):return _SchedulingCursor(self.conn.cursor(*args,**kwargs),self.budget)
+    def execute(self,*args,**kwargs):return self.cursor().execute(*args,**kwargs)
+    def __getattr__(self,name):return getattr(self.conn,name)
+
+
+class _SchedulingRepository:
+    def __init__(self,repo,budget):self.repo=repo;self.budget=budget
+    def connect(self):
+        self.budget.remaining()
+        conn=self.repo.connect()
+        try:self.budget.remaining()
+        except BaseException:conn.close();raise
+        return _SchedulingConnection(conn,self.budget)
+
+
 def _ensure_lifecycle_catalog(request,*,repo=None):
+    from concurrent.futures import ThreadPoolExecutor,TimeoutError
+    from .worker import ArticleRepository
+    budget=_SchedulingBudget()
+    executor=ThreadPoolExecutor(max_workers=1)
+    future=executor.submit(_ensure_lifecycle_catalog_with_budget,request,repo=_SchedulingRepository(repo or ArticleRepository(),budget))
+    try:
+        result=future.result(timeout=budget.remaining())
+        budget.remaining()
+        return result
+    except TimeoutError:
+        budget.abort()
+        raise LifecycleSchedulingUnavailable("ARTICLE_SCHEDULING_UNAVAILABLE") from None
+    finally:executor.shutdown(wait=False,cancel_futures=True)
+
+
+def _ensure_lifecycle_catalog_with_budget(request,*,repo=None):
     """Only durable SQL scheduling: no source, asset, model or process cache IO."""
     from uuid import UUID
     from psycopg.rows import dict_row
@@ -1402,7 +1509,10 @@ def _ensure_lifecycle_catalog(request,*,repo=None):
         if request["scope"]=="articles":
             results=ensure_article_catalog_jobs(repo,vehicle_id=vehicle,vehicle_configuration_id=configuration)
             rows=[_ensure_wire(item) for item in results]
-            return LifecycleAcknowledgement({"jobs":rows,"state":"queued" if any(r.state in {"pending","processing","failed"} for r in results) else "completed"},http_status=202 if any(r.state in {"pending","processing","failed"} for r in results) else 200)
+            active=any(r.state in {"pending","processing"} or (r.state=="failed" and r.retry_after_seconds is not None) for r in results)
+            complete=bool(results) and all(r.state=="completed" for r in results)
+            state="queued" if active else "completed" if complete else "needs_review" if any(r.state=="needs_review" for r in results) else "failed"
+            return LifecycleAcknowledgement({"jobs":rows,"state":state},http_status=202 if active else 200 if complete else 409)
         result=ensure_article_job(repo,article["canonical_article_id"],normalization_version=article["target_normalization_version"],rewrite_profile_version=article["target_rewrite_profile_version"])
         wire=_ensure_wire(result)
         if result.state=="processing":

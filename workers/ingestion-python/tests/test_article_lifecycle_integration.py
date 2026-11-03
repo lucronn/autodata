@@ -284,3 +284,52 @@ def test_relay_process_death_after_real_broker_ack_replays_same_event(runtime,mo
         assert after=={**before,"delivery_status":"published","delivery_attempts":2}
     finally:
         if relay.is_alive():relay.kill();relay.join(3)
+
+
+def scoped_runtime_article(runtime):
+    from lifecycle_support import seed_configuration
+    from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    configuration=seed_configuration(runtime.repo,runtime.vehicle)
+    with runtime.repo.connect() as conn:
+        conn.execute("UPDATE vehicle_configurations SET trim='Touring',engine_displacement_l=2.0 WHERE vehicle_configuration_id=%s",(configuration,))
+        conn.execute("UPDATE vehicle_identity_bases SET body_style='Sedan',drivetrain='AWD' WHERE vehicle_id=%s",(runtime.vehicle,))
+    ensure_article_catalog_jobs(runtime.repo,vehicle_id=runtime.vehicle,vehicle_configuration_id=configuration)
+    for _ in range(2):
+        assert run_article_worker_once(runtime.repo,worker_id=uuid4(),registry=runtime.registry,object_store=runtime.objects,model_client=None)
+    with runtime.repo.connect() as conn:
+        runtime.article_id=conn.execute("SELECT canonical_article_id FROM canonical_articles WHERE vehicle_configuration_id=%s AND provider_slug='bankone'",(configuration,)).fetchone()["canonical_article_id"]
+    return configuration
+
+
+@pytest.mark.parametrize("field,value,scoped",[("year",1999,False),("model_year",1999,False),("trim","Different",True),("engine_displacement_l",5.0,True),("drivetrain","RWD",True),("body_style","Coupe",True),("configuration","Different 5.0L RWD",True)])
+def test_actual_worker_rejects_wrong_year_aliases_and_configuration(runtime,field,value,scoped):
+    import json
+    if scoped:scoped_runtime_article(runtime)
+    runtime.servers["bankone"].body(json.dumps({"vehicle":{field:value},"body":"Remove the pump."}).encode(),"application/json")
+    runtime.ensure();runtime.start_workers(2)
+    runtime.wait_for(lambda:runtime.read_current()["processing_state"] in {"needs_review","completed"})
+    runtime.stop_workers()
+    state=runtime.read_current()
+    assert state["processing_state"]=="needs_review"
+    assert state["processing_error_code"]=="WRONG_APPLICABILITY" and state["canonical_revision_id"] is None
+    assert runtime.counters()["model"]==0
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]==0
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_source_observations").fetchone()["n"]==0
+
+
+def test_matching_scoped_applicability_persists_actual_context_for_replay(runtime):
+    import json
+    from autodata_ingestion.article_lifecycle_store import load_source_revision
+    configuration=scoped_runtime_article(runtime)
+    facts={"year":2024,"model_year":2024,"trim":"Touring","engine_displacement_l":2.0,"body_style":"Sedan","drivetrain":"AWD","configuration":"Touring 2.0L AWD"}
+    runtime.servers["bankone"].body(json.dumps({"vehicle":facts,"body":"Remove the pump."}).encode(),"application/json")
+    runtime.ensure();runtime.start_workers(2);runtime.await_publication();runtime.stop_workers()
+    source_id=runtime.read_current()["source_revision_id"]
+    source=load_source_revision(runtime.repo,source_id)
+    assert {name:source.vehicle[name] for name in facts}==facts
+    assert source.context.key.vehicle_configuration_id==configuration
+    with runtime.repo.connect() as conn:
+        conn.execute("UPDATE vehicle_configurations SET trim='Changed later' WHERE vehicle_configuration_id=%s",(configuration,))
+    assert load_source_revision(runtime.repo,source_id).vehicle==source.vehicle

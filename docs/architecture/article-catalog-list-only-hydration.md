@@ -37,6 +37,16 @@ browser rendering. A warm public detail read must read SQL directly without
 calling the ensure service; R2's direct ensure tests prove zero newly scheduled
 jobs and zero bank/asset/model calls.
 
+Catalog acknowledgment aggregation returns 202 while any provider has active or
+retryable work, 409 when no active work remains and any provider needs review or
+has exhausted its budget, and 200 only when both durable jobs completed. Each
+provider's job/retry row remains visible, so partial coverage is not erased.
+The entire SQL scheduling operation shares a monotonic budget inside two
+seconds, including repeated connections and provider lock waits. Each statement
+gets the remaining server timeout; expiry cancels active connections and
+prevents late connections from executing SQL or late transactions from starting
+commit. Timeout rolls back all job writes in that transaction and returns 503.
+
 Offline compatibility mapping is `scripts/dev/backfill_article_lifecycle.py`.
 Its default dry-run reports mapped/already-mapped/quarantined/unresolved counts.
 `--apply` requires exact provider/vehicle/configuration/opaque article and body
