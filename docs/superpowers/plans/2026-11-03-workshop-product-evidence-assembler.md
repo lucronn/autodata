@@ -54,31 +54,7 @@ Issue186 and its existing Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` must show
 
 Let `B` be the new committed/pushed planning checkpoint descended from inspected `2de36a1`, after any preceding integration the coordinator elects to include. Do not use `2de36a1` as implementation base: it lacks this authorization. Do not try to embed B's own SHA in its committed bytes (self-reference). Store inspection SHA in task, then supply B as external immutable invocation input and queue/dispatch receipt; read every plan/task/doc/profile through B. Implementation begins only from B after machine preflight and independent scope review. Any changed contract/profile/path requires a new checkpoint/base and preflight. A future candidate SHA is separately frozen after implementation/review; B is not acceptance evidence.
 
-Exact first3 pre_implementation object (UTC timestamp replaced with actual synchronization time):
-
-```json
-{
-  "goal": "Implement a pure offline workshop product-evidence assembler with explicit fixture and staging outcomes; preserve all eight release gates.",
-  "plan_ref": "docs/superpowers/plans/2026-11-03-release-acceptance.md",
-  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
-  "project_ref": "https://github.com/users/lucronn/projects/8",
-  "repository_doc_refs": [
-    "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
-    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
-  ],
-  "todo": [
-    "Freeze and synchronize the first3/later2 scopes, strict envelope, trusted disabled/enabled profiles and candidate bindings; commit the checkpoint and pass exact-base preflight.",
-    "Implement the offline plan/validate parser and fixed slot validators with inline synthetic positive and negative fixtures; disabled profiles cannot verify a tier.",
-    "Document fixture versus staging outcomes, provenance denominators, retained CI/upload identities and fail-closed policy mapping.",
-    "Run bounded standard-library checks and independent exact-commit review; promote trusted assembler before later candidate evaluation.",
-    "Freeze final reviewed paid/browser profiles and separately gated real enrollment/collector; rerun required exact-candidate acceptance before any product-release claim."
-  ],
-  "status": "synchronized",
-  "updated_at": "<actual ISO-8601 UTC synchronization timestamp>"
-}
-```
-
-The timestamp placeholder is not a valid record; coordinator must replace it. Copy identical todo into plan and Issue/Project tracking. Materialize just the committed task's pre_implementation object into an external dispatch record; invoke `python3 scripts/autonomy/pre_implementation.py --record <external-record.json> --base-sha B --repo-root <owned-checkout> --policy <policy-at-B>`. Require exit0 and `{status:synchronized,errors:[]}`. Separately verify task/record bytes equal B's committed task, clean base, allowed_paths, model profile and actual remote synchronization: this machine preflight checks document existence/URL shape/todo/status, not real GitHub freshness, dependency truth or every task capability. Do not claim it does. Current direct-dispatch task JSONs are not strict `runner.validate_contract` TaskContract objects: strict runner requires exact fields including `verification`, while existing tasks include repository/builder_agent/allowed_paths and omit verification. Do not add a product_profile to runner schema or misrepresent those task JSONs as runner-compatible. This gate uses the direct-task format and pre_implementation validator only, with a product-specific strict validator local to the assembler.
+The sole authoritative first3 `pre_implementation` object is the identical object in `docs/agents/tasks/2026-11-03-production-release/r6-release.json` and `docs/agents/records/2026-11-03-workshop-product-evidence.json`. Its concrete todo appears above and in Issue186. Do not copy an example object or infer a timestamp. At dispatch, run `python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026-11-03-workshop-product-evidence.json --base-sha B --repo-root <owned-checkout> --policy <policy-at-B>`. Require exit0 and `{status:synchronized,errors:[]}`. Separately verify task/record bytes equal B's committed task, clean base, allowed_paths, model profile and actual remote synchronization: machine preflight checks document existence/URL shape/todo/status, not real GitHub freshness, dependency truth or every task capability. Direct-dispatch task JSONs are not strict `runner.validate_contract` TaskContract objects; do not add a product profile to runner schema or misrepresent them as runner-compatible. This gate uses the direct-task format and pre_implementation validator only, with a product-specific strict validator local to the assembler.
 
 ## 3. Trusted product envelope v1
 
