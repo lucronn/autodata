@@ -97,6 +97,109 @@ class CloudTests(unittest.TestCase):
                                           fake_cli, now=NOW)
         return result, calls
 
+    def bootstrap(self):
+        path = HERE / 'cloud-bootstrap.sh'
+        if not path.is_file():
+            raise AssertionError('offline bootstrap definition is missing')
+        # The shell launcher has one fixed isolated Python heredoc. Execute only
+        # that pure definition body; subprocess/network remain forbidden by A.
+        body = path.read_text().split("<<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
+        namespace = {'__name__': 'offline_bootstrap_definition'}
+        exec(compile(body, str(path), 'exec'), namespace)
+        return namespace
+
+    def test_bootstrap_default_plan_binds_exact_resource_projects_disk_and_platform(self):
+        bootstrap = self.bootstrap()
+        with patch.object(self.rt, 'read_private_json', return_value=self.config) as read:
+            code, receipt = bootstrap['main']([], runtime=self.rt)
+        self.assertEqual(code, 0)
+        self.assertEqual(read.call_args.args, ('/etc/autodata/host.json',))
+        self.assertEqual(receipt['operation'], 'cloud-bootstrap.sh plan')
+        self.assertTrue(receipt['definition_only'])
+        plan = receipt['plan']
+        self.assertFalse(plan['execution_enabled'])
+        self.assertEqual(plan['service_config_sha256'], self.rt.sha256(self.config))
+        self.assertEqual(plan['vm']['project'], 'autodata-host')
+        self.assertEqual(plan['vm']['platform'], 'linux/amd64')
+        self.assertEqual(plan['data_disk']['name'], 'workshop-data')
+        self.assertEqual(plan['data_disk']['filesystem_uuid'], RUN)
+        self.assertFalse(plan['data_disk']['format_authorized'])
+        self.assertEqual(plan['backup_bucket']['project'], 'autodata-backup')
+        self.assertEqual(plan['backup_bucket']['name'], 'autodata-private-backup')
+        self.assertEqual(plan['artifact_repository']['name'], 'us-central1-docker.pkg.dev/autodata-host/workshop')
+        self.assertLessEqual(len(self.rt.canonical_bytes(receipt)), 65536)
+        self.assertTrue(plan['unresolved_inputs'])
+
+    def test_bootstrap_attached_identity_has_only_firebase_read_and_no_default_adc_roles(self):
+        plan = self.bootstrap()['build_plan'](self.config, self.rt)
+        attached = plan['attached_identity']
+        self.assertEqual(attached['email'], 'autodata-api-firebase@autodata-host.iam.gserviceaccount.com')
+        self.assertEqual(attached['permissions'], ['firebaseauth.users.get'])
+        self.assertEqual(attached['permission_project'], 'firebase-stage')
+        self.assertEqual(attached['access_scopes'], ['https://www.googleapis.com/auth/cloud-platform',
+                                                   'https://www.googleapis.com/auth/userinfo.email',
+                                                   'https://www.googleapis.com/auth/identitytoolkit'])
+        self.assertEqual(plan['external_authorities']['monitor']['privileged_helpers'], ['/opt/autodata/bin/runtime-check.py metrics --release SHA'])
+        self.assertFalse(plan['external_authorities']['backup']['delete_authority'])
+        self.assertFalse(plan['external_authorities']['backup']['host_administrator'])
+        self.assertTrue(plan['external_authorities']['deploy']['host_administrator'])
+        self.assertEqual(plan['wif_requirements']['exact_claims'], ['repository', 'repository_id', 'repository_owner_id', 'environment', 'ref', 'workflow_ref'])
+        self.assertFalse(plan['wif_requirements']['binding_resolved'])
+
+    def test_bootstrap_network_restricts_ssh_to_iap_and_keeps_storage_private(self):
+        plan = self.bootstrap()['build_plan'](self.config, self.rt)
+        self.assertEqual(plan['ingress'], [{'ports': [80, 443], 'source_ipv4': '0.0.0.0/0', 'target_instance': 'workshop-stage'},
+                                          {'ports': [22], 'source_ipv4': '35.235.240.0/20', 'target_instance': 'workshop-stage'}])
+        self.assertEqual(plan['host_guards']['api_metadata_address'], '172.30.10.10')
+        self.assertEqual(plan['host_guards']['storage_address'], '172.30.20.40')
+        self.assertEqual(plan['host_guards']['storage_allowed_tcp_ports'], [9000])
+        self.assertEqual(plan['host_guards']['trusted_host_metadata_uid'], 0)
+        self.assertFalse(plan['host_guards']['ipv6_enabled'])
+        self.assertFalse(plan['host_guards']['verified'])
+
+    def test_bootstrap_apply_and_unknown_argv_fail_without_reading_config(self):
+        bootstrap = self.bootstrap()
+        with patch.object(self.rt, 'read_private_json', side_effect=AssertionError('unexpected config read')):
+            code, receipt = bootstrap['main'](['apply'], runtime=self.rt)
+            self.assertEqual(code, 3)
+            self.assertEqual(receipt['operation'], 'cloud-bootstrap.sh apply')
+            self.assertEqual(receipt['failure_code'], 'missing_dependency')
+            for args in (['apply', '--yes'], ['plan', 'extra'], ['--config', '/tmp/evil'], ['shell'], ['plan;echo unsafe']):
+                with self.subTest(args=args):
+                    code, receipt = bootstrap['main'](args, runtime=self.rt)
+                    self.assertEqual(code, 2)
+                    self.assertEqual(receipt['status'], 'failed')
+
+    def test_bootstrap_rejects_invalid_config_and_ignores_ambient_credentials(self):
+        bootstrap = self.bootstrap()
+        for mutate in (lambda x: x.update(environment='development'),
+                       lambda x: x['resources'].update(host_project_id='other-host'),
+                       lambda x: x['resources'].update(data_disk_name='$(touch bad)'),
+                       lambda x: x.update(platform='linux/arm64')):
+            candidate = copy.deepcopy(self.config); mutate(candidate)
+            with patch.object(self.rt, 'read_private_json', return_value=candidate):
+                code, receipt = bootstrap['main'](['plan'], runtime=self.rt)
+            self.assertEqual(code, 2)
+            self.assertEqual(receipt['failure_code'], 'invalid_input')
+        with patch.object(self.rt, 'read_private_json', side_effect=self.rt.ContractError('FAKE_SECRET')):
+            code, receipt = bootstrap['main'](['plan'], runtime=self.rt)
+        self.assertEqual(code, 3)
+        self.assertEqual(receipt['failure_code'], 'missing_dependency')
+        self.assertNotIn('FAKE_SECRET', str(receipt))
+        with patch.dict(self.rt.os.environ, {'GOOGLE_APPLICATION_CREDENTIALS': '/tmp/FAKE_SECRET', 'CLOUDSDK_CORE_PROJECT': 'ambient-project'}):
+            plan = bootstrap['build_plan'](self.config, self.rt)
+        text = self.rt.canonical_bytes(plan)
+        self.assertNotIn(b'FAKE_SECRET', text)
+        self.assertNotIn(b'ambient-project', text)
+        shared = copy.deepcopy(self.config)
+        shared['resources']['backup_project_id'] = shared['resources']['host_project_id']
+        shared['firebase']['project_id'] = shared['resources']['host_project_id']
+        apis = bootstrap['build_plan'](shared, self.rt)['apis']
+        self.assertEqual(list(apis), ['autodata-host'])
+        self.assertIn('identitytoolkit.googleapis.com', apis['autodata-host'])
+        self.assertIn('storage.googleapis.com', apis['autodata-host'])
+        self.assertEqual(len(apis['autodata-host']), len(set(apis['autodata-host'])))
+
     def test_cli_is_fail_closed_and_rejects_extra_or_unknown_arguments(self):
         for args in ([], ['backup', RUN, 'extra'], ['shell', RUN], ['backup', '../bad'], ['publish', RUN]):
             with self.subTest(args=args):
