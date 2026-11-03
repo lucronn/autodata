@@ -339,21 +339,33 @@ async function selectVehicle(g, articleID = "") {
 async function loadArticles(g, articleID = "") {
   stage("articles");
   status("Opening your article index…", { busy: true });
-  const data = await requestJSON(articlePath(), { signal: g.signal });
+  const data = await readCollection(
+    () => requestJSON(articlePath(), { signal: g.signal }),
+    {
+      signal: g.signal,
+      desired: articleID,
+      onUpdate(result) {
+        if (!g.current()) return;
+        articles = result.items;
+        access = "owned";
+        renderPurchase();
+        show("catalog");
+        renderArticles();
+      },
+    },
+  );
   if (!g.current()) return;
-  if (!Array.isArray(data.items))
-    throw new Error("The article index is unavailable.");
-  articles = data.items;
-  access = "owned";
-  renderPurchase();
-  show("catalog");
-  renderArticles();
   if (articleID) {
     if (!articles.some((item) => item.id === articleID))
       throw new Error("This article is unavailable for the selected vehicle.");
     await loadArticle(articleID, g);
+  } else if (data.timedOut) {
+    status("Your article index is still being prepared. Check again.", {
+      retry: () => operation((next) => loadArticles(next)),
+    });
   } else status("Article index ready.", { complete: true });
 }
+
 function renderArticles() {
   $("vehicle-caption").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
@@ -842,6 +854,9 @@ async function library(g, append = false) {
       const button = element("button", "Open articles");
       button.type = "button";
       button.addEventListener("click", () => {
+        // A library item is an exact configuration/region route. A previous
+        // browse hierarchy can belong to a different vehicle and must be cleared.
+        for (const name of names) $(name).value = "";
         vehicle = {
           id: item.configuration_id,
           region: item.region,

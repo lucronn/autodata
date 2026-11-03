@@ -160,3 +160,15 @@ an image renewal fallback defect, repaired before the next fixture build. Partia
 or failed browser runs are diagnostic evidence only. The 21 real API browser
 cases and independent candidate review remain required before integration; this
 implementation entry does not assert completed browser acceptance.
+
+Independent review of `8cedb81` reproduced three customer-flow defects. A focused
+unit regression first failed for cookie-only logout; memory SDK preparation now
+runs after confirmed logout. Strengthened existing browser cases first failed
+for empty hydrating paid indexes and library B opened after browsing A. The
+index now uses bounded cancellable observational collection polling, and library
+navigation clears the unrelated hierarchy before writing an exact configuration
+route. Six affected browser scenarios passed in both Chromium and Firefox after
+rebuilding Go assets; diagnostic results are in
+`/tmp/autodata-ui-review-green.json`. The earlier complete DTO diagnostic run
+passed 40 Chromium and 40 Firefox cases; WebKit was unavailable on this host and
+was correctly retained as failed/unavailable acceptance evidence.

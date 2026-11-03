@@ -107,7 +107,7 @@ class DTOFixture:
         self.origin, self.scenario = origin, scenario
         self.requests, self.unexpected, self.errors = [], [], []
         self.authenticated = scenario not in {'google-popup-exchange','google-popup-blocked','google-popup-cancelled','google-stale-reauthentication','firebase-memory-persistence','signin-unavailable-local','signin-malformed-config'}
-        self.detail_count = self.checkout_count = self.exchange_count = self.prepare_count = 0
+        self.detail_count = self.checkout_count = self.exchange_count = self.prepare_count = self.index_count = 0
         self.images_release = asyncio.Event()
         self.keys, self.checkout_bodies = [], []
         self.renewed = False
@@ -155,7 +155,7 @@ class DTOFixture:
         elif path == '/v1/workshop/quote': data = quote(query['configuration_id'][0])
         elif path == '/v1/workshop/library':
             states = ['paid','preparing','viewable','revoked'] if not query.get('cursor') else ['viewable']
-            data = {'version':'v1','items':[dict(library_item_id=ORDER,configuration_id=CONFIG,region='US',label=f'Fixture {state}',access_state=state,granted_at='2026-01-01T00:00:00Z') for state in states], 'next_cursor':None if query.get('cursor') else 'synthetic-next'}
+            data = {'version':'v1','items':[dict(library_item_id=ORDER,configuration_id=OTHER,region='US',label=f'Fixture {state}',access_state=state,granted_at='2026-01-01T00:00:00Z') for state in states], 'next_cursor':None if query.get('cursor') else 'synthetic-next'}
         elif path == '/v1/workshop/checkout-sessions':
             self.checkout_count += 1
             self.keys.append(request.headers.get('idempotency-key'))
@@ -167,7 +167,10 @@ class DTOFixture:
             state = 'expired' if self.scenario == 'checkout-expired' else 'processing'
             data = dict(version='v1',order_id=ORDER,configuration_id=CONFIG,region='US',state=state,retry_disposition='new_key' if state=='expired' else 'do_not_repay')
         elif path.endswith('/articles'):
-            if self.scenario in {'quote-exact-scope','terms-config-unavailable','checkout-double-click-retry'}:
+            self.index_count += 1
+            if self.scenario=='one-bank-unavailable' and self.index_count==1:
+                data={'items':[],'hydrating':True,'complete':False}
+            elif self.scenario in {'quote-exact-scope','terms-config-unavailable','checkout-double-click-retry'}:
                 status, data = 403, {'error':{'code':'ENTITLEMENT_REQUIRED'}}
             elif self.scenario == 'selection-change-in-flight' and CONFIG in path:
                 await asyncio.sleep(1); data = {'items':[{'id':ARTICLE,'title':'Stale configuration article'}]}
@@ -284,10 +287,13 @@ async def dto_case(browser, origin, name, output):
             else: await assert_text(page,'#purchase-message','Do not pay again')
             assert fixture.checkout_count==0
         elif name=='library-pagination-and-states':
-            await expect(page.locator('#year')).to_be_enabled();await page.locator('#my-vehicles').click()
+            await select_vehicle(page);await assert_text(page,'#articles','Fixture repair procedure');await page.locator('#my-vehicles').click()
             await expect(page.locator('#library-items > li')).to_have_count(4)
             await expect(page.locator('#library-items button')).to_have_count(3)
             await page.locator('#library-more').click();await expect(page.locator('#library-items > li')).to_have_count(5)
+            await page.locator('#library-items button').first.click();await assert_text(page,'#articles','Fixture repair procedure')
+            assert 'year=' not in page.url and 'configuration='+OTHER in page.url, 'library route retained another vehicle hierarchy'
+            await page.reload();await assert_text(page,'#articles','Fixture repair procedure')
         else:
             await select_vehicle(page)
             if name in {'quote-exact-scope','terms-config-unavailable','checkout-double-click-retry'}:
