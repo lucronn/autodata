@@ -86,7 +86,7 @@ class CheckoutRoute:
         self.failure, self.abort_error = failure, None
         self.fetched_response = CheckoutResponse(self, data if data is not None else dict(
             version='v1', state='checkout', order_id=smoke.ORDER, configuration_id=smoke.CONFIG,
-            region='US', checkout_url='https://checkout.stripe.com/c/pay/cs_test_' + 'a'*32,
+            region='US', checkout_url='https://checkout.stripe.com/c/pay/cs_test_' + 'a'*32 + '#fidkdFixtureFragment',
             provider_expires_at='2099-01-01T00:00:00Z'), status)
         self.fetch_entered, self.fetch_release = None, None
 
@@ -136,6 +136,20 @@ class BrowserCheckoutResponseLoss(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AssertionError):
             await fixture.route(third)
         self.assertEqual(third.events, [])
+
+    async def test_actual_fixture_url_fragment_survives_response_loss_and_retry(self):
+        fixture, first, retry = self.fixture(), CheckoutRoute(), CheckoutRoute(status=200)
+        hosted = 'https://checkout.stripe.com/c/pay/cs_test_' + 'a'*32 + '#fidkdFixtureFragment'
+        self.assertEqual(first.fetched_response.data['checkout_url'], hosted)
+        await fixture.route(first)
+        self.assertEqual(first.events, ['fetch', 'json', 'abort'])
+        self.assertTrue(first.backend_committed)
+        await fixture.route(retry)
+        self.assertEqual(retry.events, ['fetch', 'json', 'fulfill'])
+        self.assertIs(retry.forwarded_response, retry.fetched_response)
+        self.assertEqual([response['checkout_url'] for response in fixture.checkout_responses], [hosted, hosted])
+        self.assertEqual(fixture.checkout_count, 2)
+        self.assertEqual(fixture.lost_response_count, 1)
 
     async def test_unrelated_routes_leave_one_shot_available(self):
         for kwargs, scenario, events in [
@@ -205,7 +219,7 @@ class BrowserCheckoutResponseLoss(unittest.IsolatedAsyncioTestCase):
         variants = [None, [], {}, dict(valid, version='v2'), dict(valid, state='processing'),
             dict(valid, configuration_id=smoke.OTHER), dict(valid, region='CA'),
             dict(valid, order_id='invalid'), dict(valid, order_id=None),
-            dict(valid, checkout_url='https://checkout.stripe.com.evil/c/pay/cs_test_'+'a'*32),
+            dict(valid, checkout_url='https://checkout.stripe.com.evil/c/pay/cs_test_'+'a'*32+'#fidkdFixtureFragment'),
             dict(valid, checkout_url='https://checkout.stripe.com/c/pay/fixture'),
             dict(valid, checkout_url='https://checkout.stripe.com/c/pay/cs_test_'+'a'*32+'?token=x'),
             dict(valid, checkout_url='https://evil.invalid/c/pay/cs_test_'+'a'*32)]
@@ -244,7 +258,8 @@ class BrowserCheckoutResponseLoss(unittest.IsolatedAsyncioTestCase):
     async def test_changed_actual_retry_order_or_session_is_never_forwarded(self):
         valid = CheckoutRoute().fetched_response.data
         for data in (dict(valid, order_id=smoke.OTHER),
-                     dict(valid, checkout_url='https://checkout.stripe.com/c/pay/cs_test_'+'b'*32)):
+                     dict(valid, checkout_url='https://checkout.stripe.com/c/pay/cs_test_'+'b'*32+'#fidkdFixtureFragment'),
+                     dict(valid, checkout_url='https://checkout.stripe.com/c/pay/cs_test_'+'a'*32+'#changed-fragment')):
             with self.subTest(data=data):
                 fixture = self.fixture()
                 await fixture.route(CheckoutRoute())
