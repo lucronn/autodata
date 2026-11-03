@@ -548,6 +548,57 @@ class RawPrimitiveTests(unittest.TestCase):
             with self.subTest(raw=raw[:40]), self.assertRaises(assembler.ContractError):
                 assembler.strict_dto_archive(raw)
 
+    def test_zip_central_framing_disk_and_header_metadata_are_exact(self):
+        raw = self.archive()
+        directory_start = struct.unpack_from('<I', raw, len(raw)-6)[0]
+        central_offsets = []
+        cursor = directory_start
+        for _ in range(3):
+            central_offsets.append(cursor)
+            name_bytes, extra_bytes, comment_bytes = struct.unpack_from('<3H', raw, cursor+28)
+            cursor += 46+name_bytes+extra_bytes+comment_bytes
+        self.assertEqual(cursor, len(raw)-22)
+        # Reproduce every field on every member, including overclaims in the last record.
+        for member, central in enumerate(central_offsets):
+            local = struct.unpack_from('<I', raw, central+42)[0]
+            mutations = [('central_extra_length', central+30, '<H', 1),
+                         ('central_comment_length', central+32, '<H', 1),
+                         ('member_disk_start', central+34, '<H', 1),
+                         ('central_extract_reserved', central+7, '<B', 1),
+                         ('local_extract_reserved', local+5, '<B', 1),
+                         ('local_dos_time', local+10, '<H', 1),
+                         ('central_dos_time', central+12, '<H', 1),
+                         ('local_dos_date', local+12, '<H', 0x22),
+                         ('central_dos_date', central+14, '<H', 0x22),
+                         ('truncated_name_length', central+28, '<H', 1),
+                         ('overclaimed_name_length', central+28, '<H', 65535)]
+            for field, offset, format_code, value in mutations:
+                altered = bytearray(raw); struct.pack_into(format_code, altered, offset, value)
+                with self.subTest(member=member, field=field), self.assertRaises(assembler.ContractError):
+                    assembler.strict_dto_archive(bytes(altered))
+            for field, local_offset, central_offset, value in [
+                    ('invalid_date', local+12, central+14, 0),
+                    ('invalid_time', local+10, central+12, 65535)]:
+                altered = bytearray(raw)
+                for offset in (local_offset, central_offset): struct.pack_into('<H', altered, offset, value)
+                with self.subTest(member=member, field=field), self.assertRaises(assembler.ContractError):
+                    assembler.strict_dto_archive(bytes(altered))
+        # Directory size must describe exactly the three record frames, without padding.
+        altered = bytearray(raw[:-22] + b'x' + raw[-22:])
+        size = struct.unpack_from('<I', altered, len(altered)-10)[0]
+        struct.pack_into('<I', altered, len(altered)-10, size+1)
+        with self.assertRaises(assembler.ContractError): assembler.strict_dto_archive(bytes(altered))
+        # Keep both supported compression forms covered through the strict path.
+        self.assertEqual(set(assembler.strict_dto_archive(self.archive(compression=zipfile.ZIP_STORED))),
+                         {'browser/evidence.json', 'go-fixture.log', 'ready.json'})
+
+    def test_junit_namespaced_attributes_are_rejected_at_every_element(self):
+        for raw in (b'<testsuite xmlns:x="urn:other" x:tests="1"/>',
+                    b'<testsuites xmlns:x="urn:other"><testsuite><testcase x:name="one"/></testsuite></testsuites>',
+                    b'<testsuite xml:lang="en"/>'):
+            with self.subTest(raw=raw), self.assertRaisesRegex(assembler.ContractError, '^xml_namespace$'):
+                assembler.strict_junit_xml(raw)
+
     def test_raw_foundations_are_never_selected_by_the_disabled_cli(self):
         with tempfile.TemporaryDirectory() as directory:
             parent = Path(directory); manifest = parent/'envelope.json'

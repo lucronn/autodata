@@ -127,14 +127,19 @@ Internal raw foundations are format and identity checks only:
   most 4 MiB and 65,536 records. It does not interpret Go run/pass outcomes.
 - `strict_junit_xml` accepts UTF-8 non-namespaced JUnit roots, at most 4 MiB,
   20,000 elements and depth 64. It rejects DTDs/entities, comments, processing
-  instructions and conflicting encoding declarations. It does not interpret
-  case verdicts or counters.
+  instructions, namespaced tags/attributes and conflicting encoding declarations.
+  It does not interpret case verdicts or counters.
 - `strict_dto_archive` reads exactly `browser/evidence.json`, `go-fixture.log`
   and `ready.json` in memory. JSON members are bounded at 4 MiB each and the
   fixture log at 8 MiB; compressed input stays within the 8 MiB transport
   ceiling. Only regular ZIP32 stored/deflated members without descriptors,
   comments or extra fields are supported. Local/central metadata, CRC and
-  complete deflate streams must agree; symlinks, duplicate/extra/missing names,
+  complete deflate streams must agree. Central-directory headers are parsed
+  directly: all three frames must consume exactly the declared directory bytes,
+  declared extra/comment lengths and member disk-start must be zero, and the
+  complete extraction-version field (including its reserved byte), DOS time/date
+  and other local/central metadata must match. DOS dates/times must be valid.
+  Symlinks, duplicate/extra/missing names,
   traversal, encryption, overlapping/gapped layout, trailing bytes and hidden
   expansion fail. It never extracts an archive to the filesystem.
 - `paid_case_identities` and `dto_case_identities` check the fixed 12 paid IDs

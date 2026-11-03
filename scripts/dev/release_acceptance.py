@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 import hashlib
-import io
 import json
 import math
 import os
@@ -218,7 +217,8 @@ def strict_junit_xml(raw):
                 if event == 'start':
                     depth += 1; nodes += 1
                     require(depth <= MAX_XML_DEPTH and nodes <= MAX_XML_NODES, 'xml_complexity')
-                    require(type(element.tag) is str and '{' not in element.tag, 'xml_namespace')
+                    require(type(element.tag) is str and '{' not in element.tag and
+                            all('{' not in name for name in element.attrib), 'xml_namespace')
                     if root is None:
                         root = element
                 else:
@@ -246,58 +246,68 @@ def strict_dto_archive(raw):
     require(end[1:5] == (0, 0, 3, 3) and end[7] == 0, 'invalid_zip_directory')
     require(end[5]+end[6] == len(raw)-22, 'invalid_zip_directory')
     try:
-        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-            records = archive.infolist()
-            require(len(records) == 3 and archive.start_dir == end[6] and not archive.comment,
-                    'invalid_zip_directory')
-            names = [record.filename for record in records]
-            unique(names)
-            require(set(names) == set(DTO_ARCHIVE_LIMITS), 'dto_archive_inventory')
-            offsets = sorted(record.header_offset for record in records)
-            unique(offsets)
-            require(offsets[0] == 0, 'invalid_zip_layout')
-            result = {}
-            for record in records:
-                name = record.filename
-                safe_ref(name)
-                require(record.orig_filename == name and not record.is_dir() and
-                        not record.extra and not record.comment and
-                        stat.S_IFMT(record.external_attr >> 16) in (0, stat.S_IFREG) and
-                        not (record.external_attr & 0x10), 'unsafe_zip_member')
-                require(record.flag_bits in (0, 0x800) and record.extract_version <= 20 and
-                        record.compress_type in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED),
-                        'unsupported_zip_format')
-                limit = DTO_ARCHIVE_LIMITS[name]
-                require(0 <= record.file_size <= limit and 0 <= record.compress_size <= MAX_ARTIFACT_BYTES,
-                        'zip_expansion_limit')
-                offset = record.header_offset
-                require(0 <= offset <= archive.start_dir-30, 'invalid_zip_layout')
-                header = struct.unpack_from('<4s5H3I2H', raw, offset)
-                require(header[0] == b'PK\x03\x04' and header[1] == record.extract_version and
-                        header[2] == record.flag_bits and
-                        header[3] == record.compress_type and header[6] == record.CRC and
-                        header[7] == record.compress_size and header[8] == record.file_size and
-                        header[10] == 0, 'zip_header_mismatch')
-                start = offset+30+header[9]
-                finish = start+record.compress_size
-                next_offset = min((item for item in offsets if item > offset), default=archive.start_dir)
-                require(finish == next_offset and raw[offset+30:start] == name.encode('ascii'),
-                        'invalid_zip_layout')
-                compressed = raw[start:finish]
-                if record.compress_type == zipfile.ZIP_STORED:
-                    data = compressed
-                else:
-                    decoder = zlib.decompressobj(-15)
-                    data = decoder.decompress(compressed, limit+1)
-                    require(len(data) <= limit and decoder.eof and not decoder.unconsumed_tail and
-                            not decoder.unused_data, 'zip_expansion_limit')
-                require(len(data) == record.file_size and zlib.crc32(data) == record.CRC,
-                        'zip_content_mismatch')
-                result[name] = data
-            require(sum(map(len, result.values())) <= MAX_EVIDENCE_BYTES, 'zip_expansion_limit')
-            return result
-    except (zipfile.BadZipFile, RuntimeError, NotImplementedError, UnicodeError,
-            OSError, ValueError, struct.error, zlib.error) as exc:
+        # Parse every central record from bytes: ZipInfo can silently truncate
+        # overclaimed extra/comment lengths and hide disk/reserved fields.
+        directory_end = len(raw)-22
+        cursor = end[6]
+        records = []
+        for _ in range(3):
+            require(cursor+46 <= directory_end, 'invalid_zip_directory')
+            fields = struct.unpack_from('<4s6H3I5H2I', raw, cursor)
+            (signature, _made_by, extract, flags, method, dos_time, dos_date,
+             crc, compressed_size, size, name_size, extra_size, comment_size,
+             disk_start, _internal_attr, external_attr, local_offset) = fields
+            frame_end = cursor+46+name_size+extra_size+comment_size
+            require(signature == b'PK\x01\x02' and frame_end <= directory_end and
+                    extra_size == comment_size == disk_start == 0, 'invalid_zip_directory')
+            name = raw[cursor+46:cursor+46+name_size].decode('ascii')
+            safe_ref(name)
+            require(stat.S_IFMT(external_attr >> 16) in (0, stat.S_IFREG) and
+                    not (external_attr & 0x10), 'unsafe_zip_member')
+            # The raw 16-bit extraction field includes the reserved high byte.
+            require(extract in (10, 20) and flags in (0, 0x800) and
+                    method in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED) and
+                    (method != zipfile.ZIP_DEFLATED or extract == 20), 'unsupported_zip_format')
+            # Calendar/clock validity is separate from exact local/central equality.
+            datetime(1980+(dos_date >> 9), (dos_date >> 5) & 15, dos_date & 31,
+                     dos_time >> 11, (dos_time >> 5) & 63, (dos_time & 31)*2)
+            metadata = (extract, flags, method, dos_time, dos_date, crc, compressed_size, size)
+            records.append((name, metadata, local_offset))
+            cursor = frame_end
+        require(cursor == directory_end, 'invalid_zip_directory')
+        names = [name for name, _, _ in records]
+        unique(names)
+        require(set(names) == set(DTO_ARCHIVE_LIMITS), 'dto_archive_inventory')
+        offsets = sorted(offset for _, _, offset in records)
+        unique(offsets)
+        require(offsets[0] == 0, 'invalid_zip_layout')
+        result = {}
+        for name, metadata, offset in records:
+            extract, flags, method, dos_time, dos_date, crc, compressed_size, size = metadata
+            limit = DTO_ARCHIVE_LIMITS[name]
+            require(size <= limit and compressed_size <= MAX_ARTIFACT_BYTES, 'zip_expansion_limit')
+            require(offset <= end[6]-30, 'invalid_zip_layout')
+            header = struct.unpack_from('<4s5H3I2H', raw, offset)
+            require(header[0] == b'PK\x03\x04' and header[1:9] == metadata and
+                    header[10] == 0, 'zip_header_mismatch')
+            start = offset+30+header[9]
+            finish = start+compressed_size
+            next_offset = min((item for item in offsets if item > offset), default=end[6])
+            require(finish == next_offset and raw[offset+30:start] == name.encode('ascii'),
+                    'invalid_zip_layout')
+            compressed = raw[start:finish]
+            if method == zipfile.ZIP_STORED:
+                data = compressed
+            else:
+                decoder = zlib.decompressobj(-15)
+                data = decoder.decompress(compressed, limit+1)
+                require(len(data) <= limit and decoder.eof and not decoder.unconsumed_tail and
+                        not decoder.unused_data, 'zip_expansion_limit')
+            require(len(data) == size and zlib.crc32(data) == crc, 'zip_content_mismatch')
+            result[name] = data
+        require(sum(map(len, result.values())) <= MAX_EVIDENCE_BYTES, 'zip_expansion_limit')
+        return result
+    except (UnicodeError, ValueError, struct.error, zlib.error) as exc:
         if isinstance(exc, ContractError):
             raise
         raise ContractError('invalid_zip') from None
