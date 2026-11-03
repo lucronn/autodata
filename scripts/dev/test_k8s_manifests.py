@@ -1,6 +1,8 @@
 import unittest
 from pathlib import Path
 
+import yaml
+
 
 ROOT = Path(__file__).parents[2]
 MANIFEST = ROOT / "infra/k8s/base.yaml"
@@ -44,9 +46,11 @@ class KubernetesManifestTests(unittest.TestCase):
 
     def test_api_uses_explicit_production_firebase_and_external_web_config(self):
         config = self.by_key[("ConfigMap", "autodata-config")]
-        self.assertIn('AUTODATA_ENV: production', config)
-        self.assertIn('AUTODATA_AUTH_MODE: firebase', config)
-        self.assertIn('AUTODATA_PUBLIC_ORIGIN: https://cars.tk', config)
+        parsed = yaml.safe_load(config)
+        expected = {'AUTODATA_ENV': 'production', 'AUTODATA_AUTH_MODE': 'firebase',
+                    'AUTODATA_PUBLIC_ORIGIN': 'https://cars.tk'}
+        self.assertEqual({key: parsed['data'].get(key) for key in expected}, expected)
+        self.assertTrue(set(expected).isdisjoint(parsed['metadata']))
         api = self.by_key[("Deployment", "autodata-api")]
         for key in ('PROJECT_ID', 'WEB_API_KEY', 'WEB_APP_ID', 'AUTH_DOMAIN'):
             self.assertIn('name: AUTODATA_FIREBASE_' + key, api)
