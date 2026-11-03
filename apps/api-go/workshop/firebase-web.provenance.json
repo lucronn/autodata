@@ -1,0 +1,84 @@
+{
+  "schema": "autodata.firebase-web.provenance",
+  "version": 1,
+  "sdk": {
+    "name": "firebase",
+    "version": "12.19.0"
+  },
+  "dependencies": {
+    "@firebase/app": "0.16.2",
+    "@firebase/auth": "1.13.6",
+    "@firebase/component": "0.7.5",
+    "@firebase/logger": "0.5.2",
+    "@firebase/util": "1.15.3",
+    "firebase": "12.19.0",
+    "idb": "7.1.1"
+  },
+  "build": {
+    "tool": "esbuild",
+    "version": "0.28.2",
+    "options": {
+      "bundle": true,
+      "format": "esm",
+      "platform": "browser",
+      "target": "es2022",
+      "minify": true,
+      "legalComments": "external",
+      "sourcemap": false
+    }
+  },
+  "inputs": [
+    {
+      "path": "apps/api-go/workshop-client/build.mjs",
+      "sha256": "8fb4188cba753652657035d0fc57b5a9cfb686e608abb26abe4ac94e8b2e47ea",
+      "bytes": 18991
+    },
+    {
+      "path": "apps/api-go/workshop-client/firebase-entry.mjs",
+      "sha256": "f54101ca60489e5b8e06e982d1bc836ee82aa16a17ad368cef3107318aa26de6",
+      "bytes": 345
+    },
+    {
+      "path": "apps/api-go/workshop-client/package-lock.json",
+      "sha256": "164aea9aed4375973526db6710f83cfca40df35e88aa3419416c2eaa849a0975",
+      "bytes": 56520
+    },
+    {
+      "path": "apps/api-go/workshop-client/package.json",
+      "sha256": "1625e79496fa3c021f31bf94d2c2cdc8e37bf546cfc354c9428a8a118bdab7de",
+      "bytes": 323
+    }
+  ],
+  "outputs": [
+    {
+      "path": "apps/api-go/workshop/firebase-web.mjs",
+      "sha256": "bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1",
+      "bytes": 112641
+    },
+    {
+      "path": "apps/api-go/workshop/firebase-web.mjs.LEGAL.txt",
+      "sha256": "70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319",
+      "bytes": 35536
+    }
+  ],
+  "exports": [
+    "GoogleAuthProvider",
+    "browserPopupRedirectResolver",
+    "getIdTokenResult",
+    "inMemoryPersistence",
+    "initializeApp",
+    "initializeAuth",
+    "reauthenticateWithPopup",
+    "setPersistence",
+    "signInWithPopup",
+    "signOut"
+  ],
+  "licenses": [
+    {
+      "id": "Apache-2.0",
+      "source": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bytes": 11358
+    }
+  ]
+}
