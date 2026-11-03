@@ -266,6 +266,34 @@ class CloudTests(unittest.TestCase):
         for archive in (bytes(corrupted), self.archive[:100], self.archive + b'junk'):
             with self.assertRaises(self.rt.ContractError): self.ops.verify_export(archive, self.manifest, self.status)
 
+    def rejected_archived_status(self, archived):
+        # Update upload evidence to match the changed bytes: rejection must come
+        # from the receipt contract, rather than a conveniently stale checksum.
+        with patch.object(self, 'status', archived):
+            archive = self.tar()
+        events = copy.deepcopy(self.events)
+        events['export'] = archive
+        payload = self.rt.canonical_bytes(archived)
+        events['upload']['backup.json'].update(sha256=hashlib.sha256(payload).hexdigest(), bytes=len(payload))
+        receipt, _ = self.evaluate(events)
+        self.assertNotEqual(receipt['status'], 'passed')
+        self.assertIsNone(receipt['last_verified_backup'])
+        with self.assertRaises(self.rt.ContractError):
+            self.ops.verify_export(archive, self.manifest, self.status)
+
+    def test_archived_receipt_rejects_boolean_as_integer(self):
+        self.rejected_archived_status(dict(self.status, schema_version=True))
+
+    def test_archived_receipt_rejects_float_as_integer(self):
+        self.rejected_archived_status(dict(self.status, dump_bytes=float(len(self.dump))))
+
+    def test_archived_receipt_rejects_nested_scalar_type_drift(self):
+        for field, value in [('services', 1), ('no_work', 1.0)]:
+            archived = copy.deepcopy(self.status)
+            archived['checks'][field] = value
+            with self.subTest(field=field, value=value):
+                self.rejected_archived_status(archived)
+
     def test_export_rejects_wrong_release_and_status_bytes_and_bounded_stream(self):
         wrong = copy.deepcopy(self.manifest); wrong['source_sha'] = 'd' * 40
         with self.assertRaises(self.rt.ContractError): self.ops.verify_export(self.archive, wrong, self.status)
