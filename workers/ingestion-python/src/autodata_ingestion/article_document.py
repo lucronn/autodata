@@ -435,6 +435,27 @@ def validate_ordered_document(document: Any, *, strict: bool = False) -> list[st
         expected_order += 1
     if strict:
         errors.extend(_validate_recursive_blocks(blocks))
+        errors.extend(_validate_media_tree(document))
+    return errors
+
+
+def _validate_media_tree(value, *, image_container=False):
+    errors=[]
+    if isinstance(value,list):
+        for child in value:errors.extend(_validate_media_tree(child,image_container=image_container))
+    elif isinstance(value,dict):
+        if image_container or value.get("type")=="image":
+            evidence=value.get("evidence_ids")
+            if not isinstance(evidence,list) or not evidence:errors.append("missing image evidence")
+            if value.get("status")=="unavailable":
+                if not value.get("unavailable_reason"):errors.append("missing image failure reason")
+            elif (value.get("status")!="available" or not isinstance(value.get("storage_key"),str)
+                  or not value["storage_key"] or not re.fullmatch(r"[a-f0-9]{64}",str(value.get("content_sha256","")))
+                  or any(str(value.get(key,"")).lower().startswith(("http:","https:","javascript:")) for key in ("url","src","href"))):
+                errors.append("image is not locally verified")
+        for key,child in value.items():errors.extend(_validate_media_tree(child,image_container=key=="images"))
+    elif image_container:
+        errors.append("invalid image entry")
     return errors
 
 
@@ -473,6 +494,8 @@ def _validate_recursive_blocks(blocks, seen=None):
                     cells = row if isinstance(row, list) else row.get("cells") if isinstance(row, dict) else None
                     if not isinstance(cells, list) or not cells: errors.append("invalid table cells"); continue
                     for cell in cells:
+                        if isinstance(cell,str):
+                            continue
                         if not isinstance(cell, dict): errors.append("invalid cell"); continue
                         if "blocks" in cell:
                             if not isinstance(cell["blocks"], list): errors.append("invalid cell blocks")
@@ -482,6 +505,9 @@ def _validate_recursive_blocks(blocks, seen=None):
             if not isinstance(items, list) or not items: errors.append("empty list")
             else:
                 for item in items:
+                    if isinstance(item,str):
+                        if not item.strip():errors.append("empty list item")
+                        continue
                     if not isinstance(item, dict) or not isinstance(item.get("text"), str) or not item["text"].strip():
                         errors.append("invalid list item")
                     elif "blocks" in item:
@@ -1075,10 +1101,12 @@ def project_ordered_document(document):
         for block in blocks:
             kind = block.get("type")
             text = block.get("text")
+            for label in (block.get("label"),block.get("caption")):
+                if isinstance(label,str) and label.strip():texts.append(label)
             if isinstance(text, str) and text.strip():
                 texts.append(text)
                 if allow_steps and kind == "step":
-                    current={"action":text,"instructions":[],"images":[],
+                    current={"action":text,"instructions":[],"images":deepcopy(block.get("images",[])),
                              "evidence_ids":deepcopy(block.get("evidence_ids",[]))}
                     steps.append(current)
                 elif allow_steps and kind == "paragraph" and current is not None:
@@ -1088,6 +1116,7 @@ def project_ordered_document(document):
             images.extend(deepcopy(block.get("images", [])))
             if kind in {"ordered_list", "unordered_list"}:
                 for item in block.get("items", []):
+                    if isinstance(item,str):item={"text":item}
                     if isinstance(item.get("text"), str):
                         texts.append(item["text"])
                         if allow_steps:
@@ -1095,9 +1124,13 @@ def project_ordered_document(document):
                     images.extend(deepcopy(item.get("images",[])))
                     visit(item.get("blocks",[]),allow_steps)
             if kind == "table":
+                for column in block.get("columns",[]):
+                    if isinstance(column,str):texts.append(column)
+                    elif isinstance(column,dict) and isinstance(column.get("text"),str):texts.append(column["text"])
                 for row in block.get("rows",[]):
                     cells=row if isinstance(row,list) else row.get("cells",[])
                     for cell in cells:
+                        if isinstance(cell,str):cell={"text":cell}
                         if isinstance(cell.get("text"),str): texts.append(cell["text"])
                         images.extend(deepcopy(cell.get("images",[])))
                         visit(cell.get("blocks",[]),False)

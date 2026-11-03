@@ -16,6 +16,7 @@ def document():
 
 
 class Model:
+    _model="fixture"
     def complete_json(self, prompt):
         self.prompt = prompt
         slots = json.loads(prompt)["slots"]
@@ -112,3 +113,33 @@ def test_durable_result_reused_after_lease_reclaim_without_model(fresh_database,
         attempt=conn.execute("SELECT * FROM canonical_article_rewrite_attempts").fetchone()
         assert attempt["status"]=="succeeded" and attempt["response"]==result.raw_response
         assert attempt["canonical_article_revision_id"]==revision
+
+
+def test_actual_adapter_string_list_items_and_table_cells_are_preserved():
+    source=document();source["blocks"][4]["items"]=["Install the cover."]
+    source["blocks"][2]["rows"]=[["10 Nm","Part T-42"]]
+    result=rewrite.rewrite_ordered_document(source,client=Model(),context={})
+    assert result.error_code is None
+    assert result.document["blocks"][4]["items"]==["Fit the cover."]
+    from autodata_ingestion.article_document import project_ordered_document
+    projection=project_ordered_document(result.document)
+    assert "10 Nm" in projection["body"] and "Part T-42" in projection["body"]
+
+
+def test_result_cannot_change_prepared_model_identity(fresh_database,capture_fixture):
+    from dataclasses import replace
+    from autodata_ingestion import article_lifecycle_store as store
+    repo=fresh_database();lease,source=prepare_transform(repo,capture_fixture)
+    store.save_normalized_input(repo,lease,source.as_article())
+    attempt=store.prepare_rewrite_attempt(repo,lease,source.source_document,context=source.vehicle,model="fixture")
+    store.mark_rewrite_dispatched(repo,lease,attempt)
+    result=rewrite.rewrite_ordered_document(source.source_document,client=Model(),context=source.vehicle)
+    forged=replace(result,model_metadata={**result.model_metadata,"model":"another-model"})
+    with pytest.raises(ValueError,match="binding"):
+        store.store_rewrite_result(repo,lease,forged)
+
+
+def test_nested_images_must_be_local_verified_with_evidence():
+    source=document();source["blocks"][2]["rows"][0][0]["images"]=[{"image_id":"nested","status":"available","url":"https://provider.invalid/image","evidence_ids":["e"]}]
+    candidate=deepcopy(source);candidate["blocks"][0]["text"]="Take off the pump."
+    assert not rewrite.validate_article_rewrite(source,candidate,profile_version="technical-prose-v1").passed

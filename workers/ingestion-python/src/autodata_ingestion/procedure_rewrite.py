@@ -264,7 +264,9 @@ def editable_slots(document):
                 add(block["block_id"], path + "/text", block.get("text"))
             elif kind in {"ordered_list", "unordered_list"}:
                 for offset, item in enumerate(block.get("items", [])):
-                    if isinstance(item, dict):
+                    if isinstance(item, str):
+                        add(block["block_id"], f"{path}/items/{offset}", item)
+                    elif isinstance(item, dict):
                         add(block["block_id"], f"{path}/items/{offset}/text", item.get("text"))
                         if isinstance(item.get("blocks"), list):
                             visit(item["blocks"], f"{path}/items/{offset}/blocks")

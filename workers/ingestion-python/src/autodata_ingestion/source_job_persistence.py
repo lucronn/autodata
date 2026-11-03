@@ -144,25 +144,26 @@ def refresh_article_job(
         return result
 
 
+def _mark_delivery_ambiguous(cur, job):
+    # Only the locked row actually reclaimed/swept determines delivery ownership.
+    # The transition and ambiguity accounting commit or roll back together.
+    cur.execute("""UPDATE canonical_article_rewrite_attempts
+        SET status='ambiguous',error_code='MODEL_DELIVERY_AMBIGUOUS',completed_at=clock_timestamp()
+        WHERE source_fetch_job_id=%s AND lease_token=%s AND status='dispatched' AND response IS NULL""",
+        (job["source_fetch_job_id"], job["lease_token"]))
+
+
 def claim_source_job(repo, *, worker_id):
     with repo.connect() as conn, _cursor(conn) as cur:
-        # Expiry recovery owns the row lock, independently of the dead worker's
-        # live-lease guard. Account for uncertain external delivery even on the
-        # final permitted claim before terminating or handing work to a new owner.
-        expired = cur.execute("""SELECT source_fetch_job_id,lease_token FROM source_fetch_jobs
-            WHERE job_kind IN ('article','catalog_index') AND status='processing'
-              AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED""").fetchall()
-        for old in expired:
-            cur.execute("""UPDATE canonical_article_rewrite_attempts
-                SET status='ambiguous',error_code='MODEL_DELIVERY_AMBIGUOUS',completed_at=clock_timestamp()
-                WHERE source_fetch_job_id=%s AND lease_token=%s AND status='dispatched' AND response IS NULL""",
-                (old["source_fetch_job_id"], old["lease_token"]))
         cur.execute(
             """WITH exhausted AS (SELECT source_fetch_job_id FROM source_fetch_jobs
         WHERE job_kind IN ('article','catalog_index') AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED)
         UPDATE source_fetch_jobs j SET status='dead_letter',error_code='LEASE_ATTEMPTS_EXHAUSTED',retryable=false,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp()
-        FROM exhausted e WHERE j.source_fetch_job_id=e.source_fetch_job_id"""
+        FROM exhausted e WHERE j.source_fetch_job_id=e.source_fetch_job_id
+        RETURNING j.source_fetch_job_id,j.lease_token"""
         )
+        for exhausted in cur.fetchall():
+            _mark_delivery_ambiguous(cur, exhausted)
         job = cur.execute(
             """SELECT * FROM source_fetch_jobs WHERE job_kind IN ('article','catalog_index') AND retry_count<max_attempts AND
         ((status IN ('pending','failed') AND COALESCE(next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp()) OR (status='processing' AND lease_expires_at<clock_timestamp()))
@@ -170,6 +171,8 @@ def claim_source_job(repo, *, worker_id):
         ).fetchone()
         if job is None:
             return None
+        if job["status"] == "processing":
+            _mark_delivery_ambiguous(cur, job)
         row = cur.execute(
             """UPDATE source_fetch_jobs SET status='processing',retry_count=retry_count+1,lease_token=lease_token+1,lease_owner=%s,
         lease_expires_at=clock_timestamp()+interval '90 seconds',heartbeat_at=clock_timestamp(),updated_at=clock_timestamp(),

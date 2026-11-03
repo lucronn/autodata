@@ -257,3 +257,51 @@ def test_expired_dispatched_attempt_is_ambiguous_in_reclaim_transaction(fresh_da
         assert attempt=={"status":"ambiguous","error_code":"MODEL_DELIVERY_AMBIGUOUS"}
         job=conn.execute("SELECT status,retry_count FROM source_fetch_jobs WHERE source_fetch_job_id=%s",(lease.job_id,)).fetchone()
         assert job=={"status":"dead_letter" if final else "processing","retry_count":3 if final else 2}
+
+
+@pytest.mark.parametrize("final", [False, True])
+@pytest.mark.parametrize("renewed", [False, True])
+def test_expiry_at_actual_recovery_boundary(fresh_database, monkeypatch, final, renewed):
+    """Change expiry after any preliminary scan, at the statement owning recovery."""
+    from contextlib import contextmanager
+    from autodata_ingestion import source_job_persistence as jobs
+    repo = fresh_database()
+    ensure(repo, seed_article(repo))
+    lease = jobs.claim_source_job(repo, worker_id=uuid.uuid4())
+    with repo.connect() as conn:
+        conn.execute("INSERT INTO canonical_article_rewrite_attempts(rewrite_attempt_id,source_fetch_job_id,lease_token,attempt_number,provider,model,profile_version,prompt_hash,input_hash,status,dispatched_at) VALUES (%s,%s,%s,1,'fixture','fixture','technical-prose-v1',%s,%s,'dispatched',now())", (uuid.uuid4(), lease.job_id, lease.token, "a"*64, "b"*64))
+        conn.execute("UPDATE source_fetch_jobs SET retry_count=%s WHERE source_fetch_job_id=%s", (3 if final else 1, lease.job_id))
+    original = jobs._cursor
+    boundary = "WITH exhausted" if final else "SELECT * FROM source_fetch_jobs WHERE job_kind"
+    fired = []
+
+    class BoundaryCursor:
+        def __init__(self, cur):
+            self.cur = cur
+
+        def __getattr__(self, name):
+            return getattr(self.cur, name)
+
+        def execute(self, sql, params=None):
+            if boundary in sql and not fired:
+                fired.append(True)
+                with repo.connect() as other:
+                    other.execute("UPDATE source_fetch_jobs SET lease_expires_at=clock_timestamp()+make_interval(secs=>%s) WHERE source_fetch_job_id=%s", (90 if renewed else -1, lease.job_id))
+            return self.cur.execute(sql, params)
+
+    @contextmanager
+    def cursor(conn):
+        with original(conn) as cur:
+            yield BoundaryCursor(cur)
+
+    monkeypatch.setattr(jobs, "_cursor", cursor)
+    claimed = jobs.claim_source_job(repo, worker_id=uuid.uuid4())
+    assert fired
+    assert (claimed is None) == (final or renewed)
+    with repo.connect() as conn:
+        attempt = conn.execute("SELECT status FROM canonical_article_rewrite_attempts").fetchone()
+        job = conn.execute("SELECT status,retry_count,lease_token FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (lease.job_id,)).fetchone()
+    assert attempt["status"] == ("dispatched" if renewed else "ambiguous")
+    assert job["status"] == ("dead_letter" if final and not renewed else "processing")
+    assert job["retry_count"] == (3 if final else 1 if renewed else 2)
+    assert job["lease_token"] == lease.token + (not final and not renewed)
