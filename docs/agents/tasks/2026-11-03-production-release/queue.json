@@ -294,24 +294,87 @@
       "needs_scope_refinement": false,
       "dispatch_mode": "coordinator_parallel_offline",
       "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
-      "source_integration_base_sha": "a0eed5dce45171f5f94f72d99d2fdf694235df0d",
-      "dispatch_prerequisite": "B archive-reader live goal/five-todo/scope/limits synchronization read back at Issue186 comment6617360191 and Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4. Commit/push the synchronized seven-doc checkpoint, pass full-SHA preflight and obtain independent coordinator gate handoff before implementation. Historical A/R6 scope preserved; no workflow/cloud/provider/deployment execution.",
+      "source_integration_base_sha": "052bbf9ac29a9c74163162f0f91adc2f6a656e4e",
+      "dispatch_prerequisite": "A catalog-only v2 goal/five-todo/seven-doc scope/limits read back at Issue186 comment6617521783 and Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4. Commit/push this synchronized checkpoint, pass exact-SHA preflight, coordinator integration/re-pin and independent gate handoff before code. c51d637 remains rejected/unintegrated; B historical checkpoint/comment6617360191, approved offline implementation052bbf9, future-publication gate and R6 integration remain preserved. No live authority.",
       "runtime_prerequisites": [
         "verified integrated product candidate and actual acceptance/CI",
         "approved real project/cost/provider/recovery configuration and separate staging authorization"
       ],
       "planning_status": "synchronized",
       "planning_record_ref": "docs/agents/records/2026-11-03-workshop-hosting.json",
-      "next_milestone": "offline-release-zip-archive-verifier",
+      "next_milestone": "passive-postgresql-catalog-only-v2",
+      "historical_B_archive_checkpoint": {
+        "id": "workshop-hosting",
+        "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-hosting.json",
+        "depends_on": [],
+        "state": "planning_synchronized_awaiting_review",
+        "release_state": "unverified",
+        "needs_scope_refinement": false,
+        "dispatch_mode": "coordinator_parallel_offline",
+        "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+        "source_integration_base_sha": "a0eed5dce45171f5f94f72d99d2fdf694235df0d",
+        "dispatch_prerequisite": "B archive-reader live goal/five-todo/scope/limits synchronization read back at Issue186 comment6617360191 and Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4. Commit/push the synchronized seven-doc checkpoint, pass full-SHA preflight and obtain independent coordinator gate handoff before implementation. Historical A/R6 scope preserved; no workflow/cloud/provider/deployment execution.",
+        "runtime_prerequisites": [
+          "verified integrated product candidate and actual acceptance/CI",
+          "approved real project/cost/provider/recovery configuration and separate staging authorization"
+        ],
+        "planning_status": "synchronized",
+        "planning_record_ref": "docs/agents/records/2026-11-03-workshop-hosting.json",
+        "next_milestone": "offline-release-zip-archive-verifier",
+        "tracking_sync": {
+          "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617360191",
+          "project_ref": "https://github.com/users/lucronn/projects/8",
+          "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+          "project_note_field": "Source or dependency reference",
+          "verified_at": "2026-11-03T22:43:36.177270+00:00",
+          "issue_body_sha256": "d8a0c748f3c3f53c4189fcf97540db74815c29a1aa72fe31c7963f8a3c1dfcbd",
+          "project_text_sha256": "ddf9226064689dec8b1ad476e365a27acb28f8e9aac36c8b7b355ba14354799d",
+          "project_index_note": "Compact field preserves historical A/R6 checkpoint references and indexes the exact B goal/five todos/scope/limits in the issue comment."
+        }
+      },
+      "goal": "Replace the unsafe passive schema ledger read with fixed catalog-only observation and adversarial fake-exec tests; keep schema, service and deploy readiness unavailable until a separately approved stable catalog-before-ledger protocol exists.",
+      "todo": [
+        "Synchronize the reviewed catalog-only correction and blocked c51d637 evidence across Issue186, Project8 and seven canonical files including the coordinator queue; commit/push, independently review and pin a new passing preflight checkpoint before builder dispatch.",
+        "Modify only runtime-check.py and test_host_runtime.py to remove all live ledger reads, implement the fixed built-in-catalog-only v2 observation, and retain fixed identity/auth/bounds/reinspection without new grants/helpers or interactive stdin.",
+        "Add red/green fake-exec tests proving no ledger SQL is sent for any catalog fixture, including view/foreign/RLS/custom type/custom AM/expression index and concurrent-change transcripts; preserve all existing applicable offline tests.",
+        "Run focused tests, syntax, scope/diff and pinned preflight; commit/push a coherent two-path candidate and obtain exact-SHA independent review before integration.",
+        "Keep schema/services/runtime_evidence false and all mutation/deploy verbs blocked; any stronger lock privilege, provisioned helper, persistent interactive client, effective auth proof or real PostgreSQL/Docker/cloud execution needs separate approved scope/gate."
+      ],
+      "allowed_paths": [
+        "infra/deploy/gce/runtime-check.py",
+        "infra/deploy/gce/test_host_runtime.py"
+      ],
+      "blocked_candidate_sha": "c51d637708c1e2ad24719e69d32ea87654c14473",
+      "preserved_B_implementation": {
+        "status": "independently-approved-offline-implementation-integrated",
+        "integrated_sha": "052bbf9ac29a9c74163162f0f91adc2f6a656e4e",
+        "planning_checkpoint_integrated_sha": "b4953ef",
+        "source_checkpoint_sha": "062d599",
+        "tracking_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617360191",
+        "future_publication_gate": {
+          "status": "unverified",
+          "requirements": [
+            "No actual release artifact or approved publisher layout establishes GitHub Actions archive compatibility; synthetic fixtures establish only the proposed ZIP32 subset.",
+            "Before any publication or transport use, a separately synchronized and reviewed publisher/transport milestone must prove authenticated artifact provenance and exact downloaded archive compatibility, or amend and review this proposed protocol."
+          ],
+          "blocks_current_offline_milestone": false
+        },
+        "limits": "Pure in-memory archive consistency only; publication authentication, real archive compatibility and deploy readiness remain unavailable."
+      },
+      "integration_checkpoint": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617490673",
+        "integrated_sha": "052bbf9ac29a9c74163162f0f91adc2f6a656e4e",
+        "scope": "Coordinator readback of B/R6 integration, not A-v2 goal/todo synchronization. Project field remains the prior B sync; fresh matching A synchronization is still required."
+      },
       "tracking_sync": {
-        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617360191",
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617521783",
         "project_ref": "https://github.com/users/lucronn/projects/8",
         "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
         "project_note_field": "Source or dependency reference",
-        "verified_at": "2026-11-03T22:43:36.177270+00:00",
-        "issue_body_sha256": "d8a0c748f3c3f53c4189fcf97540db74815c29a1aa72fe31c7963f8a3c1dfcbd",
-        "project_text_sha256": "ddf9226064689dec8b1ad476e365a27acb28f8e9aac36c8b7b355ba14354799d",
-        "project_index_note": "Compact field preserves historical A/R6 checkpoint references and indexes the exact B goal/five todos/scope/limits in the issue comment."
+        "verified_at": "2026-11-03T22:52:39.567389+00:00",
+        "issue_body_sha256": "a4164a5bf2dc5edf986ed95aed7b26e8ace7419f3e576fbb8e49bae3dd319df1",
+        "project_text_sha256": "78148627386a398901d82a8b2e5577c51cd2a32958e99c43c24513572415396a",
+        "project_index_note": "Compact field indexes exact A v2 goal/five todos/seven-doc scope in the issue comment while retaining historical A/B/R6 and current integration references; original pre-update field preserved in external readback evidence."
       }
     },
     {

@@ -2,7 +2,7 @@
 
 Offline implementation gate preparation, 2026-11-03. This successor consolidates the reviewed application interfaces, Firebase ADC isolation design and local pinned-image findings. It supersedes the prior hosting proposal (SHA256 `1cf908ab0e2b1eb678710d37809a7838051a8e4375d9d7e25a69de0cfd5c9a2f` in Git history), including its broad attached-identity/Secret Manager assumption and Ops Agent monitoring. Inputs: ADC isolation design SHA256 `91dd17b493d4c71e0632ac64b36136fec433a4d3d09529820ca4fefc009bcb32`, bounded amendment SHA256 `5d040259ab579bf6801a1839a0bbfa5eddfa4cd0d08790b856e36e81334c9d37`, and reviewed commerce040 plus paid candidate `a90613a76b3f2c5f5c14606384bf1d9cdcca0a6e`. The latter's full runtime acceptance and UI integration remain coordinator-owned. This offline definitions gate pins source integration3b551c992263f74e3ebdc6e4fa2c4ffda3b979a6; re-pin the final verified integrated release before real staging or deployment.
 
-Historical checkpoint context (superseded for the next B milestone by the synchronized archive-reader amendment at the end of this plan): the record for this offline implementation scope is `docs/agents/records/2026-11-03-workshop-hosting.json`. It is `status: synchronized` for the passive-schema amendment below after live Issue186/Project8 readback; commit/push, exact-SHA preflight, coordinator integration/re-pin and independent checkpoint review remain required; earlier approved milestones remain historical evidence and do not authorize this next implementation. The coordinator must review the committed checkpoint and passing machine preflight before dispatch; synchronization does not authorize deployment. No cloud resource, billing, real credential, provider API or DNS change is authorized by it. Local read-only image inspection and explicitly authorized synthetic S3 probes are the only new runtime observations. Actual project, cost, region, licensed providers and cutover decisions remain owner inputs.
+Current hosting record: `docs/agents/records/2026-11-03-workshop-hosting.json`, status `synchronized` for the catalog-only A v2 planning checkpoint below after Issue186 comment6617521783 and matching Project8 readback. Commit/push, exact-SHA preflight, coordinator integration/re-pin and independent checkpoint review still precede code. Historical A v3 synchronization does not authorize the rejected c51d637 candidate. B archive checkpoint062d599 (integratedb4953ef) remains historically synchronized at Issue186 comment6617360191; its independently approved offline implementation is integrated at052bbf9. The B future-publication gate remains unverified, and neither B history nor this synchronized plan-only A checkpoint authorizes new implementation, runtime observation or deployment. Owner project/cost/region/provider/cutover inputs and R6/browser/application acceptance remain separate requirements.
 
 ## Decisions that supersede the old hosting draft
 
@@ -321,6 +321,8 @@ Actual toolchain/image pins and every unavoidable project-level snapshot IAM per
 
 ## Passive schema observation: synchronized plan-only checkpoint
 
+**Historical A v3 material; superseded for the next A milestone by the synchronized plan-only catalog-only v2 correction below.**
+
 This six-document plan-only checkpoint starts from `bc62f86eac54eb81b61e4013f0e910f264556f6c`. Independent plan-only review approved the v3 contract artifact SHA256 `65fb0e202f21e95e503ecec001da561ac1efee4accbe7e2f6c74ba8557653625`. The approved draft artifact follows verbatim as the historical reviewed contract; its DRAFT ONLY label does not change this checkpoint's synchronized tracking status or authorize implementation. Its `paths.json` reference identifies the two implementation paths in the canonical task's `next_milestone.allowed_paths`; no extra repository file is required. The coordinator owns this planning checkpoint and the runbook update, including its B-owned documentation; original22+8 implementation ownership remains intact. No implementation is authorized until live Issue186/Project8 synchronization, committed/pushed status:synchronized records, pinned preflight and independent checkpoint approval.
 
 # Proposed bounded amendment: passive local schema observation
@@ -411,6 +413,8 @@ Tracking synchronization read back: [Issue186 comment6617024444](https://github.
 
 ## B release ZIP archive reader: synchronized plan-only checkpoint
 
+**Historical synchronized B checkpoint.** Its exact comment6617360191/protocol/future-publication limitations are preserved below. Offline implementation is independently approved and integrated at052bbf9; this historical checkpoint is not the current blocked A gate.
+
 **Goal:** Implement a bounded offline release ZIP archive verifier with independent archive and member SHA256 bindings, strict ZIP32 structure and JSON/image consistency checks; keep publication authentication and deployment unavailable.
 
 **Status:** `synchronized` after live [Issue186 comment6617360191](https://github.com/lucronn/autodata/issues/186#issuecomment-6617360191) and [Project8](https://github.com/users/lucronn/projects/8) item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` readback at `2026-11-03T22:43:36.177270+00:00`. Planning source base is `a0eed5dce45171f5f94f72d99d2fdf694235df0d`; it is not an implementation authorization SHA. Independent review approved draft SHA256 `706f5fb2326ddc9e223547b4e95951f4643ba67d6b6e6a01d538198db0f319c6`. The canonical task/record and hosting queue index carry the same B goal/five todos/scope/limits. Project8 is a compact index to the exact issue-comment work queue and retains historical A/R6 checkpoint references. Prior passive-schema synchronized material above is historical A scope and cannot authorize B. Commit/push this seven-document checkpoint, pass machine preflight at its exact full SHA and obtain independent coordinator gate handoff before implementation dispatch. Preserve disjoint A and R6 work; do not broaden their scopes.
@@ -466,3 +470,143 @@ Task1 (tests plus parser implementation): first add deterministic valid stored/D
 Add independently mutated binary fixtures for every structural rule: EOCD counts/disks/offset/size/comment/trailer; central/local names/flags/method/version/timestamps/extras; central file types/disk start/sentinels; duplicate and aliased offsets; prefix/padding/gaps/overlap; ZIP64 header/locator/descriptors; both descriptor forms, malformed signature/length/CRC/sizes and ambiguous CRC signature; CRC corruption; mismatched stored sizes; zero/oversize/aggregate/ratio bounds; truncated/concatenated/trailing DEFLATE streams; incremental output overflow. Rebind archive hashes for structural tests so rejection exercises structure rather than only outer digest failure. Retain existing CLI/fake transcript/workflow regressions and assert no helper failure text includes adversarial fixture strings. Run the same focused command to green before committing the coherent test/parser milestone under the coordinator's normal commit/push cadence.
 
 Task2 (documentation/acceptance): update only the runbook with this proposed layout, the three digest meanings, receipt limitations and separate future authenticated producer/transport gate. Run focused B tests and syntax compilation using `python -m py_compile infra/deploy/gce/cloud-ops.py infra/deploy/gce/test_cloud_ops.py`; run `git diff --check` and inspect the exact changed-path list. Rerun pinned preflight at the implementation boundary's actual committed planning SHA; a blocked draft result is expected until synchronization. Commit/push validated coherent milestones only after implementation dispatch; independent exact-SHA review precedes integration. No offline fixture or consistent receipt changes release/readiness state.
+
+
+## Catalog-only v2 correction: synchronized plan-only checkpoint
+
+Status: `synchronized` after live Issue186/Project8 readback. Independent plan-only review approved correction artifact SHA256 `7971a7ec0c260237dfea3f80be2318443981ffb40f8c63a2a3300dccf78a1d22`. This seven-document planning draft starts from integrated `052bbf9ac29a9c74163162f0f91adc2f6a656e4e` and contains no implementation. Blocked candidate `c51d637708c1e2ad24719e69d32ea87654c14473` remains unintegrated and excluded. Live Issue186 comment6617521783 and Project8 readback match the A goal/five todos/seven-doc scope/limits. Coordinator commit/push/integration/re-pin, exact-SHA preflight and independent checkpoint approval remain required before A implementation. The B archive checkpoint/source062d599/integratedb4953ef was synchronized at comment6617360191 and its independently approved offline implementation is integrated at052bbf9; that historical authority and unverified future-publication gate are preserved. A22/B8 ownership and R6/browser/application acceptance remain unchanged.
+
+Goal: Replace the unsafe passive schema ledger read with fixed catalog-only observation and adversarial fake-exec tests; keep schema, service and deploy readiness unavailable until a separately approved stable catalog-before-ledger protocol exists.
+
+Issue: https://github.com/lucronn/autodata/issues/186; Project: https://github.com/users/lucronn/projects/8, item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`. Current v2 tracking is synchronized at comment6617521783 and matching Project8 readback; old comment6617024444 is historical only.
+
+## Finding and trust boundary
+
+The blocked SQL contains an unconditional `SELECT version FROM public.schema_migrations`. Catalog predicates returned alongside that SELECT are observations, not execution guards. Python validation occurs too late. A view, foreign relation, RLS policy, custom version type, custom table/index access method or expression index can invoke application/extension code during planning or execution, including code with external side effects despite a read-only transaction. A CASE/CTE/WHERE predicate in the same SQL statement is not a substitute: parsing, rewrite and planning may already consult the untrusted relation.
+
+Trusted scope is the selected PostgreSQL17 executable, built-in pg_catalog functions/operators/types and unmodified built-in system catalogs. Host root, PostgreSQL superuser, malicious extensions/hooks and modifications to built-in objects are outside any collector's guarantees. Never claim to resist those actors. Catalog-only reads must use fully qualified built-ins and cannot deparse/evaluate application expressions, call regclass output for arbitrary user objects, access pg_authid or request restricted settings. Mount observations still do not establish effective PGDATA/configuration.
+
+## Concrete PostgreSQL17 constraints
+
+Sources inspected read-only, with copies and hashes in /tmp/autodata-hosting-a-schema-correction:
+
+- https://www.postgresql.org/docs/17/sql-lock.html: SELECT permits ACCESS SHARE only; MAINTAIN/UPDATE/DELETE/TRUNCATE permits stronger modes. REPEATABLE READ must LOCK before the first SELECT to ensure the snapshot starts after lock acquisition.
+- https://github.com/postgres/postgres/blob/REL_17_STABLE/src/backend/commands/lockcmds.c: `LockTableAclCheck` implements that privilege rule. `LOCK TABLE ONLY` suppresses inheritance recursion, but a VIEW still enters `LockViewRecurse`; ONLY does not make a view into a safe table. Lock traversal is metadata work, not view execution, but it can acquire additional locks and is not itself validation.
+- https://github.com/postgres/postgres/blob/REL_17_STABLE/src/backend/tcop/pquery.c: `PlannedStmtRequiresSnapshot` explicitly exempts BEGIN, LOCK and SET; the first SELECT establishes the transaction snapshot.
+- https://www.postgresql.org/docs/17/explicit-locking.html and src/backend/commands/tablecmds.c: ACCESS SHARE blocks ACCESS EXCLUSIVE changes such as RLS/type replacement, but does not block CREATE INDEX or CREATE INDEX CONCURRENTLY. SHARE alone also permits ordinary CREATE INDEX because both use SHARE. SHARE ROW EXCLUSIVE conflicts with SHARE, SHARE UPDATE EXCLUSIVE and ROW EXCLUSIVE; it blocks these index/catalog changes and ordinary writes until release.
+- https://github.com/postgres/postgres/blob/REL_17_STABLE/src/backend/optimizer/util/plancat.c: planner relation inspection opens indexes, obtains access-method routines and index expressions. `enable_indexscan=off`, TABLESAMPLE, OFFSET0 or an EXPLAIN-before-SELECT approach is not accepted as a no-application-code boundary.
+- https://www.postgresql.org/docs/17/app-psql.html: repeated -c options share one connection, but cannot wait for Python validation between a catalog result and an already-queued ledger command. --command cannot combine SQL and psql meta-commands arbitrarily. A fixed script with \gset/\if is an additional server/psql validation language, not the existing Python trust boundary. It is not selected.
+
+Consequently no full ledger protocol satisfying all three current promises has been demonstrated: SELECT-only role, stable catalog-before-ledger execution boundary against concurrent DDL, and no privileged helper/new provision. Keeping the old no-concurrent-hostile-DDL disclaimer would weaken the requested stability property and is not an acceptable silent repair.
+
+## Decision for the next bounded milestone
+
+Select a catalog-only correction under the existing least-privilege role. No ledger query is sent at all, even for safe metadata; checks.schema remains false. This is useful prerequisite evidence but cannot establish a version or pass deploy check. It avoids broadening the role solely to make the probe operable. Full ledger observation remains blocked until a separate explicit privilege/provisioning decision and plan review.
+
+The next synchronized gate may authorize only runtime-check.py and test_host_runtime.py. It must explicitly replace the old one-SELECT/v1 schema-success contract with catalog-only/v2 unavailable-schema behavior. The coordinator chooses whether to salvage the reviewed inspect/bounds code from c51d637 or reimplement from the integrated branch; do not merge the blocked candidate directly. Do not add locking helper functions or grants in this milestone.
+
+Catalog-only protocol:
+
+1. Keep the fixed initial Docker inspect, identity/UID/mount/state validation, socket-only role, cleaned environment, fixed executable/argv and no-password behavior.
+2. Execute one fixed SELECT over built-in pg_catalog only. It returns protocol_version=2, phase='catalog', identity, rights and ledger_relation. No FROM/JOIN/CTE/EXPLAIN/COPY/TABLE/LOCK reference to an application relation is permitted. Object names occur only as fixed pg_catalog name comparisons. Query roles/rights/relation/type/RLS metadata with the existing strict bool/type rules; keep database_owner, PUBLIC, column privileges and MAINTAIN checks. AM/index metadata is explicitly deferred in v2: do not query/emit access-method, index, expression, predicate, opclass, collation or support-function metadata, and never call an application handler or deparse expression trees. Those facts are not needed to avoid a data read and are not attested by this catalog-only milestone.
+3. Preserve bounded capture, timeouts, strict duplicate/extra-field/type rejection and final same-ID Docker reinspection. Even complete valid catalog evidence yields schema=false, services=false, runtime_evidence=false and exit3 missing_dependency. No extra success receipt or runtime contract is introduced. Timeouts retain exit5.
+4. The pure ledger validator may remain as an offline utility but is disconnected from any actual relation query. No metadata flag, previously cached transcript or pure validator success can promote schema=true.
+5. Keep all mutation/start/maintenance/service verbs unavailable. Provision/auth/readiness are separate work.
+
+## Exact v2 response and validation contract
+
+Only this wire shape is accepted, with exactly five top-level fields and no arrays at any depth:
+
+```json
+{
+  "protocol_version": 2,
+  "phase": "catalog",
+  "identity": {
+    "session_user": "autodata_metrics", "current_user": "autodata_metrics",
+    "database": "autodata", "server_version_num": 170000,
+    "transaction_read_only": true, "default_transaction_read_only": true,
+    "client_addr": null, "client_port": null
+  },
+  "rights": {
+    "login": true, "superuser": false, "create_db": false, "create_role": false,
+    "replication": false, "bypass_rls": false, "inherit": false, "membership_count": 0,
+    "connect": true, "schema_usage": true, "ledger_select": true,
+    "database_create": false, "database_temp": false, "database_owner": false,
+    "schema_create": false, "schema_owner": false, "relation_owner": false,
+    "sequence_owner": false, "relation_write": false, "column_write": false,
+    "sequence_write": false
+  },
+  "ledger_relation": {
+    "oid": 1, "schema": "public", "name": "schema_migrations", "kind": "r",
+    "persistence": "p", "is_partition": false, "has_inheritance": false,
+    "rls": false, "force_rls": false, "version_type": "pg_catalog.text",
+    "version_not_null": true, "version_generated": "", "version_identity": "",
+    "primary_key_version": true
+  }
+}
+```
+
+The example OID1 and server170000 are illustrative valid values, not fixed identifiers. Exact required types/acceptance rules:
+
+- Root/identity/rights/ledger_relation are JSON objects with exactly the shown keys. protocol_version is an actual integer exactly2, not bool/float/string. phase is exactly the ASCII string catalog. Nested objects have no optional keys.
+- Identity strings and booleans are exactly the shown literals. server_version_num is an actual integer170000..179999 inclusive. client_addr and client_port are the only permitted nulls. No other null is accepted. No effective server/config/auth-file fact is inferred.
+- Every rights value except membership_count is an actual bool with exactly the shown expected value. membership_count is actual integer0. Existing metadata semantics remain fixed: database_owner compares autodata pg_database.datdba with the fixed role OID; effective privilege functions include PUBLIC; column INSERT/UPDATE/REFERENCES and PG17 table MAINTAIN are included; ownership/write aggregates cover non-system schemas/relations/sequences. Missing/unknown rights are not false. Privilege functions remain guarded by relation kind and cannot execute application code.
+- ledger_relation.oid is an actual integer1..4294967295 inclusive. Every other field is exactly the string/bool literal shown. Derive version_type by exact built-in text OID comparison, not by invoking type output functions or deparsing arbitrary names. Require exactly one public relation and one live version attribute; missing/ambiguous/incompatible facts fail (never fabricate a passing empty relation). Use pg_catalog metadata only to check inheritance, primary-key columns, type and RLS.
+- AM and all index metadata are explicitly deferred. There are no am/index keys and no index arrays/counts/hashes. The v2 result does not assert that the heap/index/planner path would be safe, nor that the relation will remain unchanged. Built-in heap, safe indexes, rewrite rules and DDL stability are mandatory subjects of a future full-observation gate, not implicit facts in v2.
+
+Fixed v2 bounds and framing:
+
+- Preserve MAX_INSPECT_STDOUT_BYTES=65536, MAX_SQL_STDOUT_BYTES=524288, READ_CHUNK_BYTES=4096, per-command5s, collector15s and exceptional reap1s. Capture cap is enforced while streaming, retaining at most cap+1, before JSON decoding. stderr/stdin remain DEVNULL. Host/container env and executable/argv remain the previously fixed literals except the v2 SQL constant. No ledger row/value bounds are exercised by a live v2 query because no ledger rows are read.
+- SQL stdout must contain exactly one UTF-8 JSON object plus optional ASCII SP/HT/CR/LF padding, all within the SQL byte cap. Strictly reject invalid UTF-8, multiple values/JSON-lines, a second row, trailing non-whitespace, empty output, duplicate keys at every level and NaN/Infinity. No parser coercions or replacement decoding. Reject nesting deeper than2 object levels (root depth1, the three nested objects depth2), any array token, or more than32 members in any object before accepting parsed facts. A string-aware bounded token/depth scan may enforce this before json.loads; parser recursion/error is a contract failure, not a receipt traceback.
+- Every decoded key and string value is ASCII and at most64 bytes. All accepted strings are also constrained to the shown exact literals; their actual maximum is therefore smaller. Numeric tokens are at most10 decimal digits, unsigned and canonical (no exponent/fraction/negative/leading-zero spelling); the scalar integer ranges above still apply. Booleans are not integers. No raw overlong/rejected values or SQL errors enter receipts.
+- Missing role/catalog object/client/socket/auth, invalid shape/type/value, unknown key/protocol/phase, SQL failure or capture overflow stays exit3 missing_dependency and all evidence flags false; deadline stays exit5 operation_timed_out. Valid catalog observations still exit3 with checks.schema=false, services=false and runtime_evidence=false. There is no catalog-only success receipt or bypass.
+
+### Required v1/cache disconnection
+
+Reject protocol_version1 before any compatibility projection. Reject a v2 object with a ledger field, ledger/version/count/overflow/invalid_value/migrations list at any location not explicitly in the exact fieldsets, v1 identity/rights/ledger_relation plus ledger, or any other extra field. Do not accept a bare {version,migrations} projection, arrays, a cached SQL transcript or a manifest-embedded observation as a catalog response. Do not implement protocol fallback or auto-upgrade. A legacy v1 object relabeled protocol_version2 is still rejected for phase/fieldset mismatch.
+
+The new runtime function is `collect_postgres_catalog(manifest) -> None`: successful validation returns None after final reinspection; errors raise the existing contract/timeout exceptions. The corresponding strict `validate_postgres_catalog(value) -> None` accepts only the v2 metadata shape. Remove the live `collect_postgres_schema` call/path and v1 observation validator rather than retaining a callable fallback. deploy_cli may call only the catalog collector for this prerequisite and must never assign its return value to checks.schema. Initialize checks.schema=false and leave it false unconditionally in this milestone. It cannot depend on catalog validation, cached images, migration-tree hashes, manifest ledgers or an offline validator result. No config/env/CLI input enables schema success.
+
+The existing pure `validate_schema_ledger(manifest, value)` may remain to test offline inventories, but no runtime check, catalog collector/validator or dispatch path calls it for observed schema evidence. A cache/offline utility returning True is never proof of a live version. Services/runtime_evidence and mutation dispatch remain independently unavailable. There is no new callable service/readiness function in this milestone.
+
+## Full catalog-before-ledger protocol: necessary new contract, not authorized
+
+This section makes the feasibility boundary concrete; it is NOT a proposed automatic grant or an implementation task. It is a policy-changing alternative requiring separate owner approval and independent plan review. It contradicts the current SELECT-only/MAINTAIN=false role contract and may be rejected on that basis.
+
+A direct-client strong-lock design would need an explicit new capability on the dedicated role, such as MAINTAIN on precisely public.schema_migrations, plus new checks that distinguish that deliberately permitted capability from all other relation writes/maintenance. MAINTAIN is not read-only: it permits maintenance operations, so do not call this role least-privilege read-only. Never choose UPDATE/DELETE/TRUNCATE instead. No such grant is authorized here.
+
+If that policy were separately approved, the concrete sequence must be:
+
+1. One persistent fixed psql process, bound to the validated container ID and socket role, stdin PIPE instead of DEVNULL and Docker exec --interactive solely for that bounded fixed input stream. No TTY/shell/caller SQL. Outbound writes are fixed byte constants, length-bounded and deadline-bounded; stdout uses bounded framed streaming. No process-per-query reconnect.
+2. Send only `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; LOCK TABLE ONLY public.schema_migrations IN SHARE ROW EXCLUSIVE MODE;` followed by one fixed catalog SELECT. No SELECT may precede LOCK: BEGIN/LOCK/SET establish no snapshot, so the catalog SELECT starts the transaction snapshot after the conflicting DDL/writes have drained. Lock/statement timeout remains bounded. Validate catalog output in Python before sending any ledger statement.
+3. Catalog validation additionally requires built-in heap AM, no rewrite rules, no inheritance/partition/RLS, exact built-in text column and safe primary key; all indexes must be bounded and restricted to the expected valid built-in btree/text_ops primary key with no expressions/predicates/custom opclasses/collations/support functions. Reject incompatible extra indexes rather than relying on planner settings. Exact built-in identities must be pinned to the supported PG17 catalog contract, with separate upstream validation. Lock and metadata queries must emit no raw definitions or application values.
+4. Only after successful Python validation send the fixed bounded ledger SELECT using ONLY public.schema_migrations and fully qualified built-in functions/operators/C collation. No dynamic identifier or value from JSON enters SQL. Send no ledger bytes on error, EOF, cap overflow, timeout, invalid facts or unexpected extra output. Same process and open transaction preserve snapshot and table lock; do not commit/reconnect in between.
+5. Validate exact ledger/count/bounds, then send only ROLLBACK and a fixed terminal frame; require clean exit. On rejection send fixed ROLLBACK if safely writable, otherwise close stdin and bounded kill/reap. Local Docker termination does not prove remote psql termination: add fixed server-side idle_in_transaction_session_timeout and statement_timeout to bound abandoned locks. These timeout values and the streaming protocol require fresh review rather than silently reusing the old 16-second outer-bound claim.
+6. Reinspect the container after the psql transaction exits; only then consider schema success. Hold the lock across catalog validation and ledger read; reject any uncertain transaction lifecycle. This lock temporarily blocks migrations and ordinary ledger writes, so this is not a zero-interference observation.
+
+A SECURITY DEFINER function is not a shortcut under the old contract. It introduces trusted provisioned code, owner/ACL/search_path/definition-hash checks and new runtime-grants.sql scope. A SELECT calling a lock helper also establishes the REPEATABLE READ snapshot before the helper obtains the lock, so it does not implement the LOCK-before-first-snapshot sequence above. DO/SQL CASE/dynamic SQL cannot be substituted without a separately proven snapshot and privilege design. No such helper is proposed in the bounded catalog-only milestone.
+
+## Offline implementation and adversarial acceptance after a new gate
+
+- [ ] Add failing fake-exec transcript tests first. The fake rejects every unknown argv and every SQL string except the fixed catalog literal. Each transcript maintains `application_code_executions=0`; a ledger-plan/read, EXPLAIN, view expansion, FDW access or dynamic relation command increments/fails immediately. Assert the counter remains0 on both accepted-catalog and rejected-catalog paths. This proves client command sequencing, not PostgreSQL execution semantics.
+- [ ] Catalog fixtures individually reject view, foreign table, RLS/FORCE RLS and incompatible text-domain/custom-type/primary-key facts represented by the exact v2 metadata. Fake-world fixtures also contain sentinel RLS policies, custom output functions, table/index AMs and expression/predicate indexes; AM/index details are deliberately not emitted in v2, so those fixtures test absence of any data/planning command, not rejection of an unobserved AM/index fact. On every fixture application-code counter stays0, receipts stay redacted and schema=false. Valid ordinary-table metadata also cannot promote schema=true.
+- [ ] Enumerate every v2 required field with absent/extra/null/type/boundary/value mutations; add duplicate JSON keys, nonfinite numbers, exponent/float/bool-as-int, invalid UTF-8, excessive depth/member count, arrays, over64-byte/Unicode strings, second JSON row and cap+1 streams. Test exactly the documented acceptance ranges and timeout mapping. Reject original v1, v1 relabeled v2, v2-plus-ledger, standalone pure projections and cached ledger transcripts. Patch the offline ledger validator to return True (and separately to raise if called) and verify valid cached images/tree/catalog still yield schema=false and exit3. Assert dispatch/runtime call paths have no schema=True assignment or live/pure-ledger fallback.
+- [ ] Race fixtures change relOID/type/RLS/index metadata before/after the catalog response. Because the selected correction never reads ledger data, no race creates a data-query opportunity. Missing permission, malformed facts, extra rows/fields, overlong metadata, deadline and truncated frame cases fail closed.
+- [ ] Preserve independent adversarial database-owner/PUBLIC/column/MAINTAIN fixtures, fixed socket/role, wrong identity/mount/restart tests, bounded streaming/deadline/kill/reap tests. Assert no stdin PIPE, --interactive, grants, locks, helper creation or new executable appears in this milestone.
+- [ ] Run `python -m unittest discover -s infra/deploy/gce -p test_host_runtime.py -v`, Python syntax, deploy.sh shell syntax, git diff --check, exact two-path scope and pinned record preflight. No Docker, DB, nft, systemd, cloud, provider or paid execution.
+- [ ] Request exact-SHA independent review before integration. No tests may be described as proving actual view/FDW/RLS nonexecution on PostgreSQL; that stronger runtime proof requires a separately authorized disposable PG17 adversarial harness. A future full-lock protocol must test actual concurrent DDL barriers, first-snapshot ordering, expression/index handler sentinels, lock permissions, transaction abort and remote idle cleanup before readiness claims.
+
+
+### Catalog-only v2 concrete todo
+
+- [ ] Synchronize the reviewed catalog-only correction and blocked c51d637 evidence across Issue186, Project8 and seven canonical files including the coordinator queue; commit/push, independently review and pin a new passing preflight checkpoint before builder dispatch.
+- [ ] Modify only runtime-check.py and test_host_runtime.py to remove all live ledger reads, implement the fixed built-in-catalog-only v2 observation, and retain fixed identity/auth/bounds/reinspection without new grants/helpers or interactive stdin.
+- [ ] Add red/green fake-exec tests proving no ledger SQL is sent for any catalog fixture, including view/foreign/RLS/custom type/custom AM/expression index and concurrent-change transcripts; preserve all existing applicable offline tests.
+- [ ] Run focused tests, syntax, scope/diff and pinned preflight; commit/push a coherent two-path candidate and obtain exact-SHA independent review before integration.
+- [ ] Keep schema/services/runtime_evidence false and all mutation/deploy verbs blocked; any stronger lock privilege, provisioned helper, persistent interactive client, effective auth proof or real PostgreSQL/Docker/cloud execution needs separate approved scope/gate.
+
+Implementation scope after a new passing checkpoint: only `infra/deploy/gce/runtime-check.py` and `infra/deploy/gce/test_host_runtime.py`. Seven-document planning scope is hosting plan, operations runbook, architecture, production-release plan, hosting task, hosting record and coordinator queue. Coordinator commit/push is the only current checkpoint action; implementation, runtime commands and stronger-role grants remain unavailable until separately authorized after the pinned gate.
+
+Coordinator integration index: [Issue186 comment6617490673](https://github.com/lucronn/autodata/issues/186#issuecomment-6617490673) records root052bbf9 and B/R6 integration. It is integration history only; A v2 goal/todos are now separately synchronized by comment6617521783 and matching Project8 readback.
+
+Tracking receipt: [Issue186 comment6617521783](https://github.com/lucronn/autodata/issues/186#issuecomment-6617521783), [Project8](https://github.com/users/lucronn/projects/8) item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`, field `Source or dependency reference`, read back at `2026-11-03T22:52:39.567389+00:00`. Exact comment SHA256 `a4164a5bf2dc5edf986ed95aed7b26e8ace7419f3e576fbb8e49bae3dd319df1`; Project text SHA256 `78148627386a398901d82a8b2e5577c51cd2a32958e99c43c24513572415396a`. The compact Project index retains historical A/B/R6/current integration references and points to the full exact A goal/five todos/scope. Tracking synchronization is plan-only; no builder dispatch or live operation is authorized.
