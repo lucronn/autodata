@@ -401,3 +401,14 @@ Integrated Go/contracts,104 development and19 contract checks pass. See
 Full integration CI is pending; commerce's reviewed39-path checkpoint follows
 that verified dependency and a fresh synchronized gate. No production launch
 or live identity/merchant configuration is claimed by this foundation.
+
+
+### Verified identity and parallel commerce/SDK gates
+
+Full CI41696273960 passed at472492dd868122b2b0da00dc84e15c5424aa0276,
+including live Compose, completing the R5 dependency checkpoint. The reviewed
+39-path commerce lane and10-path SDK packaging lane have synchronized actual
+Issue186/Project8/canonical tasks and todo; each requires the new committed-base
+preflight before its own isolated implementation. Their paths are disjoint.
+SDK packaging remains a subset of the final33-path UI scope and introduces no
+customer behavior. Paid access and final UI still wait for verified dependencies.

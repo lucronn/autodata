@@ -222,3 +222,14 @@ commerce gate. The earlier38-path planning review is retained as historical
 evidence; this explicit amendment requires review before dispatch.
 
 Independent review approved the bounded39th-path amendment: `/tmp/autodata-commerce-039-interface-amendment-review.md`, SHA256 `14105d71e52e14855cd60482254f56408810699ad6ae148c87fcf7607eca1431`. It found no additional identity implementation/test path necessary.
+
+
+## Synchronized implementation checkpoint
+
+Firebase candidate b4f3dc86a18a8087f8ff664e37bec594909eae80 is verified and
+integrated at3fdcd0bc0ac993dd15ad2219df9d09ffeed27a4e. Full CI41696273960
+passed at472492dd868122b2b0da00dc84e15c5424aa0276, including live Compose.
+The exact39-path plan, actual session/CSRF/account interfaces and collector040
+amendment passed independent review. Issue186/Project8 and canonical task/todo
+are saved and read back; commit this checkpoint and pass exact-base preflight
+before implementation. No deployment or live charge is part of this gate.

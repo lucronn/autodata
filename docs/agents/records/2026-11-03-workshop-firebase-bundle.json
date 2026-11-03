@@ -1,0 +1,18 @@
+{
+  "goal": "Package the pinned official Firebase browser SDK as deterministic self-hosted assets for the final paid Workshop UI.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-firebase-bundle.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "Independently review the ten-path packaging milestone, synchronize tracking/canonical docs and pass a committed exact-base preflight.",
+    "Pin Firebase12.19.0/esbuild0.28.2 and complete lock; generate the official ESM bundle, license and deterministic provenance without application initialization.",
+    "Prove check mode preserves inputs and rejects stale or modified sources/artifacts using owned scratch copies; verify named exports and no remote imports.",
+    "Verify actual Go HTTP asset MIME/bytes/hashes, existing Workshop and Go tests; independently review exact candidate and record CI."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T18:49:35.504368+00:00"
+}

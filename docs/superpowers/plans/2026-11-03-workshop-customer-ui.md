@@ -192,3 +192,14 @@ The final literal contract check must preserve the canonical quote field
 JSON pins revision identity in `source.url`; validate its exact route/revision
 and selected article without inventing a top-level field or modifying the API.
 Real backend integration can refine these named contracts only before dispatch.
+
+
+### Parallel SDK packaging dependency
+
+The independently reviewed `2026-11-03-workshop-firebase-bundle.md` extracts
+ten existing scope paths as a pure packaging milestone, parallel with commerce
+after verified R5. It does not initialize Firebase or change the customer flow.
+The final UI consumes its verified assets and still owns all customer behavior
+and browser/production-image acceptance. Reconcile the create/modify inventory
+against those existing files before final UI dispatch; the33-path envelope and
+120+21 browser requirements remain unchanged.

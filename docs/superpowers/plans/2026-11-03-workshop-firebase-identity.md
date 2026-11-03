@@ -200,6 +200,7 @@ dual-bank regressions through039 pass. The initial report-parser failure is
 retained separately; a reviewed strict correction passed fresh acceptance.
 Integrated Go/contracts,104 development and19 contract checks pass. See
 `docs/verification/2026-11-03-firebase-customer-identity.md` for exact evidence.
-Full integration CI is pending; commerce's reviewed39-path checkpoint follows
-that verified dependency and a fresh synchronized gate. No production launch
+Full integration CI41696273960 passed at472492d, including live Compose;
+commerce's reviewed39-path checkpoint follows that verified dependency and a
+fresh synchronized gate. No production launch
 or live identity/merchant configuration is claimed by this foundation.

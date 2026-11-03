@@ -8,7 +8,7 @@ Reviewed candidate `b4f3dc86a18a8087f8ff664e37bec594909eae80`, gated at
 `1211382ee3aa9bdc59c0003169ec000c2f971ced`, is integrated as
 `3fdcd0bc0ac993dd15ad2219df9d09ffeed27a4e`. The merge preserves all six
 meaningful implementation/correction commits. Exactly35 authorized paths;
-historical SQL001–038 unchanged. Full integration CI is pending below.
+historical SQL001–038 unchanged. Full integration CI passed as recorded below.
 
 The official Firebase Admin SDK verifies fresh Google identity and live user
 state. Server-generated accounts and opaque hashed PostgreSQL sessions enforce
@@ -79,6 +79,7 @@ except the independently approved one-line StorageKey privacy spacing assertion.
 Integration Go API and Go contracts pass;104 development tests and19 shared
 contract tests pass. Logs: `/tmp/autodata-r5-integrated-{go,dev,contracts}.log`.
 Author SDK-inclusive race checks and independent targeted SDK/session tests pass.
-Actual integration GitHub CI is pending; record the exact run before completing
-the dependency checkpoint. Later merchant/project/domain, real Google/Stripe
+Actual integration GitHub CI41696273960 passed at
+472492dd868122b2b0da00dc84e15c5424aa0276, including the live Compose smoke.
+This completes the identity dependency checkpoint. Later merchant/project/domain, real Google/Stripe
 HTTPS staging, paid access, browser and recovery/cutover acceptance remain required.
