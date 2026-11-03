@@ -1,0 +1,16 @@
+{
+  "goal": "Repair the independently reproduced asynchronous catalog test race without changing application behavior.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-catalog-test-race.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "Synchronize and commit the one-path test repair plan and pass exact-base preflight.",
+    "Replace shared-field polling with the existing bounded channel observer in catalog_test.go.",
+    "Run targeted/full race and ordinary Go suites, independently review and commit/push the verified repair."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T19:11:13.278238+00:00"
+}
