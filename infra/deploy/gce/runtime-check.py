@@ -227,30 +227,36 @@ def validate_config(config):
     return sha256(config)
 
 
+def _validate_immutable_images(manifest, config):
+    """Enforce one nonrecursive image authority after manifest schema validation."""
+    for role in ('api', 'ingestion', 'migration'):
+        require(manifest['images'][role]['reference'].startswith(config['resources']['artifact_repository'] + '/' + role + '@sha256:'))
+    require(manifest['images']['minio']['reference'] == 'ghcr.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d')
+    require(manifest['images']['minio']['image_id'] == 'sha256:7b5ca1f11aa4c91593612d2d4a9e253ec9152a4bd13a19e551290a042a4c52f5')
+    for image in manifest['images'].values():
+        for key in ('provenance_uri', 'sbom_uri'):
+            # Immutable HTTP(S) artifact locator; no URL credentials or aliases.
+            _https(image[key])
+
+
 def validate_manifest(manifest, config, rollback_manifest=None):
     config_hash = validate_config(config)
     schema = strict_json((Path(__file__).parent / 'release.schema.json').read_bytes())
     _schema_validate(manifest, schema)
     require(len(canonical_bytes(manifest)) <= MAX_JSON_BYTES)
     require(manifest['service_config_sha256'] == config_hash)
-    for role in ('api', 'ingestion', 'migration'):
-        require(manifest['images'][role]['reference'].startswith(config['resources']['artifact_repository'] + '/' + role + '@sha256:'))
-    require(manifest['images']['minio']['reference'] == 'ghcr.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d')
-    require(manifest['images']['minio']['image_id'] == 'sha256:7b5ca1f11aa4c91593612d2d4a9e253ec9152a4bd13a19e551290a042a4c52f5')
+    _validate_immutable_images(manifest, config)
     files = manifest['migrations']['files']
     require(len(files) <= 999)
     require([f['name'] for f in files] == sorted(f['name'] for f in files))
     require([int(f['name'][:3]) for f in files] == list(range(1, len(files) + 1)))
     require(manifest['migrations']['inventory_sha256'] == sha256(files))
-    for image in manifest['images'].values():
-        for key in ('provenance_uri', 'sbom_uri'):
-            # Immutable HTTP(S) artifact locator; no URL credentials or aliases.
-            _https(image[key])
     previous = manifest['rollback_source_sha']
     if previous is not None:
         require(previous != manifest['source_sha'] and rollback_manifest is not None)
         # Do not recursively demand older historical manifests for this boundary.
         _schema_validate(rollback_manifest, schema)
+        _validate_immutable_images(rollback_manifest, config)
         require(rollback_manifest['source_sha'] == previous)
         require(rollback_manifest['platform'] == manifest['platform'])
         require(rollback_manifest['service_config_sha256'] == config_hash)
