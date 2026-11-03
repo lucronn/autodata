@@ -200,8 +200,10 @@ jobs:
           CANDIDATE_SHA: ${{ github.sha }}
         run: |
           set -eu
-          fixture_dir=$(mktemp -d)
+          fixture_dir="$RUNNER_TEMP/workshop-dto-browser"
+          mkdir -p "$fixture_dir"
           chmod 700 "$fixture_dir"
+          printf 'WORKSHOP_DTO_EVIDENCE_DIR=%s\n' "$fixture_dir" >> "$GITHUB_ENV"
           cleanup() {
             if [ -n "${fixture_pid:-}" ]; then
               kill -TERM -- "-$fixture_pid" 2>/dev/null || true
@@ -235,3 +237,11 @@ jobs:
           PY
           fixture_origin=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["origin"])' "$fixture_dir/ready.json")
           python scripts/dev/workshop_browser_smoke.py --base-url "$fixture_origin" --mode dto-fixture --browser all --candidate-sha "$CANDIDATE_SHA" --output "$fixture_dir/browser"
+      - name: Retain actual DTO browser evidence on success or failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workshop-dto-browser-${{ github.sha }}
+          path: ${{ env.WORKSHOP_DTO_EVIDENCE_DIR }}
+          if-no-files-found: error
+          retention-days: 14
