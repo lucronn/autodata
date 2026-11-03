@@ -158,10 +158,24 @@ def counts(c):
 
 def test_orders_create_and_owner_scope(commerce):
     c=commerce
-    quote=c[1].quote(c[4],'US')
-    assert quote['amount_minor']==2000 and quote['currency']=='USD'
-    result=checkout(c)
-    assert result.http_status==201 and result['state']=='checkout'
+    from autodata_ingestion.http_service import make_handler
+    from http.server import ThreadingHTTPServer
+    from urllib.request import Request,urlopen
+    from urllib.error import HTTPError
+    server=ThreadingHTTPServer(('127.0.0.1',0),make_handler('fixture-internal',commerce=c[1]))
+    thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+    def post(path,payload,token='fixture-internal'):
+        request=Request(f'http://127.0.0.1:{server.server_port}/internal/commerce/'+path,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','X-Autodata-Internal-Token':token},method='POST')
+        with urlopen(request,timeout=5) as response:return response.status,json.load(response)
+    try:
+        with pytest.raises(HTTPError) as error:post('quote',dict(configuration_id=c[4],region='US'),token='')
+        assert error.value.code==401
+        status,quote=post('quote',dict(configuration_id=c[4],region='US'))
+        assert status==200 and quote['amount_minor']==2000 and quote['currency']=='USD'
+        status,result=post('checkouts',dict(customer_account_id=c[3][0],organization_id=c[3][1],idempotency_key=str(uuid.uuid4()),configuration_id=c[4],region='US',terms_version=TERMS))
+        assert status==201 and result['state']=='checkout' and result['checkout_url'].endswith('#fidkdFixtureFragment')
+    finally:server.shutdown();server.server_close();thread.join()
+
     assert c[1].order_status(*c[3],result['order_id'])['state']=='open'
     with pytest.raises(CommerceError) as error:c[1].order_status(str(uuid.uuid4()),str(uuid.uuid4()),result['order_id'])
     assert error.value.http_status==403
