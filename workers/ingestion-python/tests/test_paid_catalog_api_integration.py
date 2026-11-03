@@ -91,17 +91,31 @@ class PaidBridge(Bridge):
 
 
 def configure_scoped_runtime(runtime,provider):
-    from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
+    from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs,read_catalog_coverage
     from autodata_ingestion.article_lifecycle import run_article_worker_once
     unscoped=dict(runtime.articles)
     configuration=seed_configuration(runtime.repo,runtime.vehicle)
     adjacent=seed_configuration(runtime.repo,runtime.vehicle)
     other_region=seed_configuration(runtime.repo,runtime.vehicle)
+    configurations=((configuration,'Paid selected'),(adjacent,'Paid adjacent'),(other_region,'Paid other region'))
     with runtime.repo.connect() as conn:
+        # Scoped enumeration must resolve an explicit human configuration selector;
+        # the generic seed deliberately has none and is rejected by the real worker.
+        for config,label in configurations:
+            conn.execute('UPDATE vehicle_configurations SET trim=%s WHERE vehicle_configuration_id=%s',(label,config))
         conn.execute("UPDATE vehicle_identity_bases SET region='CA' WHERE vehicle_identity_base_id=(SELECT vehicle_identity_base_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s)",(other_region,))
-    for config in (configuration,adjacent,other_region):
+    for config,_ in configurations:
         ensure_article_catalog_jobs(runtime.repo,vehicle_id=runtime.vehicle,vehicle_configuration_id=config)
         for _ in range(2):assert run_article_worker_once(runtime.repo,worker_id=uuid.uuid4(),registry=runtime.registry,object_store=runtime.objects,model_client=None)
+        # A claimed job may fail: require completed, exact-scope two-bank work.
+        coverage=read_catalog_coverage(runtime.repo,vehicle_id=runtime.vehicle,vehicle_configuration_id=config)
+        assert coverage['complete'] is True,coverage['coverage']
+        assert set(coverage['coverage'])=={'bankone','banktwo'}
+        assert {item['provider_slug'] for item in coverage['items']}=={'bankone','banktwo'}
+        assert all(item['vehicle_configuration_id']==config for item in coverage['items'])
+        assert all(scope['vehicle_configuration_id']==config for scope in coverage['coverage'].values())
+    for server in runtime.servers.values():
+        assert [request.get('configuration') for request in server.resolution_requests[-3:]]==[label for _,label in configurations]
     with runtime.repo.connect() as conn:
         runtime.articles={r['provider_slug']:r['canonical_article_id'] for r in conn.execute('SELECT canonical_article_id,provider_slug FROM canonical_articles WHERE vehicle_configuration_id=%s',(configuration,))}
     assert set(runtime.articles)=={'bankone','banktwo'}
