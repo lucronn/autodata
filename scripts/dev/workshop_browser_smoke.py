@@ -372,6 +372,12 @@ API_CASES=(
 )
 
 class APIFixture(DTOFixture):
+    def __init__(self,origin,scenario):
+        super().__init__(origin,scenario)
+        self.lost_response_count=0
+        # Exact request/response identities stay in memory, never browser evidence.
+        self.checkout_responses=[]
+
     async def route(self,route):
         request=route.request
         if request.url.startswith(self.origin+'/'):
@@ -381,10 +387,69 @@ class APIFixture(DTOFixture):
             safe=re.sub(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}','{uuid}',safe)
             self.requests.append({'method':request.method,'path':safe})
             if request.headers.get('authorization'):self.errors.append('browser sent bearer authorization')
+            if self.scenario==API_CASES[0] and request.method=='POST' and path=='/v1/workshop/checkout-sessions':
+                # Reserve the one-shot before awaiting the real API. A concurrent
+                # activation must fail rather than hide another checkout response.
+                self.checkout_count+=1
+                attempt=self.checkout_count
+                assert attempt<=2, 'checkout must have exactly one manual retry'
+                if attempt==2:
+                    assert self.lost_response_count==1, 'retry preceded the completed response loss'
+                key=request.headers.get('idempotency-key')
+                uuid_pattern=r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}'
+                assert isinstance(key,str) and re.fullmatch(uuid_pattern,key), 'checkout key must be a UUID'
+                try:body=json.loads(request.post_data)
+                except (TypeError,ValueError):raise AssertionError('checkout request must be JSON') from None
+                assert isinstance(body,dict), 'checkout request must be an object'
+                configuration=body.get('configuration_id')
+                assert isinstance(configuration,str) and re.fullmatch(uuid_pattern,configuration), 'invalid checkout configuration'
+                assert body.get('region')=='US', 'unexpected checkout region'
+                if attempt==2:
+                    assert key==self.keys[0] and request.post_data==self.checkout_bodies[0], 'retry changed checkout request'
+                self.keys.append(key);self.checkout_bodies.append(request.post_data)
+                response=await route.fetch(max_redirects=0,max_retries=0)
+                assert response.status in (200,201), 'actual API did not complete checkout'
+                checkout=await response.json()
+                assert isinstance(checkout,dict) and checkout.get('version')=='v1' and checkout.get('state')=='checkout', 'invalid actual checkout response'
+                assert checkout.get('configuration_id')==configuration and checkout.get('region')==body['region'], 'checkout response changed scope'
+                order=checkout.get('order_id');hosted=checkout.get('checkout_url')
+                assert isinstance(order,str) and re.fullmatch(uuid_pattern,order), 'invalid checkout order'
+                assert isinstance(hosted,str) and allowed_external(hosted), 'untrusted hosted checkout'
+                hosted_url=urlsplit(hosted)
+                assert hosted_url.hostname=='checkout.stripe.com' and re.fullmatch(r'/c/pay/cs_test_[a-f0-9]{32}',hosted_url.path) and not hosted_url.query and not hosted_url.fragment, 'invalid hosted checkout session'
+                identity={'order_id':order,'configuration_id':configuration,'region':body['region'],'checkout_url':hosted}
+                if attempt==1:
+                    self.checkout_responses.append(identity)
+                    await route.abort()
+                    self.lost_response_count+=1
+                else:
+                    assert identity==self.checkout_responses[0], 'retry changed actual checkout identity'
+                    self.checkout_responses.append(identity)
+                    await route.fulfill(response=response)
+                return
             await route.continue_();return
         if not allowed_external(request.url):
             self.unexpected.append(urlsplit(request.url).hostname);await route.abort();return
         await self.external(route)
+
+    def validate_pending_checkout(self,measurement,snapshot,previous_snapshot=None):
+        assert self.lost_response_count==1 and self.checkout_count in (1,2)
+        assert len(self.checkout_responses)==self.checkout_count
+        checkout=self.checkout_responses[0]
+        assert measurement['workshop_orders']==1 and measurement['workshop_checkout_requests']==1 and measurement['entitlements']==0
+        assert len(measurement['orders'])==1
+        order=measurement['orders'][0]
+        assert order['state']=='open'
+        for field in ('order_id','configuration_id','region'):assert order[field]==checkout[field]
+        rows=snapshot['paid_rows']
+        assert len(rows['workshop_orders'])==1 and rows['entitlements']==[]
+        durable=rows['workshop_orders'][0]
+        assert durable['status']=='open'
+        for field in ('order_id','configuration_id','region'):assert durable[field]==checkout[field]
+        assert durable['checkout_session_id']==urlsplit(checkout['checkout_url']).path.rsplit('/',1)[1]
+        assert snapshot['payment_calls']>0
+        if previous_snapshot is not None:
+            assert snapshot['payment_calls']==previous_snapshot['payment_calls'], 'retry created provider work'
 
 async def api_measure(context,origin):
     response=await context.request.get(origin+'/__fixture/measurement')
@@ -438,13 +503,25 @@ async def api_case(browser,origin,name,output):
         await expect(page.locator('#purchase-action')).to_be_enabled()
         await expect(page.locator('#purchase-message')).to_contain_text('purchase')
         await page.locator('#agreement').check()
-        if name==API_CASES[0]:await api_control(context,origin,'control/lose-response')
         await page.locator('#purchase-action').click(click_count=2,delay=0)
         if name==API_CASES[0]:
-            await expect(page.locator('#retry')).to_be_visible();await page.locator('#retry').click()
+            await expect(page.locator('#retry')).to_be_visible()
+            assert transport.checkout_count==1 and transport.lost_response_count==1
+            lost_measurement=await api_measure(context,origin)
+            lost_snapshot=await api_snapshot(context,origin)
+            transport.validate_pending_checkout(lost_measurement,lost_snapshot)
+            await page.locator('#retry').click()
         await page.wait_for_url(re.compile(r'https://checkout\.stripe\.com/c/pay/cs_test_[a-f0-9]{32}.*'))
         pending=await api_measure(context,origin)
         assert pending['workshop_orders']==1 and pending['entitlements']==0
+        if name==API_CASES[0]:
+            assert transport.checkout_count==2 and transport.lost_response_count==1
+            assert len(transport.keys)==2 and transport.keys[0]==transport.keys[1]
+            assert len(transport.checkout_bodies)==2 and transport.checkout_bodies[0]==transport.checkout_bodies[1]
+            assert len(transport.checkout_responses)==2 and transport.checkout_responses[0]==transport.checkout_responses[1]
+            assert page.url==transport.checkout_responses[0]['checkout_url']
+            transport.validate_pending_checkout(pending,await api_snapshot(context,origin),lost_snapshot)
+            assertions['client_response_loss_same_key_one_checkout']=True
         order=pending['orders'][0]['order_id']
         # A provider return is only a request to check the owner-scoped ledger.
         await page.goto(origin+'/workshop/?order='+order)
