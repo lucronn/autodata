@@ -203,11 +203,35 @@ jobs:
           fixture_dir=$(mktemp -d)
           chmod 700 "$fixture_dir"
           cleanup() {
-            if [ -n "${fixture_pid:-}" ]; then kill "$fixture_pid" 2>/dev/null || true; wait "$fixture_pid" 2>/dev/null || true; fi
+            if [ -n "${fixture_pid:-}" ]; then
+              kill -TERM -- "-$fixture_pid" 2>/dev/null || true
+              for attempt in $(seq 1 20); do
+                if ! kill -0 "$fixture_pid" 2>/dev/null; then break; fi
+                sleep 0.1
+              done
+              kill -KILL -- "-$fixture_pid" 2>/dev/null || true
+              wait "$fixture_pid" 2>/dev/null || true
+            fi
           }
           trap cleanup EXIT
-          AUTODATA_WORKSHOP_BROWSER_FIXTURE=1 AUTODATA_WORKSHOP_BROWSER_READY="$fixture_dir/ready.json" go -C apps/api-go test -run '^TestWorkshopBrowserFixtureHTTP$' -count=1 -timeout=75m >"$fixture_dir/go-fixture.log" 2>&1 &
+          setsid env AUTODATA_WORKSHOP_BROWSER_FIXTURE=1 AUTODATA_WORKSHOP_BROWSER_READY="$fixture_dir/ready.json" go -C apps/api-go test -run '^TestWorkshopBrowserFixtureHTTP$' -count=1 -timeout=75m >"$fixture_dir/go-fixture.log" 2>&1 &
           fixture_pid=$!
-          python -c 'import pathlib,sys,time; p=pathlib.Path(sys.argv[1]); deadline=time.monotonic()+120; exec("while not p.exists():\n if time.monotonic()>deadline: raise SystemExit("fixture readiness timeout")\n time.sleep(.1)")' "$fixture_dir/ready.json"
+          python - "$fixture_dir/ready.json" "$fixture_pid" <<'PY'
+          import os
+          from pathlib import Path
+          import sys
+          import time
+          ready = Path(sys.argv[1])
+          pid = int(sys.argv[2])
+          deadline = time.monotonic() + 120
+          while not ready.exists():
+              if time.monotonic() >= deadline:
+                  raise SystemExit("fixture readiness timeout")
+              try:
+                  os.kill(pid, 0)
+              except ProcessLookupError:
+                  raise SystemExit("fixture process exited before readiness")
+              time.sleep(0.1)
+          PY
           fixture_origin=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["origin"])' "$fixture_dir/ready.json")
           python scripts/dev/workshop_browser_smoke.py --base-url "$fixture_origin" --mode dto-fixture --browser all --candidate-sha "$CANDIDATE_SHA" --output "$fixture_dir/browser"
