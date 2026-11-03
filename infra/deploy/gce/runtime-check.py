@@ -7,6 +7,7 @@ starts services, probes endpoints or reads credentials. Imports remain the
 shared interface for later, separately authorized helpers.
 """
 import copy
+from contextlib import ExitStack
 from datetime import datetime, timezone
 import hashlib
 import ipaddress
@@ -598,6 +599,188 @@ def guard_cli():
     except (OSError, ContractError):
         pass
     return code, operation_receipt('runtime-check.py guard', None, None, code, checks, failure)
+
+
+
+def _owned_directory(path, uid=0, gid=0, mode=None, parent=None):
+    """Open a directory without following its final component; never create it.
+
+    Fixed /etc, /opt and /run ancestors are bootstrap's trusted installation
+    boundary. Release/service children are opened relative to pinned parent FDs.
+    """
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+    try:
+        metadata = os.fstat(fd)
+        require(stat.S_ISDIR(metadata.st_mode) and metadata.st_uid == uid and metadata.st_gid == gid)
+        actual = stat.S_IMODE(metadata.st_mode)
+        require(actual == mode if mode is not None else not actual & 0o022)
+        return fd
+    except Exception:
+        os.close(fd)
+        raise
+
+
+def _owned_bytes(parent, name, uid, gid, mode, maximum=16384, empty=False):
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK, dir_fd=parent)
+    try:
+        before = os.fstat(fd)
+        require(stat.S_ISREG(before.st_mode) and before.st_uid == uid and before.st_gid == gid)
+        require(stat.S_IMODE(before.st_mode) == mode and before.st_nlink == 1)
+        require((0 if empty else 1) <= before.st_size <= maximum)
+        data = bytearray()
+        while len(data) <= maximum:
+            chunk = os.read(fd, min(65536, maximum + 1 - len(data)))
+            if not chunk: break
+            data.extend(chunk)
+        after = os.fstat(fd)
+        require(len(data) == before.st_size)
+        require((before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) ==
+                (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns))
+        return bytes(data)
+    finally:
+        os.close(fd)
+
+
+def _installed_deploy_inputs(source_sha):
+    """Only fixed root-owned host/release inputs; no cwd or current-link fallback."""
+    match(source_sha, SHA_PATTERN)
+    with ExitStack() as resources:
+        def directory(path, parent=None):
+            fd = _owned_directory(path, parent=parent)
+            resources.callback(os.close, fd)
+            return fd
+        host_parent = directory(str(Path(HOST_CONFIG).parent))
+        config = strict_json(_owned_bytes(host_parent, Path(HOST_CONFIG).name, 0, 0, 0o600, MAX_JSON_BYTES))
+        root = directory(RELEASE_ROOT)
+        selected = directory(source_sha, parent=root)
+        manifest = strict_json(_owned_bytes(selected, 'release.json', 0, 0, 0o600, MAX_JSON_BYTES))
+        require(type(manifest) is dict and manifest.get('source_sha') == source_sha)
+        previous = manifest.get('rollback_source_sha')
+        rollback = None
+        if previous is not None:
+            match(previous, SHA_PATTERN)
+            old = directory(previous, parent=root)
+            rollback = strict_json(_owned_bytes(old, 'release.json', 0, 0, 0o600, MAX_JSON_BYTES))
+        validate_manifest(manifest, config, rollback)
+        return manifest, config
+
+
+def validate_mount_observations(config, data, secrets):
+    """Validate exact findmnt --mountpoint output; no ancestor-filesystem fallback."""
+    validate_config(config)
+    def filesystem(observation, target):
+        exact_object(observation, ('filesystems',))
+        require(type(observation['filesystems']) is list and len(observation['filesystems']) == 1)
+        value = observation['filesystems'][0]
+        exact_object(value, ('target', 'uuid', 'fstype', 'options'))
+        require(value['target'] == target and type(value['options']) is str)
+        options = value['options'].split(',')
+        require('rw' in options and 'ro' not in options)
+        return value, set(options)
+    mounted, _ = filesystem(data, DATA_ROOT)
+    require(mounted['uuid'] == config['resources']['data_disk_filesystem_uuid'])
+    require(mounted['fstype'] in ('ext4', 'xfs'))
+    temporary, options = filesystem(secrets, SECRET_ROOT)
+    require(temporary['fstype'] == 'tmpfs' and temporary['uuid'] is None)
+    require({'nosuid', 'nodev', 'noexec'} <= options)
+    return True
+
+
+def _opaque_secret(data, multiline=False, empty=False):
+    require(type(data) is bytes and (0 if empty else 1) <= len(data) <= 16384)
+    require(b'\x00' not in data and (multiline or (b'\r' not in data and b'\n' not in data)))
+    require(re.fullmatch(rb'@@[A-Z_]+@@', data) is None)
+
+
+def validate_runtime_secret_files():
+    """Check normal-service file delivery, not credentials' remote permissions.
+
+    Temporary migration/bootstrap/metrics jobs have separate lifecycles. Native
+    NATS and S3 configs must retain their frozen rendered permission templates;
+    values never enter process environment, logs or receipts here.
+    """
+    with ExitStack() as resources:
+        root = _owned_directory(SECRET_ROOT, mode=0o700)
+        resources.callback(os.close, root)
+        for service in NORMAL_SERVICES:
+            uid = 0 if service == 'caddy' else (999 if service == 'postgres' else 1000)
+            directory = _owned_directory(service, uid, uid, 0o500, parent=root)
+            resources.callback(os.close, directory)
+            filenames = {'caddy': ('maintenance.caddy',), 'nats': ('nats.conf',), 'minio': ('s3.json',)}.get(service, SECRET_NAMES.get(service))
+            require(set(os.listdir(directory)) == set(filenames))
+            values = {name: _owned_bytes(directory, name, uid, uid, 0o400, empty=service == 'caddy') for name in filenames}
+            for data in values.values(): _opaque_secret(data, multiline=service in ('nats', 'minio', 'caddy'), empty=service == 'caddy')
+            if service == 'nats':
+                template = (Path(__file__).parent / 'nats.conf.template').read_text()
+                pattern = re.escape(template)
+                for name in ('NATS_METRICS_USER', 'NATS_METRICS_PASSWORD'):
+                    pattern = pattern.replace(re.escape('@@' + name + '@@'), r'([^"\\\x00-\x20]+)')
+                matched = re.fullmatch(pattern, values['nats.conf'].decode('utf-8'))
+                require(matched is not None)
+                for value in matched.groups(): _opaque_secret(value.encode('utf-8'))
+            elif service == 'minio':
+                expected = strict_json((Path(__file__).parent / 'seaweedfs-s3.json.template').read_bytes())
+                candidate = strict_json(values['s3.json'])
+                exact_object(candidate, ('identities',))
+                require(type(candidate['identities']) is list and len(candidate['identities']) == 2)
+                keys = []
+                for identity, template in zip(candidate['identities'], expected['identities']):
+                    exact_object(identity, ('name', 'credentials', 'actions'))
+                    require(type(identity['credentials']) is list and len(identity['credentials']) == 1)
+                    credential = identity['credentials'][0]
+                    exact_object(credential, ('accessKey', 'secretKey'))
+                    for value in credential.values():
+                        require(type(value) is str)
+                        _opaque_secret(value.encode('utf-8'))
+                    keys.append(credential['accessKey'])
+                    identity['credentials'] = template['credentials']
+                require(len(set(keys)) == 2 and canonical_bytes(candidate) == canonical_bytes(expected))
+    return True
+
+
+def deploy_cli(argv):
+    """Bounded check-only stage. Every mutation verb remains unavailable.
+
+    Partial local observations never certify start: cached image, actual schema,
+    service/no-work readiness and native credential rights collectors are absent.
+    """
+    try:
+        args = parse_helper_args('deploy.sh', argv)
+    except ContractError:
+        return 2, operation_receipt('deploy.sh check', None, None, 2, {}, 'invalid_input')
+    if argv[0] != 'check':
+        return 3, operation_receipt(args['operation'], args['source_sha'], None, 3, {'runtime_evidence': False}, 'missing_dependency')
+    checks = {name: False for name in ('config', 'manifest', 'disk_uuid', 'metadata_guard', 'storage_guard',
+                                      'secrets', 'cached_images', 'schema', 'services', 'runtime_evidence')}
+    code, failure = 3, 'missing_dependency'
+    try:
+        require(os.geteuid() == 0)
+        _, config = _installed_deploy_inputs(args['source_sha'])
+        checks.update(config=True, manifest=True)
+        # Validate existing directories without ever initializing boot-disk data.
+        fd = _owned_directory(DATA_ROOT)
+        os.close(fd)
+        observations = []
+        for target in (DATA_ROOT, SECRET_ROOT):
+            result = subprocess.run(['/usr/bin/findmnt', '--json', '--list', '--mountpoint', target, '--output', 'TARGET,UUID,FSTYPE,OPTIONS'],
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                timeout=5, check=False, cwd='/', env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'})
+            require(result.returncode == 0)
+            observations.append(strict_json(result.stdout))
+        validate_mount_observations(config, *observations)
+        checks['disk_uuid'] = True
+        guard_code, guard = guard_cli()
+        if guard_code != 0:
+            return guard_code, operation_receipt(args['operation'], args['source_sha'], None, guard_code, checks, guard['failure_code'])
+        checks.update(metadata_guard=True, storage_guard=True)
+        validate_runtime_secret_files()
+        checks['secrets'] = True
+        # Intentionally retain missing_dependency/exit3 even when all above pass.
+    except subprocess.TimeoutExpired:
+        code, failure = 5, 'operation_timed_out'
+    except (OSError, ContractError, UnicodeError):
+        pass
+    return code, operation_receipt(args['operation'], args['source_sha'], None, code, checks, failure)
 
 
 def cli(argv):
