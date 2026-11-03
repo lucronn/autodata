@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import ExitStack
 from datetime import datetime, timezone
 import json
+import io
 import os
 from pathlib import Path
 import signal
@@ -37,6 +38,8 @@ class PaidBridge(Bridge):
         self.commerce=CommerceService(runtime.repo.connect,CommerceConfig('stripe_test','acct_fixture','price_fixture'),self.payment.provider)
         self.grant_calls=[]
         self.grant_unavailable=False
+        self.selector_ensure=dict(entered=0,completed=0,active=0)
+        self.selector_ensure_requests=[]
 
     def ensure_handler(self):
         from autodata_ingestion.http_service import make_handler
@@ -44,24 +47,48 @@ class PaidBridge(Bridge):
         owner=self
         class Handler(parent):
             def log_message(self,*args):pass
+            def send_response(self,status,message=None):
+                if hasattr(self,'paid_ensure_receipt'):
+                    with owner.lock:self.paid_ensure_receipt['status']=status
+                return super().send_response(status,message)
             def do_POST(self):
                 ensure=self.path=='/v1/catalog/ensure'
                 grant=self.path=='/internal/commerce/grants/check'
+                if ensure:
+                    length=int(self.headers.get('Content-Length','-1'))
+                    assert 0<=length<=1048576
+                    self.connection.settimeout(5)
+                    raw=self.rfile.read(length)
+                    self.rfile=io.BytesIO(raw)
+                    try:payload=json.loads(raw)
+                    except (ValueError,UnicodeDecodeError):payload={}
+                    scope=payload.get('scope') if isinstance(payload,dict) else None
+                    selector=scope in ('years','makes','models','configurations')
+                    counters=owner.selector_ensure if selector else owner.ensure
+                    requests=owner.selector_ensure_requests if selector else owner.ensure_requests
+                    started=time.monotonic()
+                    self.paid_ensure_receipt=dict(scope=scope,payload=payload,request_id=self.headers.get('X-Request-ID',''),started_at=now(),completed=False,status=None,duration_seconds=None)
+                    with owner.lock:
+                        counters['entered']+=1;counters['active']+=1
+                        requests.append(self.paid_ensure_receipt)
                 if grant:
                     with owner.lock:owner.grant_calls.append({'started_at':now()})
                     if owner.grant_unavailable:
                         self.send_response(503);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(b'{"error":{"code":"COMMERCE_UNAVAILABLE"}}');return
-                if ensure:
-                    with owner.lock:owner.ensure['entered']+=1;owner.ensure['active']+=1
                 try:super().do_POST()
                 finally:
                     if ensure:
-                        with owner.lock:owner.ensure['completed']+=1;owner.ensure['active']-=1
+                        with owner.lock:
+                            counters['completed']+=1;counters['active']-=1
+                            self.paid_ensure_receipt.update(completed=True,finished_at=now(),duration_seconds=time.monotonic()-started)
         return Handler
 
     def snapshot(self):
         result=super().snapshot()
-        with self.lock:result['grant_calls']=len(self.grant_calls)
+        with self.lock:
+            result['grant_calls']=len(self.grant_calls)
+            result['selector_ensure']=dict(self.selector_ensure)
+            result['selector_ensure_requests']=json.loads(json.dumps(self.selector_ensure_requests))
         with self.runtime.repo.connect() as conn:
             result['paid_rows']={table:[r['record'] for r in conn.execute('SELECT to_jsonb(t) AS record FROM '+table+' t ORDER BY to_jsonb(t)::text')]
                 for table in ('customer_accounts','auth_sessions','entitlements','workshop_orders','dataset_requests','dataset_projections')}
