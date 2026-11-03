@@ -104,12 +104,14 @@
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r4-workshop.json",
       "depends_on": [
         "r3-fallback-api",
-        "r5-access"
+        "r5-access",
+        "workshop-commerce",
+        "workshop-paid-access"
       ],
       "state": "waiting_dependencies",
       "release_state": "unverified",
       "needs_scope_refinement": false,
-      "dispatch_prerequisite": "Firebase handoff planning updated; backend integration and separate exact-base scope/checkpoint required. Paid UI requires separately reviewed commerce/access contract."
+      "dispatch_prerequisite": "Unified customer UI plan pending; consume verified039/040/paid-access interfaces and pass new synchronized exact-base gate. Preserve original browser scenarios plus actual login/payment/access proof."
     },
     {
       "id": "r5-access",
@@ -117,12 +119,15 @@
       "depends_on": [
         "r3-fallback-api"
       ],
-      "state": "ready",
+      "state": "in_review",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_prerequisite": "Reviewed Firebase identity35-path/five-case plan and canonical handoff synchronized with actual Issue186/Project8. R3 integrated31ffe7e. Commit and pass new exact-base preflight before implementation.",
       "reviewed_migration_handoff_ref": "docs/superpowers/plans/2026-11-03-production-access-migration-handoff.md",
-      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-firebase-identity.md"
+      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-firebase-identity.md",
+      "implementation_base_sha": "1211382ee3aa9bdc59c0003169ec000c2f971ced",
+      "candidate_sha": "8c750723dd0af0ecf054a2daa08616c88b785d92",
+      "review_status": "Independent review in progress; Kubernetes configuration placement finding requires corrected successor. Five real-PG and eight R3 through039 acceptance remain outstanding."
     },
     {
       "id": "r6-evidence-adapter",
@@ -146,7 +151,8 @@
         "r4-workshop",
         "r5-access",
         "r6-evidence-adapter",
-        "workshop-commerce"
+        "workshop-commerce",
+        "workshop-paid-access"
       ],
       "state": "waiting_dependencies",
       "release_state": "unverified",
@@ -162,6 +168,18 @@
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_prerequisite": "Reviewed38-path plan; verified identity039 integration, actual tracking sync and fresh exact-base preflight required. Paid source/media enforcement and UI remain separate later tasks."
+    },
+    {
+      "id": "workshop-paid-access",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-paid-access.json",
+      "depends_on": [
+        "r5-access",
+        "workshop-commerce"
+      ],
+      "state": "waiting_dependencies",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "dispatch_prerequisite": "Reviewed16-path plan and12 real cases; verify integrated039/040, actual interfaces, canonical policy amendments and fresh synchronized exact-base preflight first."
     }
   ],
   "execution": {
@@ -340,12 +358,12 @@
       "dispatch_mode": "coordinator_direct",
       "release_state": "unverified",
       "needs_scope_refinement": false,
-      "dispatch_prerequisite": "Exact one-file shallow successor independently approved,146 tests and realCI runtime passed. Later field-spacing developer failure separately repaired22db145; fullCI pending. No provider retry.",
+      "dispatch_prerequisite": "Shallow test repair and separately gated privacy-spacing repair integrated; actualCI41692463236 at22db145 passed every job including liveCompose. No provider retry.",
       "verification_ref": "docs/verification/2026-11-03-runtime-check-contract.md",
       "verified_candidate_sha": "d0a8aceffa41fe46ea0265ad036933ab1cf992b8",
       "integrated_sha": "1b53dc3e22e195cc996588d8fbb20ffd73758238",
-      "ci_status": "runtime_passed_unrelated_dev_failure",
-      "ci_run": "https://github.com/lucronn/autodata/actions/runs/41691331286"
+      "ci_status": "success",
+      "ci_run": "https://github.com/lucronn/autodata/actions/runs/41692463236"
     }
   ]
 }

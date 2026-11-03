@@ -1,0 +1,20 @@
+{
+  "goal": "Enforce purchased configuration and region access before catalog preparation, content and contextual media reads.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-paid-access.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-commerce.md",
+    "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "Integrate verified identity039 and commerce040, reconcile actual interfaces and canonical specs, synchronize Issue186/Project8 and pass a fresh exact-base gate.",
+    "Expose only safe selector metadata publicly; enforce current verified session and exact owner/configuration/region grant before protected work and deny legacy customer bypass routes.",
+    "Add explicit CSRF-protected prepare POST and observational paid GETs while preserving shared canonical rewriting and source fallback.",
+    "Bind v2 media to account, exact scope, article, revisions and permitted asset; recheck current grant and rights before object reads.",
+    "Execute all twelve real paid-access cases across both banks and preserve eight R3, five identity and fourteen commerce regressions; independently review exact candidate and CI."
+  ],
+  "status": "waiting_verified_dependency",
+  "updated_at": "2026-11-03T18:28:23.576014+00:00"
+}

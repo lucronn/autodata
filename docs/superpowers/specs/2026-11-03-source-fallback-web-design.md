@@ -488,3 +488,18 @@ The corresponding [implementation plan](../plans/2026-11-03-source-fallback-web.
 contains bounded tasks and acceptance commands. Original release tracking was
 verified in Issue #186 / Project #8; the Firebase amendment is synchronized and commerce remains in planning. Each dependent task requires its amended integrated dependency
 checkpoint, synchronized record and passing exact-base preflight.
+
+
+### Dependent paid-access boundary (reviewed planning handoff)
+
+The separately gated [paid-access plan](../plans/2026-11-03-workshop-paid-access.md)
+will make the four safe catalog selectors public, retaining only bounded metadata
+read-through hydration. Paid article/list/source/media GETs are observational.
+A session/Origin/CSRF-protected prepare POST starts or reuses durable article
+preparation after exact configuration+region grant checks. Commerce owns initial
+paid index intent. The unified customer UI passes configuration.id, prepares by
+POST and then polls; expired media refreshes are bounded/coalesced. This amends
+the future customer integration contract, does not expand the current35-path
+R5 implementation scope, and requires verified identity/commerce plus its own
+synchronized implementation gate. Existing explicit local R3 fixtures retain
+their previously verified behavior.

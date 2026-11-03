@@ -174,3 +174,18 @@ emulator amendments; root accepted the explicit test_production_access_smoke.py
 bridge location so the frozen collector executes it. Prior drafts remain history.
 This checkpoint must be committed and its exact SHA pass machine preflight before
 implementation; R4 and later commerce/access are not dispatched by this record.
+
+
+### Dependent paid-access boundary (reviewed planning handoff)
+
+The separately gated [paid-access plan](2026-11-03-workshop-paid-access.md)
+will make the four safe catalog selectors public, retaining only bounded metadata
+read-through hydration. Paid article/list/source/media GETs are observational.
+A session/Origin/CSRF-protected prepare POST starts or reuses durable article
+preparation after exact configuration+region grant checks. Commerce owns initial
+paid index intent. The unified customer UI passes configuration.id, prepares by
+POST and then polls; expired media refreshes are bounded/coalesced. This amends
+the future customer integration contract, does not expand the current35-path
+R5 implementation scope, and requires verified identity/commerce plus its own
+synchronized implementation gate. Existing explicit local R3 fixtures retain
+their previously verified behavior.

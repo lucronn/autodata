@@ -357,3 +357,20 @@ of source/model readiness; paid article preparation and media access are later
 protected operations. The hosting proposal documents GCE/Cloudflare persistence,
 backup/restore and cutover; project/cost/recovery decisions and deployment
 configuration remain pending. Neither plan is a deployment or live-charge gate.
+
+
+### Paid access and unified customer UI handoff
+
+The reviewed [paid catalog/media plan](2026-11-03-workshop-paid-access.md) owns
+16 paths and12 actual cases across both banks. It depends on verified039/040:
+exact configuration+region grants precede protected reads/preparation, explicit
+CSRF-protected POST prepares shared canonical content, and paid GETs observe
+state. Contextual v2 media rechecks owner, scope, rights and asset before reads.
+The final customer UI consumes these contracts in one dependent lane, including
+configuration.id, POST-then-poll and bounded media refresh. The former standalone
+auth-only R4 scope is not dispatched. All implementation still requires a fresh
+tracking checkpoint and machine preflight.
+
+Actual CI41692463236 passed every job at22db145, including live Compose smoke.
+R5 candidate8c7507 is in independent review; a Kubernetes ConfigMap placement
+finding requires a corrected successor before integration/runtime acceptance.

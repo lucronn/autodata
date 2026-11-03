@@ -66,5 +66,6 @@ Evidence: /tmp/autodata-runtime-shallow-repair-ug1erqt4.
 Actual CI41691331286 passed runtime, Go, contracts and worker tests, then failed
 an unrelated exact-spacing developer assertion; that one-line repair22db145
 has separate synchronized gate,98 development passes, Go privacy checks and
-independent review. Full CI41692463236 is pending. Earlier failed CI/runtime
+independent review. Full CI41692463236 at22db14542f0f5bed6b1a2f9b86bc83cba65f1760 passed,
+including the live Compose smoke (2026-11-03T18:22:44Z). Earlier failed CI/runtime
 evidence is retained; no live-provider or release certification is claimed.
