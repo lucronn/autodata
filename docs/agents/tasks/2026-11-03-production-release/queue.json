@@ -197,7 +197,7 @@
     {
       "id": "r0-app-server-runtime",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-app-server-runtime.json",
-      "state": "in_progress",
+      "state": "verified",
       "depends_on": [
         "r0-evidence",
         "r0-provider-path-schema"
@@ -206,20 +206,39 @@
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md",
-      "implementation_base_sha": "dcedeffa162a2b24c5b39ec9705dd60ac30380f5"
+      "implementation_base_sha": "dcedeffa162a2b24c5b39ec9705dd60ac30380f5",
+      "verified_candidate_sha": "f43508beedc4d5ccb1a29ed8e49912d5d6d55a49",
+      "integrated_sha": "f4d95680f721ce32f4d3cb2f8da0552ef1673750",
+      "provider_runtime_validation": {
+        "status": "blocked",
+        "reason": "actual app-server configWarning: missing bubblewrap before model discovery/inference",
+        "attempt_base_sha": "f43508beedc4d5ccb1a29ed8e49912d5d6d55a49"
+      }
     },
     {
       "id": "migration-replay",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/migration-replay.json",
-      "state": "ready",
+      "state": "in_progress",
       "depends_on": [
         "r2-rewrite"
       ],
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_mode": "coordinator_direct",
-      "dispatch_prerequisite": "R2 verified; committed synchronized checkpoint and exact-base preflight required before implementation.",
-      "dependency_integrated_sha": "9fd3f9142ee22c47810765130cbc36d6284994a3"
+      "dispatch_prerequisite": "Exact-base preflight passed errors=[]; builder owns nine scoped files after verified R2 integration.",
+      "dependency_integrated_sha": "9fd3f9142ee22c47810765130cbc36d6284994a3",
+      "implementation_base_sha": "908845757a4cb10afb0feb7f8a668f83e483f32f"
+    },
+    {
+      "id": "r0-runtime-packaging",
+      "record_ref": "docs/agents/records/2026-11-03-runtime-packaging.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-runtime-packaging.md",
+      "state": "ready",
+      "depends_on": [
+        "r0-app-server-runtime"
+      ],
+      "dispatch_mode": "coordinator_scratch",
+      "release_state": "unverified"
     }
   ]
 }

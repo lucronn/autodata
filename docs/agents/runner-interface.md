@@ -255,3 +255,7 @@ The upstream served or billed tier remains unobserved and is never claimed.
 Historical failed runs stay unchanged. Real certification remains blocked until
 independent exact-SHA promotion and coordinator-only bounded real trials; passing
 fake-process tests does not certify a real provider or authenticated staging.
+
+### Runtime packaging checkpoint
+
+The independently approved app-server adapter is integrated at `f4d95680f721ce32f4d3cb2f8da0552ef1673750` (131 integrated tests). Actual startup currently blocks on the missing-bubblewrap warning. The [separate packaging plan](../superpowers/plans/2026-11-03-runtime-packaging.md) authorizes only a scratch image dependency correction and one bounded retry after fresh preflight; strict warning rejection and the execution/isolation contract stay unchanged.

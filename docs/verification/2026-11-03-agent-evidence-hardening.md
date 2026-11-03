@@ -122,3 +122,45 @@ assignments, independent code verification and only then disposable real trials.
 in this run certifies runtime profile, sandbox writes, builder commit retention
 or release readiness. Resolved runtime Fast configuration must not be presented
 as proof of the upstream tier actually served.
+
+## Reviewed app-server implementation and actual startup failure
+
+Authorized base: `dcedeffa162a2b24c5b39ec9705dd60ac30380f5`.
+Final independently approved candidate: `f43508beedc4d5ccb1a29ed8e49912d5d6d55a49`.
+Integration: `f4d95680f721ce32f4d3cb2f8da0552ef1673750`.
+All eight authorized files are unchanged from the reviewed candidate. Independent
+and coordinator exact-candidate suites each pass131 tests (27.73s and27.904s);
+the integrated suite passes131 in26.627s. Evidence is retained at
+`/tmp/autodata-r0-review-f43508b`, `/tmp/autodata-app-server-independent-f43508b.log`
+and `/tmp/autodata-app-server-integrated.log`. Review found and resolved
+protocol-causality and independently bound evidence-root defects; superseded
+ac1b168 never received approval for live promotion. Genuine interleaving before
+request responses remains supported, post-completion events and root relocation
+fail, and SIGINT/SIGTERM process cleanup is tested.
+
+The first fresh nonroot staging preparation, `/tmp/autodata-appserver-success-bs5yx1qs`,
+stopped with coordinator-cleanliness exit30 before any provider launch because
+host preflight imports created ignored bytecode. The supervisor now disables
+bytecode before importing and rechecks cleanliness; the failed staging record
+remains unchanged. This was not a model/provider attempt.
+
+The actual bounded app-server attempt at f43508b is retained at
+`/tmp/autodata-appserver-success-6qkf9mga`. The actual CLI0.162.1 initialize
+response was followed by `configWarning` reporting missing bubblewrap on PATH.
+The unchanged strict adapter rejected it; orchestration returned20. The retained
+transcript contains only client initialize, server initialize result, and the
+warning, with a failed adapter footer. No model/list, thread/start, turn/start,
+model inference, builder or fixture commit occurred. Protocol SHA256:
+`89f9c2cb7a5530a2201c6a13b46bfd991d9733898e835266f2ae70365288cc5b`.
+Runtime profile and full-chain certification remain blocked; no release readiness
+is implied by deterministic approval.
+
+The independently proposed and coordinator-reviewed
+[runtime packaging plan](../superpowers/plans/2026-11-03-runtime-packaging.md)
+is a separate synchronized checkpoint. It adds only Debian bubblewrap to the
+scratch image, preserves every isolation/profile/strict-rejection setting,
+requires offline package/CLI checks and permits one new bounded success retry.
+A separate offline namespace probe fails under current restrictions; this does
+not authorize privilege changes or prove the danger-full-access fixture needs
+nested sandboxing. Any further warning is retained and blocked. Genuine-unavailable
+and interrupted-provider trials remain separate outstanding requirements.

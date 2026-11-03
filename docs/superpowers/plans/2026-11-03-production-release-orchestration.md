@@ -262,3 +262,7 @@ waits for the verified migration repair. R5 must audit planned039 against the
 shared driver at its own scope checkpoint. The external Kubernetes migrator
 image has no build source here and remains an explicit R6 certification
 prerequisite. No fixture or local pass certifies that external image.
+
+## App-server implementation and packaging checkpoint
+
+App-server candidate `f43508beedc4d5ccb1a29ed8e49912d5d6d55a49` is independently approved and integrated at `f4d95680f721ce32f4d3cb2f8da0552ef1673750`, with131 integrated tests. The first actual app-server attempt blocked on a missing-bubblewrap startup warning before discovery or inference. The [narrow packaging remediation](2026-11-03-runtime-packaging.md) is synchronized for fresh preflight and one bounded retry, preserving strict warning rejection and all isolation/profile settings. Application work continues through the separately gated migration repair; runtime/release certification remains outstanding.
