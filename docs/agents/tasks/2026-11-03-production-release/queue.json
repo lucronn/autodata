@@ -439,6 +439,36 @@
       "updated_at": "2026-11-03T22:22:29.570981+00:00",
       "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6616892250",
       "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4"
+    },
+    {
+      "id": "workshop-dto-timeout-diagnostics",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-dto-timeout-diagnostics.json",
+      "depends_on": [],
+      "state": "planning_checkpoint",
+      "tracking_status": "synchronized",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "source_integration_base_sha": "c3659bce633a439d2ad713296b3a1443ba39473d",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-dto-timeout-diagnostics.md",
+      "record_ref": "docs/agents/records/2026-11-03-workshop-dto-timeout-diagnostics.json",
+      "verification_ref": "docs/verification/workshop-customer-ui-runbook.md",
+      "dispatch_mode": "coordinator_direct_after_synchronized_checkpoint",
+      "review_status": "Independent plan-only re-review approved draft SHA256 0ab6debc22818f9231a97987c82423c2bade0907d13c297a0472601be9221ae5; tracking read back. Commit/push, exact-base preflight and independent checkpoint handoff precede implementation dispatch.",
+      "implementation_scope": [
+        "scripts/dev/workshop_browser_smoke.py",
+        "scripts/dev/test_workshop_browser_smoke.py"
+      ],
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617902111",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-03T23:14:57.867643+00:00",
+        "issue_body_sha256": "28bf8f178facef692d3354b6b5c2a37251f90e4b481dac43661459e16eb06198",
+        "project_text_sha256": "237f706c07636c0fcfb4ae1d12b161850130fcdb26695369ef50cfc431b41ce5",
+        "reviewed_draft_sha256": "0ab6debc22818f9231a97987c82423c2bade0907d13c297a0472601be9221ae5",
+        "project_index_note": "Exact DTO goal/five todos/two-file allowlist/five canonical paths and strict failure contract live in the linked Issue comment. Compact Project field retains A/B/R6/retry comment refs and authority limits; prior full Project field is preserved verbatim in that comment. Issue body unchanged."
+      }
     }
   ],
   "execution": {
