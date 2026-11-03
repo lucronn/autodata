@@ -66,8 +66,22 @@ class MigrationPlanTests(unittest.TestCase):
                 "036_source_fetch_jobs.sql",
                 "037_article_source_lifecycle.sql",
                 "038_article_transform_publication.sql",
+                "039_production_identity_sessions.sql",
             ],
         )
+
+    def test_customer_identity_migration_and_all_four_driver_boundaries(self):
+        text = (ROOT / "db/migrations/039_production_identity_sessions.sql").read_text()
+        self.assertEqual(text.strip().splitlines()[0], "BEGIN;")
+        self.assertEqual(text.strip().splitlines()[-1], "COMMIT;")
+        for expected in ("customer_accounts", "auth_sessions", "firebase_project_id", "firebase_uid", "personal_organization_id", "firebase_auth_time", "octet_length(session_token_hash) = 32", "interval '12 hours'", "039_production_identity_sessions"):
+            self.assertIn(expected, text)
+        self.assertNotIn("auth_login_transactions", text)
+        driver = (ROOT / "scripts/dev/migrate_sql.sh").read_text()
+        self.assertEqual(driver.count("036_*|037_*|038_*|039_*"), 4)
+        self.assertNotIn("036_*|037_*|038_*)", driver)
+        for table in ("customer_accounts", "auth_sessions"):
+            self.assertIn("'" + table + "'", driver)
 
     def test_dataset_request_ownership_is_backfilled_without_overwriting_existing_values(self):
         migration = (ROOT / "db/migrations/013_dataset_request_ownership.sql").read_text()
