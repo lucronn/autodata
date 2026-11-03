@@ -1,0 +1,18 @@
+{
+  "goal": "Preserve trusted nested-image evidence so valid source content can reach one strict canonical rewrite.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-nested-image-evidence.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-workshop-paid-access.md",
+    "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md"
+  ],
+  "todo": [
+    "Synchronize the reviewed two-file repair with Issue186 and Project8, commit the planning checkpoint and pass the pinned machine preflight.",
+    "Run actual capture-to-strict-rewrite red and green cases for both banks and nested figures, including forged upstream evidence and unavailable media.",
+    "Independently review the exact implementation, integrate it and rerun all twelve paid-access cases without weakening strict validation.",
+    "Rerun affected browser and final integrated CI evidence before any release claim."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T20:28:00Z"
+}
