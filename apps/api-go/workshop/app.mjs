@@ -972,11 +972,7 @@ async function signIn() {
   } finally {
     signingIn = false;
   }
-  if (session.state.authenticated) {
-    const order = new URLSearchParams(location.search).get("order");
-    if (uuid(order)) operation((g) => checkOrder(g, order));
-    else if (validScope(scope())) operation((g) => selectVehicle(g));
-  }
+  if (session.state.authenticated) await restoreRoute();
 }
 async function bootstrap() {
   invalidate();
