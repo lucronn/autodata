@@ -58,18 +58,21 @@
       "Record fresh candidate results and downloadable artifacts in the runbook and Issue #186/Project #8 while preserving the original push 117/3 failure, PR merge 120-pass provenance, local diagnostic-only passes and unverified real API/release authority."
     ],
     "status": "synchronized",
-    "updated_at": "2026-11-03T23:14:57.867643+00:00",
+    "updated_at": "2026-11-03T23:17:06.457458+00:00",
     "source_integration_base_sha": "c3659bce633a439d2ad713296b3a1443ba39473d",
     "tracking_sync": {
       "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617902111",
       "project_ref": "https://github.com/users/lucronn/projects/8",
       "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
       "project_note_field": "Source or dependency reference",
-      "verified_at": "2026-11-03T23:14:57.867643+00:00",
-      "issue_body_sha256": "28bf8f178facef692d3354b6b5c2a37251f90e4b481dac43661459e16eb06198",
+      "verified_at": "2026-11-03T23:17:06.457458+00:00",
+      "issue_body_sha256": "4e9bf6686796f231108f0886e7b083acd58def6cb14b49a81fae322c66ef1cec",
       "project_text_sha256": "237f706c07636c0fcfb4ae1d12b161850130fcdb26695369ef50cfc431b41ce5",
       "reviewed_draft_sha256": "0ab6debc22818f9231a97987c82423c2bade0907d13c297a0472601be9221ae5",
-      "project_index_note": "Exact DTO goal/five todos/two-file allowlist/five canonical paths and strict failure contract live in the linked Issue comment. Compact Project field retains A/B/R6/retry comment refs and authority limits; prior full Project field is preserved verbatim in that comment. Issue body unchanged."
+      "project_index_note": "Exact DTO goal/five todos/two-file allowlist/five canonical paths and strict failure contract live in the linked Issue comment. Compact Project field retains A/B/R6/retry comment refs and authority limits; prior full Project field is preserved verbatim in that comment. Issue body unchanged.",
+      "initial_verified_at": "2026-11-03T23:14:57.867643+00:00",
+      "issue_comment_body_sha256": "28bf8f178facef692d3354b6b5c2a37251f90e4b481dac43661459e16eb06198",
+      "receipt_correction": "Checkpoint 4b97ab44c6a944f883741e5a9b8f4a4a0384c2b6 hashed the Issue comment body into issue_body_sha256. Re-read the live Issue body, Issue comment and Project field; their separate UTF-8 body/text hashes are now correctly named. The Issue body matches both original saved snapshots and was not modified."
     }
   },
   "execution": {
