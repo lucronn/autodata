@@ -6,9 +6,15 @@ always fails closed. evaluate_backup consumes an explicitly supplied fake CLI
 transcript; its passed receipt is a simulated definition result, never evidence
 of an actual backup. evaluate_published_release only compares supplied fake
 metadata and bytes; consistency cannot authenticate provenance or authorize
-deployment. Provider pins, bootstrap, IAM and execution remain gated.
+deployment. verify_release_archive checks supplied synthetic ZIP bytes only;
+archive consistency cannot authenticate publication or authorize execution.
+Provider pins, bootstrap, IAM and execution remain gated.
 """
 import copy
+import binascii
+import stat
+import struct
+import zlib
 from datetime import datetime, timezone
 import hashlib
 import importlib.util
@@ -163,6 +169,145 @@ def evaluate_published_release(manifest, config, binding, policy, claims, fake_c
     result['finished_at'] = rt._timestamp()
     require(len(rt.canonical_bytes(result)) <= MAX_RECEIPT)
     return result
+
+
+_RELEASE_MEMBERS = (b'release.json', b'images.json')
+_MAX_RELEASE_ARCHIVE = 8388608
+
+
+def _release_zip_members(data):
+    """Parse the reviewed ZIP32 subset; never search signatures or extract files."""
+    def unpack(fmt, offset, end):
+        size = struct.calcsize(fmt)
+        require(0 <= offset <= end <= len(data) and size <= end - offset)
+        return struct.unpack_from(fmt, data, offset), offset + size
+
+    end = len(data) - 22
+    eocd, _ = unpack('<4s4H2IH', end, len(data))
+    signature, disk, central_disk, disk_count, count, central_size, central_offset, comment = eocd
+    require(signature == b'PK\x05\x06' and disk == central_disk == comment == 0)
+    require(disk_count == count == 2 and central_size != 0xffffffff and central_offset != 0xffffffff)
+    require(central_offset + central_size == end)
+    records = []
+    position = central_offset
+    total_size = 0
+    for name in _RELEASE_MEMBERS:
+        fields, position = unpack('<4s6H3I5H2I', position, end)
+        (signature, creator, version, flags, method, clock, date, crc, packed_size, size,
+         name_size, extra_size, comment_size, disk_start, internal, external, offset) = fields
+        require(signature == b'PK\x01\x02' and name_size == len(name))
+        require(position + name_size <= end and data[position:position + name_size] == name)
+        position += name_size
+        require(extra_size == comment_size == disk_start == internal == 0)
+        require(creator >> 8 in (0, 3) and not external & 0x18)
+        require(stat.S_IFMT(external >> 16) in (0, stat.S_IFREG))
+        require(flags in (0, 8, 2048, 2056) and method in (0, 8))
+        require(version in (10, 20) and (version == 20 or (method == 0 and not flags & 8)))
+        require(0 < size <= rt.MAX_JSON_BYTES and 0 < packed_size <= rt.MAX_JSON_BYTES)
+        require(size <= 100 * packed_size and (method != 0 or size == packed_size))
+        require(offset != 0xffffffff)
+        total_size += size
+        require(total_size <= 2 * rt.MAX_JSON_BYTES)
+        records.append((name, offset, version, flags, method, clock, date, crc, packed_size, size))
+    require(position == end)
+
+    # Validate ALL local records/descriptors before decoding any member. Central
+    # offsets supply boundaries; neither embedded signatures nor CRCs do so.
+    spans = []
+    require(records[0][1] == 0)
+    for i, record in enumerate(records):
+        name, offset, version, flags, method, clock, date, crc, packed_size, size = record
+        boundary = records[i + 1][1] if i + 1 < len(records) else central_offset
+        fields, position = unpack('<4s5H3I2H', offset, boundary)
+        signature, lv, lf, lm, lt, ld, lc, lp, ls, name_size, extra_size = fields
+        require(signature == b'PK\x03\x04' and (lv, lf, lm, lt, ld) == (version, flags, method, clock, date))
+        require(name_size == len(name) and extra_size == 0)
+        require(position + name_size <= boundary and data[position:position + name_size] == name)
+        position += name_size
+        require(lp != 0xffffffff and ls != 0xffffffff)
+        require((lc, lp, ls) == (crc, packed_size, size) or
+                (flags & 8 and (lc, lp, ls) == (0, 0, 0)))
+        data_end = position + packed_size
+        require(data_end <= boundary)
+        if flags & 8:
+            length = boundary - data_end
+            require(length in (12, 16))
+            if length == 16:
+                require(data[data_end:data_end + 4] == b'PK\x07\x08')
+                data_end += 4
+            descriptor, descriptor_end = unpack('<3I', data_end, boundary)
+            require(descriptor == (crc, packed_size, size) and descriptor_end == boundary)
+        else:
+            require(data_end == boundary)
+        spans.append((name.decode('ascii'), position, packed_size, size, method, crc))
+    return spans
+
+
+def _inflate_release_member(packed, size):
+    """Bound every raw-DEFLATE call and retained output; flush is unnecessary."""
+    decoder = zlib.decompressobj(-15)
+    output = bytearray()
+    for offset in range(0, len(packed), 65536):
+        pending = packed[offset:offset + 65536]
+        while pending:
+            before = len(pending)
+            chunk = decoder.decompress(pending, size - len(output) + 1)
+            require(len(chunk) <= size - len(output))
+            output.extend(chunk)
+            pending = decoder.unconsumed_tail
+            require(len(pending) < before or len(chunk) > 0)
+            require(not decoder.unused_data)
+        if decoder.eof:
+            require(offset + 65536 >= len(packed))
+    require(decoder.eof and not decoder.unused_data and not decoder.unconsumed_tail and len(output) == size)
+    return bytes(output)
+
+
+def verify_release_archive(archive_bytes: bytes, manifest: dict, *,
+                           expected_archive_sha256: str,
+                           expected_member_sha256: dict[str, str]) -> dict:
+    """Verify supplied synthetic bytes, never publication, identity or deployment.
+
+    Caller first validates manifest/config/rollback via rt.validate_manifest.
+    This pure API has no transport, extraction, callback or CLI execution path.
+    Archive/raw-member digests are independent approvals; canonical manifest
+    comparison does not replace either. Actual publisher compatibility is gated.
+    """
+    try:
+        require(type(archive_bytes) is bytes and 0 < len(archive_bytes) <= _MAX_RELEASE_ARCHIVE)
+        rt.match(expected_archive_sha256, r'[0-9a-f]{64}')
+        rt.exact_object(expected_member_sha256, ('release.json', 'images.json'))
+        for digest in expected_member_sha256.values():
+            rt.match(digest, r'[0-9a-f]{64}')
+        require(hashlib.sha256(archive_bytes).hexdigest() == expected_archive_sha256)
+        spans = _release_zip_members(archive_bytes)
+        members, hashes, sizes = {}, {}, {}
+        for name, start, packed_size, size, method, crc in spans:
+            packed = archive_bytes[start:start + packed_size]
+            member = packed if method == 0 else _inflate_release_member(packed, size)
+            require(len(member) == size and binascii.crc32(member) == crc)
+            digest = hashlib.sha256(member).hexdigest()
+            require(digest == expected_member_sha256[name])
+            hashes[name], sizes[name] = digest, len(member)
+            members[name] = member
+        require(type(manifest) is dict)
+        decoded = rt.strict_json(members['release.json'])
+        require(rt.canonical_bytes(decoded) == rt.canonical_bytes(manifest))
+        manifest_digest = rt.sha256(manifest)
+        require(rt.sha256(decoded) == manifest_digest)
+        observations = rt.strict_json(members['images.json'])
+        rt.exact_object(observations, manifest['images'])
+        for role, image in manifest['images'].items():
+            expected = dict(image, platform=manifest['platform'])
+            rt.exact_object(observations[role], expected)
+            require(rt.canonical_bytes(observations[role]) == rt.canonical_bytes(expected))
+        return {'schema_version': 1, 'status': 'archive_consistent', 'simulation': True,
+                'provenance_authenticated': False, 'deployment_authorized': False,
+                'archive_sha256': expected_archive_sha256, 'member_sha256': hashes,
+                'member_bytes': sizes, 'manifest_sha256': manifest_digest,
+                'checks': {'archive': True, 'members': True, 'manifest': True, 'image_observations': True}}
+    except (ValueError, TypeError, KeyError, IndexError, struct.error, zlib.error, RecursionError, OverflowError):
+        raise ContractError('invalid release archive') from None
 
 
 def validate_metrics(value, source_sha):

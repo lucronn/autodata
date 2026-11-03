@@ -1,11 +1,16 @@
 """Offline B boundary tests: all provider events are finite fake transcripts."""
 import copy
+import binascii
+import struct
+import zipfile
+import zlib
 from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import io
 import json
 import os
+import random
 import socket
 import subprocess
 import tarfile
@@ -550,6 +555,257 @@ class CloudTests(unittest.TestCase):
             candidate = copy.deepcopy(metrics); mutate(candidate)
             with self.assertRaises(self.rt.ContractError): self.ops.validate_metrics(candidate, self.manifest['source_sha'])
 
+
+
+class ReleaseArchiveTests(unittest.TestCase):
+    def setUp(self):
+        fixture = host_test.ContractTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        self.ops = load_ops()
+        self.rt, self.manifest = self.ops.rt, fixture.manifest
+        self.payloads = {
+            'release.json': self.rt.canonical_bytes(self.manifest),
+            'images.json': self.rt.canonical_bytes({role: dict(image, platform=self.manifest['platform'])
+                                                  for role, image in self.manifest['images'].items()})}
+
+    def archive(self, payloads=None, *, method=0, flags=0, descriptor='signed',
+                local=None, central=None, compressed=None, padding=b''):
+        # Independent fixture writer, including deliberately inconsistent records.
+        payloads = self.payloads if payloads is None else payloads
+        body, directory = bytearray(), bytearray()
+        for name, data in payloads.items():
+            encoded = name.encode('utf-8')
+            packed = data
+            if method == 8:
+                compressor = zlib.compressobj(wbits=-15)
+                packed = compressor.compress(data) + compressor.flush()
+            if compressed is not None:
+                packed = compressed
+            crc = binascii.crc32(data)
+            version = 20 if flags & 8 or method == 8 else 10
+            offset = len(body)
+            values = dict(version=version, flags=flags, method=method, time=0, date=33,
+                          crc=crc, compressed=len(packed), size=len(data))
+            l = dict(values)
+            if flags & 8:
+                l.update(crc=0, compressed=0, size=0)
+            l.update(local or {})
+            c = dict(values, creator=0x314, disk=0, internal=0, external=0o100600 << 16,
+                     offset=offset)
+            c.update(central or {})
+            body += struct.pack('<4s5H3I2H', b'PK\x03\x04', *(l[k] for k in
+                                ('version', 'flags', 'method', 'time', 'date', 'crc', 'compressed', 'size')),
+                                len(encoded), 0) + encoded + packed
+            if flags & 8:
+                if descriptor == 'signed': body += b'PK\x07\x08'
+                body += struct.pack('<3I', crc, len(packed), len(data))
+            body += padding
+            directory += struct.pack('<4s6H3I5H2I', b'PK\x01\x02', *(c[k] for k in
+                                     ('creator', 'version', 'flags', 'method', 'time', 'date', 'crc', 'compressed', 'size')),
+                                     len(encoded), 0, 0, c['disk'], c['internal'], c['external'], c['offset']) + encoded
+        return bytes(body + directory + struct.pack('<4s4H2IH', b'PK\x05\x06', 0, 0,
+                     len(payloads), len(payloads), len(directory), len(body), 0))
+
+    def verify(self, archive=None, payloads=None, **kwargs):
+        payloads = self.payloads if payloads is None else payloads
+        archive = self.archive(payloads) if archive is None else archive
+        self.assertTrue(hasattr(self.ops, 'verify_release_archive'), 'archive verifier is missing')
+        return self.ops.verify_release_archive(archive, self.manifest,
+            expected_archive_sha256=kwargs.get('archive_hash', hashlib.sha256(archive).hexdigest()),
+            expected_member_sha256=kwargs.get('member_hashes', {
+                name: hashlib.sha256(data).hexdigest() for name, data in payloads.items()}))
+
+    def reject(self, archive=None, payloads=None, **kwargs):
+        with self.assertRaises(self.ops.ContractError) as caught:
+            self.verify(archive, payloads, **kwargs)
+        self.assertEqual(str(caught.exception), 'invalid release archive')
+
+    def test_standard_library_zip_archives_and_descriptor_variants_are_consistency_only(self):
+        self.assertTrue(hasattr(self.ops, 'verify_release_archive'), 'archive verifier is missing')
+        for method in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+            output = io.BytesIO()
+            with zipfile.ZipFile(output, 'w', compression=method) as writer:
+                for name, data in self.payloads.items(): writer.writestr(name, data)
+            archives = [output.getvalue()]
+            for flags in (0, 8, 2048, 2056):
+                for descriptor in ('signed', 'unsigned'):
+                    archives.append(self.archive(method=method, flags=flags, descriptor=descriptor))
+            for archive in archives:
+                with self.subTest(method=method, digest=hashlib.sha256(archive).hexdigest()):
+                    result = self.verify(archive)
+                    self.assertEqual(set(result), {'schema_version', 'status', 'simulation',
+                        'provenance_authenticated', 'deployment_authorized', 'archive_sha256',
+                        'member_sha256', 'member_bytes', 'manifest_sha256', 'checks'})
+                    self.assertEqual(result['status'], 'archive_consistent')
+                    self.assertTrue(result['simulation'])
+                    self.assertFalse(result['provenance_authenticated'])
+                    self.assertFalse(result['deployment_authorized'])
+                    self.assertEqual(result['archive_sha256'], hashlib.sha256(archive).hexdigest())
+                    self.assertEqual(result['manifest_sha256'], self.rt.sha256(self.manifest))
+                    self.assertEqual(result['member_bytes'], {n: len(b) for n, b in self.payloads.items()})
+                    self.assertEqual(result['member_sha256'], {n: hashlib.sha256(b).hexdigest()
+                                                             for n, b in self.payloads.items()})
+
+    def test_independent_archive_and_member_bindings_and_input_types(self):
+        archive = self.archive(method=8)
+        with patch.object(zlib, 'decompressobj', side_effect=AssertionError('must not decode')):
+            self.reject(archive, archive_hash='0' * 64)
+        for bad in (None, True, '', 'A' * 64, 'sha256:' + 'a' * 64):
+            self.reject(archive, archive_hash=bad)
+        hashes = {n: hashlib.sha256(b).hexdigest() for n, b in self.payloads.items()}
+        for name in hashes:
+            self.reject(archive, member_hashes=dict(hashes, **{name: '0' * 64}))
+        for bad in ({}, dict(hashes, extra='0' * 64), dict(hashes, **{'images.json': True}), None):
+            self.reject(archive, member_hashes=bad)
+        for bad in (b'', b'x', bytearray(archive), b'x' * 8388609):
+            self.reject(bad)
+
+    def test_raw_member_digest_differs_from_canonical_manifest_digest(self):
+        payloads = dict(self.payloads, **{'release.json': json.dumps(self.manifest, indent=2).encode()})
+        result = self.verify(payloads=payloads)
+        self.assertNotEqual(result['member_sha256']['release.json'], result['manifest_sha256'])
+        self.assertEqual(result['manifest_sha256'], self.rt.sha256(self.manifest))
+
+    def test_strict_json_and_image_shapes_are_not_authenticated_observations(self):
+        for name in self.payloads:
+            for data in (b'FAKE_SECRET', b'[]', b'null', b'{"x":NaN}', b'{"x":1e999}', b'{"x":0,"x":0}',
+                         b'{"x":' + b'[' * 2000 + b'0' + b']' * 2000 + b'}'):
+                self.reject(payloads=dict(self.payloads, **{name: data}))
+        manifest = dict(self.manifest, schema_version=True)
+        self.reject(payloads=dict(self.payloads, **{'release.json': self.rt.canonical_bytes(manifest)}))
+        self.reject(payloads=dict(self.payloads, **{'release.json': b'{"schema_version":1,' + self.payloads['release.json'][1:]}))
+        observations = self.rt.strict_json(self.payloads['images.json'])
+        for mutate in (lambda x: x.pop('api'), lambda x: x.update(extra={}),
+                       lambda x: x['api'].update(platform='linux/arm64'),
+                       lambda x: x['api'].update(image_id=True),
+                       lambda x: x['api'].update(extra='FAKE_SECRET')):
+            candidate = copy.deepcopy(observations); mutate(candidate)
+            self.reject(payloads=dict(self.payloads, **{'images.json': self.rt.canonical_bytes(candidate)}))
+
+    def test_central_and_local_metadata_disagreement_and_unsupported_features(self):
+        for field, values in {'version': (45,), 'flags': (1, 2, 16, 64, 4096),
+                              'method': (12, 99), 'time': (1,), 'date': (34,),
+                              'crc': (0,), 'compressed': (0, 1048577, 0xffffffff),
+                              'size': (0, 1048577, 0xffffffff)}.items():
+            for value in values:
+                for target in ('local', 'central'):
+                    with self.subTest(field=field, value=value, target=target):
+                        self.reject(self.archive(**{target: {field: value}}))
+        for field, value in [('creator', 0x714), ('disk', 1), ('internal', 1),
+                             ('external', 0o120600 << 16), ('external', 0x10),
+                             ('external', 0x08), ('offset', 1), ('offset', 0xffffffff)]:
+            self.reject(self.archive(central={field: value}))
+        # Even agreeing local/central records cannot enable unsupported methods/flags/versions.
+        for flags in (1, 2, 16, 64, 4096): self.reject(self.archive(flags=flags))
+        for field, value in [('version', 45), ('method', 99)]:
+            self.reject(self.archive(local={field: value}, central={field: value}))
+        for name in ('../release.json', '/release.json', 'release.json/', 'release\x00.json', 'réléase.json'):
+            self.reject(self.archive({name: self.payloads['release.json'], 'images.json': self.payloads['images.json']}))
+        self.reject(self.archive(dict(reversed(list(self.payloads.items())))))
+        self.reject(self.archive(dict(self.payloads, extra=b'{}')))
+        self.reject(self.archive(padding=b'PK\x06\x06'))
+
+    def test_eocd_local_central_names_extras_and_offsets_are_structurally_bound(self):
+        good = self.archive()
+        for offset, fmt, value in [(4, 'H', 1), (6, 'H', 1), (8, 'H', 1), (10, 'H', 3),
+                                   (12, 'I', 0xffffffff), (16, 'I', 0xffffffff), (20, 'H', 1)]:
+            bad = bytearray(good); struct.pack_into('<'+fmt, bad, len(bad)-22+offset, value); self.reject(bytes(bad))
+        for bad in (good[:-1], good+b'x', b'x'+good, good[:-22], b'PK\x06\x06'+good): self.reject(bad)
+        central = good.index(b'PK\x01\x02'); second = good.index(b'PK\x01\x02', central+1)
+        for position in (0, central):
+            bad = bytearray(good); bad[position] = 0; self.reject(bytes(bad))
+            bad = bytearray(good); bad[position+(30 if position == 0 else 46)] = ord('x'); self.reject(bytes(bad))
+            bad = bytearray(good); struct.pack_into('<H', bad, position+(28 if position == 0 else 30), 1); self.reject(bytes(bad))
+        bad=bytearray(good);struct.pack_into('<H',bad,central+32,1);self.reject(bytes(bad))
+        # Duplicate second central name and alias the first local offset.
+        bad=bytearray(good);bad[second+46:second+57]=b'release.json'
+        struct.pack_into('<H',bad,second+28,12)
+        struct.pack_into('<I',bad,len(bad)-10,len(bad)-22-central)
+        self.reject(bytes(bad))
+        bad=bytearray(good);struct.pack_into('<I',bad,second+42,0);self.reject(bytes(bad))
+        self.reject(self.archive(central={'size': 0xffffffff, 'compressed': 0xffffffff}))
+
+    def test_descriptors_are_parsed_by_bounded_length_and_exact_values(self):
+        good = self.archive(flags=8)
+        first_descriptor = good.index(b'PK\x07\x08')
+        for relative in (0, 4, 8, 12):
+            bad=bytearray(good);bad[first_descriptor+relative]^=1;self.reject(bytes(bad))
+        for flags in (0, 2048):
+            self.reject(self.archive(flags=flags, padding=b'PK\x07\x08'+b'\0'*12))
+        self.reject(self.archive(flags=8, local={'crc': 1}))
+        # Full local values with flag3 are allowed; mixed placeholders are not.
+        # Per-member CRC values differ, so patch the actual independent fixture records.
+        full=bytearray(good); central=full.index(b'PK\x01\x02')
+        for _ in range(2):
+            offset=struct.unpack_from('<I',full,central+42)[0]
+            full[offset+14:offset+26]=full[central+16:central+28]
+            central+=46+struct.unpack_from('<H',full,central+28)[0]
+        self.verify(bytes(full))
+        self.reject(self.archive(flags=8, padding=b'\0'))
+
+    def test_crc_size_ratio_and_deflate_stream_boundaries(self):
+        good=bytearray(self.archive()); good[30+len('release.json')]^=1;self.reject(bytes(good))
+        for packed in (b'broken FAKE_SECRET', b'', b'\x03\x00garbage'):
+            self.reject(self.archive(method=8, compressed=packed))
+        data=self.payloads['release.json']; compressor=zlib.compressobj(wbits=-15)
+        packed=compressor.compress(data)+compressor.flush()
+        for broken in (packed[:-1], packed+b'garbage', packed+packed):
+            self.reject(self.archive(method=8, compressed=broken))
+        self.reject(self.archive({'release.json': b'x'*1048577, 'images.json': b'{}'}))
+        self.reject(self.archive({'release.json': b'x'*1048576, 'images.json': b'{}'}, method=8))
+        # Declared plausible size/ratio cannot hide larger actual decoded output.
+        payloads={'release.json': bytes(range(256))*100, 'images.json': b'{}'}
+        self.reject(self.archive(payloads, method=8, central={'size': 100}, local={'size': 100}))
+
+    def test_output_limit_streaming_calls_and_exact_member_maximum(self):
+        # Incompressible whitespace preserves JSON semantics while crossing the
+        # compressed input chunk boundary; both outputs reach the permitted cap.
+        noise = random.Random(19).randbytes(1048576)
+        whitespace = noise.translate(bytes(b' \t\r\n'[i % 4] for i in range(256)))
+        payloads = {name: body + whitespace[:1048576-len(body)] for name, body in self.payloads.items()}
+        archive = self.archive(payloads, method=8)
+        original = zlib.decompressobj
+        calls = []
+        class MeasuredDecoder:
+            def __init__(self, mode): self.decoder = original(mode)
+            def decompress(self, chunk, maximum):
+                calls.append((len(chunk), maximum))
+                if maximum <= 0: raise AssertionError('unbounded output request')
+                return self.decoder.decompress(chunk, maximum)
+            def __getattr__(self, name):
+                if name == 'flush': raise AssertionError('unbounded flush')
+                return getattr(self.decoder, name)
+        with patch.object(zlib, 'decompressobj', side_effect=MeasuredDecoder):
+            result = self.verify(archive, payloads)
+        self.assertEqual(result['member_bytes'], {'release.json': 1048576, 'images.json': 1048576})
+        self.assertGreater(len(calls), 2)
+        self.assertTrue(all(0 < n <= 65536 and 0 < maximum <= 1048577 for n, maximum in calls))
+        # Oversized actual output with plausible declared sizes must still use a
+        # finite small request instead of allocating the decompression bomb.
+        calls.clear()
+        with patch.object(zlib, 'decompressobj', side_effect=MeasuredDecoder):
+            self.reject(self.archive({'release.json': bytes(range(256))*100, 'images.json': b'{}'},
+                                     method=8, central={'size': 100}, local={'size': 100}))
+        self.assertTrue(calls)
+        self.assertLessEqual(max(maximum for _, maximum in calls), 101)
+
+    def test_unsigned_descriptor_crc_equal_to_signature_has_no_boundary_guessing(self):
+        archive = bytearray(self.archive(flags=8, descriptor='unsigned'))
+        central = archive.index(b'PK\x01\x02')
+        for _ in range(2):
+            offset = struct.unpack_from('<I', archive, central+42)[0]
+            packed_size = struct.unpack_from('<I', archive, central+20)[0]
+            name_size = struct.unpack_from('<H', archive, offset+26)[0]
+            descriptor = offset + 30 + name_size + packed_size
+            struct.pack_into('<I', archive, descriptor, 0x08074b50)
+            struct.pack_into('<I', archive, central+16, 0x08074b50)
+            central += 46 + struct.unpack_from('<H', archive, central+28)[0]
+        # Framing accepts the 12-byte unsigned form despite the CRC's value;
+        # content verification subsequently rejects its deliberately wrong CRC.
+        self.assertEqual([span[0] for span in self.ops._release_zip_members(bytes(archive))],
+                         ['release.json', 'images.json'])
+        self.reject(bytes(archive))
 
 
 class WorkflowTests(unittest.TestCase):
