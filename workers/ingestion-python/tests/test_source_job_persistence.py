@@ -235,3 +235,25 @@ def test_legacy_jobs_are_never_claimed(fresh_database):
     for number in (36, 37, 38):
         apply_migration(repo, number)
     assert claim_source_job(repo, worker_id=uuid.uuid4()) is None
+
+
+@pytest.mark.parametrize("final", [False, True])
+def test_expired_dispatched_attempt_is_ambiguous_in_reclaim_transaction(fresh_database, final):
+    from lifecycle_support import seed_vehicle, insert_descriptor
+    from autodata_ingestion.source_job_persistence import ensure_article_job, claim_source_job
+    from autodata_ingestion.article_lifecycle_types import ArticleKey
+    from uuid import uuid4
+    repo=fresh_database()
+    article=insert_descriptor(repo,ArticleKey("bankone",seed_vehicle(repo),None,"v","a"))
+    ensure_article_job(repo,article,normalization_version="ordered-article-v1",rewrite_profile_version="technical-prose-v1")
+    lease=claim_source_job(repo,worker_id=uuid4())
+    with repo.connect() as conn:
+        conn.execute("INSERT INTO canonical_article_rewrite_attempts(rewrite_attempt_id,source_fetch_job_id,lease_token,attempt_number,provider,model,profile_version,prompt_hash,input_hash,status,dispatched_at) VALUES (%s,%s,%s,1,'fixture','fixture','technical-prose-v1',%s,%s,'dispatched',now())",(uuid4(),lease.job_id,lease.token,"a"*64,"b"*64))
+        conn.execute("UPDATE source_fetch_jobs SET lease_expires_at=clock_timestamp()-interval '1 second',retry_count=%s WHERE source_fetch_job_id=%s",(3 if final else 1,lease.job_id))
+    claimed=claim_source_job(repo,worker_id=uuid4())
+    assert (claimed is None)==final
+    with repo.connect() as conn:
+        attempt=conn.execute("SELECT status,error_code FROM canonical_article_rewrite_attempts").fetchone()
+        assert attempt=={"status":"ambiguous","error_code":"MODEL_DELIVERY_AMBIGUOUS"}
+        job=conn.execute("SELECT status,retry_count FROM source_fetch_jobs WHERE source_fetch_job_id=%s",(lease.job_id,)).fetchone()
+        assert job=={"status":"dead_letter" if final else "processing","retry_count":3 if final else 2}

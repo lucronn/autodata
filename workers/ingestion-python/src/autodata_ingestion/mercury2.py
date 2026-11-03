@@ -146,6 +146,8 @@ class Mercury2Client:
     def complete_json(self, prompt: str) -> dict[str, Any]:
         if not prompt.strip():
             raise ValueError("Mercury-2 prompt must not be empty")
+        if len(prompt.encode("utf-8")) > 200 * 1024:
+            raise ValueError("Mercury-2 prompt exceeds 200 KiB")
         request = Request(
             f"{self._base_url}/chat/completions",
             data=json.dumps(
@@ -167,7 +169,10 @@ class Mercury2Client:
             method="POST",
         )
         with self._transport(request, timeout=self._timeout_seconds) as response:
-            payload = json.loads(response.read())
+            raw = response.read(1024 * 1024 + 1)
+            if len(raw) > 1024 * 1024:
+                raise ValueError("Mercury-2 response exceeds 1 MiB")
+            payload = json.loads(raw)
         content = _response_content(payload)
         result = json.loads(content) if isinstance(content, str) else content
         if not isinstance(result, dict):

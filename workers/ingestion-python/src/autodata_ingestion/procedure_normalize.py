@@ -41,6 +41,14 @@ def normalize_procedure_article(article: Mapping[str, Any]) -> dict[str, Any]:
 
     out = deepcopy(dict(article))
     _ensure_classification(out)
+    # A captured ordered document is authoritative. Normalization must not
+    # abbreviate its tables, interleaved media or nested content via old steps.
+    if isinstance(out.get("normalized_document"), Mapping) and not _undersegmented_article(out):
+        from .article_document import project_ordered_document
+        out.update(project_ordered_document(out["normalized_document"]))
+        out.pop("blocks", None)
+        out["content_status"] = _content_status_for(out)
+        return out
     if _steps_are_consumer_shaped(out.get("steps")):
         body = str(out.get("body") or "").strip()
         if _undersegmented_article(out) and body:

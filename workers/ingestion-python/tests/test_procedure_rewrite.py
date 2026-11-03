@@ -209,7 +209,7 @@ def test_article_rewrite_keeps_document_order_images_and_source_original():
             {"action": "Remove the oil pump.", "instructions": ["Discard the old gasket."], "images": []},
             {"action": "Install the oil pump.", "instructions": ["Fit the new gasket."], "images": []},
         ],
-        "normalized_document": build_ordered_document({}, [
+        "normalized_document": build_ordered_document({"evidence_ids":["e1"]}, [
             {"kind": "text", "text": "1. Remove the oil pump."},
             {"kind": "text", "text": "Discard the old gasket."},
             {"kind": "image", "url": "local://pump-figure", "alt": "Pump"},
@@ -219,10 +219,15 @@ def test_article_rewrite_keeps_document_order_images_and_source_original():
     }
     before_document = deepcopy(article["normalized_document"])
     before_orders = [block["source_order"] for block in before_document["blocks"]]
-    client = FakeMercury({"steps": [
-        {"index": 0, "action": "Take off the oil pump.", "instructions": ["Toss the old gasket."]},
-        {"index": 1, "action": "Fit the oil pump.", "instructions": ["Fit the new gasket."]},
-    ]})
+    class OrderedMercury:
+        def complete_json(self, prompt):
+            import json
+            return {"replacements": [{**slot, "text": slot["text"].replace("Remove", "Take off").replace("Discard", "Toss").replace("Install", "Fit")}
+                for slot in json.loads(prompt)["slots"]]}
+    # Canonical rewrites require locally verified images and evidence.
+    article["normalized_document"]["blocks"][2].update(storage_key="images/pump", content_sha256="a"*64)
+    before_document = deepcopy(article["normalized_document"])
+    client = OrderedMercury()
 
     result = rewrite_procedure_article(article, vehicle={"year": 2012}, client=client)
 

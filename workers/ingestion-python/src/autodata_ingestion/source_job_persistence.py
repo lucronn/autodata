@@ -146,6 +146,17 @@ def refresh_article_job(
 
 def claim_source_job(repo, *, worker_id):
     with repo.connect() as conn, _cursor(conn) as cur:
+        # Expiry recovery owns the row lock, independently of the dead worker's
+        # live-lease guard. Account for uncertain external delivery even on the
+        # final permitted claim before terminating or handing work to a new owner.
+        expired = cur.execute("""SELECT source_fetch_job_id,lease_token FROM source_fetch_jobs
+            WHERE job_kind IN ('article','catalog_index') AND status='processing'
+              AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED""").fetchall()
+        for old in expired:
+            cur.execute("""UPDATE canonical_article_rewrite_attempts
+                SET status='ambiguous',error_code='MODEL_DELIVERY_AMBIGUOUS',completed_at=clock_timestamp()
+                WHERE source_fetch_job_id=%s AND lease_token=%s AND status='dispatched' AND response IS NULL""",
+                (old["source_fetch_job_id"], old["lease_token"]))
         cur.execute(
             """WITH exhausted AS (SELECT source_fetch_job_id FROM source_fetch_jobs
         WHERE job_kind IN ('article','catalog_index') AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED)

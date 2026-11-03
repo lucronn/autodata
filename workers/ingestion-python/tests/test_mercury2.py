@@ -23,8 +23,8 @@ class FakeResponse:
     def __exit__(self, *_):
         return False
 
-    def read(self):
-        return self.payload
+    def read(self, size=-1):
+        return self.payload if size < 0 else self.payload[:size]
 
 
 class Mercury2Tests(unittest.TestCase):
@@ -248,3 +248,22 @@ class Mercury2Tests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_mercury_rejects_oversized_actual_byte_stream():
+    import io
+    import pytest
+    class Response(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self,*args): self.close()
+    client=Mercury2Client(api_key="fixture",base_url="http://127.0.0.1",transport=lambda *a,**k:Response(b" "*(1024*1024+1)))
+    with pytest.raises(ValueError,match="response exceeds"):
+        client.complete_json("fixture")
+
+
+def test_mercury_rejects_oversized_prompt_before_transport():
+    import pytest
+    def never(*a,**k): pytest.fail("oversized prompt sent")
+    client=Mercury2Client(api_key="fixture",base_url="http://127.0.0.1",transport=never)
+    with pytest.raises(ValueError,match="prompt exceeds"):
+        client.complete_json("x"*(200*1024+1))
