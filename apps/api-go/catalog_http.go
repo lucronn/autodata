@@ -176,7 +176,7 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		return
 	}
 	hydrating := progress != nil && progress.Status == "running"
-	if (progress == nil || !progress.Complete) && s.ingestionClient != nil {
+	if !s.paidCatalogEnabled() && (progress == nil || !progress.Complete) && s.ingestionClient != nil {
 		configuration, configurationErr := s.catalog.ConfigurationByVehicle(request.Context(), principal, vehicleID)
 		if configurationErr != nil && !errors.Is(configurationErr, ErrCatalogNotFound) {
 			s.writeCatalogError(response, request, configurationErr)
@@ -190,8 +190,21 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 			})
 		}
 	}
-	for index := range items {
-		rewriteCatalogImageURLs(&items[index], s.catalogImageKey)
+	if s.paidCatalogEnabled() {
+		descriptors := make([]CatalogArticle, 0, len(items))
+		for _, item := range items {
+			if item.CanonicalArticleID == nil || item.ID != *item.CanonicalArticleID {
+				continue
+			}
+			item.Document, item.Body, item.Steps, item.Images = nil, "", nil, []CatalogImage{}
+			item.SourceReview = nil
+			descriptors = append(descriptors, item)
+		}
+		items = descriptors
+	} else {
+		for index := range items {
+			rewriteCatalogImageURLs(&items[index], s.catalogImageKey)
+		}
 	}
 	writeJSON(response, http.StatusOK, CatalogArticlesResponse{
 		Version: "v1", Items: items, Complete: progress != nil && progress.Complete,
@@ -211,7 +224,7 @@ func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.R
 		s.writeCatalogLifecycleError(response, request, http.StatusGone, "CATALOG_WITHDRAWN", false, view.Article)
 		return
 	}
-	if view.CanSchedule {
+	if view.CanSchedule && !s.paidCatalogEnabled() {
 		payload := map[string]any{"scope": "article", "vehicle_id": vehicleID, "canonical_article_id": *view.Article.CanonicalArticleID}
 		if view.Article.canonicalVehicleID != "" {
 			payload["vehicle_id"] = view.Article.canonicalVehicleID
@@ -236,6 +249,15 @@ func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.R
 			return
 		}
 	}
+	s.respondCatalogArticleView(response, request, principal, view)
+}
+
+func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request *http.Request, principal Principal, view CatalogArticleView) {
+	if view.Withdrawn {
+		s.writePaidCatalogError(response, request, ErrCatalogWithdrawn)
+		return
+	}
+	vehicleID := request.PathValue("vehicle_id")
 	article := view.Article
 	if article.Processing != nil && article.Processing.RetryAfterSeconds != nil {
 		response.Header().Set("Retry-After", strconv.Itoa(*article.Processing.RetryAfterSeconds))
@@ -256,7 +278,21 @@ func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.R
 		}
 		status = http.StatusAccepted
 	}
-	rewriteCatalogImageURLs(&article, s.catalogImageKey)
+	if s.paidCatalogEnabled() {
+		scope, ok := request.Context().Value(paidCatalogContextKey{}).(paidCatalogContext)
+		if !ok || scope.identity == nil || article.CanonicalArticleID == nil || *article.CanonicalArticleID != scope.identity.CanonicalArticleID {
+			s.writePaidCatalogError(response, request, ErrCatalogNotFound)
+			return
+		}
+		view.Article = article
+		if err := s.rewritePaidCatalogArticleImages(request.Context(), principal, scope.configuration, *scope.identity, &view); err != nil {
+			s.writePaidCatalogError(response, request, err)
+			return
+		}
+		article = view.Article
+	} else {
+		rewriteCatalogImageURLs(&article, s.catalogImageKey)
+	}
 	article.SourceReview = sourceReviewForArticle(article, vehicleID, article.ID)
 	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article})
 }

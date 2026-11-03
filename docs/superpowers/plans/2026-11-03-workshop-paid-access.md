@@ -154,3 +154,8 @@ Go/Python commerce integration case must pass before this consumer is dispatched
 ### Current implementation interface reconciliation
 
 Read-only review matched backend822e972 and APIc5ba955, combined in candidate4a74e1600de1ed1d5e42f9fb5b02263faefd7220. The amendments above retain sixteen paths and twelve cases. Commerce runtime acceptance and integration remain pending; this source reconciliation is not the dispatch gate. The coordinator must replace the historical basis with verified integration before synchronizing the new implementation record.
+
+
+### Coordinator-owned identity test amendment
+
+Public selector200 intentionally invalidates two old expectations in `apps/api-go/main_test.go::TestCustomerServerRejectsHeaderAuthorityAndMapsDependencyErrors`. Add only this existing test file to the authorized envelope (seventeen total paths: twelve access-worker, four media-worker, one coordinator). Replace those two `/v1/catalog/years` request paths with the still-protected `/source-review-items`, preserving exact bearer401 and identity-dependency503 assertions and the existing forged-role403 case. This route does not add the commerce principal UUID validation, so the503 assertion remains evidence of the identity dependency error rather than an unrelated missing account identifier. No endpoint, production behavior or required runtime case is added. Todo: synchronize this bounded amendment, pin/preflight, repair two request paths, run targeted and integrated Go checks, then provide the exact commit to the paid-access worker.
