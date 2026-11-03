@@ -25,7 +25,7 @@ Public Go routes, with bounded JSON and no-store: UUID values are canonical UUID
 
 Private POST routes `/internal/commerce/quote`, `/internal/commerce/checkouts`, `/internal/commerce/orders/status`, `/internal/commerce/library`, `/internal/commerce/grants/check` use JSON. `/internal/commerce/stripe/webhook` consumes raw bytes BEFORE generic JSON parsing. Require nonempty secret-managed internal token unconditionally on every commerce route, constant-time comparison; missing configured token disables commerce startup/readiness. Ingestion's optional local token behavior is not a commerce bypass. Same existing listener, private network, no new public port. Go HTTPCommerceClient uses explicit safe constructed account/org JSON from Principal; never forwards incoming X-Autodata-Owner-Id/Organization-Id, bearer/cookie or arbitrary headers. Preserve only sanitized request correlation plus server-configured internal authentication and bounded Stripe signature for webhook. Python rechecks account active and account→personal-org mapping before owner operations. Quote/webhook still require internal authentication at this boundary.
 
-Grant-check contract for next access lane: `CheckVehicleGrant(ctx, customer_account_id, configuration_id, region) -> {entitlement_id,order_id,configuration_id,region}` or typed `required|revoked|unavailable`. Internal grants/check performs one current DB read of active account + exact structured active entitlement and returns no body/content. Missing/adjacent/legacy-unscoped grant is required; revoked tombstone is revoked; DB/transport error unavailable. Next Go access lane MUST call it before catalog detail/source/media/protected progress hydration/model/S3, then separately enforce existing current source rights. Current customer dataset_viewer role alone is never a paid grant. This lane does not edit catalog/media enforcement; release cannot complete until that separate lane is integrated.
+Grant-check contract for next access lane: `CheckVehicleGrant(ctx, customer_account_id, organization_id, configuration_id, region) -> {entitlement_id,order_id,configuration_id,region}` or typed `required|revoked|unavailable`. Go passes only the current verified Principal account and organization; Python rechecks that exact active owner pair. Internal grants/check performs one current DB read of active account + exact structured active entitlement and returns no body/content. Missing/adjacent/legacy-unscoped grant is required; revoked tombstone is revoked; DB/transport error unavailable. Next Go access lane MUST call it before catalog detail/source/media/protected progress hydration/model/S3, then separately enforce existing current source rights. Current customer dataset_viewer role alone is never a paid grant. This lane does not edit catalog/media enforcement; release cannot complete until that separate lane is integrated.
 
 Timeouts: private read/quote/library/grant checks2s total; checkout/status provider operations20s total at Go/private boundary, with each Stripe call<=8s, no SDK automatic retries and at most two calls per request. Longer reconciliation resumes via the existing background process. Webhook persistence/verification has20s total; defer/retry provider-dependent resolution rather than exceed deadline. DB transaction/lock timeout3s; no external API call while holding a row/advisory transaction lock. Sanitize all dependency errors.
 
@@ -275,3 +275,46 @@ missing pre-payment remote Price validation, early-refund library omission and
 missing descriptor-snapshot active-rights predicate in library readiness. Correct
 all four within the existing39 paths and preserve focused red/green evidence.
 Final fourteen-case PostgreSQL acceptance and exact-candidate review remain required.
+
+
+### Actual Go-to-Python commerce contract regression
+
+Independent API review atad2b088 against the actual Python service found missing
+organization_id in grant checks and missing version in checkout responses. Keep
+Python’s exact active owner-pair validation; extend the Go checker with trusted
+organization_id. Every checkout/processing/owned response includes versionv1, and
+owned always returns HTTP200, including settlement before create response.
+
+Strengthen the existing `test_orders_create_and_owner_scope` PostgreSQL case; do
+not add a fifteenth case or change the67 outer pytest IDs plus7 native subtests.
+Its actual private HTTP server and PostgreSQL store invoke the new Go root
+`TestWorkshopCommercePythonIntegration` in already-approved commerce_client_test.go.
+Structured argv, cwd `/workspace/apps/api-go`:
+`go test -json -run '^TestWorkshopCommercePythonIntegration$' -count=1 .`.
+
+Normal Go mode skips this explicit fixture root. Required mode
+`AUTODATA_REQUIRE_COMMERCE_INTEGRATION=1` must fail on missing/malformed inputs.
+Pass only owned fixture values via AUTODATA_COMMERCE_FIXTURE_URL, ACCOUNT_ID,
+ORGANIZATION_ID, CONFIGURATION_ID, IDEMPOTENCY_KEY, ORDER_ID and REGION (each name
+has the AUTODATA_COMMERCE_FIXTURE_ prefix). Region is US; token is the synthetic
+literal fixture-internal. URL must be exactly HTTP127.0.0.1 with a valid explicit
+port, no userinfo/path/query/fragment; IDs are canonical UUIDs. Retain fixture-only
+execution, finite subprocess timeout, isolated Go caches/toolchain and no external
+network/provider authority.
+
+The actual HTTPCommerceClient requests quote, reuses the existing checkout key
+(expect200/same order/versionv1), reads order status, reads the empty owner library,
+and invokes grant check (typed required403). Project each non-grant reply through
+the real commercePublicResult validation. No additional order/request/grant rows
+are created; the first case’s existing row invariants stay intact. Ownerorg and
+version regressions must fail this actual seam, not only handwritten fake DTOs.
+
+Collector raw inventory becomes ten files: prior eight plus
+`workshop-commerce-go-events.jsonl` and `workshop-commerce-go-stderr.log`.
+Result and raw-row top-level objects add go_root, go_exit_code and go_timed_out.
+Require the exact single root run/pass and package pass, no failures/skips/extra
+case identity, zeroexit/no timeout, tied to the first actual PostgreSQL case flag.
+The17 existing assertion keys are unchanged. The independently reviewed commerce
+supervisor must reopen and parse the Go JSON before accepting that case; a boolean
+alone is insufficient. Preserve old and draft evidence unchanged. No extra path,
+new fake backend, expanded payment scope or actual provider call is authorized.

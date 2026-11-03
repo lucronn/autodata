@@ -458,3 +458,15 @@ while background hydration writes it. The separate one-path
 synchronization. Todo: synchronized gate, bounded test-only repair, targeted/full
 race and ordinary Go verification, independent review and integration. Commerce
 39-path ownership is unchanged; retain original failure evidence.
+
+
+### Actual commerce service boundary acceptance
+
+The39-path commerce gate now specifies one required actual Go-client/Python-HTTP/PG
+root inside the first of fourteen PostgreSQL cases. This catches verified-owner
+organization and checkout-version/owned200 mismatches that isolated mocks missed.
+Two raw Go files extend the commerce artifact inventory to10;17assertion keys and
+67outerpytest+7subtests remain. Todo: synchronized refinement gate, matched8/31
+implementation, independently freeze the strict final collector and run actual
+acceptance. The catalog race repair79c17ae is independently verified and must be
+included before the final combined full-race run.
