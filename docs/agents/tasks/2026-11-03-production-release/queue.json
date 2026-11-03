@@ -109,13 +109,14 @@
         "workshop-paid-access",
         "workshop-firebase-bundle"
       ],
-      "state": "ready_parallel_gate",
+      "state": "implementation_in_progress",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_prerequisite": "Fresh synchronized checkpoint/preflight and disjoint ownership in docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md",
       "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
       "dispatch_mode": "coordinator_parallel",
-      "parallel_plan_ref": "docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md"
+      "parallel_plan_ref": "docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md",
+      "implementation_base_sha": "0da1309f860e475a1fa8b71a0d6b88dee04ed915"
     },
     {
       "id": "r5-access",
@@ -173,7 +174,7 @@
       "depends_on": [
         "r5-access"
       ],
-      "state": "acceptance_in_progress",
+      "state": "verified",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_prerequisite": "Reviewed exact scope, verified R5 integration and actual CI; Issue186/Project8/canonical todo synchronized and read back. Commit and pass fresh exact-base preflight before implementation.",
@@ -181,7 +182,7 @@
       "dependency_ci_run": "https://github.com/lucronn/autodata/actions/runs/41696273960",
       "dispatch_mode": "coordinator_direct",
       "implementation_base_sha": "bdcc3fe689a12c4eda518cd1de1b9f4fadcf5b15",
-      "review_status": "Code independently reviewed; actual66pass+7subtests, one source-fixture constraint repair pending. Release unverified.",
+      "review_status": "Independent implementation and bounded SQL/fixture corrections approved;14 commerce PostgreSQL cases,5 identity scenarios,8 dual-bank regressions,actual production-image import proof and exact-candidate CI passed. Release unverified.",
       "implementation_owners": [
         {
           "agent": "catalog_fallback_builder",
@@ -235,7 +236,12 @@
           ]
         }
       ],
-      "candidate_sha": "9d33e1eb522b045254374a120582658688311906"
+      "candidate_sha": "d2eb70fa9b96fcebe1c33ef6cddcdad5c4a5eec7",
+      "verified_candidate_sha": "d2eb70fa9b96fcebe1c33ef6cddcdad5c4a5eec7",
+      "integrated_sha": "d2eb70fa9b96fcebe1c33ef6cddcdad5c4a5eec7",
+      "verification_ref": "docs/verification/2026-11-03-workshop-commerce.md",
+      "ci_status": "success",
+      "ci_run": "https://github.com/lucronn/autodata/actions/runs/41705272372"
     },
     {
       "id": "workshop-paid-access",
@@ -244,12 +250,13 @@
         "r5-access",
         "workshop-commerce"
       ],
-      "state": "ready_parallel_gate",
+      "state": "implementation_in_progress",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_prerequisite": "Fresh synchronized checkpoint/preflight and disjoint ownership in docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md",
       "dispatch_mode": "coordinator_parallel",
-      "parallel_plan_ref": "docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md"
+      "parallel_plan_ref": "docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md",
+      "implementation_base_sha": "0da1309f860e475a1fa8b71a0d6b88dee04ed915"
     },
     {
       "id": "workshop-firebase-bundle",

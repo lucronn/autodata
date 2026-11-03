@@ -318,3 +318,8 @@ The17 existing assertion keys are unchanged. The independently reviewed commerce
 supervisor must reopen and parse the Go JSON before accepting that case; a boolean
 alone is insufficient. Preserve old and draft evidence unchanged. No extra path,
 new fake backend, expanded payment scope or actual provider call is authorized.
+
+
+## Verified development dependency
+
+Candidate `d2eb70fa9b96fcebe1c33ef6cddcdad5c4a5eec7` passed all14 real PostgreSQL commerce cases,67 outer tests plus7 subtests, the actual Go/Python HTTP seam, all5 identity scenarios and8 dual-bank regressions through040. The actual ingestion production image imports official Stripe16.1.0 and commerce services. Full GitHub CI41705272372 passed, including live Compose smoke. Independent SQL and fixture corrections are approved; original failed receipts remain retained. Exact hashes, review and raw-evidence locations are in `docs/verification/2026-11-03-workshop-commerce.md`. Paid catalog/media, final browser tests and configured production deployment remain separate requirements.

@@ -7,7 +7,7 @@ Project: https://github.com/users/lucronn/projects/8
 
 ## Dispatch and acceptance
 
-This amendment replaces serial *implementation-dispatch* prerequisites in the paid-access and final-UI plans. Reviewed commerce candidate9d33e1eb522b045254374a120582658688311906 and the existing reviewed paid HTTP/media contract provide a fixed development interface. The coordinator may assemble them on the development integration branch and dispatch independent implementation after the synchronized checkpoint and machine preflight. Commerce is not yet runtime-accepted: the latest run passed66 tests plus7 subtests with one invalid source fixture remaining; the production SQL lookup defect is fixed. Original failed receipts remain retained.
+This amendment replaces serial *implementation-dispatch* prerequisites in the paid-access and final-UI plans. Reviewed commerce candidate9d33e1eb522b045254374a120582658688311906 and the existing reviewed paid HTTP/media contract provide a fixed development interface. The coordinator may assemble them on the development integration branch and dispatch independent implementation after the synchronized checkpoint and machine preflight. Commerce was not runtime-accepted at dispatch. The later verified candidate `d2eb70fa9b96fcebe1c33ef6cddcdad5c4a5eec7` now passes all14 commerce,5 identity and8 R3 cases, actual production-image imports and full CI41705272372. See `docs/verification/2026-11-03-workshop-commerce.md`. Original failed receipts remain retained.
 
 Implementation against a frozen interface may proceed while its runtime acceptance continues. Dependency failures return to their owner, with a focused committed repair and consumers updated explicitly. No fabricated mocks count as API/runtime acceptance. Independent review and the separate14 commerce,5 identity,8 R3,12 paid-access and141 browser cases, actual production image checks and CI remain required before release acceptance. No launch or deployment authorization is inferred from a passing code review.
 
@@ -27,9 +27,9 @@ Media owner defines server helpers `rewritePaidCatalogArticleImages(ctx, Princip
 
 ## Concrete todo
 
-- [ ] Synchronize this parallel allocation in Issue186/Project8, both canonical plans/task records and repository docs, commit the checkpoint, and run both exact-base machine preflights.
-- [ ] Dispatch three disjoint workers at the same pinned checkpoint; publish an early shared-interface commit so branches can compile against the concrete Go seam.
-- [ ] Coordinator repairs the remaining commerce fixture and executes commerce/identity/R3 acceptance and production-image proof while workers implement paid access, media and UI.
+- [x] Synchronize this parallel allocation in Issue186/Project8, both canonical plans/task records and repository docs, commit the checkpoint, and run both exact-base machine preflights.
+- [x] Dispatch three disjoint workers at the same pinned checkpoint; publish an early shared-interface commit so branches can compile against the concrete Go seam.
+- [x] Coordinator repairs the remaining commerce fixture and executes commerce/identity/R3 acceptance and production-image proof while workers implement paid access, media and UI.
 - [ ] Merge meaningful reviewed worker milestones, resolve actual helper/DTO differences, execute twelve paid-access and141 browser cases, retain all failed evidence and finish independent review/CI.
 - [ ] Complete actual hosting, merchant/identity configuration, staging acceptance and deliberate cars.tk deployment; keep production status unverified until demonstrated.
 
