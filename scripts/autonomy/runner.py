@@ -23,8 +23,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 try:
+    from . import app_server_adapter as app_server
     from .pre_implementation import validate_record
 except ImportError:  # Support direct execution: python scripts/autonomy/runner.py
+    import app_server_adapter as app_server
     from pre_implementation import validate_record
 
 
@@ -66,29 +68,7 @@ def build_provider_command(
     errors = validate_execution_profile(execution)
     if errors:
         raise RunnerError("; ".join(errors))
-    return [
-        "codex",
-        "exec",
-        "--json",
-        "--ephemeral",
-        "--approve-for-me",
-        "--ignore-user-config",
-        "--model",
-        "gpt-6.1-sol",
-        "-c",
-        'model_reasoning_effort="medium"',
-        "-c",
-        'service_tier="fast"',
-        "-c",
-        "features.fast_mode=true",
-        "--output-schema",
-        str(schema_file),
-        "-o",
-        str(output_file),
-        "-C",
-        str(cwd),
-        "-",
-    ]
+    return app_server.provider_argv()
 
 
 def _registry_agent(registry: dict[str, Any], name: str) -> dict[str, Any] | None:
@@ -958,6 +938,7 @@ def _load_trusted_inputs(repo_root: Path, trusted_base_sha: str, task_ref: str) 
         prompts[agent["name"]] = data.decode("utf-8")
     for path in (
         "scripts/autonomy/runner.py",
+        "scripts/autonomy/app_server_adapter.py",
         "scripts/autonomy/orchestrator.py",
         "scripts/autonomy/pre_implementation.py",
         "scripts/autonomy/validate_run.py",
@@ -1088,6 +1069,7 @@ def inspect_candidate(
         ".autodata-agent-registry.json",
         "scripts/autonomy/agent-output.schema.json",
         "scripts/autonomy/runner.py",
+        "scripts/autonomy/app_server_adapter.py",
         "scripts/autonomy/orchestrator.py",
         trusted.get("task", {}).get("task_ref", ""),
     ]
@@ -1850,35 +1832,30 @@ def retain_trusted_inputs(trusted: dict, output_root: Path) -> list[dict]:
     ]
 
 
-def _runtime_metadata(stdout: str) -> dict:
-    # Only structured CLI runtime events count; response prose is never metadata.
-    observed = {}
-    for line in stdout.splitlines():
-        try:
-            event = json.loads(line)
-        except ValueError:
-            continue
-        if type(event) is dict and event.get("type") == "session_config":
-            for key in ("model", "reasoning_effort", "service_tier"):
-                if type(event.get(key)) is str:
-                    value = redact_text(event[key])
-                    previous = observed.get(key)
-                    equivalent = (
-                        {previous, value} <= {"fast", "priority"}
-                        if type(previous) is str
-                        else False
-                    )
-                    if previous is not None and previous != value and not equivalent:
-                        observed["conflicting_runtime_metadata"] = True
-                    observed[key] = value
-            features = event.get("features")
-            if (
-                type(features) is dict
-                and "fast_mode" in features
-                and features["fast_mode"] is not True
-            ):
-                observed["conflicting_runtime_metadata"] = True
-    return observed
+def build_agent_prompt(base_prompt, envelope, commands, artifacts, logs, *, role, check_ids=()):
+    prompt = base_prompt
+    prompt += "\nFROZEN ENVELOPE:\n" + json.dumps(envelope, sort_keys=True)
+    prompt += "\nAGENT ROLE:\n" + str(role)
+    prompt += "\nASSIGNED CHECK IDS:\n" + json.dumps(list(check_ids))
+    prompt += ("\nThe full contract verification inventory describes downstream work, not your assignments. "
+               "Assess exactly the assigned check IDs once each; never invent IDs. "
+               "Architecture, planning and implementation assessments must be exactly []. "
+               "Report blockers through findings. The architect task_contract must exactly match the frozen contract.\n")
+    prompt += "\nRUNNER COMMAND RECORDS:\n" + json.dumps(commands, sort_keys=True)
+    prompt += "\nAVAILABLE ARTIFACT IDS:\n" + json.dumps([a["artifact_id"] for a in artifacts])
+    prompt += "\nBOUNDED LOG EXCERPTS:\n"
+    for artifact in artifacts:
+        if artifact["kind"] in ("stdout", "stderr"):
+            prompt += artifact["artifact_id"] + ": " + logs[artifact["artifact_id"]].decode("utf-8", errors="replace")[:8192] + "\n"
+    prompt += "\nUse only this worktree. Do not contact GitHub/deploy. Do not print credentials. Do not spawn other agents. Builders must commit locally. Reviewers must never modify files or HEAD. Return strict v2 JSON; reference only supplied evidence IDs.\n"
+    return prompt
+
+
+def runtime_expected(envelope, prompt, schema, cwd, codex_home):
+    return {"run_id": envelope["run_id"], "task_id": envelope["task_id"],
+            "agent_name": envelope["agent_name"], "evidence_label": envelope.get("evidence_label", envelope["agent_name"]),
+            "trusted_base_sha": envelope["trusted_base_sha"], "subject_sha": envelope["subject_sha"],
+            "cwd": str(cwd), "codex_home": codex_home, "prompt": prompt, "schema": schema}
 
 
 def run_agent(
@@ -1923,7 +1900,7 @@ def run_agent(
         errors += validate_record(
             task.get("pre_implementation"), repo_root, base, trusted["policy"]
         )
-    if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 1800:
+    if type(timeout_seconds) is not int or not 4 <= timeout_seconds <= 1800:
         errors.append("invalid provider timeout")
     if output_root.resolve().is_relative_to(repo_root.resolve()):
         errors.append("evidence output must be outside checkout")
@@ -1983,29 +1960,32 @@ def run_agent(
                 finding("runner.check-dirty-tree", "required check modified candidate")
             )
         available_artifact_ids = [a["artifact_id"] for a in artifacts]
-        prompt = trusted["prompts"][envelope["agent_name"]]
-        prompt += "\nFROZEN ENVELOPE:\n" + json.dumps(envelope, sort_keys=True)
-        prompt += "\nRUNNER COMMAND RECORDS:\n" + json.dumps(commands, sort_keys=True)
-        prompt += "\nAVAILABLE ARTIFACT IDS:\n" + json.dumps(
-            [a["artifact_id"] for a in artifacts]
-        )
-        prompt += "\nBOUNDED LOG EXCERPTS:\n"
-        for a in artifacts:
-            if a["kind"] in ("stdout", "stderr"):
-                prompt += (
-                    a["artifact_id"]
-                    + ": "
-                    + _regular_bytes(output_root, a["ref"]).decode(
-                        "utf-8", errors="replace"
-                    )[:8192]
-                    + "\n"
-                )
-        prompt += "\nUse only this worktree. Do not contact GitHub/deploy. Do not print credentials. Builders must commit locally. Reviewers must never modify files or HEAD. Return strict v2 JSON; reference only supplied evidence IDs.\n"
-        process = bounded_process(
-            command, worktree, environment, timeout_seconds, prompt.encode()
-        )
+        logs = {a["artifact_id"]: _regular_bytes(output_root, a["ref"])
+                for a in artifacts if a["kind"] in ("stdout", "stderr")}
+        prompt = build_agent_prompt(trusted["prompts"][envelope["agent_name"]], envelope, commands,
+                                    artifacts, logs, role=role, check_ids=[c["check_id"] for c in assigned])
+        runtime_context = runtime_expected(envelope, prompt, trusted["schema"], worktree.resolve(), app_server.codex_home(environment))
+        with (output_root / "provider-protocol-progress.jsonl").open("x", encoding="utf-8") as progress_file:
+            def progress(data):
+                progress_file.write(redact_text(data.decode("utf-8")))
+                progress_file.flush()
+            process = app_server.run_app_server(argv=command, cwd=worktree, env=environment,
+                                               timeout_seconds=timeout_seconds, prompt=prompt,
+                                               schema=trusted["schema"], expected=runtime_context,
+                                               boundary_proof=app_server.BOUNDARY, progress=progress)
         observed = _run_git(worktree, ["rev-parse", "HEAD"]).strip()
-        runtime = _runtime_metadata(process["stdout"].decode("utf-8", errors="replace"))
+        protocol = redact_text(process["protocol"].decode("utf-8", errors="replace")).encode()
+        artifacts.append(_save_artifact(protocol, output_root, label + ":protocol", "stdout", observed, None))
+        if protocol != process["protocol"]:
+            findings.append(finding("runner.runtime-profile", "runtime transcript required redaction"))
+        try:
+            replay = app_server.replay_capture(protocol, stdout=process["stdout"], expected=runtime_context)
+            runtime = replay["profile"]
+            if replay["response_text"].encode() != process["response"]:
+                raise app_server.ProtocolError("selected response differs from transport output")
+            (staging / "provider-output.json").write_bytes(process["response"])
+        except (ValueError, KeyError) as error:
+            findings.append(finding("runner.runtime-profile", redact_text(str(error))))
         for name in ("stdout", "stderr"):
             artifacts.append(
                 _save_artifact(
@@ -2027,7 +2007,7 @@ def run_agent(
             findings.append(
                 finding(
                     "runner.provider-exit",
-                    f"provider {process['status']}, exit={process['exit_code']}",
+                    f"provider {process['status']}, exit={process['exit_code']}: {redact_text(str(process.get('error') or ''))}",
                 )
             )
         # Effective model/tier support requires independent runtime metadata, not provider prose.
@@ -2119,14 +2099,13 @@ def run_agent(
             "cwd": ".",
             "started_at": process["started_at"],
             "finished_at": process["finished_at"],
-            "status": process["status"],
-            "exit_code": process["exit_code"],
+            "status": process["status"] if process["status"] in ENUMS["status"] else "unavailable",
+            "exit_code": process["exit_code"] if process["status"] == "completed" else None,
             "stdout_id": label + ":stdout",
             "stderr_id": label + ":stderr",
             "output_ids": (
-                [response_id]
-                if any(a["artifact_id"] == response_id for a in artifacts)
-                else []
+                ([response_id] if any(a["artifact_id"] == response_id for a in artifacts) else [])
+                + [label + ":protocol"]
             ),
         }
         artifacts.append(
@@ -2227,7 +2206,7 @@ def run_agent(
         "observed_execution": runtime,
         "provider_runtime_validation": (
             "passed"
-            if not any(f["finding_id"] == "runner.runtime-profile" for f in findings)
+            if runtime == app_server.PROFILE and not any(f["finding_id"].startswith(("runner.runtime", "runner.provider", "runner.integrity")) for f in findings)
             else "blocked"
         ),
     }

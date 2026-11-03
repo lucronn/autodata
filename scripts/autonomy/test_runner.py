@@ -63,12 +63,10 @@ class RunnerTests(unittest.TestCase):
             execution=PROFILE,
         )
 
-        self.assertEqual(command[:2], ["codex", "exec"])
-        self.assertIn("--json", command)
-        self.assertIn("--ephemeral", command)
-        self.assertIn("--approve-for-me", command)
-        self.assertIn("--output-schema", command)
-        self.assertEqual(command[-1], "-")
+        self.assertEqual(command, [
+            "codex", "app-server", "--stdio", "--strict-config", "-c", 'model="gpt-6.1-sol"',
+            "-c", 'model_reasoning_effort="medium"', "-c", 'service_tier="fast"',
+            "-c", "features.fast_mode=true"])
 
     def test_unknown_provider_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -233,11 +231,11 @@ class EvidenceSchemaTests(unittest.TestCase):
             execution=PROFILE,
         )
         for argument in (
-            "gpt-6.1-sol",
+            'model="gpt-6.1-sol"',
             'model_reasoning_effort="medium"',
             'service_tier="fast"',
             "features.fast_mode=true",
-            "--ignore-user-config",
+            "--strict-config",
         ):
             self.assertIn(argument, argv)
 
@@ -891,6 +889,7 @@ def make_trusted_repository(root):
         ".autodata-agent-registry.json",
         ".autodata-autonomy-policy.json",
         "scripts/autonomy/runner.py",
+        "scripts/autonomy/app_server_adapter.py",
         "scripts/autonomy/orchestrator.py",
         "scripts/autonomy/pre_implementation.py",
         "scripts/autonomy/validate_run.py",
@@ -1050,25 +1049,9 @@ class TrustBoundaryTests(unittest.TestCase):
 
 
 class IntegrityEdgeTests(unittest.TestCase):
-    def test_conflicting_runtime_profile_cannot_be_hidden_by_later_event(self):
-        earlier = json.dumps({"type": "session_config", "model": "other"})
-        later = json.dumps(
-            {
-                "type": "session_config",
-                "model": "gpt-6.1-sol",
-                "reasoning_effort": "medium",
-                "service_tier": "fast",
-            }
-        )
-        observed = r._runtime_metadata(earlier + "\n" + later)
-        self.assertNotEqual(
-            observed,
-            {
-                "model": "gpt-6.1-sol",
-                "reasoning_effort": "medium",
-                "service_tier": "fast",
-            },
-        )
+    def test_claimed_exec_session_config_does_not_certify_app_server(self):
+        with self.assertRaises(r.app_server.ProtocolError):
+            r.app_server.replay_capture(b'{"type":"session_config","model":"gpt-6.1-sol"}\n',stdout=b'',expected={})
 
     def test_candidate_keeps_canonical_documentation_policy(self):
         with tempfile.TemporaryDirectory() as d:
@@ -1271,3 +1254,99 @@ class IntegrityEdgeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AppServerIntegrationTests(unittest.TestCase):
+    def test_prompt_exposes_empty_architect_assignment_and_exact_gate_assignment(self):
+        self.assertTrue(hasattr(r, "build_agent_prompt"), "explicit assignment prompt missing")
+        from test_app_server_adapter import expected_context
+        envelope={"agent_name":"autodata-architect","gate":None}
+        prompt=r.build_agent_prompt("architect prompt", envelope, [], [], {}, role="architecture")
+        self.assertEqual(json.JSONDecoder().raw_decode(prompt.split("ASSIGNED CHECK IDS:\n")[1])[0], [])
+        self.assertIn('assessments must be exactly []',prompt)
+        envelope["gate"]="security"
+        prompt=r.build_agent_prompt("gate prompt", envelope, [], [], {}, role="verification", check_ids=["security-check"])
+        self.assertEqual(json.JSONDecoder().raw_decode(prompt.split("ASSIGNED CHECK IDS:\n")[1])[0],["security-check"])
+
+    def test_adapter_loaded_bytes_are_frozen_and_protected(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);task,base=make_trusted_repository(root)
+            trusted=r.load_trusted_inputs(root,base,task["task_ref"])
+            self.assertIn("scripts/autonomy/app_server_adapter.py",list(trusted["artifacts"]))
+            changed=root/"scripts/autonomy/app_server_adapter.py"
+            changed.write_text("# replaced adapter\n")
+            subprocess.run(["git","add","."],cwd=root,check=True,capture_output=True)
+            subprocess.run(["git","commit","-m","replace adapter"],cwd=root,check=True,capture_output=True)
+            subject=r._run_git(root,["rev-parse","HEAD"]).strip()
+            report=r.inspect_candidate(root,base,subject,"implementation",["scripts/autonomy/**"],trusted)
+            self.assertTrue(any(x["finding_id"]=="runner.protected-path" for x in report["findings"]))
+
+class CallerSignalTests(unittest.TestCase):
+    def test_sigterm_after_real_turn_ids_preserves_interrupted_manifest_and_cleanup(self):
+        import signal
+        self._check_caller_signal(signal.SIGTERM)
+
+    def test_sigint_after_real_turn_ids_preserves_interrupted_manifest_and_cleanup(self):
+        import signal
+        self._check_caller_signal(signal.SIGINT)
+
+    def _check_caller_signal(self, signum):
+        import inspect
+        import signal
+        import time
+        self.assertIn('progress',inspect.signature(r.app_server.run_app_server).parameters,
+                      'live protocol and caller signal support missing')
+        from test_app_server_adapter import fake_codex
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);repo=root/'repo';repo.mkdir();task,base=make_trusted_repository(repo)
+            bindir=fake_codex(root);output=root/'run'
+            env={**os.environ,'PATH':str(bindir)+os.pathsep+os.environ['PATH'],
+                 'CODEX_HOME':'/tmp/codex-disposable','FAKE_CODEX_MODE':'interrupt',
+                 'PYTHONPATH':str(Path(__file__).parent),'PYTHONDONTWRITEBYTECODE':'1'}
+            script=root/'caller.py'
+            script.write_text('''import json,sys
+from pathlib import Path
+import runner as r
+from test_app_server_adapter import boundary
+repo=Path(sys.argv[1]);output=Path(sys.argv[2]);base=sys.argv[3]
+task=json.loads((repo/'docs/agents/tasks/fixture.json').read_text())
+trusted=r.load_trusted_inputs(repo,base,task['task_ref'])
+r.app_server.validate_boundary=lambda path,cwd,env:boundary(cwd)
+envelope={'run_id':'signal-architect','task_id':task['task_id'],'repository':task['repository'],'base_sha':base,'subject_sha':base,'trusted_base_sha':base,'task_ref':task['task_ref'],'agent_name':'autodata-architect','task_contract':{k:task[k] for k in r.CONTRACT_FIELDS},'allowed_paths':[],'deployment_target':'none','execution':task['execution'],'evidence_label':'architect','response_artifact_id':'architect:response','gate':None}
+r.run_agent(repo,envelope,'local-cli',output,12,trusted=trusted)
+''')
+            caller=subprocess.Popen([sys.executable,str(script),str(repo),str(output),base],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+            try:
+                deadline=time.monotonic()+5;seen=False
+                while time.monotonic()<deadline and caller.poll() is None:
+                    progress=output/'provider-protocol-progress.jsonl'
+                    if progress.exists():
+                        for line in progress.read_text().splitlines():
+                            try:
+                                rec=json.loads(line);frame=json.loads(rec.get('raw','{}'))
+                            except ValueError:continue
+                            if rec.get('direction')=='server' and frame.get('method')=='turn/started':seen=True
+                    if seen:break
+                    time.sleep(.02)
+                if not seen and caller.poll() is not None:
+                    out,err=caller.communicate(timeout=1)
+                    diagnostic=(output/'run-manifest.json').read_text() if (output/'run-manifest.json').exists() else ''
+                    self.fail('no real turn identity observed: '+repr((out,err))+diagnostic)
+                self.assertTrue(seen,'no real turn identity observed')
+                caller.send_signal(signum)
+                stdout,stderr=caller.communicate(timeout=4)
+                self.assertEqual(caller.returncode,0,(stdout,stderr))
+                manifest=json.loads((output/'run-manifest.json').read_text())
+                self.assertEqual(manifest['agent_decision'],'blocked')
+                self.assertEqual(manifest['provider_command']['status'],'unavailable')
+                self.assertEqual(r._command_errors(manifest['provider_command']),[])
+                self.assertEqual(manifest['provider_runtime_validation'],'blocked')
+                self.assertFalse((output/'worktree').exists())
+                protocol=next(x for x in manifest['artifacts'] if x['artifact_id']=='architect:protocol')
+                records=[json.loads(x) for x in (output/protocol['ref']).read_text().splitlines()]
+                self.assertEqual(records[-1]['status'],'interrupted')
+                with self.assertRaises(ProcessLookupError):os.kill(records[0]['process_id'],0)
+                self.assertTrue(any(x.get('direction')=='client' and json.loads(x['raw']).get('method')=='turn/interrupt' for x in records))
+            finally:
+                if caller.poll() is None:os.killpg(caller.pid,signal.SIGKILL)
+                caller.communicate(timeout=3)

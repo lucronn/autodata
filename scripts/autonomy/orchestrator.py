@@ -90,7 +90,7 @@ def validate_verification_contract(task: dict, trusted: dict) -> list[str]:
         ids += [
             label + ":" + suffix
             for label in ("architect", "builder", *GATE_AGENTS)
-            for suffix in ("stdout", "stderr", "invocation")
+            for suffix in ("stdout", "stderr", "invocation", "protocol")
         ]
         ids += [r.trusted_artifact_id(path) for path in trusted.get("artifacts", {})]
         ids += [
@@ -164,7 +164,7 @@ def required_slots(trusted: dict) -> set[str]:
     result.update(
         label + ":" + suffix
         for label in ("architect", "builder", *GATE_AGENTS)
-        for suffix in ("stdout", "stderr", "invocation")
+        for suffix in ("stdout", "stderr", "invocation", "protocol")
     )
     result.add("candidate:changes")
     for c in v["checks"]:
@@ -418,19 +418,9 @@ def _measure_bundle(
         ):
             errors.append(label + ": runner result is unusable/stale")
         argv = run.get("provider_argv", [])
-        # Regenerate using the retained command's own paths, checking all profile flags and no conflicting duplicates.
-        try:
-            actual = r.build_provider_command(
-                "local-cli",
-                Path(argv[argv.index("-C") + 1]),
-                Path(argv[argv.index("-o") + 1]),
-                Path(argv[argv.index("--output-schema") + 1]),
-                execution=trusted["task"]["execution"],
-            )
-            if argv != actual:
-                errors.append("provider argv differs from exact execution profile")
-        except (ValueError, IndexError, TypeError):
-            errors.append("invalid provider argv")
+        # Exact argv is only invocation integrity, never runtime profile proof.
+        if argv != r.app_server.provider_argv():
+            errors.append("provider argv differs from exact execution profile")
         try:
             invocation = _json_artifact(by_id, label + ":invocation", evidence_root)
             errors.extend(r._command_errors(invocation))
@@ -447,13 +437,14 @@ def _measure_bundle(
             if (
                 invocation["stdout_id"] != label + ":stdout"
                 or invocation["stderr_id"] != label + ":stderr"
-                or invocation["output_ids"] != [aid]
+                or invocation["output_ids"] != [aid, label + ":protocol"]
             ):
                 errors.append("provider invocation evidence identity mismatch")
             for pid, kind in (
                 (label + ":invocation", "command-result"),
                 (label + ":stdout", "stdout"),
                 (label + ":stderr", "stderr"),
+                (label + ":protocol", "stdout"),
             ):
                 if (
                     by_id[pid]["subject_sha"] != wanted_subject
@@ -464,23 +455,57 @@ def _measure_bundle(
         except (OSError, ValueError, KeyError, r.RunnerError) as error:
             errors.append("provider invocation: " + str(error))
         try:
-            stdout_id = label + ":stdout"
-            stdout = by_id[stdout_id]
+            stdout = by_id[label + ":stdout"]
+            protocol = by_id[label + ":protocol"]
             errors.extend(r.validate_artifact(stdout, evidence_root))
-            runtime = r._runtime_metadata(
-                r._regular_bytes(evidence_root, stdout["ref"]).decode()
-            )
-            if runtime.get("service_tier") == "priority":
-                runtime["service_tier"] = "fast"
-            if runtime != {
-                "model": "gpt-6.1-sol",
-                "reasoning_effort": "medium",
-                "service_tier": "fast",
-            }:
-                errors.append("provider runtime profile is unconfirmed")
+            errors.extend(r.validate_artifact(protocol, evidence_root))
+            protocol_bytes = r._regular_bytes(evidence_root, protocol["ref"])
+            capture = r.app_server.capture_context(protocol_bytes)
+            cwd, home = capture["cwd"], capture["codex_home"]
+            if (type(cwd) is not str or not Path(cwd).is_absolute() or
+                Path(cwd).name != "worktree" or Path(cwd).parent.name != label or
+                type(home) is not str or not Path(home).is_absolute()):
+                raise r.RunnerError("invalid isolated runtime paths")
+            initial_subject = base if label in ("architect", "builder") else subject
+            envelope = {
+                "run_id": manifest["run_id"] + "-" + label,
+                "task_id": trusted["task"]["task_id"], "repository": trusted["task"]["repository"],
+                "base_sha": initial_subject, "subject_sha": initial_subject,
+                "trusted_base_sha": base, "task_ref": trusted["task"]["task_ref"],
+                "agent_name": agent, "task_contract": {k: trusted["task"][k] for k in CONTRACT_FIELDS},
+                "allowed_paths": trusted["task"]["allowed_paths"] if label == "builder" else [],
+                "deployment_target": "none", "execution": trusted["task"]["execution"],
+                "evidence_label": label, "response_artifact_id": aid,
+                "gate": label if label in GATE_AGENTS else None,
+            }
+            # Rebuild the prompt from frozen inputs and actual retained check bytes,
+            # preserving the producer's deterministic stdout/stderr/output/command order.
+            prompt_artifacts = []
+            prompt_commands = []
+            for check in checks:
+                cid = check["check_id"]
+                prompt_artifacts.extend(by_id[cid + ":" + suffix] for suffix in ("stdout", "stderr"))
+                prompt_artifacts.extend(by_id[x["artifact_id"]] for x in check["outputs"])
+                prompt_artifacts.append(by_id[cid + ":command"])
+                prompt_commands.append(_json_artifact(by_id, cid + ":command", evidence_root))
+            logs = {a["artifact_id"]: r._regular_bytes(evidence_root, a["ref"])
+                    for a in prompt_artifacts if a["kind"] in ("stdout", "stderr")}
+            role = r._registry_agent(trusted["registry"], agent)["role"]
+            prompt = r.build_agent_prompt(trusted["prompts"][agent], envelope, prompt_commands,
+                                         prompt_artifacts, logs, role=role,
+                                         check_ids=[c["check_id"] for c in checks])
+            expected_runtime = r.runtime_expected(envelope, prompt, trusted["schema"], cwd, home)
+            replay = r.app_server.replay_capture(protocol_bytes,
+                                                 stdout=r._regular_bytes(evidence_root, stdout["ref"]),
+                                                 expected=expected_runtime)
+            runtime = replay["profile"]
+            if runtime != run.get("observed_execution"):
+                errors.append("observed execution differs from protocol replay")
+            if replay["response_text"].encode() != r._regular_bytes(evidence_root, by_id[aid]["ref"]):
+                errors.append("provider response differs from completed protocol item")
             if run.get("provider_runtime_validation") != "passed":
                 errors.append("provider runtime certification blocked")
-        except (KeyError, OSError, ValueError, r.RunnerError) as error:
+        except (KeyError, OSError, ValueError, TypeError, r.RunnerError) as error:
             errors.append("runtime evidence: " + str(error))
         actual_commands = run.get("commands_run", [])
         if len(actual_commands) != len(checks):

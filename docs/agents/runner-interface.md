@@ -90,7 +90,7 @@ The repository's `autonomous-verification.yml` workflow validates the determinis
 
 ## Local CLI provider binding
 
-The checked-in `scripts/autonomy/runner.py` is the first provider adapter. It invokes the installed local agent CLI in non-interactive JSON mode with an ephemeral session and a workspace-write sandbox. It does not invoke GitHub, deployment, or cloud commands from the provider process. The runner creates the worktree and removes it itself; the provider can only leave evidence in the external run directory and local commits in its isolated worktree.
+The checked-in `scripts/autonomy/runner.py` is the first provider adapter. It invokes the installed Codex 0.162.1 stdio app-server through the bounded `app_server_adapter.py`, with one ephemeral thread and one turn. Real execution requires the protected disposable-container boundary described below. Approval policy is `never`; `danger-full-access` is used only inside that verified disposable OS boundary. It does not invoke GitHub, deployment, or cloud commands from the provider process. The runner creates the worktree and removes it itself; the provider can only leave evidence in the external run directory and local commits in its isolated worktree.
 
 Example future local execution, after replacing the placeholders with intentional values:
 
@@ -158,3 +158,93 @@ standard Docker unrestricted outbound networking. The coordinator prepares the
 scratch launch; no repository launcher or host execution fallback is added.
 Current source/data-quality measurement is synthetic only and cannot be relabeled
 as authenticated staging or production acceptance.
+
+
+## Configured execution proof through app-server
+
+The local-cli adapter requires exactly `codex-cli 0.162.1`; it never connects to
+an existing daemon or retries with another model. Its actual protocol sequence
+is `initialize`, `initialized`, paginated `model/list`, `thread/start`, and one
+`turn/start`. Catalog discovery must exhaust within 16 pages/1600 entries and
+advertise one exact `gpt-6.1-sol`, medium reasoning and the `priority` service
+tier. The resolved thread response must confirm that model, provider `openai`,
+reasoning `medium`, tier `priority`, isolated cwd and selected permissions.
+No turn-level model/effort/tier/settings overrides or reroutes are accepted.
+
+The turn receives the frozen v2 output schema and a prompt naming the exact
+role and assigned check IDs. Architecture/planning/implementation return
+`assessments: []`; verification assesses exactly its assigned IDs. The full
+contract check inventory is downstream work, not permission to invent checks.
+The architect must return the frozen contract unchanged and express blockers
+through findings. Ordinary userMessage start/completed events must match the
+supplied input and never count as the provider response.
+
+One completed agentMessage supplies the strict JSON response; commentary and
+streaming deltas are never concatenated or repaired. The matching thread/turn
+must complete without error and the server must exit 0. Missing/conflicting
+metadata, unknown notifications, approvals, interrupted turns, ambiguous answers
+and unavailable supported settings block. Unexpected command/file approval
+requests receive `cancel`; other server requests receive method-not-found.
+The adapter never executes those request payloads or grants host approval.
+
+Each invocation retains raw server stdout/stderr, the provider response and
+`<label>:protocol` (existing artifact kind `stdout`) in addition to its command
+record. The protocol capture contains an explicitly runner-owned adapter header,
+actual client/server JSON lines with sequence numbers, and an exit footer.
+It never fabricates `session_config`. Header metadata binds the invocation,
+version, initial candidate, prompt/schema hashes, worktree and nonsecret
+supervisor boundary. Builder commits retain the existing initial-to-final
+candidate rules. Runner and orchestrator independently replay protocol ordering,
+profile, identities and completion; raw server frames must exactly reproduce
+retained stdout, and the selected response must exactly reproduce the response
+artifact. A claimed observed_execution or passed flag cannot replace replay.
+The adapter source itself is snapshotted, byte-checked against trusted_base_sha
+and protected from candidate replacement.
+
+While running, `provider-protocol-progress.jsonl` in each agent run directory
+flushes sanitized actual header/frame records for coordinator observation. This
+diagnostic file is outside the provider worktree; final retained protocol
+artifacts supply certification evidence. The coordinator can observe an actual
+turn ID and signal the runner without inventing an event. SIGINT/SIGTERM trigger
+bounded interruption, process-group termination/reaping and a retained blocked
+manifest. The footer records the actual interrupted transport and OS exit;
+existing v2 command records use `unavailable`/null exit for incomplete operations,
+without adding new schema enum values.
+
+The single invocation deadline includes version discovery, handshake, catalog
+and inference, with three seconds reserved for cleanup. Provider timeout accepts
+4..1800 seconds; real trials use 120 seconds/provider and 400 seconds outer
+bounds. Limits are 1 MiB/frame and prompt+schema, 4 MiB each for stdout, stderr
+and client bytes, 12 MiB for capture, and 10,000 frames. Both output streams and
+stdin are handled without blocking. On interruption/failure the adapter attempts
+one real `turn/interrupt` when IDs are known, then terminates/kills and reaps the
+whole process group. No second inference repairs an incomplete run.
+
+The fixed proof `/run/autodata/runtime-boundary.json` must be a root-owned
+regular file without symlink aliases or group/world write, on a read-only mount;
+the workload must be non-root. Its version-1 fields are `purpose:
+r0-disposable-provider`, `network_policy:
+standard-docker-bridge-unrestricted-outbound`, false
+`github_credentials_or_integrations`, `bank_credentials_or_integrations` and
+`production_credentials_or_integrations`, `codex_auth_delivery:
+authorized-readonly-file`, the nonsecret `codex_auth_mount` destination,
+`worktree_root`, `output_root`, `codex_home` and actual `mnt`/`net`/`pid` namespace
+identities under `namespaces`. The runtime checks namespace and path bindings.
+CODEX_HOME is used when already supplied; otherwise normal HOME/.codex discovery
+is preserved without overriding either environment variable. Authentication
+contents are never inspected, copied or printed by this adapter.
+
+The coordinator's inspected scratch container specification supplies the actual
+boundary; a marker does not create isolation. It has no host sockets or
+GitHub/bank/production credentials/integrations, but standard Docker outbound
+networking is unrestricted and the authorized read-only Codex authentication
+mount is explicitly recorded. PATH guards and filtered environment remain
+defense in depth. Missing/unverifiable proof blocks before spawning Codex;
+ordinary-host provider execution has no fallback. Offline pure replay and
+fake-process tests require no provider or credentials.
+
+Certification establishes resolved runtime model/effort/Fast request settings.
+The upstream served or billed tier remains unobserved and is never claimed.
+Historical failed runs stay unchanged. Real certification remains blocked until
+independent exact-SHA promotion and coordinator-only bounded real trials; passing
+fake-process tests does not certify a real provider or authenticated staging.

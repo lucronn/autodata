@@ -144,85 +144,16 @@ class FullChainV2Tests(unittest.TestCase):
             )
             base = r._run_git(root, ["rev-parse", "HEAD"]).strip()
             trusted = r.load_trusted_inputs(root, base, task["task_ref"])
-        envelopes = []
-
-        def process(argv, cwd, env, timeout, stdin=b""):
-            if argv[0] != "codex":
-                return original(argv, cwd, env, timeout, stdin)
-            envelope = json.loads((cwd.parent / "task-envelope.json").read_text())
-            envelopes.append(envelope)
-            if unavailable and envelope.get("gate") == "security":
-                return {
-                    "started_at": r.utc_now(),
-                    "finished_at": r.utc_now(),
-                    "status": "unavailable",
-                    "exit_code": None,
-                    "stdout": b"",
-                    "stderr": b"fixture unavailable",
-                    "output_budget_exhausted": False,
-                }
-            if envelope["agent_name"] == task["builder_agent"]:
-                import subprocess
-
-                (cwd / "app.txt").write_text("after")
-                subprocess.run(
-                    ["git", "add", "app.txt"], cwd=cwd, check=True, capture_output=True
-                )
-                subprocess.run(
-                    ["git", "commit", "-m", "fixture implementation"],
-                    cwd=cwd,
-                    check=True,
-                    capture_output=True,
-                )
-            subject = r._run_git(cwd, ["rev-parse", "HEAD"]).strip()
-            checks = [
-                c
-                for c in task["verification"]["checks"]
-                if c["gate"] == envelope.get("gate")
-            ]
-            assessments = [
-                {
-                    "check_id": c["check_id"],
-                    "decision": "pass",
-                    "evidence_ids": [c["check_id"] + ":command"],
-                    "explanation": "assessed retained actual report",
-                }
-                for c in checks
-            ]
-            response = {
-                "schema_version": 2,
-                "run_id": envelope["run_id"],
-                "task_id": task["task_id"],
-                "agent_name": envelope["agent_name"],
-                "subject_sha": subject,
-                "decision": "pass",
-                "summary": "test-only fake provider",
-                "task_contract": (
-                    envelope["task_contract"]
-                    if envelope["agent_name"] == "autodata-architect"
-                    else None
-                ),
-                "findings": [],
-                "assessments": assessments,
-                "evidence_ids": [],
-            }
-            if malformed and envelope.get("gate") == "security":
-                response["findings"] = None
-            Path(argv[argv.index("-o") + 1]).write_text(json.dumps(response))
-            return {
-                "started_at": r.utc_now(),
-                "finished_at": r.utc_now(),
-                "status": "completed",
-                "exit_code": 0,
-                "stdout": b'{"type":"session_config","model":"gpt-6.1-sol","reasoning_effort":"medium","service_tier":"priority"}\n',
-                "stderr": b"",
-                "output_budget_exhausted": False,
-            }
-
-        output = directory / "bundle"
-        with patch("runner.bounded_process", process):
-            code, path = o.orchestrate_task(root, task, "local-cli", output, 5)
-        return code, path, trusted, envelopes
+        from test_app_server_adapter import fake_codex, boundary
+        from unittest.mock import patch
+        import app_server_adapter as adapter
+        bindir=fake_codex(directory)
+        output=directory/"bundle"
+        mode="unavailable-security" if unavailable else "malformed" if malformed else "success"
+        with patch.dict(os.environ, {"PATH":str(bindir)+os.pathsep+os.environ["PATH"], "CODEX_HOME":"/tmp/codex-disposable", "FAKE_CODEX_MODE":mode}), patch.object(adapter,"validate_boundary",side_effect=lambda path, cwd, env: boundary(cwd)):
+            code,path=o.orchestrate_task(root,task,"local-cli",output,6)
+        envelopes=[json.loads(p.read_text()) for p in sorted(output.glob("agents/*/task-envelope.json"))]
+        return code,path,trusted,envelopes
 
     def test_real_checks_fake_provider_complete_bundle_and_replay_tampering(self):
         with tempfile.TemporaryDirectory() as d:
@@ -365,3 +296,53 @@ class FullChainV2Tests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class AppServerReplayTests(FullChainV2Tests):
+    # Do not inherit the parent's tests a second time; only reuse its fixture helper.
+    test_real_checks_fake_provider_complete_bundle_and_replay_tampering = None
+    test_malformed_provider_record_retains_blocked_complete_bundle = None
+    test_real_failed_check_cannot_be_overridden_by_fake_provider_pass = None
+    test_unavailable_provider_keeps_successful_actual_command_records = None
+
+    def test_self_consistent_hashes_cannot_hide_protocol_or_observation_tampering(self):
+        with tempfile.TemporaryDirectory() as d:
+            code,path,trusted,_=self.run_fixture(Path(d))
+            self.assertEqual(code,0)
+            final=json.loads(path.read_text())
+            by_id={x['artifact_id']:x for x in final['artifacts']}
+            protocol_path=path.parent/by_id['architect:protocol']['ref']
+            stdout_path=path.parent/by_id['architect:stdout']['ref']
+            original_protocol=protocol_path.read_bytes();original_stdout=stdout_path.read_bytes()
+            def refresh(value,aid,data):
+                if isinstance(value,dict):
+                    if value.get('artifact_id')==aid:
+                        value['sha256']=hashlib.sha256(data).hexdigest();value['size_bytes']=len(data)
+                    for child in value.values():refresh(child,aid,data)
+                elif isinstance(value,list):
+                    for child in value:refresh(child,aid,data)
+            for mode in ['prompt-hash','candidate','version','client-override','catalog','resolved','foreign-turn','observed','sequence']:
+                with self.subTest(mode=mode):
+                    bad=copy.deepcopy(final);records=[json.loads(x) for x in original_protocol.splitlines()]
+                    if mode=='prompt-hash':records[0]['context']['prompt_sha256']='0'*64
+                    elif mode=='candidate':records[0]['context']['subject_sha']='f'*40
+                    elif mode=='version':records[0]['cli_version']='codex-cli 0.162.0'
+                    elif mode=='observed':bad['agent_runs']['architect']['observed_execution']['model']='other'
+                    elif mode=='sequence':records[1]['seq']=2
+                    else:
+                        for rec in records[1:-1]:
+                            frame=json.loads(rec['raw'])
+                            if mode=='client-override' and frame.get('method')=='turn/start':frame['params']['effort']='high'
+                            elif mode=='catalog' and frame.get('id')==2 and 'result' in frame:frame['result']['data'][0]['serviceTiers']=[]
+                            elif mode=='resolved' and frame.get('id')==3 and 'result' in frame:frame['result']['model']='other'
+                            elif mode=='foreign-turn' and frame.get('method')=='turn/completed':frame['params']['turn']['id']='foreign'
+                            rec['raw']=json.dumps(frame)+'\n'
+                    changed=('\n'.join(json.dumps(x) for x in records)+'\n').encode()
+                    changed_stdout=''.join(x['raw'] for x in records[1:-1] if x['direction']=='server').encode()
+                    protocol_path.write_bytes(changed);stdout_path.write_bytes(changed_stdout)
+                    refresh(bad,'architect:protocol',changed);refresh(bad,'architect:stdout',changed_stdout)
+                    try:
+                        result=o.validate_evidence_bundle(bad,trusted,path.parent)
+                        self.assertFalse(result['passed'],mode)
+                        self.assertTrue(any('runtime evidence' in x or 'observed execution' in x for x in result['failures']),result)
+                    finally:
+                        protocol_path.write_bytes(original_protocol);stdout_path.write_bytes(original_stdout)
