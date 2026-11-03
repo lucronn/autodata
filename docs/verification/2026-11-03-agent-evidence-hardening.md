@@ -164,3 +164,11 @@ A separate offline namespace probe fails under current restrictions; this does
 not authorize privilege changes or prove the danger-full-access fixture needs
 nested sandboxing. Any further warning is retained and blocked. Genuine-unavailable
 and interrupted-provider trials remain separate outstanding requirements.
+
+## Packaging result and disabled-notification follow-up
+
+Packaging checkpoint `31d1582d0b805f870e6fa42f9c812f7396d11c82` passed preflight with zero errors. Scratch image `autodata-runtime-fixture:codex-0.162.1-nonroot-bwrap` is `sha256:3348a8a15a76e1fe91baae8a3d7ebe124979edbb2f0aeb142a66021848b469ca`. Offline nonroot/no-network checks confirm Debian bubblewrap0.8.0-2+deb12u1, `/usr/bin/bwrap`, and Codex0.162.1, with unchanged read-only/no-added-capability/no-new-privileges settings. Logs and original Dockerfile are retained under `/tmp/autodata-runtime-container-v2`.
+
+The single authorized packaging retry is retained at `/tmp/autodata-appserver-success-x0bqiuyu`, including coordinator-summary.json and all original runtime artifacts. The missing-package warning cleared, but the strict reducer rejected official `remoteControl/status/changed` reporting disabled/null environment immediately after initialize. Only client initialize was written; no model discovery/thread/inference/builder occurred. Orchestration returned20. Runtime certification remains blocked.
+
+The [narrow disabled-notification plan](../superpowers/plans/2026-11-03-runtime-disabled-notification.md) passed independent planning review against pinned source and the actual frame. It adds a dedicated single snapshot transition, not a generic allowlist; all other states/warnings remain blocked. Fresh synchronized implementation gate, three-file implementation, independent exact-SHA review and a separately checkpointed single coordinator retry remain required. No upstream served/billed tier is observed.

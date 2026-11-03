@@ -1,0 +1,70 @@
+{
+  "task_id": "production-release-r0-runtime-disabled-notification",
+  "repository": "lucronn/autodata",
+  "goal": "Accept the one source-defined Codex0.162.1 disabled remote-control startup snapshot while preserving exact requested execution, strict replay and rejection of active or unsupported states.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "scripts/autonomy/app_server_adapter.py",
+    "scripts/autonomy/test_app_server_adapter.py",
+    "docs/agents/runner-interface.md"
+  ],
+  "bounded_contexts": [
+    "pinned app-server disabled startup snapshot"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-runtime-disabled-notification.md",
+    "docs/superpowers/plans/2026-11-03-app-server-runtime-contract.md"
+  ],
+  "outputs": [
+    "scripts/autonomy/app_server_adapter.py",
+    "scripts/autonomy/test_app_server_adapter.py",
+    "docs/agents/runner-interface.md"
+  ],
+  "acceptance_tests": [
+    "Exactly one source-shaped disabled/null-environment snapshot after validated initialize enables model discovery behind initialized.",
+    "Missing/early/repeated/malformed/active/unknown remote-control events block; missing or invalid startup sends no model/thread/turn calls.",
+    "All existing profile/ordering/root-binding/cancellation/strict raw transcript/gate tests remain meaningful and pass.",
+    "Only the three authorized files change and exact-SHA independent review passes; no provider calls during implementation."
+  ],
+  "forbidden_scope": [
+    "Changing model/reasoning/tier or silent fallback",
+    "Generic INFO allowlisting, warning/unknown suppression or relaxed schema/gates",
+    "Changing container privileges/configuration/authentication or remote-control RPCs",
+    "Provider/bank/production calls during implementation or review",
+    "Edits outside exact three paths"
+  ],
+  "compatibility": {
+    "api": "Caller interfaces unchanged; one pinned official startup event validated.",
+    "events": "Retain raw actual frames and bind existing protocol proof; no synthetic events.",
+    "schema": "No changes."
+  },
+  "pre_implementation": {
+    "goal": "Accept the one source-defined Codex0.162.1 disabled remote-control startup snapshot while preserving exact requested execution, strict replay and rejection of active or unsupported states.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-runtime-disabled-notification.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/runner-interface.md",
+      "docs/verification/2026-11-03-agent-evidence-hardening.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Synchronize the approved three-file plan, actual blocked startup evidence, Issue186/Project8/canonical docs and task record; commit and pass exact-base preflight before implementation.",
+      "Add failing actual-shaped startup and missing/active/malformed/repeated snapshot regressions, then implement the dedicated single snapshot transition and model-discovery barrier.",
+      "Update the shared fake process/golden fixtures and documentation without changing caller interfaces, profile, gates, unknown/warning rejection or container privileges.",
+      "Run focused/unchanged integration/full autonomy suites at an immutable candidate, verify exact three-file scope and obtain independent exact-SHA review.",
+      "After promotion, commit a fresh trial checkpoint and run only one bounded coordinator success retry; retain all actual failures and keep runtime/release unverified unless full evidence passes."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T11:20:14.704971+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

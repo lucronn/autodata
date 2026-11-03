@@ -211,3 +211,7 @@ The coordinator owns synchronization and the fresh pinned base; no implementatio
 Architecture is fixed by this plan: single stdio adapter, configured-setting certification, catalog priority support, no profile overrides, one completed bound turn, strict replay, container-only execution and no host approvals. No provider availability or upstream-served-tier evidence is promised.
 
 Remaining prerequisites are committed-base preflight, independent exact-SHA promotion after implementation, and coordinator-provided non-root disposable boundary attestation matching the contract above. The coordinator owns the expressly scoped scratch staging above; no repository launcher change is part of implementation. Actual trials still require independently promoted adapter code and a verified boundary. This planning checkpoint runs no provider.
+
+## Source-supported startup amendment
+
+The original strict implementation correctly rejected the subsequently observed official disabled remote-control startup snapshot. The [separate reviewed amendment](2026-11-03-runtime-disabled-notification.md) supersedes only the initial initialize-to-discovery transition after its own committed-base gate and independent implementation promotion. It requires one exact-shaped disabled/null-environment snapshot and keeps every other profile, protocol, scope, warning and container restriction. Earlier failures remain unchanged; no broad notification allowlist is authorized.
