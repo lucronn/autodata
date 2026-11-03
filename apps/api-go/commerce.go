@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const maxCommerceResponseBytes = 1 << 20
@@ -68,15 +69,15 @@ type commerceOrder struct {
 	RetryDisposition string `json:"retry_disposition"`
 }
 type commerceLibraryItem struct {
-	LibraryItemID    string `json:"library_item_id"`
-	ConfigurationID  string `json:"configuration_id"`
-	Region           string `json:"region"`
-	Label            string `json:"label"`
-	AccessState      string `json:"access_state"`
-	GrantedAt        string `json:"granted_at"`
-	RevokedAt        string `json:"revoked_at,omitempty"`
-	DatasetID        string `json:"dataset_id,omitempty"`
-	ContentErrorCode string `json:"content_error_code,omitempty"`
+	LibraryItemID    string  `json:"library_item_id"`
+	ConfigurationID  string  `json:"configuration_id"`
+	Region           string  `json:"region"`
+	Label            string  `json:"label"`
+	AccessState      string  `json:"access_state"`
+	GrantedAt        *string `json:"granted_at"`
+	RevokedAt        string  `json:"revoked_at,omitempty"`
+	DatasetID        string  `json:"dataset_id,omitempty"`
+	ContentErrorCode string  `json:"content_error_code,omitempty"`
 }
 type commerceLibrary struct {
 	Version    string                `json:"version"`
@@ -94,10 +95,14 @@ func commerceRegion(v string) bool {
 	return len(v) == 2 && v[0] >= 'A' && v[0] <= 'Z' && v[1] >= 'A' && v[1] <= 'Z'
 }
 func commerceTime(v string) bool {
-	_, err := time.Parse(time.RFC3339, v)
-	return err == nil && strings.HasSuffix(v, "Z")
+	parsed, err := time.Parse(time.RFC3339, v)
+	_, offset := parsed.Zone()
+	return err == nil && offset == 0 && (strings.HasSuffix(v, "Z") || strings.HasSuffix(v, "+00:00"))
 }
 func commerceHostedURL(v string) bool {
+	if strings.IndexFunc(v, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
+		return false
+	}
 	u, e := url.Parse(v)
 	return e == nil && u.Scheme == "https" && u.Host == "checkout.stripe.com" && u.User == nil && strings.HasPrefix(u.Path, "/c/pay/")
 }
@@ -170,8 +175,18 @@ func commercePublicResult(operation string, status int, body []byte, input map[s
 		if status != 200 || json.Unmarshal(body, &v) != nil || v.Version != "v1" || v.Items == nil || len(v.Items) > input["limit"].(int) || (v.NextCursor != nil && len(*v.NextCursor) > 2048) {
 			return nil, false
 		}
-		for _, item := range v.Items {
-			if !commerceUUID(item.LibraryItemID) || !commerceScopeValid(item.ConfigurationID, item.Region) || len(item.Label) > 1024 || !commerceTime(item.GrantedAt) || (item.RevokedAt != "" && !commerceTime(item.RevokedAt)) || (item.DatasetID != "" && !commerceUUID(item.DatasetID)) {
+		var fields struct {
+			NextCursor json.RawMessage              `json:"next_cursor"`
+			Items      []map[string]json.RawMessage `json:"items"`
+		}
+		if json.Unmarshal(body, &fields) != nil || len(fields.NextCursor) == 0 {
+			return nil, false
+		}
+		for index, item := range v.Items {
+			if len(fields.Items[index]["granted_at"]) == 0 {
+				return nil, false
+			}
+			if !commerceUUID(item.LibraryItemID) || !commerceScopeValid(item.ConfigurationID, item.Region) || len(item.Label) > 1024 || (item.GrantedAt == nil && item.AccessState != "revoked") || (item.GrantedAt != nil && !commerceTime(*item.GrantedAt)) || (item.RevokedAt != "" && !commerceTime(item.RevokedAt)) || (item.DatasetID != "" && !commerceUUID(item.DatasetID)) {
 				return nil, false
 			}
 			switch item.AccessState {

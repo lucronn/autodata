@@ -206,3 +206,40 @@ func TestCommerceRejectsDuplicateCheckoutAuthorityHeaders(t *testing.T) {
 		})
 	}
 }
+
+func TestCommerceLibraryTruthfulRevocationAndUTCTime(t *testing.T) {
+	for _, tc := range []struct {
+		name, state, time string
+		want              int
+	}{{"ungranted revoked", "revoked", "null", 200}, {"paid needs grant", "paid", "null", 503}, {"viewable needs grant", "viewable", "null", 503}, {"preparing needs grant", "preparing", "null", 503}, {"granted UTC offset", "paid", `"2026-11-03T20:00:00+00:00"`, 200}, {"granted UTC Z", "viewable", `"2026-11-03T20:00:00Z"`, 200}, {"non UTC denied", "paid", `"2026-11-03T20:00:00+01:00"`, 503}} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, cookie, _ := commerceTestAPI(t, commerceFixture(func(context.Context, string, []byte, string) (int, []byte, error) {
+				return 200, []byte(`{"version":"v1","items":[{"library_item_id":"` + commerceOrderID + `","configuration_id":"` + commerceConfigID + `","region":"US","label":"Vehicle","access_state":"` + tc.state + `","granted_at":` + tc.time + `}],"next_cursor":null}`), nil
+			}))
+			w := customerHTTP(t, s.Handler(), "GET", "/v1/workshop/library", "", nil, cookie)
+			if w.Code != tc.want {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			if tc.state == "revoked" && w.Code == 200 && !strings.Contains(w.Body.String(), `"granted_at":null`) {
+				t.Fatal("invented grant time", w.Body.String())
+			}
+		})
+	}
+}
+func TestCommerceHostedURLRejectsWhitespaceAndControls(t *testing.T) {
+	for _, u := range []string{"https://checkout.stripe.com/c/pay/cs test", "https://checkout.stripe.com/c/pay/cs_test#opaque space", "https://checkout.stripe.com:443/c/pay/cs_test", "https://user@checkout.stripe.com/c/pay/cs_test", "https://checkout.stripe.com/c/pay/cs_test\n"} {
+		if commerceHostedURL(u) {
+			t.Error("unsafe provider URL accepted", u)
+		}
+	}
+}
+
+func TestCommerceLibraryRejectsMissingRequiredNullableFields(t *testing.T) {
+	for _, body := range []string{`{"version":"v1","items":[]}`, `{"version":"v1","items":[{"library_item_id":"` + commerceOrderID + `","configuration_id":"` + commerceConfigID + `","region":"US","label":"Vehicle","access_state":"revoked"}],"next_cursor":null}`} {
+		s, cookie, _ := commerceTestAPI(t, commerceFixture(func(context.Context, string, []byte, string) (int, []byte, error) { return 200, []byte(body), nil }))
+		w := customerHTTP(t, s.Handler(), "GET", "/v1/workshop/library", "", nil, cookie)
+		if w.Code != 503 {
+			t.Fatal("missing nullable field accepted", w.Code, w.Body.String())
+		}
+	}
+}

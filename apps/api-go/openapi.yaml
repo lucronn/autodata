@@ -1083,7 +1083,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '404':
           description: Unknown configuration or owner-scoped order.
           headers:
@@ -1095,7 +1095,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '503':
           description: Commerce or authentication dependency unavailable; safe retryable
             error.
@@ -1108,7 +1108,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
       parameters:
       - name: configuration_id
         in: query
@@ -1185,7 +1185,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '401':
           description: Verified customer session required.
           headers:
@@ -1197,7 +1197,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '403':
           description: Origin/CSRF rejected, account blocked or entitlement revoked.
           headers:
@@ -1209,7 +1209,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '404':
           description: Unknown configuration or owner-scoped order.
           headers:
@@ -1221,7 +1221,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '409':
           description: Idempotency/terms/payment conflict.
           headers:
@@ -1233,7 +1233,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '413':
           description: Request exceeds the body limit.
           headers:
@@ -1245,7 +1245,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '415':
           description: JSON content type required.
           headers:
@@ -1257,7 +1257,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '503':
           description: Commerce or authentication dependency unavailable; safe retryable
             error.
@@ -1270,7 +1270,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
       parameters:
       - name: Idempotency-Key
         in: header
@@ -1330,7 +1330,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '401':
           description: Verified customer session required.
           headers:
@@ -1342,7 +1342,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '403':
           description: Origin/CSRF rejected, account blocked or entitlement revoked.
           headers:
@@ -1354,7 +1354,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '404':
           description: Unknown configuration or owner-scoped order.
           headers:
@@ -1366,7 +1366,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '503':
           description: Commerce or authentication dependency unavailable; safe retryable
             error.
@@ -1379,7 +1379,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
       parameters:
       - name: order_id
         in: path
@@ -1421,7 +1421,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '401':
           description: Verified customer session required.
           headers:
@@ -1433,7 +1433,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '403':
           description: Origin/CSRF rejected, account blocked or entitlement revoked.
           headers:
@@ -1445,7 +1445,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '503':
           description: Commerce or authentication dependency unavailable; safe retryable
             error.
@@ -1458,7 +1458,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
       parameters:
       - name: cursor
         in: query
@@ -1507,7 +1507,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '413':
           description: Request exceeds the body limit.
           headers:
@@ -1519,7 +1519,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
         '503':
           description: Commerce or authentication dependency unavailable; safe retryable
             error.
@@ -1532,7 +1532,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIError'
+                $ref: '#/components/schemas/CommerceAPIError'
       parameters:
       - name: Stripe-Signature
         in: header
@@ -2368,7 +2368,9 @@ components:
         granted_at:
           type: string
           format: date-time
-          description: RFC3339 UTC timestamp.
+          description: Actual RFC3339 UTC grant time. Null only for a revoked order
+            that never received an entitlement; no synthetic grant time.
+          nullable: true
         revoked_at:
           type: string
           format: date-time
@@ -2393,6 +2395,28 @@ components:
       description: Permanent account ownership with current source readiness. No normal
         grant expiry. Revoked tombstones remain visible; viewable does not promise
         all articles are complete.
+      oneOf:
+      - properties:
+          access_state:
+            type: string
+            enum:
+            - revoked
+        required:
+        - access_state
+      - properties:
+          access_state:
+            type: string
+            enum:
+            - paid
+            - preparing
+            - viewable
+          granted_at:
+            type: string
+            format: date-time
+            nullable: false
+        required:
+        - access_state
+        - granted_at
     WorkshopLibrary:
       type: object
       additionalProperties: false
@@ -2427,6 +2451,58 @@ components:
           - ignored
       required:
       - status
+    CommerceAPIError:
+      type: object
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          - request_id
+          - retryable
+          - details
+          properties:
+            code:
+              type: string
+              enum:
+              - UNAUTHENTICATED
+              - FORBIDDEN
+              - AUTHENTICATION_UNAVAILABLE
+              - INVALID_REQUEST
+              - COMMERCE_UNAVAILABLE
+              - NOT_FOUND
+              - CONFIGURATION_NOT_FOUND
+              - ORDER_NOT_FOUND
+              - CUSTOMER_ACCESS_REQUIRED
+              - ENTITLEMENT_REQUIRED
+              - ENTITLEMENT_REVOKED
+              - IDEMPOTENCY_CONFLICT
+              - TERMS_VERSION_REQUIRED
+              - PAYMENT_FINANCIAL_CONFLICT
+              - PAYMENT_EVENT_CONFLICT
+              - PAYMENT_MODE_CONFLICT
+              - REQUEST_TOO_LARGE
+              - INVALID_STRIPE_SIGNATURE
+              - INVALID_CURSOR
+              - INVALID_PAYMENT_EVENT
+            message:
+              type: string
+            request_id:
+              type: string
+            retryable:
+              type: boolean
+            details:
+              type: object
+              additionalProperties: false
+              properties:
+                article_id:
+                  type: string
+                job_id:
+                  type: string
+                retry_after_seconds:
+                  type: integer
+                  minimum: 1
   responses:
     Unauthorized:
       description: Authentication is required.
