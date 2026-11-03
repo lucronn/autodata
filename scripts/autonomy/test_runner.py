@@ -19,6 +19,137 @@ from runner import (
 
 
 class RunnerTests(unittest.TestCase):
+    def _environment_fixture(self, *, nested=False, source_output=False):
+        from test_app_server_adapter import fake_codex, boundary
+        with tempfile.TemporaryDirectory() as directory:
+            parent=Path(directory);repo=parent/'repo';repo.mkdir()
+            task,base=make_trusted_repository(repo)
+            trusted=r.load_trusted_inputs(repo,base,task['task_ref'])
+            bindir=fake_codex(parent);out=parent/'run';scratch=parent/'scratch';scratch.mkdir()
+            ordinary=str(bindir)+os.pathsep+os.defpath
+            inherited={'PATH':ordinary,'HOME':str(parent/'home'),'CODEX_HOME':'/tmp/codex-disposable',
+                       'TMPDIR':str(scratch),'AUTODATA_TEST_PUBLIC':'retained',
+                       'SYNTHETIC_API_KEY':'fixture-only','SYNTHETIC_TOKEN':'fixture-only',
+                       'DATABASE_URL':'fixture-only','KUBECONFIG':'fixture-only','AWS_PROFILE':'fixture-only',
+                       'GOOGLE_APPLICATION_CREDENTIALS':'fixture-only'}
+            envelope={'run_id':'environment-check','task_id':task['task_id'],'repository':task['repository'],
+                      'base_sha':base,'subject_sha':base,'trusted_base_sha':base,'task_ref':task['task_ref'],
+                      'agent_name':'autodata-security-agent','task_contract':{k:task[k] for k in r.CONTRACT_FIELDS},
+                      'allowed_paths':[],'deployment_target':'none','execution':task['execution'],
+                      'evidence_label':'security','response_artifact_id':'security:response','gate':'security'}
+            seen={};checks=r.execute_required_checks;provider=r.app_server.run_app_server
+            def observe_checks(worktree,subject,assigned,output_root,environment):
+                seen['checks']=dict(environment)
+                if nested:
+                    script='''import json,os,subprocess,sys
+from pathlib import Path
+import runner as r
+from test_runner import make_trusted_repository
+from test_app_server_adapter import fake_codex,boundary
+root=Path(sys.argv[1]);root.mkdir();repo=root/'repo';repo.mkdir()
+task,base=make_trusted_repository(repo);trusted=r.load_trusted_inputs(repo,base,task['task_ref'])
+bindir=fake_codex(root);os.environ['PATH']=str(bindir)+os.pathsep+os.environ['PATH']
+r.app_server.validate_boundary=lambda path,cwd,env:boundary(cwd)
+envelope=json.loads(sys.argv[2]);envelope.update(base_sha=base,subject_sha=base,trusted_base_sha=base,task_contract={k:task[k] for k in r.CONTRACT_FIELDS})
+out=root/'run';r.run_agent(repo,envelope,'local-cli',out,6,trusted=trusted)
+manifest=json.loads((out/'run-manifest.json').read_text())
+assert manifest['decision']=='pass',manifest['findings']
+assert not (out/'worktree').exists(),'owned worktree cleanup failed'
+assert len(subprocess.check_output(['git','worktree','list','--porcelain'],cwd=repo,text=True).split('worktree '))==2
+guarded=r._safe_environment(out/'guard-bin',out/'isolated-gh-config')
+for argv in (['git','worktree','remove','--force','unused'],['gh','repo','view']):
+    result=subprocess.run(argv,cwd=repo,env=guarded,capture_output=True)
+    assert result.returncode==126,result.stderr
+print('nested owned cleanup and provider guards verified')
+'''
+                    result=subprocess.run([sys.executable,'-c',script,str(parent/'nested'),json.dumps(envelope)],
+                        env={**environment,'PYTHONPATH':str(Path(__file__).parent)},cwd=parent,
+                        capture_output=True,text=True,timeout=12)
+                    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                    self.assertIn('nested owned cleanup and provider guards verified',result.stdout)
+                return checks(worktree,subject,assigned,output_root,environment)
+            marker='sk-'+('synthetic-source-pattern'*2)
+            def observe_provider(**kwargs):
+                seen['provider']=dict(kwargs['env'])
+                result=provider(**kwargs)
+                if source_output:
+                    # Only synthetic bytes: model source dumping must still fail closed.
+                    frame={'method':'item/agentMessage/delta','params':{'threadId':'thread-1','turnId':'turn-1','itemId':'comment','delta':marker}}
+                    records=[json.loads(line) for line in result['protocol'].splitlines()]
+                    index=next(i for i,rec in enumerate(records[1:-1],1) if rec['direction']=='server' and json.loads(rec['raw']).get('method')=='turn/completed')
+                    records.insert(index,{'direction':'server','raw':json.dumps(frame)+'\n'})
+                    for seq,rec in enumerate(records[1:-1],1):rec['seq']=seq
+                    result['protocol']=b''.join((json.dumps(rec)+'\n').encode() for rec in records)
+                    result['stdout']=''.join(rec['raw'] for rec in records[1:-1] if rec['direction']=='server').encode()
+                    self.assertTrue(r.app_server.replay_capture(result['protocol'],stdout=result['stdout'],expected=kwargs['expected'])['completed'])
+                return result
+            with patch.dict(os.environ,inherited,clear=True),patch.object(r,'execute_required_checks',side_effect=observe_checks),patch.object(r.app_server,'run_app_server',side_effect=observe_provider),patch.object(r.app_server,'validate_boundary',side_effect=lambda path,cwd,env:boundary(cwd)):
+                run_agent(repo,envelope,'local-cli',out,6,trusted=trusted)
+                self.assertEqual(dict(os.environ),inherited)
+            manifest=json.loads((out/'run-manifest.json').read_text())
+            if source_output:
+                self.assertEqual(manifest['decision'],'blocked')
+                self.assertTrue(any(f['message']=='runtime transcript required redaction' for f in manifest['findings']))
+                for artifact in manifest['artifacts']:
+                    self.assertNotIn(marker.encode(),(out/artifact['ref']).read_bytes())
+            else:self.assertEqual(manifest['decision'],'pass',manifest['findings'])
+            return seen,inherited,str(out/'guard-bin'),str(out/'isolated-gh-config')
+
+    def test_required_checks_receive_sanitized_unguarded_environment(self):
+        seen,inherited,guard,config=self._environment_fixture()
+        checks=seen['checks']
+        self.assertEqual(checks['PATH'],inherited['PATH'])
+        self.assertNotIn(guard,checks['PATH'].split(os.pathsep))
+        for name in ('HOME','CODEX_HOME','TMPDIR','AUTODATA_TEST_PUBLIC'):
+            self.assertEqual(checks[name],inherited[name])
+            self.assertEqual(seen['provider'][name],inherited[name])
+        for env in seen.values():
+            self.assertEqual({k:env[k] for k in ('CI','GIT_TERMINAL_PROMPT','GIT_CONFIG_NOSYSTEM','GH_CONFIG_DIR','PYTHONDONTWRITEBYTECODE')},
+                             {'CI':'true','GIT_TERMINAL_PROMPT':'0','GIT_CONFIG_NOSYSTEM':'1','GH_CONFIG_DIR':config,'PYTHONDONTWRITEBYTECODE':'1'})
+            for name in ('SYNTHETIC_API_KEY','SYNTHETIC_TOKEN','DATABASE_URL','KUBECONFIG','AWS_PROFILE','GOOGLE_APPLICATION_CREDENTIALS'):
+                self.assertNotIn(name,env)
+        self.assertIsNot(seen['checks'],seen['provider'])
+
+    def test_provider_keeps_owned_command_guards(self):
+        seen,inherited,guard,_=self._environment_fixture()
+        self.assertEqual(seen['provider']['PATH'],guard+os.pathsep+inherited['PATH'])
+        self.assertNotEqual(seen['provider']['PATH'],seen['checks']['PATH'])
+
+    def test_nested_fixture_owns_its_git_guard_and_cleanup(self):
+        self._environment_fixture(nested=True)
+
+    def test_source_output_pattern_still_blocks_and_is_not_retained(self):
+        self._environment_fixture(source_output=True)
+
+    def test_runtime_fixture_assigned_verifier_prompt_scopes_local_decision(self):
+        base=r._run_git(Path(__file__).resolve().parents[2],['show','5da393f3bf9e974c64457290cffb1a6dfdd4f92e:.cursor/agents/autodata-review-agent.md'])
+        task=json.loads((Path(__file__).resolve().parents[2]/'docs/agents/tasks/2026-11-03-production-release/runtime-fixture.json').read_text())
+        assigned=[c['check_id'] for c in task['verification']['checks'] if c['gate']=='independent_review']
+        commands=[{'check_id':assigned[0],'status':'completed','exit_code':0}]
+        artifacts=[{'artifact_id':assigned[0]+':command','kind':'command-result'}]
+        prompt=r.build_agent_prompt(base,{'task_id':task['task_id']},commands,artifacts,{},role='verification',check_ids=assigned)
+        self.assertTrue(prompt.startswith(base))
+        for text in ('SYNTHETIC RUNTIME FIXTURE — LOCAL VERIFICATION ASSIGNMENT',
+                     'For this turn, assess only the exact assigned check IDs',
+                     'these instructions take precedence over',
+                     'response decision','local to these assignments','not supplied in this fixture turn',
+                     'all ten roles and eight gates','Return pass only if','concrete observed blocker',
+                     'never fabricate unavailable evidence','exactly once','Do not run additional commands/checks',
+                     'dump unrelated source/test files','credential-pattern examples','intentional synthetic test',
+                     'strict redaction','exact raw replay'):
+            self.assertIn(text,prompt)
+        self.assertIn(json.dumps(assigned),prompt)
+        self.assertIn(artifacts[0]['artifact_id'],prompt)
+        self.assertNotIn('UPSTREAM GATE REPORTS:',prompt)
+
+    def test_nonfixture_review_retains_full_review_duty(self):
+        base=r._run_git(Path(__file__).resolve().parents[2],['show','5da393f3bf9e974c64457290cffb1a6dfdd4f92e:.cursor/agents/autodata-review-agent.md'])
+        for task_id,role,ids in (('release-task','verification',['check']),('production-release-runtime-fixture','architecture',[]),('production-release-runtime-fixture','implementation',[])):
+            prompt=r.build_agent_prompt(base,{'task_id':task_id},[],[],{},role=role,check_ids=ids)
+            self.assertTrue(prompt.startswith(base))
+            self.assertIn('Review the complete candidate diff, task contract, all gate reports, and evidence bundle.',prompt)
+            self.assertNotIn('SYNTHETIC RUNTIME FIXTURE — LOCAL VERIFICATION ASSIGNMENT',prompt)
+
     def test_builder_without_pre_implementation_record_is_rejected_before_worktree(
         self,
     ):

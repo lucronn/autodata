@@ -532,7 +532,7 @@ def _measure_bundle(
                     command["argv"][1:] != check["argv"][1:]
                     or Path(command["executable"]).name
                     not in (
-                        (check["argv"][0], "python3.12", "python3.13", "python3.14")
+                        (check["argv"][0], "python3.11", "python3.12", "python3.13", "python3.14")
                         if check["argv"][0] == "python3"
                         else (check["argv"][0],)
                     )

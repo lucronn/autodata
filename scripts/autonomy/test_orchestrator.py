@@ -114,15 +114,32 @@ class EvidenceAggregationTests(unittest.TestCase):
 
 class FullChainV2Tests(unittest.TestCase):
     def run_fixture(
-        self, directory, fail_check=False, unavailable=False, malformed=False
+        self, directory, fail_check=False, unavailable=False, malformed=False,
+        command_mutator=None, runtime_fixture=False,
     ):
         from test_runner import make_trusted_repository
 
         root = directory / "repo"
         root.mkdir()
         task, base = make_trusted_repository(root)
+        if runtime_fixture:
+            task['task_id']='production-release-runtime-fixture'
+            (root/task['task_ref']).write_text(json.dumps(task))
+            r._run_git(root,['add',task['task_ref']])
+            r._run_git(root,['commit','-m','synthetic runtime task identity'])
+            base=r._run_git(root,['rev-parse','HEAD']).strip()
         trusted = r.load_trusted_inputs(root, base, task["task_ref"])
-        original = r.bounded_process
+        original_checks = r.execute_required_checks
+        def retained_checks(worktree, subject, checks, output_root, environment):
+            commands, artifacts, findings = original_checks(worktree, subject, checks, output_root, environment)
+            if command_mutator is not None:
+                for command in commands:
+                    command_mutator(command)
+                    artifact=next(a for a in artifacts if a['artifact_id']==command['check_id']+':command')
+                    data=(json.dumps(command,sort_keys=True)+'\n').encode()
+                    (output_root/artifact['ref']).write_bytes(data)
+                    artifact.update(sha256=hashlib.sha256(data).hexdigest(),size_bytes=len(data))
+            return commands, artifacts, findings
         if fail_check:
             # Commit a failed command as a frozen requirement, never modify it after trust resolution.
             task["verification"]["checks"][0]["argv"] = [
@@ -150,10 +167,86 @@ class FullChainV2Tests(unittest.TestCase):
         bindir=fake_codex(directory)
         output=directory/"bundle"
         mode="unavailable-security" if unavailable else "malformed" if malformed else "success"
-        with patch.dict(os.environ, {"PATH":str(bindir)+os.pathsep+os.environ["PATH"], "CODEX_HOME":"/tmp/codex-disposable", "FAKE_CODEX_MODE":mode}), patch.object(adapter,"validate_boundary",side_effect=lambda path, cwd, env: boundary(cwd)):
+        with patch.dict(os.environ, {"PATH":str(bindir)+os.pathsep+os.environ["PATH"], "CODEX_HOME":"/tmp/codex-disposable", "FAKE_CODEX_MODE":mode}), patch.object(adapter,"validate_boundary",side_effect=lambda path, cwd, env: boundary(cwd)), patch.object(r,'execute_required_checks',side_effect=retained_checks):
             code,path=o.orchestrate_task(root,task,"local-cli",output,6)
         envelopes=[json.loads(p.read_text()) for p in sorted(output.glob("agents/*/task-envelope.json"))]
         return code,path,trusted,envelopes
+
+    @staticmethod
+    def resolved_python311(command):
+        # Synthetic retained spelling is set before prompts/transcripts are built.
+        command['argv'][0]=command['executable']='/usr/bin/python3.11'
+
+    def test_python311_resolved_command_matches_frozen_check(self):
+        with tempfile.TemporaryDirectory() as d:
+            code,path,trusted,_=self.run_fixture(Path(d),command_mutator=self.resolved_python311)
+            final=json.loads(path.read_text())
+            replay=o.validate_evidence_bundle(final,trusted,path.parent)
+            self.assertTrue(replay['passed'],replay['failures'])
+            self.assertEqual(code,0)
+            self.assertEqual(len(final['commands_run']),8)
+            self.assertTrue(all(c['argv'][0]==c['executable']=='/usr/bin/python3.11' for c in final['commands_run']))
+
+    def test_resolved_python_compatibility_preserves_exact_command_binding(self):
+        for mode in ('tail','cwd','relative','executable','python3.111','python2','subject','output-ids'):
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as d:
+                def tamper(command):
+                    self.resolved_python311(command)
+                    if mode=='tail':command['argv'].append('--unassigned')
+                    elif mode=='cwd':command['cwd']='scripts'
+                    elif mode=='relative':command['argv'][0]=command['executable']='python3.11'
+                    elif mode=='executable':command['executable']='/another/python3.11'
+                    elif mode in ('python3.111','python2'):command['argv'][0]=command['executable']='/usr/bin/'+mode
+                    elif mode=='subject':command['subject_sha']='f'*40
+                    else:command['output_ids'].append('unassigned-proof')
+                code,path,trusted,_=self.run_fixture(Path(d),command_mutator=tamper)
+                replay=o.validate_evidence_bundle(json.loads(path.read_text()),trusted,path.parent)
+                self.assertFalse(replay['passed'])
+                expected='invalid command argv/cwd' if mode=='relative' else 'failed/stale' if mode=='subject' else 'evidence IDs differ' if mode=='output-ids' else 'frozen definition'
+                self.assertTrue(any(expected in error for error in replay['failures']),replay['failures'])
+
+    def test_fixture_local_pass_does_not_hide_missing_global_gate(self):
+        with tempfile.TemporaryDirectory() as d:
+            code,path,trusted,_=self.run_fixture(Path(d),runtime_fixture=True)
+            final=json.loads(path.read_text())
+            self.assertEqual(code,0)
+            self.assertEqual(final['agent_runs']['independent_review']['response']['decision'],'pass')
+            for gate in r.GATES:
+                with self.subTest(missing_gate=gate):
+                    bad=copy.deepcopy(final);del bad['agent_runs'][gate]
+                    self.assertFalse(o.validate_evidence_bundle(bad,trusted,path.parent)['passed'])
+                with self.subTest(failed_gate=gate):
+                    bad=copy.deepcopy(final);bad['agent_runs'][gate]['response']['decision']='fail'
+                    self.assertFalse(o.validate_evidence_bundle(bad,trusted,path.parent)['passed'])
+            for mode in ('artifact','assessment','evidence'):
+                with self.subTest(mode=mode):
+                    bad=copy.deepcopy(final)
+                    if mode=='artifact':bad['artifacts']=[a for a in bad['artifacts'] if a['artifact_id']!='check-0:command']
+                    elif mode=='assessment':bad['agent_runs']['independent_review']['response']['assessments'].append({'check_id':'unknown','decision':'pass','evidence_ids':[],'explanation':'unassigned'})
+                    else:bad['agent_runs']['independent_review']['response']['evidence_ids'].append('unknown-evidence')
+                    if mode=='artifact':
+                        self.assertFalse(o.validate_evidence_bundle(bad,trusted,path.parent)['passed'])
+                        continue
+                    # Refresh the actual response too: semantic validation must
+                    # reject invented assignments/IDs independently of hashes.
+                    artifact=next(a for a in bad['artifacts'] if a['artifact_id']=='independent_review:response')
+                    response_path=path.parent/artifact['ref'];original=response_path.read_bytes()
+                    data=json.dumps(bad['agent_runs']['independent_review']['response']).encode()
+                    response_path.write_bytes(data)
+                    def refresh(value):
+                        if isinstance(value,dict):
+                            if value.get('artifact_id')=='independent_review:response':
+                                value.update(sha256=hashlib.sha256(data).hexdigest(),size_bytes=len(data))
+                            for child in value.values():refresh(child)
+                        elif isinstance(value,list):
+                            for child in value:refresh(child)
+                    refresh(bad)
+                    try:
+                        replay=o.validate_evidence_bundle(bad,trusted,path.parent)
+                        self.assertFalse(replay['passed'])
+                        expected='assessments must match assigned checks exactly' if mode=='assessment' else 'unknown/duplicate evidence IDs'
+                        self.assertIn(expected,replay['failures'])
+                    finally:response_path.write_bytes(original)
 
     def test_real_checks_fake_provider_complete_bundle_and_replay_tampering(self):
         with tempfile.TemporaryDirectory() as d:
@@ -298,6 +391,9 @@ if __name__ == "__main__":
     unittest.main()
 
 class AppServerReplayTests(FullChainV2Tests):
+    test_python311_resolved_command_matches_frozen_check = None
+    test_resolved_python_compatibility_preserves_exact_command_binding = None
+    test_fixture_local_pass_does_not_hide_missing_global_gate = None
     # Do not inherit the parent's tests a second time; only reuse its fixture helper.
     test_real_checks_fake_provider_complete_bundle_and_replay_tampering = None
     test_malformed_provider_record_retains_blocked_complete_bundle = None

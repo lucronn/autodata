@@ -294,4 +294,48 @@ review, coordinator promotion and a fresh trial checkpoint are still required.
 
 ## Runtime check-contract repair checkpoint
 
-The [independently reviewed bounded repair](../superpowers/plans/2026-11-03-runtime-check-contract.md) addresses the actual Python3.11 executable mismatch, nested trusted-check/provider environment conflict and synthetic verifier assignment scope. Its five-file implementation requires the synchronized committed task and passing exact-base preflight. The coordinator separately owns executable scratch and offline sentinel acceptance. Raw transcript equality, redaction, profile settings, provider guards and all eight release gates stay required. The ten-role trial remains blocked; this checkpoint records planned work, not passing runtime evidence.
+The [bounded repair](../superpowers/plans/2026-11-03-runtime-check-contract.md)
+addresses the actual Python3.11 executable mismatch, nested trusted-check/provider
+environment conflict and synthetic verifier assignment scope. Replay explicitly
+accepts resolved `python3.11` alongside the existing `python3`, `python3.12`,
+`python3.13` and `python3.14` spellings for a frozen `python3` check. The executable
+must remain absolute and equal argv[0]; argv tails, cwd, subject, status, expected
+exit and output evidence IDs must still match. This compatibility does not attest
+arbitrary executable binary provenance beyond the existing command contract.
+
+Trusted frozen checks receive a fresh sanitized environment with the ordinary
+caller PATH, existing credential-name filtering, CI/Git isolation and isolated GH
+configuration. Only the provider environment prepends its owned command guards;
+provider guards and invocation executable resolution stay unchanged. Both receive
+`PYTHONDONTWRITEBYTECODE=1` and preserve caller HOME, CODEX_HOME and TMPDIR.
+The runner does not strip guards from arbitrary inherited PATH components: the
+coordinator must start it with the reviewed ordinary image PATH.
+
+The restricted scratch coordinator must create and verify an exclusively owned,
+non-symlink executable TMPDIR under the existing private `/evidence` bind before
+Python starts. HOME/CODEX_HOME, the noexec `/tmp` mount, nonroot identity, mounts,
+capabilities and other isolation requirements remain unchanged. This implementation
+does not create scratch, alter mount permissions or authorize host provider use.
+The coordinator separately owns reviewed scratch/sentinel scripts and offline
+restricted-image acceptance with no auth, real Codex package or network; zero
+sentinel calls and actual full-suite/eight-check evidence are required.
+
+Only assigned verification turns for task ID
+`production-release-runtime-fixture` receive an explicit local-decision block.
+It takes precedence over generic whole-bundle duties for that assignment and
+requires each supplied check exactly once, complete matching passing evidence
+and no genuine observed blocker. It does not claim upstream reports were supplied.
+Other tasks and unassigned architect/builder turns retain their full duties.
+Machine replay still requires all ten roles and eight global gates. Local passes
+cannot replace missing/failed global evidence, add assessments or invent evidence.
+
+The fixture instructions prohibit extra checks, unrelated source/test dumps,
+searches for upstream reports and credential-pattern examples, including synthetic
+test fixtures. This is guidance, not a guarantee of model compliance: credential
+patterns still require redaction, changed protocol bytes still block certification,
+and no raw pattern may reach retained artifacts. Complete raw replay, profile
+settings, candidate/root identities, cancellation and existing bounds remain
+required. Prior failed trials stay unchanged. The ten-role real trial remains
+blocked pending independent candidate promotion, restricted offline acceptance
+and a separately gated coordinator retry; no runtime success or release readiness
+is established by fake-process tests.
