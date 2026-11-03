@@ -109,3 +109,12 @@ claimed by this asset-only milestone. Actual production image asset proof remain
 the final UI release check because that includes the complete customer app.
 
 Independent planning approval: `/tmp/autodata-workshop-firebase-bundle-plan-review.md`, SHA256 `e23a76e6de2a345f43360424e4d4a802a9ec4a215a3ea92d1649bd8b3834e383`, reviewed source draft `cc5eec450b4689f035efe5e39ccc14465e4a7ab4f84599f4901b4ff1bc50c4f2`. Verified dependency CI41696273960 passed at472492d; actual Issue186/Project8 updates were saved/read back. Archive/lock/export verification remains required implementation evidence.
+
+
+## Verified delivery
+
+Candidate `2a226577efd70dab4924d38a8ab5745feb874b98` passed independent
+review after full Apache license repair and is integrated as
+`2577383aa2ee3d149232f27f2b8deca019a715a5`. See
+[verification](../../verification/2026-11-03-workshop-firebase-bundle.md) for
+actual checks, artifact hashes and remaining final-UI/browser evidence.
