@@ -3,7 +3,7 @@
 # No tracing, eval, shell sourcing, caller-selected secret directory or fallback.
 set +x
 set -eu
-PATH=/usr/bin:/bin
+PATH=/usr/local/bin:/usr/bin:/bin
 LC_ALL=C
 export PATH LC_ALL
 umask 077

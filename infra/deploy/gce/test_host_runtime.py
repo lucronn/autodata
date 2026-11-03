@@ -500,6 +500,38 @@ class EntrypointTests(unittest.TestCase):
         result = self.run_script(command=['/bin/sh', '-c', 'exit 17'])
         self.assertEqual(result.returncode, 17)
 
+    def test_hosted_and_development_bare_python_resolve_official_image_local_bin(self):
+        # Model directory membership of the image PATH, not the host's Python
+        # installation. Utilities retain their absolute production paths. The
+        # harmless child exists ONLY in the image fixture's /usr/local/bin.
+        image = self.base / 'image'
+        interpreter = image / 'usr/local/bin/python'
+        interpreter.parent.mkdir(parents=True)
+        interpreter.write_text('#!/bin/sh\nprintf "%s\\n" official-image-python "$@"\n')
+        interpreter.chmod(0o755)
+        source = self.script.read_text()
+        assignments = [line for line in source.splitlines() if line.startswith('PATH=')]
+        self.assertEqual(len(assignments), 1)
+        production_path = assignments[0].split('=', 1)[1]
+        mapped_path = ':'.join(str(image / directory.lstrip('/')) for directory in production_path.split(':'))
+        self.script.write_text(source.replace(assignments[0], 'PATH=' + mapped_path))
+        attacker = self.base / 'caller-bin'; attacker.mkdir()
+        malicious = attacker / 'python'
+        malicious.write_text('#!/bin/sh\nprintf "%s\\n" caller-path-hijacked\n'); malicious.chmod(0o755)
+        for service in ('ingestion-http', 'article-worker', 'payment-reconciler', 'metrics-probe'):
+            with self.subTest(service=service):
+                self.provision(service)
+                command = self.rt.COMMANDS[service]
+                self.assertEqual(command[0], 'python')
+                result = self.run_script(service, extra={'PATH': str(attacker)}, command=command)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.splitlines()[0], 'official-image-python')
+                self.assertNotIn('caller-path-hijacked', result.stdout)
+        result = subprocess.run(['/bin/sh', str(self.script), 'python', '-m', 'autodata_ingestion.worker'],
+                                env={'PATH': str(attacker)}, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'official-image-python\n-m\nautodata_ingestion.worker\n')
+
     def test_development_default_keeps_existing_image_commands(self):
         result = subprocess.run(['/bin/sh', str(self.script), '/bin/echo', 'development'],
                                 env={'PATH': '/usr/bin:/bin'}, capture_output=True, text=True, timeout=5)
