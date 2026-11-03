@@ -3,7 +3,7 @@
 Issue: https://github.com/lucronn/autodata/issues/186
 Project: https://github.com/users/lucronn/projects/8
 
-Status: independently reviewed planning; awaiting verified R5 integration and a fresh synchronized exact-base gate. Concrete todo is in Verification and delivery checkpoints. No implementation is authorized by this planning commit.
+Status: implementation dispatched from synchronized checkpoint `3e9d06253bf747d69b21e4a8371daa742b0391f4` after verified R5 integration and passing exact-base preflight. The 39-path task and record define the authorized boundary. Concrete todo is in Verification and delivery checkpoints; historical planning notes below retain their original context.
 
 Planning draft only. No implementation/gate expansion is authorized. Basis: committed `docs/architecture/workshop-commerce.md`, `docs/superpowers/plans/2026-11-03-workshop-firebase-identity.md` (official Firebase Admin v4.22.0), existing Python Stripe adapter/reconciler and Go ingestion seam. Original inspection root `322cdf131afc138faaa70be5f6791b85c6aac7ec`; production packaging/canonical-preparation revision reinspected actual objects at `521385fea0d0a57c92ba52cbb209a4dc79705c9a`. The Firebase identity plan is a coordinator-owned planned dependency, not asserted committed at521385f. Coordinator must re-pin after verified R3 and039 identity integration, independently review this bounded lane and synchronize canonical docs/task/Issue186/Project8 before exact-base preflight. Builder/reviewer gpt-6.1-sol, medium, Fast/priority, no fallback. Follow meaningful validated commit/push cadence on assigned owned branch; no live charging/cloud action in this lane.
 
