@@ -387,3 +387,17 @@ Its120 DTO/browser and21 real API/browser cases are distinct evidence.
 Actual production assets, pinned official SDK storage, real settlement/grants
 and source/media access must be verified; no browser redirect or local state
 grants ownership. Task/record remain waiting for dependencies and a fresh gate.
+
+
+### Firebase identity implementation and runtime acceptance
+
+Candidate b4f3dc86a18a8087f8ff664e37bec594909eae80 is independently approved
+and integrated at3fdcd0bc0ac993dd15ad2219df9d09ffeed27a4e. Five actual
+PostgreSQL/SDK identity scenarios,55 outer cases plus7 subtests and all8 real
+dual-bank regressions through039 pass. The initial report-parser failure is
+retained separately; a reviewed strict correction passed fresh acceptance.
+Integrated Go/contracts,104 development and19 contract checks pass. See
+`docs/verification/2026-11-03-firebase-customer-identity.md` for exact evidence.
+Full integration CI is pending; commerce's reviewed39-path checkpoint follows
+that verified dependency and a fresh synchronized gate. No production launch
+or live identity/merchant configuration is claimed by this foundation.
