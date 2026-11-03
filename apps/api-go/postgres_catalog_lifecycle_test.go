@@ -297,13 +297,14 @@ func TestPostgresCatalogLifecycleColdHTTPRaceOneJob(t *testing.T) {
 	f.check("cold_public_202", count == 20)
 	f.check("cold_same_job_id", job != "")
 	payload, _ := json.Marshal(map[string]any{"scope": "article", "vehicle_id": f.vehicle, "canonical_article_id": f.article, "idempotency_key": "r3-direct:" + f.article})
-	for range 20 {
+	for i := range 20 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			incoming := httptest.NewRequest("POST", "/", bytes.NewReader(payload)).WithContext(ctx)
+			incoming.Header.Set("X-Request-ID", fmt.Sprintf("r3-direct-%02d", i))
 			status, raw, err := f.client.Do(incoming, "/v1/catalog/ensure", payload, "r3-direct:"+f.article)
 			var ack CatalogScheduleResult
 			json.Unmarshal(raw, &ack)
@@ -316,7 +317,16 @@ func TestPostgresCatalogLifecycleColdHTTPRaceOneJob(t *testing.T) {
 	s := f.snapshot("cold_done", f.views[0])
 	counts := r3Map(s, "counts")
 	f.check("one_durable_article_job", r3Int(counts, "article_jobs") == 1)
-	f.check("twenty_real_internal_ensures", r3Int(r3Map(s, "ensure"), "entered") >= 21)
+	direct := map[string]bool{}
+	requests, _ := s["ensure_requests"].([]any)
+	for _, value := range requests {
+		record, _ := value.(map[string]any)
+		id, _ := record["request_id"].(string)
+		if strings.HasPrefix(id, "r3-direct-") && record["completed"] == true && (r3Int(record, "status") == 200 || r3Int(record, "status") == 202) {
+			direct[id] = true
+		}
+	}
+	f.check("twenty_real_internal_ensures", len(direct) == 20 && r3Int(r3Map(s, "ensure"), "entered") >= 21)
 	f.check("zero_cold_external_calls", r3Int(s, "model_calls") == 0 && r3Int(r3Map(s, "source_calls"), "bankone") == 0 && r3Int(r3Map(s, "source_calls"), "banktwo") == 0 && r3Int(counts, "source_revisions") == 0)
 	f.verifyScopeAndLegacyDescriptors()
 	f.verifyConfigurationScope()

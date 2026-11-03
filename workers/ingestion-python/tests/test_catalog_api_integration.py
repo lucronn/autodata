@@ -179,9 +179,15 @@ def run_migrations(repo, directory, phase, manifest, before=None):
     return result, after
 
 
+class R3FixtureHTTPServer(ThreadingHTTPServer):
+    # The required race opens 20 connections at once. The stdlib default 5 can
+    # drop burst handshakes into TCP retransmission before the 2s client bound.
+    request_queue_size = 64
+
+
 @contextmanager
 def serve(handler):
-    server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
+    server = R3FixtureHTTPServer(('127.0.0.1', 0), handler)
     server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -224,6 +230,7 @@ class Bridge:
         self.proxy = dict(request_received=0, upstream_completed=0, downstream_completed=0,
                           downstream_waiting=0, response_captured=False, errors=[])
         self.ensure = dict(entered=0, completed=0, active=0)
+        self.ensure_requests = []
         self.started = False
         if name == GO_NAMES[2]:
             runtime.pause('inside_publication')
@@ -277,14 +284,27 @@ class Bridge:
         owner = self
 
         class CountingHandler(parent):
+            def send_response(self, status, message=None):
+                if hasattr(self, 'r3_request'):
+                    with owner.lock:
+                        self.r3_request['status'] = status
+                return super().send_response(status, message)
+
             def do_POST(self):
+                started = time.monotonic()
+                self.r3_request = {'request_id': self.headers.get('X-Request-ID', ''),
+                                   'started_at': now(), 'completed': False,
+                                   'status': None, 'duration_seconds': None}
                 with owner.lock:
                     owner.ensure['entered'] += 1
                     owner.ensure['active'] += 1
+                    owner.ensure_requests.append(self.r3_request)
                 try:
                     super().do_POST()
                 finally:
                     with owner.lock:
+                        self.r3_request.update(completed=True, finished_at=now(),
+                                               duration_seconds=time.monotonic() - started)
                         owner.ensure['completed'] += 1
                         owner.ensure['active'] -= 1
 
@@ -314,9 +334,10 @@ class Bridge:
         with self.lock:
             proxy = json.loads(json.dumps(self.proxy))
             ensure = dict(self.ensure)
+            ensure_requests = json.loads(json.dumps(self.ensure_requests))
         traces = {p: list(s.calls) for p, s in runtime.servers.items()}
         immutable = immutable_rows(runtime.repo)
-        return {'counts': counts, 'ensure': ensure,
+        return {'counts': counts, 'ensure': ensure, 'ensure_requests': ensure_requests,
                 'provider_calls': {p: len(paths) for p, paths in traces.items()},
                 'provider_traces': traces,
                 'source_calls': {p: sum('/resources/' in path and unquote(path.split('/resources/', 1)[1]) == 'body' for path in paths) for p, paths in traces.items()},
