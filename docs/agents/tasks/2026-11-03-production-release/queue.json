@@ -85,7 +85,7 @@
         "r2-rewrite",
         "migration-replay"
       ],
-      "state": "in_progress",
+      "state": "verified",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_prerequisite": "Verified R2/migration/discovery integration and actual CI passed. Independently reviewed exact32-path runtime bindings incorporated; fresh committed-base preflight required before builder edits.",
@@ -93,7 +93,11 @@
       "dependency_integrated_sha": "1d07ce28b5cc4cb7fb95ab41db8c178eff0d3c4d",
       "dependency_ci_run": "https://github.com/lucronn/autodata/actions/runs/41627289946",
       "dispatch_mode": "coordinator_direct",
-      "implementation_base_sha": "258bdfe0eabf76409d4b3f93932f92f8bd548278"
+      "implementation_base_sha": "258bdfe0eabf76409d4b3f93932f92f8bd548278",
+      "verified_candidate_sha": "62e782c0b62ddd401193be7137f9a50f5d50a8b3",
+      "integrated_sha": "31ffe7ebcf28f345e0b5055b4dad10ebb7ed101c",
+      "verification_ref": "docs/verification/2026-11-03-source-fallback-api.md",
+      "verification_summary": "Independent exact-SHA review;8 required real HTTP/PG cases plus complete raw-projection/provenance acceptance; integrated Go and19 contracts passed."
     },
     {
       "id": "r4-workshop",
@@ -115,7 +119,7 @@
       "state": "waiting_dependencies",
       "release_state": "unverified",
       "needs_scope_refinement": true,
-      "dispatch_prerequisite": "Verify R3 integration and reinspect its actual Go image/cache/service; reconcile reviewed039 and five-case realPG session collector amendment, then synchronize a fresh R5 gate. Actual issuer/client/origin registration remains a live-acceptance prerequisite.",
+      "dispatch_prerequisite": "R3 verified integration31ffe7e is available. Replace superseded OIDC/shared-role assumptions with reviewed Firebase customer plan, synchronize Issue/Project and exact new scope, then commit and pass fresh preflight before implementation.",
       "reviewed_migration_handoff_ref": "docs/superpowers/plans/2026-11-03-production-access-migration-handoff.md"
     },
     {

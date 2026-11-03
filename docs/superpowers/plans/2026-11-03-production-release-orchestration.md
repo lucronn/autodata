@@ -306,6 +306,14 @@ frozen checks with zero provider calls. The integrated suite also passes146.
 See [the verification record](../../verification/2026-11-03-runtime-check-contract.md).
 Additional live synthetic trials remain deferred for product delivery.
 
+R3 candidate `62e782c0b62ddd401193be7137f9a50f5d50a8b3` is independently
+reviewed and integrated at `31ffe7ebcf28f345e0b5055b4dad10ebb7ed101c`.
+All eight actual Go/Python/PostgreSQL source/canonical cases and independent
+raw-projection/provenance checks passed; integrated Go and19 contract tests
+passed. See [the R3 verification record](../../verification/2026-11-03-source-fallback-api.md).
+The revised customer identity and commerce lanes require new synchronized
+checkpoints; the older R5 scope is not automatically authorized by this result.
+
 The user now targets launching a working production Workshop where a customer makes one payment for a single vehicle dataset and retains permanent account-bound access. Existing dual-bank ingestion, canonical rewriting and source fallback remain supporting requirements. Inspect the existing Stripe/payment reconciliation and entitlement boundaries before freezing the commerce/customer-account implementation plan. Price/currency and production domain/hosting/login configuration are still being clarified. R3 source acceptance continues; additional synthetic provider-runtime trial preparation is deferred while the product release requirements are reassessed. This objective update does not authorize an implementation agent to expand its pinned file scope without a new synchronized plan/gate.
 
 The user also requested frequent GitHub commits. The [bounded instruction update](2026-11-03-frequent-commits.md) records the concrete todo: small coherent commits, clear messages and prompt pushes of validated milestones according to branch ownership. It preserves all planning and testing gates and avoids empty/artificial history changes. Its committed checkpoint must pass preflight before editing AGENTS.md.
