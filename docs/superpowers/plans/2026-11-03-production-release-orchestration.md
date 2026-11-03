@@ -317,3 +317,17 @@ checkpoints; the older R5 scope is not automatically authorized by this result.
 The user now targets launching a working production Workshop where a customer makes one payment for a single vehicle dataset and retains permanent account-bound access. Existing dual-bank ingestion, canonical rewriting and source fallback remain supporting requirements. Inspect the existing Stripe/payment reconciliation and entitlement boundaries before freezing the commerce/customer-account implementation plan. Price/currency and production domain/hosting/login configuration are still being clarified. R3 source acceptance continues; additional synthetic provider-runtime trial preparation is deferred while the product release requirements are reassessed. This objective update does not authorize an implementation agent to expand its pinned file scope without a new synchronized plan/gate.
 
 The user also requested frequent GitHub commits. The [bounded instruction update](2026-11-03-frequent-commits.md) records the concrete todo: small coherent commits, clear messages and prompt pushes of validated milestones according to branch ownership. It preserves all planning and testing gates and avoids empty/artificial history changes. Its committed checkpoint must pass preflight before editing AGENTS.md.
+
+
+### Shallow CI repair checkpoint
+
+Actual GitHub41689471428 at521385f and41688178571 failed two runtime prompt
+tests loading historical5da393 from a shallow checkout. The complete current
+prompt matches that frozen base byte for byte. The existing runtime-check
+plan now specifies a checked-in byte read with fixed SHA256 assertion, preserving
+all semantic assertions and production behavior. Expected implementation is
+only test_runner.py inside the original five-path scope. Issue186 and Project8
+record the same concrete todo: fresh committed-base preflight, depth-one
+red/green, changed-byte rejection, full suite, exact-commit review and actual CI.
+Prior offline acceptance remains valid for its exact SHA; current CI is failed.
+No new live provider trial is planned.

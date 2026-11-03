@@ -194,3 +194,33 @@ Only that checkpoint may authorize one fresh success-path retry with provider120
 ## Independent planning review and dispatch checkpoint
 
 The exact proposal11851c73b006b29747f41acffd09f0478bf13482fdcaae4e4741a6bc34a93825 passed independent planning review at inspected basec5cd1a22ff9cb7eeb5dbf71c3aac763fbec5a6cf. Review SHA256f0dfc17f2973de1aeeb63dda8509ea3ff39d4b2f2f76f2d5c669ab41a65daaa2 is retained at `/tmp/autodata-runtime-check-contract-independent-review.md`. No substantive plan changes were needed. This checkpoint synchronizes the five-file task/todo and separate coordinator scratch ownership; its exact committed SHA must pass machine preflight before dispatch. Prior trial results stay blocked.
+
+## Shallow CI fixture-loading clarification
+
+Actual GitHub runs41689471428 and41688178571 failed two prompt tests because
+the default shallow checkout lacks historical commit5da393. The complete
+checked-in review prompt is unchanged: original and current Git blob
+`32350d26a9c5e97ec5161dc3353979f5a0eb933f`,1159 bytes, SHA256
+`d43f9a584cd5e65b823b1ee401b744e5e4d9923b2e57cd9517cdd7832ade09ed`.
+Independent depth-one reproduction at521385f retained both errors in
+`/tmp/autodata-runtime-shallow-sgp3evdl/logs/focused-red.log`; diagnosis and
+bounded repair proposal are `/tmp/autodata-runtime-shallow-plan.md`.
+
+This clarification changes only Task3's loading method: load the complete
+current checked-in prompt bytes after asserting that exact frozen SHA256,
+then decode strict UTF-8. The hash binds the test to the actual prompt at the
+original pinned5da393 base without requiring historical Git-object availability.
+All existing test names, real task/assignment data, complete-review-duty and
+positive/negative prompt assertions remain unchanged. A changed byte must fail;
+do not derive the expected digest from the same input, abbreviate the prompt,
+skip tests, fetch broad history or alter the workflow or production loader.
+
+Concrete todo for this successor: synchronize Issue186/Project8 and the existing
+record; commit and pass fresh exact-base preflight; implement only the helper
+and two call-site replacements in `scripts/autonomy/test_runner.py`; retain
+depth-one red/green and changed-byte rejection; pass the complete autonomy suite
+and independent exact-commit review; push and inspect actual GitHub CI. The
+original five-file ownership remains the ceiling; this expected successor
+diff is one test file. It changes no runtime code or supervisor and therefore
+requires focused/full tests and real shallow CI, not another provider trial.
+Previous restricted offline acceptance and failed remote runs remain distinct.

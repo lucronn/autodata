@@ -326,8 +326,12 @@
       "dispatch_mode": "coordinator_direct",
       "release_state": "unverified",
       "needs_scope_refinement": false,
-      "dispatch_prerequisite": "Independently reviewed exact five-file plan; this committed synchronized checkpoint must pass exact-base preflight before implementation. Separate reviewed scratch/offline acceptance precedes any newly gated live retry.",
-      "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md"
+      "dispatch_prerequisite": "Fresh clarified checkpoint/preflight for test-only shallow-checkout repair; frozen prompt bytes and all assertions preserved. Prior offline146/all8 pass does not erase actual CI failure.",
+      "verification_ref": "docs/verification/2026-11-03-runtime-check-contract.md",
+      "verified_candidate_sha": "6992bd08f6e20013288947d893f9b00745d45d7f",
+      "integrated_sha": "91c8e85230875deb3b06cd14204eaa94737d94e7",
+      "ci_status": "failure",
+      "ci_run": "https://github.com/lucronn/autodata/actions/runs/41689471428"
     }
   ]
 }
