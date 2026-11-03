@@ -138,3 +138,12 @@ Separately preserve complete eight R3 real cases (four original roots × two ban
 - [ ] Deliver R4 configuration.id + POST-then-poll + v2 refresh contract, security review and meaningful validated commits/pushes on the assigned owned branch. No production-ready claim until actual UI/payment/login deployment acceptance.
 
 No external merchant/Firebase/domain configuration is needed to author or deterministically verify these boundaries. Later staging must verify the exact integrated candidate on configured HTTPS cars.tk/staging origin with real Firebase Google sign-in and Stripe TEST checkout/webhook: an unpaid account cannot prepare/read; paid exact scope can open both-bank eligible source/canonical/media across restart/new session; adjacent/other-owner scope and refunded/revoked sessions/grants fail, including previously copied media links. Do not use live charges/bank credentials or disclose signed references/claims in evidence. That separate acceptance requires actual chosen project/merchant/authorized domains and is not certified by fixture success.
+
+
+### Verified-owner grant checker handoff
+
+The commerce checker requires current verified Principal account_id **and**
+organization_id, then configuration_id and region. Forward both trusted identity
+fields; private commerce rechecks the exact active account/personal-organization
+pair. Never derive organization from request headers or fabricate it. The actual
+Go/Python commerce integration case must pass before this consumer is dispatched.
