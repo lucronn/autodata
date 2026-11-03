@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -11,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -404,5 +406,241 @@ func TestPaidCatalogMediaHTTPAndHistoricalSourceProjection(t *testing.T) {
 		if response.Header.Get(header) == "" {
 			t.Fatal("missing header", header)
 		}
+	}
+}
+
+func TestPaidCatalogSourceProjectsPinnedHTMLJSONWithoutMutation(t *testing.T) {
+	for _, accept := range []string{"application/json", "text/html"} {
+		t.Run(accept, func(t *testing.T) {
+			s, c, _, _, p, ref := paidMediaFixture()
+			c.view.Article.SourceRevisionID = c.identity.CurrentSourceRevisionID
+			original := c.source.Images[0].URL
+			request := httptest.NewRequest("GET", "/v1/catalog/vehicles/"+ref.ConfigurationID+"/articles/"+ref.CanonicalArticleID+"/source?source_revision_id="+ref.SelectedSourceRevisionID, nil)
+			request.SetPathValue("vehicle_id", ref.ConfigurationID)
+			request.SetPathValue("article_id", ref.CanonicalArticleID)
+			request.Header.Set("Accept", accept)
+			w := httptest.NewRecorder()
+			s.serveCatalogSource(w, request, p)
+			if w.Code != 200 {
+				t.Fatalf("status=%d %s", w.Code, w.Body.String())
+			}
+			if c.source.Images[0].URL != original {
+				t.Fatal("stored source images mutated")
+			}
+			var token string
+			if accept == "application/json" {
+				var body CatalogSourceContentResponse
+				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if len(body.Images) != 1 || !strings.Contains(body.Content, "/v1/catalog/images/v2.") {
+					t.Fatal("source JSON did not project image", w.Body.String())
+				}
+				token = strings.TrimPrefix(body.Images[0].URL, "/v1/catalog/images/")
+			} else {
+				prefix := `src="/v1/catalog/images/`
+				_, after, found := strings.Cut(w.Body.String(), prefix)
+				if !found {
+					t.Fatal("source HTML missing image", w.Body.String())
+				}
+				token, _, _ = strings.Cut(after, `"`)
+			}
+			got, err := openPaidCatalogImageReference(token, s.catalogImageKey, time.Now())
+			if err != nil || got.Projection != "source" || got.SelectedSourceRevisionID != ref.SelectedSourceRevisionID || got.AnchorSourceRevisionID != ref.AnchorSourceRevisionID {
+				t.Fatalf("source reference=%+v err=%v", got, err)
+			}
+			if c.lastSource != ref.SelectedSourceRevisionID {
+				t.Fatal("historical source replaced with current")
+			}
+			response := paidMediaRequest(s, p, token)
+			if response.Code != 200 {
+				t.Fatal("fresh historical source image denied", response.Code, response.Body.String())
+			}
+			if strings.Contains(w.Body.String(), "private-provider") || strings.Contains(w.Body.String(), ref.ObjectKey) {
+				t.Fatal("source response leaks private identity")
+			}
+		})
+	}
+}
+
+func TestPaidCatalogSourceDeniedBeforeReadAndRawSanitizerOmission(t *testing.T) {
+	s, c, g, _, p, ref := paidMediaFixture()
+	g.err = ErrVehicleGrantRequired
+	request := httptest.NewRequest("GET", "/source", nil)
+	request.SetPathValue("vehicle_id", ref.ConfigurationID)
+	request.SetPathValue("article_id", ref.CanonicalArticleID)
+	w := httptest.NewRecorder()
+	s.serveCatalogSource(w, request, p)
+	if w.Code != 403 || c.identityCalls.Load() != 0 || c.viewCalls.Load() != 0 || c.sourceCalls.Load() != 0 {
+		t.Fatalf("denial=%d identity/view/source=%d/%d/%d", w.Code, c.identityCalls.Load(), c.viewCalls.Load(), c.sourceCalls.Load())
+	}
+	s, c, _, _, p, ref = paidMediaFixture()
+	c.source.Document = nil
+	c.source.Original = json.RawMessage(`{"_embedded":{"data":{"article":{"content":"<p>Body</p><img src=\"https://private-provider/image.png\"><img src=\"/v1/catalog/images/legacy\">"}}}}`)
+	request = httptest.NewRequest("GET", "/source?source_revision_id="+ref.SelectedSourceRevisionID, nil)
+	request.SetPathValue("vehicle_id", ref.ConfigurationID)
+	request.SetPathValue("article_id", ref.CanonicalArticleID)
+	w = httptest.NewRecorder()
+	s.serveCatalogSource(w, request, p)
+	if w.Code != 200 || strings.Contains(w.Body.String(), "private-provider") || strings.Contains(w.Body.String(), "images/legacy") || strings.Contains(w.Body.String(), "<img") {
+		t.Fatal("raw source image authorized from untrusted URL", w.Code, w.Body.String())
+	}
+}
+
+func TestPaidCatalogMediaRejectsMalformedBeforeProtectedReadsAndLogs(t *testing.T) {
+	for _, kind := range []string{"v1", "expired", "forged", "weak-key", "missing-capability"} {
+		t.Run(kind, func(t *testing.T) {
+			s, c, _, r, p, ref := paidMediaFixture()
+			token, err := sealPaidCatalogImageReference(ref, s.catalogImageKey, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 404
+			switch kind {
+			case "v1":
+				token, err = sealCatalogImageReference(ref.ObjectKey, s.catalogImageKey)
+			case "expired":
+				ref.IssuedAt = time.Now().Unix() - 301
+				ref.ExpiresAt = ref.IssuedAt + 300
+				raw, _ := json.Marshal(ref)
+				token = paidMediaSealRaw(t, raw, s.catalogImageKey)
+			case "forged":
+				token = "v2.forged-private-token"
+			case "weak-key":
+				s.catalogImageKey = nil
+				want = 503
+			case "missing-capability":
+				s.catalog = &paidScopeCatalog{configuration: c.configuration}
+				want = 503
+			}
+			var logs bytes.Buffer
+			old := log.Writer()
+			log.SetOutput(&logs)
+			defer log.SetOutput(old)
+			w := paidMediaRequest(s, p, token)
+			if w.Code != want || r.calls.Load() != 0 {
+				t.Fatalf("status=%d reads=%d", w.Code, r.calls.Load())
+			}
+			if kind != "missing-capability" && (c.identityCalls.Load() != 0 || c.viewCalls.Load() != 0 || c.sourceCalls.Load() != 0) {
+				t.Fatal("invalid token accessed protected catalog")
+			}
+			if strings.Contains(logs.String(), token) || strings.Contains(logs.String(), ref.ObjectKey) || strings.Contains(logs.String(), "private-provider") {
+				t.Fatal("private media context logged")
+			}
+		})
+	}
+}
+
+func TestPaidCatalogMediaStoredByteValidationAndReaderFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		body   []byte
+		media  string
+		err    error
+		status int
+	}{
+		{"svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>`), "image/svg+xml", nil, 200},
+		{"wrong-type", []byte(`<html>secret</html>`), "image/png", nil, 404},
+		{"invalid-svg", []byte(`<!DOCTYPE svg><svg/>`), "image/svg+xml", nil, 404},
+		{"empty", nil, "image/png", nil, 404},
+		{"oversize", make([]byte, catalogImageMaxBytes+1), "image/png", nil, 404},
+		{"missing", nil, "", ErrCatalogNotFound, 404},
+		{"storage-outage", nil, "", errors.New("private storage details"), 503},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _, _, r, p, ref := paidMediaFixture()
+			r.body, r.contentType, r.err = tc.body, tc.media, tc.err
+			token, err := sealPaidCatalogImageReference(ref, s.catalogImageKey, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := paidMediaRequest(s, p, token)
+			if w.Code != tc.status || r.calls.Load() != 1 {
+				t.Fatal(w.Code, r.calls.Load(), w.Body.String())
+			}
+			if tc.status != 200 && strings.Contains(w.Body.String(), "private storage") {
+				t.Fatal("storage error leaked")
+			}
+			if tc.status == 200 && !strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox") {
+				t.Fatal("SVG direct navigation lacks sandbox")
+			}
+		})
+	}
+}
+
+func TestPaidCatalogMediaSourceFallbackAndStableViewRevision(t *testing.T) {
+	s, c, _, _, p, _ := paidMediaFixture()
+	c.view.Article.CanonicalRevisionID = nil
+	c.view.Article.ContentOrigin = stringPointer("source")
+	c.view.Article.Document = c.source.Document
+	before := lifecycleArticle(c.view.Article)
+	view := CatalogArticleView{Article: before}
+	if err := s.rewritePaidCatalogArticleImages(context.Background(), p, c.configuration, c.identity, &view); err != nil {
+		t.Fatal(err)
+	}
+	after := lifecycleArticle(view.Article)
+	if !samePaidCatalogID(before.ViewRevision, after.ViewRevision) {
+		t.Fatal("generated references changed stable view revision")
+	}
+	token := strings.TrimPrefix(view.Article.Images[0].URL, "/v1/catalog/images/")
+	ref, err := openPaidCatalogImageReference(token, s.catalogImageKey, time.Now())
+	if err != nil || ref.AnchorCanonicalRevisionID != nil {
+		t.Fatal("source fallback anchor", ref, err)
+	}
+	if w := paidMediaRequest(s, p, token); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestPaidCatalogSourceDoesNotExposeUnreviewedRawJSON(t *testing.T) {
+	s, c, _, _, p, ref := paidMediaFixture()
+	c.source.Document = nil
+	c.source.Original = json.RawMessage(`{"private_provider_ref":"private-provider-article","image":"https://private-provider/image","storage_key":"procedure-images/secret"}`)
+	request := httptest.NewRequest("GET", "/source?source_revision_id="+ref.SelectedSourceRevisionID, nil)
+	request.SetPathValue("vehicle_id", ref.ConfigurationID)
+	request.SetPathValue("article_id", ref.CanonicalArticleID)
+	request.Header.Set("Accept", "application/json")
+	w := httptest.NewRecorder()
+	s.serveCatalogSource(w, request, p)
+	if w.Code != 503 || strings.Contains(w.Body.String(), "private-provider") || strings.Contains(w.Body.String(), "procedure-images/") {
+		t.Fatal("paid source exposes unreviewed raw JSON; status", w.Code)
+	}
+}
+
+func TestPaidCatalogMediaCodecRejectsNoncanonicalEncoding(t *testing.T) {
+	now := time.Now()
+	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
+	token, err := sealPaidCatalogImageReference(paidMediaTestReference(now), key, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noncanonical := token[:10] + "\n" + token[10:]
+	if _, err := openPaidCatalogImageReference(noncanonical, key, now); err == nil {
+		t.Fatal("noncanonical base64 encoding accepted")
+	}
+}
+
+func TestPaidCatalogMediaNormalizesPublicAssetIdentifiers(t *testing.T) {
+	s, c, _, _, p, _ := paidMediaFixture()
+	privateID := "https://private-provider.example/asset?id=internal"
+	c.source.Images[0].ID = privateID
+	c.source.Images[0].ImageID = ""
+	c.source.Images[0].AssetID = ""
+	c.view.Article.Images[0] = c.source.Images[0]
+	c.view.Article.Steps = nil
+	view := c.view
+	if err := s.rewritePaidCatalogArticleImages(context.Background(), p, c.configuration, c.identity, &view); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(view.Article)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "private-provider") || view.Article.Images[0].ID != publicCatalogAssetID(privateID) {
+		t.Fatal("private locator leaked as public image identity")
+	}
+	token := strings.TrimPrefix(view.Article.Images[0].URL, "/v1/catalog/images/")
+	if w := paidMediaRequest(s, p, token); w.Code != 200 {
+		t.Fatal("normalized asset proof failed", w.Code)
 	}
 }

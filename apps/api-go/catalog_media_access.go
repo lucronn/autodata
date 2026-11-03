@@ -108,6 +108,9 @@ func (s *Server) rewritePaidCatalogImages(images []CatalogImage, source CatalogS
 	for i := range images {
 		image := &images[i]
 		image.URL = ""
+		image.ID = publicCatalogAssetID(image.ID)
+		image.ImageID = publicCatalogAssetID(image.ImageID)
+		image.AssetID = publicCatalogAssetID(image.AssetID)
 		asset := paidCatalogImageAssetID(*image)
 		if image.Status == "unavailable" || !paidCatalogHasAsset(source.Images, asset, image.StorageKey) {
 			continue
