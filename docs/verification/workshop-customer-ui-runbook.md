@@ -172,3 +172,53 @@ rebuilding Go assets; diagnostic results are in
 `/tmp/autodata-ui-review-green.json`. The earlier complete DTO diagnostic run
 passed 40 Chromium and 40 Firefox cases; WebKit was unavailable on this host and
 was correctly retained as failed/unavailable acceptance evidence.
+
+## Real API browser fixture binding
+
+The API fixture consumes the committed `paidSetup`, `PaidBridge` and
+`configure_scoped_runtime` helpers from dependency `d198ba6`. It adds an explicit
+multi-account variation of the existing official Admin SDK certificate/user
+transport; a Go regression verifies signatures and current-user lookups for both
+synthetic accounts. It creates no authenticated browser cookie or role. Login
+uses the actual bundled SDK and `/auth/firebase/session`, and the browser checks
+Secure, HttpOnly, SameSite=Lax cookie flags plus hashed PostgreSQL session rows.
+
+The four frozen pytest roots collect exactly21 cases: three engines for the
+Google/checkout/library case, and three engines times two banks for each source,
+account-isolation and signed-refund case. Their application auth, quote, checkout,
+order, library, prepare, detail, source and image responses come from actual Go
+HTTP and private HTTP commerce/worker/S3 services. Test-only external Google and
+Stripe transports use synthetic fixtures. Signed settlement/refund facts enter
+the actual public webhook over TLS, then the official private verifier and real
+reconciler. Fixture merchant configuration is served only by the guarded test
+mux; the shipped disabled configuration and all other embedded assets are kept.
+
+Run in the coordinator-owned browser-runtime image and isolated R3 network:
+
+```sh
+AUTODATA_LIFECYCLE_TEST=1 \
+AUTODATA_CATALOG_INTEGRATION_REQUIRED=1 \
+AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION=1 \
+AUTODATA_R3_CANDIDATE_SHA="$CANDIDATE_SHA" \
+GOTOOLCHAIN=local GOPROXY=off \
+python -m pytest -q -p no:cacheprovider \
+  --junitxml=/artifacts/workshop-browser-api.xml \
+  workers/ingestion-python/tests/test_workshop_browser_integration.py
+```
+
+Use the existing owned Go cache/temp environment, readonly candidate mount and
+private writable `/artifacts`. The parent creates each isolated database through
+the shared migration runner. Every case runs in an owned process group with an
+84-second child boundary and six seconds reserved for group termination and
+fixture/database cleanup. The child owns its TLS server, browser, workers and S3
+bucket. Missing engines/services and skipped cases cannot pass required mode.
+The ordinary non-required pytest skip is not acceptance evidence.
+
+The API browser binding has compiled, collected21 cases and passed the official
+identity transport regression, full Go tests/vet,29 native helper tests and four
+runner unit tests. These checks do not assert that the21 integrated cases passed;
+first real fixture execution and exact-candidate review remain pending. Browser
+JSON records candidate/SDK/input/asset hashes, engine revisions/version, safe
+route templates and explicit assertions. Failure screenshots contain only
+synthetic fixture content. No credentials, raw tokens or signed image paths are
+recorded by the API browser request log.

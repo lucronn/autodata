@@ -54,7 +54,7 @@ def allowed_external(value):
         (url.hostname == 'fixture-project.firebaseapp.com' and url.path in ('/__/auth/handler', '/__/auth/iframe')) or
         (url.hostname == 'identitytoolkit.googleapis.com' and url.path in ('/v1/projects', '/v1/accounts:signInWithIdp', '/v1/accounts:lookup')) or
         (url.hostname == 'securetoken.googleapis.com' and url.path == '/v1/token') or
-        (url.hostname == 'checkout.stripe.com' and url.path == '/c/pay/fixture'))
+        (url.hostname == 'checkout.stripe.com' and re.fullmatch(r'/c/pay/(?:fixture|cs_test_[a-f0-9]{32})',url.path)))
 
 
 def validate_results(rows, expected):
@@ -113,6 +113,7 @@ class DTOFixture:
         self.renewed = False
         self.prepared = False
         self.token = None
+        self.account = 'user'
 
     async def route(self, route):
         request = route.request
@@ -223,14 +224,14 @@ class DTOFixture:
         if url.path == '/v1/projects': data={'projectId':'fixture-project','authorizedDomains':['127.0.0.1','localhost']}
         elif url.path == '/v1/accounts:signInWithIdp':
             if self.token is None:
-                response=await route.request.frame.page.context.request.get(self.origin+'/__fixture/token'+('?stale=1' if self.scenario=='google-stale-reauthentication' else ''))
+                response=await route.request.frame.page.context.request.get(self.origin+'/__fixture/token?account='+self.account+('&stale=1' if self.scenario=='google-stale-reauthentication' else ''))
                 self.token=await response.json()
             else:
-                response=await route.request.frame.page.context.request.get(self.origin+'/__fixture/token');self.token=await response.json()
+                response=await route.request.frame.page.context.request.get(self.origin+'/__fixture/token?account='+self.account);self.token=await response.json()
             data=self.token
-        elif url.path == '/v1/accounts:lookup': data={'users':[{'localId':'fixture-user','email':'fixture@example.invalid','emailVerified':True,'providerUserInfo':[{'providerId':'google.com','federatedId':'fixture-user','email':'fixture@example.invalid'}],'lastLoginAt':str(int(time.time()*1000)),'createdAt':'1600000000000'}]}
+        elif url.path == '/v1/accounts:lookup': data={'users':[{'localId':self.token['localId'],'email':'fixture@example.invalid','emailVerified':True,'providerUserInfo':[{'providerId':'google.com','federatedId':self.token['localId'],'email':'fixture@example.invalid'}],'lastLoginAt':str(int(time.time()*1000)),'createdAt':'1600000000000'}]}
         elif url.hostname == 'securetoken.googleapis.com':
-            data={'access_token':self.token['idToken'],'id_token':self.token['idToken'],'expires_in':'3600','token_type':'Bearer','refresh_token':'synthetic-refresh-never-persist','user_id':'fixture-user','project_id':'fixture-project'}
+            data={'access_token':self.token['idToken'],'id_token':self.token['idToken'],'expires_in':'3600','token_type':'Bearer','refresh_token':'synthetic-refresh-never-persist','user_id':self.token['localId'],'project_id':'fixture-project'}
         elif url.hostname == 'checkout.stripe.com':
             await route.fulfill(content_type='text/html',body=(FIXTURES/'stripe_checkout.html').read_text());return
         else:
@@ -366,28 +367,184 @@ async def dto_case(browser, origin, name, output):
         await context.close()
 
 
+API_CASES=(
+    'test_browser_google_exchange_checkout_library_real_api',
+    'test_browser_owned_source_canonical_and_media_real_api',
+    'test_browser_account_scope_and_revocation_real_api',
+    'test_browser_signed_refund_blocks_old_links_real_api',
+)
+
+class APIFixture(DTOFixture):
+    async def route(self,route):
+        request=route.request
+        if request.url.startswith(self.origin+'/'):
+            path=urlsplit(request.url).path
+            # Observe safe route templates only. Never manufacture an app response.
+            safe=re.sub(r'/v2\.[^/?]+','/{capability}',path)
+            safe=re.sub(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}','{uuid}',safe)
+            self.requests.append({'method':request.method,'path':safe})
+            if request.headers.get('authorization'):self.errors.append('browser sent bearer authorization')
+            await route.continue_();return
+        if not allowed_external(request.url):
+            self.unexpected.append(urlsplit(request.url).hostname);await route.abort();return
+        await self.external(route)
+
+async def api_measure(context,origin):
+    response=await context.request.get(origin+'/__fixture/measurement')
+    assert response.status==200
+    return await response.json()
+
+async def api_control(context,origin,path):
+    response=await context.request.post(origin+'/__fixture/'+path)
+    assert response.status in (200,204), f'owned fixture control failed: {path.split("?")[0]} status{response.status}'
+    return response
+
+async def api_signin(page):
+    from playwright.async_api import expect
+    await expect(page.locator('#signin')).to_be_enabled()
+    await page.locator('#signin').click()
+    await expect(page.locator('#account-status')).to_have_text('Signed in.',timeout=10000)
+
+async def api_case(browser,origin,name,output):
+    from playwright.async_api import expect
+    context=await browser.new_context(ignore_https_errors=True,viewport={'width':1280,'height':900})
+    transport=APIFixture(origin,name)
+    await context.route('**/*',transport.route)
+    page=await context.new_page();page.on('pageerror',lambda error:transport.errors.append(str(error)))
+    assertions={}
+    try:
+        response=await context.request.get(origin+'/__fixture/metadata');metadata=await response.json()
+        assert metadata['kind']=='api-fixture'
+        scope=metadata['scope'];configuration=scope['configuration'];article_id=scope['article']
+        route=origin+'/workshop/?configuration='+configuration+'&region=US'
+        before=await api_measure(context,origin)
+        await page.goto(route);await api_signin(page)
+        cookies=await context.cookies(origin)
+        cookie=next(c for c in cookies if c['name']=='__Host-autodata_session')
+        assert cookie['secure'] and cookie['httpOnly'] and cookie['sameSite']=='Lax'
+        signed=await api_measure(context,origin)
+        assert signed['auth_sessions']==before['auth_sessions']+1 and signed['hashed_sessions']==signed['auth_sessions'] and signed['sdk_cert_calls']>=1 and signed['sdk_user_calls']>=2 and signed['sdk_unexpected']==0
+        assertions['official_sdk_cookie_and_pg_session']=True
+        await expect(page.locator('#purchase-action')).to_be_enabled()
+        await expect(page.locator('#purchase-message')).to_contain_text('purchase')
+        await page.locator('#agreement').check()
+        if name==API_CASES[0]:await api_control(context,origin,'control/lose-response')
+        await page.locator('#purchase-action').click(click_count=2,delay=0)
+        if name==API_CASES[0]:
+            await expect(page.locator('#retry')).to_be_visible();await page.locator('#retry').click()
+        await page.wait_for_url(re.compile(r'https://checkout\.stripe\.com/c/pay/cs_test_[a-f0-9]{32}.*'))
+        pending=await api_measure(context,origin)
+        assert pending['workshop_orders']==1 and pending['entitlements']==0
+        order=pending['orders'][0]['order_id']
+        # A provider return is only a request to check the owner-scoped ledger.
+        await page.goto(origin+'/workshop/?order='+order)
+        await expect(page.locator('#purchase-message')).to_contain_text('Do not pay again')
+        assert (await api_measure(context,origin))['entitlements']==0
+        assertions['return_does_not_grant']=True
+        await api_control(context,origin,'payment/settle?order_id='+order)
+        settled=await api_measure(context,origin)
+        assert settled['workshop_orders']==1 and settled['entitlements']==1 and settled['dataset_requests']==1 and settled['dataset_projections']==1 and settled['payment_events']==1
+        assertions['signed_public_webhook_grants_once']=True
+        await page.goto(route)
+        await expect(page.locator('#articles a')).not_to_have_count(0)
+        await page.locator('#my-vehicles').click()
+        await expect(page.locator('#library-items > li')).to_have_count(1)
+        await page.reload();await expect(page.locator('#library-items > li')).to_have_count(1)
+        assert (await api_measure(context,origin))['workshop_orders']==1
+        assertions['permanent_owner_library_reload']=True
+        if name==API_CASES[0]:
+            assert await page.evaluate('Object.keys(localStorage).filter(k=>/firebase:authUser|token|csrf/i.test(k))')==[]
+        else:
+            await api_control(context,origin,'control/start-workers')
+            await page.goto(route+'&article='+article_id)
+            await expect(page.locator('#article-kind')).to_have_text('Stored source',timeout=15000)
+            await expect(page.locator('#article-content')).to_contain_text('Remove the pump.')
+            await expect(page.locator('#print')).to_be_enabled()
+            await expect(page.locator('#article-content img')).not_to_have_count(0)
+            image_url=await page.locator('#article-content img').first.get_attribute('src')
+            assert urlsplit(image_url).path.startswith('/v1/catalog/images/v2.')
+            image=await context.request.get(image_url);assert image.status==200 and len(await image.body())>0
+            await page.locator('#article-reference summary').click();await page.locator('#source-review-load').click()
+            await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
+            source_path=await page.locator('#source-review-link').get_attribute('href')
+            assert parse_qs(urlsplit(source_path).query).get('source_revision_id')
+            assertions['paid_source_and_actual_s3_image']=True
+            await api_control(context,origin,'control/release-model')
+            await expect(page.locator('#article-kind')).to_have_text('Workshop article',timeout=15000)
+            await expect(page.locator('#article-content')).not_to_be_empty()
+            await page.reload();await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+            assertions['source_to_canonical_and_warm_reuse']=True
+            if name==API_CASES[2]:
+                for denied in (f'/v1/catalog/vehicles/{scope["adjacent"]}/articles',f'/v1/catalog/vehicles/{configuration}/articles/{scope["unscoped"]}',f'/v1/catalog/vehicles/{scope["vehicle"]}/articles'):
+                    denied_response=await context.request.get(origin+denied)
+                    assert denied_response.status in (403,404), f'adjacent/legacy route exposed status{denied_response.status}'
+                other=await browser.new_context(ignore_https_errors=True)
+                other_transport=APIFixture(origin,name);other_transport.account='other';await other.route('**/*',other_transport.route)
+                other_page=await other.new_page()
+                try:
+                    await other_page.goto(route);await api_signin(other_page)
+                    denied=await other.request.get(origin+f'/v1/catalog/vehicles/{configuration}/articles');assert denied.status==403
+                    library_response=await other.request.get(origin+'/v1/workshop/library?limit=20');assert (await library_response.json())['items']==[]
+                    denied_image=await other.request.get(image_url);assert denied_image.status==403
+                    assert not other_transport.unexpected and not other_transport.errors
+                finally:await other.close()
+                assertions['account_and_exact_scope_isolation']=True
+                await page.locator('#signout').click();await expect(page.locator('#article-content')).to_be_empty()
+                assert (await context.request.get(image_url)).status==401
+                await page.evaluate('window.dispatchEvent(new PageTransitionEvent("pageshow",{persisted:true}))');await expect(page.locator('#article-content')).to_be_empty()
+                await api_signin(page);await page.goto(route+'&article='+article_id);await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+                await api_control(context,origin,'disable')
+                assert (await context.request.get(image_url)).status==401
+                await page.reload();await expect(page.locator('#article-content')).to_be_empty()
+                assertions['logout_bfcache_and_firebase_disable_deny']=True
+            elif name==API_CASES[3]:
+                await api_control(context,origin,'payment/refund?order_id='+order)
+                old=await context.request.get(image_url);assert old.status==403
+                source=await context.request.get(origin+source_path);assert source.status==403
+                detail=await context.request.get(origin+f'/v1/catalog/vehicles/{configuration}/articles/{article_id}');assert detail.status==403
+                revoked=await api_measure(context,origin);assert revoked['orders'][0]['state']=='revoked' and revoked['entitlements']==1
+                await page.reload();await expect(page.locator('#article-content')).to_be_empty();await expect(page.locator('#purchase-action')).to_be_disabled()
+                await page.locator('#my-vehicles').click();await expect(page.locator('#library-items')).to_contain_text('Access revoked')
+                assertions['signed_full_refund_denies_old_content_and_media']=True
+        assert not transport.unexpected and not transport.errors, {'unexpected':transport.unexpected,'errors':transport.errors}
+        final=await api_measure(context,origin);assert final['sdk_unexpected']==0
+        return {'status':'passed','assertions':assertions,'provider':scope['provider'],'requests':transport.requests,'measurement':final}
+    except BaseException:
+        output.mkdir(mode=0o700,parents=True,exist_ok=True)
+        try:await page.screenshot(path=str(output/(name+'-failure.png')),timeout=1500)
+        except Exception:pass
+        raise
+    finally:await context.close()
+
+
 async def run(args):
     from playwright.async_api import async_playwright
     engines=ENGINES if args.browser=='all' else (args.browser,)
-    expected=[(engine,name) for engine in engines for name in inventory()]
+    names=inventory() if args.mode=='dto-fixture' else [os.environ.get('AUTODATA_WORKSHOP_BROWSER_CASE')]
+    if args.mode=='api-fixture' and (len(engines)!=1 or names[0] not in API_CASES): raise ValueError('API mode requires one frozen owned pytest case/engine')
+    expected=[(engine,name) for engine in engines for name in names]
     output=Path(args.output);output.mkdir(mode=0o700,parents=True,exist_ok=True)
     os.chmod(output,0o700)
     provenance=verify_provenance(args)
     rows=[]
     sdk=(ROOT/'apps/api-go/workshop/firebase-web.mjs').read_bytes()
-    evidence={'version':'v1','mode':args.mode,'candidate_sha':args.candidate_sha,'sdk_sha256':hashlib.sha256(sdk).hexdigest(),'playwright_version':importlib.metadata.version('playwright'),'results':rows,'provenance':provenance}
+    browser_manifest=Path(importlib.metadata.distribution('playwright').locate_file('playwright/driver/package/browsers.json'))
+    revisions={item['name']:item['revision'] for item in json.loads(browser_manifest.read_text())['browsers']}
+    inputs={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in [Path(__file__),FIXTURES/'scenarios.json',FIXTURES/'firebase_transport.js',FIXTURES/'hostile_source.json',FIXTURES/'stripe_checkout.html',ROOT/'apps/api-go/workshop_browser_fixture_test.go']}
+    evidence={'engine_revisions':revisions,'input_sha256':inputs,'version':'v1','mode':args.mode,'candidate_sha':args.candidate_sha,'sdk_sha256':hashlib.sha256(sdk).hexdigest(),'playwright_version':importlib.metadata.version('playwright'),'results':rows,'provenance':provenance}
     if evidence['playwright_version']!='1.64.1': raise ValueError('exact Playwright 1.64.1 is required')
     try:
         async with async_playwright() as playwright:
             for engine in engines:
                 try: browser=await getattr(playwright,engine).launch()
                 except Exception as error:
-                    rows.extend(dict(browser=engine,scenario=name,status='unavailable',error=str(error)) for name in inventory());continue
+                    rows.extend(dict(browser=engine,scenario=name,status='unavailable',error=str(error)) for name in names);continue
                 try:
-                    for name in inventory():
+                    for name in names:
                         start=time.monotonic()
                         try:
-                            result=await asyncio.wait_for(dto_case(browser,args.base_url,name,output/engine),timeout=20)
+                            case=dto_case if args.mode=='dto-fixture' else api_case
+                            result=await asyncio.wait_for(case(browser,args.base_url,name,output/engine),timeout=20 if args.mode=='dto-fixture' else 65)
                         except Exception as error: result={'status':'failed','error':str(error) or type(error).__name__}
                         rows.append(dict(browser=engine,scenario=name,elapsed_seconds=round(time.monotonic()-start,3),**result))
                         evidence['browser_versions']=evidence.get('browser_versions',{})|{engine:browser.version}
@@ -408,7 +565,6 @@ def main(argv=None):
     parser.add_argument('--candidate-sha',required=True,type=candidate_identity)
     parser.add_argument('--output',required=True)
     args=parser.parse_args(argv)
-    if args.mode=='api-fixture': raise SystemExit('api-fixture requires the committed owned paid-access supervisor; DTO routing cannot substitute for API proof')
     asyncio.run(asyncio.wait_for(run(args),timeout=4440))
 
 
