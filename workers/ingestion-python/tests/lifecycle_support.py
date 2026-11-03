@@ -5,6 +5,9 @@ from pathlib import Path
 import os
 import uuid
 import hashlib
+import tempfile
+import shutil
+import subprocess
 import pytest
 import psycopg
 from psycopg.rows import dict_row
@@ -32,6 +35,7 @@ class Repository:
 
 
 def apply_migration(repo, number):
+    """Raw original SQL for intentional upgrade/failure tests, not an operational path."""
     (path,) = (ROOT / "db/migrations").glob(f"{number:03d}_*.sql")
     with repo.connect() as conn:
         conn.autocommit = True
@@ -56,10 +60,19 @@ def fresh_database():
             conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
         names.append(name)
         repo = Repository(name)
-        for path in sorted((ROOT / "db/migrations").glob("*.sql")):
-            number = int(path.name.split("_")[0])
-            if through is None or number <= through:
-                apply_migration(repo, number)
+        if through != 0:
+            with tempfile.TemporaryDirectory(prefix="lifecycle-migrations-") as temporary:
+                prefix = Path(temporary)
+                for path in sorted((ROOT / "db/migrations").glob("*.sql")):
+                    if through is None or int(path.name[:3]) <= through:
+                        shutil.copyfile(path, prefix / path.name)
+                result = subprocess.run(
+                    ["sh", str(ROOT / "scripts/dev/migrate_sql.sh"), "--migrations-dir", str(prefix)],
+                    env={**os.environ, "PGHOST": "postgres", "PGDATABASE": name,
+                         "PGUSER": "lifecycle_test", "PGPASSWORD": "lifecycle_test_only"},
+                    check=False, capture_output=True, text=True,
+                )
+                assert result.returncode == 0, result.stdout + result.stderr
         return repo
 
     yield fresh

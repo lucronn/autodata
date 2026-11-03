@@ -72,8 +72,7 @@ services:
       retries: 12
     restart: on-failure
 
-  # Forward-only schema migrations. Every migration is idempotent, so re-running
-  # them against the persistent volume is safe on each `up`.
+  # One locked session applies pending versions and preserves committed migrations.
   migration-runner:
     image: postgres:17-alpine
     working_dir: /workspace
@@ -85,12 +84,7 @@ services:
       PGDATABASE: autodata
       PGUSER: autodata
       PGPASSWORD: local-dev-only
-    command:
-      [
-        "sh",
-        "-c",
-        "set -eu; for migration in /workspace/db/migrations/[0-9][0-9][0-9]_*.sql; do echo applying $${migration}; psql --set ON_ERROR_STOP=1 --file $${migration}; done",
-      ]
+    command: ["sh", "scripts/dev/migrate_sql.sh"]
     depends_on:
       postgres:
         condition: service_healthy

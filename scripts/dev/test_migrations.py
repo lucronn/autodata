@@ -1,4 +1,11 @@
 import sys
+import os
+import shutil
+import subprocess
+import tempfile
+import contextlib
+import io
+from unittest.mock import patch
 import unittest
 from pathlib import Path
 
@@ -11,7 +18,7 @@ from migration_plan import (  # noqa: E402
     migration_files,
     validate_migration_set,
 )
-from migrate import psql_command, resolve_database_address  # noqa: E402
+from migrate import apply_migrations, psql_command, resolve_database_address  # noqa: E402
 
 
 class MigrationPlanTests(unittest.TestCase):
@@ -224,6 +231,109 @@ class MigrationPlanTests(unittest.TestCase):
                 os.environ["AUTODATA_DB_ADDRESS"] = old
             else:
                 os.environ.pop("AUTODATA_DB_ADDRESS", None)
+
+
+class SharedDriverTests(unittest.TestCase):
+    def emit(self, directory=None):
+        command = ["sh", str(ROOT / "scripts/dev/migrate_sql.sh"), "--emit"]
+        if directory is not None:
+            command += ["--migrations-dir", str(directory)]
+        return subprocess.run(command, capture_output=True, text=True)
+
+    def test_emit_is_embedded_and_uses_one_session_lock(self):
+        result = self.emit()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("SELECT pg_advisory_lock(186,3738);"), 1)
+        self.assertNotIn("\\i ", result.stdout)
+        for path in migration_files(ROOT / "db/migrations"):
+            self.assertIn(path.read_text(), result.stdout)
+        self.assertIn("AUTODATA_APPLIED 033_catalog_scope_coverage.sql", result.stdout)
+
+    def test_manifest_rejects_holes_unsafe_names_symlinks_and_wrong_stems(self):
+        names = [p.name for p in migration_files(ROOT / "db/migrations")]
+        cases = [names[1:3], names[:1]+names[2:3], names[:1]+["002_wrong.sql"],
+                 names[:1]+["001_duplicate.sql"], names[:1]+["002_bad;name.sql"]]
+        for manifest in cases:
+            with self.subTest(manifest=manifest), tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                for name in manifest:
+                    (directory / name).write_text("SELECT 1;\n")
+                result = self.emit(directory)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / names[0]).symlink_to(ROOT / "db/migrations" / names[0])
+            self.assertNotEqual(self.emit(directory).returncode, 0)
+
+    def test_fixture_prefix_accepts_only_contiguous_canonical_prefix(self):
+        with tempfile.TemporaryDirectory(prefix="migration space '") as tmp:
+            directory = Path(tmp)
+            first = migration_files(ROOT / "db/migrations")[0]
+            shutil.copy(first, directory / first.name)
+            result = self.emit(directory)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            sentinel = directory / "shell-was-executed"
+            body = "SELECT '$(touch " + str(sentinel) + ")';\n"
+            (directory / first.name).write_text(body)
+            literal = self.emit(directory)
+            self.assertEqual(literal.returncode, 0, literal.stderr)
+            self.assertIn(body, literal.stdout)
+            self.assertFalse(sentinel.exists())
+            (directory / first.name).write_text("SELECT 1; \\quit\n")
+            self.assertNotEqual(self.emit(directory).returncode, 0)
+
+    def test_default_refuses_truncated_manifest_before_sql_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "scripts/dev").mkdir(parents=True)
+            (root / "db/migrations").mkdir(parents=True)
+            shutil.copy(ROOT / "scripts/dev/migrate_sql.sh", root / "scripts/dev")
+            first = migration_files(ROOT / "db/migrations")[0]
+            shutil.copy(first, root / "db/migrations")
+            result = subprocess.run(["sh", str(root / "scripts/dev/migrate_sql.sh"), "--emit"], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "")
+
+    def test_default_invocation_executes_identical_emit_output_and_cleans_tempfile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            capture = directory / "captured-driver.sql"
+            fake = directory / "psql"
+            fake.write_text("#!/bin/sh\n[ \"$1\" = -X ] || exit 91\n[ \"$2\" = --set ] || exit 92\n[ \"$3\" = ON_ERROR_STOP=1 ] || exit 93\n[ \"$4\" = --file ] || exit 94\ncp \"$5\" \"$CAPTURE_DRIVER\"\nprintf '%s' \"$5\" > \"$CAPTURE_PATH\"\n")
+            fake.chmod(0o755)
+            result = subprocess.run(["sh", str(ROOT / "scripts/dev/migrate_sql.sh")],
+                env={**os.environ, "PATH":str(directory)+os.pathsep+os.environ["PATH"],
+                     "CAPTURE_DRIVER":str(capture), "CAPTURE_PATH":str(directory/"path")},
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(capture.read_text(), self.emit().stdout)
+            self.assertFalse(Path((directory/"path").read_text()).exists())
+
+    def test_fixed_transaction_contract_is_audited(self):
+        import re
+        for path in migration_files(ROOT / "db/migrations"):
+            body = path.read_text()
+            outer = re.findall(r"(?m)^(BEGIN|COMMIT);$", body)
+            self.assertEqual(outer, ["BEGIN", "COMMIT"] if int(path.name[:3]) >= 36 else [])
+            markers = re.findall(r"VALUES\s*\('([0-9]{3}_[a-z0-9_]+)'\)", body)
+            self.assertEqual(markers, [] if path.name.startswith("033_") else [path.stem])
+
+    def test_adapter_streams_one_driver_and_returns_only_actual_applications(self):
+        emitted = subprocess.CompletedProcess([], 0, "driver SQL", "")
+        applied = subprocess.CompletedProcess([], 0, "AUTODATA_SKIPPED 001_extensions.sql\nAUTODATA_APPLIED 002_platform_spine.sql\n", "notice")
+        for command in (["psql"], ["docker", "compose", "exec", "-T", "postgres", "psql"]):
+            with self.subTest(command=command), patch("migrate.psql_command", return_value=command), patch("migrate.subprocess.run", side_effect=[emitted, applied]) as run, contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(apply_migrations(ROOT), ["002_platform_spine.sql"])
+                self.assertEqual(run.call_count, 2)
+                self.assertEqual(run.call_args.kwargs["input"], "driver SQL")
+                self.assertEqual(run.call_args.args[0][-5:], ["-X", "--set", "ON_ERROR_STOP=1", "--file", "-"])
+
+    def test_adapter_propagates_generator_and_psql_failure(self):
+        for results in ([subprocess.CompletedProcess([], 1, "", "manifest rejected")],
+                        [subprocess.CompletedProcess([], 0, "driver", ""), subprocess.CompletedProcess([], 3, "", "ledger rejected")]):
+            with patch("migrate.subprocess.run", side_effect=results), contextlib.redirect_stderr(io.StringIO()), self.assertRaisesRegex(RuntimeError, "rejected"):
+                apply_migrations(ROOT)
 
 
 if __name__ == "__main__":
