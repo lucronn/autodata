@@ -306,7 +306,7 @@ class DTODiagnostics:
     def snapshot(self):
         data = dict(failure_stage=self.failure_stage, failure_kind=self.failure_kind,
             requests=self.requests, errors=self.errors, unexpected=self.unexpected,
-            trace_status=self.trace_status, diagnostic_errors=list(self.diagnostic_errors),
+            trace_status=self.trace_status, diagnostic_errors=self.diagnostic_errors,
             execution_elapsed_seconds=round(self.execution_elapsed_seconds, 3),
             cleanup_elapsed_seconds=round(self.cleanup_elapsed_seconds, 3))
         if self.trace_path is not None: data['trace_path'] = self.trace_path
@@ -356,6 +356,11 @@ class DTODiagnostics:
             except OSError as error:
                 self.diagnostic_errors.append(f'trace.remove: {error}')
                 self.fail(error)
+                # A resistant export may complete after finish() returned. Keep
+                # its cleanup error visible in both the shared row and disk evidence.
+                try: self.write_failure()
+                except OSError as write_error:
+                    self.diagnostic_errors.append(f'failure.write: {write_error}')
         if self.tracing_started:
             # Stage the trace before close: close itself may be the first failure.
             self.output.mkdir(mode=0o700, parents=True, exist_ok=True)

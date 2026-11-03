@@ -653,6 +653,31 @@ class BrowserDTOTimeoutDiagnostics(unittest.IsolatedAsyncioTestCase):
             for error in result['diagnostics']['diagnostic_errors']))
         self.assertTrue(context.closed)
 
+    async def test_late_export_deletion_error_persists_after_wrapper_return(self):
+        context = self.context(); context.tracing.hold = context.tracing.resist_cancel = True
+        original = Path.unlink
+        def fail_owned_trace(path, *args, **kwargs):
+            if path.name.endswith('-failure-trace.zip') and path.exists():
+                raise OSError('late export deletion denied')
+            return original(path, *args, **kwargs)
+        with patch.object(Path, 'unlink', fail_owned_trace):
+            result = await self.execute(context, cleanup_timeout=.03)
+            self.assert_failed_evidence(result, 'action_timeout')
+            context.tracing.release.set()
+            pending = list(smoke._DTO_PENDING_TASKS)
+            if pending: await asyncio.wait(pending, timeout=.2)
+            # Allow the completion callback to publish the late cleanup error.
+            await asyncio.sleep(0)
+        self.assertTrue((self.output / 'bankone-cascade-failure-trace.zip').exists())
+        self.assertTrue(any('late export deletion denied' in error
+            for error in result['diagnostics']['diagnostic_errors']))
+        stored = json.loads((self.output / 'bankone-cascade-failure.json').read_text())
+        self.assertTrue(any('late export deletion denied' in error
+            for error in stored['diagnostics']['diagnostic_errors']))
+        self.assertEqual(stored['diagnostics']['failure_stage'], 'article.open.click')
+        self.assertEqual(stored['diagnostics']['failure_kind'], 'action_timeout')
+        self.assertIn('element stability', stored['error'])
+
     async def test_dto_browser_shutdown_cannot_hang_acceptance(self):
         self.assertTrue(callable(getattr(smoke, 'close_dto_browser', None)))
         close_entered, release = asyncio.Event(), asyncio.Event()
