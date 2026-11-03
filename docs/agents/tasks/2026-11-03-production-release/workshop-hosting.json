@@ -1,0 +1,170 @@
+{
+  "task_id": "production-release-workshop-hosting",
+  "repository": "lucronn/autodata",
+  "goal": "Implement standalone paid Workshop VM/Caddy/Compose definitions and bounded external-operation definitions with pure fake-CLI tests, preserving separate staging and cutover gates.",
+  "builder_agent": "coordinator-assigned-two-disjoint-builders",
+  "source_integration_base_sha": "3b551c992263f74e3ebdc6e4fa2c4ffda3b979a6",
+  "allowed_paths": [
+    "infra/compose/compose.production.yaml",
+    "infra/deploy/gce/Caddyfile",
+    "infra/deploy/gce/nats.conf.template",
+    "infra/deploy/gce/seaweedfs-s3.json.template",
+    "infra/deploy/gce/release.env.example",
+    "infra/deploy/gce/release.schema.json",
+    "infra/deploy/gce/migration.Dockerfile",
+    "infra/deploy/gce/runtime-entrypoint.sh",
+    "infra/deploy/gce/deploy.sh",
+    "infra/deploy/gce/backup-host.sh",
+    "infra/deploy/gce/restore.sh",
+    "infra/deploy/gce/runtime-check.py",
+    "infra/deploy/gce/metadata-guard.nft",
+    "infra/deploy/gce/autodata-metadata-guard.service",
+    "infra/deploy/gce/autodata.service",
+    "infra/deploy/gce/autodata-backup-resume.service",
+    "infra/deploy/gce/autodata-backup-resume.timer",
+    "infra/deploy/gce/docker-autodata.conf",
+    "infra/deploy/gce/runtime-grants.sql",
+    "infra/deploy/gce/test_host_runtime.py",
+    "apps/api-go/Dockerfile",
+    "workers/ingestion-python/Dockerfile",
+    ".github/workflows/release-workshop.yml",
+    ".github/workflows/backup-workshop.yml",
+    ".github/workflows/monitor-workshop.yml",
+    "infra/deploy/gce/cloud-bootstrap.sh",
+    "infra/deploy/gce/cloud-ops.py",
+    "infra/deploy/gce/test_cloud_ops.py",
+    "docs/operations/workshop-gcp.md",
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+    "docs/agents/pre-implementation-gate.md",
+    "docs/architecture/infrastructure-and-dev.md"
+  ],
+  "outputs": [
+    "infra/compose/compose.production.yaml",
+    "infra/deploy/gce/release.schema.json",
+    "infra/deploy/gce/cloud-ops.py"
+  ],
+  "implementation_owners": {
+    "runtime_A": [
+      "infra/compose/compose.production.yaml",
+      "infra/deploy/gce/Caddyfile",
+      "infra/deploy/gce/nats.conf.template",
+      "infra/deploy/gce/seaweedfs-s3.json.template",
+      "infra/deploy/gce/release.env.example",
+      "infra/deploy/gce/release.schema.json",
+      "infra/deploy/gce/migration.Dockerfile",
+      "infra/deploy/gce/runtime-entrypoint.sh",
+      "infra/deploy/gce/deploy.sh",
+      "infra/deploy/gce/backup-host.sh",
+      "infra/deploy/gce/restore.sh",
+      "infra/deploy/gce/runtime-check.py",
+      "infra/deploy/gce/metadata-guard.nft",
+      "infra/deploy/gce/autodata-metadata-guard.service",
+      "infra/deploy/gce/autodata.service",
+      "infra/deploy/gce/autodata-backup-resume.service",
+      "infra/deploy/gce/autodata-backup-resume.timer",
+      "infra/deploy/gce/docker-autodata.conf",
+      "infra/deploy/gce/runtime-grants.sql",
+      "infra/deploy/gce/test_host_runtime.py",
+      "apps/api-go/Dockerfile",
+      "workers/ingestion-python/Dockerfile"
+    ],
+    "operations_B": [
+      ".github/workflows/release-workshop.yml",
+      ".github/workflows/backup-workshop.yml",
+      ".github/workflows/monitor-workshop.yml",
+      "infra/deploy/gce/cloud-bootstrap.sh",
+      "infra/deploy/gce/cloud-ops.py",
+      "infra/deploy/gce/test_cloud_ops.py",
+      "docs/operations/workshop-gcp.md",
+      "docs/architecture/infrastructure-and-dev.md"
+    ]
+  },
+  "first_milestones": {
+    "A": {
+      "allowed_paths": [
+        "infra/deploy/gce/release.schema.json",
+        "infra/deploy/gce/runtime-check.py",
+        "infra/deploy/gce/test_host_runtime.py",
+        "infra/deploy/gce/release.env.example",
+        "infra/compose/compose.production.yaml",
+        "infra/deploy/gce/Caddyfile",
+        "infra/deploy/gce/nats.conf.template",
+        "infra/deploy/gce/seaweedfs-s3.json.template"
+      ],
+      "depends_on": [],
+      "verification_command": [
+        "python",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "infra/deploy/gce",
+        "-p",
+        "test_host_runtime.py",
+        "-v"
+      ]
+    },
+    "B": {
+      "allowed_paths": [
+        "infra/deploy/gce/cloud-ops.py",
+        "infra/deploy/gce/test_cloud_ops.py"
+      ],
+      "depends_on": [
+        "coordinator-reviewed exact A shared contract"
+      ],
+      "verification_command": [
+        "python",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "infra/deploy/gce",
+        "-p",
+        "test_cloud_ops.py",
+        "-v"
+      ]
+    }
+  },
+  "acceptance_tests": [
+    "Implement and independently review A first eight-path schema/parser/render contract with retained red/green pure tests and no runtime execution.",
+    "After approved A dependency integration, implement and independently review B first two-path fake-CLI definitions; preserve exact30-path disjoint ownership.",
+    "Resolve approved pins and owner configuration, finish separately authorized same-scope definitions, and obtain independent combined review before any actual staging.",
+    "Keep actual IAM/network/Firebase/Stripe/banks/model/reboot/restore/alerts/TLS and cutover evidence separate; pure tests do not certify deployment."
+  ],
+  "forbidden_scope": [
+    "No Docker/Compose/nft/systemd/cloud/SSH/IAP/provider execution, image pulls/builds, credentials, DNS, apply or deployment under this offline gate.",
+    "No application SQL/auth/payment/catalog/UI, base/CI/Base44 Compose, autonomy policy/controller/runtime, existing unrelated workflow edits or new paths.",
+    "No fake tests presented as actual IAM/network/backup/restore/TLS/product readiness; remaining same-scope milestones require coordinator authorization."
+  ],
+  "pre_implementation": {
+    "goal": "Implement standalone paid Workshop VM/Caddy/Compose definitions and bounded external-operation definitions with pure fake-CLI tests, preserving separate staging and cutover gates.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/architecture/infrastructure-and-dev.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Synchronize Issue186/Project8 and canonical hosting plan/task/record at a committed checkpoint; pass exact-base preflight before coordinator-authorized implementation.",
+      "Implement and independently review A first eight-path schema/parser/render contract with retained red/green pure tests and no runtime execution.",
+      "After approved A dependency integration, implement and independently review B first two-path fake-CLI definitions; preserve exact30-path disjoint ownership.",
+      "Resolve approved pins and owner configuration, finish separately authorized same-scope definitions, and obtain independent combined review before any actual staging.",
+      "Keep actual IAM/network/Firebase/Stripe/banks/model/reboot/restore/alerts/TLS and cutover evidence separate; pure tests do not certify deployment."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T20:47:39.108914+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

@@ -280,6 +280,22 @@
       "review_status": "Independent exact-candidate approval after complete Apache license repair;19 packaging and3 adversarial HTTP checks,Go and14Node pass; actual browser behavior pending finalUI.",
       "ci_run": "https://github.com/lucronn/autodata/actions/runs/41700061868",
       "ci_sha": "3114366d409f3fde98bdd921a8cc1ef6c4377d17"
+    },
+    {
+      "id": "workshop-hosting",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-hosting.json",
+      "depends_on": [],
+      "state": "planning_synchronized_awaiting_review",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "dispatch_mode": "coordinator_parallel_offline",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+      "source_integration_base_sha": "3b551c992263f74e3ebdc6e4fa2c4ffda3b979a6",
+      "dispatch_prerequisite": "Coordinator review of exact synchronized checkpoint and passing pinned preflight; initially A eight-path pure schema/parser/render only, then B two-path fake CLI after reviewed A contract. No runtime/cloud/DNS/secrets.",
+      "runtime_prerequisites": [
+        "verified integrated product candidate and actual acceptance/CI",
+        "approved real project/cost/provider/recovery configuration and separate staging authorization"
+      ]
     }
   ],
   "execution": {

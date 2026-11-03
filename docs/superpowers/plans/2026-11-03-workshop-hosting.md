@@ -1,8 +1,8 @@
 # Workshop at cars.tk: bounded GCE hosting implementation proposal
 
-Planning only, 2026-11-03. This successor consolidates the reviewed application interfaces, Firebase ADC isolation design and local pinned-image findings. It supersedes the prior hosting proposal (SHA256 `1cf908ab0e2b1eb678710d37809a7838051a8e4375d9d7e25a69de0cfd5c9a2f` in Git history), including its broad attached-identity/Secret Manager assumption and Ops Agent monitoring. Inputs: ADC isolation design SHA256 `91dd17b493d4c71e0632ac64b36136fec433a4d3d09529820ca4fefc009bcb32`, bounded amendment SHA256 `5d040259ab579bf6801a1839a0bbfa5eddfa4cd0d08790b856e36e81334c9d37`, and reviewed commerce040 plus paid candidate `a90613a76b3f2c5f5c14606384bf1d9cdcca0a6e`. The latter's full runtime acceptance and UI integration remain coordinator-owned; re-pin the final integrated release before an implementation gate.
+Offline implementation gate preparation, 2026-11-03. This successor consolidates the reviewed application interfaces, Firebase ADC isolation design and local pinned-image findings. It supersedes the prior hosting proposal (SHA256 `1cf908ab0e2b1eb678710d37809a7838051a8e4375d9d7e25a69de0cfd5c9a2f` in Git history), including its broad attached-identity/Secret Manager assumption and Ops Agent monitoring. Inputs: ADC isolation design SHA256 `91dd17b493d4c71e0632ac64b36136fec433a4d3d09529820ca4fefc009bcb32`, bounded amendment SHA256 `5d040259ab579bf6801a1839a0bbfa5eddfa4cd0d08790b856e36e81334c9d37`, and reviewed commerce040 plus paid candidate `a90613a76b3f2c5f5c14606384bf1d9cdcca0a6e`. The latter's full runtime acceptance and UI integration remain coordinator-owned. This offline definitions gate pins source integration3b551c992263f74e3ebdc6e4fa2c4ffda3b979a6; re-pin the final verified integrated release before real staging or deployment.
 
-This document is a reviewable plan, not a synchronized implementation/deployment record. No cloud resource, billing, real credential, provider API or DNS change is authorized by it. Local read-only image inspection and explicitly authorized synthetic S3 probes are the only new runtime observations. Actual project, cost, region, licensed providers and cutover decisions remain owner inputs.
+The synchronized record for this offline implementation scope is `docs/agents/records/2026-11-03-workshop-hosting.json`. The coordinator must review the committed checkpoint and passing machine preflight before dispatch; synchronization does not authorize deployment. No cloud resource, billing, real credential, provider API or DNS change is authorized by it. Local read-only image inspection and explicitly authorized synthetic S3 probes are the only new runtime observations. Actual project, cost, region, licensed providers and cutover decisions remain owner inputs.
 
 ## Decisions that supersede the old hosting draft
 
@@ -16,7 +16,7 @@ Replace the old attached-SA Ops Agent proposal. Do not install an Ops Agent that
 
 ## Thirty implementation paths and two disjoint owners
 
-This is a proposed exact initial scope, not an active gate. Coordinator separately owns the canonical plan/task/record/Issue186/Project8 synchronization. Existing application SQL001–040, paid/auth/commerce code, base/CI/Base44 Compose, UI and existing CI workflows are excluded.
+This is the exact thirty-path offline implementation scope. Execution is staged by the milestone restrictions below; only a coordinator-reviewed checkpoint and pinned preflight authorize dispatch. Coordinator separately owns the canonical plan/task/record/Issue186/Project8 synchronization. Existing application SQL001–040, paid/auth/commerce code, base/CI/Base44 Compose, UI and existing CI workflows are excluded.
 
 Runtime builder A owns these22 paths:
 
@@ -171,7 +171,7 @@ Restore: only an isolated replacement disk/VM, production ingress in maintenance
 
 ## Verification and remaining owner decisions
 
-Before any infrastructure implementation: independently review this bounded amendment; review the measured SeaweedFS S3/control-plane boundary and freeze release toolchain pins; synchronize canonical docs/todo/Issue186/Project8 and task/record at the exact integrated base; pass machine preflight. Root then dispatches two disjoint builders. Deterministic implementation/tests can proceed with fixture project identifiers once gated; pending real project/cost choices block apply/deployment, not all local development.
+Before this offline infrastructure implementation: independently review this bounded amendment and the measured SeaweedFS S3/control-plane boundary; synchronize canonical docs/todo/Issue186/Project8 and task/record at the committed checkpoint; pass pinned machine preflight. Root then authorizes the staged disjoint builder milestones below. Freeze reviewed release toolchain/image pins before any deployable release is produced or runtime operation is authorized; the first pure schema tests require exact pins and reject unresolved ones without obtaining or executing them. Deterministic implementation/tests can proceed with fixture project identifiers once gated; pending real project/cost choices block apply/deployment, not all local development.
 
 Required implementation tests include rendered Compose service/port/image/env/mount allowlists; no secret in Config.Env or image metadata; startup refuses wrong/missing disk/guard/secrets; API-only metadata from every service namespace after daemon/reboot, plus actual non-admin host OUTPUT denial for IPv4/IPv6/metadata-hostname requests and successful designated API ADC refresh/GetUser and functioning actual guest-agent/OS Login under the explicit trusted UID0 metadata exception; no external-principal cloud credential on host; least-role Google deny proofs; real SeaweedFS auth/read-only/anonymous denial/durability; actual image commands/dependency imports; migration failure keeps maintenance; provider outage has no local fallback; interrupted backup/watchdog/failed upload do not certify recovery; portable and disk restore; previous compatible image rollback preserves newer ownership. Fake CLI unit tests alone cannot establish IAM/network/TLS/backup behavior. Required staging calls and billable actions require explicit owner authorization after concrete scripts/manifests/receipts are reviewable.
 
@@ -192,7 +192,7 @@ Owner inputs still pending: chosen GCP/Firebase/backup projects and billing/regi
 Issue: https://github.com/lucronn/autodata/issues/186
 Project: https://github.com/users/lucronn/projects/8
 
-Concrete todo: independently review this successor and30-path split; select project/cost/recovery/operator inputs; pin the final verified integrated application; synchronize the exact hosting task/record/canonical documents with the real Issue/Project readback; pass pinned machine preflight; implement/test the two disjoint scopes; independently review combined runtime and failure evidence; then obtain separate authorization for staging, billable resources, real provider checks and DNS cutover. No synchronized status or passing implementation gate is claimed by this plan-only commit.
+Concrete todo and bounded dispatch are recorded below and in `docs/agents/tasks/2026-11-03-production-release/workshop-hosting.json`. Owner project/cost/recovery/operator inputs and final verified product/runtime evidence remain prerequisites for actual staging/apply, rather than blockers for these pure offline tests. Passing this gate alone never authorizes cloud resources, real secrets, DNS, provider calls or a runtime acceptance claim.
 
 ## Documentation references
 
@@ -207,3 +207,113 @@ Concrete todo: independently review this successor and30-path split; select proj
 - [OS Login requirements](https://cloud.google.com/compute/docs/oslogin/set-up-oslogin)
 - [Disk snapshots](https://cloud.google.com/compute/docs/disks/snapshots)
 - [Caddy automatic HTTPS](https://caddyserver.com/docs/automatic-https)
+
+
+## Offline implementation checkpoint and first execution milestones
+
+Source integration base: `3b551c992263f74e3ebdc6e4fa2c4ffda3b979a6`. Issue186 and its existing Project8 item are the shared tracking authority; the coordinator owns integration and independent review. No implementation file is changed by this planning checkpoint. Both builders use gpt-6.1-sol, medium reasoning, Fast/priority, no fallback.
+
+The thirty allowed paths above remain exclusive: runtime A owns1–22 and operations B owns23–30. This gate permits implementation definitions and pure tests only after coordinator authorization. It does not permit invoking Docker/Compose, nft/systemd changes, packaging/building/pulling images, cloud/gcloud/SSH/IAP calls, DNS, secrets, provider endpoints, actual deployment or restore. Tests use standard-library unittest with inline fixture manifests and fake executable transcripts in temporary directories. No new dependency or fixture file is necessary. Existing policy, historical SQL001–040, application auth/payment/catalog/UI, base/CI/Base44 Compose and other CI workflows remain out of scope.
+
+### First A milestone: exact schema, parser and render boundary
+
+Only these eight A paths are executable in the first dispatch:
+
+- `infra/deploy/gce/release.schema.json`
+- `infra/deploy/gce/runtime-check.py`
+- `infra/deploy/gce/test_host_runtime.py`
+- `infra/deploy/gce/release.env.example`
+- `infra/compose/compose.production.yaml`
+- `infra/deploy/gce/Caddyfile`
+- `infra/deploy/gce/nats.conf.template`
+- `infra/deploy/gce/seaweedfs-s3.json.template`
+
+Write failing tests first for strict duplicate/unknown-field rejection, image/digest/platform/source/migration/config/secret-version binding, fixed service and network graph, Caddy-only published ports, metadata/storage guard prerequisites, no ambient/local fallback, and fake secret values absent from rendered Docker environment. Implement the literal shared v1 contract below. `runtime-check.py` in this milestone provides a passive parser/validator and receipt renderer; it must not start services or probe real endpoints. Tests intercept every attempted subprocess and reject any executable outside their owned fake paths. `release.env.example` contains nonsecret names only; it must not advertise unresolved values as deployable.
+
+Run `python -m unittest discover -s infra/deploy/gce -p test_host_runtime.py -v` with no Docker daemon or provider access. Retain red/green stdout and exact input hashes outside the checkout, run `git diff --check`, commit and push this coherent milestone. Coordinator independently reviews and pins the manifest fields, nonsecret service-config object, per-service secret allowlists, allowed metrics/receipt names and render output before B consumes it. The service-config object must include exactly environment/origin/Firebase public configuration, resource names, fixed service commands/network addresses, expected disk UUID, topology and nonsecret runtime tuning; it contains no credential values. Environment is `production|staging`, and every origin/config field is validated rather than inferred from the shell.
+
+### First B milestone: consume reviewed A contract with fake CLI only
+
+Only after coordinator-approved exact A dependency integration, B initially implements `infra/deploy/gce/cloud-ops.py` and `infra/deploy/gce/test_cloud_ops.py` from its existing eight paths. Consume the same v1 schema/layout/helper verbs without speculative aliases or a second manifest model. Write failing tests for bounded argv/timeouts, exact WIF/environment/repository/ref restrictions in planned operation definitions, wrong owner/disk/image/lease/snapshot, failed upload/resume and duplicate/escaping tar members. Fixed fake CLI transcripts cover success, command error, timeout, interrupted stream and cleanup failure; tests assert no real executable or network can run. The production helper remains fail-closed when real approved configuration, reviewed pins or required receipts are absent.
+
+Run `python -m unittest discover -s infra/deploy/gce -p test_cloud_ops.py -v`; retain exact inputs/red-green logs, then commit/push for independent review. Remaining A/B files, executable operations and later runtime verification require coordinator authorization after these first contract milestones. A reviewed contract change uses the existing affected paths and a visible amendment; it cannot silently expand the thirty paths.
+
+### Concrete todo and verification separation
+
+- [ ] Synchronize actual Issue186/Project8 and canonical docs/task/record; commit the checkpoint and pass machine preflight at that full checkpoint SHA before dispatch.
+- [ ] Coordinator reviews this exact gate and separately authorizes first A eight-path schema/parser/render milestone.
+- [ ] A produces retained red/green pure tests and exact commit; coordinator independently freezes the literal shared contract before B's two-path fake-CLI milestone.
+- [ ] B produces retained red/green pure tests and exact commit without running real CLIs; coordinator reviews both milestones and authorizes remaining same-scope implementation only when concrete.
+- [ ] Resolve reviewed image/toolchain pins, actual project/cost/recovery/operator/provider choices and exact integrated product evidence before any separately authorized staging action.
+- [ ] Obtain actual host/container IPv4/IPv6 metadata and storage denials, API SDK refresh/GetUser/platform success, mounted-disk/reboot/secrets behavior, signed/test commerce, backup/restore/alert delivery and final-origin TLS evidence; fake tests never certify these.
+- [ ] Keep cars.tk/Vercel and live data untouched until a concrete reviewed cutover and appropriate existing authorization apply.
+
+## Shared v1 interface frozen for first milestones
+
+## Fixed local layout and names
+
+- Root-owned host config: `/etc/autodata/host.json`, mode0600; nonsecret settings only. No implicit cwd lookup. Bootstrap alone installs it; helpers reject symlinks and wrong owner/mode.
+- Root-owned immutable release: `/opt/autodata/releases/<40lowerhex>/`; manifest `release.json`, standalone `compose.production.yaml`, Caddy/config/templates and released helper inputs. `/opt/autodata/current` is a root-owned symlink resolving exactly to one validated release directory; do not follow caller paths.
+- Fixed installed root helpers: `/opt/autodata/bin/deploy.sh`, `backup-host.sh`, `restore.sh`, `runtime-check.py`; only reviewed bootstrap/deploy administration replaces them. External backup/monitor callers cannot select an alternate executable or config path.
+- Data mount `/var/lib/autodata`, verified by configured filesystem UUID before any mkdir/start; owned subdirectories `postgres`, `seaweedfs`, `nats`, `caddy`, `backups`. New-directory ownership is initialized per service, not recursively across an unchecked mount.
+- Tmpfs `/run/autodata`: per-service secret subdirectories already specified in canonical plan; `registry/` for transient pull configuration; `state/` for root-only operation lock/lease. No service receives the whole tmpfs.
+- Persistent safe receipts `/var/lib/autodata/operations/<uuid>.json`,0600. Never put credentials/raw requests in receipts. Backup output directory `/var/lib/autodata/backups/<uuid>/`,0700, with `postgres.dump`, `release.json`, `backup.json`. Portable DB dumps are private customer data, not public artifacts.
+- Compose project `autodata-production`; service names exactly caddy/api/ingestion-http/article-worker/payment-reconciler/postgres/nats/minio plus profiles `migration`, `bootstrap`, `metrics` containing migration/bootstrap/metrics-probe one-shots. Normal start explicitly names only the eight normal services. Runtime images and service commands remain those in the canonical plan.
+
+All modes/paths above are shared literals, not caller-supplied values. A owns creation/validation and B consumes them. No path is added to the30 implementation files; these are runtime destinations generated by the existing scripts.
+
+## release.schema.json v1
+
+Strict JSON object, additionalProperties:false at every declared object. UTF-8 size<=1MiB, no duplicates, finite numbers only. References never carry secret values. Required fields:
+
+```
+schema_version: 1
+source_sha: <40lowerhex>
+platform: "linux/amd64"
+images: {api, ingestion, migration, caddy, postgres, nats, minio:
+  {reference:<registry/repository/name@sha256:64lowerhex>,
+   image_id:<sha256:64lowerhex>,
+   provenance_uri:<immutable artifact reference>,
+   sbom_uri:<immutable artifact reference>}}
+migrations: {runner_sha256:<64hex>,
+  files:[{name:<NNN_lower_snake.sql>,sha256:<64hex>}],
+  inventory_sha256:<64hex>}
+toolchain: {
+  docker_engine:{version:<exact string>,package_sha256:<64hex>},
+  docker_compose:{version:<exact string>,package_sha256:<64hex>}}
+service_config_sha256: <64hex>
+secret_versions: {<allowlisted SERVICE>:
+  {<allowlisted NAME>:"projects/<project>/secrets/<name>/versions/<positive decimal>"}}
+rollback_source_sha: <40lowerhex or null>
+```
+
+One ingestion image intentionally serves HTTP/article-worker/reconciler/metrics; service roles still have disjoint commands/mounts/secret-name allowlists. The release manifest contains images by image role, not duplicate worker image labels that could silently diverge. Image IDs are platform-specific locally inspectable identities; registry references are immutable content digests, not assumed equal to image IDs.
+
+Manifest digest = SHA256 of canonical JSON (UTF-8, sort_keys=true, separators=(',',':'), no trailing newline). Migration inventory digest = SHA256 of canonical JSON array `files` in filename order using the same encoding. The released shared runner and exact migration file tree are independently checked against those hashes. Require contiguous unique migration versions beginning001 and final manifest version matching actual schema; current application has040. Do not assume future count040 in generic release tooling. All references must be fully resolved and no `<...>`, `latest`, secret version alias, tag-only image or unknown field may reach apply/start.
+
+`service_config_sha256` binds canonical nonsecret service configuration JSON (the fixed application and topology settings), not secret bytes. A defines the literal settings object and exact service secret-name allowlists in its first reviewed schema milestone; B must consume that version unchanged. PUBLIC_ORIGIN must match the reviewed environment exactly. Record the fixed platform choice in cloud-bootstrap validation before applying a VM architecture.
+
+`rollback_source_sha=null` is allowed only for first installation. Otherwise its manifest must already exist and pass schema/image/config compatibility validation. A migration failure never implies permission to start an old image against a new schema.
+
+## Host operations and receipt/stream contract
+
+Freeze existing helper argv exactly as in canonical plan. Validate argument count as well as UUID/SHA shape. Helpers clear inherited environment, use absolute executables/pinned config, no shell sourcing/eval, no caller-selected command or path. Operation receipts on stdout are one JSON object (<=64KiB); bounded operational diagnostics go to stderr with no raw exceptions/secret content. Exit codes remain0 success/2 invalid input/3 missing dependency or guard/4 operation failure/5 timeout/6 incomplete recovery. A nonzero receipt must never contain passed:true.
+
+Common receipt fields: `schema_version:1`, `operation:<literal helper+verb>`, `run_id:<uuid or null for release check>`, `source_sha:<40hex or null before install>`, `status:passed|failed|timed_out|incomplete`, `started_at`, `finished_at` (UTC RFC3339), `checks:{<fixed allowlisted name>:boolean}`, `failure_code:<allowlisted code or null>`. Add only the operation-specific fields below; no raw command environment, customer IDs, tokens or query rows.
+
+- `deploy.sh check SHA`: passive local validation; reports manifest digest, disk UUID match, guard/config/secrets state, cached image identity, actual schema version. It must not migrate, contact providers, reconcile or hydrate. `start`/`resume` use the canonical ordered startup and no-work readiness; `maintenance` cannot silently stop Caddy maintenance on failure. `install` accepts only an already staged root-owned exact release and fixed host config, not an uploaded shell command.
+- `runtime-check.py check --release SHA`: receipt with service/DB/NATS/S3 allowlisted states and no-work counters. `metrics` emits a JSON object `{schema_version:1,source_sha,observed_at,metrics:[{name,value,unit,state}]}`; unique allowlisted names, finite numeric values, fixed unit/state enums, no dynamic labels. B maps these reviewed names to Cloud Monitoring descriptors; missing measurement is absent/unavailable, not zero. A and B review the exact metrics list in A's first milestone.
+- `backup-host.sh begin UUID`: serializes with a root-only lock, rejects a different active lease, enters maintenance/stops writers, creates the PG custom dump, stops stateful services, syncs and returns `state:quiesced`, `lease_expires_at`, `dump_sha256`, `dump_bytes`, `source_sha`, `manifest_sha256`, `disk_uuid`. Lease total<=1800s including resume reserve. Repeated same UUID returns its existing state without repeating a dump/snapshot; a completed UUID cannot start a new run.
+- `status UUID`: reports only that lease's state, expiry, dump/manifest identity and whether writers/stateful services resumed. Allowed monotonic states `preparing→quiesced→resuming→resumed`, with `failed|expired|incomplete` terminal evidence. An expired quiesced lease triggers the existing watchdog's bounded resume; it never becomes verified backup merely because services recover.
+- External B snapshots only after an unexpired quiesced receipt identifies the exact configured disk. B records snapshot resource/selfLink, operation identity, completion/cutoff timestamps and fixed manifest/dump hashes in its external receipt. No cloud token reaches host.
+- `resume UUID`: idempotently resumes only the matching lease/release, validates normal startup, records resumed or incomplete. A newer active lease cannot be resumed by an older UUID. Snapshot completion after lease expiry/resume is not a verified recovery point.
+- `export UUID` is the sole binary stdout exception: after successful resume, emit a tar stream with exactly regular `postgres.dump`, `release.json`, `backup.json`, no directories/symlinks/extra members, from that UUID directory. Status/manifest bytes and the independently verified dump hash remain available via status. B checks member paths/types/sizes/hash and stores the three objects under immutable `<UUID>/...` backup names; no general path export. Stream/client subprocess deadlines remain within canonical backup bounds. Routine backup principal has no delete permission.
+- `restore.sh restore|validate UUID`: only a separately staged root-owned isolated restore config/directory. Reject current/live data UUID/path and production writer egress before copying. Validate exact released manifests/schema/data/object references; no bank/model/payment calls. Cloud-ops stages the fixed receipt/input locations; no caller-selected root path or shell command reaches sudo.
+
+B's external final backup receipt additionally binds immutable bucket generations, dump SHA/bytes, snapshot identity/cutoff, source/manifest/schema, successful resume/readiness and cleanup. `last_verified_backup` advances only after all pass. A host receipt alone cannot certify the external upload/snapshot. Snapshot/restore permissions and platform bootstrap remain explicit owner-approved actions.
+
+## First integration checkpoint before builders diverge
+
+A first authors schema/constants/render tests and fixed helper parsers within its22 paths, with fake inputs only. Root independent review freezes schema version, config/secret-name maps, receipt fields, metrics list and installed paths. B develops its8 paths against those exact files via a coordinator-approved dependency merge. Breaking a field later requires a reviewed same-scope plan amendment, not accepting speculative aliases. Negative tests cover unknown fields/verbs/args, path/symlink/env substitution, stale lease resume, duplicate export members, secret/version aliases, wrong image/input/schema and malformed metric values.
+
+Actual toolchain/image pins and every unavoidable project-level snapshot IAM permission must be resolved/reviewed before apply/start. Actual unprivileged host+container metadata denial, API SDK refresh/GetUser, storage bridged/routed restrictions, OS Login/guest-agent operation, reboot, backup/restore and final-origin TLS remain real staging evidence; mocks cannot certify them. The trusted UID0 metadata exception and untrusted host/worker denial in62a47c remain mandatory. This proposal does not authorize new cloud scope or replace the canonical pre-implementation gate.

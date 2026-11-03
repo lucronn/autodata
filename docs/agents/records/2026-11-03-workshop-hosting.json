@@ -1,0 +1,19 @@
+{
+  "goal": "Implement standalone paid Workshop VM/Caddy/Compose definitions and bounded external-operation definitions with pure fake-CLI tests, preserving separate staging and cutover gates.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "Synchronize Issue186/Project8 and canonical hosting plan/task/record at a committed checkpoint; pass exact-base preflight before coordinator-authorized implementation.",
+    "Implement and independently review A first eight-path schema/parser/render contract with retained red/green pure tests and no runtime execution.",
+    "After approved A dependency integration, implement and independently review B first two-path fake-CLI definitions; preserve exact30-path disjoint ownership.",
+    "Resolve approved pins and owner configuration, finish separately authorized same-scope definitions, and obtain independent combined review before any actual staging.",
+    "Keep actual IAM/network/Firebase/Stripe/banks/model/reboot/restore/alerts/TLS and cutover evidence separate; pure tests do not certify deployment."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T20:47:39.108914+00:00"
+}

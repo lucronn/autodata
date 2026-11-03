@@ -464,3 +464,12 @@ is assigned; existing organization-owned reads retain their predicates.
 See docs/verification/production-access-runbook.md for deterministic acceptance
 and the separate live staging prerequisites. This identity change does not
 certify commerce or paid catalog/media access.
+
+
+## Paid Workshop standalone VM hosting lane (offline gate)
+
+The selected implementation proposal for cars.tk is standalone GCE VM Compose with Caddy, private API/ingestion/article/reconciliation, PostgreSQL, NATS and pinned SeaweedFS. The canonical thirty-path plan is [workshop-hosting](../superpowers/plans/2026-11-03-workshop-hosting.md); task `docs/agents/tasks/2026-11-03-production-release/workshop-hosting.json` and synchronized record bind its exact checkpoint. This adds no Kubernetes dependency and does not replace local/CI/Base44 Compose.
+
+The first dispatch is pure A schema/parser/render work, followed only after independent contract review by B fake-CLI definitions. Root-owned fixed helpers, exact immutable manifests, service-specific tmpfs secret entrypoints, least-role Firebase ADC and explicit metadata/storage guards remain required. No secret value belongs in Compose environment metadata; ordinary host users and non-API containers receive no metadata exception, while trusted UID0 platform plumbing remains explicitly trusted. Actual safety of these boundaries requires later real staging proof.
+
+Todo: review the synchronized checkpoint/preflight; independently freeze the A contract and B pure tests; authorize remaining same-scope definitions; then resolve actual owner/project/cost/provider/recovery choices and verify host IAM/network/reboot/restore/alerts/TLS with real evidence before any separately approved apply or cutover. No cloud resource, Docker stack, DNS, live credentials or production-readiness claim is created by this documentation gate.
