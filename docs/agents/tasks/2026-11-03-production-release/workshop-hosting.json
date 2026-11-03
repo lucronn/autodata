@@ -1,9 +1,9 @@
 {
   "task_id": "production-release-workshop-hosting",
   "repository": "lucronn/autodata",
-  "goal": "Implement the bounded passive PostgreSQL17 schema-observation definition with fixed local container/role/query protocol and fake-exec tests, preserving blocked deployment/readiness and separate runtime authorization.",
+  "goal": "Implement a bounded offline release ZIP archive verifier with independent archive and member SHA256 bindings, strict ZIP32 structure and JSON/image consistency checks; keep publication authentication and deployment unavailable.",
   "builder_agent": "coordinator-assigned-two-disjoint-builders",
-  "source_integration_base_sha": "bc62f86eac54eb81b61e4013f0e910f264556f6c",
+  "source_integration_base_sha": "a0eed5dce45171f5f94f72d99d2fdf694235df0d",
   "allowed_paths": [
     "infra/compose/compose.production.yaml",
     "infra/deploy/gce/Caddyfile",
@@ -131,11 +131,11 @@
     }
   },
   "acceptance_tests": [
-    "Synchronize the approved v3 passive-schema contract across Issue186/Project8, hosting plan, runbook, architecture/release references and task/record; commit/push a plan-only checkpoint and pass pinned preflight before coordinator dispatch.",
-    "Implement only runtime-check.py and test_host_runtime.py: fixed local PostgreSQL container identity, socket-only autodata_metrics role, fixed read-only SQL protocol, strict schema ledger/rights/relation checks and bounded streaming capture; no role provisioning, password/admin fallback or new secret mounts.",
-    "Write failing adversarial fake-exec tests for container/auth/role and database ownership, PUBLIC/column/MAINTAIN privileges, relation/type/RLS, ledger row/value bounds, capture limits/timeouts/cleanup and post-query identity drift; retain all64 existing focused tests.",
-    "Run focused tests, syntax, diff/scope and pinned preflight; commit/push one coherent candidate and obtain independent exact-SHA review before coordinator integration.",
-    "Keep service/readiness/runtime_evidence and all mutation/deploy verbs unavailable; actual role/PGDATA HBA/ident provision, effective configuration proof and Docker/DB/cloud/provider/staging execution require separate authorization."
+    "Synchronize this exact B archive-reader goal, ZIP32 producer contract, scope and todo across Issue186/Project8 and canonical documents; commit/push a plan-only checkpoint, pin its full SHA and pass machine preflight before coordinator dispatch.",
+    "Add failing synthetic archive tests for digest separation, strict local/central/EOCD and descriptor agreement, bounded stored/DEFLATE decoding, strict JSON and exact image observations; retain existing B tests.",
+    "Implement only cloud-ops.py and test_cloud_ops.py for explicitly supplied in-memory archive bytes and independently bound raw member digests; preserve existing fake transcript API and every fail-closed CLI operation.",
+    "Document proposed release.json/images.json producer layout, archive/raw-member/canonical-manifest digest meanings, fixed failure receipts and the lack of actual GitHub artifact compatibility or authenticated publication evidence.",
+    "Run focused B tests, Python syntax, diff/scope and exact-base preflight checks; commit/push a coherent candidate and obtain independent exact-SHA review before coordinator integration; cloud/provider/workflow/deployment execution stays separately gated."
   ],
   "forbidden_scope": [
     "No Docker/Compose/nft/systemd/cloud/SSH/IAP/provider execution, image pulls/builds, credentials, DNS, apply or deployment under this offline gate.",
@@ -143,7 +143,7 @@
     "No fake tests presented as actual IAM/network/backup/restore/TLS/product readiness; remaining same-scope milestones require coordinator authorization."
   ],
   "pre_implementation": {
-    "goal": "Implement the bounded passive PostgreSQL17 schema-observation definition with fixed local container/role/query protocol and fake-exec tests, preserving blocked deployment/readiness and separate runtime authorization.",
+    "goal": "Implement a bounded offline release ZIP archive verifier with independent archive and member SHA256 bindings, strict ZIP32 structure and JSON/image consistency checks; keep publication authentication and deployment unavailable.",
     "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
     "issue_ref": "https://github.com/lucronn/autodata/issues/186",
     "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -153,21 +153,68 @@
       "docs/operations/workshop-gcp.md"
     ],
     "todo": [
-      "Synchronize the approved v3 passive-schema contract across Issue186/Project8, hosting plan, runbook, architecture/release references and task/record; commit/push a plan-only checkpoint and pass pinned preflight before coordinator dispatch.",
-      "Implement only runtime-check.py and test_host_runtime.py: fixed local PostgreSQL container identity, socket-only autodata_metrics role, fixed read-only SQL protocol, strict schema ledger/rights/relation checks and bounded streaming capture; no role provisioning, password/admin fallback or new secret mounts.",
-      "Write failing adversarial fake-exec tests for container/auth/role and database ownership, PUBLIC/column/MAINTAIN privileges, relation/type/RLS, ledger row/value bounds, capture limits/timeouts/cleanup and post-query identity drift; retain all64 existing focused tests.",
-      "Run focused tests, syntax, diff/scope and pinned preflight; commit/push one coherent candidate and obtain independent exact-SHA review before coordinator integration.",
-      "Keep service/readiness/runtime_evidence and all mutation/deploy verbs unavailable; actual role/PGDATA HBA/ident provision, effective configuration proof and Docker/DB/cloud/provider/staging execution require separate authorization."
+      "Synchronize this exact B archive-reader goal, ZIP32 producer contract, scope and todo across Issue186/Project8 and canonical documents; commit/push a plan-only checkpoint, pin its full SHA and pass machine preflight before coordinator dispatch.",
+      "Add failing synthetic archive tests for digest separation, strict local/central/EOCD and descriptor agreement, bounded stored/DEFLATE decoding, strict JSON and exact image observations; retain existing B tests.",
+      "Implement only cloud-ops.py and test_cloud_ops.py for explicitly supplied in-memory archive bytes and independently bound raw member digests; preserve existing fake transcript API and every fail-closed CLI operation.",
+      "Document proposed release.json/images.json producer layout, archive/raw-member/canonical-manifest digest meanings, fixed failure receipts and the lack of actual GitHub artifact compatibility or authenticated publication evidence.",
+      "Run focused B tests, Python syntax, diff/scope and exact-base preflight checks; commit/push a coherent candidate and obtain independent exact-SHA review before coordinator integration; cloud/provider/workflow/deployment execution stays separately gated."
     ],
     "status": "synchronized",
-    "updated_at": "2026-11-03T22:27:57.522560+00:00",
+    "updated_at": "2026-11-03T22:43:36.177270+00:00",
+    "planning_base_sha": "a0eed5dce45171f5f94f72d99d2fdf694235df0d",
+    "previous_checkpoint": {
+      "scope": "passive-postgresql-schema-observation",
+      "historical_record": {
+        "goal": "Implement the bounded passive PostgreSQL17 schema-observation definition with fixed local container/role/query protocol and fake-exec tests, preserving blocked deployment/readiness and separate runtime authorization.",
+        "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+        "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "repository_doc_refs": [
+          "docs/architecture/infrastructure-and-dev.md",
+          "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+          "docs/operations/workshop-gcp.md"
+        ],
+        "todo": [
+          "Synchronize the approved v3 passive-schema contract across Issue186/Project8, hosting plan, runbook, architecture/release references and task/record; commit/push a plan-only checkpoint and pass pinned preflight before coordinator dispatch.",
+          "Implement only runtime-check.py and test_host_runtime.py: fixed local PostgreSQL container identity, socket-only autodata_metrics role, fixed read-only SQL protocol, strict schema ledger/rights/relation checks and bounded streaming capture; no role provisioning, password/admin fallback or new secret mounts.",
+          "Write failing adversarial fake-exec tests for container/auth/role and database ownership, PUBLIC/column/MAINTAIN privileges, relation/type/RLS, ledger row/value bounds, capture limits/timeouts/cleanup and post-query identity drift; retain all64 existing focused tests.",
+          "Run focused tests, syntax, diff/scope and pinned preflight; commit/push one coherent candidate and obtain independent exact-SHA review before coordinator integration.",
+          "Keep service/readiness/runtime_evidence and all mutation/deploy verbs unavailable; actual role/PGDATA HBA/ident provision, effective configuration proof and Docker/DB/cloud/provider/staging execution require separate authorization."
+        ],
+        "status": "synchronized",
+        "updated_at": "2026-11-03T22:27:57.522560+00:00",
+        "tracking_sync": {
+          "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617024444",
+          "project_ref": "https://github.com/users/lucronn/projects/8",
+          "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+          "project_note_field": "Source or dependency reference",
+          "verified_at": "2026-11-03T22:27:57.522560+00:00"
+        }
+      },
+      "authority": "Historical A checkpoint only; no authority for this B milestone."
+    },
+    "future_publication_gate": {
+      "status": "unverified",
+      "requirements": [
+        "No actual release artifact or approved publisher layout establishes GitHub Actions archive compatibility; synthetic fixtures establish only the proposed ZIP32 subset.",
+        "Before any publication or transport use, a separately synchronized and reviewed publisher/transport milestone must prove authenticated artifact provenance and exact downloaded archive compatibility, or amend and review this proposed protocol."
+      ],
+      "blocks_current_offline_milestone": false
+    },
     "tracking_sync": {
-      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617024444",
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617360191",
       "project_ref": "https://github.com/users/lucronn/projects/8",
       "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
       "project_note_field": "Source or dependency reference",
-      "verified_at": "2026-11-03T22:27:57.522560+00:00"
-    }
+      "verified_at": "2026-11-03T22:43:36.177270+00:00",
+      "issue_body_sha256": "d8a0c748f3c3f53c4189fcf97540db74815c29a1aa72fe31c7963f8a3c1dfcbd",
+      "project_text_sha256": "ddf9226064689dec8b1ad476e365a27acb28f8e9aac36c8b7b355ba14354799d",
+      "project_index_note": "Compact field preserves historical A/R6 checkpoint references and indexes the exact B goal/five todos/scope/limits in the issue comment."
+    },
+    "implementation_prerequisites": [
+      "Commit/push this synchronized seven-document checkpoint, pin its exact full SHA and pass machine preflight.",
+      "Obtain independent coordinator gate handoff before implementation dispatch; no implementation or live operation is authorized by tracking synchronization alone."
+    ]
   },
   "execution": {
     "model": "gpt-6.1-sol",
@@ -180,6 +227,40 @@
   },
   "status": "synchronized",
   "next_milestone": {
+    "name": "offline-release-zip-archive-verifier",
+    "status": "synchronized",
+    "planning_base_sha": "a0eed5dce45171f5f94f72d99d2fdf694235df0d",
+    "allowed_paths": [
+      "infra/deploy/gce/cloud-ops.py",
+      "infra/deploy/gce/test_cloud_ops.py",
+      "docs/operations/workshop-gcp.md"
+    ],
+    "required_prerequisites": [
+      "Commit/push this synchronized seven-document checkpoint, pin its exact full SHA and pass machine preflight.",
+      "Obtain independent coordinator gate handoff before implementation dispatch; no implementation or live operation is authorized by tracking synchronization alone."
+    ],
+    "producer_protocol": "Proposed strict bounded ZIP32 subset in hosting plan; not verified GitHub Actions compatibility.",
+    "execution_authority": "Offline definitions and synthetic fixtures only after synchronized committed checkpoint and pinned preflight; no live adapter or workflow change.",
+    "future_publication_gate": {
+      "status": "unverified",
+      "requirements": [
+        "No actual release artifact or approved publisher layout establishes GitHub Actions archive compatibility; synthetic fixtures establish only the proposed ZIP32 subset.",
+        "Before any publication or transport use, a separately synchronized and reviewed publisher/transport milestone must prove authenticated artifact provenance and exact downloaded archive compatibility, or amend and review this proposed protocol."
+      ],
+      "blocks_current_offline_milestone": false
+    },
+    "tracking_sync": {
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617360191",
+      "project_ref": "https://github.com/users/lucronn/projects/8",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_note_field": "Source or dependency reference",
+      "verified_at": "2026-11-03T22:43:36.177270+00:00",
+      "issue_body_sha256": "d8a0c748f3c3f53c4189fcf97540db74815c29a1aa72fe31c7963f8a3c1dfcbd",
+      "project_text_sha256": "ddf9226064689dec8b1ad476e365a27acb28f8e9aac36c8b7b355ba14354799d",
+      "project_index_note": "Compact field preserves historical A/R6 checkpoint references and indexes the exact B goal/five todos/scope/limits in the issue comment."
+    }
+  },
+  "previous_milestone": {
     "name": "passive-postgresql-schema-observation",
     "status": "synchronized",
     "planning_base_sha": "bc62f86eac54eb81b61e4013f0e910f264556f6c",
