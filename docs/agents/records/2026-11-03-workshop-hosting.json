@@ -1,19 +1,27 @@
 {
-  "goal": "Implement standalone paid Workshop VM/Caddy/Compose definitions and bounded external-operation definitions with pure fake-CLI tests, preserving separate staging and cutover gates.",
+  "goal": "Implement the bounded passive PostgreSQL17 schema-observation definition with fixed local container/role/query protocol and fake-exec tests, preserving blocked deployment/readiness and separate runtime authorization.",
   "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/186",
   "project_ref": "https://github.com/users/lucronn/projects/8",
   "repository_doc_refs": [
     "docs/architecture/infrastructure-and-dev.md",
-    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/operations/workshop-gcp.md"
   ],
   "todo": [
-    "Synchronize Issue186/Project8 and canonical hosting plan/task/record at a committed checkpoint; pass exact-base preflight before coordinator-authorized implementation.",
-    "Implement and independently review A first eight-path schema/parser/render contract with retained red/green pure tests and no runtime execution.",
-    "After approved A dependency integration, implement and independently review B first two-path fake-CLI definitions; preserve exact30-path disjoint ownership.",
-    "Resolve approved pins and owner configuration, finish separately authorized same-scope definitions, and obtain independent combined review before any actual staging.",
-    "Keep actual IAM/network/Firebase/Stripe/banks/model/reboot/restore/alerts/TLS and cutover evidence separate; pure tests do not certify deployment."
+    "Synchronize the approved v3 passive-schema contract across Issue186/Project8, hosting plan, runbook, architecture/release references and task/record; commit/push a plan-only checkpoint and pass pinned preflight before coordinator dispatch.",
+    "Implement only runtime-check.py and test_host_runtime.py: fixed local PostgreSQL container identity, socket-only autodata_metrics role, fixed read-only SQL protocol, strict schema ledger/rights/relation checks and bounded streaming capture; no role provisioning, password/admin fallback or new secret mounts.",
+    "Write failing adversarial fake-exec tests for container/auth/role and database ownership, PUBLIC/column/MAINTAIN privileges, relation/type/RLS, ledger row/value bounds, capture limits/timeouts/cleanup and post-query identity drift; retain all64 existing focused tests.",
+    "Run focused tests, syntax, diff/scope and pinned preflight; commit/push one coherent candidate and obtain independent exact-SHA review before coordinator integration.",
+    "Keep service/readiness/runtime_evidence and all mutation/deploy verbs unavailable; actual role/PGDATA HBA/ident provision, effective configuration proof and Docker/DB/cloud/provider/staging execution require separate authorization."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-03T20:47:39.108914+00:00"
+  "updated_at": "2026-11-03T22:27:57.522560+00:00",
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617024444",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_note_field": "Source or dependency reference",
+    "verified_at": "2026-11-03T22:27:57.522560+00:00"
+  }
 }
