@@ -237,19 +237,30 @@ func (s *Server) Handler() http.Handler {
 		response.Header().Set("Cache-Control", "no-cache")
 		http.StripPrefix("/workshop/", http.FileServer(http.FS(workshopAssets))).ServeHTTP(response, request)
 	}))
-	mux.Handle("GET /v1/catalog/years", s.requireRole("dataset_viewer", s.listCatalogYears))
-	mux.Handle("GET /v1/catalog/years/{year}/makes", s.requireRole("dataset_viewer", s.listCatalogMakes))
-	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models", s.requireRole("dataset_viewer", s.listCatalogModels))
-	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models/{model}/configurations", s.requireRole("dataset_viewer", s.listCatalogConfigurations))
-	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles", s.requireRole("dataset_viewer", s.listCatalogArticles))
-	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source", s.requireRole("dataset_viewer", s.serveCatalogSource))
-	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.requireRole("dataset_viewer", s.getCatalogArticle))
-	mux.HandleFunc("GET /v1/catalog/images/{token}", func(response http.ResponseWriter, request *http.Request) {
-		serveCatalogImage(response, request, s.catalogImageKey, s.catalogImageReader)
-	})
-	mux.HandleFunc("GET /v1/catalog/images", func(response http.ResponseWriter, _ *http.Request) {
-		http.Error(response, "opaque image reference required", http.StatusBadRequest)
-	})
+	mux.Handle("GET /v1/catalog/years", s.catalogSelector(s.listCatalogYears))
+	mux.Handle("GET /v1/catalog/years/{year}/makes", s.catalogSelector(s.listCatalogMakes))
+	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models", s.catalogSelector(s.listCatalogModels))
+	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models/{model}/configurations", s.catalogSelector(s.listCatalogConfigurations))
+	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles", s.catalogProtected(s.listCatalogArticles, false))
+	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source", s.catalogProtected(s.serveCatalogSource, true))
+	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.catalogProtected(s.getCatalogArticle, true))
+	if s.paidCatalogEnabled() {
+		mux.Handle("POST /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/prepare", s.catalogProtected(s.preparePaidCatalogArticle, true))
+		mux.Handle("GET /v1/catalog/images/{token}", s.paidCatalogAuthenticated(s.servePaidCatalogImage))
+	} else {
+		mux.HandleFunc("GET /v1/catalog/images/{token}", func(response http.ResponseWriter, request *http.Request) {
+			serveCatalogImage(response, request, s.catalogImageKey, s.catalogImageReader)
+		})
+	}
+	if s.paidCatalogEnabled() {
+		mux.Handle("GET /v1/catalog/images", s.paidCatalogAuthenticated(func(w http.ResponseWriter, r *http.Request, _ Principal) {
+			s.writePaidCatalogError(w, r, ErrCatalogNotFound)
+		}))
+	} else {
+		mux.HandleFunc("GET /v1/catalog/images", func(response http.ResponseWriter, _ *http.Request) {
+			http.Error(response, "opaque image reference required", http.StatusBadRequest)
+		})
+	}
 	mux.Handle("POST /dataset-requests", s.requireRole("dataset_viewer", s.createDatasetRequest))
 	mux.Handle("POST /vehicle-identities/resolve", s.requireRole("dataset_viewer", s.resolveVehicleIdentity))
 	mux.Handle("GET /vehicle-identities/selectors", s.requireRole("dataset_viewer", s.listVehicleIdentitySelectors))
@@ -275,6 +286,9 @@ type authenticatedHandler func(http.ResponseWriter, *http.Request, Principal)
 
 func (s *Server) requireRole(role string, next authenticatedHandler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if s.paidCatalogEnabled() {
+			response.Header().Set("Cache-Control", "private, no-store")
+		}
 		principal, err := s.auth.Authenticate(request)
 		if err != nil {
 			if s.customerAuth != nil && s.customerAuth.config.Mode == "firebase" {
@@ -283,6 +297,10 @@ func (s *Server) requireRole(role string, next authenticatedHandler) http.Handle
 			}
 			s.metrics.recordUnauthenticated()
 			writeAPIError(response, request, http.StatusUnauthorized, "UNAUTHENTICATED", err.Error(), false)
+			return
+		}
+		if s.paidCatalogEnabled() && role == "dataset_viewer" {
+			writeAPIError(response, request, 403, "CUSTOMER_ROUTE_UNAVAILABLE", "This route is unavailable for customer accounts.", false)
 			return
 		}
 		if !principal.HasRole(role) {
@@ -574,6 +592,9 @@ func (s *Server) health(response http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) ready(response http.ResponseWriter, _ *http.Request) {
 	dependencies := s.readiness.Check()
+	if s.validatePaidCatalogDependencies() != nil {
+		dependencies["paid_catalog"] = "unavailable"
+	}
 	status := http.StatusOK
 	for _, dependencyStatus := range dependencies {
 		if dependencyStatus != "ready" {
@@ -663,6 +684,9 @@ func main() {
 	application.commerceClient, err = configuredCommerceClient(os.Getenv)
 	if err != nil {
 		log.Fatal("configure commerce: invalid configuration")
+	}
+	if application.validatePaidCatalogDependencies() != nil {
+		log.Fatal("configure paid catalog: required dependency unavailable")
 	}
 	server := &http.Server{
 		Addr:              address,
