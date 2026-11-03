@@ -146,6 +146,21 @@ class ContractTests(unittest.TestCase):
             (sql / names[0]).unlink(); (sql / names[0]).symlink_to(runner)
             with self.assertRaises(self.rt.ContractError): self.rt.validate_migration_tree(manifest, sql, runner, actual_schema=2)
 
+    def test_schema_ledger_requires_exact_version_inventory_and_order(self):
+        observation = {'version': 2, 'migrations': ['001_initial', '002_next']}
+        self.assertTrue(callable(getattr(self.rt, 'validate_schema_ledger', None)), 'schema ledger validator missing')
+        self.assertTrue(self.rt.validate_schema_ledger(self.manifest, observation))
+        for candidate in ({'version': True, 'migrations': observation['migrations']},
+                          {'version': 1, 'migrations': observation['migrations']},
+                          {'version': 2, 'migrations': ['001_initial', '002_other']},
+                          {'version': 2, 'migrations': ['002_next', '001_initial']},
+                          {'version': 2, 'migrations': ['001_initial', '001_initial']},
+                          {'version': 2, 'migrations': ['001_initial']},
+                          {'version': 2, 'migrations': ['001_initial', '002_next', '003_future']},
+                          dict(observation, extra=True), {'version': 2, 'migrations': None}):
+            with self.subTest(candidate=candidate), self.assertRaises(self.rt.ContractError):
+                self.rt.validate_schema_ledger(self.manifest, candidate)
+
     def test_secret_version_maps_reject_aliases_unknown_and_missing(self):
         service = 'api'; name = 'AUTODATA_POSTGRES_PASSWORD'
         for value in ('projects/autodata-host/secrets/db/versions/latest', 'projects/autodata-host/secrets/db/versions/0',
@@ -877,7 +892,7 @@ class GuardTests(unittest.TestCase):
 
 
 class DeployCheckTests(unittest.TestCase):
-    """Disposable filesystem plus fixed fake findmnt/nft transcripts only."""
+    """Disposable filesystem plus fixed fake findmnt/nft/Docker transcripts only."""
     def setUp(self):
         ContractTests.setUp(self)
         self.temp = tempfile.TemporaryDirectory()
@@ -891,7 +906,24 @@ class DeployCheckTests(unittest.TestCase):
                           Path(self.rt.DATA_ROOT), Path(self.rt.SECRET_ROOT)):
             directory.mkdir(mode=0o700)
         self.private_json(Path(self.rt.HOST_CONFIG), self.config)
-        self.private_json(Path(self.rt.RELEASE_ROOT) / SHA / 'release.json', self.manifest)
+        self.release = Path(self.rt.RELEASE_ROOT) / SHA
+        self.sql = self.release / 'db/migrations'
+        self.sql.mkdir(parents=True)
+        self.runner = self.release / 'scripts/dev/migrate_sql.sh'
+        self.runner.parent.mkdir(parents=True)
+        for directory in (self.release / 'db', self.sql, self.release / 'scripts', self.runner.parent):
+            directory.chmod(0o755)
+        self.runner.write_bytes(b'released runner bytes\n'); self.runner.chmod(0o444)
+        for item in self.manifest['migrations']['files']:
+            content = item['name'].encode()
+            target = self.sql / item['name']; target.write_bytes(content); target.chmod(0o444)
+            item['sha256'] = hashlib.sha256(content).hexdigest()
+        self.manifest['migrations']['inventory_sha256'] = digest(self.manifest['migrations']['files'])
+        self.manifest['migrations']['runner_sha256'] = hashlib.sha256(self.runner.read_bytes()).hexdigest()
+        self.private_json(self.release / 'release.json', self.manifest)
+        self.images = {role: {'image_id': image['image_id'], 'repo_digests': [image['reference']],
+                              'os': 'linux', 'architecture': 'amd64', 'variant': ''}
+                       for role, image in self.manifest['images'].items()}
         for service in ('api', 'ingestion-http', 'article-worker', 'payment-reconciler'):
             self.secret_directory(service, {name: b'opaque-do-not-print' for name in self.rt.SECRET_NAMES[service]})
         self.secret_directory('postgres', {'POSTGRES_PASSWORD': b'opaque-do-not-print'})
@@ -951,6 +983,10 @@ class DeployCheckTests(unittest.TestCase):
         for family in ('inet', 'bridge'):
             if argv == ['/usr/sbin/nft', '--json', '--numeric', 'list', 'table', family, 'autodata_guard']:
                 return subprocess.CompletedProcess(argv, 0, json.dumps(self.guard_tables[family]).encode())
+        for role, image in self.manifest['images'].items():
+            template = '{"image_id":{{json .ID}},"repo_digests":{{json .RepoDigests}},"os":{{json .Os}},"architecture":{{json .Architecture}},"variant":{{json .Variant}}}'
+            if argv == ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', 'image', 'inspect', '--platform', 'linux/amd64', '--format', template, image['reference']]:
+                return subprocess.CompletedProcess(argv, 0, json.dumps(self.images[role]).encode())
         raise AssertionError('unexpected command: ' + repr(argv))
 
     def deploy(self, argv=None):
@@ -967,9 +1003,75 @@ class DeployCheckTests(unittest.TestCase):
         self.assertEqual(code, 3)
         self.assertEqual(receipt['failure_code'], 'missing_dependency')
         self.assertEqual(receipt['checks'], {'config': True, 'manifest': True, 'disk_uuid': True,
-            'metadata_guard': True, 'storage_guard': True, 'secrets': True, 'cached_images': False,
+            'metadata_guard': True, 'storage_guard': True, 'secrets': True, 'cached_images': True, 'migration_tree': True,
             'schema': False, 'services': False, 'runtime_evidence': False})
-        self.assertEqual(len(self.calls), 4)
+        self.assertEqual(len(self.calls), 11)
+
+    def test_every_cached_role_requires_selected_digest_and_local_image_id(self):
+        for role in self.images:
+            for key, value in (('image_id', 'sha256:' + '0' * 64), ('repo_digests', []),
+                               ('os', 'windows'), ('architecture', 'arm64'), ('variant', 'v8')):
+                with self.subTest(role=role, key=key):
+                    before = copy.deepcopy(self.images[role]); self.images[role][key] = value
+                    code, receipt = self.deploy()
+                    self.assertEqual(code, 3); self.assertFalse(receipt['checks']['cached_images'])
+                    self.assertFalse(receipt['checks']['schema'])
+                    self.images[role] = before
+
+    def test_cached_inspect_rejects_malformed_or_unavailable_evidence_without_fallback(self):
+        role = 'api'; before = copy.deepcopy(self.images[role])
+        for value in (None, {}, dict(before, extra=True), dict(before, repo_digests=None),
+                      dict(before, repo_digests=[before['repo_digests'][0]] * 2)):
+            self.images[role] = value
+            self.assertFalse(self.deploy()[1]['checks']['cached_images'])
+        self.images[role] = before
+        execute = self.execute
+        for outcome, expected in ((FileNotFoundError('opaque-do-not-print'), 3),
+                                  (subprocess.TimeoutExpired('docker', 5), 5),
+                                  (subprocess.CompletedProcess([], 1, b'opaque-do-not-print'), 3),
+                                  (subprocess.CompletedProcess([], 0, b'{"image_id":1,"image_id":2}'), 3)):
+            def fake(argv, **kwargs):
+                if argv[0] != '/usr/bin/docker': return execute(argv, **kwargs)
+                self.calls.append(argv)
+                if isinstance(outcome, Exception): raise outcome
+                return outcome
+            self.calls.clear()
+            with patch.object(subprocess, 'run', side_effect=fake):
+                code, receipt = self.deploy()
+            self.assertEqual(code, expected); self.assertFalse(receipt['checks']['cached_images'])
+            self.assertEqual(len(self.calls), 5)
+
+    def test_migration_tree_rejects_changed_missing_extra_and_untrusted_files(self):
+        self.assertTrue(self.deploy()[1]['checks'].get('migration_tree', False), 'released tree collector missing')
+        target = self.sql / '001_initial.sql'; baseline = target.read_bytes()
+        for case in ('changed', 'runner_changed', 'missing', 'extra', 'symlink', 'hardlink', 'owner', 'mode', 'directory_mode'):
+            with self.subTest(case=case):
+                extra = self.sql / '003_unreleased.sql'
+                if case == 'changed': target.chmod(0o600); target.write_bytes(b'tampered'); target.chmod(0o444)
+                elif case == 'runner_changed': self.runner.chmod(0o600); self.runner.write_bytes(b'tampered'); self.runner.chmod(0o444)
+                elif case == 'missing': target.unlink()
+                elif case == 'extra': extra.write_bytes(b'unreleased')
+                elif case == 'symlink': target.unlink(); target.symlink_to(self.runner)
+                elif case == 'hardlink': extra = self.base / 'external-hardlink'; os.link(target, extra)
+                elif case == 'owner': self.wrong_owner = target
+                elif case == 'mode': target.chmod(0o666)
+                else: self.sql.chmod(0o777)
+                code, receipt = self.deploy()
+                self.assertEqual(code, 3); self.assertFalse(receipt['checks'].get('migration_tree', False))
+                self.assertFalse(receipt['checks']['schema'])
+                if target.is_symlink(): target.unlink()
+                if extra.exists(): extra.unlink()
+                if target.exists(): target.chmod(0o600)
+                target.write_bytes(baseline); target.chmod(0o444)
+                self.runner.chmod(0o600); self.runner.write_bytes(b'released runner bytes\n'); self.runner.chmod(0o444)
+                self.sql.chmod(0o755); self.wrong_owner = None
+
+    def test_migration_tree_does_not_follow_parent_symlinks(self):
+        original = self.release / 'db'; moved = self.release / 'untrusted-db'
+        original.rename(moved); original.symlink_to(moved)
+        code, receipt = self.deploy()
+        self.assertEqual(code, 3); self.assertFalse(receipt['checks'].get('migration_tree', False))
+        self.assertFalse(receipt['checks']['schema'])
 
     def test_missing_wrong_or_readonly_mount_never_creates_data_files(self):
         baseline = copy.deepcopy(self.data_mount)
