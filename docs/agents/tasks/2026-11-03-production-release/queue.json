@@ -472,6 +472,43 @@
         "issue_comment_body_sha256": "28bf8f178facef692d3354b6b5c2a37251f90e4b481dac43661459e16eb06198",
         "receipt_correction": "Checkpoint 4b97ab44c6a944f883741e5a9b8f4a4a0384c2b6 hashed the Issue comment body into issue_body_sha256. Re-read the live Issue body, Issue comment and Project field; their separate UTF-8 body/text hashes are now correctly named. The Issue body matches both original saved snapshots and was not modified."
       }
+    },
+    {
+      "id": "workshop-schema-observation-harness",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-schema-observation-harness.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-schema-observation-harness.md",
+      "depends_on": [
+        "workshop-hosting"
+      ],
+      "state": "planning_synchronized_awaiting_review",
+      "release_state": "unverified",
+      "implementation_allowlist": [
+        "infra/deploy/gce/schema_probe.py",
+        "infra/deploy/gce/test_schema_probe.py",
+        "infra/deploy/gce/test_schema_probe_pg17.py",
+        "infra/deploy/gce/testdata/schema_probe_sentinel.c",
+        "infra/deploy/gce/testdata/schema_probe_fixtures.sql"
+      ],
+      "goal": "Prove a bounded catalog-before-ledger protocol under an explicit ledger-only MAINTAIN capability in a disposable PostgreSQL17 adversarial harness; preserve the production catalog-only v2 collector and every release/readiness denial.",
+      "todo": [
+        "Synchronize this exact harness goal, privilege decision, five-path implementation allowlist, tests and release limits in Issue186/Project8 and canonical documents; commit/push and pass pinned preflight before independent coordinator gate review.",
+        "Add failing pure transport/state-machine tests and implement the disconnected fixed-SQL schema_probe module with lock-before-snapshot catalog validation, bounded ledger framing and rollback-only cleanup.",
+        "Build the local-only PG17 harness and C sentinels with a non-owner SELECT+MAINTAIN probe role and trusted NOLOGIN ledger owner; demonstrate every sentinel fires in an intentional negative control before testing observer rejection.",
+        "Run actual disposable PG17 safe/hostile relation, index, privilege, concurrent DDL, first-snapshot and abandoned-session cases; retain red/green receipts, hashes and cleanup proof without running application services or contacting providers.",
+        "Run focused regressions, scope/diff and exact-base preflight; commit/push a coherent candidate for independent exact-SHA review, keeping production grants, collector integration, authenticated publication, services, deployment and cars.tk cutover behind later gates."
+      ],
+      "production_ready": false,
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6618084753",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-03T23:26:27.924126+00:00",
+        "issue_body_sha256": "534997d1af2a9abc240fac8d2d6e9e22121befb9fceb81a078668cf2b855438e",
+        "issue_comment_sha256": "ad1f492c9de0cccc50b5a5e14f2d3b8ca33613749eaf44fb7cf032942c11e7ea",
+        "project_text_sha256": "be3c2181472276259233a1a3f2e016dc5b72fa19b16795bed9f15e8822625fe9",
+        "full_prior_project_index_preserved_in_issue_comment": true
+      }
     }
   ],
   "execution": {
