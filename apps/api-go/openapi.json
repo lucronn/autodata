@@ -3,7 +3,7 @@
   "info": {
     "title": "AutoData Catalog API",
     "version": "1.0.0",
-    "description": "Provider-neutral selector cascade, descriptor index, ordered source/canonical lifecycle, immutable source review and localized media. Firebase Google customer sessions use an opaque secure cookie; explicit local headless mode retains fixture bearer authentication. Firebase mode rejects Authorization headers. Paid catalog access is separately gated."
+    "description": "Provider-neutral public selector metadata and purchased configuration catalog. Firebase Google customers use an opaque secure session cookie and a current exact configuration/region grant for every protected read. Paid GETs are observational; explicit CSRF-protected preparation reuses durable source and canonical jobs. Explicit local headless fixtures retain their injected bearer/legacy behavior."
   },
   "servers": [
     {
@@ -36,15 +36,25 @@
           "Catalog media"
         ],
         "operationId": "listCatalogArticles",
-        "summary": "List a vehicle's catalog articles and opaque image URLs",
+        "summary": "List purchased configuration article descriptors",
         "parameters": [
           {
             "$ref": "#/components/parameters/VehicleId"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "description": "Optional assertion of the selected configuration region; it must match exactly."
           }
         ],
         "responses": {
           "200": {
-            "description": "Catalog article list. Missing or unlocalized images have no display URL.",
+            "description": "Metadata-only canonical descriptors and safe current progress; images is always an empty array.",
             "content": {
               "application/json": {
                 "schema": {
@@ -78,8 +88,12 @@
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
-        }
+        },
+        "description": "In Firebase mode vehicle_id is the exact canonical configuration UUID, not a base vehicle UUID. A verified session and current owner/configuration/region grant precede descriptor/progress reads. GET never schedules an index or article job. Only canonical identities are returned; document, body, steps and image URLs are omitted."
       }
     },
     "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}": {
@@ -95,6 +109,16 @@
           },
           {
             "$ref": "#/components/parameters/ArticleId"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "description": "Optional assertion of the selected configuration region; it must match exactly."
           }
         ],
         "responses": {
@@ -743,7 +767,7 @@
             "$ref": "#/components/responses/Conflict"
           }
         },
-        "description": "Read one authorized immutable source or canonical projection. A cold known descriptor schedules bounded durable work. Repeated reads join its job. Readable source returns 200 throughout rewriting and on terminal rewrite failure. complete means validated canonical publication."
+        "description": "Read the currently permitted immutable source or canonical projection after current session, exact configuration grant and canonical article membership checks. Firebase GET never schedules work: a cold descriptor without readable content or durable processing returns503 CATALOG_SOURCE_UNAVAILABLE. POST prepare explicitly starts or joins durable processing. Readable source returns200 while rewriting; complete means validated canonical publication. Explicit local fixtures retain legacy lazy GET preparation."
       }
     },
     "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source": {
@@ -753,7 +777,7 @@
         ],
         "operationId": "getStoredArticleSource",
         "summary": "Read sanitized stored source content",
-        "description": "Read the authorized immutable ordered source document without provider, model or scheduling calls. Sanitized compatibility content and local media retain unavailable placeholders.",
+        "description": "Read the permitted ordered source HTML or JSON after current session and exact purchased configuration grant. source_revision_id may select a historical revision of this article, while current membership, source rights and quarantine still apply. Embedded media uses authenticated short-lived contextual references. No provider, model or scheduling call occurs.",
         "parameters": [
           {
             "$ref": "#/components/parameters/VehicleId"
@@ -781,6 +805,16 @@
               "type": "string"
             },
             "description": "Pins an immutable revision belonging to this authorized article and vehicle."
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "description": "Optional assertion of the selected configuration region; it must match exactly."
           }
         ],
         "responses": {
@@ -838,8 +872,12 @@
         ],
         "operationId": "getLocalizedCatalogImage",
         "summary": "Fetch an AutoData-localized image",
-        "description": "The token is randomly minted by AutoData and resolves only to a validated local object key. It is not a provider URL or storage key. No bearer token is required; invalid or unavailable references fail closed. Tokens are environment-specific and must not be constructed from this document.",
-        "security": [],
+        "description": "In Firebase mode require the current customer session and a valid v2 contextual media reference. A reference is not an authorization credential: current exact grant, owner, configuration, article/provider identity, current revision anchors, selected source, asset mapping and rights are rechecked before S3. References expire after300 seconds; refresh the authorized article/source projection to renew. No v1/key-only fallback. Invalid/context-obsolete references404; expired/revoked session401; grant denial403; current withdrawal410; dependency outage503. Explicit injected local fixtures retain their legacy v1 behavior.",
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
         "parameters": [
           {
             "name": "token",
@@ -847,7 +885,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "pattern": "^[A-Za-z0-9_-]+$",
+              "pattern": "^v2\\.[A-Za-z0-9_-]+$",
               "minLength": 1,
               "maxLength": 6000
             }
@@ -861,6 +899,14 @@
                 "schema": {
                   "type": "string",
                   "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
                 }
               }
             }
@@ -886,6 +932,15 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
           }
         }
       }
@@ -897,9 +952,13 @@
         ],
         "operationId": "rejectLegacyCatalogImageReference",
         "summary": "Reject the legacy source-bearing image route",
-        "description": "The src query parameter is not accepted; the handler never fetches caller-supplied URLs.",
+        "description": "In Firebase mode require the current customer session and a valid v2 contextual media reference. A reference is not an authorization credential: current exact grant, owner, configuration, article/provider identity, current revision anchors, selected source, asset mapping and rights are rechecked before S3. References expire after300 seconds; refresh the authorized article/source projection to renew. No v1/key-only fallback. Invalid/context-obsolete references404; expired/revoked session401; grant denial403; current withdrawal410; dependency outage503. Explicit injected local fixtures retain their legacy v1 behavior.",
         "deprecated": true,
-        "security": [],
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
         "responses": {
           "400": {
             "description": "An opaque image path token is required.",
@@ -911,6 +970,15 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
           }
         }
       }
@@ -971,7 +1039,9 @@
           "503": {
             "$ref": "#/components/responses/Unavailable"
           }
-        }
+        },
+        "security": [],
+        "description": "Public safe selector metadata only. Bounded read-through hydration stays within this selector scope and never reads articles, source bodies, article processing or models."
       }
     },
     "/v1/catalog/years/{year}/makes": {
@@ -1056,7 +1126,9 @@
           "503": {
             "$ref": "#/components/responses/Unavailable"
           }
-        }
+        },
+        "security": [],
+        "description": "Public safe selector metadata only. Bounded read-through hydration stays within this selector scope and never reads articles, source bodies, article processing or models."
       }
     },
     "/v1/catalog/years/{year}/makes/{make}/models": {
@@ -1149,7 +1221,9 @@
           "503": {
             "$ref": "#/components/responses/Unavailable"
           }
-        }
+        },
+        "security": [],
+        "description": "Public safe selector metadata only. Bounded read-through hydration stays within this selector scope and never reads articles, source bodies, article processing or models."
       }
     },
     "/v1/catalog/years/{year}/makes/{make}/models/{model}/configurations": {
@@ -1271,7 +1345,9 @@
           "503": {
             "$ref": "#/components/responses/Unavailable"
           }
-        }
+        },
+        "security": [],
+        "description": "Public safe selector metadata only. Bounded read-through hydration stays within this selector scope and never reads articles, source bodies, article processing or models."
       }
     },
     "/auth/config": {
@@ -2498,6 +2574,158 @@
           }
         }
       }
+    },
+    "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/prepare": {
+      "post": {
+        "tags": [
+          "Catalog media"
+        ],
+        "operationId": "preparePaidCatalogArticle",
+        "summary": "Explicitly prepare a purchased canonical article",
+        "responses": {
+          "200": {
+            "description": "Current readable source or canonical article.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogArticleResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Actual durable article processing observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogArticleResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "400": {
+            "description": "Malformed/nonempty JSON or trailing data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds2KiB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type must be application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Firebase customer mode only. Require current verified session, exact configured Origin, session-bound X-CSRF-Token, exact purchased configuration and canonical article eligibility; recheck current grant immediately before durable ensure. The body must be exactly an empty JSON object, at most2KiB. Concurrent requests and separately entitled owners reuse the same durable article job. Return the actual reread lifecycle view:202 only with observed durable processing,200 for readable source/canonical,409/410 for current lifecycle/rights,503 without durable acknowledgement. No client provider, model, source URI or idempotency key is accepted.",
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VehicleId"
+          },
+          {
+            "$ref": "#/components/parameters/ArticleId"
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured application origin."
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Session-bound token from GET /auth/session."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              },
+              "example": {}
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2521,7 +2749,8 @@
         "required": true,
         "schema": {
           "type": "string"
-        }
+        },
+        "description": "Firebase paid routes require the exact canonical configuration UUID returned by selectors. Base vehicle IDs are not aliases. Explicit local fixtures retain legacy vehicle IDs."
       },
       "ArticleId": {
         "name": "article_id",
@@ -2529,7 +2758,8 @@
         "required": true,
         "schema": {
           "type": "string"
-        }
+        },
+        "description": "Canonical article UUID returned by the exact configuration descriptor list; unmanaged legacy IDs are rejected in Firebase mode."
       }
     },
     "schemas": {
