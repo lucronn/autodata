@@ -107,3 +107,42 @@ See the [design spec](../superpowers/specs/2026-10-08-independent-bank-connector
 [implementation plan](../superpowers/plans/2026-10-08-independent-bank-connectors.md),
 [API compatibility details](source-connector-api-compatibility.md), and
 [domain status](bankone-banktwo-domain-routing.md).
+
+## Durable article execution (November 2026)
+
+Article discovery and content capture use separate durable jobs for each bank.
+The canonical key includes provider, vehicle, optional configuration and both
+opaque source references. A descriptor, resolution snapshot, resource or model
+result from one key cannot satisfy another. A content-addressed S3 object can
+share bytes while its persisted snapshot and observation retain their actual
+provider/context ownership.
+
+The dedicated entry point is `python scripts/dev/article_worker.py` (`--once`
+for one claim, otherwise `--poll-seconds`, default 1). It uses existing
+`AUTODATA_DB_ADDRESS`, `AUTODATA_POSTGRES_DB`, `AUTODATA_POSTGRES_USER` and
+`AUTODATA_POSTGRES_PASSWORD`; S3 requires `AUTODATA_S3_ENDPOINT`,
+`AUTODATA_S3_ACCESS_KEY`, `AUTODATA_S3_SECRET_KEY`, `AUTODATA_SOURCE_BUCKET`.
+The bucket must already exist. Bank connector URLs/tokens and Mercury
+`INCEPTION_*` configuration use the existing clients. Unconfigured model work
+retains source content with explicit review state. Do not mount production
+credentials into fixture containers.
+
+`ArticleObjectStore` uses the real MinIO SDK with connect timeout 2 seconds,
+read timeout 5 seconds and zero automatic SDK retries. Uploads accept only
+content-addressed keys. Source IO runs outside transactions; a late upload may
+leave an unreferenced object, but cannot write database references after losing
+the lease. Heartbeats run every 10 seconds against a 90-second database lease.
+The database, rather than a process cache, owns retry budget and current phase.
+
+Publication creates a `catalog.article.published` outbox event in the same
+transaction as the canonical pointer and completed job. Deploy the enrichment
+outbox relay separately; NATS `Nats-Msg-Id` and envelope `idempotency_key` retain
+the transformation key across replay. Consumers must deduplicate independently.
+A broker outage leaves canonical content readable and the event pending.
+An expired dispatched model request without a persisted response becomes
+`ambiguous` in the actual reclaim/dead-letter transaction. Retrying may deliver
+the external model request again; external delivery is not exactly once.
+
+R6 must deploy both worker and relay and validate authenticated real-bank and
+Mercury behavior. The isolated PostgreSQL/S3/NATS fixture evidence certifies
+runtime boundaries and recovery, not production configuration or rollout.

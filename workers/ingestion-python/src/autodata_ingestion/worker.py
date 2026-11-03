@@ -1389,3 +1389,61 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+class ArticleRepository:
+    """Short runtime connections with a two-second scheduling connection limit."""
+    def __init__(self, *, address=None):
+        self.address=address
+
+    def connect(self):
+        import psycopg
+        from .bundle_persistence import _resolve_database_address
+        address=_resolve_database_address(self.address or os.getenv("AUTODATA_DB_ADDRESS"))
+        host,port=address.rsplit(":",1)
+        return psycopg.connect(host=host,port=int(port),dbname=os.getenv("AUTODATA_POSTGRES_DB","autodata"),
+            user=os.getenv("AUTODATA_POSTGRES_USER","autodata"),password=os.getenv("AUTODATA_POSTGRES_PASSWORD","local-dev-only"),
+            connect_timeout=2,options="-c statement_timeout=1800 -c lock_timeout=1500",row_factory=__import__("psycopg.rows",fromlist=["dict_row"]).dict_row)
+
+
+class ArticleObjectStore:
+    """Content-addressed S3 uploads with bounded SDK IO and no automatic retry."""
+    def __init__(self,*,endpoint,access_key,secret_key,bucket,secure=False):
+        from minio import Minio
+        from urllib3 import PoolManager, Timeout, Retry
+        self.bucket=bucket
+        self.client=Minio(endpoint,access_key=access_key,secret_key=secret_key,secure=secure,
+            http_client=PoolManager(timeout=Timeout(connect=2,read=5),retries=Retry(total=0,connect=0,read=0,redirect=0,status=0)))
+
+    def put_object(self,key,payload,media_type):
+        from io import BytesIO
+        from hashlib import sha256
+        digest=sha256(payload).hexdigest()
+        if key!="sources/"+digest[:16]+"/"+digest:raise ValueError("content-addressed source key required")
+        self.client.put_object(self.bucket,key,BytesIO(payload),len(payload),content_type=media_type,num_parallel_uploads=1)
+
+
+def article_worker_main(argv=None):
+    import argparse
+    from uuid import UUID,uuid4
+    from urllib.parse import urlsplit
+    from .article_lifecycle import run_article_worker_once
+    from .source_connector_client import source_connector_registry
+    from .mercury2 import Mercury2Client
+    parser=argparse.ArgumentParser(description="Durable article/catalog worker")
+    parser.add_argument("--once",action="store_true")
+    parser.add_argument("--poll-seconds",type=float,default=1)
+    parser.add_argument("--worker-id",type=UUID,default=None)
+    args=parser.parse_args(argv)
+    if args.poll_seconds<=0:parser.error("poll interval must be positive")
+    endpoint=os.environ["AUTODATA_S3_ENDPOINT"]
+    parsed=urlsplit(endpoint if "://" in endpoint else "http://"+endpoint)
+    objects=ArticleObjectStore(endpoint=parsed.netloc,secure=parsed.scheme=="https",
+        access_key=os.environ["AUTODATA_S3_ACCESS_KEY"],secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],bucket=os.environ["AUTODATA_SOURCE_BUCKET"])
+    registry=source_connector_registry(include_defaults=False)
+    model=Mercury2Client.from_environment() if os.getenv("INCEPTION_API_KEY","").strip() else None
+    repo=ArticleRepository();worker=args.worker_id or uuid4()
+    while True:
+        run_article_worker_once(repo,worker_id=worker,registry=registry,object_store=objects,model_client=model)
+        if args.once:return 0
+        time.sleep(args.poll_seconds)

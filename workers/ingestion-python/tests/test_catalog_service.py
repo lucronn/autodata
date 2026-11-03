@@ -326,27 +326,6 @@ class CatalogServiceTests(unittest.TestCase):
         self.assertEqual(first["status"], "accepted")
         self.assertEqual(first["missing_scopes"], ["models"])
 
-    def test_http_hydration_retries_after_incomplete_result_ttl(self):
-        request = json.dumps({
-            "scope": "articles",
-            "idempotency_key": "catalog-http-retry-1",
-            "vehicle_id": "vehicle-1",
-            "year": 2020,
-            "make": "Acura",
-            "model": "ILX",
-        })
-        failed = {"status": "source_unavailable", "complete": False, "missing_scopes": ["articles"], "rows": []}
-        hydrated = {"status": "hydrated", "complete": True, "missing_scopes": [], "rows": [{"article": {}}]}
-
-        with patch("autodata_ingestion.catalog_service._hydrate_article_catalog", side_effect=[failed, hydrated]) as loader, \
-            patch("autodata_ingestion.catalog_service._HYDRATION_INCOMPLETE_TTL_SECONDS", -1.0):
-            first = ensure_catalog_hydration(request)
-            second = ensure_catalog_hydration(request)
-
-        self.assertEqual(loader.call_count, 2)
-        self.assertFalse(first["complete"])
-        self.assertTrue(second["complete"])
-
     def test_http_hydration_complete_cache_is_provider_free(self):
         result = ensure_catalog_hydration(json.dumps({
             "scope": "configurations",
@@ -360,101 +339,6 @@ class CatalogServiceTests(unittest.TestCase):
         self.assertEqual(result["status"], "cache_hit")
         self.assertTrue(result["complete"])
         self.assertEqual(len(result["rows"]), 1)
-
-    def test_article_scope_uses_targeted_index_loader_with_empty_query(self):
-        calls = []
-
-        def load_catalog(vehicle, target, *, query):
-            calls.append((vehicle, target, query))
-            return (
-                [{"article": {"article_id": "a1", "title": "Oil pump replacement"}}],
-                {"traversal": "vehicle_bundle", "targeted_article_fetch_count": 0},
-            )
-
-        request = json.dumps({
-            "scope": "articles",
-            "idempotency_key": "catalog-http-articles-index-1",
-            "year": 1999,
-            "make": "Toyota Truck",
-            "model": "4 Runner 4wd",
-            "region": "US",
-            "trim": "SR5",
-            "engine": "2.7",
-        })
-        with patch.dict(os.environ, {"AUTODATA_AUTOAPI_BASE_URL": "https://autoapi.test"}), \
-                patch("autodata_ingestion.worker._load_autoapi_job_catalog", load_catalog):
-            result = ensure_catalog_hydration(request)
-
-        self.assertEqual(result["status"], "hydrated")
-        self.assertTrue(result["complete"])
-        self.assertEqual(result["metadata"]["targeted_article_fetch_count"], 0)
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][2], "")
-
-    def test_article_scope_falls_back_to_autoapitwo_when_autoapi_fails(self):
-        primary_calls = []
-        fallback_calls = []
-
-        def load_catalog(vehicle, target, *, query):
-            primary_calls.append(query)
-            raise RuntimeError("AutoAPI vehicle lookup failed")
-
-        def load_autoapitwo(request, vehicle):
-            fallback_calls.append((request["make"], vehicle["model"]))
-            return (
-                [{"article": {"article_id": "autoapitwo:52597:1535667", "title": "Oil Pump"}}],
-                {"mode": "autoapitwo_article_index", "targeted_article_fetch_count": 0},
-            )
-
-        request = json.dumps({
-            "scope": "articles",
-            "idempotency_key": "catalog-http-articles-autoapitwo-fallback-1",
-            "vehicle_id": "vehicle-1",
-            "year": 2013,
-            "make": "Honda",
-            "model": "Accord Coupe",
-            "region": "US",
-            "engine": "2.4",
-        })
-        with patch.dict(os.environ, {"AUTODATA_AUTOAPI_BASE_URL": "https://autoapi.test"}), \
-                patch("autodata_ingestion.worker._load_autoapi_job_catalog", load_catalog), \
-                patch("autodata_ingestion.catalog_service._load_autoapitwo_article_catalog", load_autoapitwo):
-            result = ensure_catalog_hydration(request)
-
-        self.assertEqual(result["status"], "hydrated")
-        self.assertTrue(result["complete"])
-        self.assertEqual(result["metadata"]["mode"], "autoapitwo_article_index")
-        self.assertEqual(primary_calls, [""])
-        self.assertEqual(fallback_calls, [("Honda", "Accord Coupe")])
-
-    def test_selected_article_scope_falls_back_to_autoapitwo(self):
-        request = json.dumps({
-            "scope": "article",
-            "idempotency_key": "catalog-http-article-autoapitwo-fallback-1",
-            "vehicle_id": "vehicle-1",
-            "year": 2013,
-            "make": "Honda",
-            "model": "Accord Coupe",
-            "region": "US",
-            "engine": "2.4",
-            "source_article_id": "autoapitwo:52597:1535667",
-            "title": "Oil Pump",
-        })
-
-        def load_catalog(vehicle, target, *, query):
-            raise RuntimeError("AutoAPI vehicle lookup failed")
-
-        def load_detail(request, vehicle):
-            return ([{"article": {"article_id": "autoapitwo:52597:1535667", "title": "Oil Pump"}}], {"mode": "autoapitwo_article_detail"})
-
-        with patch.dict(os.environ, {"AUTODATA_AUTOAPI_BASE_URL": "https://autoapi.test"}), \
-                patch("autodata_ingestion.worker._load_autoapi_job_catalog", load_catalog), \
-                patch("autodata_ingestion.catalog_service._load_autoapitwo_article_detail", load_detail):
-            result = ensure_catalog_hydration(request)
-
-        self.assertEqual(result["status"], "hydrated")
-        self.assertEqual(result["metadata"]["mode"], "autoapitwo_article_detail")
-        self.assertEqual(result["rows"][0]["article"]["article_id"], "autoapitwo:52597:1535667")
 
     def test_article_scope_does_not_fall_back_to_full_provider_snapshot(self):
         class SnapshotOnlyProvider:
@@ -548,3 +432,27 @@ class CatalogServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_lifecycle_ensure_ignores_fabricated_process_cache_and_never_calls_banks(fresh_database,monkeypatch):
+    from lifecycle_support import seed_vehicle,insert_descriptor
+    from autodata_ingestion.article_lifecycle_types import ArticleKey
+    import autodata_ingestion.catalog_service as service
+    repo=fresh_database();vehicle=seed_vehicle(repo)
+    article=insert_descriptor(repo,ArticleKey("bankone",vehicle,None,"opaque:v","opaque:a"))
+    monkeypatch.setattr("autodata_ingestion.worker.ArticleRepository",lambda:repo)
+    def never(*args,**kwargs):pytest.fail("ensure called provider")
+    monkeypatch.setattr(service,"_hydrate_article_catalog",never)
+    request={"scope":"article","vehicle_id":str(vehicle),"canonical_article_id":str(article),"idempotency_key":"same"}
+    service._HYDRATION_RESULTS["same"]=(0,{"complete":True,"rows":[{"forged":True}]})
+    first=service.ensure_catalog_hydration(json.dumps(request))
+    second=service.ensure_catalog_hydration(json.dumps(request))
+    assert first==second
+    assert set(first)=={"job_id","state","canonical_article_id","source_revision_id","retry_after_seconds"}
+    assert first["state"]=="queued" and first.http_status==202
+    with repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM source_fetch_jobs").fetchone()["n"]==1
+
+
+from lifecycle_support import fresh_database
+import pytest

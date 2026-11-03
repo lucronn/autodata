@@ -122,18 +122,21 @@ class ContractTests(unittest.TestCase):
         self.assertIn("Contract drift detected", buffer.getvalue())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class CatalogPublicationContractTests(unittest.TestCase):
     def test_catalog_envelope_is_separate_and_generated(self):
         root=Path(__file__).resolve().parents[2]
         contract=json.loads((root/'packages/contracts/contract.json').read_text())
         self.assertIn('catalog.article.published',contract['event_subjects'])
+        schema=json.loads((root/'packages/contracts/catalog/v1/article-lifecycle.schema.json').read_text())
+        for name in ('article_processing_state','article_content_origin','article_review_status'):
+            self.assertEqual(schema['$defs'][name]['enum'],contract[name])
         fields=contract['catalog_article_published']['required']
         self.assertIn('canonical_article_id',fields)
         self.assertNotIn('request_id',fields)
         self.assertIn('request_id',contract['event_envelope']['required'])
         for relative,needle in [('packages/contracts/python/autodata_contracts/contracts.py','class CatalogArticlePublished'),('packages/contracts/go/contracts.go','type CatalogArticlePublished struct')]:
             self.assertIn(needle,(root/relative).read_text())
+
+
+if __name__ == "__main__":
+    unittest.main()

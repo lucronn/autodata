@@ -46,16 +46,6 @@ ordered tables and media, marks unavailable assets honestly, handles real SDK
 storage exceptions, and maps reused source bytes to actual persisted snapshot
 UUIDs. Source/configuration selectors do not widen ambiguous scope.
 
-## Remaining lifecycle and release work
-
-R2 tasks 5–8 are pending: model-attempt accounting and validation, worker/runtime
-integration, atomic canonical publication/outbox, and full process/S3/NATS
-recovery acceptance. The real S3 adapter must set connect/read timeouts and
-zero automatic retries; bounded caller waits alone do not stop upload threads.
-Warm-read, source-to-canonical API/browser behavior and authenticated real-bank
-staging acceptance are later workstreams. This record certifies the R1 fixture
-scope only and does not claim production readiness.
-
 ## CI dependency setup follow-up
 
 GitHub runs [41617122268](https://github.com/lucronn/autodata/actions/runs/41617122268)
@@ -92,3 +82,65 @@ for isolated implementation acceptance; no production database is targeted.
 The task remains dependency-blocked until verified R2 integration and a fresh
 committed synchronized record. This supersedes the initially considered
 037/038-only replay guard, which would not fix the031 regression.
+
+## R2 implementation and fixture verification
+
+Authorized base: `262d180dec9b0411fa914393f4d8900ce23e466b`. Implementation is
+isolated on `codex/r2-rewrite-lifecycle`; migrations 037/038 remain unchanged.
+R2 adds ordered conservative rewrites, persisted attempts/results/validation,
+atomic publication/outbox, the dedicated worker, SQL-only ensure scheduling,
+reviewed offline legacy mapping and generated catalog contracts. Independent
+exact-commit review and coordinator integration remain required.
+
+The isolated project is `autodata-r2-lifecycle`; artifacts are retained under
+`/tmp/autodata-r2-lifecycle-artifacts`. It uses private PostgreSQL, S3 and NATS
+volumes, an internal network, no host ports, read-only code and fixture-only
+credentials. Connector/model HTTP servers bind loopback inside the test runner.
+No real model/bank requests or `/run/base44/app.env` are used.
+
+Process acceptance launches two actual `scripts/dev/article_worker.py` CLI
+processes. Injected local test barriers cover death before source commit, after
+source commit/dispatch/result, before/inside publication and after a real NATS
+acknowledgment. A separate death after an actual model HTTP request proves
+ambiguity and bounded redelivery. SQL backend termination proves publication
+rollback. Tests also cover twenty competing ensures, provider separation,
+changed and unchanged-source refresh, three exhausted attempts with unchanged
+owner/key/budget, warm 100-read/ensure restart, real SDK failure/5-second timeout,
+optional unavailable image placement, broker outage and final delivery expiry.
+Deterministic expiry-boundary tests change database expiry immediately before
+actual reclaim/final sweep and prove renewed leases survive.
+
+The smoke command runs mandatory schema/source/job/transform/publication/runtime
+and integration acceptance. It fails on skipped tests or unavailable fixture
+services. JUnit records exact test IDs; runtime JSON records contain measured
+call counts, durable jobs/attempts/revisions/event keys and expected/measured
+zero duplicate-event/unvalidated-publication invariants. The JSON manifest
+records command argv, timestamps, status, candidate provenance and artifact
+SHA-256 values. The read-only runner has no usable worktree Git metadata, so
+pass the host's exact SHA explicitly; the manifest labels this provenance.
+
+```sh
+export AUTODATA_LIFECYCLE_ARTIFACT_DIR=/tmp/autodata-r2-lifecycle-artifacts
+candidate_sha=$(git rev-parse HEAD)
+docker compose -p autodata-r2-lifecycle \
+  -f infra/compose/compose.article-lifecycle-test.yaml run --rm test-runner \
+  python scripts/dev/article_lifecycle_smoke.py --mode fixture \
+  --candidate-sha "$candidate_sha" --output /artifacts/lifecycle-smoke.json
+```
+
+Runtime handoff: `article_lifecycle.run_article_worker_once` and
+`run_article_job`; `worker.ArticleRepository` / `ArticleObjectStore`;
+`catalog_service._ensure_lifecycle_catalog`; fixture
+`lifecycle_support.LifecycleRuntime` (`ensure`, `read_current`, `refresh`,
+`start_workers`, `pause`, `kill_worker`, `expire_lease`, `counters`). R3 owns
+public Go integration and its combined Go/Python fixture harness. R6 owns
+production worker/relay deployment and authenticated canaries. Fixture success does not establish production readiness.
+
+Builder verification before the final exact-SHA acceptance run: full ingestion,
+backfill/smoke utilities, enrichment outbox and contract tests passed **732 tests
+and 25 subtests** in 191.73 seconds (`r2-final.xml`, `r2-final.log`). Subsequent
+focused checks passed 20 runtime/HTTP/legacy tests, 14 publication/read-contract
+tests, 10 contract tests and all 15 migration utility tests. The final candidate
+is recorded by the smoke manifest; these earlier logs are retained separately
+and are not substituted for exact-candidate verification. Scope and whitespace
+checks pass. Generated bindings match source and Go contract tests pass.

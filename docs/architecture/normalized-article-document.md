@@ -134,3 +134,36 @@ content and non-empty ordered documents.
 
 Automated verification passed: 557 Python tests with 3 skips, Go tests, 13
 Workshop JavaScript tests, 13 migration tests, and `git diff --check`.
+
+## Durable ordered rewrite (November 2026)
+
+The lifecycle keeps immutable `source_document`, body, steps, images and resource
+provenance before any rewrite. Normalization preserves existing ordered blocks,
+including string-valued list items and table cells. The model receives only
+bounded editable prose slots addressed by block ID and path, and returns each
+slot exactly once in order. Tables, warnings, images, nested structure, evidence
+and the noneditable parts of text remain protected.
+
+The current `technical-prose-v1` validator is deliberately conservative: it
+allows a small set of equivalent opening verbs while requiring the remainder
+of the instruction to match. It rejects altered numbers/units, negation,
+applicability, tools, parts, safety text, block order, table cells and asset
+positions. Nested images require persisted local content identity or an
+explicit unavailable reason at their original position. Provider URLs cannot
+become renderable images. An unchanged or invalid model response remains
+source/review content; no success is fabricated.
+
+Every attempt records prompt/input hashes and dispatch ownership; bounded raw
+results and candidate documents persist before validation/publication. Reports
+bind source, candidate, protected projection, skeleton, evidence and changed
+slots. Publication recomputes these bindings and projections under the live
+job/article locks. The revision, pointer, completed job and outbox commit
+atomically. Saved results resume without another model request. A new source or
+explicit normalization/profile version uses a new transformation key; an
+unchanged-source refresh retains the original completed or exhausted owner and
+its budget. Human `review_status=UNREVIEWED` remains distinct from automated
+validation.
+
+The shared catalog contract is generated from `packages/contracts/contract.json`
+by `scripts/contracts/generate.py` into Python/Go bindings. It adds lifecycle
+states and publication events without changing existing dataset envelopes.

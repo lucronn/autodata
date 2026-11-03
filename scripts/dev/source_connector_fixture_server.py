@@ -16,6 +16,7 @@ from uuid import uuid4
 class ConnectorFixture:
     def __init__(self, provider):
         self.provider = provider
+        self.source_revision = "revision-1"
         self.token = "fixture-" + provider
         self.resources = {}
         self.calls = []
@@ -39,7 +40,7 @@ class ConnectorFixture:
         return {
             "request_id": str(uuid4()),
             "provider": self.provider,
-            "source_revision": "revision-1",
+            "source_revision": self.source_revision,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
             "source_locator": "fixture://" + self.provider,
             **fields,
@@ -136,3 +137,37 @@ def serve_connector(provider):
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+@contextmanager
+def serve_model():
+    """Mercury-compatible loopback server with deterministic conservative output."""
+    class ModelFixture:
+        calls=0
+        mode="valid"
+        delay=0
+        prompts=[]
+    fixture=ModelFixture()
+    fixture.prompts=[]
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self,*args):pass
+        def do_POST(self):
+            payload=json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if self.headers.get("Authorization")!="Bearer fixture-model":
+                self.send_error(401);return
+            prompt=json.loads(payload["messages"][-1]["content"])
+            fixture.calls+=1;fixture.prompts.append(prompt)
+            time.sleep(fixture.delay)
+            if fixture.mode=="transport":self.send_error(503);return
+            slots=prompt["slots"]
+            response={"replacements":[{**slot,"text":slot["text"] if fixture.mode=="unchanged" else slot["text"].replace("Remove","Take off").replace("Install","Fit").replace("Discard","Toss")} for slot in slots]}
+            if fixture.mode=="unsafe" and response["replacements"]:response["replacements"][0]["text"]="Install an invented component."
+            raw=json.dumps({"choices":[{"message":{"content":json.dumps(response)}}]}).encode()
+            self.send_response(200);self.send_header("Content-Type","application/json");self.send_header("Content-Length",str(len(raw)));self.end_headers()
+            try:self.wfile.write(raw)
+            except BrokenPipeError:pass
+    server=ThreadingHTTPServer(("127.0.0.1",0),Handler)
+    thread=Thread(target=server.serve_forever,daemon=True);thread.start()
+    fixture.url=f"http://127.0.0.1:{server.server_port}/v1"
+    try:yield fixture
+    finally:server.shutdown();server.server_close();thread.join()

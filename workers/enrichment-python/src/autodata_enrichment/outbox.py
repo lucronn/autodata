@@ -121,6 +121,7 @@ async def relay_pending_events(
     *,
     address: str | None = None,
     nats_url: str | None = None,
+    hooks=None,
 ) -> dict[str, Any]:
     """Claim, publish, and record a bounded batch of pending outbox events.
 
@@ -169,6 +170,8 @@ async def relay_pending_events(
                 break
             try:
                 await publish_event(event, jetstream)
+                if hooks is not None:
+                    hooks("after_broker_ack", event)
             except Exception as error:  # noqa: BLE001 - boundary records all delivery errors
                 status = _record_delivery_failure(event, str(error), max_attempts, address=address)
                 if status == "dead_letter":

@@ -220,6 +220,9 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
     if scope not in {"years", "makes", "models", "configurations", "articles", "article"}:
         raise ValueError("catalog hydration scope is invalid")
 
+    if scope in {"articles", "article"}:
+        return _ensure_lifecycle_catalog(request)
+
     with _HYDRATION_LOCK:
         previous = _HYDRATION_RESULTS.get(key)
         if previous is not None:
@@ -243,111 +246,6 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             "rows": list(resolved.rows),
             "provenance": list(resolved.provenance),
         }
-        with _HYDRATION_LOCK:
-            _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
-        return result
-
-    # Article detail is a selected, vehicle-scoped miss. Use the existing
-    # targeted AutoAPI fetch so one article does not trigger a full catalog
-    # traversal. The worker persists the raw source and normalized article
-    # through the canonical bundle boundary before the API re-reads it.
-    if scope == "article" and request.get("year") and request.get("make") and request.get("model"):
-        from .article_intake import VehicleTarget
-        from .worker import _load_autoapi_job_catalog
-
-        vehicle = {
-            "model_year": int(request["year"]),
-            "year": int(request["year"]),
-            "make": str(request["make"]),
-            "model": str(request["model"]),
-            "region": str(request.get("region") or "US"),
-        }
-        for field in ("trim", "engine"):
-            if request.get(field) not in (None, ""):
-                vehicle[field] = request[field]
-        source_article_id = str(request.get("source_article_id") or "").strip()
-        if source_article_id:
-            vehicle["requested_article_id"] = source_article_id
-        query = str(request.get("title") or source_article_id or request.get("article_id") or "").strip()
-        target = VehicleTarget(
-            vehicle["make"], vehicle["model"], vehicle["model_year"], vehicle["region"],
-            vehicle.get("trim"), None,
-        )
-        from .procedure_normalize import article_is_content_complete
-
-        primary_error = None
-        matched: list[dict[str, Any]] = []
-        metadata: dict[str, Any] = {}
-        try:
-            records, metadata = _load_autoapi_job_catalog(vehicle, target, query=query)
-            matched = [
-                record for record in records
-                if str(record.get("article", {}).get("article_id", "")) in {source_article_id, str(request.get("article_id", ""))}
-                or str(record.get("article", {}).get("title", "")).casefold() == str(request.get("title", "")).casefold()
-            ]
-            # Index-only rows share titles with the selected article. Treat a
-            # match without readable body/steps as a miss so Banktwo can run
-            # and so the API does not cache a false "complete" hydration.
-            content_matched = [
-                record
-                for record in matched
-                if article_is_content_complete(record.get("article") or {})
-            ]
-            if content_matched:
-                matched = content_matched
-            elif matched:
-                primary_error = RuntimeError("primary article detail had no readable content")
-                matched = []
-            else:
-                primary_error = RuntimeError("primary article detail was not found")
-        except Exception as error:  # noqa: BLE001 - try the second source
-            primary_error = error
-
-        if primary_error is not None:
-            try:
-                matched, metadata = _load_autoapitwo_article_detail(request, vehicle)
-                matched = [
-                    record
-                    for record in matched
-                    if article_is_content_complete(record.get("article") or {})
-                ] or matched
-            except Exception as fallback_error:  # noqa: BLE001 - source failure is a retryable miss
-                result = {
-                    "status": "source_unavailable",
-                    "hydration_key": key,
-                    "scope": scope,
-                    "complete": False,
-                    "missing_scopes": [scope],
-                    "rows": [],
-                    "metadata": {
-                        "reason": type(fallback_error).__name__,
-                        "primary_source_reason": type(primary_error).__name__,
-                        "primary_detail": str(primary_error),
-                    },
-                }
-                with _HYDRATION_LOCK:
-                    _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
-                return result
-        result = {
-            "status": "hydrated" if matched else "source_miss",
-            "hydration_key": key,
-            "scope": scope,
-            "complete": bool(matched),
-            "missing_scopes": [] if matched else [scope],
-            "rows": matched,
-            "metadata": metadata,
-        }
-        with _HYDRATION_LOCK:
-            _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
-        return result
-
-
-    # Article discovery is a vehicle-scoped index read. It must not enter the
-    # provider-neutral selector dispatcher: providers that only expose a full
-    # snapshot would otherwise make one selected vehicle walk every year,
-    # make, model, and vehicle before the caller can see its article list.
-    if scope == "articles":
-        result = _hydrate_article_catalog(request, key)
         with _HYDRATION_LOCK:
             _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
         return result
@@ -1452,3 +1350,73 @@ __all__ = [
     "canonical_catalog_id",
     "ensure_catalog_hydration",
 ]
+
+
+class LifecycleAcknowledgement(dict):
+    def __init__(self,value,*,http_status):
+        super().__init__(value);self.http_status=http_status
+
+
+class LifecycleIdentityReview(ValueError):
+    http_status=409
+    def __init__(self):super().__init__("ARTICLE_BINDING_REVIEW_REQUIRED")
+
+
+class LifecycleSchedulingUnavailable(RuntimeError):
+    http_status=503
+
+
+def _ensure_lifecycle_catalog(request,*,repo=None):
+    """Only durable SQL scheduling: no source, asset, model or process cache IO."""
+    from uuid import UUID
+    from psycopg.rows import dict_row
+    from .source_job_persistence import ensure_article_job
+    from .catalog_coverage import ensure_article_catalog_jobs
+    from .worker import ArticleRepository
+    repo=repo or ArticleRepository()
+    try:
+        requested_scope=UUID(str(request.get("vehicle_id")))
+    except (ValueError,TypeError):raise LifecycleIdentityReview() from None
+    try:
+        with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
+            config=cur.execute("SELECT vehicle_id,vehicle_configuration_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s",(requested_scope,)).fetchone()
+            vehicle=config["vehicle_id"] if config else requested_scope
+            configuration=config["vehicle_configuration_id"] if config else None
+            if request.get("vehicle_configuration_id"):
+                supplied=UUID(str(request["vehicle_configuration_id"]))
+                if config and supplied!=configuration:raise LifecycleIdentityReview()
+                proof=cur.execute("SELECT vehicle_configuration_id FROM vehicle_configurations WHERE vehicle_id=%s AND vehicle_configuration_id=%s",(vehicle,supplied)).fetchone()
+                if not proof:raise LifecycleIdentityReview()
+                configuration=supplied
+            if request["scope"]=="article":
+                try:requested_article=UUID(str(request.get("canonical_article_id") or request.get("article_id")))
+                except (ValueError,TypeError):raise LifecycleIdentityReview() from None
+                article=cur.execute("""SELECT a.* FROM canonical_articles a WHERE a.canonical_article_id=%s
+                    OR a.canonical_article_id=(SELECT canonical_article_id FROM canonical_article_aliases WHERE catalog_article_id=%s)""",(requested_article,requested_article)).fetchall()
+                if len(article)!=1 or article[0]["vehicle_id"]!=vehicle or article[0]["vehicle_configuration_id"]!=configuration:
+                    raise LifecycleIdentityReview()
+                article=article[0]
+                # Supplied opaque bindings can only narrow a proven identity.
+                for wire,column in (("provider","provider_slug"),("source_vehicle_ref","source_vehicle_ref"),("source_article_ref","source_article_ref")):
+                    if wire in request and request[wire]!=article[column]:raise LifecycleIdentityReview()
+        if request["scope"]=="articles":
+            results=ensure_article_catalog_jobs(repo,vehicle_id=vehicle,vehicle_configuration_id=configuration)
+            rows=[_ensure_wire(item) for item in results]
+            return LifecycleAcknowledgement({"jobs":rows,"state":"queued" if any(r.state in {"pending","processing","failed"} for r in results) else "completed"},http_status=202 if any(r.state in {"pending","processing","failed"} for r in results) else 200)
+        result=ensure_article_job(repo,article["canonical_article_id"],normalization_version=article["target_normalization_version"],rewrite_profile_version=article["target_rewrite_profile_version"])
+        wire=_ensure_wire(result)
+        if result.state=="processing":
+            from .article_lifecycle_store import load_article_state
+            wire["state"]=load_article_state(repo,result.canonical_article_id)["processing_state"]
+        status=409 if result.state in {"needs_review","dead_letter"} else (200 if result.source_revision_id or result.published_revision_id or result.state=="completed" else 202)
+        return LifecycleAcknowledgement(wire,http_status=status)
+    except LifecycleIdentityReview:raise
+    except (KeyError,ValueError):raise LifecycleIdentityReview() from None
+    except Exception:raise LifecycleSchedulingUnavailable("ARTICLE_SCHEDULING_UNAVAILABLE") from None
+
+
+def _ensure_wire(result):
+    return {"job_id":str(result.job_id),"state":{"pending":"queued","dead_letter":"failed"}.get(result.state,result.state),
+        "canonical_article_id":str(result.canonical_article_id) if result.canonical_article_id else None,
+        "source_revision_id":str(result.source_revision_id) if result.source_revision_id else None,
+        "retry_after_seconds":result.retry_after_seconds if result.retry_after_seconds is not None else (1 if result.state in {"pending","processing"} else None)}

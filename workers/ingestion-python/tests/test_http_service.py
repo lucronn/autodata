@@ -126,3 +126,51 @@ class HTTPServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+from lifecycle_support import runtime,fresh_database
+
+
+def test_actual_http_article_ensure_only_commits_job_within_two_seconds(runtime,monkeypatch):
+    from autodata_ingestion.http_service import make_handler
+    from http.server import ThreadingHTTPServer
+    from threading import Thread
+    from urllib.request import Request,urlopen
+    import time
+    monkeypatch.setattr("autodata_ingestion.worker.ArticleRepository",lambda:runtime.repo)
+    server=ThreadingHTTPServer(("127.0.0.1",0),make_handler("fixture-internal"))
+    thread=Thread(target=server.serve_forever,daemon=True);thread.start()
+    try:
+        request=Request(f"http://127.0.0.1:{server.server_port}/v1/catalog/ensure",data=json.dumps({"scope":"article","vehicle_id":str(runtime.vehicle),"canonical_article_id":str(runtime.article_id),"idempotency_key":"fixture"}).encode(),headers={"Content-Type":"application/json","X-Autodata-Internal-Token":"fixture-internal"},method="POST")
+        started=time.monotonic()
+        with urlopen(request,timeout=2) as response:
+            assert response.status==202
+            body=json.load(response)
+        assert time.monotonic()-started<2
+        assert body["state"]=="queued" and body["job_id"]==str(runtime.current_job_id())
+        assert runtime.counters()=={"source":0,"asset":0,"model":0,"schedule":1}
+        runtime.start_workers(2);revision=runtime.await_publication();runtime.stop_workers();runtime.reset_counters()
+        with urlopen(request,timeout=2) as response:
+            assert response.status==200 and json.load(response)["state"]=="completed"
+        assert runtime.counters()=={"source":0,"asset":0,"model":0,"schedule":0}
+        assert runtime.read_current()["canonical_revision_id"]==revision
+    finally:server.shutdown();server.server_close();thread.join()
+
+
+def test_actual_http_scheduling_dependency_failure_is_503(runtime,monkeypatch):
+    from autodata_ingestion.http_service import make_handler
+    from http.server import ThreadingHTTPServer
+    from threading import Thread
+    from urllib.request import Request,urlopen
+    from urllib.error import HTTPError
+    import pytest
+    class Unavailable:
+        def connect(self):raise OSError("fixture database unavailable")
+    monkeypatch.setattr("autodata_ingestion.worker.ArticleRepository",Unavailable)
+    server=ThreadingHTTPServer(("127.0.0.1",0),make_handler("fixture-internal"));thread=Thread(target=server.serve_forever,daemon=True);thread.start()
+    try:
+        request=Request(f"http://127.0.0.1:{server.server_port}/v1/catalog/ensure",data=json.dumps({"scope":"article","vehicle_id":str(runtime.vehicle),"canonical_article_id":str(runtime.article_id),"idempotency_key":"fixture"}).encode(),headers={"X-Autodata-Internal-Token":"fixture-internal"},method="POST")
+        with pytest.raises(HTTPError) as error:urlopen(request,timeout=2)
+        assert error.value.code==503
+        assert runtime.counters()["schedule"]==0
+    finally:server.shutdown();server.server_close();thread.join()

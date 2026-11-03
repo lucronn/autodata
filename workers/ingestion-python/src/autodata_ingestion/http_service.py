@@ -129,10 +129,10 @@ def make_handler(internal_token: str = ""):
             except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as error:
                 self._write_json(409 if getattr(error, "http_status", 0) == 409 else 422, {"error": sanitize_http_error(error)})
                 return
-            except Exception:  # noqa: BLE001 - source failures must be an HTTP error, not a traceback
-                self._write_json(502, {"error": "ingestion dependency failed"})
+            except Exception as error:  # noqa: BLE001 - redact dependency details
+                self._write_json(503 if getattr(error,"http_status",0)==503 else 502, {"error": "ingestion dependency failed"})
                 return
-            self._write_json(200, result)
+            self._write_json(getattr(result,"http_status",200), result)
 
         def do_PUT(self) -> None:  # noqa: N802 - stdlib handler API
             if _is_retired_chat_path(urlsplit(self.path).path):
