@@ -296,6 +296,17 @@
         "verified integrated product candidate and actual acceptance/CI",
         "approved real project/cost/provider/recovery configuration and separate staging authorization"
       ]
+    },
+    {
+      "id": "workshop-browser-private-home",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-browser-private-home.json",
+      "depends_on": [
+        "workshop-paid-access",
+        "r4-workshop"
+      ],
+      "state": "planning_checkpoint",
+      "release_state": "unverified",
+      "needs_scope_refinement": false
     }
   ],
   "execution": {

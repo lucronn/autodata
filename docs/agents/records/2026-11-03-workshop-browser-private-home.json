@@ -1,0 +1,19 @@
+{
+  "goal": "Repair the numeric-UID Workshop real-API browser fixture by giving each Playwright subprocess a private home directory without changing app behavior or case inventory.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-browser-private-home.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+    "docs/superpowers/plans/2026-11-03-workshop-browser-private-home.md"
+  ],
+  "todo": [
+    "Synchronize Issue186/Project8 and the canonical UI plan, this plan, task and record; commit the checkpoint and pass exact-base machine preflight before implementation.",
+    "Add a focused red regression that exercises the actual final browser subprocess environment when inherited HOME is missing, /, empty or a host-only path; reject shared, symlinked and colliding case homes.",
+    "Create one private absolute 0700 home per case and set only final browser_env HOME; retain required Playwright/Go cache variables and reject secret sentinel forwarding.",
+    "Run focused unit and fixture syntax checks, inventory/scope/diff checks, commit/push one coherent fixture milestone and obtain independent exact-commit review.",
+    "Retain the failed 21-case run, then execute a fresh pilot and unchanged full 21-case real-API inventory with the frozen wrapper/image at one clean integrated SHA; independently inspect raw receipts and cleanup."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T21:40:23.586249+00:00"
+}

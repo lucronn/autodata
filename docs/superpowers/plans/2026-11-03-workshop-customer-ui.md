@@ -1,5 +1,7 @@
 # Complete Paid Workshop Customer UI Implementation Plan
 
+**Real-API fixture HOME repair (2026-11-03):** [the bounded private-home plan](2026-11-03-workshop-browser-private-home.md) governs only the pytest final browser subprocess environment and its new focused unit test. The exact `2de36a1` API21 run failed all 21 cases before browser startup because UID1000 lacked a passwd home and the fixture dropped `HOME`. The failed run is retained; no browser behavior was verified. The new gate preserves the 3+6+6+6 API and 120 DTO inventories, frozen wrapper/image, customer assertions and separate live staging requirements. Implementation waits for a committed synchronized record and exact-base preflight.
+
 
 Current dispatch amendment: [parallel delivery](2026-11-03-workshop-parallel-delivery.md) replaces serial implementation prerequisites. A synchronized exact-base gate still precedes edits; complete dependency/runtime verification remains required for release acceptance.
 > For agentic workers: use the approved plan execution/review workflow only after the coordinator commits this plan, synchronizes its task/Issue186/Project8/canonical documents, pins integrated dependencies and passes machine preflight. This draft authorizes no implementation.
