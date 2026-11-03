@@ -610,7 +610,8 @@ class RawPrimitiveTests(unittest.TestCase):
                         '--trusted-base-sha', TRUSTED_BASE, '--task-ref', TASK, '--requested-tier', tier]
                 with patch.multiple(assembler, strict_raw_json=DEFAULT, strict_jsonl=DEFAULT,
                         strict_junit_xml=DEFAULT, strict_dto_archive=DEFAULT,
-                        paid_case_identities=DEFAULT, dto_case_identities=DEFAULT) as mocks:
+                        paid_case_identities=DEFAULT, dto_case_identities=DEFAULT,
+                        inspect_paid_common=DEFAULT) as mocks:
                     for mock in mocks.values(): mock.side_effect = AssertionError('raw dispatch forbidden')
                     with patch.object(assembler, 'ArtifactStore', side_effect=AssertionError('plan root I/O')):
                         with patch('builtins.print') as output:
@@ -664,6 +665,177 @@ class RawPrimitiveTests(unittest.TestCase):
                     with self.assertRaisesRegex(assembler.ContractError, '^artifact_size_mismatch$'):
                         store.read_raw_json('raw', candidate_sha=BASE,
                             trusted_base_sha=TRUSTED_BASE, profile_sha256='1'*64)
+
+
+class PaidCommonTests(unittest.TestCase):
+    """Synthetic paid receipts deliberately lack the deeper validation families."""
+    def model(self):
+        cases = []
+        for root_index, name in enumerate(assembler.PAID_GO_ROOTS):
+            for bank in ('bankone', 'banktwo'):
+                case_id = name+'-'+bank
+                phases = {phase: {} for phase in assembler.PAID_PHASES[root_index]}
+                assertions = {key: True for key in assembler.PAID_CASE_ASSERTIONS[root_index]}
+                measurement = dict(phase_snapshots=copy.deepcopy(phases), assertion_results=assertions,
+                    held_model_receipt={} if root_index == 2 else None,
+                    http_observations=[{}], identity_checks=1, reader_calls=0,
+                    observed_views=[{} for _ in range(3 if root_index == 2 else 2)] if root_index in (2,3,4) else None)
+                database = 'lifecycle_test_'+format(len(cases)+1, '032x')
+                runtime = dict(schema_version=1, candidate_sha=BASE, provider=bank, go_test_name=name,
+                    fixture_database=database, snapshots=copy.deepcopy(phases), final_snapshot={},
+                    migrations={}, service_probes={}, worker_exits=[dict(kind='cli', terminated=True,
+                        exit_code=-15, intentional_cleanup=True, alive_before_cleanup=True)
+                        for _ in range(2 if root_index in (2,3,4) else 0)],
+                    **{k:copy.deepcopy(v) for k,v in measurement.items() if k not in ('phase_snapshots','assertion_results')})
+                result = dict(schema_version=1, candidate_sha=BASE, candidate_origin='coordinator-host-plain-clone',
+                    provider=bank, go_test_name=name, fixture_database=database,
+                    host_before_sha256=hashlib.sha256(b'{}').hexdigest(), input_manifest_sha256=hashlib.sha256(b'{}').hexdigest(),
+                    started_at='2026-11-03T00:00:00Z', finished_at='2026-11-03T00:00:01Z',
+                    go_exit_code=0, timed_out=False, passed=True, failures=[],
+                    phase_snapshots=copy.deepcopy(phases), assertion_results=dict(assertions,
+                        **{key:True for key in assembler.PAID_MIGRATION_ASSERTIONS}))
+                events = [dict(Time='2026-11-03T00:00:00Z', Action='start', Package=assembler.PAID_GO_PACKAGE),
+                    dict(Time='2026-11-03T00:00:00Z', Action='run', Package=assembler.PAID_GO_PACKAGE, Test=name),
+                    dict(Time='2026-11-03T00:00:01Z', Action='pass', Package=assembler.PAID_GO_PACKAGE, Test=name, Elapsed=0.1),
+                    dict(Time='2026-11-03T00:00:01Z', Action='pass', Package=assembler.PAID_GO_PACKAGE, Elapsed=0.2)]
+                cases.append(dict(case_id=case_id, name=name, bank=bank, result=result,
+                    measurement=measurement, runtime=runtime, events=events,
+                    command=dict(argv=['go','test','-json','-count=1','-timeout=90s','-run','^'+name+'$','.'], cwd='/workspace/apps/api-go')))
+        return dict(cases=cases, flags={case_id:True for case_id in assembler.PAID_CASE_IDS})
+
+    def junit(self, case_ids):
+        children=''.join('<testcase classname="tests.test_paid_catalog_api_integration" name="test_required_paid_catalog_access['+case_id+']" time="0.5"/>' for case_id in case_ids)
+        return ('<testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="'+str(len(case_ids))+'" time="1.0" timestamp="2026-11-03T00:00:00Z" hostname="fixture">'+children+'</testsuite></testsuites>').encode()
+
+    def files(self, model):
+        raw = {'host-before.json':b'{}', 'inputs.sha256.json':b'{}'}
+        for ref in assembler.PAID_COLLECTOR_FILES: raw[ref] = b''
+        raw['workshop-paid-access-tests.xml'] = self.junit(assembler.PAID_CASE_IDS)
+        results={}
+        for case in model['cases']:
+            prefix='paid-access/'+case['bank']+'/'+case['name']+'/'
+            for ref in assembler.PAID_CASE_FILES: raw[prefix+ref] = b'{}' if ref.endswith('.json') else b''
+            raw[prefix+'case-tests.xml']=self.junit([case['case_id']])
+            raw[prefix+'go-events.jsonl']=b''.join(json.dumps(event).encode()+b'\n' for event in case['events'])
+            for ref,key in [('go-command.json','command'),('go-measurement.json','measurement'),('measured-runtime.json','runtime')]:
+                raw[prefix+ref]=json.dumps(case[key]).encode()
+            result=copy.deepcopy(case['result'])
+            result['artifact_sha256']={ref:hashlib.sha256(raw[prefix+ref]).hexdigest() for ref in assembler.PAID_CASE_FILES}
+            raw[prefix+'result.json']=json.dumps(result).encode();results[case['case_id']]=result
+        collector=dict(schema_version=1, candidate_sha=BASE, candidate_origin='coordinator-host-plain-clone',
+            host_before_sha256=hashlib.sha256(b'{}').hexdigest(),input_manifest_sha256=hashlib.sha256(b'{}').hexdigest(),
+            started_at='2026-11-03T00:00:00Z',finished_at='2026-11-03T00:00:02Z',passed=True,failures=[],
+            pytest_exit_code=0,timed_out=False,pytest_test_count=12,case_results=results,
+            assertion_results=model['flags'],runner_git_observation={},
+            artifact_sha256={ref:hashlib.sha256(raw[ref]).hexdigest() for ref in assembler.PAID_COLLECTOR_FILES})
+        raw['workshop-paid-access.json']=json.dumps(collector).encode()
+        return raw
+
+    def inspect(self, raw, **overrides):
+        # The domain tests replace only transport; ArtifactStore itself is tested
+        # separately, and one end-to-end test below exercises the real store.
+        class SyntheticStore:
+            def __init__(self):
+                self.by_ref={ref:dict(artifact_id=ref) for ref in raw}
+            def read(self, artifact_id): return raw[artifact_id]
+            def read_raw_json(self, artifact_id, **_): return assembler.strict_raw_json(self.read(artifact_id))
+            def recheck(self): pass
+        invocation=dict(candidate_sha=BASE,trusted_base_sha=TRUSTED_BASE,profile_sha256='1'*64,
+            input_manifest_sha256=hashlib.sha256(b'{}').hexdigest(),host_before_sha256=hashlib.sha256(b'{}').hexdigest(),profile_version='paid-selector-v2')
+        invocation.update(overrides)
+        return assembler.inspect_paid_common(SyntheticStore(), **invocation)
+
+    def test_synthetic_common_outcomes_remain_incomplete_with_missing_families(self):
+        result=self.inspect(self.files(self.model()))
+        self.assertEqual(result['status'],'unavailable')
+        self.assertFalse(result['complete'])
+        self.assertEqual(result['observed_case_ids'],list(assembler.PAID_CASE_IDS))
+        self.assertEqual(result['verified_case_ids'],[])
+        self.assertEqual(set(result['missing_validation_families']),set(assembler.PAID_MISSING_FAMILIES))
+        self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+        self.assertIn('paid_source_pg_bindings',result['missing_validation_families'])
+        self.assertIn('paid_http_media_rights',result['missing_validation_families'])
+
+    def test_each_common_outcome_family_rejects_independent_contradictions(self):
+        mutations=[
+            ('child_failed',lambda m:m['cases'][0]['result'].update(go_exit_code=1)),
+            ('bool_exit',lambda m:m['cases'][0]['result'].update(go_exit_code=False)),
+            ('wrong_schema',lambda m:m['cases'][0]['result'].update(schema_version=True)),
+            ('wrong_candidate',lambda m:m['cases'][0]['result'].update(candidate_sha='2'*40)),
+            ('wrong_bank',lambda m:m['cases'][0]['result'].update(provider='banktwo')),
+            ('duplicate_database',lambda m:(m['cases'][1]['result'].update(fixture_database=m['cases'][0]['result']['fixture_database']),m['cases'][1]['runtime'].update(fixture_database=m['cases'][0]['result']['fixture_database']))),
+            ('phase_mismatch',lambda m:m['cases'][0]['runtime']['snapshots'].pop('before')),
+            ('wrong_command',lambda m:m['cases'][0]['command']['argv'].append('-skip=all')),
+            ('wrong_cwd',lambda m:m['cases'][0]['command'].update(cwd='/candidate')),
+            ('child_assertion_false',lambda m:m['cases'][0]['measurement']['assertion_results'].update(public_selectors_metadata_only=False)),
+            ('go_failed',lambda m:m['cases'][0]['events'][2].update(Action='fail')),
+            ('go_foreign_root',lambda m:m['cases'][0]['events'][1].update(Test='Other')),
+            ('go_foreign_package',lambda m:m['cases'][0]['events'][0].update(Package='foreign')),
+            ('go_duplicate_run',lambda m:m['cases'][0]['events'].insert(2,copy.deepcopy(m['cases'][0]['events'][1]))),
+            ('go_missing_package_pass',lambda m:m['cases'][0]['events'].pop()),
+            ('go_unknown_field',lambda m:m['cases'][0]['events'][0].update(unknown=True)),
+            ('go_bool_elapsed',lambda m:m['cases'][0]['events'][2].update(Elapsed=True)),
+            ('go_huge_elapsed',lambda m:m['cases'][0]['events'][2].update(Elapsed=10**400)),
+            ('go_timeout',lambda m:m['cases'][0]['events'][2].update(Elapsed=91)),
+            ('case_timeout',lambda m:m['cases'][0]['result'].update(finished_at='2026-11-03T00:02:01Z')),
+            ('worker_missing',lambda m:m['cases'][4]['runtime']['worker_exits'].pop()),
+            ('worker_wrong_exit',lambda m:m['cases'][4]['runtime']['worker_exits'][0].update(exit_code=0)),
+            ('worker_false_alive',lambda m:m['cases'][4]['runtime']['worker_exits'][0].update(alive_before_cleanup=False)),
+            ('outer_flag_false',lambda m:m['flags'].update({assembler.PAID_CASE_IDS[0]:False})),
+            ('missing_case',lambda m:m['cases'].pop())]
+        for name,mutate in mutations:
+            model=self.model();mutate(model)
+            with self.subTest(name=name),self.assertRaises(assembler.ContractError):self.inspect(self.files(model))
+
+    def test_raw_junit_hash_and_embedded_receipts_cannot_be_overridden_by_pass(self):
+        for mutation in ('junit_failed','hash_mismatch','embedded_mismatch','missing_raw','unknown_collector','profile_version'):
+            raw=self.files(self.model());collector=json.loads(raw['workshop-paid-access.json'])
+            if mutation=='junit_failed':
+                raw['workshop-paid-access-tests.xml']=raw['workshop-paid-access-tests.xml'].replace(b'<testcase ',b'<failure/><testcase ',1)
+                collector['artifact_sha256']['workshop-paid-access-tests.xml']=hashlib.sha256(raw['workshop-paid-access-tests.xml']).hexdigest()
+            elif mutation=='hash_mismatch':raw['paid-access/bankone/'+assembler.PAID_GO_ROOTS[0]+'/go-stderr.log']=b'changed'
+            elif mutation=='embedded_mismatch':collector['case_results'][assembler.PAID_CASE_IDS[0]]['passed']=False
+            elif mutation=='missing_raw':del raw['paid-access/bankone/'+assembler.PAID_GO_ROOTS[0]+'/go-command.json']
+            elif mutation=='unknown_collector':collector['unknown']=True
+            raw['workshop-paid-access.json']=json.dumps(collector).encode()
+            with self.subTest(mutation=mutation),self.assertRaises(assembler.ContractError):
+                self.inspect(raw,**({'profile_version':'paid-selector-v1'} if mutation=='profile_version' else {}))
+
+    def test_paid_junit_rejects_aliased_ids_unknown_fields_and_hidden_outcomes(self):
+        raw=self.junit(assembler.PAID_CASE_IDS)
+        mutations=[raw.replace(b'tests="12"',b'tests="11"'),
+            raw.replace(b'time="1.0"',b'time="NaN"'),
+            raw.replace(b'tests.test_paid_catalog_api_integration',b'foreign',1),
+            raw.replace(assembler.PAID_CASE_IDS[1].encode(),assembler.PAID_CASE_IDS[0].encode()),
+            raw.replace(b'<testcase ',b'<skipped/><testcase ',1),
+            raw.replace(b'<testcase ',b'<testcase unknown="true" ',1),
+            raw.replace(b'<testcase ',b'hidden outcome<testcase ',1)]
+        for altered in mutations:
+            with self.subTest(raw=altered[:80]),self.assertRaises(assembler.ContractError):
+                assembler._paid_junit(altered,assembler.PAID_CASE_IDS,1806)
+
+    def test_case_deadlines_preserve_submicrosecond_precision(self):
+        assembler._paid_duration('2026-11-03T00:00:00Z', '2026-11-03T00:02:00Z', 120)
+        with self.assertRaises(assembler.ContractError):
+            assembler._paid_duration('2026-11-03T00:00:00Z',
+                '2026-11-03T00:02:00.0000000000000000000000000000000000000001Z',120)
+        with self.assertRaises(assembler.ContractError):
+            assembler._paid_duration('2026-11-03T00:00:00.0000000000000000000000000000000000000002Z',
+                '2026-11-03T00:00:00.0000000000000000000000000000000000000001Z',120)
+
+    def test_real_artifact_store_common_result_is_still_unavailable(self):
+        raw=self.files(self.model())
+        with tempfile.TemporaryDirectory() as directory:
+            artifacts=[]
+            for index,(ref,data) in enumerate(raw.items()):
+                path=Path(directory)/ref;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+                artifacts.append(dict(artifact_id='raw-'+str(index),kind='raw',ref=ref,
+                    sha256=hashlib.sha256(data).hexdigest(),bytes=len(data),visibility='private'))
+            with assembler.ArtifactStore(directory,artifacts) as store:
+                result=assembler.inspect_paid_common(store,candidate_sha=BASE,trusted_base_sha=TRUSTED_BASE,
+                    profile_sha256='1'*64,input_manifest_sha256=hashlib.sha256(b'{}').hexdigest(),
+                    host_before_sha256=hashlib.sha256(b'{}').hexdigest(),profile_version='paid-selector-v2')
+            self.assertEqual(result['status'],'unavailable');self.assertEqual(result['verified_case_ids'],[])
 
 
 if __name__ == '__main__': unittest.main()

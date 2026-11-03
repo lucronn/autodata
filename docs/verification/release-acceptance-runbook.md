@@ -2,7 +2,8 @@
 
 The current bounded assembler implements strict v1 envelope structure, a
 coordinator-supplied trusted invocation, confined artifact transport and internal
-raw format/identity primitives. It does not yet corroborate complete paid/DTO
+raw format/identity primitives and a paid common-outcome inspection API. It does
+not yet corroborate complete paid/DTO
 producer semantics or verify either tier. All profiles at the authorizing checkpoint
 `0e21f6dbdf5ad0402b8bef42d3e1f2566964b309` are disabled and the assembler hash is
 unpromoted. The actual planning task therefore returns exit 3 (`unavailable`)
@@ -151,6 +152,42 @@ code. Tests explicitly forbid their dispatch from both fixture and staging plan/
 validate paths. Complete producer schemas, typed assertion/phase/outcome checks,
 source/migration/image/SDK/CI corroboration and trusted profile promotion remain
 unfinished. A valid internal parse never changes the unavailable CLI result.
+
+The internal `inspect_paid_common` API accepts only the explicit
+`paid-selector-v2` format selector and expected candidate/base/profile/input/host
+identities. Raw collector and case receipts remain schema version 1. It reads
+only fixed declared references through the confined store, checks all seven
+collector and 27-per-case raw hash entries, requires the collector's embedded
+case receipts to equal retained bytes, and checks exact six-root/two-bank IDs,
+12 distinct fixture database names and exact phase inventories. It checks the
+recorded outer/child JUnit identities/outcomes/deadlines, exact Go argv/cwd,
+ordered package/root run/pass events, typed assertion declarations, measurement
+copy seams, v2 observed-view null/list inventories and recorded worker cleanup.
+These checks reject failed raw outcomes even if outer receipts claim pass.
+
+This API **always returns `status: unavailable`, `complete: false`, no verified
+case IDs and false verification/deployment/cutover flags**. Its observed IDs are
+common-record identities only. Assertion declarations and matching raw copies
+are not proof of the underlying product facts. The result always retains these
+missing validation families:
+
+- `paid_source_pg_bindings`;
+- `paid_http_media_rights`;
+- `paid_selector_work_and_model`;
+- `paid_migration_replay`;
+- `paid_runtime_image_inputs`;
+- `paid_host_and_input_provenance`;
+- `paid_supervisor_commands_and_isolation`;
+- `paid_supervisor_authority`.
+
+In particular, hashing migration/host/input records does not validate their
+contents, source/PG/media payloads are not yet corroborated, and two cleanup
+receipts do not establish trusted worker authority or host isolation. The API
+is never selected by CLI plan/validate, any artifact kind or an enabled profile.
+Synthetic tests deliberately supply incomplete deeper payloads and assert this
+unavailable result, including one test through the real confined ArtifactStore.
+DTO producer corroboration is unchanged and remains unfinished. Independent
+exact-commit review is required before extending into any deeper family.
 
 All profiles and verification flags remain blocked. Actual API21, complete 180
 cases and supporting scans/images/reviews at the final immutable candidate,

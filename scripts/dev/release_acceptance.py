@@ -62,6 +62,39 @@ PAID_GO_ROOTS = (
     'TestPostgresPaidCatalogHistoricalSourceAndRights',
     'TestPostgresPaidCatalogCustomerLegacyRoutesDenied')
 PAID_CASE_IDS = tuple(root+'-'+bank for root in PAID_GO_ROOTS for bank in ('bankone', 'banktwo'))
+
+PAID_GO_PACKAGE = 'github.com/lucronn/autodata/apps/api-go'
+PAID_PHASES = (
+    ('before', 'selectors', 'unpaid', 'expired', 'paid_cold', 'unavailable'),
+    ('isolated',), ('cold', 'before_prepare', 'scheduled', 'source_held', 'published', 'reopened'),
+    ('media_final',), ('rights_before', 'rights_denied', 'rights_final'), ('before', 'denied', 'final'))
+PAID_CASE_ASSERTIONS = (
+    ('public_selectors_metadata_only', 'unpaid_denied_before_work', 'expired_session_denied_before_work',
+     'paid_gets_observational', 'unavailable_grant_denied_before_work'),
+    ('exact_scope_grants', 'owner_region_configuration_isolation', 'canonical_only', 'revoked_and_legacy_denied'),
+    ('explicit_prepare_only', 'shared_article_job', 'actual_model_response_held', 'source_readable_during_hold',
+     'canonical_reused_two_owners', 'canonical_steps_preserved', 'payment_grants_persist'),
+    ('actual_s3_reader', 'invalid_media_zero_reader', 'current_grant_identity_rechecked',
+     'stale_context_zero_reader', 'media_security_headers'),
+    ('source_html_json_media', 'historical_source_selected', 'rights_denied_before_reader',
+     'source_sanitizer_no_private_leak'),
+    ('thirteen_routes_denied_before_work', 'unauthenticated_401', 'explicit_local_compatibility'))
+PAID_MIGRATION_ASSERTIONS = ('fresh_manifest_applied_001_040', 'empty_replay_noop_001_040',
+                            'populated_replay_noop_001_040')
+PAID_COLLECTOR_FILES = ('workshop-paid-access-tests.xml', 'workshop-paid-access-pytest.stdout.log',
+    'workshop-paid-access-pytest.stderr.log', 'runner-input-before.json', 'runner-input-after.json',
+    'runner-git-before.json', 'runner-git-after.json')
+PAID_CASE_FILES = ('case-pytest.stderr.log', 'case-pytest.stdout.log', 'case-tests.xml',
+    'go-command.json', 'go-events.jsonl', 'go-measurement.json', 'go-stderr.log', 'measured-runtime.json',
+    'migration-driver.sql', 'migration-driver.stderr') + tuple(
+        'migration-'+phase+suffix for phase in ('fresh', 'replay-empty', 'replay-populated')
+        for suffix in ('.json', '.rows.json', '.schema.sql', '.stderr', '.stdout')) + (
+    'populated-before.rows.json', 'populated-before.schema.sql')
+PAID_MISSING_FAMILIES = ('paid_source_pg_bindings', 'paid_http_media_rights',
+    'paid_selector_work_and_model', 'paid_migration_replay', 'paid_runtime_image_inputs',
+    'paid_host_and_input_provenance', 'paid_supervisor_commands_and_isolation',
+    'paid_supervisor_authority')
+
 DTO_ENGINES = ('chromium', 'firefox', 'webkit')
 DTO_SCENARIOS = (
     'bankone-cascade', 'banktwo-cascade', 'dual-bank-coverage', 'one-bank-unavailable',
@@ -334,6 +367,223 @@ def dto_case_identities(case_ids):
     unique(pairs)
     require(set(pairs) == set(DTO_CASE_IDS), 'dto_case_inventory')
     return DTO_CASE_IDS
+
+
+def _paid_duration(start, finish, maximum):
+    first, last = timestamp(start), timestamp(finish)
+    delta = last[0]-first[0]
+    whole_seconds = delta.days*86400+delta.seconds
+    # Compare fractional pairs directly: Decimal context rounding must not hide
+    # an arbitrarily small overshoot at the fixed whole-second boundary.
+    require(first <= last and (whole_seconds < maximum or
+            whole_seconds == maximum and last[1] <= first[1]), 'paid_deadline')
+    return first, last
+
+
+def _paid_assertions(value, keys):
+    exact(value, keys)
+    require(all(flag is True for flag in value.values()), 'paid_assertion_failed')
+
+
+def _paid_junit(raw, case_ids, maximum):
+    root = strict_junit_xml(raw)
+    require(all(not (node.text or '').strip() and not (node.tail or '').strip()
+                for node in root.iter()), 'paid_junit_structure')
+    require(root.tag == 'testsuites' and root.attrib == {'name': 'pytest tests'} and
+            len(root) == 1 and root[0].tag == 'testsuite', 'paid_junit_structure')
+    suite = root[0]
+    exact(suite.attrib, ('name', 'errors', 'failures', 'skipped', 'tests', 'time', 'timestamp', 'hostname'))
+    require(suite.get('name') == 'pytest' and suite.get('tests') == str(len(case_ids)) and
+            all(suite.get(key) == '0' for key in ('errors', 'failures', 'skipped')), 'paid_junit_outcome')
+    timestamp(suite.get('timestamp')); string(suite.get('hostname'))
+    def elapsed(value, bound):
+        require(type(value) is str and re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', value) is not None,
+                'paid_junit_elapsed')
+        require(Decimal(value) <= bound, 'paid_deadline')
+    elapsed(suite.get('time'), maximum)
+    observed = []
+    for case in suite:
+        require(case.tag == 'testcase' and len(case) == 0, 'paid_junit_outcome')
+        exact(case.attrib, ('classname', 'name', 'time'))
+        require(case.get('classname') == 'tests.test_paid_catalog_api_integration', 'paid_junit_identity')
+        name = case.get('name')
+        require(name.startswith('test_required_paid_catalog_access[') and name.endswith(']'),
+                'paid_junit_identity')
+        observed.append(name[len('test_required_paid_catalog_access['):-1])
+        elapsed(case.get('time'), 120)
+    unique(observed)
+    require(set(observed) == set(case_ids), 'paid_junit_inventory')
+
+
+def _paid_go_outcome(raw, name, started, finished):
+    events = strict_jsonl(raw)
+    first, last = timestamp(started), timestamp(finished)
+    package_started = root_running = root_passed = package_passed = False
+    previous = first
+    for index, event in enumerate(events):
+        action = event.get('Action')
+        require(action not in ('fail', 'skip'), 'paid_go_execution_failed')
+        enum(action, ('start', 'run', 'output', 'pass'))
+        keys = {'Time', 'Action', 'Package'}
+        if 'Test' in event: keys.add('Test')
+        if action == 'output': keys.add('Output')
+        if action == 'pass': keys.add('Elapsed')
+        exact(event, keys)
+        require(event['Package'] == PAID_GO_PACKAGE and not package_passed, 'paid_go_identity')
+        moment = timestamp(event['Time'])
+        require(first <= previous <= moment <= last, 'paid_go_timestamp')
+        previous = moment
+        test = event.get('Test')
+        if 'Test' in event: require(test == name, 'paid_go_identity')
+        if action == 'start':
+            require(index == 0 and test is None and not package_started, 'paid_go_order')
+            package_started = True
+        else:
+            require(package_started, 'paid_go_order')
+        if action == 'run':
+            require(test == name and not root_running and not root_passed, 'paid_go_order')
+            root_running = True
+        elif action == 'output':
+            require(type(event['Output']) is str and (test is None or root_running), 'paid_go_order')
+        elif action == 'pass':
+            duration = event['Elapsed']
+            require(type(duration) in (int, float) and 0 <= duration <= 90 and math.isfinite(duration),
+                    'paid_go_elapsed')
+            if test is not None:
+                require(root_running and not root_passed, 'paid_go_order')
+                root_running = False; root_passed = True
+            else:
+                require(root_passed and index == len(events)-1, 'paid_go_order')
+                package_passed = True
+    require(root_passed and package_passed, 'paid_go_incomplete')
+
+
+def inspect_paid_common(store, *, candidate_sha, trusted_base_sha, profile_sha256,
+                        input_manifest_sha256, host_before_sha256, profile_version):
+    """Inspect paid v2 common outcomes, always returning incomplete/unavailable.
+
+    Exact source/PG/HTTP/media/migration/image/provenance corroboration is not
+    implemented here. Booleans and matching copies cannot verify those families.
+    This API is deliberately unselected by every disabled CLI profile.
+    """
+    digest(candidate_sha, 40); digest(trusted_base_sha, 40); digest(profile_sha256)
+    digest(input_manifest_sha256); digest(host_before_sha256)
+    require(type(profile_version) is str and profile_version == 'paid-selector-v2', 'paid_profile_version')
+    def read(ref):
+        require(ref in store.by_ref, 'paid_missing_raw')
+        return store.read(store.by_ref[ref]['artifact_id'])
+    def document(ref):
+        require(ref in store.by_ref, 'paid_missing_raw')
+        return store.read_raw_json(store.by_ref[ref]['artifact_id'], candidate_sha=candidate_sha,
+            trusted_base_sha=trusted_base_sha, profile_sha256=profile_sha256)
+    def hashes(value, refs, prefix=''):
+        exact(value, refs)
+        for ref in refs:
+            digest(value[ref])
+            require(sha256(read(prefix+ref)) == value[ref], 'paid_raw_hash_mismatch')
+    def version(value):
+        require(type(value['schema_version']) is int and value['schema_version'] == 1,
+                'paid_raw_schema_version')
+        require(value['candidate_sha'] == candidate_sha, 'paid_candidate_mismatch')
+    def identity(value):
+        version(value)
+        require(value['candidate_origin'] == 'coordinator-host-plain-clone' and
+                value['host_before_sha256'] == host_before_sha256 and
+                value['input_manifest_sha256'] == input_manifest_sha256, 'paid_provenance_mismatch')
+    require(sha256(read('inputs.sha256.json')) == input_manifest_sha256 and
+            sha256(read('host-before.json')) == host_before_sha256, 'paid_provenance_mismatch')
+    collector = document('workshop-paid-access.json')
+    exact(collector, ('artifact_sha256', 'assertion_results', 'candidate_origin', 'candidate_sha',
+        'case_results', 'failures', 'finished_at', 'host_before_sha256', 'input_manifest_sha256',
+        'passed', 'pytest_exit_code', 'pytest_test_count', 'runner_git_observation', 'schema_version',
+        'started_at', 'timed_out'))
+    identity(collector)
+    require(collector['passed'] is True and collector['timed_out'] is False and collector['failures'] == [] and
+            type(collector['pytest_exit_code']) is int and collector['pytest_exit_code'] == 0 and
+            type(collector['pytest_test_count']) is int and collector['pytest_test_count'] == 12,
+            'paid_collector_failed')
+    require(type(collector['runner_git_observation']) is dict, 'paid_runner_observation')
+    start, finish = _paid_duration(collector['started_at'], collector['finished_at'], 1806)
+    _paid_assertions(collector['assertion_results'], PAID_CASE_IDS)
+    exact(collector['case_results'], PAID_CASE_IDS)
+    hashes(collector['artifact_sha256'], PAID_COLLECTOR_FILES)
+    _paid_junit(read('workshop-paid-access-tests.xml'), PAID_CASE_IDS, 1806)
+    observed = []; databases = []
+    for index, name in enumerate(PAID_GO_ROOTS):
+        for bank in ('bankone', 'banktwo'):
+            case_id = name+'-'+bank
+            prefix = 'paid-access/'+bank+'/'+name+'/'
+            result = document(prefix+'result.json')
+            exact(result, ('artifact_sha256', 'assertion_results', 'candidate_origin', 'candidate_sha',
+                'failures', 'finished_at', 'fixture_database', 'go_exit_code', 'go_test_name',
+                'host_before_sha256', 'input_manifest_sha256', 'passed', 'phase_snapshots', 'provider',
+                'schema_version', 'started_at', 'timed_out'))
+            identity(result)
+            require(canonical(result) == canonical(collector['case_results'][case_id]), 'paid_embedded_result_mismatch')
+            require(result['provider'] == bank and result['go_test_name'] == name, 'paid_case_identity')
+            require(result['passed'] is True and result['timed_out'] is False and result['failures'] == [] and
+                    type(result['go_exit_code']) is int and result['go_exit_code'] == 0, 'paid_case_failed')
+            first, last = _paid_duration(result['started_at'], result['finished_at'], 120)
+            require(start <= first <= last <= finish, 'paid_case_timestamp')
+            database = result['fixture_database']
+            require(type(database) is str and re.fullmatch(r'lifecycle_test_[a-f0-9]{32}', database) is not None,
+                    'paid_database_identity')
+            databases.append(database)
+            exact(result['phase_snapshots'], PAID_PHASES[index])
+            require(all(type(value) is dict for value in result['phase_snapshots'].values()), 'paid_phase_shape')
+            _paid_assertions(result['assertion_results'], PAID_CASE_ASSERTIONS[index]+PAID_MIGRATION_ASSERTIONS)
+            hashes(result['artifact_sha256'], PAID_CASE_FILES, prefix)
+            _paid_junit(read(prefix+'case-tests.xml'), (case_id,), 120)
+            command = document(prefix+'go-command.json')
+            exact(command, ('argv', 'cwd'))
+            require(command == {'argv': ['go', 'test', '-json', '-count=1', '-timeout=90s', '-run', '^'+name+'$', '.'],
+                                'cwd': '/workspace/apps/api-go'}, 'paid_go_command')
+            _paid_go_outcome(read(prefix+'go-events.jsonl'), name, result['started_at'], result['finished_at'])
+            measurement = document(prefix+'go-measurement.json')
+            exact(measurement, ('assertion_results', 'held_model_receipt', 'http_observations',
+                'identity_checks', 'observed_views', 'phase_snapshots', 'reader_calls'))
+            _paid_assertions(measurement['assertion_results'], PAID_CASE_ASSERTIONS[index])
+            require(canonical(measurement['phase_snapshots']) == canonical(result['phase_snapshots']),
+                    'paid_phase_mismatch')
+            measured = document(prefix+'measured-runtime.json')
+            exact(measured, ('candidate_sha', 'final_snapshot', 'fixture_database', 'go_test_name',
+                'held_model_receipt', 'http_observations', 'identity_checks', 'migrations', 'observed_views',
+                'provider', 'reader_calls', 'schema_version', 'service_probes', 'snapshots', 'worker_exits'))
+            version(measured)
+            require(measured['fixture_database'] == database and measured['go_test_name'] == name and
+                    measured['provider'] == bank, 'paid_measurement_identity')
+            require(canonical(measured['snapshots']) == canonical(result['phase_snapshots']), 'paid_phase_mismatch')
+            for key in ('held_model_receipt', 'http_observations', 'identity_checks', 'observed_views', 'reader_calls'):
+                require(canonical(measured[key]) == canonical(measurement[key]), 'paid_measurement_mismatch')
+            integer(measured['identity_checks'], 1); integer(measured['reader_calls'])
+            require(measured['held_model_receipt'] is None or type(measured['held_model_receipt']) is dict,
+                    'paid_held_receipt_shape')
+            array(measured['http_observations'])
+            require(all(type(value) is dict for value in measured['http_observations']), 'paid_http_shape')
+            views = measured['observed_views']
+            if index in (0, 1, 5):
+                require(views is None or type(views) is list and not views, 'paid_view_inventory')
+            else:
+                array(views)
+                require(len(views) == (3 if index == 2 else 2) and all(type(value) is dict for value in views),
+                        'paid_view_inventory')
+            require(all(type(measured[key]) is dict for key in ('final_snapshot', 'migrations', 'service_probes')),
+                    'paid_deferred_family_shape')
+            exits = measured['worker_exits']; array(exits)
+            require(len(exits) == (2 if index in (2, 3, 4) else 0), 'paid_worker_inventory')
+            for receipt in exits:
+                exact(receipt, ('alive_before_cleanup', 'exit_code', 'intentional_cleanup', 'kind', 'terminated'))
+                require(receipt['kind'] == 'cli' and receipt['alive_before_cleanup'] is True and
+                        receipt['intentional_cleanup'] is True and receipt['terminated'] is True and
+                        type(receipt['exit_code']) is int and receipt['exit_code'] == -15, 'paid_worker_cleanup')
+            observed.append(case_id)
+    unique(databases)
+    paid_case_identities(observed)
+    store.recheck()
+    return dict(status='unavailable', complete=False, profile_version=profile_version,
+        candidate_sha=candidate_sha, trusted_base_sha=trusted_base_sha, observed_case_ids=observed,
+        verified_case_ids=[], missing_validation_families=list(PAID_MISSING_FAMILIES),
+        **{flag: False for flag in FLAGS})
 
 
 def references(value, artifacts):
