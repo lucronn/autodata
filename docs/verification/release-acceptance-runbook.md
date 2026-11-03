@@ -167,8 +167,11 @@ These checks reject failed raw outcomes even if outer receipts claim pass.
 
 This API **always returns `status: unavailable`, `complete: false`, no verified
 case IDs and false verification/deployment/cutover flags**. Its observed IDs are
-common-record identities only. Assertion declarations and matching raw copies
-are not proof of the underlying product facts. The result always retains these
+common-record identities only. Paid Go-event elapsed numbers retain exact JSON
+decimal values for the inclusive 0–90 second bound, including fractional values
+that binary floats would round across either boundary. Booleans, strings and
+nonfinite/overflowed numbers remain rejected. Assertion declarations and matching
+raw copies are not proof of the underlying product facts. The result always retains these
 missing validation families:
 
 - `paid_source_pg_bindings`;
