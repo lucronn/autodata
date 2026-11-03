@@ -1,0 +1,13 @@
+{
+  "name": "autodata-workshop-firebase-build",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check"
+  },
+  "dependencies": { "firebase": "12.19.0" },
+  "devDependencies": { "esbuild": "0.28.2" }
+}
