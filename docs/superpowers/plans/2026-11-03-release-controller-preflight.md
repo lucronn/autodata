@@ -23,7 +23,7 @@
 - No shell interpolation, force push, admin merge, branch-protection bypass, production deployment, token output, or automatic issue closure.
 - Every mutation names the repository and exact candidate; missing or stale evidence blocks it.
 - Project status reflects verified state. A merge request accepted into a queue is not a merged release.
-- Issue #186 and its Project #8 item are verified. This dependent task remains blocked until R0 evidence is independently verified, its contract is integrated, and a fresh synchronized checkpoint passes preflight.
+- Issue #186 and its Project #8 item are verified. R0 evidence was independently reviewed and tested at `a7493d41be4f0c4aa93bdaaa74afa14c30d49965`, then integrated at `643b8d3fc762cfdc9b456d28a47b7a4a9cde6402`. The coordinator may dispatch this task directly after this refreshed synchronized checkpoint passes preflight. Real CLI runtime certification is still outstanding and is not inferred from deterministic R0 acceptance.
 
 ## Interface
 

@@ -47,7 +47,8 @@
     "project_ref": "https://github.com/users/lucronn/projects/8",
     "repository_doc_refs": [
       "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
-      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/verification/2026-11-03-agent-evidence-hardening.md"
     ],
     "todo": [
       "Project edits use discovered project IDs and valid installed CLI arguments.",
@@ -56,8 +57,8 @@
       "A confirmed merge with failed tracking remains explicitly merged with tracking repair required.",
       "python3 -m unittest discover -s scripts/autonomy -p test_release_controller.py -v"
     ],
-    "status": "blocked",
-    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+    "status": "synchronized",
+    "updated_at": "2026-11-03T09:48:45.942176+00:00"
   },
   "execution": {
     "model": "gpt-6.1-sol",

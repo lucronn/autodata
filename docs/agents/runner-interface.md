@@ -6,7 +6,7 @@ The project-scoped prompts define agent behavior, but a model/provider runtime m
 
 ## Invocation
 
-The runner receives a task envelope:
+The v2 runner receives an envelope referencing a committed task:
 
 ```json
 {
@@ -14,12 +14,34 @@ The runner receives a task envelope:
   "task_id": "github-issue-or-project-item",
   "repository": "OWNER/REPO",
   "base_sha": "40-character-sha",
+  "subject_sha": "40-character-sha",
+  "task_ref": "docs/agents/tasks/committed-task.json",
   "agent_name": "autodata-architect",
-  "task_contract_ref": "artifact-or-path",
   "allowed_paths": ["docs/architecture/**"],
-  "deployment_target": "none|ephemeral|dev"
+  "deployment_target": "none",
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {"fast_mode": true},
+    "allow_fallback": false
+  }
 }
 ```
+
+The example contains placeholders and is not a dispatch authorization. The task
+must declare `evidence_contract_version: 2`, the same `task_ref`, a synchronized
+pre-implementation record, and the full `verification` contract. The strict
+[schema](../../scripts/autonomy/agent-output.schema.json) defines checks,
+outputs, response findings, assessments, and provenance records. Every gate has
+a fixed argv/cwd/timeout/zero-exit requirement, with declared outputs written to
+`AUTODATA_EVIDENCE_ROOT`. Ten response artifact IDs cover architect, builder,
+and eight gates. The architect cannot replace the frozen task contract.
+
+`trusted_base_sha` pins task, policy, registry, prompts, schema, evaluator and
+fixture bytes. `subject_sha` identifies the actual candidate under inspection.
+The evaluator's loaded bytes must match the trusted blobs. A builder cannot
+modify protected inputs and use its modified evaluator to approve itself.
 
 The runner must:
 
@@ -30,7 +52,9 @@ The runner must:
 5. Enforce `allowed_paths` outside the model prompt.
 6. Capture commands, exit codes, changed paths, and artifacts.
 7. Write the run manifest and per-gate reports defined in [agent-contracts.md](agent-contracts.md).
-8. Invoke `scripts/autonomy/validate_run.py` before returning a successful release decision.
+8. Revalidate v2 evidence with `orchestrator.validate_evidence_bundle`, which
+   recomputes artifact/command/profile/SHA validity and coverage before invoking
+   the unchanged `validate_run.py` policy evaluator.
 
 ## Output
 
@@ -44,7 +68,10 @@ evidence/
 logs/
 ```
 
-The manifest must contain the exact implementation SHA. Every gate report must contain the same SHA and at least one content-hashed evidence artifact. The runner returns:
+The manifest must contain the exact implementation SHA. Every gate report must
+contain the same SHA and verified evidence. Provider responses alone cannot
+satisfy required command/artifact slots. Failure, timeout, malformed response,
+and cleanup failure evidence remains in the bundle. The runner returns:
 
 | Exit code | Meaning |
 | ---: | --- |
@@ -96,3 +123,21 @@ An orchestration run is not allowed to infer a task contract from prose, reuse a
 - The runner must retain failed and blocked evidence rather than replacing it with a later pass.
 - The runner must stop on disagreement after the configured alternate-reviewer retry budget.
 - External provider outages must produce `blocked` or `fail`, never a synthetic `pass`.
+
+## Verified v2 boundary and remaining certification
+
+The v2 implementation was independently reviewed and tested at
+`a7493d41be4f0c4aa93bdaaa74afa14c30d49965`; its integration is
+`643b8d3fc762cfdc9b456d28a47b7a4a9cde6402`. All 66 autonomy tests passed at
+both commits, and independent retained-bundle replay passed the success fixture
+while blocking failed-check, unavailable-provider, and malformed-response
+fixtures. These use fake provider responses and real local check processes.
+
+Real provider certification remains `blocked/not_executed`. CLI argv explicitly
+requests Sol 6.1, medium reasoning, Fast mode, and no fallback; effective runtime
+metadata must independently confirm the profile. The current adapter consumes
+structured `session_config` events and blocks missing or conflicting metadata.
+Do not infer that an installed CLI emits such an event from the mocked tests.
+An isolated bounded experiment must establish compatibility before unattended
+use. Current source/data-quality measurement is synthetic only; it cannot be
+relabeled as authenticated staging or production acceptance.

@@ -1,6 +1,10 @@
 # Autonomy Gate Tooling
 
-The scripts in `scripts/autonomy/` are deterministic controls for autonomous agent runs. They do not invoke a model, access production, or decide that an incomplete run is safe. An external orchestrator or project-scoped agent supplies the run manifest and gate reports; this tooling independently evaluates the evidence.
+The scripts in `scripts/autonomy/` separate deterministic evidence validation,
+local agent execution, and release control. `validate_run.py` does not invoke a
+model. The runner and orchestrator can invoke the configured local provider and
+retain independently executed checks. None of these tools deploy production or
+convert incomplete evidence into a pass.
 
 ## Validate a run
 
@@ -53,7 +57,16 @@ The runner removes secrets from the provider environment and redacts provider lo
 
 [`orchestrator.py`](../../scripts/autonomy/orchestrator.py) coordinates one architect, one builder, and all independent policy gates. It accepts a task JSON document, obtains a structured architect contract, passes that contract to the builder, pins the builder commit for downstream gate worktrees, preserves each agent response, and assembles a final manifest for `validate_run.py`.
 
-The task document must contain `task_id`, `goal`, `builder_agent`, `allowed_paths`, `bounded_contexts`, `inputs`, `outputs`, `acceptance_tests`, `forbidden_scope`, and `compatibility`. `run_id`, `repository`, and `deployment_target` are optional; the orchestrator supplies a unique run ID and always uses `none` for this local chain. Example command:
+The task document must contain `task_id`, `goal`, `builder_agent`, `allowed_paths`,
+`bounded_contexts`, `inputs`, `outputs`, `acceptance_tests`, `forbidden_scope`,
+`compatibility`, `pre_implementation`, `execution`, and `verification`. It must
+declare `evidence_contract_version: 2` and its committed `task_ref` under
+`docs/agents/tasks/`. Load authorization from that file at `trusted_base_sha`;
+an external task may change only `run_id`. Each of the eight gates needs a fixed
+command, and all ten agent responses are required. See the exact records in
+[the schema](../../scripts/autonomy/agent-output.schema.json) and
+[runner interface](runner-interface.md). The orchestrator always uses deployment
+target `none`. Example command after committing a complete v2 task:
 
 ```bash
 python3 scripts/autonomy/orchestrator.py \
@@ -63,7 +76,14 @@ python3 scripts/autonomy/orchestrator.py \
   --output-root /path/to/autodata-runs/<run-id>
 ```
 
-The chain is fail-closed. Architect output must contain a complete task contract; builders must create a local implementation commit; every gate must return `pass`; all gate reports must reference the same implementation SHA; and the final deterministic validator must pass. This coordinator never creates a PR, updates a GitHub Project, merges, pushes, or deploys. Those actions remain a separately permissioned release-controller step.
+The chain is fail-closed. Architect output must equal the frozen task contract;
+builders must create a clean, scoped local implementation commit; all required
+commands, retained provider responses and gates must pass at the correct SHA.
+`orchestrator.validate_evidence_bundle(manifest, trusted, evidence_root)` reopens
+and checks retained artifacts, recomputes coverage, and invokes the unchanged
+legacy validator. A legacy validator pass alone cannot approve a v2 bundle.
+This coordinator never creates a PR, updates a GitHub Project, merges, pushes,
+or deploys. Those actions remain a separate release-controller step.
 
 ## Release transition
 
@@ -82,16 +102,19 @@ not a second architectural contract or an automatically running scheduler.
 
 The user requires `gpt-6.1-sol`, medium reasoning and Fast mode for every agent
 after planning. Each task records the same execution profile. The local CLI
-binding must pass the model, reasoning and service tier explicitly because it
-uses `--ignore-user-config`. R0 adds and verifies that enforcement. The legacy
-runner does not yet consume the new execution-profile field; setting the field
-alone is not evidence that a provider ran with it. In the current host's
+binding passes the model, reasoning and service tier explicitly because it
+uses `--ignore-user-config`. R0's deterministic enforcement was independently
+verified at `a7493d41be4f0c4aa93bdaaa74afa14c30d49965` and integrated at
+`643b8d3fc762cfdc9b456d28a47b7a4a9cde6402`. Requested flags alone are not proof
+of the effective provider profile. Real CLI certification remains
+`blocked/not_executed`; missing or conflicting runtime metadata blocks the run.
+In the current host's
 collaboration tools, GPT-6.1 Sol advertises the priority tier corresponding to
 Fast mode; dispatch must also explicitly set medium reasoning.
 
 The release is tracked in [Issue #186](https://github.com/lucronn/autodata/issues/186)
-and Project #8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`. R0 evidence is the first
-ready task; dependent records stay blocked until their verified dependencies and
+and Project #8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`. R0 evidence has passed
+deterministic acceptance; dependent records stay blocked until their verified dependencies and
 new exact-base checkpoint are ready. The
 [planning record](records/2026-11-03-production-release-orchestration.json)
 and task-specific record must pass preflight at the actual committed base before
@@ -111,13 +134,13 @@ Dispatch sequence:
    `pre_implementation.py` against the committed record. An expected failure
    during planning remains a failure and cannot authorize implementation.
 3. Check queue dependencies against independently verified implementation
-   commits. The legacy `orchestrator.py` handles one task and does not enforce
+   commits. `orchestrator.py` handles one task and does not enforce
    this campaign's dependency graph. The coordinator owns that check.
 4. Dispatch at most three builders in isolated worktrees with explicit file
    ownership. Re-pin dependent tasks after integration. Shared migrations and
    API contracts have one writer at a time.
-5. Once R0 supports the execution profile and measured evidence, a configured
-   isolated local CLI identity can run each complete task with
+5. After a bounded real-provider experiment certifies the isolated local CLI
+   identity and requested profile, it can run a complete v2 task with
    `orchestrator.py --task <task-file> --provider local-cli --output-root
    <unique-external-run-directory>`. Missing profile availability is blocked;
    no silent model or tier fallback is allowed.
@@ -127,3 +150,11 @@ Dispatch sequence:
 
 No production deployment is performed by this campaign's local orchestration.
 The existing policy's deployment boundary remains in force.
+
+Campaign task records that lack `evidence_contract_version`, `task_ref`, or
+`verification` are coordinator dispatch records, not runnable v2 CLI tasks.
+They must not be silently upgraded or assigned fabricated gate evidence.
+R0's current provenance adapter accepts only the two-fact
+`synthetic-regression` population. The separate R6 evidence adapter must be
+verified and promoted before real staging evidence can certify a release.
+See [R0 verification](../verification/2026-11-03-agent-evidence-hardening.md).

@@ -16,11 +16,18 @@
       "id": "r0-evidence",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-evidence.json",
       "depends_on": [],
-      "state": "in_progress",
+      "state": "verified",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "implementation_base_sha": "d09ef282c3756efd78bac112236660bff4471dad",
-      "dispatch_mode": "coordinator_direct"
+      "dispatch_mode": "coordinator_direct",
+      "verified_candidate_sha": "a7493d41be4f0c4aa93bdaaa74afa14c30d49965",
+      "integrated_sha": "643b8d3fc762cfdc9b456d28a47b7a4a9cde6402",
+      "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md",
+      "provider_runtime_validation": {
+        "status": "blocked",
+        "reason": "not_executed"
+      }
     },
     {
       "id": "r0-release",
@@ -28,20 +35,22 @@
       "depends_on": [
         "r0-evidence"
       ],
-      "state": "waiting_dependencies",
+      "state": "ready",
       "release_state": "unverified",
-      "needs_scope_refinement": false
+      "needs_scope_refinement": false,
+      "dispatch_mode": "coordinator_direct"
     },
     {
       "id": "r1-connectors",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r1-connectors.json",
       "depends_on": [],
-      "state": "in_progress",
+      "state": "in_review",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_mode": "coordinator_direct",
       "verification_workflow": "Isolated clean/upgrade/legacy-preservation/concurrency database checks and independent exact-SHA schema/source/reliability review; no local-runner or release authority.",
-      "implementation_base_sha": "4a8a0d24a8555911b567b8691e6ba3f4a0477fa8"
+      "implementation_base_sha": "4a8a0d24a8555911b567b8691e6ba3f4a0477fa8",
+      "candidate_sha": "2755244bdfc521a3b8582e1877fbd9d68dcdb8ba"
     },
     {
       "id": "r2-rewrite",

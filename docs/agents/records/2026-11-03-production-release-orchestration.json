@@ -5,7 +5,8 @@
   "project_ref": "https://github.com/users/lucronn/projects/8",
   "repository_doc_refs": [
     "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
-    "docs/agents/autonomy-tooling.md"
+    "docs/agents/autonomy-tooling.md",
+    "docs/verification/2026-11-03-agent-evidence-hardening.md"
   ],
   "todo": [
     "Synchronize the real release Issue and Project item, commit the planning checkpoint and pass exact-base preflight.",
@@ -14,7 +15,7 @@
     "Execute R1 through R6 with separate ownership, dependency gates and exact-commit acceptance evidence."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-03T09:19:59.667985+00:00",
+  "updated_at": "2026-11-03T09:48:45.942176+00:00",
   "execution": {
     "model": "gpt-6.1-sol",
     "reasoning_effort": "medium",

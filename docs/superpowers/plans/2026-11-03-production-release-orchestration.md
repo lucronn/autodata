@@ -16,9 +16,15 @@
 
 **Planning state:** Reviewed checkpoint linked to verified Issue #186 and Project
 #8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`. R0 evidence and disjoint R1 intake use
-direct coordinator dispatch with their own passing exact-base preflight. Dependent tasks remain blocked until
-their verified prerequisites and refined scope are committed. No implementation
-or release certification is claimed.
+direct coordinator dispatch with their own passing exact-base preflight.
+R0 evidence passed independent deterministic verification at
+`a7493d41be4f0c4aa93bdaaa74afa14c30d49965`, integrated as
+`643b8d3fc762cfdc9b456d28a47b7a4a9cde6402`; see
+[the verification record](../../verification/2026-11-03-agent-evidence-hardening.md).
+R1 candidate `2755244bdfc521a3b8582e1877fbd9d68dcdb8ba` is under independent
+review. Dependent tasks stay blocked until verified prerequisites and refreshed
+checkpoints are committed. Real CLI and production release certification remain
+outstanding.
 
 The bounded plans are [agent evidence](2026-11-03-agent-evidence-hardening.md),
 [release control](2026-11-03-release-controller-preflight.md),
@@ -45,7 +51,7 @@ contains nine assignments and their dependencies.
 
 ## Concrete todo
 
-- [ ] Synchronize the release issue, Project index, design, plan, and machine planning record.
+- [x] Synchronize the release issue, Project index, design, plan, and machine planning record.
 - [ ] Configure versioned machine task contracts, ownership, dependencies, and reproducible dispatch commands.
 - [ ] Harden orchestration evidence and release-controller planning, with independent review and negative tests.
 - [ ] Deliver dual-provider intake and durable canonical rewrite lifecycle through R1 and R2.
