@@ -104,7 +104,11 @@ Default validation writes no tracking, receipt or event files. Discovery uses:
 Project field inventories are bounded to 100 with explicit completion proof.
 Item lookup follows at most 100 pages of 100 items, rejecting repeated cursors,
 duplicate items, incomplete nested field inventories and unavailable scope.
-A first-page miss never authorizes a mutation. A larger or incomplete inventory
+Unrelated item-value variants such as Repository and Labels count toward
+enumeration completeness and are ignored for tracking. The required Status and
+dependency fields still require their exact IDs and value types, with duplicate
+required values rejected. A first-page miss never authorizes a mutation.
+A larger or incomplete inventory
 blocks for an explicit discovery refinement. Mismatched IDs, wrong candidates,
 unknown/pending checks or absent/stale tracking block before any mutation.
 
@@ -154,7 +158,14 @@ exit code for every executed discovery/mutation command. Failure text is
 sanitized; raw stdout/stderr and Issue bodies are withheld. The atomic
 `release-operation.json` records merge intent before requesting it so an
 interruption cannot silently issue a second merge. A retained outstanding
-request is inspected read-only and remains pending rather than reissued.
+request first requires an exact retained context, candidate SHA and evidence
+digest. The controller then reads only the live PR identity and OPEN state;
+queue checks becoming pending do not retroactively fail the original request.
+It remains pending without another merge request or tracking mutation. Changed
+heads/targets, closed-unmerged PRs, and mismatched retained records block. A
+remote MERGED PR requires the separate tracking-repair mode. Older operation
+records without candidate identity block for inspection rather than inferring
+authorization. Read-only queue observation leaves all state files unchanged.
 `release-outcome.json` retains the final sanitized decision, failures and mutation
 results. `release-receipt.json` retains repository/PR/context, candidate, evidence digest,
 target branch, merge commit and merge time. Local state and remote state are
@@ -176,7 +187,12 @@ head, wrong target or conflicting receipt block. OPEN/draft/check readiness
 conditions are not applied to a confirmed merged repair.
 
 Only differing tracking fields are written. A failed repair after confirming
-the merge returns `merged_tracking_failed` with the original receipt. A third
+the merge returns `merged_tracking_failed` with its receipt, even if later
+Project/Issue discovery fails before a tracking command. If no receipt survived
+the original process, confirmed remote metadata reconstructs it before returning
+that failure. A conflicting retained receipt still blocks without replacement.
+Read-only repair validation may return a reconstructed receipt in its response
+but never writes it or other state files. A third
 invocation after successful repair returns `tracking_repaired` without a
 mutation. Receipts are retained even when Done updates fail.
 

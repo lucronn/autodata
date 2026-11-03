@@ -48,6 +48,7 @@ class FakeGitHub:
         self.pages = 1
         self.incomplete = False
         self.item_issue = None
+        self.extra_item_fields = []
         self.mutations = []
 
     def __call__(self, argv):
@@ -72,6 +73,8 @@ class FakeGitHub:
                             dict(__typename='ProjectV2ItemFieldSingleSelectValue', optionId=self.tracking['status'].lower(), field=dict(id='PVTSSF_status')),
                             dict(__typename='ProjectV2ItemFieldTextValue', text=self.tracking['evidence'], field=dict(id='PVTF_evidence'))],
                             pageInfo=dict(hasNextPage=False, endCursor=None)))
+            item['fieldValues']['nodes'].extend(self.extra_item_fields)
+            item['fieldValues']['totalCount'] = len(item['fieldValues']['nodes'])
             value = dict(data=dict(node=dict(id='PVT_project', fields=dict(totalCount=2,
                 nodes=[dict(id='PVTSSF_status', dataType='SINGLE_SELECT'),
                        dict(id='PVTF_evidence', dataType=self.field_type)],
@@ -351,7 +354,9 @@ class ReleaseControllerTests(unittest.TestCase):
         self.fake.pr.update(state='MERGED', mergedAt='2026-11-03T12:00:00Z',
                             mergeCommit=dict(oid='e'*40))
         self.fake.item_issue = 999
-        self.assertEqual(self.execute(repair=True)['decision'], 'blocked')
+        result = self.execute(repair=True)
+        self.assertEqual(result['decision'], 'merged_tracking_failed')
+        self.assertIn('Project item does not reference expected repository Issue', result['failures'])
         self.assertEqual(self.fake.mutations, [])
 
     def test_repair_discovery_failure_retains_confirmed_merge_receipt(self):
@@ -371,6 +376,117 @@ class ReleaseControllerTests(unittest.TestCase):
         pages = [a for a in self.fake.calls if a[:3] == ['gh', 'api', 'graphql']]
         self.assertEqual(len(pages), 100)
         self.assertEqual(self.fake.mutations, [])
+
+    def test_unrelated_repository_and_labels_item_fields_do_not_block_release(self):
+        self.fake.extra_item_fields = [
+            {'__typename': 'ProjectV2ItemFieldRepositoryValue'},
+            {'__typename': 'ProjectV2ItemFieldLabelValue'},
+            {'__typename': 'ProjectV2ItemFieldTextValue', 'text': 'ordinary notes',
+             'field': {'id': 'PVTF_notes'}}]
+        result = self.execute()
+        self.assertEqual(result['decision'], 'merged', result)
+        self.assertEqual(self.fake.mutations[-1], self.plan['after_merge'][0])
+
+    def test_duplicate_or_wrong_variant_required_item_fields_still_block(self):
+        for typename in ('ProjectV2ItemFieldSingleSelectValue', 'ProjectV2ItemFieldTextValue'):
+            self.setUp()
+            self.fake.extra_item_fields = [{'__typename': typename,
+                'optionId': 'review', 'text': 'Review', 'field': {'id': 'PVTSSF_status'}}]
+            with self.subTest(typename=typename):
+                self.assertEqual(self.execute()['decision'], 'blocked')
+                self.assertEqual(self.fake.mutations, [])
+
+    def test_confirmed_merge_reconstructs_receipt_when_project_discovery_fails(self):
+        self.fake.pr.update(state='MERGED', mergedAt='2026-11-03T12:00:00Z',
+                            mergeCommit={'oid': 'e'*40})
+        self.fake.fail = 'discovery'
+        result = self.execute(repair=True)
+        self.assertEqual(result['decision'], 'merged_tracking_failed', result)
+        receipt = json.loads((self.receipt_root / 'release-receipt.json').read_text())
+        self.assertEqual(receipt, result['receipt'])
+        self.assertEqual(receipt['candidate_sha'], self.manifest['implementation_sha'])
+        self.assertEqual(receipt['merge_commit'], 'e'*40)
+        self.assertEqual(self.fake.mutations, [])
+
+    def test_readonly_confirmed_merge_discovery_failure_does_not_write_receipt(self):
+        self.fake.pr.update(state='MERGED', mergedAt='2026-11-03T12:00:00Z',
+                            mergeCommit={'oid': 'e'*40})
+        self.fake.fail = 'discovery'
+        plan = rc.build_release_plan(self.manifest, self.context, repair_tracking=True)
+        result = rc.execute_release_plan(plan, self.fake, trusted=self.trusted,
+            evidence_root=self.bundle, state_root=self.receipt_root,
+            repair_tracking=True, execute=False)
+        self.assertEqual(result['decision'], 'merged_tracking_failed', result)
+        self.assertEqual(result['receipt']['merge_commit'], 'e'*40)
+        self.assertEqual(self.fake.mutations, [])
+        self.assertEqual(list(self.receipt_root.iterdir()), [])
+
+    def test_repeated_queue_keeps_pending_when_checks_become_pending(self):
+        self.fake.queue = True
+        self.assertEqual(self.execute()['decision'], 'merge_pending')
+        self.fake.calls.clear(); self.fake.mutations.clear()
+        self.fake.pr.update(mergeStateStatus='BLOCKED')
+        self.fake.pr['statusCheckRollup'][0].update(status='IN_PROGRESS', conclusion=None)
+        self.fake.required_checks[0].update(state='PENDING', bucket='pending')
+        result = self.execute()
+        self.assertEqual(result['decision'], 'merge_pending', result)
+        self.assertEqual([a[:3] for a in self.fake.calls], [['gh', 'pr', 'view']])
+        self.assertEqual(self.fake.mutations, [])
+        self.assertEqual(self.fake.tracking['status'], 'Review')
+
+    def test_retained_queue_rejects_changed_context_candidate_and_closed_pr(self):
+        self.fake.queue = True
+        self.assertEqual(self.execute()['decision'], 'merge_pending')
+        self.fake.mutations.clear()
+        path = self.receipt_root / 'release-operation.json'
+        original = json.loads(path.read_text())
+        for change in ({'context': {**original['context'], 'pr_number': 999}},
+                       {'evidence_sha256': 'f'*64}, {'candidate_sha': 'f'*40}):
+            path.write_text(json.dumps({**original, **change}))
+            self.fake.calls.clear()
+            with self.subTest(change=change):
+                self.assertEqual(self.execute()['decision'], 'blocked')
+                self.assertEqual(self.fake.calls, [])
+                self.assertEqual(self.fake.mutations, [])
+        path.write_text(json.dumps(original))
+        for change in ({'headRefOid': 'f'*40}, {'state': 'CLOSED'}, {'baseRefName': 'main'}):
+            pr = copy.deepcopy(self.fake.pr)
+            self.fake.pr.update(change)
+            self.fake.calls.clear()
+            with self.subTest(change=change):
+                self.assertEqual(self.execute()['decision'], 'blocked')
+                self.assertEqual(self.fake.mutations, [])
+            self.fake.pr = pr
+
+    def test_readonly_retained_queue_observation_keeps_state_files_unchanged(self):
+        self.fake.queue = True
+        self.assertEqual(self.execute()['decision'], 'merge_pending')
+        before = {path.name: path.read_bytes() for path in self.receipt_root.iterdir()}
+        self.fake.calls.clear(); self.fake.mutations.clear()
+        self.fake.pr.update(mergeStateStatus='BLOCKED', statusCheckRollup=[])
+        self.fake.required_checks[0].update(state='PENDING', bucket='pending')
+        result = rc.execute_release_plan(self.plan, self.fake, trusted=self.trusted,
+            evidence_root=self.bundle, state_root=self.receipt_root, execute=False)
+        self.assertEqual(result['decision'], 'merge_pending', result)
+        self.assertEqual([a[:3] for a in self.fake.calls], [['gh', 'pr', 'view']])
+        self.assertEqual(self.fake.mutations, [])
+        self.assertEqual({path.name: path.read_bytes() for path in self.receipt_root.iterdir()}, before)
+
+    def test_confirmed_merge_discovery_failure_does_not_replace_conflicting_receipt(self):
+        self.fake.pr.update(state='MERGED', mergedAt='2026-11-03T12:00:00Z',
+                            mergeCommit={'oid': 'e'*40})
+        self.assertEqual(self.execute(repair=True)['decision'], 'tracking_repaired')
+        path = self.receipt_root / 'release-receipt.json'
+        receipt = json.loads(path.read_text())
+        receipt['merge_commit'] = 'f'*40
+        path.write_text(json.dumps(receipt))
+        before = path.read_bytes()
+        self.fake.fail = 'discovery'
+        self.fake.mutations.clear()
+        result = self.execute(repair=True)
+        self.assertEqual(result['decision'], 'blocked', result)
+        self.assertEqual(self.fake.mutations, [])
+        self.assertEqual(path.read_bytes(), before)
 
     def test_guard_and_denied_policy_block_before_discovery(self):
         with patch.dict(os.environ, {}, clear=True):

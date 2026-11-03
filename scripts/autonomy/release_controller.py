@@ -194,12 +194,16 @@ def _pr_argv(context):
     return ['gh', 'pr', 'view', str(context.pr_number), '--repo', context.repository, '--json', PR_FIELDS]
 
 
-def _pr_errors(pr, context, sha, repair=False):
-    failures = []
+def _pr_identity_errors(pr, context, sha):
     if (type(pr.get('number')) is not int or pr.get('number') != context.pr_number
             or pr.get('headRefOid') != sha or pr.get('headRefName') != context.head_branch
             or pr.get('baseRefName') != context.base_branch):
-        failures.append('PR candidate, identity or branches differ')
+        return ['PR candidate, identity or branches differ']
+    return []
+
+
+def _pr_errors(pr, context, sha, repair=False):
+    failures = _pr_identity_errors(pr, context, sha)
     if repair:
         commit = pr.get('mergeCommit')
         if (pr.get('state') != 'MERGED' or not isinstance(pr.get('mergedAt'), str)
@@ -291,8 +295,19 @@ def _project_item(context, run_command):
             or values['totalCount'] != len(values['nodes'])):
         raise ReleaseBlocked('Project item field enumeration is incomplete')
     result = {}
+    required_types = {
+        context.status_field_id: 'ProjectV2ItemFieldSingleSelectValue',
+        context.dependency_field_id: 'ProjectV2ItemFieldTextValue',
+    }
     for value in values['nodes']:
         field_id = value.get('field', {}).get('id')
+        # Repository, Labels and other union variants expose only __typename in
+        # this query. They are still counted for enumeration completeness, but
+        # are unrelated to the two fields this controller may edit.
+        if field_id not in required_types:
+            continue
+        if value.get('__typename') != required_types[field_id]:
+            raise ReleaseBlocked('required Project item field has wrong value type')
         if field_id in result:
             raise ReleaseBlocked('duplicate Project item field')
         result[field_id] = value
@@ -456,23 +471,50 @@ def _execute_release_plan(plan, run_command, *, trusted, evidence_root, state_ro
         if errors or validation.get('passed') is not True:
             result['failures'] = errors or ['bundle replay did not pass']
             return result
+        retained = _load_json(receipt_path) if receipt_path.exists() else None
+        if not repair_tracking:
+            if retained is not None:
+                raise ReleaseBlocked('retained merge receipt requires --repair-tracking')
+            if operation_path.exists():
+                previous = _load_json(operation_path)
+                if (previous.get('context') != asdict(context)
+                        or previous.get('candidate_sha') != plan['implementation_sha']
+                        or previous.get('evidence_sha256') != plan['evidence_sha256']):
+                    raise ReleaseBlocked('retained operation belongs to another context/candidate/evidence bundle')
+                if previous.get('decision') in {'merge_requested', 'merge_pending'}:
+                    # An existing request is observed, never resubmitted. Queue
+                    # checks may now be pending or blocked without invalidating
+                    # the request that already passed the initial preflight.
+                    phase = 'pending_merge'
+                    pr = _read(_pr_argv(context), run_command)
+                    errors = _pr_identity_errors(pr, context, plan['implementation_sha'])
+                    if errors:
+                        raise ReleaseBlocked('; '.join(errors))
+                    if pr.get('state') != 'OPEN':
+                        raise ReleaseBlocked('retained merge request is no longer OPEN; inspect remote state or use --repair-tracking after MERGED')
+                    return {**result, 'decision': 'merge_pending', 'failures': []}
         errors, remote = validate_live_context(context, plan['implementation_sha'], run_command,
             planning_record=trusted['task']['pre_implementation'], evidence_sha256=plan['evidence_sha256'],
             evidence_text=plan['evidence_text'], repair_tracking=repair_tracking)
         if errors:
             result['failures'] = errors
-            # A tracking read failure does not undo a previously retained merge.
-            # Preserve that result only after this invocation reconfirms its exact
-            # remote identity; mismatched/closed-unmerged PRs remain blocked.
-            if repair_tracking and remote.get('pr') and receipt_path.exists():
-                retained = _load_json(receipt_path)
-                if retained == _receipt(plan, remote['pr']):
-                    result.update(decision='merged_tracking_failed', receipt=retained,
-                                  retry='--repair-tracking')
+            # Exact MERGED metadata is already confirmed even when a later
+            # tracking read fails. Reconstruct a missing receipt rather than
+            # reporting the merged code as unconfirmed. Read-only callers get
+            # the same honest state without creating any local files.
+            if repair_tracking and remote.get('pr'):
+                confirmed = _receipt(plan, remote['pr'])
+                retained = _load_json(receipt_path) if receipt_path.exists() else None
+                if retained is not None and retained != confirmed:
+                    raise ReleaseBlocked('retained merge receipt differs from remote identity/target/merge')
+                receipt = confirmed
+                if execute:
+                    _save(receipt_path, receipt)
+                result.update(decision='merged_tracking_failed', receipt=receipt,
+                              retry='--repair-tracking')
             return result
         if not execute:
             return {**result, 'decision': 'validated', 'plan': plan, 'measurements': validation['measurements']}
-        retained = _load_json(receipt_path) if receipt_path.exists() else None
         if repair_tracking:
             receipt = _receipt(plan, remote['pr'])
             if retained is not None and retained != receipt:
@@ -486,14 +528,6 @@ def _execute_release_plan(plan, run_command, *, trusted, evidence_root, state_ro
             if remote['status'] != context.done_option_id:
                 mutations.append(plan['after_merge'][1])
         else:
-            if retained is not None:
-                raise ReleaseBlocked('retained merge receipt requires --repair-tracking')
-            if operation_path.exists():
-                previous = _load_json(operation_path)
-                if previous.get('context') != asdict(context) or previous.get('evidence_sha256') != plan['evidence_sha256']:
-                    raise ReleaseBlocked('retained operation belongs to another context/evidence bundle')
-                if previous.get('decision') in {'merge_requested', 'merge_pending'}:
-                    return {**result, 'decision': 'merge_pending', 'failures': ['merge already requested; inspect remote state or use tracking repair after MERGED']}
             phase = 'before_merge'
             for argv in plan['before_merge']:
                 _mutation(argv, phase, run_command, state_root, result)
@@ -503,7 +537,7 @@ def _execute_release_plan(plan, run_command, *, trusted, evidence_root, state_ro
             if errors:
                 raise ReleaseBlocked('; '.join(errors))
             # Persist before requesting merge: interruption cannot silently reissue it.
-            _save(operation_path, dict(context=asdict(context), evidence_sha256=plan['evidence_sha256'], decision='merge_requested'))
+            _save(operation_path, dict(context=asdict(context), candidate_sha=plan['implementation_sha'], evidence_sha256=plan['evidence_sha256'], decision='merge_requested'))
             phase = 'request_merge'
             merge_failed = False
             try:
@@ -519,7 +553,7 @@ def _execute_release_plan(plan, run_command, *, trusted, evidence_root, state_ro
                 if not identity or pr.get('state') != 'OPEN':
                     raise ReleaseBlocked('merge confirmation candidate/state differs')
                 decision = 'blocked' if merge_failed else 'merge_pending'
-                _save(operation_path, dict(context=asdict(context), evidence_sha256=plan['evidence_sha256'], decision=decision))
+                _save(operation_path, dict(context=asdict(context), candidate_sha=plan['implementation_sha'], evidence_sha256=plan['evidence_sha256'], decision=decision))
                 return {**result, 'decision': decision, 'failures': ['merge request failed'] if merge_failed else []}
             errors = _pr_errors(pr, context, plan['implementation_sha'], repair=True)
             if errors:
@@ -531,7 +565,7 @@ def _execute_release_plan(plan, run_command, *, trusted, evidence_root, state_ro
         for argv in mutations:
             _mutation(argv, phase, run_command, state_root, result)
         decision = 'tracking_repaired' if repair_tracking else 'merged'
-        _save(operation_path, dict(context=asdict(context), evidence_sha256=plan['evidence_sha256'], decision=decision))
+        _save(operation_path, dict(context=asdict(context), candidate_sha=plan['implementation_sha'], evidence_sha256=plan['evidence_sha256'], decision=decision))
         return {**result, 'decision': decision, 'receipt': receipt}
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError):
         error = sys.exc_info()[1]
