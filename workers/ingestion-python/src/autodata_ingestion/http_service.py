@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hmac
 import os
 from collections.abc import Callable, Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -89,7 +90,29 @@ def dispatch_request(
     raise ValueError("unknown ingestion service route")
 
 
-def make_handler(internal_token: str = ""):
+def dispatch_commerce(service, path, payload):
+    from .commerce_service import exact_fields, CommerceError
+    if path == '/internal/commerce/quote':
+        exact_fields(payload,{'configuration_id','region'})
+        return service.quote(payload['configuration_id'],payload['region'])
+    fields = {'customer_account_id','organization_id'}
+    suffix = path.removeprefix('/internal/commerce/')
+    additions = {'checkouts':{'idempotency_key','configuration_id','region','terms_version'},
+        'orders/status':{'order_id'},'library':{'cursor','limit'},'grants/check':{'configuration_id','region'}}
+    if suffix not in additions:
+        raise CommerceError('NOT_FOUND',404)
+    exact_fields(payload, fields | additions[suffix])
+    owner = payload['customer_account_id'],payload['organization_id']
+    if suffix == 'checkouts':
+        return service.checkout(*owner,payload['idempotency_key'],{key:payload[key] for key in ('configuration_id','region','terms_version')})
+    if suffix == 'orders/status':
+        return service.order_status(*owner,payload['order_id'])
+    if suffix == 'library':
+        return service.library(*owner,payload['cursor'],payload['limit'])
+    return service.grant_check(*owner,payload['configuration_id'],payload['region'])
+
+
+def make_handler(internal_token: str = "", *, commerce=None):
     """Create a request handler bound to one secret-managed internal token."""
     configured_token = internal_token or os.getenv("AUTODATA_INGESTION_INTERNAL_TOKEN", "")
 
@@ -104,6 +127,9 @@ def make_handler(internal_token: str = ""):
             self._write_json(404, {"error": "not found"})
 
         def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
+            if urlsplit(self.path).path.startswith('/internal/commerce/'):
+                self._commerce()
+                return
             if configured_token and self.headers.get("X-Autodata-Internal-Token", "") != configured_token:
                 self._write_json(401, {"error": "internal authentication required"})
                 return
@@ -133,6 +159,40 @@ def make_handler(internal_token: str = ""):
                 self._write_json(503 if getattr(error,"http_status",0)==503 else 502, {"error": "ingestion dependency failed"})
                 return
             self._write_json(getattr(result,"http_status",200), result)
+
+        def _commerce(self):
+            from .commerce_service import CommerceError
+            if not configured_token or not hmac.compare_digest(self.headers.get('X-Autodata-Internal-Token','').encode(),configured_token.encode()):
+                self._write_json(401, {'error':{'code':'INTERNAL_AUTHENTICATION_REQUIRED'}})
+                return
+            if commerce is None:
+                self._write_json(503, {'error':{'code':'COMMERCE_UNAVAILABLE'}})
+                return
+            try:
+                if self.headers.get('Transfer-Encoding'):
+                    raise CommerceError()
+                length = int(self.headers.get('Content-Length','-1'))
+                if not 0 <= length <= MAX_REQUEST_BYTES:
+                    raise CommerceError('REQUEST_TOO_LARGE',413)
+                self.connection.settimeout(20)
+                raw = self.rfile.read(length)
+                if len(raw) != length:
+                    raise CommerceError()
+                path = urlsplit(self.path).path
+                if path == '/internal/commerce/stripe/webhook':
+                    result = commerce.webhook(self.headers.get('Stripe-Signature',''),raw)
+                else:
+                    result = dispatch_commerce(commerce,path,json.loads(raw))
+            except CommerceError as error:
+                self._write_json(error.http_status,{'error':{'code':error.code}})
+                return
+            except (ValueError,UnicodeDecodeError):
+                self._write_json(400,{'error':{'code':'INVALID_REQUEST'}})
+                return
+            except Exception:
+                self._write_json(503,{'error':{'code':'COMMERCE_UNAVAILABLE'}})
+                return
+            self._write_json(getattr(result,'http_status',200),result)
 
         def do_PUT(self) -> None:  # noqa: N802 - stdlib handler API
             if _is_retired_chat_path(urlsplit(self.path).path):
@@ -211,9 +271,11 @@ def run_server(address: str) -> None:
 
     host, port_text = address.rsplit(":", 1)
     host = host or "0.0.0.0"
+    from .commerce_service import configured_commerce
+    commerce = configured_commerce()
     server = ThreadingHTTPServer(
         (host, int(port_text)),
-        make_handler(os.getenv("AUTODATA_INGESTION_INTERNAL_TOKEN", "")),
+        make_handler(os.getenv("AUTODATA_INGESTION_INTERNAL_TOKEN", ""), commerce=commerce),
     )
     server.serve_forever()
 

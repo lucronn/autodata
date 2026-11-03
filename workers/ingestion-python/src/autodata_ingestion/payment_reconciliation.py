@@ -82,11 +82,12 @@ def revoke_entitlement(connection: Any, entitlement_id: str, reason: str) -> dic
     if not entitlement_id or not reason or len(reason) > 1000:
         raise ValueError("entitlement ID and an auditable reason are required")
     from psycopg.types.json import Jsonb
+    from psycopg.rows import tuple_row
 
     now = datetime.now(UTC)
     idempotency_key = f"revocation:{entitlement_id}"
     with connection.transaction():
-        with connection.cursor() as cursor:
+        with connection.cursor(row_factory=tuple_row) as cursor:
             cursor.execute(
                 """
                 SELECT e.entitlement_id::text, e.status, e.revoke_reason,
@@ -182,13 +183,21 @@ def revoke_entitlement(connection: Any, entitlement_id: str, reason: str) -> dic
             }
 
 
-def reconcile_payment_event(connection: Any, event: dict[str, Any]) -> dict[str, Any]:
+def reconcile_payment_event(connection: Any, event: dict[str, Any], *, commerce=None) -> dict[str, Any]:
     """Record and fulfill one verified checkout event atomically.
 
     A payment can be recorded before its dataset request exists. In that case
     the event remains pending and a later reconciliation call can finish the
     entitlement and projection without replaying provider side effects.
     """
+
+    if event.get('kind') == 'workshop':
+        if commerce is None:
+            from .commerce_service import configured_commerce, CommerceError
+            commerce = configured_commerce()
+            if commerce is None:
+                raise CommerceError('COMMERCE_UNAVAILABLE',503)
+        return commerce.reconcile_event(event)
 
     intent = PaymentIntent.from_event(event)
     from psycopg.types.json import Jsonb
@@ -436,7 +445,7 @@ def reconcile_payment_event(connection: Any, event: dict[str, Any]) -> dict[str,
             }
 
 
-def reconcile_pending_payments(connection: Any, limit: int = 50) -> list[dict[str, Any]]:
+def reconcile_pending_payments(connection: Any, limit: int = 50, *, commerce=None) -> list[dict[str, Any]]:
     """Retry pending verified checkout events in recorded order."""
 
     if limit < 1 or limit > 500:
@@ -454,7 +463,7 @@ def reconcile_pending_payments(connection: Any, limit: int = 50) -> list[dict[st
                 (limit,),
             )
             events = [dict(row[0]) for row in cursor.fetchall()]
-    return [reconcile_payment_event(connection, event) for event in events]
+    return [reconcile_payment_event(connection, event, commerce=commerce) for event in events]
 
 
 def _mark_pending(cursor: Any, payment_event_id: str, attempts: int, reason: str) -> dict[str, Any]:

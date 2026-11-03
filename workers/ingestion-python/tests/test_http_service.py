@@ -174,3 +174,44 @@ def test_actual_http_scheduling_dependency_failure_is_503(runtime,monkeypatch):
         assert error.value.code==503
         assert runtime.counters()["schedule"]==0
     finally:server.shutdown();server.server_close();thread.join()
+
+
+def test_commerce_private_raw_bytes_and_mandatory_auth():
+    from autodata_ingestion.http_service import make_handler
+    from http.server import ThreadingHTTPServer
+    from threading import Thread
+    from urllib.request import Request,urlopen
+    from urllib.error import HTTPError
+    from unittest.mock import patch
+    import pytest
+    calls=[]
+    class Commerce:
+        def webhook(self,signature,body):
+            calls.append((signature,body));return {'status':'accepted'}
+    raw=b'{ "data": "unaltered \\u0041", "newline":"\\n" }\n'
+    for configured in ('','fixture-internal'):
+        with patch.dict('os.environ',{'AUTODATA_INGESTION_INTERNAL_TOKEN':''}):
+            server=ThreadingHTTPServer(('127.0.0.1',0),make_handler(configured,commerce=Commerce()))
+        thread=Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            url=f'http://127.0.0.1:{server.server_port}/internal/commerce/stripe/webhook'
+            for token in ('','wrong'):
+                request=Request(url,data=raw,headers={'X-Autodata-Internal-Token':token,'Stripe-Signature':'t=fixture'},method='POST')
+                with pytest.raises(HTTPError) as error:urlopen(request,timeout=2)
+                assert error.value.code==401
+            if configured:
+                request=Request(url,data=raw,headers={'X-Autodata-Internal-Token':configured,'Stripe-Signature':'t=fixture'},method='POST')
+                with urlopen(request,timeout=2) as response:assert json.load(response)=={'status':'accepted'}
+        finally:server.shutdown();server.server_close();thread.join()
+    assert calls==[('t=fixture',raw)]
+
+
+def test_commerce_dispatch_rejects_browser_authority_fields():
+    from autodata_ingestion.http_service import dispatch_commerce
+    from autodata_ingestion.commerce_service import CommerceError
+    import pytest
+    class Commerce:
+        def checkout(self,*args):raise AssertionError('invalid request reached authority')
+    with pytest.raises(CommerceError):
+        dispatch_commerce(Commerce(),'/internal/commerce/checkouts',{'customer_account_id':'x','organization_id':'y',
+            'configuration_id':'z','region':'US','terms_version':'workshop-v1','idempotency_key':'k','amount_minor':1})
