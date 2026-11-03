@@ -412,3 +412,14 @@ Issue186/Project8/canonical tasks and todo; each requires the new committed-base
 preflight before its own isolated implementation. Their paths are disjoint.
 SDK packaging remains a subset of the final33-path UI scope and introduces no
 customer behavior. Paid access and final UI still wait for verified dependencies.
+
+
+### Commerce staging-origin clarification
+
+The same server-owned environment/public origin now anchors Firebase sessions and
+Stripe Checkout return paths. Production remains exactly https://cars.tk; staging
+uses its explicit HTTPS origin. The 39-path commerce scope is unchanged, and the
+builder holds affected composition work until this amendment is tracked, committed
+and passes fresh preflight. Todo: validate configuration before constructing the
+provider, derive fixed Workshop paths plus stored order UUID, reject client-driven
+redirects, and test production/staging/malformed origin cases.
