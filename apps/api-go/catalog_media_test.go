@@ -235,3 +235,16 @@ type r3ImageReader struct {
 func (r *r3ImageReader) ReadImage(context.Context, string) ([]byte, string, error) {
 	return r.body, r.media, nil
 }
+
+func TestCatalogMediaReferenceAcceptsCapturedR2Object(t *testing.T) {
+	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
+	objectKey := "sources/" + strings.Repeat("a", 16) + "/" + strings.Repeat("a", 64)
+	token, err := sealCatalogImageReference(objectKey, key)
+	if err != nil {
+		t.Fatalf("immutable R2 source media rejected: %v", err)
+	}
+	decoded, err := openCatalogImageReference(token, key)
+	if err != nil || decoded != objectKey {
+		t.Fatal("R2 media reference did not roundtrip")
+	}
+}

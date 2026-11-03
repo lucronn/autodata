@@ -296,13 +296,14 @@ class Bridge:
             proxy = json.loads(json.dumps(self.proxy))
             ensure = dict(self.ensure)
         traces = {p: list(s.calls) for p, s in runtime.servers.items()}
+        immutable = immutable_rows(runtime.repo)
         return {'counts': counts, 'ensure': ensure,
                 'provider_calls': {p: len(paths) for p, paths in traces.items()},
                 'provider_traces': traces,
                 'source_calls': {p: sum('/resources/' in path and unquote(path.split('/resources/', 1)[1]) == 'body' for path in paths) for p, paths in traces.items()},
                 'asset_calls': {p: sum('/resources/' in path and unquote(path.split('/resources/', 1)[1]) != 'body' for path in paths) for p, paths in traces.items()},
                 'model_calls': runtime.model.calls, 'proxy': proxy,
-                'article': runtime.read_current(), 'immutable_sha256': rows_hash(immutable_rows(runtime.repo)),
+                'article': runtime.read_current(), 'immutable_rows': immutable, 'immutable_sha256': rows_hash(immutable),
                 'workers': [{'kind': 'cli' if hasattr(w, 'poll') else 'one-shot',
                              'alive': w.poll() is None if hasattr(w, 'poll') else w.is_alive(),
                              'exit_code': w.poll() if hasattr(w, 'poll') else w.exitcode}
@@ -364,18 +365,26 @@ class Bridge:
         if self.name == GO_NAMES[2] and owned:
             owned[0].join(3)
             assert owned[0].exitcode == 0 and not owned[0].is_alive()
-        self.runtime.stop_workers()
-        result = []
+        before = []
         for worker in owned:
             if hasattr(worker, 'poll'):
+                assert worker.poll() is None, 'CLI worker exited before intentional cleanup'
+                before.append(True)
+            else:
+                assert worker.exitcode == 0 and not worker.is_alive()
+                before.append(False)
+        self.runtime.stop_workers()
+        result = []
+        for index, worker in enumerate(owned):
+            if hasattr(worker, 'poll'):
                 assert worker.poll() is not None
-                result.append({'kind': 'cli', 'exit_code': worker.returncode, 'terminated': True})
+                result.append({'kind': 'cli', 'exit_code': worker.returncode, 'terminated': True, 'intentional_cleanup': True, 'alive_before_cleanup': before[index]})
             else:
                 if worker.is_alive():
                     worker.kill()
                     worker.join(3)
                 assert not worker.is_alive() and worker.exitcode is not None
-                result.append({'kind': 'one-shot', 'exit_code': worker.exitcode, 'terminated': True})
+                result.append({'kind': 'one-shot', 'exit_code': worker.exitcode, 'terminated': True, 'intentional_cleanup': False, 'alive_before_cleanup': before[index]})
         return result
 
 

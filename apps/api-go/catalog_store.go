@@ -69,10 +69,27 @@ type CatalogProvenance struct {
 }
 
 type CatalogStep struct {
+	Text         string   `json:"text,omitempty"`
+	EvidenceIDs  []string `json:"evidence_ids,omitempty"`
 	Number       int      `json:"number"`
 	Heading      string   `json:"heading,omitempty"`
 	Instructions []string `json:"instructions"`
 	ImageIDs     []string `json:"image_ids,omitempty"`
+}
+
+// R2's immutable compatibility projection retains prose as text. Legacy
+// callers still receive their instructions array without losing evidence.
+func (step *CatalogStep) UnmarshalJSON(data []byte) error {
+	type plain CatalogStep
+	var value plain
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*step = CatalogStep(value)
+	if len(step.Instructions) == 0 && step.Text != "" {
+		step.Instructions = []string{step.Text}
+	}
+	return nil
 }
 
 type CatalogDocument struct {
@@ -82,24 +99,26 @@ type CatalogDocument struct {
 }
 
 type CatalogDocumentBlock struct {
-	BlockID           string   `json:"block_id,omitempty"`
-	SourceOrder       int      `json:"source_order,omitempty"`
-	Type              string   `json:"type"`
-	Level             int      `json:"level,omitempty"`
-	Number            int      `json:"number,omitempty"`
-	Text              string   `json:"text,omitempty"`
-	Label             string   `json:"label,omitempty"`
-	Href              string   `json:"href,omitempty"`
-	Columns           []string `json:"columns,omitempty"`
-	Rows              [][]any  `json:"rows,omitempty"`
-	Items             []string `json:"items,omitempty"`
-	AssetID           string   `json:"asset_id,omitempty"`
-	ImageID           string   `json:"image_id,omitempty"`
-	Alt               string   `json:"alt,omitempty"`
-	Status            string   `json:"status,omitempty"`
-	UnavailableReason string   `json:"unavailable_reason,omitempty"`
-	EvidenceIDs       []string `json:"evidence_ids,omitempty"`
-	SourceLocator     string   `json:"source_locator,omitempty"`
+	Images            []CatalogImage `json:"images,omitempty"`
+	Caption           string         `json:"caption,omitempty"`
+	BlockID           string         `json:"block_id,omitempty"`
+	SourceOrder       int            `json:"source_order,omitempty"`
+	Type              string         `json:"type"`
+	Level             int            `json:"level,omitempty"`
+	Number            int            `json:"number,omitempty"`
+	Text              string         `json:"text,omitempty"`
+	Label             string         `json:"label,omitempty"`
+	Href              string         `json:"href,omitempty"`
+	Columns           []string       `json:"columns,omitempty"`
+	Rows              [][]any        `json:"rows,omitempty"`
+	Items             []string       `json:"items,omitempty"`
+	AssetID           string         `json:"asset_id,omitempty"`
+	ImageID           string         `json:"image_id,omitempty"`
+	Alt               string         `json:"alt,omitempty"`
+	Status            string         `json:"status,omitempty"`
+	UnavailableReason string         `json:"unavailable_reason,omitempty"`
+	EvidenceIDs       []string       `json:"evidence_ids,omitempty"`
+	SourceLocator     string         `json:"source_locator,omitempty"`
 }
 
 type CatalogArticle struct {
@@ -174,6 +193,8 @@ type CatalogArticleProgress struct {
 }
 
 type CatalogImage struct {
+	AssetID           string `json:"asset_id,omitempty"`
+	Caption           string `json:"caption,omitempty"`
 	ID                string `json:"id,omitempty"`
 	URL               string `json:"url,omitempty"`
 	Alt               string `json:"alt,omitempty"`
@@ -197,6 +218,14 @@ func (image *CatalogImage) UnmarshalJSON(data []byte) error {
 	}
 	*image = CatalogImage(decoded.publicImage)
 	image.StorageKey = decoded.StorageKey
+	image.ImageID = publicCatalogAssetID(image.ImageID)
+	image.AssetID = publicCatalogAssetID(image.AssetID)
+	if image.ImageID != "" {
+		image.AssetID = image.ImageID
+		if image.ID == "" {
+			image.ID = image.ImageID
+		}
+	}
 	return nil
 }
 
@@ -628,7 +657,7 @@ func (s *postgresCatalogStore) legacyArticle(ctx context.Context, _ Principal, v
 		FROM catalog_articles ca
 		JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
 		WHERE (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1 AND EXISTS(SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=ca.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))
-		  AND ca.catalog_article_id::text = $2 AND ca.canonical_article_id IS NULL AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x WHERE x.catalog_article_id=ca.catalog_article_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
+		  AND ca.catalog_article_id::text = $2 AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
 		ORDER BY (ca.content_status = 'content_complete') DESC,
 		         ca.created_at DESC LIMIT 1`, vehicleID, articleID).
 		Scan(&record.ID, &sourceArticleID, &record.Title, &record.Kind, &record.Component, &record.ContentStatus, &record.Body, &rawSteps, &rawDocument, &rawImages, &rawOriginal, &sourceID, &sourceVersion, &sourceContentSHA256, &sourceURI)
@@ -673,7 +702,7 @@ func (s *postgresCatalogStore) legacyArticleSource(ctx context.Context, _ Princi
 		FROM catalog_articles ca
 		JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
 		WHERE (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1 AND EXISTS(SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=ca.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))
-		  AND ca.catalog_article_id::text = $2 AND ca.canonical_article_id IS NULL AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x WHERE x.catalog_article_id=ca.catalog_article_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
+		  AND ca.catalog_article_id::text = $2 AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
 		  AND jsonb_typeof(ca.source_original) = 'object'
 		  AND ca.source_original <> '{}'::jsonb
 		ORDER BY (ca.content_status = 'content_complete') DESC,

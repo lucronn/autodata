@@ -99,6 +99,9 @@ func validCatalogImageMedia(body []byte, media string) bool {
 			case xml.Directive:
 				return false
 			case xml.StartElement:
+				if root && depth == 0 {
+					return false
+				}
 				if !root {
 					if value.Name.Local != "svg" || (value.Name.Space != "" && value.Name.Space != "http://www.w3.org/2000/svg") {
 						return false

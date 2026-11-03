@@ -152,11 +152,26 @@
                             "items": {
                               "type": "string"
                             }
+                          },
+                          "images": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/$defs/image"
+                            }
                           }
                         }
                       }
                     ]
                   }
+                }
+              },
+              "caption": {
+                "type": "string"
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/image"
                 }
               }
             }
@@ -198,6 +213,12 @@
           ]
         },
         "unavailable_reason": {
+          "type": "string"
+        },
+        "asset_id": {
+          "type": "string"
+        },
+        "caption": {
           "type": "string"
         }
       }
@@ -413,6 +434,15 @@
                 }
               },
               "image_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "text": {
+                "type": "string"
+              },
+              "evidence_ids": {
                 "type": "array",
                 "items": {
                   "type": "string"

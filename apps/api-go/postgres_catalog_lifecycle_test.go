@@ -319,6 +319,7 @@ func TestPostgresCatalogLifecycleColdHTTPRaceOneJob(t *testing.T) {
 	f.check("twenty_real_internal_ensures", r3Int(r3Map(s, "ensure"), "entered") >= 21)
 	f.check("zero_cold_external_calls", r3Int(s, "model_calls") == 0 && r3Int(r3Map(s, "source_calls"), "bankone") == 0 && r3Int(r3Map(s, "source_calls"), "banktwo") == 0 && r3Int(counts, "source_revisions") == 0)
 	f.verifyScopeAndLegacyDescriptors()
+	f.verifyConfigurationScope()
 }
 func TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP(t *testing.T) {
 	f := r3Setup(t)
@@ -370,6 +371,7 @@ func TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP(t *testing.
 	canonical := f.published()
 	s := f.snapshot("published", canonical)
 	f.check("validated_canonical_after_release", canonical.Complete && r3Origin(canonical, "canonical") && canonical.Processing.JobID == initial.Processing.JobID && strings.Contains(canonical.Body, "Take off the pump.") && r3Int(r3Map(s, "counts"), "published_revisions") == 1 && r3Int(r3Map(s, "counts"), "publication_events") == 1)
+	f.verifyManagedQuarantine()
 }
 func TestPostgresCatalogLifecycleAtomicPublication(t *testing.T) {
 	f := r3Setup(t)
@@ -396,6 +398,8 @@ func TestPostgresCatalogLifecycleAtomicPublication(t *testing.T) {
 	if !bytes.Equal(sraw, observedSource) {
 		t.Fatal("source tuple differs from persisted source")
 	}
+	expectedSource["canonical_article_id"] = f.article
+	expectedSource["source_revision_id"] = *source.SourceRevisionID
 	f.extra["expected_source_projection"] = expectedSource
 	f.check("precommit_source_visible", r3Origin(source, "source") && !source.Complete && source.CanonicalRevisionID == nil && source.SourceRevisionID != nil && r3Int(r3Map(before, "counts"), "published_revisions") == 0 && r3Int(r3Map(before, "counts"), "publication_events") == 0)
 	f.controlCall("POST", "release-publication")
@@ -422,7 +426,7 @@ func TestPostgresCatalogLifecycleAtomicPublication(t *testing.T) {
 	json.Unmarshal(rawImages, &images)
 	actual, _ := json.Marshal(r3Projection(canonical))
 	expected, _ := json.Marshal(map[string]any{"document": &dbDoc, "body": body, "steps": steps, "images": images})
-	f.extra["expected_canonical_projection"] = map[string]any{"document": &dbDoc, "body": body, "steps": steps, "images": images}
+	f.extra["expected_canonical_projection"] = map[string]any{"canonical_article_id": f.article, "source_revision_id": *canonical.SourceRevisionID, "canonical_revision_id": *canonical.CanonicalRevisionID, "document": &dbDoc, "body": body, "steps": steps, "images": images}
 	f.check("atomic_projection_tuples", bytes.Equal(actual, expected) && canonical.SourceRevisionID != nil && *source.SourceRevisionID == *canonical.SourceRevisionID && *source.ViewRevision != *canonical.ViewRevision)
 	f.check("monotonic_canonical_after_commit", true)
 	f.check("one_publication", r3Int(r3Map(s, "counts"), "published_revisions") == 1 && r3Int(r3Map(s, "counts"), "publication_events") == 1 && r3Int(r3Map(s, "counts"), "article_jobs") == 1)
@@ -483,6 +487,8 @@ func TestPostgresCatalogLifecycleWarmReadsNoExternalCalls(t *testing.T) {
 	f.extra["descriptor_ids"] = map[string]string{f.provider: f.article, map[string]string{"bankone": "banktwo", "banktwo": "bankone"}[f.provider]: f.other}
 	f.extra["warm_cycles"] = 100
 	f.extra["settle_seconds"] = 0.3
+	f.extra["immutable_before_rows"] = before["immutable_rows"]
+	f.extra["immutable_after_rows"] = settled["immutable_rows"]
 	f.extra["immutable_before_sha256"] = before["immutable_sha256"]
 	f.extra["immutable_after_sha256"] = settled["immutable_sha256"]
 }
@@ -557,6 +563,13 @@ func (f *r3Fixture) verifyScopeAndLegacyDescriptors() {
 			t.Fatal("quarantine or wrong-vehicle alias leak", id, e)
 		}
 	}
+	ownLegacy, ownErr := store.Articles(ctx, p, wrongVehicle)
+	if ownErr != nil || len(ownLegacy) != 1 || ownLegacy[0].ID != foreign {
+		t.Fatal("foreign alias suppressed rightful legacy owner", ownErr, ownLegacy)
+	}
+	if ownView, e := store.ArticleView(ctx, p, wrongVehicle, foreign); e != nil || ownView.Article.CanonicalArticleID != nil || ownView.Article.ID != foreign {
+		t.Fatal("foreign alias did not remain unmanaged in its own scope", e)
+	}
 	exec(`UPDATE canonical_articles SET takedown_status='takedown' WHERE canonical_article_id::text=$1`, f.other)
 	items, err = store.Articles(ctx, p, f.vehicle)
 	if err != nil || len(items) != 2 {
@@ -572,4 +585,104 @@ func (f *r3Fixture) verifyScopeAndLegacyDescriptors() {
 		t.Fatal("nonempty partial index falsely complete", progress, err)
 	}
 	exec(`UPDATE catalog_article_provider_scopes SET status='complete' WHERE vehicle_id::text=$1 AND provider_slug='banktwo'`, f.vehicle)
+}
+
+func (f *r3Fixture) verifyManagedQuarantine() {
+	ctx := context.Background()
+	store := newPostgresCatalogStore(f.pool)
+	p := Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}
+	rows, err := f.pool.Query(ctx, `SELECT snapshot.source_snapshot_id::text FROM canonical_articles a JOIN canonical_article_source_revisions revision ON revision.source_revision_id=a.current_source_revision_id JOIN source_snapshots snapshot ON snapshot.source_snapshot_id=revision.body_source_snapshot_id OR EXISTS(SELECT 1 FROM jsonb_array_elements(revision.resource_manifest) asset WHERE asset->>'sha256'=snapshot.content_sha256::text) WHERE a.canonical_article_id::text=$1 ORDER BY snapshot.source_snapshot_id`, f.article)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	var snapshots []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			f.t.Fatal(err)
+		}
+		snapshots = append(snapshots, id)
+	}
+	rows.Close()
+	if rows.Err() != nil || len(snapshots) < 2 {
+		f.t.Fatal("body/resource quarantine fixture missing", rows.Err(), snapshots)
+	}
+	for _, snapshot := range snapshots {
+		var review string
+		err := f.pool.QueryRow(ctx, `INSERT INTO source_review_items(source_review_item_id,item_key,item_kind,reason_code,source_snapshot_ids) VALUES(gen_random_uuid(),gen_random_uuid()::text,'quarantine','FIXTURE',jsonb_build_array($1::text)) RETURNING source_review_item_id::text`, snapshot).Scan(&review)
+		if err != nil {
+			f.t.Fatal(err)
+		}
+
+		if _, err = store.ArticleView(ctx, p, f.vehicle, f.article); !errors.Is(err, ErrCatalogNotFound) {
+			f.t.Fatal("managed quarantine exposed detail", err)
+		}
+		items, err := store.Articles(ctx, p, f.vehicle)
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		for _, item := range items {
+			if item.ID == f.article {
+				f.t.Fatal("managed quarantine exposed descriptor")
+			}
+		}
+		if _, err = store.ArticleSourceRevision(ctx, p, f.vehicle, f.article, ""); !errors.Is(err, ErrCatalogNotFound) {
+			f.t.Fatal("managed quarantine exposed source", err)
+		}
+		for _, suffix := range []string{"/" + f.article, "/" + f.article + "/source"} {
+			status, _, body := f.get(0, suffix)
+			if status != 404 {
+				f.t.Fatalf("managed quarantine HTTP leak %d %s", status, body)
+			}
+		}
+		if _, err = f.pool.Exec(ctx, `UPDATE source_review_items SET status='approved' WHERE source_review_item_id::text=$1`, review); err != nil {
+			f.t.Fatal(err)
+		}
+	}
+
+}
+func (f *r3Fixture) verifyConfigurationScope() {
+	ctx := context.Background()
+	t := f.t
+	store := newPostgresCatalogStore(f.pool)
+	p := Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}
+	var evidence, base, configuration, otherConfiguration, configuredArticle string
+	err := f.pool.QueryRow(ctx, `INSERT INTO extraction_evidence(source_snapshot_id,locator,artifact_key,extracted_text,confidence,reviewer_state) SELECT descriptor_source_snapshot_id,'fixture','fixture','configuration',1,'approved' FROM canonical_articles WHERE canonical_article_id::text=$1 RETURNING extraction_evidence_id::text`, f.article).Scan(&evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.pool.QueryRow(ctx, `INSERT INTO vehicle_identity_bases(canonical_base_key,vehicle_id,make,model,model_year,region,source_snapshot_id,extraction_evidence_id,source_locator,evidence_locator,evidence_confidence,reviewer_state) SELECT gen_random_uuid()::text,vehicle_id,'Example','Car',2024,'US',descriptor_source_snapshot_id,$2::uuid,'fixture','fixture',1,'approved' FROM canonical_articles WHERE canonical_article_id::text=$1 RETURNING vehicle_identity_base_id::text`, f.article, evidence).Scan(&base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []*string{&configuration, &otherConfiguration} {
+		err = f.pool.QueryRow(ctx, `INSERT INTO vehicle_configurations(configuration_key,vehicle_identity_base_id,vehicle_id,source_snapshot_id,extraction_evidence_id,source_locator,evidence_locator,evidence_confidence,reviewer_state) SELECT gen_random_uuid()::text,$2::uuid,vehicle_id,descriptor_source_snapshot_id,$3::uuid,'fixture','fixture',1,'approved' FROM canonical_articles WHERE canonical_article_id::text=$1 RETURNING vehicle_configuration_id::text`, f.article, base, evidence).Scan(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = f.pool.QueryRow(ctx, `INSERT INTO canonical_articles(canonical_article_id,provider_slug,vehicle_id,vehicle_configuration_id,scope_key,source_vehicle_ref,source_article_ref,identity_key,descriptor,descriptor_source_snapshot_id,title) SELECT gen_random_uuid(),provider_slug,vehicle_id,$2::uuid,'configuration:'||($2::uuid)::text,source_vehicle_ref,source_article_ref,encode(digest(gen_random_uuid()::text,'sha256'),'hex'),descriptor,descriptor_source_snapshot_id,title FROM canonical_articles WHERE canonical_article_id::text=$1 RETURNING canonical_article_id::text`, f.article, configuration).Scan(&configuredArticle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := store.Articles(ctx, p, configuration)
+	if err != nil || len(items) != 1 || items[0].ID != configuredArticle {
+		t.Fatal("configuration descriptor scope", err, items)
+	}
+	view, err := store.ArticleView(ctx, p, configuration, configuredArticle)
+	if err != nil || view.Article.canonicalVehicleID != f.vehicle || view.Article.canonicalConfigurationID == nil || *view.Article.canonicalConfigurationID != configuration {
+		t.Fatal("configuration scheduling identity lost", err)
+	}
+	for _, scope := range []string{f.vehicle, otherConfiguration} {
+		if _, err := store.ArticleView(ctx, p, scope, configuredArticle); !errors.Is(err, ErrCatalogNotFound) {
+			t.Fatal("configuration crossed vehicle or sibling scope", err)
+		}
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE vehicle_configurations SET reviewer_state='rejected' WHERE vehicle_configuration_id::text=$1`, configuration); err != nil {
+		t.Fatal(err)
+	}
+	items, err = store.Articles(ctx, p, configuration)
+	if err != nil || len(items) != 0 {
+		t.Fatal("rejected configuration leaked", err, items)
+	}
 }

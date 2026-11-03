@@ -98,3 +98,37 @@ func TestCatalogSourceOrderedTablesWarningsAndUnavailableMedia(t *testing.T) {
 		t.Fatal(sanitized)
 	}
 }
+
+func TestCatalogLifecycleConsumesR2StepsAndProjectsNestedImages(t *testing.T) {
+	var step CatalogStep
+	if err := json.Unmarshal([]byte(`{"number":3,"text":"Disconnect the battery.","evidence_ids":["evidence-1"]}`), &step); err != nil {
+		t.Fatal(err)
+	}
+	if len(step.Instructions) != 1 || step.Instructions[0] != "Disconnect the battery." {
+		t.Fatalf("R2 step prose lost: %#v", step)
+	}
+}
+func TestCatalogLifecycleProjectsNestedImages(t *testing.T) {
+	var article CatalogArticle
+	key := "sources/" + strings.Repeat("a", 16) + "/" + strings.Repeat("a", 64)
+	raw := `{"id":"a","vehicle_id":"v","document":{"schema_version":1,"normalization_version":"ordered-article-v1","blocks":[{"type":"table","rows":[[{"text":"Pump","images":[{"asset_id":"` + key + `","image_id":"` + strings.Repeat("a", 64) + `","storage_key":"` + key + `","url":"https://provider.invalid/private","status":"available"}]}]]}]}}`
+	if err := json.Unmarshal([]byte(raw), &article); err != nil {
+		t.Fatal(err)
+	}
+	article = lifecycleArticle(article)
+	encoded, _ := json.Marshal(article)
+	if strings.Contains(string(encoded), "storage_key") || strings.Contains(string(encoded), "sources/") || strings.Contains(string(encoded), "provider.invalid") {
+		t.Fatalf("nested image leaked private locator: %s", encoded)
+	}
+	content := renderCatalogOrderedSource(article.Document, nil)
+	if !strings.Contains(content, "Image unavailable") {
+		t.Fatalf("nested image position lost: %s", content)
+	}
+}
+
+func TestCatalogSourceOrderedStepNumbers(t *testing.T) {
+	rendered := renderCatalogOrderedSource(&CatalogDocument{Blocks: []CatalogDocumentBlock{{Type: "step", Number: 3, Text: "Remove pump."}}}, nil)
+	if !strings.Contains(rendered, `<ol start="3"><li>Remove pump.</li></ol>`) {
+		t.Fatalf("stored step number lost: %s", rendered)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -313,6 +314,11 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			if id, ok := v["asset_id"].(string); ok {
 				result += imageHTML(id, "")
 			}
+			if nested, ok := v["images"].([]any); ok {
+				for _, img := range nested {
+					result += cell(img)
+				}
+			}
 			if blocks, ok := v["blocks"].([]any); ok {
 				for _, block := range blocks {
 					result += cell(block)
@@ -333,6 +339,12 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 	for _, block := range document.Blocks {
 		output.WriteString(`<section id="` + stdhtml.EscapeString(block.BlockID) + `">`)
 		switch block.Type {
+		case "step":
+			number := block.Number
+			if number < 1 {
+				number = 1
+			}
+			output.WriteString(`<ol start="` + strconv.Itoa(number) + `"><li>` + stdhtml.EscapeString(block.Text) + `</li></ol>`)
 		case "image":
 			id := block.AssetID
 			if id == "" {
@@ -369,6 +381,13 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 				}
 				output.WriteString("</ol>")
 			}
+		}
+		for _, image := range block.Images {
+			id := image.ID
+			if id == "" {
+				id = image.ImageID
+			}
+			output.WriteString(imageHTML(id, image.Alt))
 		}
 		output.WriteString("</section>")
 	}

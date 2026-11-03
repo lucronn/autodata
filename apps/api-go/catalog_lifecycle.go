@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +39,7 @@ type CatalogScheduleResult struct {
 }
 
 func lifecycleArticle(article CatalogArticle) CatalogArticle {
+	article.Document = publicCatalogDocument(article.Document)
 	readable := article.Document != nil && len(article.Document.Blocks) > 0
 	if article.CanonicalArticleID == nil {
 		article.Complete = false
@@ -109,7 +111,7 @@ func (s *memoryCatalogStore) ArticleSourceRevision(ctx context.Context, p Princi
 // A configuration selector has an exact configuration scope; an unconfigured
 // vehicle selector addresses only its vehicle scope. Scope precedes alias lookup.
 const lifecycleScopeSQL = `(a.vehicle_id::text=$1 AND a.vehicle_configuration_id IS NULL OR a.vehicle_configuration_id::text=$1)`
-const lifecycleEligibleSQL = `a.membership_status='active' AND (a.vehicle_configuration_id IS NULL OR EXISTS (SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=a.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))`
+const lifecycleEligibleSQL = `a.membership_status='active' AND NOT EXISTS(SELECT 1 FROM source_review_items quarantine WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved' AND (quarantine.source_snapshot_ids ? a.descriptor_source_snapshot_id::text OR EXISTS(SELECT 1 FROM canonical_article_source_revisions source WHERE source.source_revision_id=a.current_source_revision_id AND (quarantine.source_snapshot_ids ? source.body_source_snapshot_id::text OR EXISTS(SELECT 1 FROM jsonb_array_elements(source.resource_manifest) resource JOIN source_snapshots asset ON asset.content_sha256::text=resource->>'sha256' WHERE quarantine.source_snapshot_ids ? asset.source_snapshot_id::text))))) AND (a.vehicle_configuration_id IS NULL OR EXISTS (SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=a.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))`
 
 func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, id string) (CatalogArticleView, error) {
 	var raw []byte
@@ -117,6 +119,16 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	if errors.Is(err, pgx.ErrNoRows) {
 		legacy, e := s.legacyArticle(ctx, p, v, id)
 		if e != nil {
+			if errors.Is(e, ErrCatalogNotFound) {
+				var withdrawn bool
+				probeErr := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_articles ca JOIN source_snapshots ss USING(source_snapshot_id) WHERE ca.catalog_article_id::text=$2 AND (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1) AND ss.takedown_status<>'active')`, v, id).Scan(&withdrawn)
+				if probeErr != nil {
+					return CatalogArticleView{}, probeErr
+				}
+				if withdrawn {
+					return CatalogArticleView{}, ErrCatalogWithdrawn
+				}
+			}
 			return CatalogArticleView{}, e
 		}
 		legacy = lifecycleArticle(legacy)
@@ -297,7 +309,7 @@ func (s *postgresCatalogStore) Articles(ctx context.Context, p Principal, v stri
 	if rows.Err() != nil {
 		return nil, rows.Err()
 	}
-	legacy, err := s.pool.Query(ctx, `SELECT ca.catalog_article_id::text,COALESCE(ca.title,''),COALESCE(ca.content_kind,''),COALESCE(ca.component,'') FROM catalog_articles ca JOIN source_snapshots ss USING(source_snapshot_id) WHERE (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1 AND EXISTS(SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=ca.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected')) AND ca.article_id NOT LIKE 'L:%' AND ss.takedown_status='active' AND NOT EXISTS(SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text) AND ca.canonical_article_id IS NULL AND NOT EXISTS(SELECT 1 FROM canonical_article_aliases x WHERE x.catalog_article_id=ca.catalog_article_id) ORDER BY ca.title COLLATE "C",ca.catalog_article_id`, v)
+	legacy, err := s.pool.Query(ctx, `SELECT ca.catalog_article_id::text,COALESCE(ca.title,''),COALESCE(ca.content_kind,''),COALESCE(ca.component,'') FROM catalog_articles ca JOIN source_snapshots ss USING(source_snapshot_id) WHERE (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1 AND EXISTS(SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=ca.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected')) AND ca.article_id NOT LIKE 'L:%' AND ss.takedown_status='active' AND NOT EXISTS(SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text) AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) ORDER BY ca.title COLLATE "C",ca.catalog_article_id`, v)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +350,7 @@ func (s *postgresCatalogStore) ArticleSourceRevision(ctx context.Context, p Prin
 	var steps []byte
 	// Requested revision must belong to this authorized identity. Any resource
 	// takedown suppresses the immutable revision, including historical review.
-	err = s.pool.QueryRow(ctx, `SELECT sr.source_revision_id::text,sr.body_source_snapshot_id::text,snap.content_sha256::text,COALESCE(snap.source_version,''),sr.source_document,sr.source_images,sr.source_body,sr.source_steps FROM canonical_article_source_revisions sr JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id WHERE sr.canonical_article_id::text=$1 AND sr.source_revision_id::text=COALESCE(NULLIF($2,''),$3) AND NOT EXISTS(SELECT 1 FROM source_snapshots blocked WHERE blocked.takedown_status<>'active' AND (blocked.source_snapshot_id=sr.body_source_snapshot_id OR EXISTS(SELECT 1 FROM jsonb_array_elements(sr.resource_manifest) asset WHERE asset->>'sha256'=blocked.content_sha256::text)))`, *view.Article.CanonicalArticleID, revision, view.Article.SourceRevisionID).Scan(&sourceID, &result.SnapshotID, &result.ContentSHA256, &result.Version, &doc, &images, &body, &steps)
+	err = s.pool.QueryRow(ctx, `SELECT sr.source_revision_id::text,sr.body_source_snapshot_id::text,snap.content_sha256::text,COALESCE((SELECT observation.body_provider_revision FROM canonical_article_source_observations observation WHERE observation.source_revision_id=sr.source_revision_id AND observation.canonical_article_id=sr.canonical_article_id ORDER BY observation.request_generation DESC,observation.captured_at DESC,observation.source_observation_id DESC LIMIT 1),snap.source_version,''),sr.source_document,sr.source_images,sr.source_body,sr.source_steps FROM canonical_article_source_revisions sr JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id WHERE sr.canonical_article_id::text=$1 AND sr.source_revision_id::text=COALESCE(NULLIF($2,''),$3) AND NOT EXISTS(SELECT 1 FROM source_snapshots blocked WHERE (blocked.takedown_status<>'active' OR EXISTS(SELECT 1 FROM source_review_items quarantine WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved' AND quarantine.source_snapshot_ids ? blocked.source_snapshot_id::text)) AND (blocked.source_snapshot_id=sr.body_source_snapshot_id OR EXISTS(SELECT 1 FROM jsonb_array_elements(sr.resource_manifest) asset WHERE asset->>'sha256'=blocked.content_sha256::text)))`, *view.Article.CanonicalArticleID, revision, view.Article.SourceRevisionID).Scan(&sourceID, &result.SnapshotID, &result.ContentSHA256, &result.Version, &doc, &images, &body, &steps)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CatalogSourceContent{}, ErrCatalogNotFound
 	}
@@ -352,10 +364,82 @@ func (s *postgresCatalogStore) ArticleSourceRevision(ctx context.Context, p Prin
 	if err = json.Unmarshal(images, &result.Images); err != nil {
 		return CatalogSourceContent{}, err
 	}
+	result.Document = publicCatalogDocument(result.Document)
 	result.SourceRevisionID = &sourceID
 	article := CatalogArticle{SourceRevisionID: &sourceID, ContentOrigin: stringPointer("source"), Document: result.Document, Images: result.Images, Body: body}
 	json.Unmarshal(steps, &article.Steps)
 	article = lifecycleArticle(article)
 	result.ViewRevision = article.ViewRevision
 	return result, nil
+}
+
+// A stable public asset ID is never a storage path or provider URL. R2 normally
+// supplies image_id as a digest; older source shapes are domain-separated here.
+func publicCatalogAssetID(value string) string {
+	if value == "" {
+		return ""
+	}
+	if strings.Contains(value, "/") || strings.Contains(value, "?") || strings.Contains(value, ":") {
+		sum := sha256.Sum256([]byte("catalog-asset-v1:" + value))
+		return fmt.Sprintf("asset-%x", sum[:])
+	}
+	return value
+}
+func publicCatalogDocument(document *CatalogDocument) *CatalogDocument {
+	if document == nil {
+		return nil
+	}
+	raw, err := json.Marshal(document)
+	if err != nil {
+		return nil
+	}
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return nil
+	}
+	var project func(any) any
+	project = func(value any) any {
+		switch node := value.(type) {
+		case []any:
+			out := make([]any, len(node))
+			for i, child := range node {
+				out[i] = project(child)
+			}
+			return out
+		case map[string]any:
+			out := map[string]any{}
+			for key, child := range node {
+				switch key {
+				case "schema_version", "normalization_version", "blocks", "block_id", "source_order", "type", "level", "number", "text", "label", "caption", "columns", "rows", "items", "images", "alt", "status", "unavailable_reason", "evidence_ids", "source_locator":
+					out[key] = project(child)
+				case "asset_id", "image_id":
+					if text, ok := child.(string); ok {
+						out[key] = publicCatalogAssetID(text)
+					}
+				case "href":
+					if text, ok := child.(string); ok {
+						parsed, err := url.Parse(text)
+						if err == nil && parsed.Scheme == "" && parsed.Host == "" && strings.HasPrefix(text, "#") {
+							out[key] = text
+						}
+					}
+				}
+			}
+			if id, ok := out["image_id"].(string); ok && id != "" {
+				out["asset_id"] = id
+			}
+			return out
+		default:
+			return value
+		}
+	}
+	raw, err = json.Marshal(project(value))
+	if err != nil {
+		return nil
+	}
+	var projected CatalogDocument
+	if json.Unmarshal(raw, &projected) != nil {
+		return nil
+	}
+	return &projected
 }

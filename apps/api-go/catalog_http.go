@@ -268,7 +268,7 @@ const catalogImageMaxBytes = 12 << 20
 func rewriteCatalogImageURLs(article *CatalogArticle, key []byte) {
 	for index := range article.Images {
 		image := &article.Images[index]
-		if !localCatalogImageKeyPattern.MatchString(image.StorageKey) || len(key) != 32 {
+		if image.Status == "unavailable" || !localCatalogImageKeyPattern.MatchString(image.StorageKey) || len(key) != 32 {
 			image.URL = ""
 			continue
 		}
