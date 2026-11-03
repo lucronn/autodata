@@ -240,3 +240,22 @@ content without a redirect loop. Actual issuer/client/origin registration remain
 pending for live acceptance, not a reason to block deterministic implementation.
 These refinements are planning only; downstream task records remain blocked
 until their dependency checkpoint and committed-base preflight pass.
+
+## Migration-runner restart repair dependency
+
+The [reviewed migration-runner plan](2026-11-03-lifecycle-migration-replay.md)
+addresses the actual second-run037 failure and031 constraint regression without
+editing SQL001–038. Its concrete todo is one shared POSIX/psql driver with a
+session advisory lock, existing-version skips, transactional application and
+marker checks; delegation from Compose/Base44/native/container/fixture paths;
+real fresh/replay/upgrade/concurrent/crash tests; independent exact-SHA review
+and actual CI confirmation. Markerless033 is explicitly replayed once using
+its unchanged semantics and recorded atomically; the coordinator accepts the
+documented reviewer-state/timestamp effects for isolated implementation
+acceptance. Production migration remains outside current authority.
+
+This writer waits for verified R2 because the fixture helper is shared, and R3
+waits for the verified migration repair. R5 must audit planned039 against the
+shared driver at its own scope checkpoint. The external Kubernetes migrator
+image has no build source here and remains an explicit R6 certification
+prerequisite. No fixture or local pass certifies that external image.

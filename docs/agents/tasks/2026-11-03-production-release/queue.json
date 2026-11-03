@@ -71,18 +71,21 @@
       "needs_scope_refinement": false,
       "dispatch_mode": "coordinator_direct",
       "dependency_integrated_sha": "c3b7a46d1233a1af8c0f0cba19a2f169d5a9a4b4",
-      "implementation_base_sha": "262d180dec9b0411fa914393f4d8900ce23e466b"
+      "implementation_base_sha": "262d180dec9b0411fa914393f4d8900ce23e466b",
+      "reviewed_partial_candidate_sha": "9769105f1380f2dc40c830caf39c044a0127ab56",
+      "review_status": "Applicability-context and index-aggregate findings under repair; no final approval."
     },
     {
       "id": "r3-fallback-api",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r3-fallback-api.json",
       "depends_on": [
-        "r2-rewrite"
+        "r2-rewrite",
+        "migration-replay"
       ],
       "state": "waiting_dependencies",
       "release_state": "unverified",
       "needs_scope_refinement": true,
-      "dispatch_prerequisite": "Freeze exact committed R2 helper bindings for required Go/Python/real-DB integration after independent R2 integration."
+      "dispatch_prerequisite": "Verified R2 and migration-runner integration; freeze exact committed R2 helpers plus shared migration-driver fixture bindings before required Go/Python/real-DB preflight."
     },
     {
       "id": "r4-workshop",
@@ -104,7 +107,7 @@
       "state": "waiting_dependencies",
       "release_state": "unverified",
       "needs_scope_refinement": true,
-      "dispatch_prerequisite": "Verify R3 integration; freeze required session DB command and local login-unavailable/R4 contract; actual issuer registration remains a live-acceptance prerequisite."
+      "dispatch_prerequisite": "Verify R3 integration; freeze required session DB command and local login-unavailable/R4 contract; actual issuer registration remains a live-acceptance prerequisite. Audit planned039 in the shared migration driver and narrow task scope accordingly before dispatch."
     },
     {
       "id": "r6-evidence-adapter",
@@ -192,7 +195,7 @@
     {
       "id": "r0-app-server-runtime",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-app-server-runtime.json",
-      "state": "ready_after_committed_preflight",
+      "state": "in_progress",
       "depends_on": [
         "r0-evidence",
         "r0-provider-path-schema"
@@ -200,7 +203,20 @@
       "dispatch_mode": "coordinator_direct",
       "release_state": "unverified",
       "needs_scope_refinement": false,
-      "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md"
+      "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md",
+      "implementation_base_sha": "dcedeffa162a2b24c5b39ec9705dd60ac30380f5"
+    },
+    {
+      "id": "migration-replay",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/migration-replay.json",
+      "state": "waiting_dependencies",
+      "depends_on": [
+        "r2-rewrite"
+      ],
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "dispatch_mode": "coordinator_direct",
+      "dispatch_prerequisite": "Verified R2 integration because lifecycle fixture helper is shared; fresh synchronized checkpoint/preflight. All SQL001\u2013038 stay unchanged; explicit one-time033 adoption uses existing pending semantics."
     }
   ]
 }

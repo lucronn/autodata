@@ -83,3 +83,12 @@ at `/tmp/autodata-migration-repro/{run1.log,run2.log,result.json}`. This is a
 separate restart defect in the two new unreleased migrations; the reviewed
 dependency repair worked. A separately reviewed replay plan and fresh gate are
 required before changing those frozen migrations. CI and release remain failing.
+
+Further inspection found031 replays a constraint that predates content_partial,
+and033 has no ledger marker. The [runner repair plan](../superpowers/plans/2026-11-03-lifecycle-migration-replay.md)
+therefore keeps all migration SQL immutable and centralizes applied-version
+checks and locking. The documented one-time033 adoption is explicitly accepted
+for isolated implementation acceptance; no production database is targeted.
+The task remains dependency-blocked until verified R2 integration and a fresh
+committed synchronized record. This supersedes the initially considered
+037/038-only replay guard, which would not fix the031 regression.
