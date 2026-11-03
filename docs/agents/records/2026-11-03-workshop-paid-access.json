@@ -14,8 +14,9 @@
     "Expose only safe selector metadata publicly; enforce current verified session and exact owner/configuration/region grant before protected work and deny legacy customer bypass routes.",
     "Add explicit CSRF-protected prepare POST and observational paid GETs while preserving shared canonical rewriting and source fallback.",
     "Bind v2 media to account, exact scope, article, revisions and permitted asset; recheck current grant and rights before object reads.",
-    "Execute all twelve real paid-access cases across both banks and preserve eight R3, five identity and fourteen commerce regressions; independently review exact candidate and CI."
+    "Execute all twelve real paid-access cases across both banks and preserve eight R3, five identity and fourteen commerce regressions; independently review exact candidate and CI.",
+    "Coordinator updates the existing identity boundary test to use the still-protected source-review-items route for bearer rejection and identity dependency errors; public selectors remain200."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-03T19:35:01.267422+00:00"
+  "updated_at": "2026-11-03T19:42:13.328301+00:00"
 }

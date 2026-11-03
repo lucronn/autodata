@@ -32,3 +32,6 @@ Media owner defines server helpers `rewritePaidCatalogArticleImages(ctx, Princip
 - [ ] Coordinator repairs the remaining commerce fixture and executes commerce/identity/R3 acceptance and production-image proof while workers implement paid access, media and UI.
 - [ ] Merge meaningful reviewed worker milestones, resolve actual helper/DTO differences, execute twelve paid-access and141 browser cases, retain all failed evidence and finish independent review/CI.
 - [ ] Complete actual hosting, merchant/identity configuration, staging acceptance and deliberate cars.tk deployment; keep production status unverified until demonstrated.
+
+
+The coordinator also owns the bounded existing `apps/api-go/main_test.go` expectation repair described in the paid-access plan. The paid-access envelope is seventeen paths; worker allocations stay twelve plus four and the UI allocation stays thirty-two.
