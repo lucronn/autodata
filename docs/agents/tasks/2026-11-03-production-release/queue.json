@@ -66,14 +66,16 @@
       "depends_on": [
         "r1-connectors"
       ],
-      "state": "in_progress",
+      "state": "verified",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_mode": "coordinator_direct",
       "dependency_integrated_sha": "c3b7a46d1233a1af8c0f0cba19a2f169d5a9a4b4",
       "implementation_base_sha": "262d180dec9b0411fa914393f4d8900ce23e466b",
-      "reviewed_partial_candidate_sha": "9769105f1380f2dc40c830caf39c044a0127ab56",
-      "review_status": "Applicability-context and index-aggregate findings under repair; no final approval."
+      "review_status": "Independent exact-SHA approval;762 tests plus25 subtests at candidate and integration;267 mandatory smoke tests with35 measured runtime records.",
+      "verified_candidate_sha": "dba2d96170db5694052bd36dc7fca645fdf0a51d",
+      "integrated_sha": "9fd3f9142ee22c47810765130cbc36d6284994a3",
+      "verification_ref": "docs/verification/2026-11-03-canonical-article-lifecycle.md"
     },
     {
       "id": "r3-fallback-api",
@@ -209,14 +211,15 @@
     {
       "id": "migration-replay",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/migration-replay.json",
-      "state": "waiting_dependencies",
+      "state": "ready",
       "depends_on": [
         "r2-rewrite"
       ],
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_mode": "coordinator_direct",
-      "dispatch_prerequisite": "Verified R2 integration because lifecycle fixture helper is shared; fresh synchronized checkpoint/preflight. All SQL001\u2013038 stay unchanged; explicit one-time033 adoption uses existing pending semantics."
+      "dispatch_prerequisite": "R2 verified; committed synchronized checkpoint and exact-base preflight required before implementation.",
+      "dependency_integrated_sha": "9fd3f9142ee22c47810765130cbc36d6284994a3"
     }
   ]
 }

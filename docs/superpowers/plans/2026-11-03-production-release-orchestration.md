@@ -26,9 +26,12 @@ schema/source/reliability review and 644 ingestion tests plus 25 subtests in the
 isolated PostgreSQL/S3/NATS fixture. It is integrated at
 `c3b7a46d1233a1af8c0f0cba19a2f169d5a9a4b4`; see the
 [lifecycle verification record](../../verification/2026-11-03-canonical-article-lifecycle.md).
-R2 tasks 5–8 are running through direct coordinator dispatch from checkpoint
-`262d180dec9b0411fa914393f4d8900ce23e466b`, whose committed-base preflight
-passed with zero errors.
+R2 tasks 5–8 are independently verified at candidate
+`dba2d96170db5694052bd36dc7fca645fdf0a51d`, integrated at
+`9fd3f9142ee22c47810765130cbc36d6284994a3`. Candidate and integration each pass762 tests
+plus25 subtests; mandatory smoke passes267 with35 measured runtime records.
+The reviewed shared migration-runner repair is the next synchronized task;
+R3 waits for its verified integration and a fresh checkpoint.
 The real CLI schema repair passed independent review and 71 autonomy tests at
 `e90047f2d50829ae0bcdc68c0dc8ed69c998cb4a`; the bounded retry reached a second schema incompatibility (regex lookaround).
 R0 controller candidate `6762e844d12ef0d342e28f0131d477d73e1fe4a1` is

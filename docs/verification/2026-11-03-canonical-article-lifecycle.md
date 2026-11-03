@@ -79,8 +79,8 @@ and033 has no ledger marker. The [runner repair plan](../superpowers/plans/2026-
 therefore keeps all migration SQL immutable and centralizes applied-version
 checks and locking. The documented one-time033 adoption is explicitly accepted
 for isolated implementation acceptance; no production database is targeted.
-The task remains dependency-blocked until verified R2 integration and a fresh
-committed synchronized record. This supersedes the initially considered
+R2 is now verified below; the runner task is synchronized for its fresh
+committed checkpoint and required preflight. This supersedes the initially considered
 037/038-only replay guard, which would not fix the031 regression.
 
 ## R2 implementation and fixture verification
@@ -172,3 +172,37 @@ from the remaining total budget, so server rollback survives a client pause
 between the pre-commit check and COMMIT. Query cancellation remains a prompt
 cleanup aid; the server deadline revokes commit authority. Final acceptance
 records must name the subsequent corrected candidate.
+
+## Final R2 exact-candidate approval and integration
+
+Candidate: `dba2d96170db5694052bd36dc7fca645fdf0a51d`.
+Integration: `9fd3f9142ee22c47810765130cbc36d6284994a3`.
+Independent review approves R2 scope with no remaining P1/P2 findings. The final
+40-test review reruns the original late-COMMIT race and affected scheduling,
+applicability and catalog-state tests; the earlier135-test review covers unchanged
+behavior. PostgreSQL17 server transaction/idle deadlines roll back work even
+when the client pauses after its last precommit check. Superseded failing
+candidates remain retained and are not release evidence.
+
+The builder and coordinator independently ran the exact committed candidate:
+**762 tests plus25 subtests**, zero skips/failures/errors (232.90s and235.97s).
+The same combined suite on the integration passed **762 tests plus25 subtests**
+in 228.700 seconds, with zero skips/failures/errors. All37 R2 implementation,
+test and contract files are byte-identical to the approved candidate; only the
+verification document needed merge resolution, retaining both histories.
+Go API/contract tests and15 migration utility tests also pass.
+
+Mandatory fixture smoke at the exact candidate passed **267 tests in179.17s**,
+zero skipped/error/failed cases, with **35 actual runtime records** and all
+expected/measured invariants matching. Author evidence is retained under
+`/tmp/autodata-r2-lifecycle-artifacts`, especially `r2-exact-dba2d96-run.json`,
+`smoke-exact-dba2d96.json` and `smoke-exact-dba2d96-host.json`. Coordinator
+candidate artifacts are under `/tmp/autodata-r2-independent-dba2d96`; integration
+artifacts are under `/tmp/autodata-r2-integrated-9fd3f91`. Independent final review
+is `/tmp/autodata-r2-review-core/dba2d96-deadline-review.xml`.
+
+This completes R2 fixture implementation scope. The next shared migration-runner
+repair is synchronized for committed-base preflight; it does not change historical
+SQL. R3 public Go source fallback, R5 identity, R4 browser behavior and R6 live
+acceptance/release gates remain outstanding. No production readiness or deployment
+is claimed.

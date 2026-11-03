@@ -1,6 +1,6 @@
 # Lifecycle Migration Replay Implementation Plan
 
-> **For agentic workers:** Use superpowers:executing-plans for this bounded task only after the repository pre-implementation gate passes at the committed checkpoint. This draft is not implementation authority.
+> **For agentic workers:** Use superpowers:executing-plans for this bounded task only after the repository pre-implementation gate passes at the committed checkpoint. Implementation authority requires this synchronized record at the pinned committed checkpoint and a passing machine preflight.
 
 **Goal:** Make every repository migration entrypoint skip committed versions under one PostgreSQL session lock, preserving historical SQL and lifecycle schema on restart.
 
@@ -13,7 +13,7 @@
 **Issue:** https://github.com/lucronn/autodata/issues/186
 **Project:** https://github.com/users/lucronn/projects/8
 **Inspected base:** `eaaedd1061dab1f28d5eee55f956903e150060a4`
-**Status:** Coordinator-reviewed design, blocked for implementation until verified R2 integration, final tracking/checkpoint synchronization and passing exact-base preflight. The existing lifecycle fixture is a shared R2/R3 path; the migration writer starts after R2 and integrates before R3.
+**Status:** Independently reviewed design; R2 candidate `dba2d96170db5694052bd36dc7fca645fdf0a51d` is verified and integrated at `9fd3f9142ee22c47810765130cbc36d6284994a3`. Issue/Project, canonical documents and task record are synchronized for a fresh committed-base preflight. The migration writer starts only after that preflight and integrates before R3.
 
 ## Verified diagnosis and decision
 
@@ -202,6 +202,6 @@ Full ingestion uses the same isolated test runner with `workers/ingestion-python
 
 Coordinator checkpoint files: this plan at `docs/superpowers/plans/2026-11-03-lifecycle-migration-replay.md`; task at `docs/agents/tasks/2026-11-03-production-release/migration-replay.json`; updated canonical lifecycle plan, orchestration plan and verification record. Retain the existing037/038 freeze and add this runner prerequisite; do not replace it with a migration-edit exception.
 
-The companion task deliberately has `status: blocked` until verified R2 integration because both lanes own lifecycle_support.py. R3 then waits for this repair and its required fixture command. Companion blocked JSON drafts deliberately have `status: blocked`. Machine preflight at inspected SHA must reject them for non-synchronized status and absent plan. Coordinator performs actual synchronization, commits the checkpoint, sets a fresh synchronized record and validates at that committed base before builder dispatch. No plan-only agent may silently do this status transition.
+The coordinator has verified R2 integration and synchronized the companion task. The earlier blocked drafts remain historical records. Commit this checkpoint and validate the synchronized record at that exact base before builder dispatch; the earlier inspected SHA is not implementation authority. R3 still waits for this repair and its required fixture command. No plan-only agent may change authorization.
 
 This repair does not supply retrospective checksum proof, Kubernetes image certification, R2/R3 completion or production release authority.

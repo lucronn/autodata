@@ -840,3 +840,7 @@ waits for the verified migration repair. R5 must audit planned039 against the
 shared driver at its own scope checkpoint. The external Kubernetes migrator
 image has no build source here and remains an explicit R6 certification
 prerequisite. No fixture or local pass certifies that external image.
+
+## Verified R2 checkpoint and next runner task
+
+R2 candidate `dba2d96170db5694052bd36dc7fca645fdf0a51d` is independently approved and integrated at `9fd3f9142ee22c47810765130cbc36d6284994a3`. Candidate and integration pass762 tests plus25 subtests without skips; mandatory smoke passes267 tests and35 measured runtime records. See the canonical verification record for exact artifacts and review scope. The shared migration-runner task is now synchronized for a fresh committed-base preflight; it preserves all SQL001–038, explicitly records the reviewed one-time033 adoption and integrates before R3. Production/staging acceptance remains outstanding.
