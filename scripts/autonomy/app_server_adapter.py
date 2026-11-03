@@ -123,6 +123,13 @@ class _Session:
         for key in ("threadId", "turnId"):
             if key in params:
                 _require(type(params[key]) is str and params[key], "invalid notification identity")
+        if method.startswith(("item/", "turn/")):
+            _require(self.turn is not None or "turn/start" in self.pending.values(),
+                     "turn-scoped event before written turn request")
+            _require(not self.completed, "turn-scoped event after terminal completion")
+        elif method.startswith("thread/"):
+            _require(self.thread is not None or "thread/start" in self.pending.values(),
+                     "thread-scoped event before written thread request")
         if method == "thread/started":
             _require(self.thread is not None or "thread/start" in self.pending.values(), "thread event before request")
             self.thread_events.append(params["thread"]["id"])

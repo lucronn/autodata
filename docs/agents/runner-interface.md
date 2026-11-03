@@ -197,7 +197,14 @@ supervisor boundary. Builder commits retain the existing initial-to-final
 candidate rules. Runner and orchestrator independently replay protocol ordering,
 profile, identities and completion; raw server frames must exactly reproduce
 retained stdout, and the selected response must exactly reproduce the response
-artifact. A claimed observed_execution or passed flag cannot replace replay.
+artifact. Scoped events require their corresponding already-written thread/turn
+request; item/turn events after terminal completion are rejected. Notifications
+may precede the matching response once the request has been written.
+Replay derives the exact cwd from the caller-supplied evidence root and the
+fixed `agents/<label>/worktree` layout. Consistently rewritten transcript paths
+or boundary roots cannot relocate an invocation. Evidence must be replayed at
+its original root; copying it elsewhere does not establish a trusted relocation.
+A claimed observed_execution or passed flag cannot replace replay.
 The adapter source itself is snapshotted, byte-checked against trusted_base_sha
 and protected from candidate replacement.
 

@@ -115,6 +115,66 @@ class ProtocolTests(unittest.TestCase):
                 else: mutate(frames, lambda f:f.get("method")=="item/completed" and f["params"]["item"]["type"]=="userMessage", lambda f:f["params"]["item"]["content"][0].update(text="conflicting"))
                 with self.assertRaises(a.ProtocolError): a.replay_protocol(frames, expected=expected)
 
+    def test_scoped_events_require_prior_requests_and_cannot_follow_completion(self):
+        for stage in ('before-thread', 'before-turn', 'after-completion'):
+            for method in ('item/started', 'item/completed', 'item/agentMessage/delta',
+                           'turn/started', 'turn/completed'):
+                with self.subTest(stage=stage, method=method):
+                    frames, expected = exchange()
+                    if method == 'item/started':
+                        event = next(x for x in frames if json.loads(x['raw']).get('method') == method)
+                        frame = json.loads(event['raw'])
+                    elif method == 'item/completed':
+                        event = next(x for x in frames if json.loads(x['raw']).get('method') == method
+                                     and json.loads(x['raw'])['params']['item']['type'] == 'agentMessage')
+                        frames.remove(event)
+                        frame = json.loads(event['raw'])
+                    elif method == 'item/agentMessage/delta':
+                        frame = {'method': method, 'params': {'threadId': 'thread-1', 'turnId': 'turn-1',
+                                                             'itemId': 'answer', 'delta': 'text'}}
+                    else:
+                        event = next(x for x in frames if json.loads(x['raw']).get('method') == method)
+                        if not (stage == 'after-completion' and method == 'turn/completed'):
+                            frames.remove(event)
+                        frame = json.loads(event['raw'])
+                    event = {'direction': 'server', 'raw': json.dumps(frame)+'\n'}
+                    if stage == 'after-completion':
+                        frames.append(event)
+                    else:
+                        request = 'thread/start' if stage == 'before-thread' else 'turn/start'
+                        index = next(i for i, x in enumerate(frames)
+                                     if x['direction'] == 'client' and json.loads(x['raw']).get('method') == request)
+                        frames.insert(index, event)
+                    for index, record in enumerate(frames, 1):
+                        record['seq'] = index
+                    with self.assertRaises(a.ProtocolError):
+                        a.replay_protocol(frames, expected=expected)
+
+    def test_thread_notifications_cannot_precede_written_thread_request(self):
+        for method in ('thread/status/changed', 'thread/tokenUsage/updated'):
+            with self.subTest(method=method):
+                frames, expected = exchange()
+                event={'direction':'server','raw':json.dumps({'method':method,
+                       'params':{'threadId':'thread-1'}})+'\n'}
+                index=next(i for i,x in enumerate(frames) if x['direction']=='client'
+                           and json.loads(x['raw']).get('method')=='thread/start')
+                frames.insert(index,event)
+                for index,record in enumerate(frames,1):record['seq']=index
+                with self.assertRaises(a.ProtocolError):
+                    a.replay_protocol(frames,expected=expected)
+
+    def test_items_between_written_turn_request_and_response_remain_valid(self):
+        frames, expected = exchange()
+        event = next(x for x in frames if json.loads(x['raw']).get('method') == 'item/completed'
+                     and json.loads(x['raw'])['params']['item']['type'] == 'agentMessage')
+        frames.remove(event)
+        index = next(i for i, x in enumerate(frames) if x['direction'] == 'client'
+                     and json.loads(x['raw']).get('method') == 'turn/start')
+        frames.insert(index+1, event)
+        for index, record in enumerate(frames, 1):
+            record['seq'] = index
+        self.assertTrue(a.replay_protocol(frames, expected=expected)['completed'])
+
     def test_catalog_requires_exhaustion_and_rejects_ambiguous_models(self):
         for mode in ["cursor", "duplicate", "same-model"]:
             frames, expected = exchange()

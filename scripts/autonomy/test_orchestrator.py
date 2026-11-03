@@ -313,6 +313,7 @@ class AppServerReplayTests(FullChainV2Tests):
             protocol_path=path.parent/by_id['architect:protocol']['ref']
             stdout_path=path.parent/by_id['architect:stdout']['ref']
             original_protocol=protocol_path.read_bytes();original_stdout=stdout_path.read_bytes()
+            self.assertTrue(o.validate_evidence_bundle(final,trusted,path.parent)['passed'])
             def refresh(value,aid,data):
                 if isinstance(value,dict):
                     if value.get('artifact_id')==aid:
@@ -320,7 +321,7 @@ class AppServerReplayTests(FullChainV2Tests):
                     for child in value.values():refresh(child,aid,data)
                 elif isinstance(value,list):
                     for child in value:refresh(child,aid,data)
-            for mode in ['prompt-hash','candidate','version','client-override','catalog','resolved','foreign-turn','observed','sequence']:
+            for mode in ['prompt-hash','candidate','version','client-override','catalog','resolved','foreign-turn','observed','sequence','relocated-root','relocated-root-symlink']:
                 with self.subTest(mode=mode):
                     bad=copy.deepcopy(final);records=[json.loads(x) for x in original_protocol.splitlines()]
                     if mode=='prompt-hash':records[0]['context']['prompt_sha256']='0'*64
@@ -328,6 +329,18 @@ class AppServerReplayTests(FullChainV2Tests):
                     elif mode=='version':records[0]['cli_version']='codex-cli 0.162.0'
                     elif mode=='observed':bad['agent_runs']['architect']['observed_execution']['model']='other'
                     elif mode=='sequence':records[1]['seq']=2
+                    elif mode in ('relocated-root','relocated-root-symlink'):
+                        cwd='/tmp/unrelated-run/agents/architect/worktree'
+                        if mode=='relocated-root-symlink':
+                            (path.parent/'agents'/'architect'/'worktree').symlink_to(cwd)
+                        records[0]['context']['cwd']=cwd
+                        for field in ('worktree_root','output_root'):
+                            records[0]['boundary'][field]=str(Path(cwd).parent)
+                        for rec in records[1:-1]:
+                            frame=json.loads(rec['raw'])
+                            if frame.get('method')=='thread/start':frame['params']['cwd']=cwd
+                            if frame.get('id')==3 and 'result' in frame:frame['result']['cwd']=cwd
+                            rec['raw']=json.dumps(frame)+'\n'
                     else:
                         for rec in records[1:-1]:
                             frame=json.loads(rec['raw'])
@@ -346,3 +359,5 @@ class AppServerReplayTests(FullChainV2Tests):
                         self.assertTrue(any('runtime evidence' in x or 'observed execution' in x for x in result['failures']),result)
                     finally:
                         protocol_path.write_bytes(original_protocol);stdout_path.write_bytes(original_stdout)
+                        if mode=='relocated-root-symlink':
+                            (path.parent/'agents'/'architect'/'worktree').unlink()

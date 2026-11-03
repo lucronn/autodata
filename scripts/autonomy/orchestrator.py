@@ -461,11 +461,15 @@ def _measure_bundle(
             errors.extend(r.validate_artifact(protocol, evidence_root))
             protocol_bytes = r._regular_bytes(evidence_root, protocol["ref"])
             capture = r.app_server.capture_context(protocol_bytes)
-            cwd, home = capture["cwd"], capture["codex_home"]
-            if (type(cwd) is not str or not Path(cwd).is_absolute() or
-                Path(cwd).name != "worktree" or Path(cwd).parent.name != label or
-                type(home) is not str or not Path(home).is_absolute()):
-                raise r.RunnerError("invalid isolated runtime paths")
+            # The validation caller supplies the retained run root. A transcript
+            # cannot relocate its own invocation by rewriting consistent fields.
+            # Resolve the root only: removed worktree paths must never gain
+            # authority through a newly introduced descendant symlink.
+            cwd = str(evidence_root.resolve() / "agents" / label / "worktree")
+            home = capture["codex_home"]
+            if (capture["cwd"] != cwd or type(home) is not str or
+                not Path(home).is_absolute()):
+                raise r.RunnerError("runtime cwd differs from retained invocation root")
             initial_subject = base if label in ("architect", "builder") else subject
             envelope = {
                 "run_id": manifest["run_id"] + "-" + label,
