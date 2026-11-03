@@ -60,7 +60,7 @@
     "Both-bank source views retain ordered tables, warnings and local media or unavailable placeholders.",
     "Canonical/source/job/media paths preserve vehicle scope, access rules and takedown behavior.",
     "OpenAPI JSON and YAML describe the complete selection cascade and additive lifecycle fields.",
-    "Required Go/Python integration runs against actual R2 HTTP scheduling and a freshly migrated isolated PostgreSQL database; unavailable services, skipped or zero integration cases fail the required run."
+    "Required Go/Python integration captures full shared-runner fresh001\u2013038 application and empty/populated no-op replay, uses the actual migrated R2 HTTP/worker fixture and owned Go/Python image, and passes the bounded supervisor exact-eight/no-skip JUnit/Go/provenance checks; missing infrastructure, timeout, partial evidence or image/hash mismatch fails."
   ],
   "forbidden_scope": [
     "Production deployment or production-data changes",
@@ -92,10 +92,10 @@
       "Both-bank source views retain ordered tables, warnings and local media or unavailable placeholders.",
       "Canonical/source/job/media paths preserve vehicle scope, access rules and takedown behavior.",
       "OpenAPI JSON and YAML describe the complete selection cascade and additive lifecycle fields.",
-      "Required Go/Python integration runs against actual R2 HTTP scheduling and a freshly migrated isolated PostgreSQL database; unavailable services, skipped or zero integration cases fail the required run."
+      "Required Go/Python integration captures full shared-runner fresh001\u2013038 application and empty/populated no-op replay, uses the actual migrated R2 HTTP/worker fixture and owned Go/Python image, and passes the bounded supervisor exact-eight/no-skip JUnit/Go/provenance checks; missing infrastructure, timeout, partial evidence or image/hash mismatch fails."
     ],
-    "status": "blocked",
-    "updated_at": "2026-11-03T11:14:20.835289+00:00"
+    "status": "synchronized",
+    "updated_at": "2026-11-03T11:30:36.636100+00:00"
   },
   "execution": {
     "model": "gpt-6.1-sol",

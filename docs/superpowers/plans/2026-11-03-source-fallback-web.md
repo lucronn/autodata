@@ -105,7 +105,7 @@ host application DSN. Run with an explicit required-integration flag. Missing
 services/DSN, skipped cases or zero executed integration tests fail this run.
 Capture candidate SHA, migration head, Go JSON output and process exit.
 
-The future required command (not yet implemented) is:
+The component illustration; required acceptance is the bounded supervisor (not yet implemented) is:
 
 ```sh
 AUTODATA_LIFECYCLE_ARTIFACT_DIR=/tmp/autodata-r3-lifecycle-artifacts \
@@ -493,3 +493,36 @@ legacy aliases, source/asset policy consistency, cross-replica durable schedulin
 and mixed content/revision responses. Temporary source failure, rejected rewrite,
 missing media, or unavailable browser coverage remain explicit; none is converted
 into fabricated completion.
+
+### Post-migration R3 binding refinement
+
+The independently reviewed [runtime handoff refinement](2026-11-03-catalog-runtime-integration.md#post-migration-refinement-independently-reviewed) now specifies actual captured fresh/empty/populated replay through038, supported Compose invocation, existing module manifests/cache packaging and actual CLI versus one-shot publication-hook process handling. It preserves R3's32-path scope and exact eight required cases. Older raw component commands are illustrations; only the bounded supervisor with complete no-skip/provenance checks certifies required acceptance. Actual CI and fresh synchronized preflight remain prerequisites.
+
+### R3 synchronized dispatch record
+
+This record applies only to R3. R4 and R5 retain their own dependency gates.
+
+```json
+{
+  "goal": "Serve immediate readable source fallback with honest processing state until a canonical rewrite is published.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-source-fallback-web.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "A cold read returns available sanitized source while model processing is blocked.",
+    "Repeated reads join the same durable job and transition atomically at publication.",
+    "Canonical-only descriptors and scoped legacy rows are listed without collapsing equal provider-local IDs across banks; each public UUID resolves to the correct detail, with zero detail work during list/search.",
+    "Nonempty partial/failed indexes remain explicitly incomplete and retryable.",
+    "Both-bank source views retain ordered tables, warnings and local media or unavailable placeholders.",
+    "Canonical/source/job/media paths preserve vehicle scope, access rules and takedown behavior.",
+    "OpenAPI JSON and YAML describe the complete selection cascade and additive lifecycle fields.",
+    "Required Go/Python integration captures full shared-runner fresh001\u2013038 application and empty/populated no-op replay, uses the actual migrated R2 HTTP/worker fixture and owned Go/Python image, and passes the bounded supervisor exact-eight/no-skip JUnit/Go/provenance checks; missing infrastructure, timeout, partial evidence or image/hash mismatch fails."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T11:30:36.636100+00:00"
+}
+```

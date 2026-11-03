@@ -29,7 +29,7 @@ Execution/review profile remains gpt-6.1-sol / medium / Fast(priority), no fallb
 
 These signatures are existing code at the candidate, not proposed APIs:
 
-- `from lifecycle_support import fresh_database, LifecycleRuntime`. Import the pytest fixture into the new test module. `fresh_database()` creates `lifecycle_test_<uuidhex>` through the migration chain and returns `Repository(database_name)`. `Repository.connect()` accepts only AUTODATA_LIFECYCLE_TEST=1 and that prefix, and hardcodes postgres/lifecycle_test/lifecycle_test_only. The migration repair is to change only its chain execution to shared migrate_sql.sh; do not copy the current unguarded loop into R3.
+- `from lifecycle_support import fresh_database, LifecycleRuntime`. Import the pytest fixture into the new test module. `fresh_database` yields a callable accepting `through=None`; `fresh_database(through=0)` creates an empty `lifecycle_test_<uuidhex>` and returns `Repository(database_name)`. Required R3 acceptance uses that empty database and the explicit captured shared-driver recipe in the post-migration refinement below. `Repository.connect()` accepts only AUTODATA_LIFECYCLE_TEST=1 and that prefix, and hardcodes postgres/lifecycle_test/lifecycle_test_only. The migrated helper delegates chain execution to shared migrate_sql.sh. Do not substitute raw SQL loops or claim the helper retained its internally captured first-application output.
 - `LifecycleRuntime(repo, stack)` receives a contextlib.ExitStack. It starts `serve_connector('bankone')`, `serve_connector('banktwo')`, `serve_model()`, creates real S3 bucket `lifecycle-<uuidhex>`, seeds one vehicle, executes both real catalog-index jobs and exposes `vehicle`, `articles[provider]`, `article_id`, `repo`, `registry`, `objects`, `bucket`, `servers`, `model`, and `env`. Both descriptors deliberately use provider-local `same/article` but retain different canonical UUIDs/provider identity. Existing source fixture body is `<ol><li>Remove the pump.</li></ol>`.
 - Set `runtime.article_id = runtime.articles[provider]` before scenario setup. `runtime.start_workers(count=2)` launches actual scripts/dev/article_worker.py processes unless an explicit R2 barrier is installed. Use ordinary workers for this harness, not monkeypatched worker entrypoints. `stop_workers()`, `read_current()`, `await_publication()`, `wait_for(predicate)`, `record_evidence(test_id)`, `close()` are available. The existing wait_for deadline is10s and checks early CLI worker exit.
 - `runtime.env` is explicit and passed to worker processes. Set only its existing `INCEPTION_API_BASE_URL` to the model proxy `/v1` URL and `INCEPTION_API_TIMEOUT_SECONDS` to `60` before starting workers. This is per-test fixture composition, not a helper edit. Fixture API key remains `fixture-model`.
@@ -298,7 +298,7 @@ docker compose -p <project> -f infra/compose/compose.article-lifecycle-test.yaml
   up -d --wait --wait-timeout 150 postgres nats minio
 
 docker compose -p <project> -f infra/compose/compose.article-lifecycle-test.yaml \
-  run -d --no-build --name <runner_name> go-test-runner \
+  run -d --pull never --no-deps --name <runner_name> go-test-runner \
   python -m pytest -q -p no:cacheprovider \
   --junitxml=/artifacts/r3-pytest.xml \
   workers/ingestion-python/tests/test_catalog_api_integration.py
@@ -338,7 +338,7 @@ test_required_go_catalog_lifecycle[TestPostgresCatalogLifecycleWarmReadsNoExtern
 
 - For each artifacts/r3/<provider>/<GoName>/ directory require a complete result.json, go-events.jsonl, go-stderr.log and measured-runtime.json. The bridge writes result.json only after its own assertions/evidence collection. Required fields are schema_version=1, provider, go_test_name, fixture_database, candidate_sha, candidate_origin, host_before_sha256, input_manifest_sha256, go_exit_code, timed_out, started_at, finished_at, phase_snapshots, assertion_results. `assertion_results` uses exactly the invariant keys assigned to its case below, each passed=true; missing/unknown/false invariants fail. measured-runtime.json contains actual PG counts/IDs and complete counter snapshots used for each asserted delta, not just asserted conclusions. Keep original worker/runtime evidence alongside it.
 
-Required assertion_results keys (each case also retains its actual measurements):
+Required assertion_results keys (each case also retains its actual measurements): every case additionally requires `fresh_manifest_applied_001_038`, `empty_replay_noop_001_038` and `populated_replay_noop_001_038`, with the complete captured migration proof specified below. The supervisor validates these in addition to the scenario keys:
 
 ```
 ColdHTTPRaceOneJob: cold_public_202, cold_same_job_id, one_durable_article_job,
@@ -363,7 +363,7 @@ The supervisor's full container deadline is the explicit answer to uninterruptib
 
 ## Re-pin after migration integration
 
-The migration replay plan is approved but not yet implemented. Do not build against that draft as if it were tested code. The new dependency checkpoint must contain verified R2, the shared migrate_sql.sh, lifecycle_support.fresh_database delegation, retained postgresql-client image dependency, and full migration replay acceptance evidence. Re-read exact integrated helpers/image/Compose and hash them; adjust this handoff only for actual verified interfaces, then commit the canonical plan/task update before implementation.
+The independently reviewed migration candidate e401a54342ec0f201728f95cdfc1ea32841d517c is integrated at f264dae2fb222b7a7c90e4ab79e2b04aa8589ccc. The post-migration refinement below pins the actual shared driver, helper delegation and retained postgresql-client dependency. Actual integrated CI, final tracking synchronization and a fresh committed-base preflight remain required before dispatch. Re-read exact integrated helpers/image/Compose and hash them; adjust this handoff only for actual verified interfaces, then commit the canonical plan/task update before implementation.
 
 Confirm fresh migration ledger includes033 and038, repeat migration driver skips all without changing applied_at/schema/data, and helper constructor still provides the APIs listed here. Record the migration-runner candidate and integrated SHA separately. Re-pin all R3 tasks/record plan_ref/docs at that new committed base and run `python3 scripts/autonomy/pre_implementation.py --record "$AUTODATA_RELEASE_RECORD" --base-sha "$AUTODATA_IMPLEMENTATION_BASE" --repo-root .` with nonempty variables. Keep task blocked if any dependency, synchronization or preflight result is unavailable. Later R5 migration039 requires a newly reviewed driver manifest and new pin; it must not be silently included in an038-certified R3 run.
 
@@ -372,3 +372,131 @@ The resulting certificate covers deterministic R3 runtime acceptance and shared 
 ## Independent planning review
 
 The source refinement passed independent planning review at SHA256 `a7188c9d352666dd9d61c7e92af5459fe850ea007a05507d3fd707cbc359e7c6`; review retained at `/tmp/autodata-r3-runtime-plan-review-final.md`. This canonical incorporation changes only status/location wording. Ownership, runtime composition, bounded supervisor, exact-eight-case validation and provenance requirements are unchanged. Migration integration and reinspection remain prerequisites.
+
+## Post-migration refinement, independently reviewed
+
+The following bounded amendments were inspected against integration `1d07ce28b5cc4cb7fb95ab41db8c178eff0d3c4d`. Independent review approved source report SHA256 `13f5c409eee33249379a5be0b1d989b10ce51c77b64db78a02675be6277cd135` with no blocking findings; retained review is `/tmp/autodata-r3-postmigration-independent-review.md`. These clarify the preceding implementation contract and control where older illustrative language differs. They add no repository implementation paths and preserve the exact four named Go cases across both banks. R3 remains blocked until its dependency and fresh gate requirements are satisfied.
+
+## 1. Correct the actual Compose run command
+
+Coordinator observed installed Compose2.40.3-3 rejects `run --no-build`. I independently inspected `docker compose run --help`: --pull accepts never, --no-deps is supported, --build is optional, and --no-build does not exist.
+
+The formerly proposed unsupported invocation is shown only as a rejected form:
+
+```
+run -d --no-build --name <runner_name> go-test-runner
+```
+
+Use the supported invocation:
+
+```
+docker compose -p <project> -f infra/compose/compose.article-lifecycle-test.yaml \
+  run -d --pull never --no-deps --name <runner_name> go-test-runner \
+  python -m pytest -q -p no:cacheprovider \
+  --junitxml=/artifacts/r3-pytest.xml \
+  workers/ingestion-python/tests/test_catalog_api_integration.py
+```
+
+Do not pass --build. The supervisor's preceding owned buildx phase must succeed and `docker image inspect <image_tag>` must return the saved built image ID. AUTODATA_R3_TEST_IMAGE fixes this exact tag in the new service. Resolve/record Compose service configuration before start, require its image to equal that tag, and require the new container's inspected Image field to equal the saved image ID after start. Missing image, unexpected implicit build/pull, mismatched image, service failure or unsupported required flag fails before success; do not fall back to an unverified image. --no-deps prevents the one-off runner from starting additional services after the supervisor's bounded explicit PG/NATS/S3 start phase. No host ports or credential change is involved.
+
+The source-fallback plan already labels its older raw component command noncertifying. Prefer changing its adjacent “future required command” wording to “component illustration; required acceptance is the bounded supervisor” so --build/--rm cannot be mistaken for the final acceptance command. This is a documentation change, not another implementation path.
+
+## 2. Freeze the migrated helper and fresh/replay-through038 proof method
+
+Actual migrated fixture signatures:
+
+- `fresh_database` remains a pytest fixture yielding callable `fresh(through=None)`. `fresh_database()` runs the shared runner over a temporary copied canonical prefix; `fresh_database(through=0)` creates an empty uniquely named DB without applying SQL; a positive through value copies that prefix and calls the shared runner with --migrations-dir.
+- Its migration subprocess captures stdout/stderr internally and asserts returncode0 but returns only Repository. Consequently R3 cannot honestly claim to have retained the first38 AUTODATA_APPLIED lines merely by calling fresh_database() and examining the returned object.
+- `Repository.connect()` remains unchanged, with fixed fixture host/user/password/prefix guard and no connect_timeout. Fresh DB creation/destruction psycopg calls likewise have no timeout. The reviewed outer supervisor deadline remains authoritative for a blocked setup/teardown; do not claim wait_for or subprocess Go deadlines solve this.
+- `apply_migration(repo, number)` explicitly remains raw original SQL for intentional upgrade/failure tests, not an operational chain. Do not use it for R3 lifecycle installation/replay.
+
+Decision-complete R3 bridge recipe, entirely inside its already owned test_catalog_api_integration.py:
+
+1. Validate required flags and strict fixture target before requesting the fixture. Obtain `repo = fresh_database(through=0)`. Do not instantiate LifecycleRuntime until the full fresh/replay proof succeeds.
+2. Prepare a minimal **test-owned** subprocess env: preserve image PATH/default home unchanged, remove inherited PG*/DATABASE_URL/service/password-file routing, then set PGHOST=postgres, PGPORT=5432, PGDATABASE=repo.database_name, PGUSER=lifecycle_test, PGPASSWORD=lifecycle_test_only, PGSSLMODE=disable and PGCONNECT_TIMEOUT=3. All values are fixture-only; no DSN fallback. Keep the previously specified required flags/Python paths where needed. Do not edit lifecycle_support.py or clear/relocate HOME.
+3. Run argv `['sh', str(ROOT/'scripts/dev/migrate_sql.sh'), '--emit']` with a30s subprocess deadline. Retain the exact driver bytes/SHA256 and stderr/exit. This default invocation validates the complete canonical38-file manifest; do not supply a copied prefix or --migrations-dir for this R3 certification.
+4. Run argv `['sh', str(ROOT/'scripts/dev/migrate_sql.sh')]` with the explicit fixture env and a90s subprocess deadline. Retain stdout/stderr/exit as migration-fresh.*. Require exit0 and the exact ordered AUTODATA_APPLIED filename vector equal to the pinned001..038 manifest, with no AUTODATA_SKIPPED lines. Check all38 exact schema_migrations version strings, including033_catalog_scope_coverage and038_article_transform_publication. No cardinality-only proof.
+5. Snapshot ordered complete ledger rows (including applied_at) and normalized full schema. Run `pg_dump --schema-only --no-owner --no-privileges` against the same fixture env with a30s deadline; remove only lines beginning literal `\restrict ` and `\unrestrict `, as the integrated migration tests already do. Record pg_dump/psql/server versions. Preserve all constraint/index/function/trigger/view definitions, including catalog_article_current and content_partial constraint; do not compare object names alone.
+6. Run the same default shared driver again, deadline90s, retain migration-replay-empty.*. Require exit0, exact ordered38 AUTODATA_SKIPPED filenames, no AUTODATA_APPLIED lines, exact unchanged ledger rows/applied_at and normalized schema.
+7. Only now construct `LifecycleRuntime(repo, stack)` and run the named Go case. The constructor's two actual catalog-index jobs remain the case counter baseline. All article scheduling still crosses real Go→R2 HTTP; the migration proof does not use runtime.ensure or ingest_to_publication.
+8. After the Go case completes successfully and after its final live-worker/counter assertions, record runtime evidence, release any owned Events and stop the captured worker handles. Verify worker termination using the adapter below before taking a populated replay snapshot. Do not replay while a worker or publication hook is live.
+9. Snapshot complete rows from schema_migrations, catalog_articles, canonical_articles, canonical_article_source_revisions, canonical_article_source_observations, canonical_article_revisions, canonical_article_reviews, canonical_article_rewrite_attempts, source_fetch_jobs, publication_events, source_snapshots, catalog_article_provider_scopes, catalog_article_index_pages and canonical_article_aliases. Query each allowlisted table as `SELECT to_jsonb(t) AS record FROM <fixed table> t ORDER BY to_jsonb(t)::text`; preserve full values, not a few pointers/counts. Snapshot normalized schema too. Do not compare time-derived retry-after values from the dynamic read view as immutable data.
+10. Run the same default driver a third time, deadline90s, retain migration-replay-populated.*. Require38 exact skips/no applies, unchanged full rows, ledger timestamps and schema. The cold-race case proves pending-job preservation; the other three cases prove published canonical/source/job/event preservation. This yields actual populated replay evidence without another pytest testcase or R2 helper edit.
+11. Put ordered applied/skipped filenames, driver hash, marker rows, schema/data before/after hashes and subprocess exits/timeouts in each existing per-case measured-runtime.json/result.json. Add required invariant keys `fresh_manifest_applied_001_038`, `empty_replay_noop_001_038` and `populated_replay_noop_001_038` to EACH case's existing assertion_results map and supervisor validation. Preserve exactly four Go names×two providers/eight JUnit cases. A subprocess timeout or missing replay evidence fails the case and required acceptance; the outer container deadline still covers fixture connection/teardown stalls.
+
+The integrated runner is a fixed full001–038 manifest, accepts only explicit canonical contiguous prefixes when --migrations-dir is used, uses one session advisory lock(186,3738), transactional legacy files, exact existing036–038 transaction blocks, explicit033 marker adoption and psql -X/ON_ERROR_STOP. New R3 fresh DBs start empty, so first apply has no legacy033 adoption side effects. Do not modify historical SQL or extend to039. R5's future039 needs a separately reviewed runner manifest/pin.
+
+The integrated migration tests already implement and verify the relevant fresh/restart, markerless033, actual036 upgrade, partial-content restart, connection failure and populated-publication restart methods. Reuse their *method*, not their runtime.ensure scheduling trigger, for R3. No R3 need to import private helpers from another test module.
+
+## 3. Make actual image packaging precise within the existing Dockerfile
+
+At f264 the image is still Python3.14-slim with poppler-utils, tesseract-ocr and **postgresql-client**; it does not yet contain Go or an explicit Git install. Preserve all of those migration additions and the existing pip setup. Ingestion dependencies already include nats-py/psycopg/minio and cover the required enrichment fixture dependencies; preserve existing PYTHONPATH including both worker sources, contracts/python and ingestion tests. No new pip runtime provider package is needed for this harness.
+
+The Go local replace is `../../packages/contracts/go` from apps/api-go. Existing Go manifests are:
+
+```
+apps/api-go/go.mod
+apps/api-go/go.sum
+packages/contracts/go/go.mod
+```
+
+There is **no packages/contracts/go/go.sum**. A COPY that requires one would fail the build. Concrete build-time layout:
+
+```dockerfile
+FROM golang:1.26 AS go-toolchain
+# Existing Python final stage and apt/pip setup follow, preserving postgresql-client.
+# Add git to that existing apt list if not otherwise available for runner Git observation.
+COPY --from=go-toolchain /usr/local/go /usr/local/go
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOTOOLCHAIN=local CGO_ENABLED=0 GOMODCACHE=/opt/go-module-cache
+COPY apps/api-go/go.mod apps/api-go/go.sum /opt/prefetch/apps/api-go/
+COPY packages/contracts/go/go.mod /opt/prefetch/packages/contracts/go/
+RUN cd /opt/prefetch/apps/api-go && go mod download
+```
+
+Keep module-prefetch directory relationships exactly as shown; this lets Go resolve the existing relative replace during download. The scratch prefetch paths contain manifests only and are not a runtime application source checkout. At runtime use the actual read-only /workspace modules, explicit GOCACHE/GOTMPDIR, GOMODCACHE=/opt/go-module-cache, GOTOOLCHAIN=local, GOPROXY=off, GOFLAGS=-mod=readonly and CGO_ENABLED=0. No compiler installation is needed for the Go pgx/minio tests, and runtime must not attempt dependency/toolchain downloads or manifest writes. Build-time verification checks go version1.26, psql/pg_dump/git availability and downloaded module cache. No HOME assignment. The new owned image tag/service remains in the already authorized Compose file; the existing test-runner's command and isolation behavior remain usable.
+
+This packaging is proposed R3 implementation, not a claim that Go is already installed or that the future image has been built. The current migration image additions are independently inspected, not modified.
+
+## 4. Preserve the actual worker/process/hook distinctions
+
+The migration changed only fresh_database chain execution and imports/docstring in lifecycle_support; runtime/helper APIs are otherwise byte-for-byte unchanged from approved R2. The real client constructor and returned-client Do signature are unchanged. The model proxy design therefore remains valid.
+
+Record these process distinctions in the canonical harness instructions to prevent impossible assumptions:
+
+- Ordinary runtime.start_workers(2) yields subprocess.Popen CLI workers: inspect with poll(); a worker exiting before intentional stop fails; intentionally terminated CLI exit codes are recorded separately.
+- With runtime.pause('inside_publication'), start_workers(1) yields multiprocessing.Process running the existing top-level _hooked_worker ONCE; it is not a CLI polling worker. Inspect with is_alive()/exitcode/join(), not poll(). Normal exit0 after released publication is expected. runtime.wait_for only explicitly checks early Popen exits; do not claim it checks spawned child exit status.
+- Before runtime.stop_workers(), retain `owned_workers = list(runtime.workers)`; that helper clears its list. After it returns, inspect saved handles, kill/join any still-live owned spawned process with a bounded3s wait and record failure if stop/kill/reap cannot be confirmed. The existing spawned stop branch terminates+joins but has no kill escalation. Implement this adapter only in R3's Python file; outer owned-container termination remains the final bound.
+- The inside_publication hook is real and occurs after setting a candidate row's status to published **inside an uncommitted transaction**, before current_canonical_revision_id/job completion/outbox insert. Outside observers can still see the validated candidate row; assert zero *published* rows/events and the old source projection, not zero canonical candidate rows. Do not use a locking observer query.
+- The hook's released.wait bound is10s, not the model proxy's25s. Once the barrier is observed, perform the precommit Go detail/PG read promptly (bounded2s calls) and release within3s. If that budget cannot be met, fail and release in finally rather than extending/changing the helper. The actual model response blocking case uses ordinary CLI workers and the separate test-owned proxy; after_model_dispatch remains before model IO.
+- Since the atomic worker is a one-job process, do not require it to remain alive after publication or call restart_workers to prove warm behavior. Its normal exit0 must be retained before helper cleanup. The warm case uses ordinary idle CLI workers until its zero-call observations complete.
+
+The supervisor already bounds all setup/teardown blocking IO by terminating the actual owned runner and retains host-after/partial evidence. These adaptations require no new runtime API and no modification of R2 helper/process/lease behavior.
+
+
+## Exact inspected input hashes
+
+SHA256 at f264, obtained from git show of exact committed bytes:
+
+```
+affd63093ce694b5ed58979352bc23051e7ab0d4ce2e9a81fbb70c8404b85eff scripts/dev/migrate_sql.sh
+746eba57bfffb760e2f779d0d0494125f8b559b07de5ff6ec11099d517bf76dc workers/ingestion-python/tests/lifecycle_support.py
+ec0de35803d56bf185f7bbd8f90bf9c104391ad6e2a85041e11dab9baa0257fb infra/compose/article-lifecycle-test.Dockerfile
+9c1db10bad1d9cb8db3cc7a56c5cc43280e326c013207f1fb351d4928bd39b32 infra/compose/compose.article-lifecycle-test.yaml
+8d783ab4615db4dcc720d15a67db2731c2038c365cbee1df183afc6605de0ef7 workers/ingestion-python/src/autodata_ingestion/article_lifecycle.py
+22087935412e90b17f28e746e46d454d6fb5ff65c22cf61c13c83ae39a151268 workers/ingestion-python/src/autodata_ingestion/article_lifecycle_store.py
+49f26ef87596ac046debeae6bdd53da89a09e1f7f41045919bef061fe69f2b95 scripts/dev/source_connector_fixture_server.py
+307b1c06e45eb93adc0366e5640cd7cef1a58c384e1d7b165f97f570473e4a66 apps/api-go/ingestion_http.go
+```
+
+Verification performed for this planning report: read exact Git objects, compared e401/f264 runner/helper/image bytes (no diff), compared approved R2 runtime/source/model/client bytes (unchanged outside the migrated fixture chain), inspected actual Compose run help and task count/status. No fixture stack, provider/model call, test image build, runtime acceptance test or production operation was executed for this review.
+
+## Dispatch checkpoint status
+
+Migration/discovery integration1d07ce28b5cc4cb7fb95ab41db8c178eff0d3c4d has
+passed809 fixture tests plus32 subtests and actual GitHub run41627289946, including
+live Compose smoke. The reviewed refinements above are now incorporated. R3's
+task record is synchronized for this fresh committed checkpoint; no implementation
+is permitted until exact-base machine preflight passes. The implementation agent
+then owns only the32 listed paths. Earlier blocked status statements record the
+order of planning and do not waive this final gate.

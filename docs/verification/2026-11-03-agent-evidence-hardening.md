@@ -172,3 +172,21 @@ Packaging checkpoint `31d1582d0b805f870e6fa42f9c812f7396d11c82` passed preflight
 The single authorized packaging retry is retained at `/tmp/autodata-appserver-success-x0bqiuyu`, including coordinator-summary.json and all original runtime artifacts. The missing-package warning cleared, but the strict reducer rejected official `remoteControl/status/changed` reporting disabled/null environment immediately after initialize. Only client initialize was written; no model discovery/thread/inference/builder occurred. Orchestration returned20. Runtime certification remains blocked.
 
 The [narrow disabled-notification plan](../superpowers/plans/2026-11-03-runtime-disabled-notification.md) passed independent planning review against pinned source and the actual frame. It adds a dedicated single snapshot transition, not a generic allowlist; all other states/warnings remain blocked. Fresh synchronized implementation gate, three-file implementation, independent exact-SHA review and a separately checkpointed single coordinator retry remain required. No upstream served/billed tier is observed.
+
+## Disabled startup compatibility promotion
+
+Candidate `0da3c88b2e8aeca8b04a37bf3f6c80cab2550f8f` passed independent review
+without findings and is integrated at
+`f4cc249e2ba6619673183a47889558bb5cd087d7`. All scripts/autonomy bytes are
+identical between candidate and integration. The exact candidate passed137
+autonomy tests for builder, reviewer and coordinator (28.362s,28.338s,28.258s).
+The independent reviewer additionally passed44 adversarial checks and verified
+that early-answer and relocated-root attacks still fail. Review evidence is
+`/tmp/autodata-disabled-startup-review/review-state.json`; coordinator log is
+`/tmp/autodata-disabled-startup-independent-0da3c88.log`.
+
+The [separate one-trial record](../superpowers/plans/2026-11-03-runtime-disabled-notification-trial.md)
+is synchronized for a fresh committed-base preflight. It preserves the existing
+supervisor/image/authentication boundary and permits exactly one bounded real
+success-case retry. No new provider invocation has run at this checkpoint.
+Previous failures remain unchanged; runtime/release certification is outstanding.

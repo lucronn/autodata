@@ -210,3 +210,50 @@ is claimed.
 ## Clean CI development discovery follow-up
 
 [Run41625088678](https://github.com/lucronn/autodata/actions/runs/41625088678) at `31d1582d0b805f870e6fa42f9c812f7396d11c82` passed ingestion, then failed development unittest discovery importing `test_backfill_article_lifecycle`: `lifecycle_support` is absent from that command's import path. Actual failure log is `/tmp/autodata-ci-31d1582-failed.log`. The [one-file test discovery plan](../superpowers/plans/2026-11-03-dev-test-discovery.md) preserves all tests and workflow commands; its fresh gate precedes the import-path-only correction, clean Python3.12 reproduction, six real PG backfill cases and independent review. Migration replay remains a separate pending CI prerequisite.
+
+## Migration replay and clean discovery integration
+
+Migration candidate `e401a54342ec0f201728f95cdfc1ea32841d517c` passed independent
+review with no findings and is integrated at
+`f264dae2fb222b7a7c90e4ab79e2b04aa8589ccc`. The nine authorized files are
+byte-identical after integration; all historical SQL001–038 remain unchanged.
+The builder's exact candidate passed 760 ingestion tests plus 25 subtests,
+31 focused migration tests, 123 developer tests plus 9 subtests and 23 utility
+tests, with no skips. Independent review and the coordinator each passed
+54 migration/schema/utility tests plus 7 subtests (26.07s and 25.731s).
+All repository entrypoints applied 38 versions initially and none on repeat.
+Evidence is retained in `/tmp/autodata-migration-builder/final-evidence.json`,
+`/tmp/autodata-migration-review/review-summary.json` and
+`/tmp/autodata-migration-independent-e401a54/verification.json`.
+
+The one-file development discovery candidate
+`c76f7a2afd786052121ed14d5ed51104cecea2c9` passed independent review with no
+findings and is integrated unchanged at
+`1d07ce28b5cc4cb7fb95ab41db8c178eff0d3c4d`. Clean Python 3.12 discovery
+reproduced the base import failure, then passed 90 unittest cases without skips;
+the removed failed-import placeholder explains the former count of 91.
+Both builder and reviewer separately passed all six real PostgreSQL backfill
+cases. Original test bodies, workflow commands and assertions are unchanged.
+Evidence is `/tmp/autodata-dev-discovery-builder-evidence/provenance.json` and
+`/tmp/autodata-dev-discovery-review/review-summary.json`.
+
+Combined integration at `1d07ce28b5cc4cb7fb95ab41db8c178eff0d3c4d` passed
+**809 tests plus 32 subtests in 242.13 seconds**, zero skips/failures/errors.
+The clean candidate retained all ten approved repair files byte-for-byte.
+Evidence is `/tmp/autodata-migration-integrated-1d07ce2/verification.json`;
+the coordinator's private fixture project was removed after evidence retention.
+Two invalid coordinator command preparations (a nonexistent path and an
+unsupported Compose flag) ran no tests; their logs remain separate from the
+successful invocation. No passing result is inferred from those failures.
+
+Actual [GitHub run 41627289946](https://github.com/lucronn/autodata/actions/runs/41627289946)
+**passed** at that integration, including ingestion, development discovery and
+live Compose fast-lane smoke. Full workflow metadata/logs are retained at
+`/tmp/autodata-ci-1d07ce2-result.json` and `/tmp/autodata-ci-1d07ce2-complete.log`.
+This verifies the migration and discovery dependency. R3's independently
+reviewed post-migration binding refinement is synchronized for a fresh committed
+checkpoint and machine preflight. Its32-path scope is unchanged.
+
+The runner prevents future replay damage but cannot repair an already corrupted
+legacy031 constraint; that needs separately reviewed reconciliation. The
+external Kubernetes migration image and production migration remain uncertified.

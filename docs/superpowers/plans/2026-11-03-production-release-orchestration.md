@@ -270,3 +270,19 @@ App-server candidate `f43508beedc4d5ccb1a29ed8e49912d5d6d55a49` is independently
 The current CI also exposes an independent [development test import-path defect](2026-11-03-dev-test-discovery.md) after ingestion passes. Its one-file test-only repair has a separate synchronized checkpoint; workflow/test assertions and the migration writer's ownership are preserved. Both verified repairs must integrate before claiming actual CI success.
 
 The package-only runtime retry cleared the missing dependency and then blocked on the official disabled remote-control startup snapshot before inference. A [separate three-file protocol amendment](2026-11-03-runtime-disabled-notification.md) has passed independent planning review and is being synchronized for its own gate; it preserves exact profile, strict warning rejection and all container restrictions.
+
+## Verified repair dependencies and R3 dispatch checkpoint
+
+The shared migration runner candidate e401a54 and discovery candidate c76f7a2
+are independently approved and integrated at1d07ce2. Combined fixture acceptance
+passed809 tests plus32 subtests with no skips, and actual GitHub run41627289946
+passed including live Compose smoke. The independently reviewed R3 runtime
+refinement now pins supported Compose flags, captured fresh/empty/populated
+replay through038, concrete Go packaging and the actual worker/hook handles.
+R3's32 implementation paths remain unchanged; its synchronized task requires
+this committed checkpoint and a zero-error preflight before dispatch.
+
+Disabled startup amendment0da3c88 is independently approved and integrated
+atf4cc249, with137 exact tests and44 independent adversarial checks. Its separate
+one-trial coordinator record requires this fresh gate and preserves unchanged
+container restrictions/profile settings. Runtime certification remains unverified.
