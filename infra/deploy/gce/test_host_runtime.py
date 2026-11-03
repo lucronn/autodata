@@ -180,6 +180,49 @@ class ContractTests(unittest.TestCase):
         previous['service_config_sha256'] = '0' * 64
         with self.assertRaises(self.rt.ContractError): self.rt.validate_manifest(candidate, self.config, rollback_manifest=previous)
 
+    def test_rollback_images_reject_foreign_registry_and_wrong_role(self):
+        candidate = copy.deepcopy(self.manifest); candidate['rollback_source_sha'] = 'd' * 40
+        for role in ('api', 'ingestion', 'migration'):
+            references = ['attacker.example/autodata/' + role + '@sha256:' + HEX,
+                          'us-central1-docker.pkg.dev/autodata-host/workshop/wrong-role@sha256:' + HEX]
+            for reference in references:
+                previous = copy.deepcopy(self.manifest); previous['source_sha'] = 'd' * 40
+                previous['images'][role]['reference'] = reference
+                with self.subTest(role=role, reference=reference), self.assertRaises(self.rt.ContractError):
+                    self.rt.validate_manifest(candidate, self.config, rollback_manifest=previous)
+
+    def test_rollback_artifacts_require_same_https_authority_checks(self):
+        candidate = copy.deepcopy(self.manifest); candidate['rollback_source_sha'] = 'd' * 40
+        # These digest-pinned locators pass schema syntax but violate _https.
+        locations = ['https://localhost/artifact@sha256:', 'https://127.0.0.1/artifact@sha256:',
+                     'https://-invalid.example/artifact@sha256:', 'https://artifacts.example/a\\b@sha256:']
+        for role in ('api', 'ingestion', 'migration', 'caddy', 'postgres', 'nats', 'minio'):
+            for field in ('provenance_uri', 'sbom_uri'):
+                for location in locations:
+                    previous = copy.deepcopy(self.manifest); previous['source_sha'] = 'd' * 40
+                    previous['images'][role][field] = location + HEX
+                    with self.subTest(role=role, field=field, location=location), self.assertRaises(self.rt.ContractError):
+                        self.rt.validate_manifest(candidate, self.config, rollback_manifest=previous)
+
+    def test_rollback_compatibility_checks_source_config_platform_and_sql(self):
+        candidate = copy.deepcopy(self.manifest); candidate['rollback_source_sha'] = 'd' * 40
+        for field, value in [('source_sha', 'e' * 40), ('service_config_sha256', '0' * 64),
+                             ('platform', 'linux/arm64')]:
+            previous = copy.deepcopy(self.manifest); previous['source_sha'] = 'd' * 40
+            previous[field] = value
+            with self.subTest(field=field), self.assertRaises(self.rt.ContractError):
+                self.rt.validate_manifest(candidate, self.config, rollback_manifest=previous)
+        previous = copy.deepcopy(self.manifest); previous['source_sha'] = 'd' * 40
+        previous['migrations']['runner_sha256'] = '0' * 64
+        with self.assertRaises(self.rt.ContractError):
+            self.rt.validate_manifest(candidate, self.config, rollback_manifest=previous)
+
+    def test_rollback_validation_does_not_require_historical_chain(self):
+        candidate = copy.deepcopy(self.manifest); candidate['rollback_source_sha'] = 'd' * 40
+        previous = copy.deepcopy(self.manifest)
+        previous.update(source_sha='d' * 40, rollback_source_sha='e' * 40)
+        self.assertEqual(self.rt.validate_manifest(candidate, self.config, rollback_manifest=previous), digest(candidate))
+
     def test_render_has_fixed_graph_and_only_caddy_publishes(self):
         bundle = self.rt.render_bundle(self.manifest, self.config)
         compose = json.loads(bundle['compose.production.yaml'])
