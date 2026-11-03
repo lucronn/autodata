@@ -469,6 +469,15 @@ after a job is claimed. Missing configuration/unsafe/unchanged results become
 `needs_review`; transient transport errors use the bounded retry policy. Successful
 result and validation checkpoints are reused on restart.
 
+R2 also owns `source_job_persistence.py` and
+`tests/test_source_job_persistence.py` for recovery accounting after R1 is
+integrated. Before reclaiming an expired lease or sweeping an exhausted job to
+`dead_letter`, mark its dispatched attempt without a persisted result as
+`ambiguous` in the same recovery transaction. Cover a crash on the final allowed
+claim as well as a retryable claim. This recovery path must work after lease
+expiry; it cannot depend on the expired worker's live-lease store operations or
+reset the job's retry budget.
+
 - [ ] Kill a child process after model dispatch before result commit and assert
   an ambiguous attempt record on recovery; kill after result commit and assert
   zero additional model requests. Publish is still disabled until Task 6.
@@ -482,7 +491,7 @@ result and validation checkpoints are reused on restart.
 - Complete `article_lifecycle_store.py` publication and `article_lifecycle.py` orchestration.
 - Consume migration 038's frozen view and constraints from Task 1; do not revise an integrated migration. If testing reveals a schema defect, stop integration, add a new numbered migration through the coordinator and re-pin consumers before continuing.
 - Modify `workers/enrichment-python/src/autodata_enrichment/outbox.py` and `workers/enrichment-python/tests/test_outbox.py`.
-- Modify `packages/contracts/contract.json`, `packages/contracts/python/autodata_contracts/contracts.py`, `packages/contracts/go/contracts.go` and their tests for `catalog.article.published`.
+- Modify `packages/contracts/contract.json`, `scripts/contracts/generate.py`, and `scripts/contracts/test_contracts.py` for the separate `catalog.article.published` envelope. Regenerate `packages/contracts/python/autodata_contracts/contracts.py` and `packages/contracts/go/contracts.go`; extend `packages/contracts/go/contracts_test.go`. Preserve dataset-specific requirements and pass generator-drift checks rather than hand-editing generated bindings alone.
 - Create `packages/contracts/catalog/v1/article-lifecycle.schema.json` with shared state/origin/review enums; R3 extends public response definitions after this interface commit.
 - Create `workers/ingestion-python/tests/test_article_publication.py`.
 
