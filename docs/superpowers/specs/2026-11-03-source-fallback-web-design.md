@@ -503,3 +503,16 @@ the future customer integration contract, does not expand the current35-path
 R5 implementation scope, and requires verified identity/commerce plus its own
 synchronized implementation gate. Existing explicit local R3 fixtures retain
 their previously verified behavior.
+
+
+### Unified paid customer UI planning checkpoint
+
+The canonical `docs/superpowers/plans/2026-11-03-workshop-customer-ui.md`
+replaces the future auth-only R4 dispatch with one33-path customer lane after
+verified identity039, commerce040 and paid-access integration. It preserves the
+original18 browser scenarios and ordered reader/source/media requirements,
+adding Google cookie sessions, server-priced checkout and permanent library.
+Its120 DTO/browser and21 real API/browser cases are distinct evidence.
+Actual production assets, pinned official SDK storage, real settlement/grants
+and source/media access must be verified; no browser redirect or local state
+grants ownership. Task/record remain waiting for dependencies and a fresh gate.

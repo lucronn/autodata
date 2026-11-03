@@ -106,6 +106,7 @@ workers/ingestion-python/Dockerfile
 packages/contracts/python/autodata_contracts/payment.py
 scripts/dev/reconcile_payments.py
 scripts/dev/payment_reconciliation_smoke.py
+scripts/dev/production_access_smoke.py
 scripts/dev/migrate_sql.sh
 scripts/dev/test_migrations.py
 scripts/dev/test_api_runtime.py
@@ -118,7 +119,7 @@ docs/operations/migration-runner.md
 docs/architecture/workshop-interface.md
 ```
 
-38 paths. Pin `stripe==16.1.0` in pyproject.toml; official PyPI metadata reports non-yanked, Python>=3.9, compatible with the existing Python3.14 images. Verified wheel `stripe-16.1.0-py3-none-any.whl` SHA256 `3798e07a0603c8923710414cd1942ae847ed43cebbf34c3258417c189711ea70`; metadata/wheel API evidence retained in `/tmp/autodata-workshop-stripe-sdk-evidence.json`. Public metadata source https://pypi.org/pypi/stripe/16.1.0/json ; official project https://github.com/stripe/stripe-python . No package installation or merchant call was performed.
+39 paths. Pin `stripe==16.1.0` in pyproject.toml; official PyPI metadata reports non-yanked, Python>=3.9, compatible with the existing Python3.14 images. Verified wheel `stripe-16.1.0-py3-none-any.whl` SHA256 `3798e07a0603c8923710414cd1942ae847ed43cebbf34c3258417c189711ea70`; metadata/wheel API evidence retained in `/tmp/autodata-workshop-stripe-sdk-evidence.json`. Public metadata source https://pypi.org/pypi/stripe/16.1.0/json ; official project https://github.com/stripe/stripe-python . No package installation or merchant call was performed.
 
 Production `workers/ingestion-python/Dockerfile` currently ignores the copied pyproject for dependency installation and hardcodes a package list lacking Stripe. Replace only that dependency-install step with the same Python tomllib project.dependencies-driven pip install approach already used by the fixture image. Both images must therefore install the same exact stripe16.1.0 pin; keep production source/script copies/runtime unchanged. No interactive deployment install or new image/service; no fixture Dockerfile/support-file rewrite.
 
@@ -177,7 +178,7 @@ Use real PostgreSQL transactions/pools and actual threaded private/public HTTP w
 
 ## Verification and delivery checkpoints
 
-- [ ] Freeze product/order/terms/route/error/datatype/financial transition contracts, SDK pin, exact38 paths, migration040 and dependency on verified039. Independently review, synchronize Issue186/Project8/canonical docs/task; commit/re-pin and require machine preflight before code.
+- [ ] Freeze product/order/terms/route/error/datatype/financial transition contracts, SDK pin, exact39 paths, migration040 and dependency on verified039. Independently review, synchronize Issue186/Project8/canonical docs/task; commit/re-pin and require machine preflight before code.
 - [ ] Add failing injected-SDK adapter and private/public HTTP tests: raw signature bytes unchanged, no customer/header price authority, mandatory internal auth, owner-only library/status, CSRF/origin, bounded bodies/timeouts, safe ignored types/errors, price/mode/account/session/owner conflicts. Implement authority/service routes and public Go delegation until passing.
 - [ ] Real PostgreSQL no-skip tests under existing lifecycle fixture:40 bootstrap/039 upgrade/replay/rollback; concurrent same/different client keys and account-scope lock/unique guards; lost provider response/key retention boundary; old session completion vs expiry/replacement; webhook before create response; duplicate/distinct/out-of-order events; full refund/chargeback before/after settlement; two-customer isolation; grant persists through content unavailability/restart and no extra provider create after ownership; strict active-grant check for adjacent and legacy-unscoped access. Stripe network is an injected official-client/local-transport seam; no live charge.
 - [ ] Collector `python scripts/dev/workshop_commerce_smoke.py --mode fixture --candidate-sha <exact40hex> --output /artifacts/workshop-commerce.json` runs developer migration checks plus test_article_lifecycle_migrations.py and test_commerce_postgres.py in required fixture mode. Require measured040, explicit exact test inventory/nonzero count/zero skips and candidate/input/host/runner provenance under the reviewed R3-owned fixture/supervisor protocol; require the exact fourteen commerce IDs below plus the complete separately enumerated migration module inventory, not an arbitrary “tests passed” string. Preserve five identity PG cases and eight R3 content regressions with040-aware validators separately. Go tests and Python unit/contracts/runtime/manifest checks plus diff --check; no narrowed assertion or ignored skipped DB test substitutes.
@@ -193,3 +194,31 @@ Original independently reviewed draft SHA256: `3a4be1766016e25979248b090590f3488
 ## Canonical incorporation
 
 Independent review approved draft766c2ba715189eda19cb5e5e5565985e26564297d30685da0c969ea3d03e8776 after resolving both production packaging and canonical preparation blockers. Review a6cb1030ba4324a2bd834b13b48f31e0187665531c98ac4d57166e2ecd2f9615 is retained at /tmp/autodata-workshop-commerce-plan-review.md; the original failed planning review remains preserved. This canonical copy adds tracking and incorporation metadata only. Before dispatch, reinspect verified039 identity interfaces and commit the synchronized task/Issue/Project checkpoint with passing machine preflight.
+
+
+## Verified identity interface amendment before dispatch
+
+Read-only inspection of actual R5 successor
+`b4f3dc86a18a8087f8ff664e37bec594909eae80` found compatible customer account,
+session Principal, CSRF and HTTP DTO interfaces. One current-head verification
+dependency requires an explicit39th implementation path:
+`scripts/dev/production_access_smoke.py`. Its committed039 collector otherwise
+rejects the new040 database created by its unchanged real-PG bridge. Update
+the measured current manifest/head to exact001–040, change only the current-head
+assertion name to fresh_migration_head_040 and result migration_head to
+040_workshop_commerce. Preserve the separate historical038 startup-refusal
+database/ledger, all five exact identity Go scenarios, nine assertion positions,
+eight raw files, safe row allowlists and required no-skip/provenance checks.
+The pure collector tests derive key sets from collector constants and need no
+additional path; inspect after implementation rather than assuming a pass.
+
+The coordinator must create independently reviewed040 successor supervisors
+for identity and R3 regressions; retain original039 supervisors and receipts
+unchanged. R3's current migration replay/schema/row inventory must include the
+new040 commerce tables without reducing any earlier scenario/measurement.
+No identity implementation or historical039 SQL changes are authorized by this
+amendment. Actual039 runtime acceptance and integration still precede the
+commerce gate. The earlier38-path planning review is retained as historical
+evidence; this explicit amendment requires review before dispatch.
+
+Independent review approved the bounded39th-path amendment: `/tmp/autodata-commerce-039-interface-amendment-review.md`, SHA256 `14105d71e52e14855cd60482254f56408810699ad6ae148c87fcf7607eca1431`. It found no additional identity implementation/test path necessary.

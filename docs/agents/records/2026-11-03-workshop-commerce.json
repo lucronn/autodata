@@ -9,10 +9,11 @@
     "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
   ],
   "todo": [
-    "Verify integrated R5 identity039, reinspect exact interfaces, synchronize Issue/Project and canonical38-path task, commit and pass exact-base preflight before implementation.",
+    "Verify integrated R5 identity039, reinspect exact interfaces, synchronize Issue/Project and canonical39-path task, commit and pass exact-base preflight before implementation.",
     "Implement authoritative Python commerce and Go session/CSRF delegation, Stripe16.1.0 official SDK, fixed merchant/mode/price and private authentication.",
     "Add040 orders/idempotency and structured permanent grants; prove races/expiry/settlement/revocation through all14 required real-PG cases.",
     "Advance durable paid-order canonical index intents through existing reconciler; preserve ownership during outages and defer article bodies to later grant-checked reads.",
+    "Advance the identity collector current-head contract to040 while retaining all five identity scenarios,038 startup refusal and immutable039 evidence; independently review040 regression supervisors.",
     "Verify real production-image Stripe installation, unit/API/contracts/migrations and required commerce/identity/R3 runtime regressions; independent exact-candidate review and actual CI."
   ],
   "status": "waiting_verified_dependency",
