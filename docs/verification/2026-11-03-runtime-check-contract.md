@@ -45,3 +45,26 @@ cache cleanliness checks, Docker tmpfs inspection, and verbose-log parsing
 failed before this fresh acceptance. They are not relabeled as passing.
 Further live synthetic provider trials remain deferred while product work
 targets the paid Workshop launch.
+
+
+## Shallow GitHub checkout successor
+
+Actual runs41689471428/41688178571 exposed two historical git-show dependencies
+in the prompt tests despite full-clone offline success. Candidate
+`d0a8aceffa41fe46ea0265ad036933ab1cf992b8`, gated at6d9f2f59 and integrated
+`1b53dc3e22e195cc996588d8fbb20ffd73758238`, changes only test_runner.py:
+read the actual complete prompt bytes after asserting the independently frozen
+5da393 SHA256, then decode strict UTF-8. All semantic assertions are unchanged.
+
+Author146 tests passed with no skips; original depth-one red remains retained;
+fresh exact-candidate depth-one focused2 passed while5da393 remained absent.
+Root independently checked diff/scope/AST and frozen-byte equality, reran both
+focused cases in full/shallow clones and rejected three changed-byte cases.
+Independent report: /tmp/autodata-runtime-shallow-root-review.md.
+Evidence: /tmp/autodata-runtime-shallow-repair-ug1erqt4.
+
+Actual CI41691331286 passed runtime, Go, contracts and worker tests, then failed
+an unrelated exact-spacing developer assertion; that one-line repair22db145
+has separate synchronized gate,98 development passes, Go privacy checks and
+independent review. Full CI41692463236 is pending. Earlier failed CI/runtime
+evidence is retained; no live-provider or release certification is claimed.

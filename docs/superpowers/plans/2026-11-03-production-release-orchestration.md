@@ -344,3 +344,16 @@ read back; commit and exact-base preflight are required before dispatch.
 Google Cloud project/domain/IAM configuration is separate from deterministic
 implementation. Checkout/permanent grants, paid source/media enforcement,
 customer commerce UI and deployment remain separately gated remaining work.
+
+
+### Commerce and hosting planning handoff
+
+The canonical workshop-commerce plan passed independent review after two
+corrections: production installs the pinned official Stripe SDK from the same
+dependency manifest, and paid orders carry a durable shared catalog-index intent
+consumed by the existing reconciler. Its38-path task/fourteen real-PG cases remain
+waiting for verified R5/039 and a fresh gate. Permanent ownership is independent
+of source/model readiness; paid article preparation and media access are later
+protected operations. The hosting proposal documents GCE/Cloudflare persistence,
+backup/restore and cutover; project/cost/recovery decisions and deployment
+configuration remain pending. Neither plan is a deployment or live-charge gate.

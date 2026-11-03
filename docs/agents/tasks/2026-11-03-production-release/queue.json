@@ -145,11 +145,23 @@
         "r3-fallback-api",
         "r4-workshop",
         "r5-access",
-        "r6-evidence-adapter"
+        "r6-evidence-adapter",
+        "workshop-commerce"
       ],
       "state": "waiting_dependencies",
       "release_state": "unverified",
       "needs_scope_refinement": true
+    },
+    {
+      "id": "workshop-commerce",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-commerce.json",
+      "depends_on": [
+        "r5-access"
+      ],
+      "state": "waiting_dependencies",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "dispatch_prerequisite": "Reviewed38-path plan; verified identity039 integration, actual tracking sync and fresh exact-base preflight required. Paid source/media enforcement and UI remain separate later tasks."
     }
   ],
   "execution": {
@@ -321,19 +333,19 @@
     {
       "id": "r0-runtime-check-contract",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-runtime-check-contract.json",
-      "state": "ready",
+      "state": "verified",
       "depends_on": [
         "r0-runtime-disabled-notification"
       ],
       "dispatch_mode": "coordinator_direct",
       "release_state": "unverified",
       "needs_scope_refinement": false,
-      "dispatch_prerequisite": "Fresh clarified checkpoint/preflight for test-only shallow-checkout repair; frozen prompt bytes and all assertions preserved. Prior offline146/all8 pass does not erase actual CI failure.",
+      "dispatch_prerequisite": "Exact one-file shallow successor independently approved,146 tests and realCI runtime passed. Later field-spacing developer failure separately repaired22db145; fullCI pending. No provider retry.",
       "verification_ref": "docs/verification/2026-11-03-runtime-check-contract.md",
-      "verified_candidate_sha": "6992bd08f6e20013288947d893f9b00745d45d7f",
-      "integrated_sha": "91c8e85230875deb3b06cd14204eaa94737d94e7",
-      "ci_status": "failure",
-      "ci_run": "https://github.com/lucronn/autodata/actions/runs/41689471428"
+      "verified_candidate_sha": "d0a8aceffa41fe46ea0265ad036933ab1cf992b8",
+      "integrated_sha": "1b53dc3e22e195cc996588d8fbb20ffd73758238",
+      "ci_status": "runtime_passed_unrelated_dev_failure",
+      "ci_run": "https://github.com/lucronn/autodata/actions/runs/41691331286"
     }
   ]
 }

@@ -1,0 +1,20 @@
+{
+  "goal": "Deliver authoritative one-time USD20 configuration+region Stripe Checkout, permanent customer grants and My vehicles library with durable canonical index preparation.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-commerce.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-commerce.md",
+    "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "Verify integrated R5 identity039, reinspect exact interfaces, synchronize Issue/Project and canonical38-path task, commit and pass exact-base preflight before implementation.",
+    "Implement authoritative Python commerce and Go session/CSRF delegation, Stripe16.1.0 official SDK, fixed merchant/mode/price and private authentication.",
+    "Add040 orders/idempotency and structured permanent grants; prove races/expiry/settlement/revocation through all14 required real-PG cases.",
+    "Advance durable paid-order canonical index intents through existing reconciler; preserve ownership during outages and defer article bodies to later grant-checked reads.",
+    "Verify real production-image Stripe installation, unit/API/contracts/migrations and required commerce/identity/R3 runtime regressions; independent exact-candidate review and actual CI."
+  ],
+  "status": "waiting_verified_dependency",
+  "updated_at": "2026-11-03T18:18:57.798101+00:00"
+}

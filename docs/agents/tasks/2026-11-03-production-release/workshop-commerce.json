@@ -1,0 +1,119 @@
+{
+  "task_id": "production-release-workshop-commerce",
+  "repository": "lucronn/autodata",
+  "goal": "Deliver authoritative one-time USD20 configuration+region Stripe Checkout, permanent customer grants and My vehicles library with durable canonical index preparation.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "apps/api-go/commerce.go",
+    "apps/api-go/commerce_http.go",
+    "apps/api-go/commerce_http_test.go",
+    "apps/api-go/commerce_client.go",
+    "apps/api-go/commerce_client_test.go",
+    "workers/ingestion-python/src/autodata_ingestion/commerce_service.py",
+    "workers/ingestion-python/tests/test_commerce_service.py",
+    "workers/ingestion-python/tests/test_commerce_postgres.py",
+    "db/migrations/040_workshop_commerce.sql",
+    "scripts/dev/workshop_commerce_smoke.py",
+    "scripts/dev/test_workshop_commerce_smoke.py",
+    "docs/verification/workshop-commerce-runbook.md",
+    "apps/api-go/main.go",
+    "apps/api-go/openapi.json",
+    "apps/api-go/openapi.yaml",
+    "workers/ingestion-python/src/autodata_ingestion/http_service.py",
+    "workers/ingestion-python/src/autodata_ingestion/stripe_adapter.py",
+    "workers/ingestion-python/src/autodata_ingestion/payment_reconciliation.py",
+    "workers/ingestion-python/tests/test_http_service.py",
+    "workers/ingestion-python/tests/test_stripe_adapter.py",
+    "workers/ingestion-python/tests/test_payment_reconciliation.py",
+    "workers/ingestion-python/tests/test_article_lifecycle_migrations.py",
+    "workers/ingestion-python/tests/test_catalog_api_integration.py",
+    "workers/ingestion-python/pyproject.toml",
+    "workers/ingestion-python/Dockerfile",
+    "packages/contracts/python/autodata_contracts/payment.py",
+    "scripts/dev/reconcile_payments.py",
+    "scripts/dev/payment_reconciliation_smoke.py",
+    "scripts/dev/migrate_sql.sh",
+    "scripts/dev/test_migrations.py",
+    "scripts/dev/test_api_runtime.py",
+    "scripts/dev/test_k8s_manifests.py",
+    "infra/compose/compose.yaml",
+    "infra/compose/compose.ci.yaml",
+    "docker-compose.base44.yml",
+    "infra/k8s/base.yaml",
+    "docs/operations/migration-runner.md",
+    "docs/architecture/workshop-interface.md"
+  ],
+  "bounded_contexts": [
+    "customer orders and payment settlement",
+    "permanent scoped grants and library",
+    "canonical index preparation after settlement"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-commerce.md",
+    "docs/architecture/workshop-commerce.md",
+    "docs/superpowers/plans/2026-11-03-workshop-firebase-identity.md"
+  ],
+  "outputs": [
+    "workers/ingestion-python/src/autodata_ingestion/commerce_service.py",
+    "apps/api-go/commerce_http.go",
+    "db/migrations/040_workshop_commerce.sql"
+  ],
+  "acceptance_tests": [
+    "Implement authoritative Python commerce and Go session/CSRF delegation, Stripe16.1.0 official SDK, fixed merchant/mode/price and private authentication.",
+    "Add040 orders/idempotency and structured permanent grants; prove races/expiry/settlement/revocation through all14 required real-PG cases.",
+    "Advance durable paid-order canonical index intents through existing reconciler; preserve ownership during outages and defer article bodies to later grant-checked reads.",
+    "Verify real production-image Stripe installation, unit/API/contracts/migrations and required commerce/identity/R3 runtime regressions; independent exact-candidate review and actual CI."
+  ],
+  "required_postgres_tests": [
+    "test_orders_create_and_owner_scope",
+    "test_same_key_replay_and_conflict",
+    "test_concurrent_keys_share_one_checkout",
+    "test_scope_races_single_active_grant",
+    "test_lost_create_response_and_retention_boundary",
+    "test_expiry_requires_remote_nonchargeable_proof",
+    "test_completion_races_expiry_without_recharge",
+    "test_webhook_before_create_response",
+    "test_settlement_binds_financial_owner_scope",
+    "test_duplicate_and_distinct_events_grant_once",
+    "test_refund_chargeback_ordering_and_monotonic_revocation",
+    "test_payment_survives_source_unavailable_and_restart",
+    "test_library_is_owner_only_and_paginated",
+    "test_grant_check_exact_scope_legacy_and_revoked"
+  ],
+  "forbidden_scope": [
+    "Live charging, cloud provisioning, DNS or deployment from this implementation gate",
+    "Editing historical SQL001\u2013039 or adding another payment authority/ledger",
+    "Catalog/media entitlement enforcement or customer UI implementation (separate dependent lanes)",
+    "Provider-controlled or browser-supplied ownership/price/status; fake Stripe production fallback",
+    "Files outside the38-path list; changing Sol6.1/medium/Fast or fallback"
+  ],
+  "pre_implementation": {
+    "goal": "Deliver authoritative one-time USD20 configuration+region Stripe Checkout, permanent customer grants and My vehicles library with durable canonical index preparation.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-commerce.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/architecture/workshop-commerce.md",
+      "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Verify integrated R5 identity039, reinspect exact interfaces, synchronize Issue/Project and canonical38-path task, commit and pass exact-base preflight before implementation.",
+      "Implement authoritative Python commerce and Go session/CSRF delegation, Stripe16.1.0 official SDK, fixed merchant/mode/price and private authentication.",
+      "Add040 orders/idempotency and structured permanent grants; prove races/expiry/settlement/revocation through all14 required real-PG cases.",
+      "Advance durable paid-order canonical index intents through existing reconciler; preserve ownership during outages and defer article bodies to later grant-checked reads.",
+      "Verify real production-image Stripe installation, unit/API/contracts/migrations and required commerce/identity/R3 runtime regressions; independent exact-candidate review and actual CI."
+    ],
+    "status": "waiting_verified_dependency",
+    "updated_at": "2026-11-03T18:18:57.798101+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}
