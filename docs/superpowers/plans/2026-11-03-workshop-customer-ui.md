@@ -30,7 +30,7 @@ After a valid session, one observational exact-scope article-list request may es
 
 The quote/purchase panel shows the complete selected vehicle configuration, region, one-time price and an unchecked agreement checkbox linked to the actual published terms/refund/privacy/contact configuration. Primary action before sign-in is Sign in with Google; after sign-in and confirmed missing grant it is Buy for $20 USD. Already owned opens without payment. Revoked does not offer automatic repurchase/restoration. Payment unavailability, unknown quote or incomplete merchant terms disables buying while browsing remains usable. Customer copy explains account ownership with no renewal, subject to published terms and source availability, without promising offline export/all future content or an immutable snapshot.
 
-My vehicles loads owner-only `/v1/workshop/library`, default20/max50 using server cursor and Load more. Do not infer owner/account from email, URL, public IDs or Firebase claims. Show paid→Owned, ready to open; preparing→Preparing articles; viewable→Open articles; revoked→Access revoked and configured contact. Paid/preparing can be opened and retry content without checkout. Source unavailability does not change payment ownership or offer another charge. No invented completion percentage. Empty state links Browse; library dependency failure preserves no stale protected article body and provides explicit Retry. Cursor pages cannot overwrite a newer account/selection generation.
+My vehicles loads owner-only `/v1/workshop/library`, default20/max50 using server cursor and Load more. Do not infer owner/account from email, URL, public IDs or Firebase claims. Show paid→Owned, ready to open; preparing→Preparing articles; viewable→Open articles; revoked→Access revoked and configured contact. Paid/preparing can be opened and retry content without checkout. Source unavailability does not change payment ownership or offer another charge. No invented completion percentage. Empty state links Browse; library dependency failure preserves no stale protected article body and provides explicit Retry. Cursor pages cannot overwrite a newer account/selection generation. Required `next_cursor` is nullable string: null and an empty string both end pagination; a nonempty cursor is opaque and forwarded unchanged with URL encoding. Missing, wrongly typed or excessively long cursors are malformed. An unloaded page is not evidence that a purchase is absent.
 
 ### Checkout and return
 
@@ -38,7 +38,7 @@ My vehicles loads owner-only `/v1/workshop/library`, default20/max50 using serve
 
 Handle checkout discriminant checkout/processing/owned exactly as the integrated backend: hosted checkout URL only in checkout; processing enters order status; owned opens the server library scope with no payment. Validate hosted URL is HTTPS, no username/password or explicit port, no whitespace/control characters, and exact hostname checkout.stripe.com with a nonempty supported `/c/pay/` path. Preserve the exact provider-returned opaque fragment; official Checkout Session URLs use it. No custom/untrusted return URL or Stripe.js; navigate the top-level page to the server-returned hosted URL. A future provider-host change requires a deliberate reviewed allowlist amendment.
 
-Fixed success/cancel destinations use the validated server public origin: production cars.tk or the explicit HTTPS staging origin. Both return to `/workshop/?order=<stored-order-UUID>`. Browser consumes only the opaque UUID `order` return parameter; a `success=true`, session ID, status string or mismatched URL configuration never grants access. Fetch owner-only `/v1/workshop/orders/{order_id}`; unknown/other owner404 clears attempt and shows a safe unavailable-order state. Creating/open/processing/reconciliation-required stay pending with safe server disposition. Paid financial state prompts a fresh library/exact-scope authorized read; only an actual server grant permits content. Canceled/expired permits a deliberate server-controlled next action, never automatic charge. Revoked clears protected data. Returning from Cancel does not assume payment failed: check owner order because settlement may race navigation. Allow return resolution after sign-in without replaying a checkout POST.
+Fixed success/cancel destinations use the validated server public origin: production cars.tk or the explicit HTTPS staging origin. Both return to `/workshop/?order=<stored-order-UUID>`. Browser consumes only the opaque UUID `order` return parameter; a `success=true`, session ID, status string or mismatched URL configuration never grants access. Fetch owner-only `/v1/workshop/orders/{order_id}`; unknown/other owner404 clears attempt and shows a safe unavailable-order state. The version-v1 order status is HTTP200. Literal states `expired` and `canceled` require `retry_disposition: new_key`; `creating`, `open`, `processing`, `paid`, `reconciliation_required` and `revoked` require `do_not_repay`. Creating/open/processing/reconciliation_required remain unresolved. Do not conflate this DTO with checkout’s state-specific200/201/202 response, or quote `purchase_terms_version` with checkout `terms_version`. Paid financial state prompts a fresh library/exact-scope authorized read; only an actual server grant permits content. Canceled/expired permits a deliberate server-controlled next action, never automatic charge. Revoked clears protected data. Returning from Cancel does not assume payment failed: check owner order because settlement may race navigation. Allow return resolution after sign-in without replaying a checkout POST.
 
 Order polling is sequential,120s absolute budget, delays1/2/4/8/10s (then10s), each request<=10s and remaining time, honor longer Retry-After within budget. Stop on terminal/owner denial/logout/selection change or exhausted budget; show Check payment status manually. Only transient transport or retryable429/503 retries, no overlapping fetch or new-charge loop. Rendering and financial status remain separate from article preparation.
 
@@ -82,20 +82,13 @@ Use build-only package directory apps/api-go/workshop-client/ outside the embedd
 
 Public purchase-config.json is owner/deployment configuration: enabled false until real terms/privacy/refund/contact HTTPS URLs, matching terms_version and published tax notice are supplied/approved. Initial unavailable values are null and cannot enable Buy; do not fabricate legal identities/policies/URLs. Validate configured links (HTTPS, no credentials/javascript) from trusted deployed config only, never query parameters. Fixture config uses clearly synthetic local policy pages and is never shipped as enabled merchant content. Same quote stays server-authoritative. Coordinator/hosting owner must supply these real values before live acceptance; UI code does not create policy text.
 
-Create these21 paths:
+Create these13 paths:
 
 ```text
 apps/api-go/workshop/auth.mjs
 apps/api-go/workshop/commerce.mjs
 apps/api-go/workshop/article-read.mjs
-apps/api-go/workshop/firebase-web.mjs
-apps/api-go/workshop/firebase-web.mjs.LEGAL.txt
-apps/api-go/workshop/firebase-web.provenance.json
 apps/api-go/workshop/purchase-config.json
-apps/api-go/workshop-client/package.json
-apps/api-go/workshop-client/package-lock.json
-apps/api-go/workshop-client/build.mjs
-apps/api-go/workshop-client/firebase-entry.mjs
 apps/api-go/workshop_browser_fixture_test.go
 scripts/dev/workshop_browser_smoke.py
 scripts/dev/test_workshop_browser_smoke.py
@@ -105,12 +98,11 @@ scripts/dev/fixtures/workshop_customer/firebase_transport.js
 scripts/dev/fixtures/workshop_customer/stripe_checkout.html
 scripts/dev/fixtures/workshop_customer/hostile_source.json
 workers/ingestion-python/tests/test_workshop_browser_integration.py
-docs/verification/workshop-customer-ui-runbook.md
 ```
 
-Freeze this manifest as21 creates +12 modifies =33 paths.
+The manifest now contains13 creates +20 existing paths =33 paths. The ten Firebase packaging paths are already delivered; consume them and preserve their verified bytes unless an actual integration change requires rebuilding and verification.
 
-Modify these12 paths (including existing .gitignore):
+Use or modify these20 existing paths (including .gitignore):
 
 ```text
 apps/api-go/workshop/index.html
@@ -125,6 +117,14 @@ infra/compose/article-lifecycle-test.Dockerfile
 .gitignore
 docs/architecture/workshop-interface.md
 docs/architecture/workshop-loading-progress.md
+apps/api-go/workshop/firebase-web.mjs
+apps/api-go/workshop/firebase-web.mjs.LEGAL.txt
+apps/api-go/workshop/firebase-web.provenance.json
+apps/api-go/workshop-client/package.json
+apps/api-go/workshop-client/package-lock.json
+apps/api-go/workshop-client/build.mjs
+apps/api-go/workshop-client/firebase-entry.mjs
+docs/verification/workshop-customer-ui-runbook.md
 ```
 
 Ignore only workshop-client/node_modules (not generated tracked artifacts); package/install never writes node_modules inside the embedded assets. auth.mjs owns official SDK/session lifecycle, commerce.mjs quote/checkout/order/library, article-read.mjs bounded reader coordinator, existing app.mjs navigation/rendering. Browser transport fixtures are test inputs, never app runtime switches. No main.go/OpenAPI/auth/payment/catalog/SQL/Compose service changes, production Dockerfile or autonomy/supervisor edit. Coordinator canonical plan/spec/task/tracking amendments are separate checkpoint work.
