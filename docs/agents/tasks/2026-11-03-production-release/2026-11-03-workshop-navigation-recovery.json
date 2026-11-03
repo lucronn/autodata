@@ -1,0 +1,68 @@
+{
+  "task_id": "production-release-workshop-navigation-recovery",
+  "repository": "lucronn/autodata",
+  "goal": "Prevent stale source-review failures from changing a newer selection and restore the requested Workshop library, article or order route after successful Google sign-in.",
+  "builder_agent": "coordinator-authorized-workshop-ui-builder",
+  "source_integration_base_sha": "3578d981942092ecc738a3ea7bc1776cefddd9b6",
+  "planning_status": "synchronized",
+  "allowed_paths": [
+    "apps/api-go/workshop/app.mjs",
+    "apps/api-go/workshop-client.test.mjs"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-navigation-recovery.md",
+    "docs/architecture/workshop-navigation-recovery.md",
+    "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md"
+  ],
+  "outputs": [
+    "apps/api-go/workshop/app.mjs",
+    "apps/api-go/workshop-client.test.mjs"
+  ],
+  "acceptance_tests": [
+    "Original source-review-load listener with delayed A rejection after new B generation leaves B status/content/generation unchanged for AbortError and401/403/410; current A denial retains clearing behavior.",
+    "Actual signIn plus restoreRoute dispatch library over prior scope, saved article ID over index-only navigation, order over other query state; canceled/failed login neither restores nor replays checkout.",
+    "All existing29 Workshop Node tests plus new regressions pass; syntax/scope/diff clean; independent exact-candidate review.",
+    "Coordinator retains unchanged40 DTO scenarios x3 engines and7 real-API cases x3 engines, dependencies, collector/receipt requirements and previous failed evidence; no certification before actual integrated acceptance."
+  ],
+  "forbidden_scope": [
+    "No browser fixture/collector/manifest/inventory, frozen supervisor, image or dependency changes; browser response-loss gate retains its separate two-file ownership.",
+    "No Go/API, identity/session/CSRF authority, checkout/idempotency/commerce, source/media rights, worker, SQL or hosting change.",
+    "No new route, provider call, checkout POST, automatic purchase or login popup loop during route restoration.",
+    "No cloud/provider/credential/DNS or production operation; no implementation until synchronized committed checkpoint and exact-base preflight."
+  ],
+  "pre_implementation": {
+    "goal": "Prevent stale source-review failures from changing a newer selection and restore the requested Workshop library, article or order route after successful Google sign-in.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-navigation-recovery.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/architecture/workshop-navigation-recovery.md",
+      "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md"
+    ],
+    "todo": [
+      "Synchronize Issue186/Project8, this plan, canonical navigation-recovery document and task record; commit the checkpoint, pass exact-base preflight and obtain coordinator approval before implementation.",
+      "Add failing regressions executing the real source-load click closure after navigation A to B; capture the original generation so stale abort/auth/rights errors cannot change B, while current-generation denials still clear protected state.",
+      "Add failing regressions executing the real signIn and restoreRoute functions; resume library, saved article and order routes after successful sign-in without checkout replay, and retain canceled/failed-sign-in behavior.",
+      "Run all Workshop Node tests, JavaScript syntax and scope/diff checks; commit/push two coherent validated milestones and obtain independent exact-candidate review.",
+      "Coordinator integrates the reviewed UI fix separately from browser response-loss repair, then reruns unchanged120 DTO and21 real-API browser inventories at one immutable integrated SHA with frozen acceptance inputs and independently inspected receipts."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T22:15:00.102768+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  },
+  "required_dto_cases": 120,
+  "required_real_api_cases": 21,
+  "coordination": {
+    "browser_response_loss_task_ref": "docs/agents/tasks/2026-11-03-production-release/2026-11-03-workshop-browser-client-response-loss.json",
+    "implementation_paths_disjoint": true,
+    "final_acceptance_owner": "coordinator"
+  }
+}
