@@ -1,0 +1,88 @@
+{
+  "task_id": "production-release-r1-connectors",
+  "repository": "lucronn/autodata",
+  "goal": "Make both banks independently correct with provider-bound identities, complete-detail validation and durable generic jobs.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "workers/ingestion-python/src/autodata_ingestion/source_connector_client.py",
+    "workers/ingestion-python/src/autodata_ingestion/catalog_service.py",
+    "workers/ingestion-python/src/autodata_ingestion/source_adapters.py",
+    "workers/ingestion-python/src/autodata_ingestion/procedure_images.py",
+    "workers/ingestion-python/src/autodata_ingestion/bankone_job_persistence.py",
+    "workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py",
+    "workers/ingestion-python/src/autodata_ingestion/worker.py",
+    "workers/ingestion-python/tests/**",
+    "db/migrations/**",
+    "docs/architecture/independent-bank-connectors.md",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle_types.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle_store.py",
+    "workers/ingestion-python/src/autodata_ingestion/source_article_capture.py",
+    "workers/ingestion-python/src/autodata_ingestion/catalog_coverage.py",
+    "infra/compose/compose.article-lifecycle-test.yaml",
+    "infra/compose/article-lifecycle-test.Dockerfile",
+    "scripts/dev/test_migrations.py",
+    "scripts/dev/source_connector_fixture_server.py"
+  ],
+  "bounded_contexts": [
+    "source connectors",
+    "article identity",
+    "durable jobs"
+  ],
+  "inputs": [
+    "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/superpowers/plans/2026-11-03-canonical-article-lifecycle.md",
+    "docs/superpowers/specs/2026-11-03-canonical-article-lifecycle-design.md"
+  ],
+  "outputs": [
+    "workers/ingestion-python/src/autodata_ingestion/source_connector_client.py"
+  ],
+  "acceptance_tests": [
+    "Real adapters accept scoped HTML/text/JSON details from each bank without requiring repeated vehicle fields.",
+    "Equal opaque IDs and bare asset references from distinct banks cannot cross provider boundaries.",
+    "Title-only/partial fallback never enters a permanent complete cache.",
+    "Catalog union records per-bank coverage and preserves healthy rows if one bank fails.",
+    "PostgreSQL tests prove provider-separated job claims and legacy-state preservation."
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Make both banks independently correct with provider-bound identities, complete-detail validation and durable generic jobs.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-canonical-article-lifecycle.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Real adapters accept scoped HTML/text/JSON details from each bank without requiring repeated vehicle fields.",
+      "Equal opaque IDs and bare asset references from distinct banks cannot cross provider boundaries.",
+      "Title-only/partial fallback never enters a permanent complete cache.",
+      "Catalog union records per-bank coverage and preserves healthy rows if one bank fails.",
+      "PostgreSQL tests prove provider-separated job claims and legacy-state preservation."
+    ],
+    "status": "blocked",
+    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

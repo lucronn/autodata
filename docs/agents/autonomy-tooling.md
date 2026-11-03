@@ -68,3 +68,56 @@ The chain is fail-closed. Architect output must contain a complete task contract
 ## Release transition
 
 [`release_controller.py`](../../scripts/autonomy/release_controller.py) validates a complete manifest against the policy and produces an exact-SHA GitHub PR/Project/merge plan. It is read-only by default. The separate `--execute` path requires `AUTODATA_RELEASE_AUTOMATION=enabled`, a known PR number, a checked-out `HEAD` equal to the verified implementation SHA, and an isolated release-job identity. It executes structured GitHub CLI arguments only; it does not use a shell, force-push, deploy production, or rewrite published data.
+
+
+## Dual-bank release campaign (2026-11-03)
+
+The current campaign is defined by the
+[release design](../superpowers/specs/2026-11-03-production-release-orchestration-design.md)
+and [delivery plan](../superpowers/plans/2026-11-03-production-release-orchestration.md).
+Its machine queue is
+[`tasks/2026-11-03-production-release/queue.json`](tasks/2026-11-03-production-release/queue.json).
+It reuses the existing registry and coordinator; the queue is a dispatch index,
+not a second architectural contract or an automatically running scheduler.
+
+The user requires `gpt-6.1-sol`, medium reasoning and Fast mode for every agent
+after planning. Each task records the same execution profile. The local CLI
+binding must pass the model, reasoning and service tier explicitly because it
+uses `--ignore-user-config`. R0 adds and verifies that enforcement. The legacy
+runner does not yet consume the new execution-profile field; setting the field
+alone is not evidence that a provider ran with it. In the current host's
+collaboration tools, GPT-6.1 Sol advertises the priority tier corresponding to
+Fast mode; dispatch must also explicitly set medium reasoning.
+
+The release is tracked in [Issue #186](https://github.com/lucronn/autodata/issues/186)
+and Project #8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`. R0 evidence is the first
+ready task; dependent records stay blocked until their verified dependencies and
+new exact-base checkpoint are ready. The
+[planning record](records/2026-11-03-production-release-orchestration.json)
+and task-specific record must pass preflight at the actual committed base before
+a builder starts. Do not copy a historical synchronized record to bypass this.
+
+Dispatch sequence:
+
+1. Verify the real Issue/Project references and reviewed task scope; update the
+   task's inline planning record and the canonical record together.
+2. Commit the planning checkpoint and pin that actual SHA. Run
+   `pre_implementation.py` against the committed record. An expected failure
+   during planning remains a failure and cannot authorize implementation.
+3. Check queue dependencies against independently verified implementation
+   commits. The legacy `orchestrator.py` handles one task and does not enforce
+   this campaign's dependency graph. The coordinator owns that check.
+4. Dispatch at most three builders in isolated worktrees with explicit file
+   ownership. Re-pin dependent tasks after integration. Shared migrations and
+   API contracts have one writer at a time.
+5. Once R0 supports the execution profile and measured evidence, a configured
+   isolated local CLI identity can run each complete task with
+   `orchestrator.py --task <task-file> --provider local-cli --output-root
+   <unique-external-run-directory>`. Missing profile availability is blocked;
+   no silent model or tier fallback is allowed.
+6. Record actual commands, artifacts, implementation SHA and independent
+   reviews. R6 cannot substitute fixture results for authenticated staging,
+   browser, concurrency, migration, build, scan or recovery evidence.
+
+No production deployment is performed by this campaign's local orchestration.
+The existing policy's deployment boundary remains in force.

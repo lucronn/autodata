@@ -1,0 +1,82 @@
+{
+  "task_id": "production-release-r4-workshop",
+  "repository": "lucronn/autodata",
+  "goal": "Complete the Workshop source-to-canonical experience with cancellation, recovery and real browser coverage.",
+  "builder_agent": "autodata-go-builder",
+  "allowed_paths": [
+    "apps/api-go/workshop/**",
+    "apps/api-go/workshop-client.test.mjs",
+    "apps/api-go/workshop*_test.go",
+    "scripts/dev/**",
+    "docs/architecture/provider-neutral-catalog-api.md",
+    "docs/architecture/workshop-interface.md",
+    "docs/architecture/workshop-loading-progress.md"
+  ],
+  "bounded_contexts": [
+    "Workshop web application"
+  ],
+  "inputs": [
+    "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/superpowers/plans/2026-11-03-source-fallback-web.md",
+    "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md",
+    "docs/superpowers/plans/2026-11-03-production-access.md"
+  ],
+  "outputs": [
+    "apps/api-go/workshop/**"
+  ],
+  "acceptance_tests": [
+    "Both banks complete vehicle selection, source-first article read, and canonical transition.",
+    "Changing articles cancels or ignores stale source/detail responses.",
+    "Document-only content is recognized as readable.",
+    "Failure/retry keeps available source content visible with honest status.",
+    "Hostile source/CSS/media fixtures cannot trigger active execution or external browser requests.",
+    "node --test apps/api-go/workshop-client.test.mjs",
+    "Real browser acceptance covers keyboard navigation, cold/warm reads and reload.",
+    "Expired local media URLs trigger at most one automatic detail renewal per selected view, reconcile by stable asset identity without replacing unchanged content, and stop on cancellation, denial or repeated failure."
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Complete the Workshop source-to-canonical experience with cancellation, recovery and real browser coverage.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-source-fallback-web.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Both banks complete vehicle selection, source-first article read, and canonical transition.",
+      "Changing articles cancels or ignores stale source/detail responses.",
+      "Document-only content is recognized as readable.",
+      "Failure/retry keeps available source content visible with honest status.",
+      "Hostile source/CSS/media fixtures cannot trigger active execution or external browser requests.",
+      "node --test apps/api-go/workshop-client.test.mjs",
+      "Real browser acceptance covers keyboard navigation, cold/warm reads and reload.",
+      "Expired local media URLs trigger at most one automatic detail renewal per selected view, reconcile by stable asset identity without replacing unchanged content, and stop on cancellation, denial or repeated failure."
+    ],
+    "status": "blocked",
+    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

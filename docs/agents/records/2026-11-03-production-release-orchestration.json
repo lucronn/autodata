@@ -1,0 +1,29 @@
+{
+  "goal": "Set up and run multi-agent development toward a production-ready dual-bank platform with one canonical rewritten article per source item and source fallback until ingestion completes.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+    "docs/agents/autonomy-tooling.md"
+  ],
+  "todo": [
+    "Synchronize the real release Issue and Project item, commit the planning checkpoint and pass exact-base preflight.",
+    "Enforce GPT-6.1 Sol, medium reasoning and Fast mode for every post-planning dispatch.",
+    "Harden and independently verify agent evidence and GitHub release preflight.",
+    "Execute R1 through R6 with separate ownership, dependency gates and exact-commit acceptance evidence."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T09:19:59.667985+00:00",
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "request_service_tier": "priority",
+    "allow_fallback": false,
+    "features": {
+      "fast_mode": true
+    }
+  },
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4"
+}

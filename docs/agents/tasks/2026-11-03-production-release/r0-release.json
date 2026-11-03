@@ -1,0 +1,71 @@
+{
+  "task_id": "production-release-r0-release",
+  "repository": "lucronn/autodata",
+  "goal": "Validate GitHub tracking before an exact-head merge and report confirmed remote outcomes accurately.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "scripts/autonomy/release_controller.py",
+    "scripts/autonomy/test_release_controller.py",
+    "docs/agents/release-controller.md"
+  ],
+  "bounded_contexts": [
+    "release control",
+    "GitHub tracking"
+  ],
+  "inputs": [
+    "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/superpowers/plans/2026-11-03-release-controller-preflight.md"
+  ],
+  "outputs": [
+    "scripts/autonomy/release_controller.py"
+  ],
+  "acceptance_tests": [
+    "Project edits use discovered project IDs and valid installed CLI arguments.",
+    "Tracking and candidate preflight failures execute no merge command.",
+    "Changed PR heads, pending checks, and queued merges cannot be labeled complete.",
+    "A confirmed merge with failed tracking remains explicitly merged with tracking repair required.",
+    "python3 -m unittest discover -s scripts/autonomy -p test_release_controller.py -v"
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Validate GitHub tracking before an exact-head merge and report confirmed remote outcomes accurately.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-release-controller-preflight.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Project edits use discovered project IDs and valid installed CLI arguments.",
+      "Tracking and candidate preflight failures execute no merge command.",
+      "Changed PR heads, pending checks, and queued merges cannot be labeled complete.",
+      "A confirmed merge with failed tracking remains explicitly merged with tracking repair required.",
+      "python3 -m unittest discover -s scripts/autonomy -p test_release_controller.py -v"
+    ],
+    "status": "blocked",
+    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

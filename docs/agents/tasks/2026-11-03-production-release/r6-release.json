@@ -1,0 +1,78 @@
+{
+  "task_id": "production-release-r6-release",
+  "repository": "lucronn/autodata",
+  "goal": "Verify the integrated production candidate across both banks, browser workflows, migrations, recovery and release gates.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    ".github/workflows/autonomous-verification.yml",
+    "infra/compose/**",
+    "infra/k8s/**",
+    "infra/observability/**",
+    "scripts/dev/**",
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/agents/runbooks.md"
+  ],
+  "bounded_contexts": [
+    "release acceptance",
+    "operations",
+    "reproducible builds"
+  ],
+  "inputs": [
+    "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "outputs": [
+    ".github/workflows/autonomous-verification.yml"
+  ],
+  "acceptance_tests": [
+    "Clean and upgrade migrations and real PostgreSQL concurrency/recovery checks pass.",
+    "Builds, scans, contract tests, browser tests and deterministic end-to-end tests pass at one candidate commit.",
+    "Authenticated staging canaries pass independently for Bankone, Banktwo, both together and one-bank outage.",
+    "Restore and forward-recovery exercises preserve immutable revisions and avoid duplicate publication.",
+    "All eight independent reports reference the exact candidate and actual measured evidence.",
+    "A reviewable release candidate and rollout/recovery procedure exist; production deployment remains separately authorized."
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Verify the integrated production candidate across both banks, browser workflows, migrations, recovery and release gates.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Clean and upgrade migrations and real PostgreSQL concurrency/recovery checks pass.",
+      "Builds, scans, contract tests, browser tests and deterministic end-to-end tests pass at one candidate commit.",
+      "Authenticated staging canaries pass independently for Bankone, Banktwo, both together and one-bank outage.",
+      "Restore and forward-recovery exercises preserve immutable revisions and avoid duplicate publication.",
+      "All eight independent reports reference the exact candidate and actual measured evidence.",
+      "A reviewable release candidate and rollout/recovery procedure exist; production deployment remains separately authorized."
+    ],
+    "status": "blocked",
+    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

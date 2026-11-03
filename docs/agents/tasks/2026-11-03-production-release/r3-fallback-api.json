@@ -1,0 +1,91 @@
+{
+  "task_id": "production-release-r3-fallback-api",
+  "repository": "lucronn/autodata",
+  "goal": "Serve immediate readable source fallback with honest processing state until a canonical rewrite is published.",
+  "builder_agent": "autodata-go-builder",
+  "allowed_paths": [
+    "apps/api-go/catalog_http.go",
+    "apps/api-go/catalog_store.go",
+    "apps/api-go/catalog_source.go",
+    "apps/api-go/ingestion_http.go",
+    "apps/api-go/catalog*_test.go",
+    "apps/api-go/ingestion*_test.go",
+    "apps/api-go/openapi.json",
+    "apps/api-go/openapi.yaml",
+    "packages/contracts/**",
+    "docs/architecture/provider-neutral-catalog-api.md",
+    "apps/api-go/catalog_lifecycle.go",
+    "apps/api-go/postgres_catalog_lifecycle_test.go",
+    "apps/api-go/catalog_media_token.go",
+    "apps/api-go/catalog_image_storage.go",
+    "scripts/contracts/test_catalog_lifecycle_contract.py",
+    "docs/architecture/normalized-article-document.md",
+    "docs/architecture/catalog-source-review.md"
+  ],
+  "bounded_contexts": [
+    "catalog read API",
+    "source display",
+    "media"
+  ],
+  "inputs": [
+    "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/superpowers/plans/2026-11-03-source-fallback-web.md",
+    "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md"
+  ],
+  "outputs": [
+    "apps/api-go/catalog_http.go"
+  ],
+  "acceptance_tests": [
+    "A cold read returns available sanitized source while model processing is blocked.",
+    "Repeated reads join the same durable job and transition atomically at publication.",
+    "Canonical-only descriptors and scoped legacy rows are listed without collapsing equal provider-local IDs across banks; each public UUID resolves to the correct detail, with zero detail work during list/search.",
+    "Nonempty partial/failed indexes remain explicitly incomplete and retryable.",
+    "Both-bank source views retain ordered tables, warnings and local media or unavailable placeholders.",
+    "Canonical/source/job/media paths preserve vehicle scope, access rules and takedown behavior.",
+    "OpenAPI JSON and YAML describe the complete selection cascade and additive lifecycle fields."
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Serve immediate readable source fallback with honest processing state until a canonical rewrite is published.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-source-fallback-web.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "A cold read returns available sanitized source while model processing is blocked.",
+      "Repeated reads join the same durable job and transition atomically at publication.",
+      "Canonical-only descriptors and scoped legacy rows are listed without collapsing equal provider-local IDs across banks; each public UUID resolves to the correct detail, with zero detail work during list/search.",
+      "Nonempty partial/failed indexes remain explicitly incomplete and retryable.",
+      "Both-bank source views retain ordered tables, warnings and local media or unavailable placeholders.",
+      "Canonical/source/job/media paths preserve vehicle scope, access rules and takedown behavior.",
+      "OpenAPI JSON and YAML describe the complete selection cascade and additive lifecycle fields."
+    ],
+    "status": "blocked",
+    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "repository": "lucronn/autodata",
+  "baseline_sha": "0ed449fe5119484f8dd8f40b40607aa3beb11e49",
+  "coordinator": "autodata-orchestrator",
+  "max_parallel_builders": 3,
+  "deployment_target": "none",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+  "spec_ref": "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "tracking_status": "synchronized",
+  "execution_mode": "coordinator_dispatch",
+  "tasks": [
+    {
+      "id": "r0-evidence",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-evidence.json",
+      "depends_on": [],
+      "state": "ready_for_preflight",
+      "release_state": "unverified",
+      "needs_scope_refinement": false
+    },
+    {
+      "id": "r0-release",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-release.json",
+      "depends_on": [
+        "r0-evidence"
+      ],
+      "state": "waiting_dependencies",
+      "release_state": "unverified",
+      "needs_scope_refinement": false
+    },
+    {
+      "id": "r1-connectors",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r1-connectors.json",
+      "depends_on": [
+        "r0-evidence"
+      ],
+      "state": "waiting_dependencies",
+      "release_state": "unverified",
+      "needs_scope_refinement": false
+    },
+    {
+      "id": "r2-rewrite",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r2-rewrite.json",
+      "depends_on": [
+        "r1-connectors"
+      ],
+      "state": "waiting_dependencies",
+      "release_state": "unverified",
+      "needs_scope_refinement": false
+    },
+    {
+      "id": "r3-fallback-api",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r3-fallback-api.json",
+      "depends_on": [
+        "r2-rewrite"
+      ],
+      "state": "waiting_dependencies",
+      "release_state": "unverified",
+      "needs_scope_refinement": false
+    },
+    {
+      "id": "r4-workshop",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r4-workshop.json",
+      "depends_on": [
+        "r3-fallback-api",
+        "r5-access"
+      ],
+      "state": "waiting_dependencies",
+      "release_state": "unverified",
+      "needs_scope_refinement": false
+    },
+    {
+      "id": "r5-access",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r5-access.json",
+      "depends_on": [
+        "r3-fallback-api"
+      ],
+      "state": "waiting_dependencies",
+      "release_state": "unverified",
+      "needs_scope_refinement": true
+    },
+    {
+      "id": "r6-evidence-adapter",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r6-evidence-adapter.json",
+      "depends_on": [
+        "r0-evidence",
+        "r2-rewrite",
+        "r3-fallback-api"
+      ],
+      "state": "waiting_dependencies",
+      "release_state": "unverified",
+      "needs_scope_refinement": true
+    },
+    {
+      "id": "r6-release",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r6-release.json",
+      "depends_on": [
+        "r0-release",
+        "r2-rewrite",
+        "r3-fallback-api",
+        "r4-workshop",
+        "r5-access",
+        "r6-evidence-adapter"
+      ],
+      "state": "waiting_dependencies",
+      "release_state": "unverified",
+      "needs_scope_refinement": true
+    }
+  ],
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  },
+  "execution_requirement_source": "Explicit user instruction: once planning is complete use Sol 6.1, medium reasoning, Fast mode.",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4"
+}
