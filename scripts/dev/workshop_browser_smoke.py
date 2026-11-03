@@ -524,7 +524,7 @@ async def api_case(browser,origin,name,output):
                     await other_page.goto(route);await api_signin(other_page)
                     denied=await other.request.get(origin+f'/v1/catalog/vehicles/{configuration}/articles');assert denied.status==403
                     library_response=await other.request.get(origin+'/v1/workshop/library?limit=20');assert (await library_response.json())['items']==[]
-                    denied_image=await other.request.get(image_url);assert denied_image.status==403
+                    denied_image=await other.request.get(image_url);assert denied_image.status==404
                     assert not other_transport.unexpected and not other_transport.errors
                 finally:await other.close()
                 assertions['account_and_exact_scope_isolation']=True
