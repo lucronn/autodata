@@ -26,8 +26,8 @@
       "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md",
       "provider_runtime_validation": {
         "status": "blocked",
-        "reason": "invalid_json_schema: uniqueItems unsupported by provider",
-        "attempt_base_sha": "3634a59cea79dc3d36f1ec610b927ab74e6d166a"
+        "reason": "invalid_json_schema: regex lookaround unsupported by provider",
+        "attempt_base_sha": "e90047f2d50829ae0bcdc68c0dc8ed69c998cb4a"
       }
     },
     {
@@ -46,13 +46,16 @@
       "id": "r1-connectors",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r1-connectors.json",
       "depends_on": [],
-      "state": "in_review",
+      "state": "verified",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_mode": "coordinator_direct",
       "verification_workflow": "Isolated clean/upgrade/legacy-preservation/concurrency database checks and independent exact-SHA schema/source/reliability review; no local-runner or release authority.",
       "implementation_base_sha": "4a8a0d24a8555911b567b8691e6ba3f4a0477fa8",
-      "candidate_sha": "f8bf1ace6266563291576258fb0a5d81295bed4a"
+      "candidate_sha": "330c29c0a1b2b7d43745dd9b2ba93cf1f9055e09",
+      "verified_candidate_sha": "330c29c0a1b2b7d43745dd9b2ba93cf1f9055e09",
+      "integrated_sha": "c3b7a46d1233a1af8c0f0cba19a2f169d5a9a4b4",
+      "verification_ref": "docs/verification/2026-11-03-canonical-article-lifecycle.md"
     },
     {
       "id": "r2-rewrite",
@@ -60,9 +63,11 @@
       "depends_on": [
         "r1-connectors"
       ],
-      "state": "waiting_dependencies",
+      "state": "ready",
       "release_state": "unverified",
-      "needs_scope_refinement": false
+      "needs_scope_refinement": false,
+      "dispatch_mode": "coordinator_direct",
+      "dependency_integrated_sha": "c3b7a46d1233a1af8c0f0cba19a2f169d5a9a4b4"
     },
     {
       "id": "r3-fallback-api",
@@ -139,11 +144,14 @@
     {
       "id": "r0-provider-schema",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-provider-schema.json",
-      "state": "ready",
+      "state": "verified",
       "depends_on": [
         "r0-evidence"
       ],
-      "release_state": "unverified"
+      "release_state": "unverified",
+      "verified_candidate_sha": "e90047f2d50829ae0bcdc68c0dc8ed69c998cb4a",
+      "integrated_sha": "e90047f2d50829ae0bcdc68c0dc8ed69c998cb4a",
+      "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md"
     }
   ]
 }

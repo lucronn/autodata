@@ -60,9 +60,25 @@ installed CLI package and model authentication; no host configuration,
 GitHub/SSH credentials or source-bank/production secrets were supplied.
 
 The [bounded schema repair](../superpowers/plans/2026-11-03-provider-schema-compatibility.md)
-must preserve deterministic uniqueness checks and pass independent verification
-before retry. Schema acceptance, effective model/medium/Fast settings, sandbox
-writes, commit retention and interrupted-provider behavior remain unverified.
+passed independent exact-SHA review at
+`e90047f2d50829ae0bcdc68c0dc8ed69c998cb4a` and 71 autonomy tests in 11.902 seconds.
+The coordinator independently confirmed exactly eight `uniqueItems` removals,
+all other schema values unchanged, and the two-file allowed scope. Duplicate
+rejection remains enforced by deterministic validators with regressions.
+The command log is `/tmp/autodata-r0-schema-independent-e900-tests.log`.
+The second isolated runtime experiment at that exact commit passed preflight,
+then received HTTP 400 `invalid_json_schema`: regex lookaround is unsupported
+at `$defs.Finding.properties.path.pattern`. The architect exited 1 after
+3.43 seconds; orchestration returned 20. No builder ran and effective execution
+metadata was absent. Retained evidence:
+`/tmp/autodata-cli-e900-lw_pbv12/evidence/run`; sanitized stdout SHA-256:
+`32a44a77d933e1df352a2643036619ca9436722f5d7f9aefa2c3cd850d35d2ae`.
+The same strict isolation, profile, and time bounds applied. A preparation-only
+import error was corrected before this provider run; the first failed experiment
+was preserved. Path-schema compatibility needs a separate reviewed checkpoint;
+deterministic path validation must remain enforced. Effective model/medium/Fast
+settings, sandbox writes, commit retention and interrupted-provider behavior
+remain unverified.
 No release, staging, deployment or live-provider certification is claimed.
 
 The [bounded runtime experiment plan](../superpowers/plans/2026-11-03-local-cli-certification.md)

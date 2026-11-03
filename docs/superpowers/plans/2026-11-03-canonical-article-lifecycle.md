@@ -28,17 +28,43 @@
 - Completed warm reads/ensures perform zero source, asset, model and scheduling calls. Source refresh is explicit and versioned.
 - Generated canonical content remains `UNREVIEWED` until authorized review; validation does not approve it.
 - Do not edit migrations 001–036, remove legacy observations, call live services in deterministic tests, expose secrets, or deploy production.
-- Plans are not execution authority. Issue #186 / Project #8 tracking is verified; R1/R2 remain blocked on their dependency checkpoints and fresh synchronized task records with committed exact-base preflight.
+- Plans are not execution authority. R1 tasks 1–4 are independently verified and integrated at `c3b7a46d1233a1af8c0f0cba19a2f169d5a9a4b4`. R2 tasks 5–8 require this fresh synchronized checkpoint and committed-base preflight before implementation; later dependencies remain blocked.
 
 ## Concrete todo
 
-- [ ] Coordinator creates/verifies the actual release Issue, adds Project #8 item, updates canonical docs/task records with the same goal and work list, commits the checkpoint, and records successful preflight.
-- [ ] Deliver additive lifecycle schema, deterministic identity and isolated PostgreSQL fixture harness.
-- [ ] Implement provider-bound capture, both-bank catalog coverage and durable job leases.
+- [x] Coordinator creates/verifies the actual release Issue, adds Project #8 item, updates canonical docs/task records with the same goal and work list, commits the checkpoint, and records successful preflight.
+- [x] Deliver additive lifecycle schema, deterministic identity and isolated PostgreSQL fixture harness.
+- [x] Implement provider-bound capture, both-bank catalog coverage and durable job leases.
 - [ ] Integrate conservative Mercury rewriting with recursive preservation validation and durable model-result recovery.
 - [ ] Publish canonical revision/current pointer/job/outbox atomically with fenced delivery.
 - [ ] Connect scheduling-only ensure, background worker and legacy mapping paths; freeze the SQL read view for R3.
 - [ ] Pass the exact race, restart, warm-call, source-refresh and migration matrix; record independent review at one implementation SHA.
+
+## Verified R1 handoff and R2 dispatch boundary
+
+R1 exact candidate `330c29c0a1b2b7d43745dd9b2ba93cf1f9055e09` is integrated
+at `c3b7a46d1233a1af8c0f0cba19a2f169d5a9a4b4`, with independent review and
+644 ingestion tests plus 25 subtests. The
+[verification record](../../verification/2026-11-03-canonical-article-lifecycle.md)
+records scope and retained evidence. Tasks 1–4 are complete; their checklist
+examples below remain implementation and regression references.
+
+R2 consumes `load_source_revision`, `load_article_state`, and
+`source_job_persistence.lock_live_lease`. Source capture uses
+`put_object(key, bytes, media_type)`. It retains captured context, resolution
+snapshot identity, provider ownership, and persisted snapshot references.
+Unchanged terminal transforms retain their original owner and exhausted budget.
+Configure the real S3 adapter with connect timeout 2 seconds, read timeout
+5 seconds, and zero SDK retries, as required in Task 7. Late content-addressed
+blob writes must never carry database mutations after a lease expires.
+Migrations 037/038 are frozen. Any schema defect requires a separately reviewed
+new migration and a refreshed dependency checkpoint.
+
+R2 is dispatched directly by the coordinator after its committed task record
+passes `pre_implementation.validate_record`; it does not invoke an uncertified
+local CLI or receive release authority. Its exact allowed paths are in
+`docs/agents/tasks/2026-11-03-production-release/r2-rewrite.json`. Complete tasks
+5–8 and independently review the resulting SHA before R3 begins.
 
 ## File ownership and dependency order
 

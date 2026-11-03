@@ -21,10 +21,18 @@ R0 evidence passed independent deterministic verification at
 `a7493d41be4f0c4aa93bdaaa74afa14c30d49965`, integrated as
 `643b8d3fc762cfdc9b456d28a47b7a4a9cde6402`; see
 [the verification record](../../verification/2026-11-03-agent-evidence-hardening.md).
-R1 candidate `2755244bdfc521a3b8582e1877fbd9d68dcdb8ba` is under independent
-review. Dependent tasks stay blocked until verified prerequisites and refreshed
-checkpoints are committed. Real CLI and production release certification remain
-outstanding.
+R1 candidate `330c29c0a1b2b7d43745dd9b2ba93cf1f9055e09` passed independent
+schema/source/reliability review and 644 ingestion tests plus 25 subtests in the
+isolated PostgreSQL/S3/NATS fixture. It is integrated at
+`c3b7a46d1233a1af8c0f0cba19a2f169d5a9a4b4`; see the
+[lifecycle verification record](../../verification/2026-11-03-canonical-article-lifecycle.md).
+R2 tasks 5–8 are now the next bounded direct-coordinator assignment, authorized
+only after this synchronized checkpoint passes committed-base preflight.
+The real CLI schema repair passed independent review and 71 autonomy tests at
+`e90047f2d50829ae0bcdc68c0dc8ed69c998cb4a`; the bounded retry reached a second schema incompatibility (regex lookaround).
+R0 controller remediation remains under independent review. Other dependent
+tasks remain blocked pending verified integrations and refreshed checkpoints.
+Production release certification remains outstanding.
 
 The bounded plans are [agent evidence](2026-11-03-agent-evidence-hardening.md),
 [release control](2026-11-03-release-controller-preflight.md),

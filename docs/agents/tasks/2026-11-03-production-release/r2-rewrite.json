@@ -111,8 +111,8 @@
       "Catalog publication bindings are generated from the shared contract and preserve existing dataset envelopes.",
       "An explicit unchanged-source refresh reuses the existing exhausted transformation owner, retains source provenance, and never resets its retry budget or assigns its unique key to another job."
     ],
-    "status": "blocked",
-    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+    "status": "synchronized",
+    "updated_at": "2026-11-03T10:09:32.036288+00:00"
   },
   "execution": {
     "model": "gpt-6.1-sol",
