@@ -69,6 +69,7 @@ type Server struct {
 	knowledgeFallbackPublisher KnowledgeFallbackPublisher
 	sourceReviews              SourceReviewStore
 	ingestionClient            IngestionClient
+	commerceClient             CommerceClient
 	vehicleIdentity            VehicleIdentityStore
 	catalog                    CatalogStore
 	catalogImageKey            []byte
@@ -152,6 +153,7 @@ func (s *Server) Handler() http.Handler {
 		authService = &customerAuthService{config: customerAuthConfig{Mode: "local"}}
 	}
 	authService.mountRoutes(mux)
+	s.mountCommerceRoutes(mux)
 	mux.HandleFunc("GET /{$}", func(response http.ResponseWriter, request *http.Request) {
 		http.Redirect(response, request, "/dashboard/", http.StatusFound)
 	})
@@ -657,6 +659,10 @@ func main() {
 			log.Fatal(fmt.Errorf("configure ingestion client: %w", err))
 		}
 		application.ingestionClient = client
+	}
+	application.commerceClient, err = configuredCommerceClient(os.Getenv)
+	if err != nil {
+		log.Fatal("configure commerce: invalid configuration")
 	}
 	server := &http.Server{
 		Addr:              address,
