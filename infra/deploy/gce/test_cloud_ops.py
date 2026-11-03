@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import io
+import json
+import os
 import socket
 import subprocess
 import tarfile
@@ -418,6 +420,101 @@ class CloudTests(unittest.TestCase):
                        lambda x: x.update(source_sha='d' * 40)):
             candidate = copy.deepcopy(metrics); mutate(candidate)
             with self.assertRaises(self.rt.ContractError): self.ops.validate_metrics(candidate, self.manifest['source_sha'])
+
+
+
+class WorkflowTests(unittest.TestCase):
+    """Execute actual inline dispatch validators; inspect authority declarations.
+
+    Removing an enable guard, accepting an unbound deploy input, granting a
+    shared cloud identity, or swallowing the missing adapter must fail here.
+    JSON is a YAML 1.2 subset, so no third-party YAML parser is required.
+    """
+    def workflow(self, name):
+        path = HERE.parents[2] / '.github' / 'workflows' / (name + '-workshop.yml')
+        self.assertTrue(path.is_file(), 'workflow definition is missing: ' + name)
+        return json.loads(path.read_text())
+
+    def environment(self, operation):
+        return {'PATH': os.defpath, 'EVENT_NAME': 'workflow_dispatch',
+                'REPOSITORY': 'lucronn/autodata', 'REPOSITORY_ID': '123456',
+                'REPOSITORY_OWNER_ID': '987654', 'EXPECTED_REPOSITORY_ID': '123456',
+                'EXPECTED_OWNER_ID': '987654', 'WORKFLOW_REF':
+                'lucronn/autodata/.github/workflows/' + ('release' if operation in ('publish', 'deploy') else operation) + '-workshop.yml@refs/heads/master',
+                'REF': 'refs/heads/master', 'OPERATION': operation,
+                'SOURCE_SHA': 'a' * 40, 'CONFIG_SHA256': 'b' * 64,
+                'PUBLISHED_RUN_ID': '1234' if operation == 'deploy' else '',
+                'ARTIFACT_ID': '5678' if operation == 'deploy' else '',
+                'ARTIFACT_DIGEST': 'sha256:' + 'c' * 64 if operation == 'deploy' else '',
+                'MANIFEST_SHA256': 'd' * 64 if operation == 'deploy' else '',
+                'RUN_ID': RUN if operation == 'backup' else '',
+                'WIF_PROVIDER': 'projects/123456/locations/global/workloadIdentityPools/workshop/providers/github',
+                'SERVICE_ACCOUNT': 'workshop-' + operation + '@autodata-host.iam.gserviceaccount.com',
+                'OTHER_SERVICE_ACCOUNT': 'workshop-deploy@autodata-host.iam.gserviceaccount.com' if operation == 'publish' else 'workshop-publish@autodata-host.iam.gserviceaccount.com',
+                **{name.upper() + '_SERVICE_ACCOUNT': 'workshop-' + name + '@autodata-host.iam.gserviceaccount.com'
+                   for name in ('publish', 'deploy', 'backup', 'monitor')}}
+
+    def validate(self, workflow, operation, **overrides):
+        env = self.environment(operation); env.update(overrides)
+        job = workflow['jobs'][operation]
+        script = next(step['run'] for step in job['steps'] if step.get('id') == 'validate')
+        return subprocess.run(['bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', script],
+                              env=env, capture_output=True, text=True, timeout=5)
+
+    def test_release_dispatch_rejects_mutable_missing_and_cross_authority_inputs(self):
+        workflow = self.workflow('release')
+        for operation in ('publish', 'deploy'):
+            self.assertEqual(self.validate(workflow, operation).returncode, 0)
+            for field, value in [('SOURCE_SHA', 'master'), ('CONFIG_SHA256', ''),
+                                 ('REF', 'refs/heads/other'), ('EXPECTED_OWNER_ID', '1'),
+                                 ('WORKFLOW_REF', 'lucronn/autodata/.github/workflows/evil.yml@refs/heads/master'),
+                                 ('SERVICE_ACCOUNT', ''), ('WIF_PROVIDER', 'unknown'),
+                                 ('OTHER_SERVICE_ACCOUNT', self.environment(operation)['SERVICE_ACCOUNT'])]:
+                with self.subTest(operation=operation, field=field):
+                    result = self.validate(workflow, operation, **{field: value})
+                    self.assertEqual(result.returncode, 2)
+                    self.assertNotIn(value, result.stderr) if value else None
+        for field, value in [('PUBLISHED_RUN_ID', ''), ('ARTIFACT_ID', 'latest'),
+                             ('ARTIFACT_DIGEST', 'sha256:bad'), ('MANIFEST_SHA256', ''),
+                             ('EVENT_NAME', 'workflow_run')]:
+            with self.subTest(field=field):
+                self.assertEqual(self.validate(workflow, 'deploy', **{field: value}).returncode, 2)
+        self.assertEqual(self.validate(workflow, 'publish', ARTIFACT_ID='123').returncode, 2)
+
+    def test_scheduled_helpers_require_fixed_release_identity_and_manual_backup_uuid(self):
+        for operation in ('backup', 'monitor'):
+            workflow = self.workflow(operation)
+            self.assertEqual(self.validate(workflow, operation).returncode, 0)
+            self.assertEqual(self.validate(workflow, operation, EVENT_NAME='schedule', RUN_ID='').returncode, 0)
+            self.assertEqual(self.validate(workflow, operation, SOURCE_SHA='latest').returncode, 2)
+            self.assertEqual(self.validate(workflow, operation, OPERATION='deploy').returncode, 2)
+            self.assertEqual(self.validate(workflow, operation, SERVICE_ACCOUNT='workshop-publish@autodata-host.iam.gserviceaccount.com').returncode, 2)
+            self.assertEqual(self.validate(workflow, operation, MONITOR_SERVICE_ACCOUNT='workshop-backup@autodata-host.iam.gserviceaccount.com').returncode, 2)
+        self.assertEqual(self.validate(self.workflow('backup'), 'backup', RUN_ID='../escape').returncode, 2)
+
+    def test_every_cloud_job_is_explicitly_enabled_separate_bounded_and_fail_closed(self):
+        environments, accounts = set(), set()
+        for name in ('release', 'backup', 'monitor'):
+            workflow = self.workflow(name)
+            self.assertEqual(workflow['permissions'], {'contents': 'read'})
+            self.assertNotIn('push', workflow['on'])
+            self.assertNotIn('workflow_run', workflow['on'])
+            self.assertFalse(workflow['concurrency']['cancel-in-progress'])
+            for operation, job in workflow['jobs'].items():
+                self.assertIn("vars.WORKSHOP_" + operation.upper() + "_ENABLED == 'true'", job['if'])
+                self.assertIn("github.ref == 'refs/heads/master'", job['if'])
+                self.assertEqual(job['permissions'], {'contents': 'read'})
+                self.assertNotIn(job['environment'], environments); environments.add(job['environment'])
+                account = job['env']['SERVICE_ACCOUNT']
+                self.assertNotIn(account, accounts); accounts.add(account)
+                self.assertLessEqual(job['timeout-minutes'], {'publish': 45, 'deploy': 30, 'backup': 30, 'monitor': 1}[operation])
+                self.assertTrue(all('uses' not in step for step in job['steps']))
+                blocked = job['steps'][-1]
+                result = subprocess.run(['bash', '-e', '-c', blocked['run']], env={'PATH': os.defpath},
+                                        capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 3)
+                self.assertIn('missing_dependency', result.stderr)
+                self.assertNotIn('success', result.stdout)
 
 
 if __name__ == '__main__': unittest.main()
