@@ -28,7 +28,9 @@ func (s *customerAuthService) publicConfig(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, 200, result)
 }
 func (s *customerAuthService) writeError(w http.ResponseWriter, r *http.Request, err error) {
-	w.Header().Set("Cache-Control", "no-store")
+	if w.Header().Get("Cache-Control") != "private, no-store" {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	status, code, message, retryable := 401, "UNAUTHENTICATED", "Authentication is required.", false
 	switch {
 	case errors.Is(err, ErrCustomerDependency):
