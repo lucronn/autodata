@@ -255,7 +255,33 @@ func (f *r3Fixture) schedule() CatalogArticle {
 }
 func (f *r3Fixture) published() CatalogArticle {
 	f.wait("publication", func(m map[string]any) bool { return r3Map(m, "article")["canonical_revision_id"] != nil })
-	return f.detail()
+	article := f.detail()
+	if article.CanonicalRevisionID == nil {
+		f.t.Fatal("published HTTP view lacks canonical revision")
+	}
+	// Compare the actual R2 compatibility projection without decoding expected
+	// steps through the product DTO, which could conceal a dropped field.
+	var rawSteps []byte
+	if err := f.pool.QueryRow(context.Background(), `SELECT canonical_steps FROM canonical_article_revisions WHERE canonical_article_revision_id::text=$1`, *article.CanonicalRevisionID).Scan(&rawSteps); err != nil {
+		f.t.Fatal(err)
+	}
+	var expected, observed any
+	if err := json.Unmarshal(rawSteps, &expected); err != nil {
+		f.t.Fatal(err)
+	}
+	wire, err := json.Marshal(article.Steps)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	if err := json.Unmarshal(wire, &observed); err != nil {
+		f.t.Fatal(err)
+	}
+	expectedWire, _ := json.Marshal(expected)
+	observedWire, _ := json.Marshal(observed)
+	if !bytes.Equal(expectedWire, observedWire) || len(article.Steps) != 1 || article.Steps[0].Action != "Take off the pump." {
+		f.t.Fatalf("published compatibility steps differ from actual R2: expected=%s observed=%s", expectedWire, observedWire)
+	}
+	return article
 }
 func TestPostgresCatalogLifecycleColdHTTPRaceOneJob(t *testing.T) {
 	f := r3Setup(t)

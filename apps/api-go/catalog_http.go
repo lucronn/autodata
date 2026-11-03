@@ -269,8 +269,17 @@ func rewriteCatalogImageURLs(article *CatalogArticle, key []byte) {
 	if article.Images == nil {
 		article.Images = []CatalogImage{}
 	}
-	for index := range article.Images {
-		image := &article.Images[index]
+	rewriteCatalogImages(article.Images, key)
+	for index := range article.Steps {
+		if article.Steps[index].Images != nil {
+			rewriteCatalogImages(*article.Steps[index].Images, key)
+		}
+	}
+}
+
+func rewriteCatalogImages(images []CatalogImage, key []byte) {
+	for index := range images {
+		image := &images[index]
 		if image.Status == "unavailable" || !localCatalogImageKeyPattern.MatchString(image.StorageKey) || len(key) != 32 {
 			image.URL = ""
 			continue

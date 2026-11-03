@@ -66,6 +66,17 @@ func lifecycleArticle(article CatalogArticle) CatalogArticle {
 			images[i].URL = ""
 			images[i].StorageKey = ""
 		}
+		steps := append([]CatalogStep(nil), article.Steps...)
+		for i := range steps {
+			if steps[i].Images != nil {
+				stepImages := append([]CatalogImage{}, (*steps[i].Images)...)
+				for j := range stepImages {
+					stepImages[j].URL = ""
+					stepImages[j].StorageKey = ""
+				}
+				steps[i].Images = &stepImages
+			}
+		}
 		raw, _ := json.Marshal(struct {
 			Policy            string
 			Source, Canonical *string
@@ -74,7 +85,7 @@ func lifecycleArticle(article CatalogArticle) CatalogArticle {
 			Body              string
 			Steps             []CatalogStep
 			Images            []CatalogImage
-		}{"source-display-v1", article.SourceRevisionID, article.CanonicalRevisionID, article.ContentOrigin, article.Document, article.Body, article.Steps, images})
+		}{"source-display-v1", article.SourceRevisionID, article.CanonicalRevisionID, article.ContentOrigin, article.Document, article.Body, steps, images})
 		sum := sha256.Sum256(raw)
 		article.ViewRevision = stringPointer(fmt.Sprintf("view-%x", sum[:]))
 	}

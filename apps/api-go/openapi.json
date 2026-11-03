@@ -1518,13 +1518,13 @@
               "type": "object",
               "additionalProperties": false,
               "required": [
-                "number",
                 "instructions"
               ],
               "properties": {
                 "number": {
                   "type": "integer",
-                  "minimum": 1
+                  "minimum": 1,
+                  "description": "Explicit source step number, when present. Canonical document traversal does not fabricate numbers."
                 },
                 "heading": {
                   "type": "string"
@@ -1548,6 +1548,15 @@
                   "type": "array",
                   "items": {
                     "type": "string"
+                  }
+                },
+                "action": {
+                  "type": "string"
+                },
+                "images": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogImage"
                   }
                 }
               }

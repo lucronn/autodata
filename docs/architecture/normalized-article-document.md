@@ -188,3 +188,14 @@ publication; an older canonical cannot claim to rewrite the new source.
 The catalog JSON Schema and matching OpenAPI JSON/YAML bind additive fields and
 compatibility body/steps/media. Fixtures reject title-only completion, invented
 states, private object metadata and mismatched source/canonical metadata.
+
+Compatibility steps preserve the actual R2 projection. Canonical steps expose
+`action`, the ordered following `instructions`, ordered `evidence_ids`, and
+`images` when that field was supplied, including an explicit empty array. A
+canonical action is not copied into instructions. Source steps retain `text`
+and their explicit positive `number`; the legacy instructions array may be
+derived from source text when absent or empty. An absent canonical number stays
+absent. The ordered document remains authoritative for display order. Step
+images use the same safe public metadata and local-reference transformation as
+article images; storage keys and provider URLs are not exposed, and rotating
+media URLs do not change the view revision.

@@ -247,3 +247,77 @@ func TestCatalogDescriptorListImagesAreArraysWithoutDetailWork(t *testing.T) {
 		t.Fatalf("list performed source/model detail work: reads=%d ingestion=%s", store.detailReads, client.path)
 	}
 }
+
+func TestCatalogCanonicalR2StepPreservesActualCompatibilityShape(t *testing.T) {
+	for _, raw := range []string{
+		`{"action":"Take off the pump.","instructions":[],"images":[],"evidence_ids":["e1","e2"]}`,
+		`{"action":"Take off the pump.","instructions":[],"evidence_ids":["e1"]}`,
+		`{"action":"Take off the pump.","text":"Additional source context.","instructions":[],"images":[],"evidence_ids":["e1"]}`,
+		`{"number":7,"action":"Take off the pump.","instructions":["Keep the seal.","Inspect the bracket."],"images":[],"evidence_ids":["e2","e1"]}`,
+	} {
+		var step CatalogStep
+		if err := json.Unmarshal([]byte(raw), &step); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(step)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var actual, expected map[string]any
+		json.Unmarshal(encoded, &actual)
+		json.Unmarshal([]byte(raw), &expected)
+		if len(actual) != len(expected) {
+			t.Fatalf("canonical step fields lost or fabricated: expected=%s actual=%s", raw, encoded)
+		}
+		for key, want := range expected {
+			got, _ := json.Marshal(actual[key])
+			required, _ := json.Marshal(want)
+			if string(got) != string(required) {
+				t.Fatalf("canonical %s changed: expected=%s actual=%s", key, raw, encoded)
+			}
+		}
+	}
+}
+
+func TestCatalogCanonicalStepImagesUseSafeLocalReferences(t *testing.T) {
+	key := "sources/" + strings.Repeat("a", 16) + "/" + strings.Repeat("a", 64)
+	raw := `{"action":"Inspect pump.","instructions":["Keep the seal."],"images":[{"image_id":"` + strings.Repeat("a", 64) + `","storage_key":"` + key + `","url":"https://provider.invalid/private","alt":"Seal","media_type":"image/png","status":"available"}],"evidence_ids":["e"]}`
+	var step CatalogStep
+	if err := json.Unmarshal([]byte(raw), &step); err != nil {
+		t.Fatal(err)
+	}
+	article := CatalogArticle{Steps: []CatalogStep{step}}
+	rewriteCatalogImageURLs(&article, deriveCatalogImageReferenceKey("r3-step-fixture-only-media-key-1234567890"))
+	encoded, _ := json.Marshal(article.Steps)
+	if strings.Contains(string(encoded), "storage_key") || strings.Contains(string(encoded), "sources/") || strings.Contains(string(encoded), "provider.invalid") {
+		t.Fatalf("step image leaked private source: %s", encoded)
+	}
+	var projected []map[string]any
+	json.Unmarshal(encoded, &projected)
+	images, ok := projected[0]["images"].([]any)
+	if !ok || len(images) != 1 {
+		t.Fatalf("step image position lost: %s", encoded)
+	}
+	image := images[0].(map[string]any)
+	url, _ := image["url"].(string)
+	if image["image_id"] != strings.Repeat("a", 64) || image["alt"] != "Seal" || !strings.HasPrefix(url, "/v1/catalog/images/") {
+		t.Fatalf("step image reference changed: %s", encoded)
+	}
+}
+
+func TestCatalogCanonicalStepImageURLsDoNotChangeViewRevision(t *testing.T) {
+	images := []CatalogImage{{ImageID: "figure-1", URL: "first-local-url", StorageKey: "first-private-key", Alt: "Seal"}}
+	article := CatalogArticle{CanonicalArticleID: stringPointer("a"), SourceRevisionID: stringPointer("s"), CanonicalRevisionID: stringPointer("c"), ContentOrigin: stringPointer("canonical"), Document: &CatalogDocument{Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Inspect pump."}}}, Steps: []CatalogStep{{Action: "Inspect pump.", Instructions: []string{}, Images: &images}}}
+	first := lifecycleArticle(article)
+	images[0].URL = "second-local-url"
+	images[0].StorageKey = "second-private-key"
+	second := lifecycleArticle(article)
+	if first.ViewRevision == nil || second.ViewRevision == nil || *first.ViewRevision != *second.ViewRevision {
+		t.Fatal("step image transport reference changed view identity")
+	}
+	images[0].Alt = "Bracket"
+	changed := lifecycleArticle(article)
+	if *changed.ViewRevision == *first.ViewRevision {
+		t.Fatal("step image content did not change view identity")
+	}
+}

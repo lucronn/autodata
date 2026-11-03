@@ -22,6 +22,21 @@ class CatalogLifecycleContract(unittest.TestCase):
                 else:
                     self.assertEqual(errors, [], str(errors))
 
+    def test_actual_r2_steps_preserve_optional_number_and_images(self):
+        schema = json.loads((CATALOG / 'article-lifecycle.schema.json').read_text())
+        validator = jsonschema.Draft202012Validator(schema)
+        article = json.loads((CATALOG / 'fixtures/canonical-completed.json').read_text())
+        article['article']['steps'] = [{'action': 'Take off the pump.', 'instructions': [],
+                                       'images': [], 'evidence_ids': ['e1', 'e2']}]
+        self.assertEqual(list(validator.iter_errors(article)), [])
+        article['article']['steps'][0]['number'] = 0
+        self.assertTrue(list(validator.iter_errors(article)))
+        article['article']['steps'][0]['number'] = 3
+        article['article']['steps'][0]['images'] = [{'image_id': 'image-1', 'alt': 'Seal', 'status': 'available'}]
+        self.assertEqual(list(validator.iter_errors(article)), [])
+        article['article']['steps'][0]['images'][0]['storage_key'] = 'sources/private'
+        self.assertTrue(list(validator.iter_errors(article)))
+
     def test_openapi_catalog_cascade_and_lifecycle(self):
         spec = json.loads((ROOT / 'apps/api-go/openapi.json').read_text())
         for path in ('/v1/catalog/years', '/v1/catalog/years/{year}/makes',

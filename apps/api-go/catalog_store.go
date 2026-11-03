@@ -69,16 +69,19 @@ type CatalogProvenance struct {
 }
 
 type CatalogStep struct {
-	Text         string   `json:"text,omitempty"`
-	EvidenceIDs  []string `json:"evidence_ids,omitempty"`
-	Number       int      `json:"number"`
-	Heading      string   `json:"heading,omitempty"`
-	Instructions []string `json:"instructions"`
-	ImageIDs     []string `json:"image_ids,omitempty"`
+	Action       string          `json:"action,omitempty"`
+	Images       *[]CatalogImage `json:"images,omitempty"`
+	Text         string          `json:"text,omitempty"`
+	EvidenceIDs  []string        `json:"evidence_ids,omitempty"`
+	Number       int             `json:"number,omitempty"`
+	Heading      string          `json:"heading,omitempty"`
+	Instructions []string        `json:"instructions"`
+	ImageIDs     []string        `json:"image_ids,omitempty"`
 }
 
-// R2's immutable compatibility projection retains prose as text. Legacy
-// callers still receive their instructions array without losing evidence.
+// R2 source steps retain text; canonical steps retain action and following
+// instructions separately. Missing canonical numbers stay absent, and an
+// optional image slice distinguishes absent images from an explicit empty list.
 func (step *CatalogStep) UnmarshalJSON(data []byte) error {
 	type plain CatalogStep
 	var value plain
@@ -86,7 +89,7 @@ func (step *CatalogStep) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*step = CatalogStep(value)
-	if len(step.Instructions) == 0 && step.Text != "" {
+	if step.Action == "" && len(step.Instructions) == 0 && step.Text != "" {
 		step.Instructions = []string{step.Text}
 	}
 	return nil
