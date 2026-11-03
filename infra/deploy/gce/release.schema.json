@@ -1,0 +1,622 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_sha",
+    "platform",
+    "images",
+    "migrations",
+    "toolchain",
+    "service_config_sha256",
+    "secret_versions",
+    "rollback_source_sha"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "source_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "platform": {
+      "type": "string",
+      "const": "linux/amd64"
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api",
+        "ingestion",
+        "migration",
+        "caddy",
+        "postgres",
+        "nats",
+        "minio"
+      ],
+      "properties": {
+        "api": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reference",
+            "image_id",
+            "provenance_uri",
+            "sbom_uri"
+          ],
+          "properties": {
+            "reference": {
+              "type": "string",
+              "pattern": "^[a-z0-9.-]+(?::[0-9]+)?/(?:[a-z0-9][a-z0-9._-]*/)*[a-z0-9][a-z0-9._-]*@sha256:[0-9a-f]{64}$"
+            },
+            "image_id": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "provenance_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            },
+            "sbom_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            }
+          }
+        },
+        "ingestion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reference",
+            "image_id",
+            "provenance_uri",
+            "sbom_uri"
+          ],
+          "properties": {
+            "reference": {
+              "type": "string",
+              "pattern": "^[a-z0-9.-]+(?::[0-9]+)?/(?:[a-z0-9][a-z0-9._-]*/)*[a-z0-9][a-z0-9._-]*@sha256:[0-9a-f]{64}$"
+            },
+            "image_id": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "provenance_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            },
+            "sbom_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            }
+          }
+        },
+        "migration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reference",
+            "image_id",
+            "provenance_uri",
+            "sbom_uri"
+          ],
+          "properties": {
+            "reference": {
+              "type": "string",
+              "pattern": "^[a-z0-9.-]+(?::[0-9]+)?/(?:[a-z0-9][a-z0-9._-]*/)*[a-z0-9][a-z0-9._-]*@sha256:[0-9a-f]{64}$"
+            },
+            "image_id": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "provenance_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            },
+            "sbom_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            }
+          }
+        },
+        "caddy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reference",
+            "image_id",
+            "provenance_uri",
+            "sbom_uri"
+          ],
+          "properties": {
+            "reference": {
+              "type": "string",
+              "pattern": "^[a-z0-9.-]+(?::[0-9]+)?/(?:[a-z0-9][a-z0-9._-]*/)*[a-z0-9][a-z0-9._-]*@sha256:[0-9a-f]{64}$"
+            },
+            "image_id": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "provenance_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            },
+            "sbom_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            }
+          }
+        },
+        "postgres": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reference",
+            "image_id",
+            "provenance_uri",
+            "sbom_uri"
+          ],
+          "properties": {
+            "reference": {
+              "type": "string",
+              "pattern": "^[a-z0-9.-]+(?::[0-9]+)?/(?:[a-z0-9][a-z0-9._-]*/)*[a-z0-9][a-z0-9._-]*@sha256:[0-9a-f]{64}$"
+            },
+            "image_id": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "provenance_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            },
+            "sbom_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            }
+          }
+        },
+        "nats": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reference",
+            "image_id",
+            "provenance_uri",
+            "sbom_uri"
+          ],
+          "properties": {
+            "reference": {
+              "type": "string",
+              "pattern": "^[a-z0-9.-]+(?::[0-9]+)?/(?:[a-z0-9][a-z0-9._-]*/)*[a-z0-9][a-z0-9._-]*@sha256:[0-9a-f]{64}$"
+            },
+            "image_id": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "provenance_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            },
+            "sbom_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            }
+          }
+        },
+        "minio": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reference",
+            "image_id",
+            "provenance_uri",
+            "sbom_uri"
+          ],
+          "properties": {
+            "reference": {
+              "type": "string",
+              "pattern": "^[a-z0-9.-]+(?::[0-9]+)?/(?:[a-z0-9][a-z0-9._-]*/)*[a-z0-9][a-z0-9._-]*@sha256:[0-9a-f]{64}$",
+              "const": "ghcr.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d"
+            },
+            "image_id": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "const": "sha256:7b5ca1f11aa4c91593612d2d4a9e253ec9152a4bd13a19e551290a042a4c52f5"
+            },
+            "provenance_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            },
+            "sbom_uri": {
+              "type": "string",
+              "pattern": "^https://[a-z0-9.-]+/[^?#<>\\s]+@sha256:[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "migrations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runner_sha256",
+        "files",
+        "inventory_sha256"
+      ],
+      "properties": {
+        "runner_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "sha256"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[0-9]{3}_[a-z][a-z0-9_]*\\.sql$"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        "inventory_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "docker_engine",
+        "docker_compose"
+      ],
+      "properties": {
+        "docker_engine": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "package_sha256"
+          ],
+          "properties": {
+            "version": {
+              "type": "string",
+              "pattern": "^[0-9][0-9A-Za-z.+:~_-]*$"
+            },
+            "package_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "docker_compose": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "package_sha256"
+          ],
+          "properties": {
+            "version": {
+              "type": "string",
+              "pattern": "^[0-9][0-9A-Za-z.+:~_-]*$"
+            },
+            "package_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "service_config_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "secret_versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api",
+        "ingestion-http",
+        "article-worker",
+        "payment-reconciler",
+        "postgres",
+        "nats",
+        "minio",
+        "migration",
+        "bootstrap",
+        "metrics-probe"
+      ],
+      "properties": {
+        "api": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "AUTODATA_POSTGRES_PASSWORD",
+            "AUTODATA_S3_ACCESS_KEY",
+            "AUTODATA_S3_SECRET_KEY",
+            "AUTODATA_INGESTION_INTERNAL_TOKEN",
+            "AUTODATA_IMAGE_URL_KEY"
+          ],
+          "properties": {
+            "AUTODATA_POSTGRES_PASSWORD": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_S3_ACCESS_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_S3_SECRET_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_INGESTION_INTERNAL_TOKEN": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_IMAGE_URL_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            }
+          }
+        },
+        "ingestion-http": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "AUTODATA_POSTGRES_PASSWORD",
+            "AUTODATA_S3_ACCESS_KEY",
+            "AUTODATA_S3_SECRET_KEY",
+            "AUTODATA_INGESTION_INTERNAL_TOKEN",
+            "AUTODATA_STRIPE_SECRET_KEY",
+            "AUTODATA_STRIPE_WEBHOOK_SECRET",
+            "BANKONE_API_TOKEN",
+            "BANKTWO_API_TOKEN"
+          ],
+          "properties": {
+            "AUTODATA_POSTGRES_PASSWORD": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_S3_ACCESS_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_S3_SECRET_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_INGESTION_INTERNAL_TOKEN": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_STRIPE_SECRET_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_STRIPE_WEBHOOK_SECRET": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "BANKONE_API_TOKEN": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "BANKTWO_API_TOKEN": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            }
+          }
+        },
+        "article-worker": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "AUTODATA_POSTGRES_PASSWORD",
+            "AUTODATA_S3_ACCESS_KEY",
+            "AUTODATA_S3_SECRET_KEY",
+            "BANKONE_API_TOKEN",
+            "BANKTWO_API_TOKEN",
+            "INCEPTION_API_KEY"
+          ],
+          "properties": {
+            "AUTODATA_POSTGRES_PASSWORD": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_S3_ACCESS_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_S3_SECRET_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "BANKONE_API_TOKEN": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "BANKTWO_API_TOKEN": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "INCEPTION_API_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            }
+          }
+        },
+        "payment-reconciler": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "AUTODATA_POSTGRES_PASSWORD",
+            "AUTODATA_INGESTION_INTERNAL_TOKEN",
+            "AUTODATA_STRIPE_SECRET_KEY",
+            "AUTODATA_STRIPE_WEBHOOK_SECRET"
+          ],
+          "properties": {
+            "AUTODATA_POSTGRES_PASSWORD": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_INGESTION_INTERNAL_TOKEN": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_STRIPE_SECRET_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_STRIPE_WEBHOOK_SECRET": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            }
+          }
+        },
+        "postgres": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "POSTGRES_PASSWORD"
+          ],
+          "properties": {
+            "POSTGRES_PASSWORD": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            }
+          }
+        },
+        "nats": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "NATS_METRICS_USER",
+            "NATS_METRICS_PASSWORD"
+          ],
+          "properties": {
+            "NATS_METRICS_USER": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "NATS_METRICS_PASSWORD": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            }
+          }
+        },
+        "minio": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "S3_WORKER_ACCESS_KEY",
+            "S3_WORKER_SECRET_KEY",
+            "S3_API_ACCESS_KEY",
+            "S3_API_SECRET_KEY"
+          ],
+          "properties": {
+            "S3_WORKER_ACCESS_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "S3_WORKER_SECRET_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "S3_API_ACCESS_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "S3_API_SECRET_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            }
+          }
+        },
+        "migration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "PGPASSWORD"
+          ],
+          "properties": {
+            "PGPASSWORD": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            }
+          }
+        },
+        "bootstrap": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "AUTODATA_S3_ACCESS_KEY",
+            "AUTODATA_S3_SECRET_KEY"
+          ],
+          "properties": {
+            "AUTODATA_S3_ACCESS_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "AUTODATA_S3_SECRET_KEY": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            }
+          }
+        },
+        "metrics-probe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "AUTODATA_POSTGRES_PASSWORD",
+            "NATS_METRICS_USER",
+            "NATS_METRICS_PASSWORD"
+          ],
+          "properties": {
+            "AUTODATA_POSTGRES_PASSWORD": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "NATS_METRICS_USER": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "NATS_METRICS_PASSWORD": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            }
+          }
+        }
+      }
+    },
+    "rollback_source_sha": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{40}$"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cars.tk/contracts/release-v1.schema.json",
+  "title": "Workshop immutable release v1",
+  "description": "Strict offline definitions. Runtime pins, guard/mount/secrets verification and staging evidence remain mandatory. No credential values."
+}

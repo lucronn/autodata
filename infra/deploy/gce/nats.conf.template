@@ -1,0 +1,18 @@
+# Private rendered file: /run/autodata/nats/nats.conf, never release Config.Env.
+# @@ tokens are replaced by the private delivery renderer, never a shell/eval.
+server_name: autodata-production
+listen: 0.0.0.0:4222
+http: 127.0.0.1:8222
+jetstream { store_dir: /data/jetstream }
+max_payload: 1048576
+write_deadline: "5s"
+authorization {
+  users: [
+    { user: "@@NATS_METRICS_USER@@", password: "@@NATS_METRICS_PASSWORD@@",
+      permissions: {
+        publish: { allow: ["$JS.API.INFO"] },
+        subscribe: { allow: ["_INBOX.>"] }
+      }
+    }
+  ]
+}
