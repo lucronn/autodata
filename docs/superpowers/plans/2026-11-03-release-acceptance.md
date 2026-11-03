@@ -1,5 +1,7 @@
 # Release Acceptance Implementation Plan
 
+> **R6 scope update (2026-11-03):** The [bounded Workshop product-evidence assembler plan](2026-11-03-workshop-product-evidence-assembler.md) supersedes the R6a/R6 implementation paths, dependencies and dispatch instructions below. First3 is offline structural tooling with all unfinished evidence profiles disabled; later2 is separately gated real staging provenance. Historical full-release requirements below remain open, but they do not authorize broad runner, orchestration, infrastructure or collector edits.
+
 > **For agentic workers:** Use superpowers:subagent-driven-development or superpowers:executing-plans task by task, after the exact-base planning preflight passes. This dependent plan grants no implementation authority.
 
 **Goal:** Produce a reviewable dual-bank release candidate with independently replayable staging, identity, migration and recovery evidence, without production deployment.

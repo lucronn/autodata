@@ -1,5 +1,7 @@
 # Production Release Orchestration Implementation Plan
 
+> **R6 scope update (2026-11-03):** The [bounded Workshop product-evidence assembler plan](2026-11-03-workshop-product-evidence-assembler.md) is authoritative for the offline first3 assembler and separately gated later2 staging collector. Earlier R6a/R6 broad path/dependency instructions here are retained as history and grant no implementation authority. Agent-runtime certification and full production release verification remain separate outstanding work.
+
 > **For agentic workers:** Use superpowers:subagent-driven-development for the current-session execution. Follow AGENTS.md and the repository planning gate before implementation.
 
 **Goal:** Set up and execute a traceable multi-agent delivery queue for the dual-bank platform, once-published rewritten articles, and source fallback until ingestion completes.
