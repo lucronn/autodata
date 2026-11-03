@@ -18,6 +18,16 @@ class AccessCollectorTests(unittest.TestCase):
             self.assertFalse(all(smoke.go_results([e for e in events if e['Test'] != name]).values()))
         self.assertFalse(all(smoke.go_results(events + [{'Action': 'skip', 'Test': smoke.GO_IDS[0]}]).values()))
         self.assertFalse(all(smoke.go_results(events + [{'Action': 'fail', 'Test': smoke.GO_IDS[0]}]).values()))
+        for extra in ({'Action': 'fail'}, {'Action': 'skip', 'Test': 'Unexpected'},
+                      {'Action': 'fail', 'Test': smoke.GO_IDS[0] + '/Nested'},
+                      {'Action': 'pass', 'Test': 'Unexpected'},
+                      {'Action': 'run', 'Test': smoke.GO_IDS[0] + '/Nested'}):
+            self.assertFalse(all(smoke.go_results(events + [extra]).values()), extra)
+        inherited = {'PATH': '/fixture/bin', 'HOME': '/original', 'AWS_SECRET_ACCESS_KEY': 'no',
+                     'AUTODATA_FIREBASE_PROJECT_ID': 'no', 'AUTODATA_STRIPE_KEY': 'no',
+                     'BANKONE_BASE_URL': 'no', 'GOOGLE_APPLICATION_CREDENTIALS': 'no'}
+        self.assertEqual(smoke.go_environment(inherited), {'PATH': '/fixture/bin'})
+
 
     def test_junit_missing_empty_or_skip_cannot_pass(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -48,9 +58,7 @@ if os.getenv('AUTODATA_REQUIRE_AUTH_INTEGRATION') == '1':
         """Actual Go HTTP/SDK/PG five-case suite, with a separate 038 startup DB."""
         full, old = fresh_database(), fresh_database(through=38)
         artifacts = Path('/artifacts')
-        env = {key: value for key, value in os.environ.items()
-               if not key.startswith(('FIREBASE_', 'GOOGLE_', 'AUTODATA_POSTGRES_', 'PG', 'BANKONE_', 'BANKTWO_', 'INCEPTION_'))
-               and key not in ('DATABASE_URL', 'AUTODATA_DB_ADDRESS')}
+        env = smoke.go_environment(os.environ)
         env.update(AUTODATA_REQUIRE_AUTH_INTEGRATION='1', AUTODATA_LIFECYCLE_TEST='1',
                    AUTODATA_AUTH_TEST_DATABASE_URL=f'postgres://lifecycle_test:lifecycle_test_only@postgres:5432/{full.database_name}?sslmode=disable',
                    AUTODATA_AUTH_TEST_UNMIGRATED_DATABASE_URL=f'postgres://lifecycle_test:lifecycle_test_only@postgres:5432/{old.database_name}?sslmode=disable',

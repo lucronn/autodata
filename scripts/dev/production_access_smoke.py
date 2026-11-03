@@ -98,12 +98,19 @@ def check_inputs(phase):
             'runner_git_observation': git_observation}
 
 
+def go_environment(inherited):
+    # Only executable routing crosses the child boundary. No ambient HOME,
+    # credentials, project, provider, database, proxy or payment configuration.
+    return {key: inherited[key] for key in ('PATH',) if key in inherited}
+
+
 def go_results(events):
     # A pass alone is insufficient: actual execution, no skips/failures, root pass.
     def passed(name):
         actions = [e.get('Action') for e in events if e.get('Test') == name]
         return 'run' in actions and actions.count('pass') == 1 and not {'skip', 'fail'} & set(actions)
-    root_ok = passed(GO_ROOT)
+    forbidden = any(e.get('Action') in ('skip', 'fail') or (e.get('Test') is not None and e['Test'] not in (GO_ROOT, *GO_IDS)) for e in events)
+    root_ok = not forbidden and passed(GO_ROOT)
     return {name: root_ok and passed(GO_ROOT + '/' + name) for name in GO_NAMES}
 
 
@@ -126,7 +133,7 @@ def collect(candidate, output):
     provenance = {}
     code, timed_out, count, go_code = -1, False, 0, -1
     try:
-        if os.getenv('AUTODATA_LIFECYCLE_TEST') != '1' or not re.fullmatch('[a-f0-9]{40}', candidate):
+        if os.getenv('AUTODATA_LIFECYCLE_TEST') != '1' or os.getenv('FIREBASE_AUTH_EMULATOR_HOST') or not re.fullmatch('[a-f0-9]{40}', candidate):
             raise RuntimeError('explicit private lifecycle fixture and exact candidate required')
         os.environ['AUTODATA_R3_CANDIDATE_SHA'] = candidate
         provenance = check_inputs('before')
