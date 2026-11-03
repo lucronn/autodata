@@ -36,7 +36,7 @@ My vehicles loads owner-only `/v1/workshop/library`, default20/max50 using serve
 
 `POST /v1/workshop/checkout-sessions` requires app cookie, current CSRF, JSON `{configuration_id,region,terms_version}`, and cryptographic UUID Idempotency-Key. One in-flight creation per selected scope and attempt, disable double activation. Reuse the same key/body on a bounded transport retry or manual retry of the same unresolved attempt; never generate a new key merely because a response was lost. Preserve only non-secret attempt UUID/scope/returned order UUID in sessionStorage for same-tab return/reload; never store cookies, CSRF, ID/refresh/provider tokens, source/article bodies or media URLs there. Clear attempt metadata on explicit logout/new sign-in or owner404. Do not automatically POST checkout after reload or a return URL. A new attempt after authoritative expiration requires a fresh explicit purchase confirmation; server decides whether the old session is nonchargeable. No local timer frees a server order or creates a replacement checkout.
 
-Handle checkout discriminant checkout/processing/owned exactly as the integrated backend: hosted checkout URL only in checkout; processing enters order status; owned opens the server library scope with no payment. Validate hosted URL is HTTPS, no username/password, no fragment and exact hostname checkout.stripe.com, with nonempty supported checkout path. No custom/untrusted return URL or Stripe.js; navigate the top-level page to the server-returned hosted URL. A future provider-host change requires a deliberate reviewed allowlist amendment.
+Handle checkout discriminant checkout/processing/owned exactly as the integrated backend: hosted checkout URL only in checkout; processing enters order status; owned opens the server library scope with no payment. Validate hosted URL is HTTPS, no username/password or explicit port, no whitespace/control characters, and exact hostname checkout.stripe.com with a nonempty supported `/c/pay/` path. Preserve the exact provider-returned opaque fragment; official Checkout Session URLs use it. No custom/untrusted return URL or Stripe.js; navigate the top-level page to the server-returned hosted URL. A future provider-host change requires a deliberate reviewed allowlist amendment.
 
 Fixed success/cancel destinations use the validated server public origin: production cars.tk or the explicit HTTPS staging origin. Both return to `/workshop/?order=<stored-order-UUID>`. Browser consumes only the opaque UUID `order` return parameter; a `success=true`, session ID, status string or mismatched URL configuration never grants access. Fetch owner-only `/v1/workshop/orders/{order_id}`; unknown/other owner404 clears attempt and shows a safe unavailable-order state. Creating/open/processing/reconciliation-required stay pending with safe server disposition. Paid financial state prompts a fresh library/exact-scope authorized read; only an actual server grant permits content. Canceled/expired permits a deliberate server-controlled next action, never automatic charge. Revoked clears protected data. Returning from Cancel does not assume payment failed: check owner order because settlement may race navigation. Allow return resolution after sign-in without replaying a checkout POST.
 
@@ -203,3 +203,11 @@ The final UI consumes its verified assets and still owns all customer behavior
 and browser/production-image acceptance. Reconcile the create/modify inventory
 against those existing files before final UI dispatch; the33-path envelope and
 120+21 browser requirements remain unchanged.
+
+
+### Early-refund library DTO clarification
+
+The final commerce library includes revoked order tombstones even if the full
+refund preceded any grant. `granted_at` is nullable only for that revoked,
+never-granted case; display refunded/revoked honestly without inventing a purchase
+activation time. Every granted item retains its actual grant timestamp.

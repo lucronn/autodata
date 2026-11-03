@@ -436,3 +436,14 @@ The queue lists exact assignments. Both share the existing approved contract;
 root integrates their branches before the14 real-PG cases and final review.
 Status DTO uses `state` and `retry_disposition`, with `new_key` only after
 authoritative expired/canceled state; every other state says `do_not_repay`.
+
+
+### Commerce core review refinement
+
+The39-path scope and disjoint31+8 ownership remain unchanged. Preserve the opaque
+fragment on official Stripe-hosted Checkout URLs; app return origins remain strict.
+Verify the real configured Price before offering checkout and the returned Session
+financial values before returning its URL. Library includes revoked never-granted
+orders with null granted_at and requires active descriptor/body/resource rights
+before saying viewable. Todo: targeted regressions, synchronized refinement gate,
+then all fourteen actual PostgreSQL cases and final independent review.
