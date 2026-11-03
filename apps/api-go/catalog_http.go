@@ -165,7 +165,18 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 
 func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http.Request, principal Principal) {
 	vehicleID := request.PathValue("vehicle_id")
-	items, err := s.catalog.Articles(request.Context(), principal, vehicleID)
+	var items []CatalogArticle
+	var err error
+	if s.paidCatalogEnabled() {
+		repository, ok := s.catalog.(paidArticleDescriptorStore)
+		if !ok {
+			s.writePaidCatalogError(response, request, ErrVehicleGrantUnavailable)
+			return
+		}
+		items, err = repository.PaidArticleDescriptors(request.Context(), principal, vehicleID)
+	} else {
+		items, err = s.catalog.Articles(request.Context(), principal, vehicleID)
+	}
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
