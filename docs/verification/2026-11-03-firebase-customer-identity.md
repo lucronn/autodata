@@ -83,3 +83,20 @@ Actual integration GitHub CI41696273960 passed at
 472492dd868122b2b0da00dc84e15c5424aa0276, including the live Compose smoke.
 This completes the identity dependency checkpoint. Later merchant/project/domain, real Google/Stripe
 HTTPS staging, paid access, browser and recovery/cutover acceptance remain required.
+
+
+## Exact-head identity session probe amendment
+
+The immutable identity5 run at `97511fc2c50f8e9dffbd15a1549298b94fc6b761` in `/tmp/autodata-identity-final-97511fc-1` is failed and preserved: four raw Go cases pass; the SDK/HTTP revocation scenario probes a selector made public by43ec0e0, so it reports old-cookie200 despite retained database proof of old-session revoked_at. Historical d2eb70f acceptance predates this selector change. bf8527c corrected the same assumption in main_test.go.
+
+Dedicated plan: `docs/superpowers/plans/2026-11-03-identity-session-probe.md`. Issue https://github.com/lucronn/autodata/issues/186 and Project https://github.com/users/lucronn/projects/8 track this one-test-file amendment. Replace only the helper GET path with `/auth/session`, retaining all five scenarios and exact401/200/401/401/503 expectations. Product auth, public selectors, cookies, PostgreSQL/migrations and frozen acceptance runner remain unchanged.
+
+Concrete todo:
+- [ ] Synchronize Issue186/Project8, the dedicated plan, canonical identity document, queue, task and record; commit/push and pass exact-SHA preflight before independent coordinator gate review.
+- [ ] Change only apps/api-go/auth_http_test.go: make testFirebaseExchangeAndUserRevocation probe GET /auth/session instead of the public GET /v1/catalog/years; retain all five identity subtests and exact 401/200/401/401/503 status expectations.
+- [ ] Run focused auth HTTP/SDK tests and full Go test/vet with retained logs and explicit optional-integration skip disclosure; confirm the one-file diff preserves all product auth/session/SQL behavior and commit/push for independent exact-SHA review.
+- [ ] Coordinator integrates the reviewed test-only correction and runs the unchanged frozen identity5 supervisor on a clean immutable integrated SHA after current Docker acceptance finishes; preserve original failed receipt and independently inspect raw events, database rows, provenance and cleanup.
+
+No implementation before synchronized committed checkpoint, pinned passing preflight and independent coordinator gate review. Fresh exact integrated identity5 acceptance remains required; prior failed and passed receipts retain their original meaning.
+
+Tracking synchronized/read back `2026-11-03T23:58:25.506564+00:00`: https://github.com/lucronn/autodata/issues/186#issuecomment-6618597888; Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`, field Source or dependency reference. Exact issue-comment SHA256 `bdcf4f4fb7bdb74f3c65ba6a9bbccd5a0e166469c6f2fbfd1ecf723efc64e060`, Project-text SHA256 `0a1d7564da5b9e26b365fc471272c5fc0c092e409abe53efbbf8fe185cb7089d`. The compact Project index preserves all prior references; the complete prior field is verbatim in the comment. Record `status: synchronized`; checkpoint/preflight/independent review remain pending.
