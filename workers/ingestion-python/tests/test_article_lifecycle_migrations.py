@@ -57,7 +57,7 @@ def test_full_chain_restart_preserves_every_marker_and_schema(fresh_database):
     before = versions(repo)
     schema = snapshot(repo)
     result = run_driver(repo)
-    assert result.stdout.count('AUTODATA_SKIPPED ') == 38
+    assert result.stdout.count('AUTODATA_SKIPPED ') == 39
     assert 'AUTODATA_APPLIED ' not in result.stdout
     assert versions(repo) == before
     assert snapshot(repo) == schema
@@ -92,9 +92,9 @@ def test_empty_bootstrap_and_untracked_application_rejection(fresh_database, emp
     if empty_ledger:
         with repo.connect() as conn:
             conn.execute('CREATE TABLE schema_migrations(version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())')
-    assert len(applied(run_driver(repo))) == 38
-    assert len(versions(repo)) == 38
-    for table in ('vehicles', 'canonical_article_revisions'):
+    assert len(applied(run_driver(repo))) == 39
+    assert len(versions(repo)) == 39
+    for table in ('vehicles', 'canonical_article_revisions', 'customer_accounts', 'auth_sessions'):
         untracked = fresh_database(through=0)
         with untracked.connect() as conn:
             if empty_ledger:
@@ -113,7 +113,7 @@ def test_invalid_ledger_fails_before_pending_application_ddl(fresh_database, cor
     with repo.connect() as conn:
         if corruption in ('unknown','wrong_stem'):
             conn.execute('INSERT INTO schema_migrations(version) VALUES (%s)',
-                         ('039_future' if corruption == 'unknown' else '032_wrong',))
+                         ('040_future' if corruption == 'unknown' else '032_wrong',))
         elif corruption == 'gap':
             conn.execute("DELETE FROM schema_migrations WHERE version='032_catalog_article_source_original'")
         elif corruption == 'duplicate_shape':
@@ -129,9 +129,10 @@ def test_invalid_ledger_fails_before_pending_application_ddl(fresh_database, cor
     assert versions(repo) == old_versions
 
 
-def test_original_038_adoption_and_markerless_033_effects_are_once_only(fresh_database):
+def test_original_038_adoption_and_markerless_033_effects_are_once_only(fresh_database, tmp_path):
     repo = fresh_database(through=0)
     raw_chain(repo)
+    directory = fixture_prefix(tmp_path, 38)
     vehicle = seed_vehicle(repo)
     malformed = seed_configuration(repo, vehicle)
     control = seed_configuration(repo, vehicle)
@@ -143,7 +144,7 @@ def test_original_038_adoption_and_markerless_033_effects_are_once_only(fresh_da
         before_base = conn.execute('SELECT * FROM vehicle_identity_bases WHERE vehicle_identity_base_id=%s', (base,)).fetchone()
         before_bad = conn.execute('SELECT * FROM vehicle_configurations WHERE vehicle_configuration_id=%s', (malformed,)).fetchone()
     before_versions, schema = versions(repo), snapshot(repo)
-    assert applied(run_driver(repo)) == ['033_catalog_scope_coverage.sql']
+    assert applied(run_driver(repo, directory)) == ['033_catalog_scope_coverage.sql']
     with repo.connect() as conn:
         after_base = conn.execute('SELECT * FROM vehicle_identity_bases WHERE vehicle_identity_base_id=%s', (base,)).fetchone()
         after_bad = conn.execute('SELECT * FROM vehicle_configurations WHERE vehicle_configuration_id=%s', (malformed,)).fetchone()
@@ -155,7 +156,7 @@ def test_original_038_adoption_and_markerless_033_effects_are_once_only(fresh_da
     assert [row for row in versions(repo) if row['version'] != '033_catalog_scope_coverage'] == before_versions
     assert snapshot(repo) == schema
     adopted_versions = versions(repo)
-    assert applied(run_driver(repo)) == []
+    assert applied(run_driver(repo, directory)) == []
     assert versions(repo) == adopted_versions
     with repo.connect() as conn:
         assert conn.execute('SELECT * FROM vehicle_identity_bases WHERE vehicle_identity_base_id=%s', (base,)).fetchone() == after_base
@@ -169,7 +170,8 @@ def test_genuine_036_upgrade_preserves_jobs_and_matches_fresh_schema(fresh_datab
     apply_migration(legacy, 36)
     old_versions = versions(legacy)
     assert applied(run_driver(legacy)) == ['033_catalog_scope_coverage.sql',
-        '037_article_source_lifecycle.sql', '038_article_transform_publication.sql']
+        '037_article_source_lifecycle.sql', '038_article_transform_publication.sql',
+        '039_production_identity_sessions.sql']
     assert read_imported_job_invariants(legacy) == jobs
     assert [r for r in versions(legacy) if r['version'] in {v['version'] for v in old_versions}] == old_versions
     assert snapshot(legacy) == snapshot(fresh_database())
@@ -177,7 +179,7 @@ def test_genuine_036_upgrade_preserves_jobs_and_matches_fresh_schema(fresh_datab
     assert read_imported_job_invariants(legacy) == jobs
 
 
-@pytest.mark.parametrize('number', [2, 33, 36, 37, 38])
+@pytest.mark.parametrize('number', [2, 33, 36, 37, 38, 39])
 def test_migration_failure_rolls_back_only_active_file_then_retry(fresh_database, tmp_path, number):
     repo = fresh_database(through=number - 1)
     directory = fixture_prefix(tmp_path, number)
@@ -207,8 +209,8 @@ def test_recorded_001_and_partial_unmarked_next_file_remain_retryable(fresh_data
     body = (ROOT / 'db/migrations/002_platform_spine.sql').read_text()
     with repo.connect() as conn:
         conn.execute(body[:body.index(';') + 1])
-    assert len(applied(run_driver(repo))) == 37
-    assert len(versions(repo)) == 38
+    assert len(applied(run_driver(repo))) == 38
+    assert len(versions(repo)) == 39
 
 
 @pytest.mark.parametrize('upgrade', [False, True])
@@ -216,7 +218,7 @@ def test_two_full_runners_serialize_and_apply_each_version_once(fresh_database, 
     repo = fresh_database(through=0)
     if upgrade:
         raw_chain(repo, through=36)
-    directory = fixture_prefix(tmp_path, 38)
+    directory = fixture_prefix(tmp_path, 39)
     number = 33 if upgrade else 1
     path = next(directory.glob(f'{number:03d}_*.sql'))
     path.write_text(path.read_text() + '\nSELECT pg_sleep(1);\n')
@@ -237,9 +239,9 @@ def test_two_full_runners_serialize_and_apply_each_version_once(fresh_database, 
         assert waiting, 'second full driver never waited on the session advisory lock'
         results = [first.result(), second.result()]
     all_applied = sum((applied(r) for r in results), [])
-    expected = ['033_catalog_scope_coverage.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql'] if upgrade else [p.name for p in sorted((ROOT/'db/migrations').glob('*.sql'))]
+    expected = ['033_catalog_scope_coverage.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql', '039_production_identity_sessions.sql'] if upgrade else [p.name for p in sorted((ROOT/'db/migrations').glob('*.sql'))]
     assert sorted(all_applied) == sorted(expected)
-    assert len(versions(repo)) == 38
+    assert len(versions(repo)) == 39
     assert applied(run_driver(repo)) == []
 
 
@@ -269,17 +271,17 @@ def test_connection_death_releases_lock_and_rolls_back_active_file(fresh_databas
         with repo.connect() as conn:
             assert conn.execute("SELECT to_regclass('killed_backend_ddl') AS object").fetchone()['object'] is None
             assert conn.execute("SELECT to_regclass('dataset_products') AS object").fetchone()['object'] is None
-        assert len(applied(run_driver(repo))) == 37
+        assert len(applied(run_driver(repo))) == 38
     finally:
         if process.poll() is None:
             process.kill()
             process.communicate(timeout=5)
 
 
-def test_restart_after_committed_037_only_applies_038(fresh_database):
+def test_restart_after_committed_037_only_applies_038_and_039(fresh_database):
     repo = fresh_database(through=37)
     old_versions = versions(repo)
-    assert applied(run_driver(repo)) == ['038_article_transform_publication.sql']
+    assert applied(run_driver(repo)) == ['038_article_transform_publication.sql', '039_production_identity_sessions.sql']
     assert versions(repo)[:37] == old_versions
     assert applied(run_driver(repo)) == []
 
@@ -292,7 +294,7 @@ def test_native_python_adapter_applies_then_skips_in_one_session(fresh_database)
     from unittest.mock import patch
     with patch.dict(os.environ, {'AUTODATA_POSTGRES_USER':'lifecycle_test',
          'AUTODATA_POSTGRES_PASSWORD':'lifecycle_test_only', 'AUTODATA_POSTGRES_DB':repo.database_name}):
-        assert len(apply_migrations(ROOT, 'postgres:5432')) == 38
+        assert len(apply_migrations(ROOT, 'postgres:5432')) == 39
         old_versions, schema = versions(repo), snapshot(repo)
         assert apply_migrations(ROOT, 'postgres:5432') == []
     assert versions(repo) == old_versions
@@ -342,4 +344,37 @@ def test_populated_publication_and_all_lifecycle_records_survive_restart(runtime
     assert before['publication_events']
     assert applied(run_driver(repo)) == []
     assert rows() == before
+    assert snapshot(repo) == schema
+
+
+def test_populated_038_upgrade_only_adds_identity_schema(fresh_database):
+    repo = fresh_database(through=38)
+    seed_vehicle(repo)
+    old_versions = versions(repo)
+    with repo.connect() as conn:
+        before = conn.execute('SELECT to_jsonb(v) AS row FROM vehicles v ORDER BY vehicle_id').fetchall()
+    assert applied(run_driver(repo)) == ['039_production_identity_sessions.sql']
+    assert versions(repo)[:38] == old_versions
+    with repo.connect() as conn:
+        assert conn.execute('SELECT to_jsonb(v) AS row FROM vehicles v ORDER BY vehicle_id').fetchall() == before
+        assert conn.execute("SELECT to_regclass('customer_accounts') AS name").fetchone()['name']
+        assert conn.execute("SELECT to_regclass('auth_sessions') AS name").fetchone()['name']
+    assert snapshot(repo) == snapshot(fresh_database())
+    assert applied(run_driver(repo)) == []
+
+
+def test_populated_customer_identity_restart_preserves_rows_and_ledger(fresh_database):
+    repo = fresh_database()
+    with repo.connect() as conn:
+        for status in ('active', 'blocked'):
+            account = conn.execute("INSERT INTO customer_accounts(firebase_project_id,firebase_uid,status) VALUES ('fixture-project',%s,%s) RETURNING customer_account_id", (status,status)).fetchone()['customer_account_id']
+            for number,state in enumerate(('active','expired','revoked')):
+                conn.execute("INSERT INTO auth_sessions(session_token_hash,customer_account_id,firebase_auth_time,created_at,expires_at,revoked_at) VALUES (%s,%s,1,now()-interval '2 hours',CASE WHEN %s='expired' THEN now()-interval '1 hour' ELSE now()+interval '1 hour' END,CASE WHEN %s='revoked' THEN now() ELSE NULL END)", (bytes([number + (10 if status == 'blocked' else 0)])*32,account,state,state))
+    def identity_rows():
+        with repo.connect() as conn:
+            return {table:conn.execute('SELECT to_jsonb(t) AS row FROM ' + table + ' t ORDER BY to_jsonb(t)::text').fetchall() for table in ('customer_accounts','auth_sessions')}
+    before,ledger,schema = identity_rows(),versions(repo),snapshot(repo)
+    assert applied(run_driver(repo)) == []
+    assert identity_rows() == before
+    assert versions(repo) == ledger
     assert snapshot(repo) == schema
