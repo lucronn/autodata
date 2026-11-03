@@ -477,3 +477,15 @@ included before the final combined full-race run.
 ### Concurrent Workshop delivery
 
 The user requested three concurrent builders. The canonical parallel plan is `docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md`: twelve article-access paths, four protected-media paths and thirty-two UI paths have exclusive owners. Reviewed interfaces permit parallel implementation after synchronized preflight while the coordinator completes dependency/runtime acceptance. This replaces serial dispatch timing, not production acceptance requirements. Commerce candidate9d33e1e remains unverified pending its remaining fixture repair and runtime/image/CI checks.
+
+
+### Hosting passive-schema checkpoint: synchronized planning
+
+The [hosting passive-schema amendment](2026-11-03-workshop-hosting.md#passive-schema-observation-synchronized-plan-only-checkpoint), approved as plan-only v3 artifact SHA256 `65fb0e202f21e95e503ecec001da561ac1efee4accbe7e2f6c74ba8557653625`, starts from integrated planning base `bc62f86eac54eb81b61e4013f0e910f264556f6c`. This six-document checkpoint is `synchronized` after coordinator live Issue186/Project8 readback; commit/push, full-SHA preflight, coordinator integration/re-pin and independent checkpoint approval must precede implementation. The [task](../../agents/tasks/2026-11-03-production-release/workshop-hosting.json) and [record](../../agents/records/2026-11-03-workshop-hosting.json) carry the exact goal and concrete todo.
+
+Next A scope is only runtime-check.py and test_host_runtime.py: fixed local container identity, dedicated existing socket-auth autodata_metrics role, fixed read-only schema/rights protocol and bounded fake-exec observations. Explicit database-owner/PUBLIC/column/MAINTAIN/type/RLS and ledger/capture bounds are required. Role/PGDATA HBA/ident provisioning and effective configuration proofs are future separately authorized administration; a Docker mount cannot attest superuser-only PostgreSQL settings. No password/admin fallback, secret mount or broad monitoring role is allowed.
+
+Todo: synchronize the six canonical documents and live tracking; pin and independently approve the plan-only gate; implement/test the two A paths with no real Docker/DB/cloud/provider execution; independently review the exact candidate before integration. Keep services/readiness/runtime_evidence false and check missing_dependency; do not enable mutation/start/maintenance/deployment or claim runtime acceptance from fake transcripts.
+
+
+Tracking synchronization read back: [Issue186 comment6617024444](https://github.com/lucronn/autodata/issues/186#issuecomment-6617024444) and [Project8](https://github.com/users/lucronn/projects/8) item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`, field `Source or dependency reference`, at `2026-11-03T22:27:57.522560+00:00`. The comment records the same v3 goal, five concrete todos, exact two-path implementation scope and offline limits; the project note indexes it. This is a plan-only synchronization checkpoint, not implementation dispatch or runtime/deployment authorization.
