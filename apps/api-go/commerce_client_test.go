@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -79,7 +83,7 @@ func TestCommerceGrantTypedOutcomes(t *testing.T) {
 			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var b map[string]any
 				json.NewDecoder(r.Body).Decode(&b)
-				if b["customer_account_id"] != "account" || b["configuration_id"] != "33333333-3333-4333-8333-333333333333" {
+				if b["customer_account_id"] != "account" || b["organization_id"] != "org" || len(b) != 4 || b["configuration_id"] != "33333333-3333-4333-8333-333333333333" {
 					t.Error("wrong scope")
 				}
 				w.WriteHeader(tc.status)
@@ -87,7 +91,7 @@ func TestCommerceGrantTypedOutcomes(t *testing.T) {
 			}))
 			defer s.Close()
 			c, _ := NewHTTPCommerceClient(s.URL, "token")
-			_, err := c.CheckVehicleGrant(context.Background(), "account", "33333333-3333-4333-8333-333333333333", "US")
+			_, err := c.CheckVehicleGrant(context.Background(), "account", "org", "33333333-3333-4333-8333-333333333333", "US")
 			if err != tc.want {
 				t.Fatal(err, tc.want)
 			}
@@ -134,3 +138,85 @@ func TestCommerceConfigurationFailsClosed(t *testing.T) {
 type commerceRoundTrip func(*http.Request) (*http.Response, error)
 
 func (f commerceRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// TestWorkshopCommercePythonIntegration is invoked only by the first required
+// real-PostgreSQL commerce case while its actual Python private HTTP server is
+// running. It reuses that case's existing order/key; it never creates fixtures.
+func TestWorkshopCommercePythonIntegration(t *testing.T) {
+	if os.Getenv("AUTODATA_REQUIRE_COMMERCE_INTEGRATION") != "1" {
+		t.Skip("requires the isolated Python commerce/PostgreSQL fixture")
+	}
+	fixture := make(map[string]string)
+	for _, name := range []string{"URL", "ACCOUNT_ID", "ORGANIZATION_ID", "CONFIGURATION_ID", "IDEMPOTENCY_KEY", "ORDER_ID", "REGION"} {
+		value := os.Getenv("AUTODATA_COMMERCE_FIXTURE_" + name)
+		if value == "" {
+			t.Fatalf("required fixture input %s is missing", name)
+		}
+		fixture[name] = value
+	}
+	target, err := url.Parse(fixture["URL"])
+	if err != nil || target == nil || target.Scheme != "http" || target.Hostname() != "127.0.0.1" || target.User != nil || target.Path != "" || target.RawQuery != "" || target.ForceQuery || target.Fragment != "" || target.Opaque != "" {
+		t.Fatal("fixture URL must be an explicit loopback HTTP authority")
+	}
+	host, portText, err := net.SplitHostPort(target.Host)
+	port, portErr := strconv.Atoi(portText)
+	if err != nil || host != "127.0.0.1" || portErr != nil || port < 1 || port > 65535 || fixture["URL"] != "http://127.0.0.1:"+strconv.Itoa(port) {
+		t.Fatal("fixture URL must have a canonical valid explicit port")
+	}
+	for _, name := range []string{"ACCOUNT_ID", "ORGANIZATION_ID", "CONFIGURATION_ID", "IDEMPOTENCY_KEY", "ORDER_ID"} {
+		if !commerceUUID(fixture[name]) {
+			t.Fatalf("fixture %s must be a canonical UUID", name)
+		}
+	}
+	if fixture["REGION"] != "US" {
+		t.Fatal("fixture region must be US")
+	}
+	client, err := NewHTTPCommerceClient(fixture["URL"], "fixture-internal")
+	if err != nil {
+		t.Fatal("fixture client configuration failed")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	invoke := func(operation string, input map[string]any) any {
+		t.Helper()
+		body, err := json.Marshal(input)
+		if err != nil {
+			t.Fatal("fixture input serialization failed")
+		}
+		status, raw, err := client.Do(ctx, operation, body, "")
+		if err != nil || status != 200 {
+			t.Fatalf("actual Python %s response failed: HTTP %d", operation, status)
+		}
+		projected, ok := commercePublicResult(operation, status, raw, input)
+		if !ok {
+			t.Fatalf("actual Python %s response violates the public DTO contract", operation)
+		}
+		return projected
+	}
+	scope := map[string]any{"configuration_id": fixture["CONFIGURATION_ID"], "region": fixture["REGION"]}
+	invoke("quote", scope)
+	owner := func() map[string]any {
+		return map[string]any{"customer_account_id": fixture["ACCOUNT_ID"], "organization_id": fixture["ORGANIZATION_ID"]}
+	}
+	input := owner()
+	input["configuration_id"], input["region"], input["terms_version"], input["idempotency_key"] = fixture["CONFIGURATION_ID"], fixture["REGION"], "workshop-v1", fixture["IDEMPOTENCY_KEY"]
+	checkout := invoke("checkouts", input).(commerceCheckout)
+	if checkout.State != "checkout" || checkout.OrderID != fixture["ORDER_ID"] {
+		t.Fatal("fixture checkout did not reuse the existing unpaid order")
+	}
+	input = owner()
+	input["order_id"] = fixture["ORDER_ID"]
+	status := invoke("orders/status", input).(commerceOrder)
+	if status.ConfigurationID != fixture["CONFIGURATION_ID"] || status.Region != fixture["REGION"] || status.State != "open" {
+		t.Fatal("fixture order status changed owner scope or unpaid state")
+	}
+	input = owner()
+	input["cursor"], input["limit"] = "", 20
+	library := invoke("library", input).(commerceLibrary)
+	if len(library.Items) != 0 || library.NextCursor != nil {
+		t.Fatal("unpaid fixture must have no library grant")
+	}
+	if _, err := client.CheckVehicleGrant(ctx, fixture["ACCOUNT_ID"], fixture["ORGANIZATION_ID"], fixture["CONFIGURATION_ID"], fixture["REGION"]); err != ErrVehicleGrantRequired {
+		t.Fatal("unpaid fixture must return the typed required grant outcome")
+	}
+}

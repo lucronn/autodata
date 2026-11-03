@@ -32,7 +32,7 @@ var (
 )
 
 type VehicleGrantChecker interface {
-	CheckVehicleGrant(context.Context, string, string, string) (VehicleGrant, error)
+	CheckVehicleGrant(context.Context, string, string, string, string) (VehicleGrant, error)
 }
 
 type commerceScope struct {

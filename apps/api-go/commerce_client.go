@@ -70,8 +70,8 @@ func (c *HTTPCommerceClient) Do(ctx context.Context, operation string, body []by
 	}
 	return response.StatusCode, b, nil
 }
-func (c *HTTPCommerceClient) CheckVehicleGrant(ctx context.Context, accountID, configurationID, region string) (VehicleGrant, error) {
-	b, _ := json.Marshal(map[string]string{"customer_account_id": accountID, "configuration_id": configurationID, "region": region})
+func (c *HTTPCommerceClient) CheckVehicleGrant(ctx context.Context, accountID, organizationID, configurationID, region string) (VehicleGrant, error) {
+	b, _ := json.Marshal(map[string]string{"customer_account_id": accountID, "organization_id": organizationID, "configuration_id": configurationID, "region": region})
 	status, body, err := c.Do(ctx, "grants/check", b, "")
 	if err != nil {
 		return VehicleGrant{}, ErrVehicleGrantUnavailable
