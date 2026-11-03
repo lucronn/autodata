@@ -1,8 +1,9 @@
 # Workshop product evidence: offline diagnostics and confined transport
 
 The current bounded assembler implements strict v1 envelope structure, a
-coordinator-supplied trusted invocation and confined artifact transport. It does
-not validate raw producer semantics or verify either tier. All profiles at the authorizing checkpoint
+coordinator-supplied trusted invocation, confined artifact transport and internal
+raw format/identity primitives. It does not yet corroborate complete paid/DTO
+producer semantics or verify either tier. All profiles at the authorizing checkpoint
 `0e21f6dbdf5ad0402b8bef42d3e1f2566964b309` are disabled and the assembler hash is
 unpromoted. The actual planning task therefore returns exit 3 (`unavailable`)
 from `validate`, even for a structurally valid envelope with supplied pass reports.
@@ -87,18 +88,20 @@ The policy, evaluator and workflows remain authoritative and unchanged.
 
 The fixed-profile design checkpoint is recorded in
 [the assembler plan, section 4a](../superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md#4a-fixed-raw-profile-design-checkpoint-planning-only).
-It is planning only. Coordinator tracking/task/record synchronization and a new
-committed implementation gate are required before its raw validators are built.
-No profile, task or implementation is changed by that design amendment.
+The design amendment itself is planning only. The separately synchronized
+section 4b implementation gate is `f18ca7bb9d5822dc96b5a5e31d0254e6dd985a03`;
+its bounded first milestone adds the internal primitives below and leaves all
+committed profiles unchanged and disabled.
 
 The inspected historical paid12 and DTO120 receipts both identify
 `2de36a1305bfbe45992995e6caf0ba52f30fddcc`. Paid evidence under
 `/tmp/autodata-paid-access-040-acceptance-2de36a1-v2/artifacts` has 499 files totaling
 30,437,073 bytes; 331 declared receipt hash references were independently matched.
-Its collector JSON is 3,715,668 bytes, so the current 2 MiB explicit JSON reader
-cannot parse it. The proposed paid raw-JSON bound is **4MiB (4,194,304 bytes)**,
-subject to reviewed fixed-profile implementation; the envelope stays capped at
-**2MiB (2,097,152 bytes)**. Current code and transport ceilings remain unchanged.
+Its collector JSON is 3,715,668 bytes, exceeding the original 2 MiB identity
+reader. The new explicitly invoked raw JSON reader is bounded at **4 MiB
+(4,194,304 bytes)**; the envelope and original identity reader stay capped at
+**2 MiB (2,097,152 bytes)**. Transport ceilings remain unchanged. This parser
+bound alone does not validate that historical collector or establish authority.
 
 Historical DTO CI run 41721947690 / artifact 13273366580 retains the 12,713-byte archive
 with SHA256 `653df2e839f65f6bc16484e9257f7138b0abf87edc437cdc201a958f8f1b0a5a`.
@@ -106,8 +109,43 @@ Its three entries expand to 405,292 bytes and include actual 120 DTO rows, fixtu
 log and readiness metadata. The plan retains the exact paid/DTO hashes and
 review/supervisor paths. These local byte-consistency observations do not supply
 registered reviewer identities, authenticated capture provenance, complete CI
-run/required-check metadata or exact-wrapper approval linkage. Those facts must
-be frozen with complete profiles before promotion; matching hashes are insufficient.
+run/required-check metadata or future trusted-profile linkage. Exact browser
+wrapper `b41ae0a538b3c5b62b33c32483146462886851e3c60768f8fdc0ac79495a3964`
+is independently approved in `/tmp/autodata-nested-evidence-expiry-browser-cache-review.md:17`.
+Registered approval authority and complete profile linkage still must be frozen
+before promotion; matching hashes are insufficient.
+
+Internal raw foundations are format and identity checks only:
+
+- `strict_raw_json` applies the separate 4 MiB UTF-8 object limit and the same
+  duplicate-key/nonfinite/invalid Unicode rejection as envelope JSON.
+  `ArtifactStore.read_raw_json` explicitly reopens and checks the immutable
+  inventory before/after parsing, and rejects conflicting declared reserved
+  candidate/base/profile identities. Missing required producer identities are
+  not supplied by this helper.
+- `strict_jsonl` accepts only complete newline-terminated object records, at
+  most 4 MiB and 65,536 records. It does not interpret Go run/pass outcomes.
+- `strict_junit_xml` accepts UTF-8 non-namespaced JUnit roots, at most 4 MiB,
+  20,000 elements and depth 64. It rejects DTDs/entities, comments, processing
+  instructions and conflicting encoding declarations. It does not interpret
+  case verdicts or counters.
+- `strict_dto_archive` reads exactly `browser/evidence.json`, `go-fixture.log`
+  and `ready.json` in memory. JSON members are bounded at 4 MiB each and the
+  fixture log at 8 MiB; compressed input stays within the 8 MiB transport
+  ceiling. Only regular ZIP32 stored/deflated members without descriptors,
+  comments or extra fields are supported. Local/central metadata, CRC and
+  complete deflate streams must agree; symlinks, duplicate/extra/missing names,
+  traversal, encryption, overlapping/gapped layout, trailing bytes and hidden
+  expansion fail. It never extracts an archive to the filesystem.
+- `paid_case_identities` and `dto_case_identities` check the fixed 12 paid IDs
+  and 120 scenario/engine pairs. Exact identity coverage is distinct from raw
+  outcome corroboration. These functions cannot certify any logical case.
+
+None of these helpers is selected by the CLI, a raw kind, a filename or candidate
+code. Tests explicitly forbid their dispatch from both fixture and staging plan/
+validate paths. Complete producer schemas, typed assertion/phase/outcome checks,
+source/migration/image/SDK/CI corroboration and trusted profile promotion remain
+unfinished. A valid internal parse never changes the unavailable CLI result.
 
 All profiles and verification flags remain blocked. Actual API21, complete 180
 cases and supporting scans/images/reviews at the final immutable candidate,

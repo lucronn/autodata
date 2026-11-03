@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 import hashlib
+import io
 import json
 import math
 import os
@@ -16,9 +17,17 @@ from pathlib import Path
 import re
 import subprocess
 import stat
+import struct
+import xml.etree.ElementTree as ET
+import zipfile
+import zlib
 
 CONTRACT = 'workshop-product-evidence-v1'
 MAX_MANIFEST_BYTES = 2 * 1024 * 1024
+MAX_RAW_JSON_BYTES = 4 * 1024 * 1024
+MAX_JSONL_RECORDS = 65536
+MAX_XML_NODES = 20000
+MAX_XML_DEPTH = 64
 # Transport ceilings only; these do not enable any raw acceptance profile.
 MAX_ARTIFACT_BYTES = 8 * 1024 * 1024
 MAX_EVIDENCE_BYTES = 64 * 1024 * 1024
@@ -43,6 +52,35 @@ ARTIFACT_KINDS = ('manifest', 'host_receipt', 'collector_result', 'junit', 'meas
 COUNTS = ('identity', 'catalog', 'commerce', 'paid', 'browser_dto', 'browser_api', 'total')
 FLAGS = ('fixture_verified', 'product_candidate_verified', 'staging_verified',
          'deployment_authorized', 'cutover_verified')
+
+# Literal inventories copied from inspected producer inputs, never imported from
+# candidate modules. These are internal parser contracts, not enabled profiles.
+PAID_GO_ROOTS = (
+    'TestPostgresPaidCatalogGrantBeforeWork',
+    'TestPostgresPaidCatalogExactScopeAndOwnerIsolation',
+    'TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse',
+    'TestPostgresPaidCatalogContextualMediaAndRevocation',
+    'TestPostgresPaidCatalogHistoricalSourceAndRights',
+    'TestPostgresPaidCatalogCustomerLegacyRoutesDenied')
+PAID_CASE_IDS = tuple(root+'-'+bank for root in PAID_GO_ROOTS for bank in ('bankone', 'banktwo'))
+DTO_ENGINES = ('chromium', 'firefox', 'webkit')
+DTO_SCENARIOS = (
+    'bankone-cascade', 'banktwo-cascade', 'dual-bank-coverage', 'one-bank-unavailable',
+    'pending-no-content', 'source-to-canonical', 'source-rewrite-failure', 'review-required',
+    'warm-reload', 'selection-change-in-flight', 'source-review-change-in-flight',
+    'cancel-and-retry', 'history-restore', 'document-only', 'missing-media', 'withdrawal',
+    'keyboard-print-mobile', 'source-media-isolation', 'auth-cookie-reload',
+    'google-popup-exchange', 'google-popup-blocked', 'google-popup-cancelled',
+    'google-stale-reauthentication', 'firebase-memory-persistence', 'signin-unavailable-local',
+    'signin-malformed-config', 'session-expired', 'session-blocked', 'auth-dependency-unavailable',
+    'quote-exact-scope', 'terms-config-unavailable', 'checkout-double-click-retry',
+    'checkout-processing-return', 'checkout-untrusted-return', 'checkout-expired',
+    'already-owned-no-pay', 'library-pagination-and-states', 'paid-prepare-before-poll',
+    'media-renew-coalesced', 'logout-and-bfcache-clear')
+DTO_CASE_IDS = tuple((engine, scenario) for engine in DTO_ENGINES for scenario in DTO_SCENARIOS)
+DTO_ARCHIVE_LIMITS = {'browser/evidence.json': MAX_RAW_JSON_BYTES,
+                      'go-fixture.log': MAX_ARTIFACT_BYTES, 'ready.json': MAX_RAW_JSON_BYTES}
+
 
 
 class ContractError(ValueError):
@@ -101,8 +139,8 @@ def sha256(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
-def strict_json(raw):
-    require(type(raw) is bytes and len(raw) <= MAX_MANIFEST_BYTES, 'manifest_size')
+def _strict_json(raw, limit, size_code):
+    require(type(raw) is bytes and len(raw) <= limit, size_code)
 
     def pairs(items):
         result = {}
@@ -134,6 +172,158 @@ def strict_json(raw):
         raise ContractError('invalid_json') from None
     require(type(result) is dict, 'invalid_json_object')
     return result
+
+
+def strict_json(raw):
+    """The envelope and trusted task retain their separate 2 MiB ceiling."""
+    return _strict_json(raw, MAX_MANIFEST_BYTES, 'manifest_size')
+
+
+def strict_raw_json(raw):
+    """Explicit internal raw JSON parser; it cannot enable a profile."""
+    return _strict_json(raw, MAX_RAW_JSON_BYTES, 'raw_json_size')
+
+
+def strict_jsonl(raw):
+    """Bounded complete UTF-8 object records, without interpreting Go outcomes."""
+    require(type(raw) is bytes and 0 < len(raw) <= MAX_RAW_JSON_BYTES, 'jsonl_size')
+    require(raw.endswith(b'\n'), 'incomplete_jsonl')
+    require(raw.count(b'\n') <= MAX_JSONL_RECORDS, 'jsonl_record_limit')
+    lines = raw.split(b'\n')[:-1]
+    require(len(lines) <= MAX_JSONL_RECORDS, 'jsonl_record_limit')
+    return [strict_raw_json(line) for line in lines]
+
+
+def strict_junit_xml(raw):
+    """Bounded non-namespaced JUnit syntax, never DTD/entity resolution."""
+    require(type(raw) is bytes and 0 < len(raw) <= MAX_RAW_JSON_BYTES, 'xml_size')
+    try:
+        text = raw.decode('utf-8')
+        require(re.search(r'<!\s*(?:DOCTYPE|ENTITY)|<!--', text, re.I) is None,
+                'unsafe_xml_declaration')
+        # XML declarations may only advertise the decoding used above.
+        declaration = re.match(r'^\ufeff?(<\?xml\s+[^?]*\?>)', text)
+        body = text
+        if declaration:
+            encoding = re.search(r'encoding\s*=\s*[\'"]([^\'"]+)[\'"]', declaration[1])
+            require(encoding is None or encoding[1].lower() == 'utf-8', 'xml_encoding')
+            body = text[declaration.end():]
+        require('<?' not in body, 'unsafe_xml_declaration')
+        parser = ET.XMLPullParser(events=('start', 'end'))
+        depth = nodes = 0
+        root = None
+        for offset in range(0, len(text), 4096):
+            parser.feed(text[offset:offset+4096])
+            for event, element in parser.read_events():
+                if event == 'start':
+                    depth += 1; nodes += 1
+                    require(depth <= MAX_XML_DEPTH and nodes <= MAX_XML_NODES, 'xml_complexity')
+                    require(type(element.tag) is str and '{' not in element.tag, 'xml_namespace')
+                    if root is None:
+                        root = element
+                else:
+                    depth -= 1
+        parser.close()
+        require(root is not None and root.tag in ('testsuite', 'testsuites') and depth == 0,
+                'invalid_junit_root')
+        return root
+    except (UnicodeError, ET.ParseError, RecursionError, ValueError) as exc:
+        if isinstance(exc, ContractError):
+            raise
+        raise ContractError('invalid_xml') from None
+
+
+def strict_dto_archive(raw):
+    """Read the fixed three-member DTO ZIP in memory; never extract paths.
+
+    Only observed ZIP32 stored/deflated regular files without descriptors,
+    comments or extra fields are understood. Complete bounded deflate streams,
+    local/central metadata and CRC must agree; hidden expansion is rejected.
+    """
+    require(type(raw) is bytes and 22 <= len(raw) <= MAX_ARTIFACT_BYTES, 'zip_size')
+    require(raw[-22:-18] == b'PK\x05\x06', 'invalid_zip')
+    end = struct.unpack_from('<4s4H2IH', raw, len(raw)-22)
+    require(end[1:5] == (0, 0, 3, 3) and end[7] == 0, 'invalid_zip_directory')
+    require(end[5]+end[6] == len(raw)-22, 'invalid_zip_directory')
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            records = archive.infolist()
+            require(len(records) == 3 and archive.start_dir == end[6] and not archive.comment,
+                    'invalid_zip_directory')
+            names = [record.filename for record in records]
+            unique(names)
+            require(set(names) == set(DTO_ARCHIVE_LIMITS), 'dto_archive_inventory')
+            offsets = sorted(record.header_offset for record in records)
+            unique(offsets)
+            require(offsets[0] == 0, 'invalid_zip_layout')
+            result = {}
+            for record in records:
+                name = record.filename
+                safe_ref(name)
+                require(record.orig_filename == name and not record.is_dir() and
+                        not record.extra and not record.comment and
+                        stat.S_IFMT(record.external_attr >> 16) in (0, stat.S_IFREG) and
+                        not (record.external_attr & 0x10), 'unsafe_zip_member')
+                require(record.flag_bits in (0, 0x800) and record.extract_version <= 20 and
+                        record.compress_type in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED),
+                        'unsupported_zip_format')
+                limit = DTO_ARCHIVE_LIMITS[name]
+                require(0 <= record.file_size <= limit and 0 <= record.compress_size <= MAX_ARTIFACT_BYTES,
+                        'zip_expansion_limit')
+                offset = record.header_offset
+                require(0 <= offset <= archive.start_dir-30, 'invalid_zip_layout')
+                header = struct.unpack_from('<4s5H3I2H', raw, offset)
+                require(header[0] == b'PK\x03\x04' and header[1] == record.extract_version and
+                        header[2] == record.flag_bits and
+                        header[3] == record.compress_type and header[6] == record.CRC and
+                        header[7] == record.compress_size and header[8] == record.file_size and
+                        header[10] == 0, 'zip_header_mismatch')
+                start = offset+30+header[9]
+                finish = start+record.compress_size
+                next_offset = min((item for item in offsets if item > offset), default=archive.start_dir)
+                require(finish == next_offset and raw[offset+30:start] == name.encode('ascii'),
+                        'invalid_zip_layout')
+                compressed = raw[start:finish]
+                if record.compress_type == zipfile.ZIP_STORED:
+                    data = compressed
+                else:
+                    decoder = zlib.decompressobj(-15)
+                    data = decoder.decompress(compressed, limit+1)
+                    require(len(data) <= limit and decoder.eof and not decoder.unconsumed_tail and
+                            not decoder.unused_data, 'zip_expansion_limit')
+                require(len(data) == record.file_size and zlib.crc32(data) == record.CRC,
+                        'zip_content_mismatch')
+                result[name] = data
+            require(sum(map(len, result.values())) <= MAX_EVIDENCE_BYTES, 'zip_expansion_limit')
+            return result
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError, UnicodeError,
+            OSError, ValueError, struct.error, zlib.error) as exc:
+        if isinstance(exc, ContractError):
+            raise
+        raise ContractError('invalid_zip') from None
+
+
+def paid_case_identities(case_ids):
+    """Identity inventory only; does not corroborate producer assertions."""
+    array(case_ids)
+    for case_id in case_ids:
+        string(case_id)
+    unique(case_ids)
+    require(set(case_ids) == set(PAID_CASE_IDS), 'paid_case_inventory')
+    return PAID_CASE_IDS
+
+
+def dto_case_identities(case_ids):
+    """Explicit scenario/engine pairs only; cannot substitute DTO for API21."""
+    array(case_ids)
+    pairs = []
+    for item in case_ids:
+        exact(item, ('browser', 'scenario'))
+        enum(item['browser'], DTO_ENGINES); enum(item['scenario'], DTO_SCENARIOS)
+        pairs.append((item['browser'], item['scenario']))
+    unique(pairs)
+    require(set(pairs) == set(DTO_CASE_IDS), 'dto_case_inventory')
+    return DTO_CASE_IDS
 
 
 def references(value, artifacts):
@@ -411,10 +601,24 @@ class ArtifactStore:
         This checks declared reserved identities only. Required fields and raw
         producer schemas remain unavailable until their own profile is frozen.
         """
+        return self._read_bound_json(artifact_id, strict_json, candidate_sha,
+                                     trusted_base_sha, profile_sha256)
+
+    def read_raw_json(self, artifact_id, *, candidate_sha, trusted_base_sha, profile_sha256):
+        """Explicit 4 MiB data reader reserved for internal typed validators.
+
+        No CLI kind/filename selects this method. Profile authorization and
+        completeness are separate from reserved-identity equality.
+        """
+        digest(profile_sha256)
+        return self._read_bound_json(artifact_id, strict_raw_json, candidate_sha,
+                                     trusted_base_sha, profile_sha256)
+
+    def _read_bound_json(self, artifact_id, parser, candidate_sha, trusted_base_sha, profile_sha256):
         digest(candidate_sha, 40); digest(trusted_base_sha, 40)
         if profile_sha256 is not None:
             digest(profile_sha256)
-        value = strict_json(self.read(artifact_id))
+        value = parser(self.read(artifact_id))
         expected = dict(candidate_sha=candidate_sha, trusted_base_sha=trusted_base_sha,
                         profile_sha256=profile_sha256)
         pending = [value]
