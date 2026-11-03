@@ -4,6 +4,7 @@ import sys,json
 from uuid import uuid4
 import pytest
 sys.path.insert(0,str(Path(__file__).parent))
+sys.path.insert(0,str(Path(__file__).resolve().parents[2]/"workers/ingestion-python/tests"))
 from lifecycle_support import fresh_database,seed_vehicle,seed_snapshot
 from backfill_article_lifecycle import backfill
 
