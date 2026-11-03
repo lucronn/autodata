@@ -1,8 +1,8 @@
 # Workshop product evidence: offline diagnostics and confined transport
 
-The first assembler milestone implements strict v1 envelope structure and a
-coordinator-supplied trusted invocation. It does not validate raw evidence or
-verify either tier. All profiles at the authorizing checkpoint
+The current bounded assembler implements strict v1 envelope structure, a
+coordinator-supplied trusted invocation and confined artifact transport. It does
+not validate raw producer semantics or verify either tier. All profiles at the authorizing checkpoint
 `0e21f6dbdf5ad0402b8bef42d3e1f2566964b309` are disabled and the assembler hash is
 unpromoted. The actual planning task therefore returns exit 3 (`unavailable`)
 from `validate`, even for a structurally valid envelope with supplied pass reports.
@@ -84,6 +84,37 @@ licensed enrollment, protected proof and actual host/isolation/recovery/alert
 receipts. Neither the synthetic tests nor historical paid12/DTO evidence verify
 a final candidate, staging, deployment or the separately unverified runtime.
 The policy, evaluator and workflows remain authoritative and unchanged.
+
+The fixed-profile design checkpoint is recorded in
+[the assembler plan, section 4a](../superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md#4a-fixed-raw-profile-design-checkpoint-planning-only).
+It is planning only. Coordinator tracking/task/record synchronization and a new
+committed implementation gate are required before its raw validators are built.
+No profile, task or implementation is changed by that design amendment.
+
+The inspected historical paid12 and DTO120 receipts both identify
+`2de36a1305bfbe45992995e6caf0ba52f30fddcc`. Paid evidence under
+`/tmp/autodata-paid-access-040-acceptance-2de36a1-v2/artifacts` has 499 files totaling
+30,437,073 bytes; 331 declared receipt hash references were independently matched.
+Its collector JSON is 3,715,668 bytes, so the current 2 MiB explicit JSON reader
+cannot parse it. The proposed paid raw-JSON bound is **4MiB (4,194,304 bytes)**,
+subject to reviewed fixed-profile implementation; the envelope stays capped at
+**2MiB (2,097,152 bytes)**. Current code and transport ceilings remain unchanged.
+
+Historical DTO CI run 41721947690 / artifact 13273366580 retains the 12,713-byte archive
+with SHA256 `653df2e839f65f6bc16484e9257f7138b0abf87edc437cdc201a958f8f1b0a5a`.
+Its three entries expand to 405,292 bytes and include actual 120 DTO rows, fixture
+log and readiness metadata. The plan retains the exact paid/DTO hashes and
+review/supervisor paths. These local byte-consistency observations do not supply
+registered reviewer identities, authenticated capture provenance, complete CI
+run/required-check metadata or exact-wrapper approval linkage. Those facts must
+be frozen with complete profiles before promotion; matching hashes are insufficient.
+
+All profiles and verification flags remain blocked. Actual API21, complete 180
+cases and supporting scans/images/reviews at the final immutable candidate,
+exact-head CI and complete Git ancestry provenance remain required. Historical
+receipts and a one-case browser pilot cannot satisfy those obligations. A future
+complete fixture result may set only `fixture_verified`, with evaluator unevaluated;
+staging/product/deployment/cutover claims do not follow from it.
 
 Bounded local checks:
 
