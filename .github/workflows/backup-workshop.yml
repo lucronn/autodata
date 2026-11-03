@@ -1,0 +1,71 @@
+{
+  "name": "Workshop production backup definitions (execution blocked)",
+  "on": {
+    "workflow_dispatch": {
+      "inputs": {
+        "run_id": {
+          "description": "Fresh backup lease UUID v4",
+          "required": true,
+          "type": "string"
+        }
+      }
+    },
+    "schedule": [
+      {
+        "cron": "17 3 * * *"
+      }
+    ]
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "concurrency": {
+    "group": "workshop-production-backup",
+    "cancel-in-progress": false
+  },
+  "jobs": {
+    "backup": {
+      "name": "backup definition (live adapter unavailable)",
+      "if": "${{ vars.WORKSHOP_BACKUP_ENABLED == 'true' && github.repository == 'lucronn/autodata' && github.ref == 'refs/heads/master' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') }}",
+      "runs-on": "ubuntu-24.04",
+      "environment": "workshop-production-backup",
+      "permissions": {
+        "contents": "read"
+      },
+      "timeout-minutes": 30,
+      "env": {
+        "EVENT_NAME": "${{ github.event_name }}",
+        "REPOSITORY": "${{ github.repository }}",
+        "REPOSITORY_ID": "${{ github.repository_id }}",
+        "REPOSITORY_OWNER_ID": "${{ github.repository_owner_id }}",
+        "EXPECTED_REPOSITORY_ID": "${{ vars.WORKSHOP_REPOSITORY_ID }}",
+        "EXPECTED_OWNER_ID": "${{ vars.WORKSHOP_OWNER_ID }}",
+        "REF": "${{ github.ref }}",
+        "WORKFLOW_REF": "${{ github.workflow_ref }}",
+        "OPERATION": "backup",
+        "SOURCE_SHA": "${{ vars.WORKSHOP_RELEASE_SHA }}",
+        "CONFIG_SHA256": "${{ vars.WORKSHOP_CONFIG_SHA256 }}",
+        "WIF_PROVIDER": "${{ vars.WORKSHOP_BACKUP_WIF_PROVIDER }}",
+        "SERVICE_ACCOUNT": "${{ vars.WORKSHOP_BACKUP_SERVICE_ACCOUNT }}",
+        "PUBLISH_SERVICE_ACCOUNT": "${{ vars.WORKSHOP_PUBLISH_SERVICE_ACCOUNT }}",
+        "DEPLOY_SERVICE_ACCOUNT": "${{ vars.WORKSHOP_DEPLOY_SERVICE_ACCOUNT }}",
+        "BACKUP_SERVICE_ACCOUNT": "${{ vars.WORKSHOP_BACKUP_SERVICE_ACCOUNT }}",
+        "MONITOR_SERVICE_ACCOUNT": "${{ vars.WORKSHOP_MONITOR_SERVICE_ACCOUNT }}",
+        "RUN_ID": "${{ inputs.run_id }}"
+      },
+      "steps": [
+        {
+          "id": "validate",
+          "name": "Validate fixed authority and immutable inputs",
+          "shell": "bash",
+          "run": "python3 -I - <<'PYVALIDATE'\nimport os\nimport re\nimport sys\nimport uuid\n\ndef require(condition):\n    if not condition:\n        # Never echo inputs, claims, principal details, credentials or exceptions.\n        sys.stderr.write('invalid_input: Workshop workflow dispatch rejected\\n')\n        raise SystemExit(2)\n\ndef matches(name, pattern):\n    return re.fullmatch(pattern, os.environ.get(name, '')) is not None\n\noperation = os.environ.get('OPERATION', '')\nrequire(operation == 'backup')\nrequire(os.environ.get('EVENT_NAME') in ['workflow_dispatch', 'schedule'])\nrequire(os.environ.get('REPOSITORY') == 'lucronn/autodata')\nrequire(os.environ.get('REF') == 'refs/heads/master')\nrequire(os.environ.get('WORKFLOW_REF') == 'lucronn/autodata/.github/workflows/backup-workshop.yml@refs/heads/master')\nfor actual, expected in [('REPOSITORY_ID', 'EXPECTED_REPOSITORY_ID'), ('REPOSITORY_OWNER_ID', 'EXPECTED_OWNER_ID')]:\n    require(matches(expected, r'[1-9][0-9]{0,19}'))\n    require(os.environ.get(actual) == os.environ.get(expected))\nrequire(matches('SOURCE_SHA', r'[0-9a-f]{40}'))\nrequire(matches('CONFIG_SHA256', r'[0-9a-f]{64}'))\nrequire(matches('WIF_PROVIDER', r'projects/[1-9][0-9]*/locations/global/workloadIdentityPools/[a-z][a-z0-9-]{3,62}/providers/[a-z][a-z0-9-]{3,62}'))\nrequire(matches('SERVICE_ACCOUNT', r'[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]{4,28}[a-z0-9]\\.iam\\.gserviceaccount\\.com'))\nprincipal_names = ('PUBLISH_SERVICE_ACCOUNT', 'DEPLOY_SERVICE_ACCOUNT', 'BACKUP_SERVICE_ACCOUNT', 'MONITOR_SERVICE_ACCOUNT')\nfor name in principal_names:\n    require(matches(name, r'[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]{4,28}[a-z0-9]\\.iam\\.gserviceaccount\\.com'))\nrequire(len({os.environ[name] for name in principal_names}) == 4)\nrequire(os.environ['SERVICE_ACCOUNT'] == os.environ[operation.upper() + '_SERVICE_ACCOUNT'])\nrun_id = os.environ.get('RUN_ID', '')\nif os.environ['EVENT_NAME'] == 'schedule':\n    require(not run_id)\n    run_id = str(uuid.uuid4())\nrequire(re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}', run_id) is not None)\n# This validates input shape and protected configuration only. It does not\n# authenticate OIDC, fetch an artifact, prove provenance or perform an operation.\nsys.stdout.write('Workshop definition inputs validated; execution remains blocked\\n')\nPYVALIDATE"
+        },
+        {
+          "name": "Block until separately reviewed live capability exists",
+          "shell": "bash",
+          "run": "printf '%s\\n' 'missing_dependency: reviewed WIF and bounded backup/resume adapter required' >&2\nexit 3"
+        }
+      ]
+    }
+  }
+}
