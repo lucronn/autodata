@@ -331,3 +331,16 @@ record the same concrete todo: fresh committed-base preflight, depth-one
 red/green, changed-byte rejection, full suite, exact-commit review and actual CI.
 Prior offline acceptance remains valid for its exact SHA; current CI is failed.
 No new live provider trial is planned.
+
+
+### Firebase customer identity checkpoint
+
+The reviewed Firebase identity plan supersedes the former customer OIDC/PKCE
+proposal. R5 now owns exactly35 paths: official Admin Go v4.22.0, project+UID
+accounts, opaque PostgreSQL sessions, same-origin exchange/CSRF/logout and
+migration039. Its five real-PG cases and eight existing R3 regressions are
+mandatory. Issue186/Project8 and canonical specs/tasks were synchronized and
+read back; commit and exact-base preflight are required before dispatch.
+Google Cloud project/domain/IAM configuration is separate from deterministic
+implementation. Checkout/permanent grants, paid source/media enforcement,
+customer commerce UI and deployment remain separately gated remaining work.

@@ -99,6 +99,34 @@ the completed canonical revision. Failure keeps an available source view
 readable. Authorization, vehicle scope, entitlements, and takedown rules apply
 equally to canonical, source, status, and media responses.
 
+## Customer identity and permanent purchased access
+
+The canonical [Workshop commerce policy](../../architecture/workshop-commerce.md)
+sets the product outcome: Google sign-in through Firebase, $20 USD once for the
+selected normalized vehicle configuration+region, and permanent account access
+through a durable grant/library. Shared canonical rewrites remain reusable
+internally; provider-local IDs/titles do not establish paid scope or cross-bank
+identity. Safe public selectors/previews and full source/canonical/status/media
+entitlement checks require their own explicit policy.
+
+R5's authoritative [Firebase identity plan](../plans/2026-11-03-workshop-firebase-identity.md)
+replaces the former confidential OIDC/code-PKCE/callback design. Official Admin
+Go v4.22.0 verifies Google Firebase tokens and current user state. Durable
+project+UID accounts/personal organizations and absolute12-hour opaque PostgreSQL
+sessions replace token-controlled role/org claims and15-minute token-capped
+sessions. R4 consumes config→Google popup→session exchange, no-store session and
+CSRF logout; explicit local mode has no browser/demo login. Actual project/IAM/
+domain configuration remains a deployment prerequisite, not a prerequisite to
+deterministic implementation. No provider registration is invented here.
+
+This identity lane has exactly35 implementation paths and five mandatory real-PG
+cases; paid checkout/grants/library, paid UI and final catalog/media enforcement
+are separately gated work. Identity-only completion cannot certify the user goal
+or production readiness. The amended R5 documents/task are synchronized with actual Issue186/Project8
+updates; root must commit/re-pin the planning checkpoint and obtain passing
+machine preflight. R4 remains dependent and is not dispatched by this checkpoint. Historical planning approvals
+do not authorize the amended implementation.
+
 ## Release workstreams
 
 | ID | Owner | Result | Dependencies |
@@ -108,9 +136,9 @@ equally to canonical, source, status, and media responses.
 | R2 | Python builder + quality/reliability agents | Durable normalize/rewrite/publish lifecycle, concurrency and replay recovery | R1 |
 | R3 | Go builder + contract/source agents | Immediate source fallback and explicit additive lifecycle API | R2 contract |
 | R4 | Go/web builder + consumer/test agents | Workshop source-to-canonical experience and browser tests | R3, R5 identity/session contract |
-| R5 | Go/platform builder + security agent | Production identity, existing access policy, and media access verification | R3 |
+| R5 | Go/platform builder + security agent | Firebase customer identity, persistent accounts and revocable PostgreSQL sessions; paid catalog/media enforcement is a separate lane | Verified R3 |
 | R6a | evidence builder + source/review agents | Versioned real staging-population evidence adapter | R0, R2, R3 |
-| R6 | release/test/reliability agents | Reproducible production candidate, staging canaries, recovery and rollout evidence | R0–R5, R6a |
+| R6 | release/test/reliability agents | Reproducible production candidate, staging canaries, recovery and rollout evidence | R0–R5, R6a and separately gated commerce/access |
 
 The detailed queue and acceptance commands live in the linked implementation
 plan and machine task files. Those files are a dispatch interface, not a second

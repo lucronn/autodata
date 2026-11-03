@@ -1,150 +1,64 @@
-# Production Identity and Access Implementation Plan
+# Production customer identity and access planning handoff
 
-> **For agentic workers:** Use superpowers:subagent-driven-development or superpowers:executing-plans task by task, after the machine preflight passes. Planning does not authorize implementation.
+> Planning only. The authoritative identity implementation plan is [Firebase Customer Identity and PostgreSQL Sessions](2026-11-03-workshop-firebase-identity.md). Use the repository executing-plans workflow only after its committed synchronized exact-base gate passes.
 
-**Goal:** Replace local production identity defaults with verified identity and secure Workshop sessions, preserving existing shared-catalog roles and organization-owned dataset entitlements across source, canonical, progress, and media reads.
+**Goal:** Give cars.tk customers Google sign-in through Firebase, persistent accounts/personal organizations and secure PostgreSQL sessions as the identity prerequisite for separately gated $20 USD configuration+region purchases and permanent grants.
 
-**Architecture:** Extend the existing `Authenticator` and `Principal` boundaries. Use standards-based OIDC authorization-code login with PKCE and server-side PostgreSQL sessions for same-origin browser reads; optionally accept verified JWT access tokens for API clients from the same explicitly registered issuer/resource audience. Reuse existing stores and R2/R3 lifecycle/policy boundaries.
+**Status:** tracking synchronized with actual Issue186/Project8. The approved Firebase plan supersedes this file's former OIDC implementation design. Commit/re-pin this checkpoint and pass machine preflight before implementation; tracking alone does not claim a passing gate.
 
-**Tech Stack:** Go 1.26, maintained OIDC/OAuth2 libraries (`github.com/coreos/go-oidc/v3`, `golang.org/x/oauth2`, pinned in go.mod/go.sum during implementation), PostgreSQL, existing Compose/Kubernetes configuration. No custom JOSE implementation.
-
-**Spec:** `docs/superpowers/specs/2026-11-03-source-fallback-web-design.md`, especially its production-authentication and media sections; release design `docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md`.
-
-**Inspection base:** `0ed449fe5119484f8dd8f40b40607aa3beb11e49`.
-**Project:** https://github.com/users/lucronn/projects/8
 **Issue:** https://github.com/lucronn/autodata/issues/186
-**Status:** Reviewed plan with verified Issue/Project tracking. R5 implementation remains blocked until the verified R3 checkpoint and fresh synchronized task preflight. The provider-neutral contract permits deterministic implementation without inventing registration values; actual issuer/client/origin registration is still required for staging and production verification. No live identity verification is claimed.
+**Project:** https://github.com/users/lucronn/projects/8
+**Record:** `docs/agents/records/2026-11-03-workshop-firebase-identity.json`
+**Dependency:** verified R3 integration `31ffe7e`; planning inspection root `521385f`.
 
-## Global constraints and repository evidence
+## Authoritative scope and supersession
 
-- All later implementation, verification, and review agents use `gpt-6.1-sol`, `medium`, Fast mode (`service_tier = "fast"`, request tier `priority`), with no fallback.
-- `SECURITY.md` requires explicit security/audit verification for access and entitlement changes. Keep sensitive findings private; no credentials, licensed payloads, or vulnerability reproduction payloads in public tracking or artifacts.
-- `requests.go` defines `Authenticator.Authenticate(*http.Request) (Principal, error)`, organization and role fields, and the existing role names `dataset_viewer`, `data_reviewer`, `ingestion_operator`, `platform_admin`. `main.go` installs the local adapter in the executable. Workshop reads a local-storage token and supplies a demo default.
-- `docs/architecture/infrastructure-and-dev.md` specifies issuer, audience, role claim and key-set configuration, but no issuer/client registration, verified adapter, login gateway, or session implementation exists in inspected deployment configuration or Go dependencies. OIDC is the selected repository-compatible new integration, not a claim that a deployed identity provider already exists.
-- `catalog_store.go` has a shared catalog without organization ownership or a catalog purchase relation. Dataset/request stores separately enforce organization ownership and existing entitlements. Do not introduce catalog billing, infer entitlements from roles, or equate source-connector credentials with user identity.
-- R2 provides `catalog_article_current`, scoped aliases and takedown/review state. R3 provides source/canonical projections and image localization. Denied/quarantined/withdrawn content cannot become available through fallback. Existing `UNREVIEWED` display remains honest; do not require a newly invented blanket approval rule.
-- No production deployment, user provisioning, payment changes, unrelated admin UI, broad middleware/store rewrite, or provider credential changes. Health probes and public static shell assets remain usable without exposing protected content.
+Follow the [Firebase plan](2026-11-03-workshop-firebase-identity.md) for the exact official SDK pin, configuration, verifier contracts, account/session policies,35-path inventory and mandatory five-case collector. The [migration/runtime handoff](2026-11-03-production-access-migration-handoff.md) applies those decisions to shared migration039 and the actual R3 fixture.
 
-## Required external configuration and fail-closed contract
+The former confidential OIDC discovery/client-secret/code-PKCE redirect/callback, claim-controlled organization/roles, optional API bearer, auth_login_transactions table and15-minute ID-expiry-capped sessions are superseded. They are historical design decisions, not alternatives or fallback routes. Do not implement `/auth/login`, `/auth/callback`, an OIDC adapter or a customer transaction-consumption test from older revisions.
 
-The maintainer/deployment owner must provide a real HTTPS issuer supporting discovery, authorization code + PKCE S256, signed ID tokens and a registered confidential web client. Register exactly `<AUTODATA_PUBLIC_ORIGIN>/auth/callback` and the same-origin Workshop return location. Provide an organization UUID claim and explicit role mapping controlled by that issuer. If API bearer access is enabled, separately register the API resource audience and confirm signed JWT access-token support; opaque access tokens are unsupported in this lane. No provider brand or deployment target is invented.
+The ordinary customer is mapped by verified `(firebase_project_id,firebase_uid)` to one server-generated account and personal organization, with server-defined dataset_viewer only. Email and customer token role/org claims confer no authority. Staff identity is separate. Existing organization-owned dataset checks remain; customer identity does not grant purchased catalog scope.
 
-Proposed exact runtime names:
+New opaque256-bit sessions persist only SHA256 hashes, account FK and verified auth_time plus expiry/revocation metadata. Use `__Host-autodata_session; Secure; HttpOnly; SameSite=Lax; Path=/`, no Domain, absolute12-hour expiry and no sliding extension. Require a working migrated PostgreSQL store. Every protected session request checks current local status and official Firebase GetUser; compare stored auth_time against TokensValidAfterMillis, deny disabled/deleted/revoked users and return sanitized503 on lookup outage without stale authentication. SDK exchange verification additionally checks fresh iat/auth_time and google.com provider. Logout commits local revocation even during Firebase outage.
 
-| Name | Required value/behavior |
-| --- | --- |
-| `AUTODATA_ENV` | `development`, `test`, `staging`, or `production`; missing/unknown fails startup. |
-| `AUTODATA_AUTH_MODE` | `oidc` in staging/production; `local` permitted only with explicit development/test environment. Missing mode fails startup. |
-| `AUTODATA_PUBLIC_ORIGIN` | One HTTPS origin in staging/production; callback derived from this value, never request Host/forwarded headers. |
-| `AUTODATA_OIDC_ISSUER` | Exact HTTPS issuer; discovery issuer must match. Discovery/JWKS fetches have timeouts and bounded response sizes. No request-selected issuer or key URL. |
-| `AUTODATA_OIDC_CLIENT_ID` / `AUTODATA_OIDC_CLIENT_SECRET` | Registered web client ID / secret-manager supplied secret; never sent to browser or logged. |
-| `AUTODATA_OIDC_ORG_CLAIM` / `AUTODATA_OIDC_ROLES_CLAIM` | Explicit top-level claim names; org must be a UUID, roles an array of strings. Missing/type-invalid claims deny identity. |
-| `AUTODATA_OIDC_ROLE_MAP_JSON` | Explicit issuer-role to existing AutoData-role map; unknown external roles grant nothing. `platform_admin` requires an explicit mapping. |
-| `AUTODATA_AUTH_BEARER_ENABLED` | Defaults false; explicit true also requires `AUTODATA_OIDC_API_AUDIENCE`. No unverified/opaque bearer fallback. |
-| `AUTODATA_OIDC_API_AUDIENCE` | Exact registered API audience distinct from the web client ID; required only for verified bearer mode. |
+## Frozen R4 backend/session handoff
 
-Require asymmetric RS256 token signatures for the first bounded integration; the external issuer must support it. Reject other algorithms, missing/incorrect issuer or audience, missing subject/expiry, expired tokens, future `nbf`, and unreasonably future `iat` (60-second clock allowance). Verify ID-token nonce and client audience in the callback; API access tokens require the API audience. Never accept an ID token solely because it has the web client audience at a bearer API boundary. API access tokens additionally require `iat` and `exp - iat <= 900` seconds. JWT role/organization claims are used only after signature and claim validation. Obtain keys from the configured issuer discovery metadata; no token-supplied key locations. Refresh unknown keys once with bounded concurrency; unsuccessful verification denies access. Pin chosen library versions and verify these behaviors with a local issuer fixture, including rotation.
+R5 owns identity backend files; R4 owns Workshop files after the committed contract is integrated. The exact payloads and error envelopes are defined in the authoritative Firebase plan's additive HTTP section:
 
-Sessions have a 15-minute absolute lifetime capped by the verified ID-token expiry, no refresh-token storage and no silent extension. A subsequent login obtains current identity claims. Role/membership revocation for bearer credentials is bounded by issuer token lifetime; require a maximum 15-minute access-token lifetime in the registration. Dataset entitlement and article takedown decisions are rechecked on each read. A deployment demanding faster global identity revocation must provide a revocation integration in a separately planned extension; do not claim instant issuer revocation from offline JWT validation.
+- `GET /auth/config`: public no-store Firebase web config/provider availability, or explicit local `login_available:false` with no Firebase object. Public app config contains no Admin credential.
+- `POST /auth/firebase/session`: fresh Google Firebase ID token as JSON, max32KiB, exact configured Origin, application/json and `X-Autodata-Session-Exchange: 1`; reject cross-origin fetch/preflight. Atomic account provisioning and old-cookie rotation return204/new cookie only after commit. The same still-fresh ID token can be exchanged again; no fabricated single-use callback semantics.
+- `GET /auth/session`: no-store authenticated roles/expires_at/csrf_token, or fixed401 UNAUTHENTICATED with explicit login_available; distinguish sanitized dependency503. No UID/org/email/provider token is returned.
+- `POST /auth/logout`: valid database session, exact Origin and session-bound X-CSRF-Token; commit local revocation, expire cookie and return204 without requiring a Firebase lookup. Cookie-authenticated mutations use the same CSRF/origin boundary.
 
-OIDC startup requires a real working PostgreSQL pool and migrated auth tables. Reject unset/memory persistence configuration or missing tables before serving; never follow the existing executable memory-store fallback in OIDC mode. Keep injected in-memory unit stores confined to deterministic tests. Missing registration or configuration blocks staging/release; it never enables local/demo identity. OIDC discovery failure at startup blocks production readiness/startup. Session-store failure denies requests with sanitized retryable service-unavailable errors. No credential or token fragment appears in errors, metrics labels, correlation logs, traces, or session evidence.
+R4 reads config then session, uses pinned Firebase web SDK Google popup and exchange, then same-origin opaque cookies. A returning user with stale auth_time must explicitly reauthenticate; ID-token refresh alone is insufficient. Handle blocked/cancelled popup, unavailable/malformed config,401,403 and503 distinctly. Clear protected content and cancel polling/renewal on denial/logout; application logout also signs out the browser Firebase instance. Explicit local mode is headless-only and reports login unavailable; no demo token/session, localStorage bearer or redirect/callback assumption is allowed. Browser fixtures intercept these new boundaries without external identity calls and cannot certify real project registration.
 
-## Frozen R4 backend/session contract
+## Separate commerce and media enforcement boundary
 
-R5 owns the backend; R4 owns all Workshop edits after this contract is integrated. No R5 edits under `workshop/`.
+The canonical [Workshop commerce policy](../../architecture/workshop-commerce.md) requires $20 USD once for exactly the normalized configuration+region, permanent account grants, safe previews, library and current entitlement/rights checks on full source/canonical/status/media reads. Those changes require a separate synchronized plan and task. The identity builder's35 paths exclude catalog/media implementation, checkout/grants/library and Workshop UI; completing identity alone cannot complete the user goal or production release.
 
-Explicit `local` development/test mode retains existing headless bearer clients
-only. Interactive Workshop sessions require explicit OIDC configuration, also
-in development; there is no demo browser token, local cookie-login endpoint or
-automatically injected session. In local mode `/auth/session` returns the 401 discriminator below and
-`/auth/login` returns its exact sanitized 503 contract below.
-The runbook must explain development OIDC configuration and distinguish the
-in-process test issuer/browser interception from a deployed login service. R4
-must display a usable sign-in-unavailable state when that contract reports it.
-Do not claim working development browser login from intercepted fixture calls.
-
-- `GET /auth/session`: `200 {"authenticated":true,"roles":[...],"expires_at":"<RFC3339 UTC>","csrf_token":"<opaque>"}` for a valid session; `401` with the existing `UNAUTHENTICATED` error envelope otherwise, with `error.details.login_available` set to `false` in local mode and `true` for configured OIDC. Use fixed safe message `Authentication is required.`, `retryable:false`, and the existing request ID. Derive the CSRF token deterministically as base64url(HMAC-SHA256(key=raw session token, data="autodata/csrf/v1")); reconstruct server-side and compare in constant time, permitting multiple tabs without storing another secret. No bearer token, provider claims, user PII, or organization selector is returned. Always `Cache-Control: no-store`.
-- `GET /auth/login`: creates a 5-minute single-use server-side state/nonce/PKCE transaction and redirects to the configured issuer. Fixed return `/workshop/`; reject arbitrary return destinations. A Secure/HttpOnly/SameSite=Lax transaction cookie binds the callback to the initiating browser. In local mode return `503`, `Cache-Control: no-store`, no redirect and the existing error envelope with code `AUTHENTICATION_UNAVAILABLE`, fixed message `Sign-in is unavailable.`, `retryable:false`, request ID and `details:{"login_available":false}`; create no transaction or session.
-- `GET /auth/callback`: validate state, transaction cookie, nonce, code exchange and ID token; consume the transaction exactly once, rotate any old session, create a new opaque session and `303` to `/workshop/`. Failures expose fixed safe copy without provider bodies or query credentials. Clear the transaction cookie.
-- `POST /auth/logout`: require same-origin `Origin` and `X-CSRF-Token`, revoke the database session, expire cookie, return `204`. No provider global-logout claim. The token from `/auth/session` is also required on all cookie-authenticated state-changing API requests, together with same-origin Origin validation. Login initiation does not switch accounts without the bound callback transaction.
-- Cookie name `__Host-autodata_session`; random 256-bit value, `Secure; HttpOnly; SameSite=Lax; Path=/`, no Domain attribute. Persist only SHA-256 session-token hashes, issuer/subject/org/roles, expiry and revocation metadata. PostgreSQL enables consistent logout/revocation across API replicas. Never persist OAuth access/refresh tokens or the raw ID token.
-- Production API authentication accepts either this cookie or an explicitly enabled verified API bearer. If Authorization is supplied and invalid, deny rather than falling back to a cookie. Client role/org headers and token-shaped query parameters are ignored. Add verified issuer and subject to `Principal` without changing existing handler role names.
-- R4 bootstrap uses `GET /auth/session` with same-origin credentials, on 401 shows a sign-in action to `/auth/login` only when `error.details.login_available === true`, and calls catalog/source/media with same-origin cookies. Remove demo-token/localStorage production assumptions. Auth 401 stops all polling, clears protected content and uses the session login disposition above. A false/missing/invalid discriminator shows fixed sign-in-unavailable copy without a login link or redirect loop; it never creates another polling loop. 403 retains access-denied behavior. Logout clears rendered protected content and cancels polling. An `<img>` needs no JavaScript Authorization header.
-- Deterministic R4 browser fixture intercepts exactly `/auth/session`, `/auth/login`, `/auth/callback`, `/auth/logout` as relevant to each scenario, and catalog/media routes. Supply the exact successful session JSON above, expired-session 401 with login_available=true, local-mode 401 with login_available=false, unavailable-login 503 and denied-role 403 fixtures; no external identity network is permitted in those tests. R5's separate local-issuer tests exercise real redirect/callback/session behavior.
-
-## Access and media contract
-
-Shared catalog selectors, article index/detail/source and embedded processing metadata require a verified `dataset_viewer` or explicitly mapped `platform_admin`. Shared catalog access by another entitled-role organization is allowed by design. Organization-owned requests/datasets/evidence retain existing store checks and denial codes; reviewer/operator roles cannot become viewers implicitly. Test cross-organization denial on those owned resources, not a fabricated ownership restriction on the shared catalog. Raw source/job administrative reads must not expose extra fields through the reader role. There is no new public job-management route.
-
-R3 and R5 serialize changes to `main.go`, `catalog_http.go`, `catalog_store.go`, `catalog_media_token.go` and source/media tests. R5 takes the post-R3 base and freezes these interfaces before R4 completion:
-
-```go
-// New policy boundary; R3 supplies the immutable association lookup through its store.
-type CatalogMediaScope struct {
-    VehicleID, ArticleID, SourceRevisionID, OrganizationID, ObjectKey string
-    ExpiresAt time.Time
-}
-type CatalogMediaAuthorizer interface {
-    AuthorizeCatalogMedia(context.Context, Principal, CatalogMediaScope) error
-}
-```
-
-Use a new versioned authenticated-encrypted opaque token carrying that scope, with a five-minute maximum expiry and a distinct AEAD additional-data version. Keep object keys/provider refs absent from public JSON. Mint only after an authorized article/source projection; bind to exact vehicle/article/source revision and organization. The source revision also binds media used by its canonical rewrite. At media retrieval, first authenticate and require viewer role, then decode/validate expiry and org, then re-read current rights/takedown policy and exact stored article→revision→asset association before opening S3. Unknown/mismatched association returns 404, existing authorized withdrawn content returns 410, unauthenticated returns 401, role denial 403, unavailable policy/storage dependencies return sanitized 503. An encrypted locator alone is not access authority. Reusing content-addressed bytes in another article does not transfer rights. R2/R3 must expose the association; absence fails closed, not object-key-only serving.
-
-Do not accept legacy object-key-only v1 references in production; reloading detail mints new references. Preserve the opaque route `/v1/catalog/images/{token}`. Retain R3 media type/CSP isolation. Set protected catalog/source/media `Cache-Control: private, no-store`; intermediaries cannot reuse protected responses or turn revocation into a stale-cache read. Existing downloaded/displayed bytes cannot be recalled, but subsequent network reads must obey current policy. Media URL expiry uses R4's bounded renewal contract: one coalesced automatic authorized detail refetch per selection/view revision, reconciling URLs by stable asset ID without replacing unchanged content. Repeated failures stop with manual refresh; denial, withdrawal or changed selection cancels renewal. Completed-detail renewal never calls a provider/model or schedules ingestion.
-
-## Bounded implementation file ownership
-
-Create:
-- `apps/api-go/auth_config.go`, `auth_oidc.go`, `auth_session.go`, `postgres_auth_sessions.go`, `auth_http.go`, `catalog_access.go`.
-- Matching tests: `auth_config_test.go`, `auth_oidc_test.go`, `auth_session_test.go`, `postgres_auth_sessions_test.go`, `auth_http_test.go`, `catalog_access_test.go` in `apps/api-go/`.
-- `db/migrations/039_production_identity_sessions.sql`, after the serialized R2 migrations 037/038; if the integrated sequence differs, stop and have the coordinator re-pin an updated path before builder dispatch.
-- `scripts/dev/production_access_smoke.py`, `scripts/dev/test_production_access_smoke.py`, `docs/verification/production-access-runbook.md`.
-
-Modify only as needed:
-- `apps/api-go/{main.go,requests.go,catalog_http.go,catalog_store.go,catalog_media_token.go,catalog_media_test.go,main_test.go,api_test.go,go.mod,go.sum,openapi.json,openapi.yaml}` for configured adapter wiring, Principal metadata, media association enforcement and documented session/auth/error behavior. Preserve injected local authenticators in unit fixtures; the executable must use explicit configuration.
-- `infra/compose/{compose.yaml,compose.ci.yaml}`, `docker-compose.base44.yml` for explicit development/test mode only; never copy identity secrets or bank credentials into compose environment. `infra/k8s/base.yaml` declares production/oidc mode and external configuration/Secret references without values or fake issuer/client defaults.
-- `scripts/dev/{test_migrations.py,test_k8s_manifests.py,test_api_runtime.py}` and `docs/architecture/{infrastructure-and-dev.md,workshop-interface.md}` for migration enumeration, runtime/deployment checks and the session contract.
-
-The migration creates `auth_login_transactions` (hash identifier, hashed cookie binding, nonce, PKCE verifier, expiry, consumed state) and `auth_sessions` (token hash, verified identity/role fields, expiry, revoked timestamp); indexes expiry, makes transaction consumption atomic and expires/reaps records. PKCE verifiers remain protected server-side until consumed. Do not store credentials or create new user/billing tables. Implement session lookup/revocation through narrow injected store interfaces so handler tests need neither production credentials nor an external issuer.
+R3 public projections and current media capabilities are not proof of session/entitlement revocation. Preserve the future requirement to authenticate before hydration/S3, enforce current article/revision/asset association and rights on each media read, deny old references after withdrawal or revoked access, and retain safe media CSP/type handling. Media renewal retains R4's one-coalesced-renewal-per-view contract. The later paid-access lane must select and gate its exact interfaces; this identity handoff does not silently authorize those files.
 
 ## Concrete todo and deterministic acceptance
 
-- [ ] **1. Gate/contract checkpoint:** Coordinator synchronizes the actual Issue, Project #8 item, canonical docs, exact todo and committed planning record. Re-pin after R2/R3 integration; verify preflight before code. Freeze the provider-neutral external configuration contract above and R4 session handoff. Do not require actual issuer registration for deterministic implementation; missing real configuration remains an explicit staging/release prerequisite.
-- [ ] **2. Identity configuration/verifier:** Add failing table-driven tests for OIDC memory-store fallback/missing auth tables, missing/unknown env/mode, staging/production local mode, malformed/unsigned/forged/wrong-algorithm JWT, wrong issuer/audience, expired/future claims, missing subject/org/roles, unknown role, discovery failure and key rotation; then implement the configured adapter and production executable wiring. Use an in-process local issuer and generated test keys, never live tokens. An unconfigured binary must fail closed. Run `go test ./...` in `apps/api-go`.
-- [ ] **3. Browser/session boundary:** Add failing handler and real-PostgreSQL tests for the complete code+PKCE flow, state/nonce mismatch, replay, transaction expiry, rotation, cookie attributes, session expiry/revocation across two server instances, logout CSRF/origin rejection, invalid Authorization with a valid cookie, and sanitized dependency errors. Implement migration/stores/routes, enforce CSRF on cookie-authenticated mutations and prove persisted records contain no raw session/ID/access/refresh tokens. Run the Go suite and clean/upgrade migration fixtures using the existing local migration runner before exposing this contract to R4.
-- [ ] **4. Access/media:** Add deterministic reader/reviewer/operator/admin principals across two organizations. Exercise source, canonical, source-review, processing and media before/after withdrawal; wrong article/revision/asset/org token scope, tampering, expiry and replay after session revocation; dataset entitlement revocation and cross-org request/dataset/evidence denial. Prove unauthorized reads issue zero hydration/model/S3 calls, shared catalog remains role-based, and revoked media cannot be served from API caches. Implement current-policy media checks and update both OpenAPI formats. Run `go test ./...` and `go test -race ./...` in `apps/api-go`.
-- [ ] **5. Deployment/runbook and independent audit:** Update explicit local/test opt-ins and production config checks, document secret-manager names and registration checklist, and add a smoke collector that emits only candidate SHA, safe fixture identifiers, outcomes and timestamps. Run `python3 -m unittest discover -s scripts/dev -p 'test_migrations.py'`, corresponding `test_k8s_manifests.py`, `test_api_runtime.py`, and `test_production_access_smoke.py`; run `git diff --check`. Review the exact SHA independently for identity validation, session/CSRF isolation, access rechecks and credential redaction. Give R4 the committed contract; R4 owns JS edits and browser acceptance.
+- [ ] Synchronize the approved Firebase plan, canonical documents, R4/R5 tasks and actual Issue186/Project8; commit the checkpoint and pass exact-base machine preflight before implementation.
+- [ ] Pin firebase.google.com/go/v4 v4.22.0; add actual SDK generated-RS256 certificate/user-lookup tests with scoped concrete transport isolation and explicit emulator-host startup rejection, separate from fake handler tests.
+- [ ] Implement persistent unique project+UID customer accounts/personal organizations and SHA256-only opaque sessions with atomic provisioning/rotation/rollback, absolute12-hour expiry, account block and per-request Firebase auth_time revocation checks.
+- [ ] Wire no-store /auth/config, /auth/firebase/session, /auth/session and /auth/logout with exact same-origin exchange, session-bound CSRF, sanitized401/403/503 and explicit local login-unavailable behavior; hand the committed contract to R4.
+- [ ] Append self-contained migration039 at all four shared-runner transaction sites, reject untracked customer_accounts/auth_sessions, preserve SQL001–038 and historical-prefix regressions, and verify full039/038 upgrade/populated restart/rollback/concurrency using real PostgreSQL.
+- [ ] Run TestPostgresAuthSessionsIntegration with exactly ConcurrentCustomerProvisionAndRotation, SharedSessionRevocation, ExpiryAndPersistedSecrecy, FirebaseExchangeAndUserRevocation and FirebaseStartupRequiresMigratedPostgres; require root/all five pass with zero skips and exact039 candidate provenance.
+- [ ] Rebuild the existing verified R3 image from candidate manifests without fixture-tooling changes, preserve offline Go flags, update catalog evidence to039/auth tables and retain all eight required R3 content cases with separately reviewed supervisor adaptation.
+- [ ] Run ordinary Go/API/contracts, migration/runtime/manifest checks, supported unit race tests, diff/scope verification and independent exact-SHA security review; preserve real Firebase registration/IAM/TLS/staging and paid commerce/catalog/media acceptance as separate prerequisites.
 
-All new tests first demonstrate the missing behavior, then pass on the implementation. Avoid broad synthetic payloads in public evidence. No check is counted passed without actual command output. Preserve test/fixture-local HTTP only in test mode; production requires HTTPS. The migration tests must run against real PostgreSQL, not an in-memory substitute. Dependency availability failure, unavailable DB or missing browser engine is reported as unavailable rather than successful evidence.
+Required PostgreSQL root: `TestPostgresAuthSessionsIntegration`. Exact mandatory subtests:
 
-## Required isolated session verification
+1. `ConcurrentCustomerProvisionAndRotation`: two independent pools concurrently provision the same project+UID; exactly one account/personal org survives; sessions reference that account; a committed rotation revokes the old cookie; rollback leaves old session valid and no orphan new row. Different project/UID cannot adopt its account.
+2. `SharedSessionRevocation`: two actual API/store instances sharing PostgreSQL; B accepts A's session, then rejects after A's logout commit or account block. No fake SQL rows.
+3. `ExpiryAndPersistedSecrecy`: expiry boundary/absolute lifetime, hashed32-byte token, allowed identity fields, no raw Firebase/app tokens in persisted rows; stable account survives expiry and restart. Emit assertion outcomes only.
+4. `FirebaseExchangeAndUserRevocation`: run real exchange/session HTTP handlers with real PostgreSQL and the actual SDK using the local certificate/user transport; fresh Google token creates session, old app cookie rotates, altered/wrong-project token fails, live fixture user disabled/revoked denies subsequent protected request, lookup outage returns503 with no stale acceptance. Same still-fresh valid ID token re-exchange is allowed; do not mislabel it a failed callback replay.
+5. `FirebaseStartupRequiresMigratedPostgres`: full039 starts;038/unavailable pool/memory or missing persistence fail; never auto-migrate the038 database. Local mode remains explicit login-unavailable with no created account/session.
 
-Reuse R3's committed Go/Python lifecycle runner and required-integration flag.
-The real PostgreSQL tests must fail, rather than skip, when invoked in required
-mode without the fixture database or migration039 tables. Exercise atomic
-transaction consumption and session revocation across two actual server/store
-instances sharing that isolated database. Use an in-process generated-key OIDC
-issuer and keep all hosts, origins and tokens test-only. Record candidate SHA,
-migration head, executed test count and process outcomes. Ordinary fake-row Go
-unit tests do not satisfy this acceptance. The two fixture Compose/Dockerfile
-paths are permitted only if runner command/configuration must be extended;
-reuse them unchanged when possible. Freeze the exact command after verified R3
-integration and before R5 dispatch.
+Actual official-SDK signature/user tests use local generated RS256 certificates and isolated transports; fake handler seams are separate evidence. No live Firebase registration, provider call, Docker run, migration or implementation is performed by this planning update. Real project/app/Google-provider/domain/IAM configuration and staging TLS/cookie/two-replica checks remain release prerequisites, not reasons to block deterministic implementation. No production deployment is authorized.
 
-## Separate staging evidence and unresolved prerequisites
+## Historical planning evidence (superseded)
 
-After deterministic tests and independent review, R6 runs the reviewed candidate in staging with the registered real issuer, HTTPS origin, external secrets and isolated accounts in two organizations. Verify actual browser login/logout, session expiry, mapped viewer/reviewer/operator/admin behavior, a rejected audience/issuer, dataset entitlement revocation, source/canonical transitions from both banks, source-review access and withdrawal denying old media URLs. Verify two replicas share revocation state and ingress/logging do not record callback codes, cookies or bearer credentials. Retain only safe IDs and exact-SHA outcomes in the release record; protected identity/source proof stays in the restricted evidence store. A health endpoint, local issuer, fixture token or connector canary cannot certify user identity integration.
-
-Concrete prerequisites still unresolved at planning time: actual issuer URL, web-client registration/secret, staging/public origin and callback allowlist, issuer organization/role claim names and role mapping, API audience/JWT access-token capability if bearer access is requested, and real test-account provisioning. These are external configuration decisions; none can be inferred from bank credentials. Without them R5 cannot be marked production-verified. If the selected issuer cannot supply this contract, revise and synchronize this plan before implementation rather than inventing an alternate gateway. Deployment remains outside current authority.
-
-## Reviewed migration and session-runtime handoff amendment
-
-The [post-migration amendment](2026-11-03-production-access-migration-handoff.md)
-passed independent planning review. It narrowly adds the shared driver, existing
-real-PG migration test module and migration runbook to R5 ownership, defines039
-as a complete transaction at all four driver dispatch sites, preserves001–038
-and historical-prefix acceptance, and freezes the required five-case real-PG
-session collector. It consumes R3's verified Go image/service instead of adding
-parallel tooling. Actual R3 implementation bindings must be reinspected and
-synchronized before the R5 checkpoint; task status remains blocked.
+The prior OIDC plan remains recoverable in Git blob `a563bc142ab577b816737483cd766438c371d827` (pre-amendment SHA256 `c1badc2f96e2bf98f6e1c0b9f71da6a5400e07f6d18cab8e52f1bbc5c2991d9d`). Its selected protocol, table design, callbacks,15-minute session policy, broader catalog/media path ownership and issuer-based acceptance are replaced by the Firebase plan. The independently reviewed migration/runtime amendment's original hashes and findings are retained in its revision-history section; that review certifies only its historical planning contract, not the newly amended Firebase implementation. Actual legacy tracking or reviewed prose cannot substitute for the new synchronized record and exact-base gate.

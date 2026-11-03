@@ -19,8 +19,10 @@ R1/R2 own provider identity, source fetching, source-to-document projection,
 rewriting, quality decisions, durable jobs, migrations, and immutable publication.
 R3 owns authorized reads of those records, public projection, bounded scheduling,
 HTTP behavior, media/source presentation, and the public API contract. R4 owns
-Workshop rendering, polling, cancellation, and browser acceptance. R5 selects
-production identity and access policy. R6 owns staging and release evidence.
+Workshop rendering, polling, cancellation, and browser acceptance. R5 owns the
+Firebase customer identity/session prerequisite. A separately synchronized
+commerce/access lane owns paid configuration+region grants and catalog/media
+enforcement. R6 owns staging and release evidence.
 R3/R4 do not add billing, purchases, a new dashboard, provider controls, a second
 document format, a model call in Go/JavaScript, or a new orchestration framework.
 
@@ -307,10 +309,12 @@ Allow only supported image media types and verify response content matches its
 declared type. Browser fixtures must prove the intended rendering and isolation;
 a failing format remains unavailable instead of weakening the policy. Do not
 add runtime rasterization or another source fetch in Go.
-R2 owns capture/materialization; R3 owns browser-safe serving; R5 owns the final
-media access mechanism. Bearer capability URLs in the current implementation
-are not evidence of revocation enforcement. R5 must verify policy checks apply
-to the same article/asset after withdrawal.
+R2 owns capture/materialization; R3 owns browser-safe serving. The separately
+gated paid-access lane owns the final authenticated media access mechanism;
+R5 Firebase identity alone does not authorize media implementation. Current
+capability URLs are not evidence of revocation enforcement. The later lane must
+verify current entitlement/rights and the same article/asset association after
+withdrawal, before opening storage.
 
 ## Workshop state and polling
 
@@ -408,39 +412,58 @@ Workshop completion. Browser interception includes that contract's exact identit
 bootstrap paths; it does not invent a login endpoint or use a live account.
 Fixtures do not by themselves certify the production identity adapter. The staging
 two-bank canaries, distributed crash/lease tests, and production access proof
-remain R2/R5/R6 evidence. No test in this planning activity certifies them.
+remain R2, identity, separately gated commerce/access and R6 evidence. No test
+in this planning activity certifies them.
 
-## Separate production-authentication requirement
+## Separate customer identity and paid-access requirements
 
-The current executable always installs `HeaderAuthenticator`, and browser assets
-fall back to a local demo token. The separate
-[R5 access plan](../plans/2026-11-03-production-access.md) selects standards-based
-OIDC code/PKCE login with server-side PostgreSQL sessions behind the existing
-`Authenticator` interface. Workshop consumes `/auth/session`, `/auth/login`,
-`/auth/callback`, and `/auth/logout` using secure same-origin cookies and the
-documented CSRF boundary; R4 owns removal of browser demo-token assumptions.
-Independently registered verified JWT bearer access is optional for API clients.
-Explicit local development/test mode supports existing headless bearer clients;
-interactive Workshop login requires configured OIDC, including development.
-There is no browser demo token, implicit local cookie login or automatic session.
-An unauthenticated `GET /auth/session` returns the existing 401 UNAUTHENTICATED
-error envelope with `error.details.login_available`: false for local mode, true
-for configured OIDC. Local `GET /auth/login` returns 503 AUTHENTICATION_UNAVAILABLE,
-fixed message `Sign-in is unavailable.`, retryable false, request ID,
-details.login_available false, `Cache-Control: no-store`, and no redirect or
-transaction/session creation. R4 offers a sign-in action only for an explicitly
-true discriminator. False, missing or invalid values stop requests, clear
-protected content and show unavailable copy without a redirect/retry loop. Cover
-both unavailable login and expired OIDC session as distinct browser fixtures.
+The authoritative [Firebase identity plan](../plans/2026-11-03-workshop-firebase-identity.md)
+supersedes the former OIDC discovery/code-PKCE/client-secret callback plan. R5
+uses official Firebase Admin Go v4.22.0 to verify Google sign-in, map project+UID
+to a persistent account/personal organization and issue an opaque PostgreSQL
+session. Client email/org/role claims grant no authority; ordinary customers
+receive server-defined dataset_viewer and no purchased scope or staff role.
+Sessions have an absolute12-hour lifetime and current local/Firebase user-state
+checks, including auth_time revocation. Missing persistence/configuration or
+nonempty FIREBASE_AUTH_EMULATOR_HOST fails Firebase startup. There is no OIDC
+fallback, customer callback transaction table or optional customer API bearer.
 
-The repository identifies no deployed issuer/client registration. The exact
-issuer, client, HTTPS origin and trusted role/organization mappings remain
-external configuration prerequisites for staging/production verification;
-provider-neutral deterministic R5 implementation can precede those real values. No identity provider brand or
-commercial policy is inferred. Apply existing organization, role, entitlement,
-and takedown rules where they govern access; do not invent a purchase requirement
-for the shared catalog. R3/R4 use deterministic identity fixtures and cannot
-mark R5 or live identity verification complete.
+R4 consumes public no-store `GET /auth/config`, then `GET /auth/session`, Google
+popup through a pinned Firebase web SDK, and `POST /auth/firebase/session` with
+JSON ID token, exact Origin and X-Autodata-Session-Exchange:1. The server returns
+an opaque secure cookie only after atomic account/session commit. Cookies carry
+later catalog requests; no ID token goes in localStorage/query/API bearer.
+`POST /auth/logout` requires exact Origin and session CSRF, commits database
+revocation and expires the cookie even during Firebase outage; R4 also signs out
+its Firebase browser instance. No `/auth/login` or `/auth/callback` route is part
+of this customer contract.
+
+Explicit local development/test remains headless-only: config/session report
+login_available:false, and local Firebase exchange returns fixed503
+AUTHENTICATION_UNAVAILABLE with `Sign-in is unavailable.`, retryable:false,
+no-store and no account/session. Only explicit configured true permits sign-in.
+False/missing/malformed availability clears protected content without a demo,
+redirect or retry loop. Fixtures distinguish popup cancellation/blocking,
+expired session401, blocked403 and dependency503, preserving source/polling
+cancellation and denial behavior. Browser fixtures make no real identity calls.
+
+The canonical [Workshop commerce policy](../../architecture/workshop-commerce.md)
+requires a $20 USD one-time purchase for exactly the selected normalized
+configuration+region and permanent account grant. Full source/canonical/status
+and media access require that current grant plus current rights/takedown policy;
+safe public selectors/previews are separately bounded. Checkout, grants, library,
+paid browser UI and catalog/media enforcement belong to a later synchronized
+lane, outside identity's35 paths and R4's session/content work. Historical
+role-only shared-catalog access is not the final paid product policy. Completing
+R3/R4 or Firebase identity does not establish paid access or production readiness.
+
+Real Firebase project/app registration, Google provider/domain configuration,
+Admin service identity/IAM and staging HTTPS setup remain deployment prerequisites;
+none is invented from bank credentials. Deterministic implementation can proceed
+after its gate without those live values. Actual Google login/revocation,
+two-replica sessions, TLS/cookies and production access require separate measured
+staging/release evidence. R5 tracking is synchronized with amended Issue186/Project8; a new committed
+exact-base preflight remains required before identity implementation.
 
 ## Risks and rollout constraints
 
@@ -462,6 +485,6 @@ mark R5 or live identity verification complete.
   an unavailable engine as unavailable, not as passed or skipped release coverage.
 
 The corresponding [implementation plan](../plans/2026-11-03-source-fallback-web.md)
-contains bounded tasks and acceptance commands. Tracking is verified in Issue
-#186 / Project #8. Each dependent task still requires its integrated dependency
+contains bounded tasks and acceptance commands. Original release tracking was
+verified in Issue #186 / Project #8; the Firebase amendment is synchronized and commerce remains in planning. Each dependent task requires its amended integrated dependency
 checkpoint, synchronized record and passing exact-base preflight.

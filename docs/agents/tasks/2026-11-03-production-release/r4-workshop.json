@@ -1,7 +1,7 @@
 {
   "task_id": "production-release-r4-workshop",
   "repository": "lucronn/autodata",
-  "goal": "Complete the Workshop source-to-canonical experience with cancellation, recovery and real browser coverage.",
+  "goal": "Complete Workshop source-to-canonical reading and the Firebase Google session handoff, with cancellation, recovery and real browser coverage; purchased-scope UI remains a separate lane.",
   "builder_agent": "autodata-go-builder",
   "allowed_paths": [
     "apps/api-go/workshop/**",
@@ -20,7 +20,9 @@
     "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
     "docs/superpowers/plans/2026-11-03-source-fallback-web.md",
     "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md",
-    "docs/superpowers/plans/2026-11-03-production-access.md"
+    "docs/superpowers/plans/2026-11-03-production-access.md",
+    "docs/superpowers/plans/2026-11-03-workshop-firebase-identity.md",
+    "docs/architecture/workshop-commerce.md"
   ],
   "outputs": [
     "apps/api-go/workshop/**"
@@ -34,7 +36,12 @@
     "node --test apps/api-go/workshop-client.test.mjs",
     "Real browser acceptance covers keyboard navigation, cold/warm reads and reload.",
     "Expired local media URLs trigger at most one automatic detail renewal per selected view, reconcile by stable asset identity without replacing unchanged content, and stop on cancellation, denial or repeated failure.",
-    "Session login availability distinguishes unavailable local login from an expired OIDC session; only explicit true offers sign-in, and false/malformed states clear protected content without redirect or retry loops."
+    "Bootstrap public GET /auth/config then GET /auth/session using same-origin credentials; only complete Firebase configuration with explicit login_available:true offers Google popup sign-in through the pinned Firebase web SDK.",
+    "After popup sign-in exchange a fresh Firebase ID token using POST /auth/firebase/session JSON, exact Origin and X-Autodata-Session-Exchange:1; then read the opaque-cookie /auth/session contract. Never use /auth/login or /auth/callback, a demo session, localStorage token or Authorization bearer fallback.",
+    "Handle popup blocked/cancelled, stale-auth reauthentication, unavailable/malformed config, expired session401, blocked403 and dependency503 distinctly. Local login_available:false or missing/invalid availability clears protected content and offers no demo login or retry/redirect loop.",
+    "Use session CSRF and same-origin Origin for logout and cookie mutations; cancel polling/renewal and clear protected content on logout/denial, and sign out the Firebase browser instance on application logout.",
+    "Deterministic browser fixtures intercept auth config/exchange/session/logout and Firebase popup boundaries without live identity calls; cover valid session, fresh exchange, expired session, local unavailable, popup cancel/block,403 and503 separately. Fixtures do not certify real Firebase registration.",
+    "Keep payment, purchased configuration+region selection/checkout/library UI and paid access claims outside this R4 session/content lane; those require a separately synchronized commerce plan."
   ],
   "forbidden_scope": [
     "Production deployment or production-data changes",
@@ -50,13 +57,15 @@
     "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
   },
   "pre_implementation": {
-    "goal": "Complete the Workshop source-to-canonical experience with cancellation, recovery and real browser coverage.",
+    "goal": "Complete Workshop source-to-canonical reading and the Firebase Google session handoff, with cancellation, recovery and real browser coverage; purchased-scope UI remains a separate lane.",
     "plan_ref": "docs/superpowers/plans/2026-11-03-source-fallback-web.md",
     "issue_ref": "https://github.com/lucronn/autodata/issues/186",
     "project_ref": "https://github.com/users/lucronn/projects/8",
     "repository_doc_refs": [
       "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
-      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/superpowers/plans/2026-11-03-workshop-firebase-identity.md",
+      "docs/architecture/workshop-commerce.md"
     ],
     "todo": [
       "Both banks complete vehicle selection, source-first article read, and canonical transition.",
@@ -67,10 +76,15 @@
       "node --test apps/api-go/workshop-client.test.mjs",
       "Real browser acceptance covers keyboard navigation, cold/warm reads and reload.",
       "Expired local media URLs trigger at most one automatic detail renewal per selected view, reconcile by stable asset identity without replacing unchanged content, and stop on cancellation, denial or repeated failure.",
-      "Session login availability distinguishes unavailable local login from an expired OIDC session; only explicit true offers sign-in, and false/malformed states clear protected content without redirect or retry loops."
+      "Bootstrap public GET /auth/config then GET /auth/session using same-origin credentials; only complete Firebase configuration with explicit login_available:true offers Google popup sign-in through the pinned Firebase web SDK.",
+      "After popup sign-in exchange a fresh Firebase ID token using POST /auth/firebase/session JSON, exact Origin and X-Autodata-Session-Exchange:1; then read the opaque-cookie /auth/session contract. Never use /auth/login or /auth/callback, a demo session, localStorage token or Authorization bearer fallback.",
+      "Handle popup blocked/cancelled, stale-auth reauthentication, unavailable/malformed config, expired session401, blocked403 and dependency503 distinctly. Local login_available:false or missing/invalid availability clears protected content and offers no demo login or retry/redirect loop.",
+      "Use session CSRF and same-origin Origin for logout and cookie mutations; cancel polling/renewal and clear protected content on logout/denial, and sign out the Firebase browser instance on application logout.",
+      "Deterministic browser fixtures intercept auth config/exchange/session/logout and Firebase popup boundaries without live identity calls; cover valid session, fresh exchange, expired session, local unavailable, popup cancel/block,403 and503 separately. Fixtures do not certify real Firebase registration.",
+      "Keep payment, purchased configuration+region selection/checkout/library UI and paid access claims outside this R4 session/content lane; those require a separately synchronized commerce plan."
     ],
-    "status": "blocked",
-    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+    "status": "pending_tracking",
+    "updated_at": "2026-11-03T18:06:36.194283+00:00"
   },
   "execution": {
     "model": "gpt-6.1-sol",
