@@ -362,8 +362,8 @@ class CommerceService:
                 return CommerceResult({'status': 'accepted'})
             cursor.execute('UPDATE payment_events SET fulfillment_attempts=fulfillment_attempts+1 WHERE payment_event_id=%s', (event_id,))
             cursor.execute("""SELECT * FROM workshop_orders WHERE order_id::text=%s
-                OR (%s IS NOT NULL AND checkout_session_id=%s) OR (%s IS NOT NULL AND payment_intent_id=%s) LIMIT 1""",
-                (event.get('order_id'), event.get('checkout_session_id'), event.get('checkout_session_id'), event.get('payment_intent_id'), event.get('payment_intent_id')))
+                OR checkout_session_id=%s OR payment_intent_id=%s LIMIT 1""",
+                (event.get('order_id'), event.get('checkout_session_id'), event.get('payment_intent_id')))
             order = cursor.fetchone()
         # PI metadata resolves early refund/dispute events without trusting browser data.
         intent = None
