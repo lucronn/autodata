@@ -163,3 +163,8 @@ Public selector200 intentionally invalidates two old expectations in `apps/api-g
 ## Exact configuration region repair
 
 The separately gated [two-file region correction](2026-11-03-workshop-catalog-region.md) makes scoped bank discovery use the same configuration base region as commerce and paid authorization. Normal identity ingestion already aligns vehicle/base regions; the fix also handles database-valid differing regions without silently widening the purchased scope. It does not alter this lane's17-file ownership.
+
+
+### Bounded protected auth error cache-header amendment
+
+Actual paid12 at3b551c992263f74e3ebdc6e4fa2c4ffda3b979a6 found four protected-route401/403 header mismatches: paidCatalogAuthenticated establishes private,no-store, then customerAuthService.writeError overwrites it with no-store. Frozen HTTP policy§6 remains unchanged. A separately synchronized two-file gate, [auth-error-cache-headers](2026-11-03-auth-error-cache-headers.md), permits only apps/api-go/auth_http.go and apps/api-go/auth_http_test.go after exact-checkpoint preflight and coordinator authorization. Preserve only the established exact private,no-store protected policy; otherwise write no-store, retaining strict no-store for existing auth endpoints. No wrapper, access-policy change or collector/assertion relaxation. Todo: red/green actual writer/protected-handler tests, full Go/vet, independent exact-commit review, then integrated actual12 rerun; existing failed evidence and all other release inventories remain required.
