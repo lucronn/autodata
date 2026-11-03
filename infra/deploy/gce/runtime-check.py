@@ -294,6 +294,42 @@ def validate_cached_images(manifest, observations):
     return True
 
 
+def validate_schema_ledger(manifest, observation):
+    """Pure ledger comparison only; no DB connection or schema attestation."""
+    exact_object(observation, ('version', 'migrations'))
+    expected = [item['name'][:-4] for item in manifest['migrations']['files']]
+    require(type(observation['version']) is int and observation['version'] == len(expected))
+    require(type(observation['migrations']) is list and observation['migrations'] == expected)
+    return True
+
+
+def collect_cached_images(manifest):
+    """Inspect only immutable local references on the fixed local Docker socket.
+
+    The output template excludes Config.Env, labels and other application data.
+    No registry access, pull, container creation or caller-selected context exists.
+    """
+    # Docker CLI v28.5.1 first templates the typed InspectResponse: ID, not Id.
+    # Using Id falls back to raw JSON where an empty Variant is omitted.
+    template = '{"image_id":{{json .ID}},"repo_digests":{{json .RepoDigests}},"os":{{json .Os}},"architecture":{{json .Architecture}},"variant":{{json .Variant}}}'
+    observations = {}
+    for role in IMAGE_ROLES:
+        reference = manifest['images'][role]['reference']
+        result = subprocess.run(['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', 'image', 'inspect', '--platform', 'linux/amd64', '--format', template, reference],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            timeout=5, check=False, cwd='/', env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'})
+        require(result.returncode == 0)
+        image = strict_json(result.stdout)
+        exact_object(image, ('image_id', 'repo_digests', 'os', 'architecture', 'variant'))
+        digests = image['repo_digests']
+        require(type(digests) is list and 1 <= len(digests) <= 256)
+        require(all(type(value) is str and len(value) <= 4096 for value in digests))
+        require(len(set(digests)) == len(digests) and reference in digests)
+        require(image['os'] == 'linux' and image['architecture'] == 'amd64' and image['variant'] == '')
+        observations[role] = {'reference': reference, 'image_id': image['image_id'], 'platform': 'linux/amd64'}
+    return validate_cached_images(manifest, observations)
+
+
 def validate_start_prerequisites(config, evidence):
     """Validate supplied evidence shape, not discover or certify actual host state.
 
@@ -665,6 +701,34 @@ def _installed_deploy_inputs(source_sha):
         return manifest, config
 
 
+def validate_installed_migration_tree(manifest):
+    """Hash the staged released inputs, never execute SQL or the runner.
+
+    Bootstrap must stage db/migrations/*.sql and scripts/dev/migrate_sql.sh
+    inside the immutable selected release, root-owned mode0444. Every directory
+    component is pinned without following symlinks; unexpected SQL entries fail.
+    This proves local bytes only, not the running DB or migration image contents.
+    """
+    match(manifest['source_sha'], SHA_PATTERN)
+    with ExitStack() as resources:
+        def directory(path, parent=None):
+            fd = _owned_directory(path, parent=parent)
+            resources.callback(os.close, fd)
+            return fd
+        root = directory(RELEASE_ROOT)
+        selected = directory(manifest['source_sha'], root)
+        sql = directory('migrations', directory('db', selected))
+        expected = manifest['migrations']['files']
+        require(sorted(os.listdir(sql)) == [item['name'] for item in expected])
+        for item in expected:
+            content = _owned_bytes(sql, item['name'], 0, 0, 0o444, MAX_JSON_BYTES)
+            require(hashlib.sha256(content).hexdigest() == item['sha256'])
+        scripts = directory('dev', directory('scripts', selected))
+        runner = _owned_bytes(scripts, 'migrate_sql.sh', 0, 0, 0o444, MAX_JSON_BYTES)
+        require(hashlib.sha256(runner).hexdigest() == manifest['migrations']['runner_sha256'])
+    return True
+
+
 def validate_mount_observations(config, data, secrets):
     """Validate exact findmnt --mountpoint output; no ancestor-filesystem fallback."""
     validate_config(config)
@@ -741,8 +805,8 @@ def validate_runtime_secret_files():
 def deploy_cli(argv):
     """Bounded check-only stage. Every mutation verb remains unavailable.
 
-    Partial local observations never certify start: cached image, actual schema,
-    service/no-work readiness and native credential rights collectors are absent.
+    Partial local observations never certify start: actual schema, service/no-work
+    readiness and native credential rights collectors are absent.
     """
     try:
         args = parse_helper_args('deploy.sh', argv)
@@ -751,11 +815,11 @@ def deploy_cli(argv):
     if argv[0] != 'check':
         return 3, operation_receipt(args['operation'], args['source_sha'], None, 3, {'runtime_evidence': False}, 'missing_dependency')
     checks = {name: False for name in ('config', 'manifest', 'disk_uuid', 'metadata_guard', 'storage_guard',
-                                      'secrets', 'cached_images', 'schema', 'services', 'runtime_evidence')}
+                                      'secrets', 'cached_images', 'migration_tree', 'schema', 'services', 'runtime_evidence')}
     code, failure = 3, 'missing_dependency'
     try:
         require(os.geteuid() == 0)
-        _, config = _installed_deploy_inputs(args['source_sha'])
+        manifest, config = _installed_deploy_inputs(args['source_sha'])
         checks.update(config=True, manifest=True)
         # Validate existing directories without ever initializing boot-disk data.
         fd = _owned_directory(DATA_ROOT)
@@ -775,6 +839,10 @@ def deploy_cli(argv):
         checks.update(metadata_guard=True, storage_guard=True)
         validate_runtime_secret_files()
         checks['secrets'] = True
+        collect_cached_images(manifest)
+        checks['cached_images'] = True
+        validate_installed_migration_tree(manifest)
+        checks['migration_tree'] = True
         # Intentionally retain missing_dependency/exit3 even when all above pass.
     except subprocess.TimeoutExpired:
         code, failure = 5, 'operation_timed_out'
