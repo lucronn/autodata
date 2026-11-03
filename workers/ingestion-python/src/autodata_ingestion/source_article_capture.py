@@ -428,6 +428,7 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
         blocks,
     )
     for node in _image_nodes(doc["blocks"]):
+        node["evidence_ids"] = list(evidence_ids)
         local = image_records.get(node.get("image_id"))
         if local:
             for name in ("status", "media_type", "content_sha256", "storage_key"):

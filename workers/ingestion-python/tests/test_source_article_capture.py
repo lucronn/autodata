@@ -1,6 +1,7 @@
 from contextlib import ExitStack
 from dataclasses import replace
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 import sys
 import uuid
@@ -454,11 +455,13 @@ def test_nested_article_applicability_must_match_scope(
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 @pytest.mark.parametrize("localized", [False, True])
+@pytest.mark.parametrize("context_evidence", [False, True])
+@pytest.mark.parametrize("location", ["step", "instruction", "table", "list", "callout"])
 def test_nested_kindless_images_require_verified_provider_bytes(
-    capture_fixture, provider, localized
+    capture_fixture, provider, localized, context_evidence, location
 ):
     import json
-    from autodata_ingestion.source_article_capture import capture_source_article
+    from autodata_ingestion.source_article_capture import capture_source_article, _image_nodes
 
     image = {
         "asset_resource_ref": "figure",
@@ -470,20 +473,26 @@ def test_nested_kindless_images_require_verified_provider_bytes(
         "image_id": "fixture-untrusted/id",
         "content_sha256": "f" * 64,
         "status": "available",
+        "evidence_ids": ["upstream-forged"],
     }
-    payload = {
-        "blocks": [
-            {"kind": "paragraph", "text": "Check pump."},
-            {"kind": "table", "rows": [[{"text": "Torque 25 Nm", "images": [image]}]]},
-        ]
-    }
+    nested = {
+        "step": {"kind": "step", "text": "Check the pump.", "images": [image]},
+        "instruction": {"kind": "step", "instructions": [{"text": "Check the pump.", "images": [image]}]},
+        "table": {"kind": "table", "rows": [[{"text": "Torque 25 Nm", "images": [image]}]]},
+        "list": {"kind": "ordered_list", "items": [{"text": "Check the pump.", "images": [image]}]},
+        "callout": {"kind": "callout", "items": [{"text": "Check the pump.", "images": [image]}]},
+    }[location]
+    payload = {"blocks": [{"kind": "paragraph", "text": "Remove the pump."}, nested]}
     capture_fixture.body(provider, json.dumps(payload).encode(), "application/json")
     if localized:
         capture_fixture.body(
             provider, provider.encode(), "image/png", ref="figure", kind="asset"
         )
+    context = capture_fixture.context(provider)
+    if not context_evidence:
+        context = replace(context, evidence_ids=())
     captured = capture_source_article(
-        capture_fixture.context(provider),
+        context,
         registry=capture_fixture.registry,
         object_store=capture_fixture.objects,
     )
@@ -492,14 +501,42 @@ def test_nested_kindless_images_require_verified_provider_bytes(
         capture_fixture.calls("banktwo" if provider == "bankone" else "bankone") == []
     )
     assert len(captured.source_images) == 1
-    image = captured.source_document["blocks"][1]["rows"][0][0]["images"][0]
+    nested_images = list(_image_nodes(captured.source_document["blocks"][1]))
+    assert len(nested_images) == 1
+    image = nested_images[0]
     assert image["status"] == ("available" if localized else "unavailable")
     assert image in captured.source_images
+    from autodata_ingestion.article_document import validate_ordered_document
+    assert validate_ordered_document(captured.source_document, strict=True) == []
+    expected_evidence = list(context.evidence_ids) or [
+        "source:" + str(captured.body_source_snapshot_id)
+    ]
+    assert image["evidence_ids"] == expected_evidence
+    from autodata_ingestion.procedure_rewrite import rewrite_ordered_document
+
+    class Model:
+        calls = 0
+
+        def complete_json(self, prompt):
+            self.calls += 1
+            slots = json.loads(prompt)["slots"]
+            return {"replacements": [{**slot, "text": slot["text"].replace("Remove", "Take off")} for slot in slots]}
+
+    model = Model()
+    rewritten = rewrite_ordered_document(captured.source_document, client=model, context=context.vehicle)
+    assert model.calls == 1
+    assert rewritten.error_code is None
+    assert list(_image_nodes(rewritten.document["blocks"][1])) == [image]
+    assert validate_ordered_document(rewritten.document, strict=True) == []
     assert "fixture-untrusted" not in str(captured.source_document)
     assert "untrusted.invalid" not in str(captured.source_document)
     assert "/untrusted/" not in str(captured.source_document)
     if localized:
         assert image["storage_key"] in capture_fixture.objects.data
+        assert image["content_sha256"] == sha256(provider.encode()).hexdigest()
+        assert capture_fixture.objects.data[image["storage_key"]] == (
+            provider.encode(), "image/png"
+        )
     else:
         assert not image.get("storage_key")
         assert captured.projection_status == "partial"
