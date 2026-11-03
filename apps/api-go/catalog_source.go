@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	stdhtml "html"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
 )
@@ -25,6 +27,10 @@ type CatalogSourceContentResponse struct {
 var unsafeCatalogSourceStyle = regexp.MustCompile(`(?i)(?:url\s*\([^)]*\)|expression\s*\(|behavior\s*:|-moz-binding\s*:)`)
 
 func (s *Server) serveCatalogSource(response http.ResponseWriter, request *http.Request, principal Principal) {
+	if s.paidCatalogEnabled() {
+		s.servePaidCatalogSource(response, request, principal)
+		return
+	}
 	vehicleID := request.PathValue("vehicle_id")
 	articleID := request.PathValue("article_id")
 	response.Header().Set("Cache-Control", "private, no-store")
@@ -60,6 +66,86 @@ func (s *Server) serveCatalogSource(response http.ResponseWriter, request *http.
 		return
 	}
 	writeCatalogSourceHTML(response, review, content, request.URL.Query().Get("evidence_id"), request.URL.Query().Get("source_locator"))
+}
+
+// Paid source review loads current anchors separately from a pinned historical
+// revision. A historical asset is never silently replaced by the newest source.
+func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, p Principal) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	r = r.WithContext(ctx)
+	configuration, err := s.resolvePaidCatalogScope(ctx, p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"))
+	if err != nil {
+		s.writePaidCatalogError(w, r, err)
+		return
+	}
+	articleID := r.PathValue("article_id")
+	if !commerceUUID(articleID) {
+		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
+		return
+	}
+	identity, err := s.paidMediaIdentity(ctx, configuration, articleID)
+	if err != nil {
+		s.writePaidCatalogError(w, r, err)
+		return
+	}
+	view, err := s.catalog.ArticleView(ctx, p, configuration.ID, articleID)
+	if err != nil {
+		s.writePaidCatalogError(w, r, err)
+		return
+	}
+	if view.Withdrawn {
+		s.writePaidCatalogError(w, r, ErrCatalogWithdrawn)
+		return
+	}
+	if !paidCatalogViewMatches(view, identity) {
+		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
+		return
+	}
+	selected := r.URL.Query().Get("source_revision_id")
+	if selected == "" {
+		if view.Article.SourceRevisionID == nil {
+			s.writePaidCatalogError(w, r, ErrVehicleGrantUnavailable)
+			return
+		}
+		selected = *view.Article.SourceRevisionID
+	}
+	if !commerceUUID(selected) {
+		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
+		return
+	}
+	stored, err := s.catalog.ArticleSourceRevision(ctx, p, configuration.ID, articleID, selected)
+	if err != nil {
+		s.writePaidCatalogError(w, r, err)
+		return
+	}
+	if stored.SourceRevisionID == nil || *stored.SourceRevisionID != selected {
+		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
+		return
+	}
+	stored.Images = append([]CatalogImage{}, stored.Images...)
+	stored.Document = publicCatalogDocument(stored.Document)
+	now := time.Now()
+	ref := paidCatalogProjectionReference(p, configuration, identity, view, selected, "source", now)
+	s.rewritePaidCatalogImages(stored.Images, stored, ref, now)
+	var format, content string
+	if stored.Document != nil {
+		format, content = "html", renderCatalogOrderedSource(stored.Document, stored.Images)
+	} else {
+		format, content, err = renderStoredCatalogSource(stored.Original, stored.SourceURI, s.catalogImageKey)
+	}
+	if err != nil {
+		s.writePaidCatalogError(w, r, err)
+		return
+	}
+	review := CatalogSourceReview{Available: true, SnapshotID: stored.SnapshotID, Version: stored.Version, ContentSHA256: stored.ContentSHA256, Format: format, URL: catalogPinnedSourceURL(configuration.ID, articleID, stored.SourceRevisionID)}
+	if acceptsJSON(r) {
+		writeJSON(w, http.StatusOK, CatalogSourceContentResponse{Version: "v1", Source: review, Content: content, Document: stored.Document, Images: stored.Images, ViewRevision: stored.ViewRevision})
+		return
+	}
+	writeCatalogSourceHTML(w, review, content, r.URL.Query().Get("evidence_id"), r.URL.Query().Get("source_locator"))
 }
 
 func sourceReviewForArticle(article CatalogArticle, vehicleID, articleID string) *CatalogSourceReview {
@@ -293,6 +379,9 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 	for _, image := range images {
 		assets[image.ID] = image
 		assets[image.ImageID] = image
+		if image.AssetID != "" {
+			assets[image.AssetID] = image
+		}
 	}
 	var cell func(any) string
 	imageHTML := func(id, alt string) string {
@@ -386,6 +475,9 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			id := image.ID
 			if id == "" {
 				id = image.ImageID
+			}
+			if id == "" {
+				id = image.AssetID
 			}
 			output.WriteString(imageHTML(id, image.Alt))
 		}

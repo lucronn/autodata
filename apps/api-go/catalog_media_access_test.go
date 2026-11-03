@@ -406,3 +406,81 @@ func TestPaidCatalogMediaHTTPAndHistoricalSourceProjection(t *testing.T) {
 		}
 	}
 }
+
+func TestPaidCatalogSourceProjectsPinnedHTMLJSONWithoutMutation(t *testing.T) {
+	for _, accept := range []string{"application/json", "text/html"} {
+		t.Run(accept, func(t *testing.T) {
+			s, c, _, _, p, ref := paidMediaFixture()
+			c.view.Article.SourceRevisionID = c.identity.CurrentSourceRevisionID
+			original := c.source.Images[0].URL
+			request := httptest.NewRequest("GET", "/v1/catalog/vehicles/"+ref.ConfigurationID+"/articles/"+ref.CanonicalArticleID+"/source?source_revision_id="+ref.SelectedSourceRevisionID, nil)
+			request.SetPathValue("vehicle_id", ref.ConfigurationID)
+			request.SetPathValue("article_id", ref.CanonicalArticleID)
+			request.Header.Set("Accept", accept)
+			w := httptest.NewRecorder()
+			s.serveCatalogSource(w, request, p)
+			if w.Code != 200 {
+				t.Fatalf("status=%d %s", w.Code, w.Body.String())
+			}
+			if c.source.Images[0].URL != original {
+				t.Fatal("stored source images mutated")
+			}
+			var token string
+			if accept == "application/json" {
+				var body CatalogSourceContentResponse
+				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if len(body.Images) != 1 || !strings.Contains(body.Content, "/v1/catalog/images/v2.") {
+					t.Fatal("source JSON did not project image", w.Body.String())
+				}
+				token = strings.TrimPrefix(body.Images[0].URL, "/v1/catalog/images/")
+			} else {
+				prefix := `src="/v1/catalog/images/`
+				_, after, found := strings.Cut(w.Body.String(), prefix)
+				if !found {
+					t.Fatal("source HTML missing image", w.Body.String())
+				}
+				token, _, _ = strings.Cut(after, `"`)
+			}
+			got, err := openPaidCatalogImageReference(token, s.catalogImageKey, time.Now())
+			if err != nil || got.Projection != "source" || got.SelectedSourceRevisionID != ref.SelectedSourceRevisionID || got.AnchorSourceRevisionID != ref.AnchorSourceRevisionID {
+				t.Fatalf("source reference=%+v err=%v", got, err)
+			}
+			if c.lastSource != ref.SelectedSourceRevisionID {
+				t.Fatal("historical source replaced with current")
+			}
+			response := paidMediaRequest(s, p, token)
+			if response.Code != 200 {
+				t.Fatal("fresh historical source image denied", response.Code, response.Body.String())
+			}
+			if strings.Contains(w.Body.String(), "private-provider") || strings.Contains(w.Body.String(), ref.ObjectKey) {
+				t.Fatal("source response leaks private identity")
+			}
+		})
+	}
+}
+
+func TestPaidCatalogSourceDeniedBeforeReadAndRawSanitizerOmission(t *testing.T) {
+	s, c, g, _, p, ref := paidMediaFixture()
+	g.err = ErrVehicleGrantRequired
+	request := httptest.NewRequest("GET", "/source", nil)
+	request.SetPathValue("vehicle_id", ref.ConfigurationID)
+	request.SetPathValue("article_id", ref.CanonicalArticleID)
+	w := httptest.NewRecorder()
+	s.serveCatalogSource(w, request, p)
+	if w.Code != 403 || c.identityCalls.Load() != 0 || c.viewCalls.Load() != 0 || c.sourceCalls.Load() != 0 {
+		t.Fatalf("denial=%d identity/view/source=%d/%d/%d", w.Code, c.identityCalls.Load(), c.viewCalls.Load(), c.sourceCalls.Load())
+	}
+	s, c, _, _, p, ref = paidMediaFixture()
+	c.source.Document = nil
+	c.source.Original = json.RawMessage(`{"_embedded":{"data":{"article":{"content":"<p>Body</p><img src=\"https://private-provider/image.png\"><img src=\"/v1/catalog/images/legacy\">"}}}}`)
+	request = httptest.NewRequest("GET", "/source?source_revision_id="+ref.SelectedSourceRevisionID, nil)
+	request.SetPathValue("vehicle_id", ref.ConfigurationID)
+	request.SetPathValue("article_id", ref.CanonicalArticleID)
+	w = httptest.NewRecorder()
+	s.serveCatalogSource(w, request, p)
+	if w.Code != 200 || strings.Contains(w.Body.String(), "private-provider") || strings.Contains(w.Body.String(), "images/legacy") || strings.Contains(w.Body.String(), "<img") {
+		t.Fatal("raw source image authorized from untrusted URL", w.Code, w.Body.String())
+	}
+}
