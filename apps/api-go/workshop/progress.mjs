@@ -9,24 +9,9 @@ export const LOAD_STAGES = Object.freeze([
 
 const fallback = LOAD_STAGES[0];
 
-export function loadingProgress(key, { attempt = 0, attempts = 1, hydrating = false, complete = false, catalogProgress = null } = {}) {
+export function loadingProgress(key, { complete = false, catalogProgress = null } = {}) {
   const stage = LOAD_STAGES.find(item => item.key === key) || fallback;
-  const safeAttempts = Math.max(1, Number(attempts) || 1);
-  const safeAttempt = Math.max(0, Number(attempt) || 0);
-  const span = stage.end - stage.start;
-  let percent = stage.start;
-  if (complete) percent = stage.end;
-  else if (hydrating) {
-    const reportedPercent = Number(catalogProgress?.percent);
-    const ratio = Number.isFinite(reportedPercent)
-      ? Math.min(0.99, Math.max(0, reportedPercent / 100))
-      : Math.min(0.85, safeAttempt / safeAttempts);
-    percent = Math.min(stage.end - 1, stage.start + Math.max(1, Math.round(span * ratio)));
-  }
-  return {
-    ...stage,
-    percent,
-    step: LOAD_STAGES.indexOf(stage) + 1,
-    total: LOAD_STAGES.length,
-  };
+  const processed = catalogProgress?.processed, total = catalogProgress?.total;
+  const measurable = Number.isFinite(processed) && Number.isFinite(total) && total > 0 && processed >= 0 && processed <= total;
+  return { ...stage, complete, percent: measurable ? Math.floor(processed / total * 100) : null, step: LOAD_STAGES.indexOf(stage) + 1, total: LOAD_STAGES.length };
 }

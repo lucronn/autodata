@@ -164,12 +164,12 @@ export function articlePresentation(article) {
   };
 }
 
-export function localImageURL(value, origin) {
-  if (typeof value !== 'string') return null;
-  if (/^data:image\/(png|jpeg|webp|gif);base64,[a-z\d+/=\s]+$/i.test(value)) return value;
+export function localImageURL(value, origin, { compatibility = false } = {}) {
+  if (typeof value !== 'string' || /[\s\u0000-\u001f]/.test(value)) return null;
+  if (compatibility && /^data:image\/(png|jpeg|webp|gif);base64,[a-z\d+/=]+$/i.test(value)) return value;
   try {
     const url = new URL(value, origin);
-    return ['http:', 'https:'].includes(url.protocol) && url.origin === origin ? url.href : null;
+    return ['http:', 'https:'].includes(url.protocol) && url.origin === origin && !url.username && !url.password && !url.search && !url.hash && (compatibility || /^\/v1\/catalog\/images\/v2\.[a-zA-Z0-9_-]{1,6000}$/.test(url.pathname)) ? url.href : null;
   } catch { return null; }
 }
 
@@ -217,26 +217,35 @@ export async function readCollection(
   return { ...latest, timedOut: true };
 }
 
-export async function requestJSON(path, { signal, token, timeout = 120000, fetcher = fetch } = {}) {
-  const timeoutSignal = AbortSignal.timeout(timeout);
+export class CatalogRequestError extends Error {
+  constructor(message, { status = 0, code = 'NETWORK_UNAVAILABLE', retryable = false, retryAfterSeconds = 0, requestId = '' } = {}) {
+    super(message); Object.assign(this, { status, code, retryable, retryAfterSeconds, requestId });
+  }
+}
+function safeRequestMessage(status) {
+  if (status === 401 || status === 403) return 'Your session cannot access this catalog. Sign in or check your access.';
+  if (status === 404) return 'This article or vehicle could not be found. Return to the index.';
+  if (status === 410) return 'This article is no longer available.';
+  if (status === 409) return 'This article needs review before it can be opened.';
+  return 'AutoData is temporarily unavailable. Try again.';
+}
+export async function requestArticleJSON(path, { signal, timeout = 10000, fetcher = fetch, method = 'GET', body, headers = {} } = {}) {
+  const timeoutSignal = AbortSignal.timeout(Math.max(1, Math.min(10000, timeout)));
   const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
   try {
-    const response = await fetcher(path, {
-      signal: combined,
-      headers: { Accept: 'application/json', ...(token ? { Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}` } : {}) },
-    });
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) throw new Error('Your session cannot access this catalog. Check your AutoData access and try again.');
-      if (response.status === 404) throw new Error('This article or vehicle could not be found. Return to the index and choose it again.');
-      throw new Error(data?.error?.message || data?.message || `The catalog could not be loaded (HTTP ${response.status}). Try again.`);
-    }
-    if (!data || typeof data !== 'object') throw new Error('The catalog returned an unreadable response. Try again.');
-    return data;
+    const response = await fetcher(path, { method, signal: combined, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    const data = response.status === 204 ? null : await response.json().catch(() => null);
+    signal?.throwIfAborted();
+    const retry = response.headers.get('Retry-After');
+    const retryAfterSeconds = retry && /^\d+$/.test(retry) ? Number(retry) : retry ? Math.max(0, Math.ceil((Date.parse(retry) - Date.now()) / 1000)) || 0 : 0;
+    if (!response.ok) throw new CatalogRequestError(safeRequestMessage(response.status), { status: response.status, code: typeof data?.error?.code === 'string' ? data.error.code : 'HTTP_ERROR', retryable: data?.error?.retryable === true, retryAfterSeconds, requestId: typeof data?.error?.request_id === 'string' ? data.error.request_id : '' });
+    if (response.status !== 204 && (!data || typeof data !== 'object' || Array.isArray(data))) throw new CatalogRequestError('The catalog returned an unreadable response. Try again.', { code: 'INVALID_RESPONSE' });
+    return { status: response.status, data, retryAfterSeconds };
   } catch (error) {
-    if (signal?.aborted) throw signal.reason;
-    if (timeoutSignal.aborted) throw new Error('This is taking longer than expected. You can retry or choose another vehicle.');
-    if (error instanceof TypeError) throw new Error('Cannot reach AutoData. Check the server connection and try again.');
+    signal?.throwIfAborted();
+    if (error instanceof CatalogRequestError) throw error;
+    if (timeoutSignal.aborted || error instanceof TypeError) throw new CatalogRequestError('Cannot reach AutoData. Try again.', { retryable: true });
     throw error;
   }
 }
+export async function requestJSON(path, options) { return (await requestArticleJSON(path, options)).data; }
