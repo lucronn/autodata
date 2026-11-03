@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/xml"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 
@@ -68,8 +71,48 @@ func (reader *minioCatalogImageReader) ReadImage(ctx context.Context, key string
 		return nil, "", errors.New("catalog image could not be read")
 	}
 	mediaType := strings.ToLower(strings.TrimSpace(strings.Split(info.ContentType, ";")[0]))
-	if !strings.HasPrefix(mediaType, "image/") {
+	if !validCatalogImageMedia(payload, mediaType) {
 		return nil, "", errors.New("catalog image media type is invalid")
 	}
 	return payload, mediaType, nil
+}
+
+// MIME claims are checked against immutable stored bytes. SVG is XML with an
+// SVG root, and is always served under the direct-navigation sandbox.
+func validCatalogImageMedia(body []byte, media string) bool {
+	switch media {
+	case "image/png", "image/jpeg", "image/gif", "image/webp":
+		return http.DetectContentType(body) == media
+	case "image/svg+xml":
+		decoder := xml.NewDecoder(bytes.NewReader(body))
+		root := false
+		depth := 0
+		for {
+			token, err := decoder.Token()
+			if err == io.EOF {
+				return root && depth == 0
+			}
+			if err != nil {
+				return false
+			}
+			switch value := token.(type) {
+			case xml.Directive:
+				return false
+			case xml.StartElement:
+				if root && depth == 0 {
+					return false
+				}
+				if !root {
+					if value.Name.Local != "svg" || (value.Name.Space != "" && value.Name.Space != "http://www.w3.org/2000/svg") {
+						return false
+					}
+					root = true
+				}
+				depth++
+			case xml.EndElement:
+				depth--
+			}
+		}
+	}
+	return false
 }

@@ -1,0 +1,64 @@
+{
+  "version": "v1",
+  "article": {
+    "id": "article-1",
+    "vehicle_id": "vehicle-1",
+    "title": "Pump removal",
+    "canonical_article_id": "article-1",
+    "source_revision_id": "source-1",
+    "canonical_revision_id": "canonical-for-another-source",
+    "content_origin": "source",
+    "availability": "available",
+    "view_revision": "view-source-1",
+    "review_status": "UNREVIEWED",
+    "content_status": "content_partial",
+    "complete": false,
+    "document": {
+      "schema_version": 1,
+      "normalization_version": "ordered-article-v1",
+      "blocks": [
+        {
+          "block_id": "pump:1",
+          "source_order": 1,
+          "type": "paragraph",
+          "text": "Remove the pump.",
+          "evidence_ids": [
+            "evidence-1"
+          ]
+        },
+        {
+          "block_id": "pump:2",
+          "source_order": 2,
+          "type": "table",
+          "columns": [
+            "Torque",
+            "Value"
+          ],
+          "rows": [
+            [
+              "Pump bolts",
+              "10 N\u00b7m"
+            ]
+          ]
+        },
+        {
+          "block_id": "pump:3",
+          "source_order": 3,
+          "type": "warning",
+          "label": "Warning",
+          "text": "Disconnect the battery."
+        }
+      ]
+    },
+    "body": "Remove the pump.",
+    "images": [],
+    "processing": {
+      "job_id": "job-1",
+      "state": "rewriting",
+      "retryable": false,
+      "retry_after_seconds": 2,
+      "error_code": null,
+      "updated_at": "2026-11-03T12:00:00Z"
+    }
+  }
+}

@@ -1,141 +1,2072 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "AutoData Catalog Media API",
+    "title": "AutoData Catalog API",
     "version": "1.0.0",
-    "description": "Consumer catalog article and stored-source media contract. Public image URLs are minted by AutoData for already-localized assets. Storage keys and provider URLs are private and are never returned by these routes."
+    "description": "Provider-neutral selector cascade, descriptor index, ordered source/canonical lifecycle, immutable source review and localized media."
   },
-  "servers": [{ "url": "/" }],
-  "security": [{ "bearerAuth": [] }],
-  "tags": [{ "name": "Catalog media" }],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Catalog media"
+    }
+  ],
   "paths": {
     "/v1/catalog/vehicles/{vehicle_id}/articles": {
       "get": {
-        "tags": ["Catalog media"],
+        "tags": [
+          "Catalog media"
+        ],
         "operationId": "listCatalogArticles",
         "summary": "List a vehicle's catalog articles and opaque image URLs",
-        "parameters": [{ "$ref": "#/components/parameters/VehicleId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VehicleId"
+          }
+        ],
         "responses": {
-          "200": { "description": "Catalog article list. Missing or unlocalized images have no display URL.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogArticlesResponse" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "500": { "$ref": "#/components/responses/Unavailable" }
+          "200": {
+            "description": "Catalog article list. Missing or unlocalized images have no display URL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogArticlesResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}": {
       "get": {
-        "tags": ["Catalog media"],
+        "tags": [
+          "Catalog media"
+        ],
         "operationId": "getCatalogArticle",
         "summary": "Read a catalog article and its opaque image URLs",
-        "parameters": [{ "$ref": "#/components/parameters/VehicleId" }, { "$ref": "#/components/parameters/ArticleId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VehicleId"
+          },
+          {
+            "$ref": "#/components/parameters/ArticleId"
+          }
+        ],
         "responses": {
-          "200": { "description": "Normalized article; internal object keys and provider URLs are omitted.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogArticleResponse" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/Unavailable" }
-        }
+          "200": {
+            "description": "Normalized article; internal object keys and provider URLs are omitted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogArticleResponse"
+                },
+                "examples": {
+                  "source-rewriting": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": "source-1",
+                        "canonical_revision_id": null,
+                        "content_origin": "source",
+                        "availability": "available",
+                        "view_revision": "view-source-1",
+                        "review_status": "UNREVIEWED",
+                        "content_status": "content_partial",
+                        "complete": false,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Remove the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Remove the pump.",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "rewriting",
+                          "retryable": false,
+                          "retry_after_seconds": 2,
+                          "error_code": null,
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "pending-source": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": null,
+                        "canonical_revision_id": null,
+                        "content_origin": null,
+                        "availability": "pending",
+                        "view_revision": null,
+                        "review_status": "UNREVIEWED",
+                        "content_status": "list_only",
+                        "complete": false,
+                        "document": null,
+                        "body": "",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "queued",
+                          "retryable": false,
+                          "retry_after_seconds": 2,
+                          "error_code": null,
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "canonical-completed": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": "source-1",
+                        "canonical_revision_id": "canonical-1",
+                        "content_origin": "canonical",
+                        "availability": "available",
+                        "view_revision": "view-canonical-1",
+                        "review_status": "UNREVIEWED",
+                        "content_status": "content_complete",
+                        "complete": true,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Take off the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Take off the pump.",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "completed",
+                          "retryable": false,
+                          "retry_after_seconds": null,
+                          "error_code": null,
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "source-needs-review": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": "source-1",
+                        "canonical_revision_id": null,
+                        "content_origin": "source",
+                        "availability": "available",
+                        "view_revision": "view-source-1",
+                        "review_status": "UNREVIEWED",
+                        "content_status": "content_partial",
+                        "complete": false,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Remove the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Remove the pump.",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "needs_review",
+                          "retryable": false,
+                          "retry_after_seconds": null,
+                          "error_code": "CATALOG_REWRITE_REJECTED",
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "legacy-unmanaged": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": null,
+                        "source_revision_id": null,
+                        "canonical_revision_id": null,
+                        "content_origin": "source",
+                        "availability": "available",
+                        "view_revision": "view-source-1",
+                        "review_status": null,
+                        "content_status": "content_partial",
+                        "complete": false,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Remove the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Remove the pump.",
+                        "images": [],
+                        "processing": null
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "202": {
+            "description": "Durable job accepted; no readable source yet, availability pending.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogArticleResponse"
+                },
+                "examples": {
+                  "source-rewriting": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": "source-1",
+                        "canonical_revision_id": null,
+                        "content_origin": "source",
+                        "availability": "available",
+                        "view_revision": "view-source-1",
+                        "review_status": "UNREVIEWED",
+                        "content_status": "content_partial",
+                        "complete": false,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Remove the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Remove the pump.",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "rewriting",
+                          "retryable": false,
+                          "retry_after_seconds": 2,
+                          "error_code": null,
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "pending-source": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": null,
+                        "canonical_revision_id": null,
+                        "content_origin": null,
+                        "availability": "pending",
+                        "view_revision": null,
+                        "review_status": "UNREVIEWED",
+                        "content_status": "list_only",
+                        "complete": false,
+                        "document": null,
+                        "body": "",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "queued",
+                          "retryable": false,
+                          "retry_after_seconds": 2,
+                          "error_code": null,
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "canonical-completed": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": "source-1",
+                        "canonical_revision_id": "canonical-1",
+                        "content_origin": "canonical",
+                        "availability": "available",
+                        "view_revision": "view-canonical-1",
+                        "review_status": "UNREVIEWED",
+                        "content_status": "content_complete",
+                        "complete": true,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Take off the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Take off the pump.",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "completed",
+                          "retryable": false,
+                          "retry_after_seconds": null,
+                          "error_code": null,
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "source-needs-review": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": "source-1",
+                        "canonical_revision_id": null,
+                        "content_origin": "source",
+                        "availability": "available",
+                        "view_revision": "view-source-1",
+                        "review_status": "UNREVIEWED",
+                        "content_status": "content_partial",
+                        "complete": false,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Remove the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Remove the pump.",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "needs_review",
+                          "retryable": false,
+                          "retry_after_seconds": null,
+                          "error_code": "CATALOG_REWRITE_REJECTED",
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "legacy-unmanaged": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": null,
+                        "source_revision_id": null,
+                        "canonical_revision_id": null,
+                        "content_origin": "source",
+                        "availability": "available",
+                        "view_revision": "view-source-1",
+                        "review_status": null,
+                        "content_status": "content_partial",
+                        "complete": false,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Remove the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Remove the pump.",
+                        "images": [],
+                        "processing": null
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "description": "Read one authorized immutable source or canonical projection. A cold known descriptor schedules bounded durable work. Repeated reads join its job. Readable source returns 200 throughout rewriting and on terminal rewrite failure. complete means validated canonical publication."
       }
     },
     "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source": {
       "get": {
-        "tags": ["Catalog media"],
+        "tags": [
+          "Catalog media"
+        ],
         "operationId": "getStoredArticleSource",
         "summary": "Read sanitized stored source content",
-        "description": "Reads the stored snapshot without calling a provider. Source images are rendered only when mapped to an already-localized object; otherwise they are omitted. HTML is CSP-protected.",
+        "description": "Read the authorized immutable ordered source document without provider, model or scheduling calls. Sanitized compatibility content and local media retain unavailable placeholders.",
         "parameters": [
-          { "$ref": "#/components/parameters/VehicleId" },
-          { "$ref": "#/components/parameters/ArticleId" },
-          { "name": "Accept", "in": "header", "required": false, "schema": { "type": "string", "enum": ["application/json", "text/html"] } }
+          {
+            "$ref": "#/components/parameters/VehicleId"
+          },
+          {
+            "$ref": "#/components/parameters/ArticleId"
+          },
+          {
+            "name": "Accept",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "application/json",
+                "text/html"
+              ]
+            }
+          },
+          {
+            "name": "source_revision_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Pins an immutable revision belonging to this authorized article and vehicle."
+          }
         ],
         "responses": {
           "200": {
             "description": "Sanitized stored source in the requested representation.",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/SourceContentResponse" } },
-              "text/html": { "schema": { "type": "string" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceContentResponse"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
             },
             "headers": {
-              "Content-Security-Policy": { "schema": { "type": "string" } },
-              "X-Content-Type-Options": { "schema": { "type": "string", "example": "nosniff" } }
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/Unavailable" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/v1/catalog/images/{token}": {
       "get": {
-        "tags": ["Catalog media"],
+        "tags": [
+          "Catalog media"
+        ],
         "operationId": "getLocalizedCatalogImage",
         "summary": "Fetch an AutoData-localized image",
         "description": "The token is randomly minted by AutoData and resolves only to a validated local object key. It is not a provider URL or storage key. No bearer token is required; invalid or unavailable references fail closed. Tokens are environment-specific and must not be constructed from this document.",
         "security": [],
-        "parameters": [{ "name": "token", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "minLength": 1, "maxLength": 6000 } }],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "minLength": 1,
+              "maxLength": 6000
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Localized image bytes.", "content": { "image/*": { "schema": { "type": "string", "format": "binary" } } } },
-          "404": { "description": "Invalid reference, missing local object, or invalid media.", "content": { "text/plain": { "schema": { "type": "string", "example": "catalog image not found" } } } },
-          "503": { "description": "Image key or local object storage is unavailable.", "content": { "text/plain": { "schema": { "type": "string", "example": "catalog image storage is unavailable" } } } }
+          "200": {
+            "description": "Localized image bytes.",
+            "content": {
+              "image/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid reference, missing local object, or invalid media.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "catalog image not found"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Image key or local object storage is unavailable.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "catalog image storage is unavailable"
+                }
+              }
+            }
+          }
         }
       }
     },
     "/v1/catalog/images": {
       "get": {
-        "tags": ["Catalog media"],
+        "tags": [
+          "Catalog media"
+        ],
         "operationId": "rejectLegacyCatalogImageReference",
         "summary": "Reject the legacy source-bearing image route",
         "description": "The src query parameter is not accepted; the handler never fetches caller-supplied URLs.",
         "deprecated": true,
         "security": [],
-        "responses": { "400": { "description": "An opaque image path token is required.", "content": { "text/plain": { "schema": { "type": "string", "example": "opaque image reference required" } } } } }
+        "responses": {
+          "400": {
+            "description": "An opaque image path token is required.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "opaque image reference required"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/catalog/years": {
+      "get": {
+        "tags": [
+          "Catalog media"
+        ],
+        "operationId": "listCatalogYears",
+        "summary": "List catalog years",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Available selector rows and durable completeness.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "items"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string",
+                      "enum": [
+                        "v1"
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "year": {
+                            "type": "integer",
+                            "minimum": 1886,
+                            "maximum": 2100
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/v1/catalog/years/{year}/makes": {
+      "get": {
+        "tags": [
+          "Catalog media"
+        ],
+        "operationId": "listCatalogMakes",
+        "summary": "List catalog makes",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1886,
+              "maximum": 2100
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "US"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Available selector rows and durable completeness.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "items"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string",
+                      "enum": [
+                        "v1"
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "hydrating": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/v1/catalog/years/{year}/makes/{make}/models": {
+      "get": {
+        "tags": [
+          "Catalog media"
+        ],
+        "operationId": "listCatalogModels",
+        "summary": "List catalog models",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1886,
+              "maximum": 2100
+            }
+          },
+          {
+            "name": "make",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "US"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Available selector rows and durable completeness.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "items"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string",
+                      "enum": [
+                        "v1"
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "hydrating": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/v1/catalog/years/{year}/makes/{make}/models/{model}/configurations": {
+      "get": {
+        "tags": [
+          "Catalog media"
+        ],
+        "operationId": "listCatalogConfigurations",
+        "summary": "List catalog configurations",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1886,
+              "maximum": 2100
+            }
+          },
+          {
+            "name": "make",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "US"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Available selector rows and durable completeness.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "items"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string",
+                      "enum": [
+                        "v1"
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "vehicle_id": {
+                            "type": "string"
+                          },
+                          "make": {
+                            "type": "string"
+                          },
+                          "model": {
+                            "type": "string"
+                          },
+                          "region": {
+                            "type": "string"
+                          },
+                          "trim": {
+                            "type": "string"
+                          },
+                          "engine": {
+                            "type": "string"
+                          },
+                          "year": {
+                            "type": "integer"
+                          },
+                          "complete": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "hydrating": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
       }
     }
   },
   "components": {
-    "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer" } },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
     "parameters": {
-      "VehicleId": { "name": "vehicle_id", "in": "path", "required": true, "schema": { "type": "string" } },
-      "ArticleId": { "name": "article_id", "in": "path", "required": true, "schema": { "type": "string" } }
+      "VehicleId": {
+        "name": "vehicle_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ArticleId": {
+        "name": "article_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
     },
     "schemas": {
       "CatalogImage": {
         "type": "object",
-        "description": "Public image projection; object-storage keys are deliberately not part of this schema.",
+        "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "url": { "type": "string", "description": "AutoData-issued same-origin opaque URL; omitted when the asset is unavailable locally." },
-          "alt": { "type": "string" },
-          "media_type": { "type": "string" },
-          "image_id": { "type": "string" }
+          "id": {
+            "type": "string"
+          },
+          "image_id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "pattern": "^/v1/catalog/images/[^?]+$"
+          },
+          "alt": {
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/gif",
+              "image/webp",
+              "image/svg+xml"
+            ]
+          },
+          "status": {
+            "enum": [
+              "available",
+              "unavailable",
+              "localized"
+            ]
+          },
+          "unavailable_reason": {
+            "type": "string"
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "caption": {
+            "type": "string"
+          }
         },
-        "additionalProperties": false
+        "description": "Localized image metadata; storage keys are deliberately not part of this schema."
       },
       "CatalogArticle": {
         "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "vehicle_id",
+          "title",
+          "content_status",
+          "complete"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "vehicle_id": { "type": "string" },
-          "title": { "type": "string" },
-          "content_status": { "type": "string" },
-          "complete": { "type": "boolean" },
-          "images": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogImage" } }
-        },
-        "additionalProperties": true
+          "id": {
+            "type": "string"
+          },
+          "vehicle_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "component": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "canonical_article_id": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "source_revision_id": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "canonical_revision_id": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "view_revision": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "content_status": {
+            "enum": [
+              "list_only",
+              "content_partial",
+              "content_complete"
+            ]
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "content_origin": {
+            "enum": [
+              "source",
+              "canonical"
+            ],
+            "nullable": true
+          },
+          "availability": {
+            "enum": [
+              "available",
+              "pending",
+              "unavailable"
+            ]
+          },
+          "review_status": {
+            "enum": [
+              "UNREVIEWED",
+              "APPROVED",
+              "REJECTED"
+            ],
+            "nullable": true
+          },
+          "processing": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "job_id",
+              "state",
+              "retryable",
+              "retry_after_seconds",
+              "error_code",
+              "updated_at"
+            ],
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "state": {
+                "$ref": "#/components/schemas/CatalogProcessingState"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "retry_after_seconds": {
+                "type": "integer",
+                "minimum": 1,
+                "nullable": true
+              },
+              "error_code": {
+                "enum": [
+                  "CATALOG_SOURCE_UNAVAILABLE",
+                  "CATALOG_REWRITE_UNAVAILABLE",
+                  "CATALOG_REWRITE_REJECTED",
+                  "CATALOG_REVIEW_REQUIRED"
+                ],
+                "nullable": true
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "nullable": true
+          },
+          "document": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CatalogDocument"
+              },
+              {
+                "nullable": true
+              }
+            ]
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "image_id": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string",
+                  "pattern": "^/v1/catalog/images/[^?]+$"
+                },
+                "alt": {
+                  "type": "string"
+                },
+                "media_type": {
+                  "enum": [
+                    "image/png",
+                    "image/jpeg",
+                    "image/gif",
+                    "image/webp",
+                    "image/svg+xml"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "available",
+                    "unavailable",
+                    "localized"
+                  ]
+                },
+                "unavailable_reason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "instructions"
+              ],
+              "properties": {
+                "number": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Explicit source step number, when present. Canonical document traversal does not fabricate numbers."
+                },
+                "heading": {
+                  "type": "string"
+                },
+                "instructions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "image_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "text": {
+                  "type": "string"
+                },
+                "evidence_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "action": {
+                  "type": "string"
+                },
+                "images": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogImage"
+                  }
+                }
+              }
+            }
+          },
+          "provenance": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "source_review": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "available"
+            ],
+            "properties": {
+              "available": {
+                "type": "boolean"
+              },
+              "snapshot_id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "content_sha256": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^/v1/catalog/vehicles/[^?]+/articles/[^?]+/source(?:\\?source_revision_id=[^&]+)?$"
+              }
+            }
+          }
+        }
       },
-      "CatalogArticleResponse": { "type": "object", "required": ["version", "article"], "properties": { "version": { "type": "string", "example": "v1" }, "article": { "$ref": "#/components/schemas/CatalogArticle" } } },
-      "CatalogArticlesResponse": { "type": "object", "required": ["version", "items"], "properties": { "version": { "type": "string", "example": "v1" }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogArticle" } } } },
-      "SourceContentResponse": { "type": "object", "properties": { "source": { "$ref": "#/components/schemas/SourceReview" }, "content": { "type": "string" } } },
-      "SourceReview": { "type": "object", "properties": { "available": { "type": "boolean" }, "snapshot_id": { "type": "string" }, "version": { "type": "string" }, "content_sha256": { "type": "string" }, "format": { "type": "string", "enum": ["html", "json"] }, "url": { "type": "string" } } }
+      "CatalogArticleResponse": {
+        "type": "object",
+        "required": [
+          "version",
+          "article"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "article": {
+            "$ref": "#/components/schemas/CatalogArticle"
+          }
+        }
+      },
+      "CatalogArticlesResponse": {
+        "type": "object",
+        "required": [
+          "version",
+          "items"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "example": "v1"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogArticle"
+            }
+          }
+        }
+      },
+      "SourceContentResponse": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceReview"
+          },
+          "content": {
+            "type": "string"
+          },
+          "document": {
+            "$ref": "#/components/schemas/CatalogDocument"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogImage"
+            }
+          },
+          "view_revision": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "SourceReview": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "content_sha256": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "html",
+              "json"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "CatalogDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "normalization_version",
+          "blocks"
+        ],
+        "properties": {
+          "schema_version": {
+            "enum": [
+              1
+            ]
+          },
+          "normalization_version": {
+            "enum": [
+              "ordered-article-v1"
+            ]
+          },
+          "blocks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "block_id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "alt": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "unavailable_reason": {
+                  "type": "string"
+                },
+                "asset_id": {
+                  "type": "string"
+                },
+                "image_id": {
+                  "type": "string"
+                },
+                "source_locator": {
+                  "type": "string"
+                },
+                "source_order": {
+                  "type": "integer"
+                },
+                "level": {
+                  "type": "integer"
+                },
+                "number": {
+                  "type": "integer"
+                },
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "evidence_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "nullable": true
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "text": {
+                              "type": "string"
+                            },
+                            "asset_id": {
+                              "type": "string"
+                            },
+                            "image_id": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "unavailable_reason": {
+                              "type": "string"
+                            },
+                            "evidence_ids": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "images": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/components/schemas/CatalogImage"
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "caption": {
+                  "type": "string"
+                },
+                "images": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogImage"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "CatalogProcessingState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "fetching_source",
+          "normalizing",
+          "rewriting",
+          "validating",
+          "publishing",
+          "completed",
+          "failed",
+          "needs_review"
+        ]
+      },
+      "CatalogContentOrigin": {
+        "type": "string",
+        "enum": [
+          "source",
+          "canonical"
+        ]
+      },
+      "CatalogReviewStatus": {
+        "type": "string",
+        "enum": [
+          "UNREVIEWED",
+          "APPROVED",
+          "REJECTED"
+        ]
+      },
+      "APIError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "request_id",
+              "retryable",
+              "details"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "UNAUTHENTICATED",
+                  "FORBIDDEN",
+                  "INVALID_REQUEST",
+                  "CATALOG_NOT_FOUND",
+                  "CATALOG_WITHDRAWN",
+                  "CATALOG_SCHEDULING_UNAVAILABLE",
+                  "CATALOG_SOURCE_UNAVAILABLE",
+                  "CATALOG_UNAVAILABLE",
+                  "CATALOG_REVIEW_REQUIRED",
+                  "CATALOG_PROCESSING_FAILED"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "article_id": {
+                    "type": "string"
+                  },
+                  "job_id": {
+                    "type": "string"
+                  },
+                  "retry_after_seconds": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "responses": {
-      "Unauthorized": { "description": "Authentication is required." },
-      "Forbidden": { "description": "The caller lacks the required role." },
-      "NotFound": { "description": "Article or source snapshot not found." },
-      "Unavailable": { "description": "The catalog is temporarily unavailable." }
+      "Unauthorized": {
+        "description": "Authentication is required."
+      },
+      "Forbidden": {
+        "description": "The caller lacks the required role."
+      },
+      "NotFound": {
+        "description": "Article or source snapshot not found."
+      },
+      "Unavailable": {
+        "description": "Catalog temporarily unavailable.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/APIError"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "Cache-Control": {
+            "schema": {
+              "type": "string",
+              "example": "private, no-store"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Known article requires review or processing has stopped.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/APIError"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "Cache-Control": {
+            "schema": {
+              "type": "string",
+              "example": "private, no-store"
+            }
+          }
+        }
+      },
+      "Gone": {
+        "description": "Known authorized article has been withdrawn.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/APIError"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "Cache-Control": {
+            "schema": {
+              "type": "string",
+              "example": "private, no-store"
+            }
+          }
+        }
+      },
+      "InvalidRequest": {
+        "description": "Selector or request shape is invalid.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/APIError"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "Cache-Control": {
+            "schema": {
+              "type": "string",
+              "example": "private, no-store"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Admission limit; respect Retry-After.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/APIError"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "Cache-Control": {
+            "schema": {
+              "type": "string",
+              "example": "private, no-store"
+            }
+          }
+        }
+      }
     }
   }
 }

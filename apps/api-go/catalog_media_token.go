@@ -15,7 +15,7 @@ import (
 
 const catalogImageTokenAAD = "autodata:catalog-image:v1"
 
-var localCatalogImageKeyPattern = regexp.MustCompile(`^procedure-images/[a-f0-9]{64}$`)
+var localCatalogImageKeyPattern = regexp.MustCompile(`^(procedure-images/[a-f0-9]{64}|sources/[a-f0-9]{16}/[a-f0-9]{64})$`)
 
 // configuredCatalogImageKey uses an explicit media key when available, or
 // derives a domain-separated key from the API's existing internal token.

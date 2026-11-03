@@ -348,8 +348,8 @@ func TestArticleIndexReturnsHydratingStateInsteadOfBlockingOnSource(t *testing.T
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Complete || !body.Hydrating || len(body.Items) != 0 {
-		t.Fatalf("body = %#v, want an empty hydrating response", body)
+	if body.Complete || body.Hydrating || len(body.Items) != 0 {
+		t.Fatalf("body = %#v, want incomplete without inventing an active durable job", body)
 	}
 }
 

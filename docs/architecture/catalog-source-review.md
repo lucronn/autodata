@@ -68,3 +68,27 @@ Follow-up todo:
 - Test JSON and HTML source responses for provider-path leakage and verify that
   opaque tokens are accepted by the image endpoint.
 - Run Go tests/vet and hosted Compose verification on PR #119 and descendants.
+
+## Immutable lifecycle source review (Issue #186)
+
+Managed source review reads `canonical_article_source_revisions`, with the
+same-origin URL pinning `source_revision_id`. The revision must belong to the
+authorized article and vehicle/configuration. Resource takedown suppresses
+historical and current source. Review performs no scheduling, provider fetch,
+normalization or model call.
+
+JSON retains `source` and sanitized compatibility `content`, adding `document`,
+`images` and `view_revision`. HTML escapes ordered text/table cells and retains
+warnings, evidence anchors and unavailable media positions. Managed reads use
+persisted materialization metadata. Legacy HTML uses an explicit element and
+attribute allowlist; missing authoritative local assets remain placeholders.
+This supersedes the older relative-source-image token description above.
+All detail/source responses use `private, no-store`.
+
+Localized media validates declared type against stored bytes and returns
+`sandbox; default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+`nosniff`, same-origin resource policy and no-referrer, including SVG navigation.
+There is no remote fallback or localized-byte rewrite. Existing opaque media
+references are still capabilities. Final authenticated article/asset policy
+and revocation enforcement require R5's separately verified backend mechanism;
+R3 does not certify production access.

@@ -1,4 +1,12 @@
+FROM golang:1.26 AS go-toolchain
 FROM python:3.14-slim
-RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr postgresql-client && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr postgresql-client git && rm -rf /var/lib/apt/lists/*
 COPY workers/ingestion-python/pyproject.toml /tmp/pyproject.toml
 RUN python -c "import tomllib,subprocess; p=tomllib.load(open('/tmp/pyproject.toml','rb')); subprocess.check_call(['pip','install','--no-cache-dir',*p['project']['dependencies'],'pytest>=8,<10'])"
+
+COPY --from=go-toolchain /usr/local/go /usr/local/go
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOTOOLCHAIN=local CGO_ENABLED=0 GOMODCACHE=/opt/go-module-cache
+COPY apps/api-go/go.mod apps/api-go/go.sum /opt/prefetch/apps/api-go/
+COPY packages/contracts/go/go.mod /opt/prefetch/packages/contracts/go/
+RUN cd /opt/prefetch/apps/api-go && go mod download && go version | grep 'go1.26' && psql --version && pg_dump --version && git --version

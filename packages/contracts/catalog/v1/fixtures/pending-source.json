@@ -1,0 +1,28 @@
+{
+  "version": "v1",
+  "article": {
+    "id": "article-1",
+    "vehicle_id": "vehicle-1",
+    "title": "Pump removal",
+    "canonical_article_id": "article-1",
+    "source_revision_id": null,
+    "canonical_revision_id": null,
+    "content_origin": null,
+    "availability": "pending",
+    "view_revision": null,
+    "review_status": "UNREVIEWED",
+    "content_status": "list_only",
+    "complete": false,
+    "document": null,
+    "body": "",
+    "images": [],
+    "processing": {
+      "job_id": "job-1",
+      "state": "queued",
+      "retryable": false,
+      "retry_after_seconds": 2,
+      "error_code": null,
+      "updated_at": "2026-11-03T12:00:00Z"
+    }
+  }
+}

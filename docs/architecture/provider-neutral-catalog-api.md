@@ -34,3 +34,32 @@ chat event streams, or chat-scoped guide URLs. Tracked in
 [Issue #113](https://github.com/lucronn/autodata/issues/113) and
 [Project #8](https://github.com/users/lucronn/projects/8); plan:
 [`2026-10-03-disable-chat-active-path.md`](../superpowers/plans/2026-10-03-disable-chat-active-path.md).
+
+## Source fallback lifecycle (Issue #186)
+
+The article index reads canonical provider-scoped descriptors, including rows
+without source capture. Bankone precedes Banktwo, followed by persisted source
+order and canonical UUID. Eligible unmapped legacy UUIDs follow in title order.
+Proven aliases resolve only within the requested vehicle/configuration;
+ambiguous provider-local references fail closed. List/search never fetches,
+schedules or rewrites article detail.
+
+Detail selects document, media and revision metadata from one
+`catalog_article_current` snapshot. A known cold descriptor makes a bounded
+two-second durable scheduling request, then rereads PostgreSQL. Accepted pending
+work yields `202`; readable stored source yields `200` throughout rewrite and
+retry/review failure. Only validated canonical publication sets `complete:true`.
+An acknowledgment alone cannot establish completion. Unmapped legacy detail is
+source with null lifecycle identity and no polling job.
+
+Detail/source use `Cache-Control: private, no-store`. `Retry-After` agrees with
+persisted processing state. Terminal missing content returns `409`, withdrawal
+`410`, unknown/wrong-scope identity `404`, and scheduling/storage outage `503`.
+Provider/model diagnostic messages remain private. Index completion requires
+both provider coverage rows to complete their current generation, including
+successful empty enumeration. Partial/failed coverage retains usable rows.
+
+Required Go/Python acceptance crosses actual internal HTTP, workers, PostgreSQL,
+S3 and JetStream. Only the coordinator's bounded supervisor against a clean
+immutable plain clone can certify its eight cases; unit tests and skipped
+integration cases do not. Production identity/media revocation remains R5/R6.

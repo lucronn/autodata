@@ -176,14 +176,13 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		return
 	}
 	hydrating := progress != nil && progress.Status == "running"
-	if catalogArticlesIncomplete(items) && s.ingestionClient != nil {
+	if (progress == nil || !progress.Complete) && s.ingestionClient != nil {
 		configuration, configurationErr := s.catalog.ConfigurationByVehicle(request.Context(), principal, vehicleID)
 		if configurationErr != nil && !errors.Is(configurationErr, ErrCatalogNotFound) {
 			s.writeCatalogError(response, request, configurationErr)
 			return
 		}
 		if configurationErr == nil {
-			hydrating = true
 			s.scheduleCatalogHydration(request, map[string]any{
 				"scope": "articles", "vehicle_id": vehicleID,
 				"year": configuration.Year, "make": configuration.Make, "model": configuration.Model,
@@ -195,55 +194,71 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		rewriteCatalogImageURLs(&items[index], s.catalogImageKey)
 	}
 	writeJSON(response, http.StatusOK, CatalogArticlesResponse{
-		Version: "v1", Items: items, Complete: len(items) > 0 && !hydrating,
+		Version: "v1", Items: items, Complete: progress != nil && progress.Complete,
 		Hydrating: hydrating, Progress: progress,
 	})
 }
 
 func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.Request, principal Principal) {
-	article, err := s.catalog.Article(request.Context(), principal, request.PathValue("vehicle_id"), request.PathValue("article_id"))
-	needsHydration := err != nil || !article.Complete || article.Document == nil
-	// A catalog index row and its hydrated detail row have different local
-	// IDs. Resolve the provider article ID before contacting a source so a
-	// previously hydrated article is served from the database on every later
-	// read instead of being fetched again through the index-row alias.
-	if needsHydration && err == nil && article.sourceArticleID != "" {
-		if cached, cacheErr := s.catalog.Article(
-			request.Context(), principal, request.PathValue("vehicle_id"), article.sourceArticleID,
-		); cacheErr == nil && cached.Complete && cached.Document != nil {
-			article = cached
-			needsHydration = false
-		}
-	}
-	if needsHydration && s.ingestionClient != nil {
-		configuration, configurationErr := s.catalog.ConfigurationByVehicle(request.Context(), principal, request.PathValue("vehicle_id"))
-		if configurationErr != nil {
-			s.writeCatalogError(response, request, configurationErr)
-			return
-		}
-		if hydrationErr := s.ensureCatalogHydrated(request, map[string]any{
-			"scope": "article", "vehicle_id": request.PathValue("vehicle_id"), "article_id": request.PathValue("article_id"),
-			"year": configuration.Year, "make": configuration.Make, "model": configuration.Model,
-			"region": configuration.Region, "trim": configuration.Trim, "engine": configuration.Engine,
-			"title":             article.Title,
-			"source_article_id": article.sourceArticleID,
-		}); hydrationErr != nil {
-			s.writeCatalogError(response, request, hydrationErr)
-			return
-		}
-		lookupID := request.PathValue("article_id")
-		if article.sourceArticleID != "" {
-			lookupID = article.sourceArticleID
-		}
-		article, err = s.catalog.Article(request.Context(), principal, request.PathValue("vehicle_id"), lookupID)
-	}
+	response.Header().Set("Cache-Control", "private, no-store")
+	vehicleID, articleID := request.PathValue("vehicle_id"), request.PathValue("article_id")
+	view, err := s.catalog.ArticleView(request.Context(), principal, vehicleID, articleID)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
 	}
+	if view.Withdrawn {
+		s.writeCatalogLifecycleError(response, request, http.StatusGone, "CATALOG_WITHDRAWN", false, view.Article)
+		return
+	}
+	if view.CanSchedule {
+		payload := map[string]any{"scope": "article", "vehicle_id": vehicleID, "canonical_article_id": *view.Article.CanonicalArticleID}
+		if view.Article.canonicalVehicleID != "" {
+			payload["vehicle_id"] = view.Article.canonicalVehicleID
+		}
+		if view.Article.canonicalConfigurationID != nil {
+			payload["vehicle_configuration_id"] = *view.Article.canonicalConfigurationID
+		}
+		_, scheduleErr := s.ensureCatalogArticleScheduled(request, payload)
+		// Only a final durable snapshot establishes accepted work or publication.
+		reread, readErr := s.catalog.ArticleView(request.Context(), principal, vehicleID, articleID)
+		if readErr != nil {
+			s.writeCatalogError(response, request, readErr)
+			return
+		}
+		view = reread
+		if view.Withdrawn {
+			s.writeCatalogLifecycleError(response, request, 410, "CATALOG_WITHDRAWN", false, view.Article)
+			return
+		}
+		if scheduleErr != nil && view.Article.Processing == nil && view.Article.Document == nil {
+			s.writeCatalogLifecycleError(response, request, 503, "CATALOG_SCHEDULING_UNAVAILABLE", true, view.Article)
+			return
+		}
+	}
+	article := view.Article
+	if article.Processing != nil && article.Processing.RetryAfterSeconds != nil {
+		response.Header().Set("Retry-After", strconv.Itoa(*article.Processing.RetryAfterSeconds))
+	}
+	status := http.StatusOK
+	if article.Availability != "available" {
+		if article.Processing != nil && (article.Processing.State == "needs_review" || article.Processing.State == "failed" && !article.Processing.Retryable) {
+			code := "CATALOG_PROCESSING_FAILED"
+			if article.Processing.State == "needs_review" {
+				code = "CATALOG_REVIEW_REQUIRED"
+			}
+			s.writeCatalogLifecycleError(response, request, 409, code, false, article)
+			return
+		}
+		if article.Processing == nil {
+			s.writeCatalogLifecycleError(response, request, 503, "CATALOG_SOURCE_UNAVAILABLE", true, article)
+			return
+		}
+		status = http.StatusAccepted
+	}
 	rewriteCatalogImageURLs(&article, s.catalogImageKey)
-	article.SourceReview = sourceReviewForArticle(article, request.PathValue("vehicle_id"), article.ID)
-	writeJSON(response, http.StatusOK, CatalogArticleResponse{Version: "v1", Article: article})
+	article.SourceReview = sourceReviewForArticle(article, vehicleID, article.ID)
+	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article})
 }
 
 const catalogImageMaxBytes = 12 << 20
@@ -251,9 +266,21 @@ const catalogImageMaxBytes = 12 << 20
 // rewriteCatalogImageURLs exposes only references to already-localized
 // objects. A source URL without a stored object key is not displayable.
 func rewriteCatalogImageURLs(article *CatalogArticle, key []byte) {
-	for index := range article.Images {
-		image := &article.Images[index]
-		if !localCatalogImageKeyPattern.MatchString(image.StorageKey) || len(key) != 32 {
+	if article.Images == nil {
+		article.Images = []CatalogImage{}
+	}
+	rewriteCatalogImages(article.Images, key)
+	for index := range article.Steps {
+		if article.Steps[index].Images != nil {
+			rewriteCatalogImages(*article.Steps[index].Images, key)
+		}
+	}
+}
+
+func rewriteCatalogImages(images []CatalogImage, key []byte) {
+	for index := range images {
+		image := &images[index]
+		if image.Status == "unavailable" || !localCatalogImageKeyPattern.MatchString(image.StorageKey) || len(key) != 32 {
 			image.URL = ""
 			continue
 		}
@@ -284,12 +311,14 @@ func serveCatalogImage(response http.ResponseWriter, request *http.Request, key 
 	}
 	body, contentType, err := reader.ReadImage(request.Context(), objectKey)
 	contentType = strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
-	if err != nil || len(body) == 0 || len(body) > catalogImageMaxBytes || !strings.HasPrefix(contentType, "image/") {
+	if err != nil || len(body) == 0 || len(body) > catalogImageMaxBytes || !validCatalogImageMedia(body, contentType) {
 		http.Error(response, "catalog image not found", http.StatusNotFound)
 		return
 	}
 	response.Header().Set("Content-Type", contentType)
-	response.Header().Set("Cache-Control", "private, max-age=300")
+	response.Header().Set("Cache-Control", "private, no-store")
+	response.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+	response.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 	response.Header().Set("Referrer-Policy", "no-referrer")
 	response.Header().Set("X-Content-Type-Options", "nosniff")
 	response.WriteHeader(http.StatusOK)
@@ -357,11 +386,13 @@ func (s *Server) writeCatalogError(response http.ResponseWriter, request *http.R
 		log.Printf("catalog request %s %s failed: %v", request.Method, request.URL.Path, err)
 	}
 	switch {
+	case errors.Is(err, ErrCatalogWithdrawn):
+		s.writeCatalogLifecycleError(response, request, 410, "CATALOG_WITHDRAWN", false, CatalogArticle{})
 	case errors.Is(err, ErrCatalogNotFound):
 		writeAPIError(response, request, http.StatusNotFound, "CATALOG_NOT_FOUND", err.Error(), false)
 	case errors.Is(err, ErrCatalogInvalid):
 		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", err.Error(), false)
 	default:
-		writeAPIError(response, request, http.StatusInternalServerError, "CATALOG_UNAVAILABLE", "catalog could not be read", true)
+		writeAPIError(response, request, http.StatusServiceUnavailable, "CATALOG_UNAVAILABLE", "catalog could not be read", true)
 	}
 }

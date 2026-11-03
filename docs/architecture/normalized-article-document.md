@@ -167,3 +167,35 @@ validation.
 The shared catalog contract is generated from `packages/contracts/contract.json`
 by `scripts/contracts/generate.py` into Python/Go bindings. It adds lifecycle
 states and publication events without changing existing dataset envelopes.
+
+## Public lifecycle projection
+
+Source fallback and published canonical content share `schema_version:1` and
+`normalization_version:ordered-article-v1`. Source is `content_partial`, even
+when structurally complete. Canonical completion additionally requires a
+published revision, matching source revision and nonempty document. Retained
+unknown block text, ordered steps, warnings, tables, evidence IDs and image
+positions remain visible.
+
+Public nullable identity/revision fields accompany `content_origin`,
+`availability`, `view_revision`, stored `review_status` and durable `processing`.
+States are queued, fetching_source, normalizing, rewriting, validating,
+publishing, completed, failed and needs_review. The display revision hashes
+immutable selected content and policy; random media tokens and processing-only
+updates do not change it. A new source is selected until its matching canonical
+publication; an older canonical cannot claim to rewrite the new source.
+
+The catalog JSON Schema and matching OpenAPI JSON/YAML bind additive fields and
+compatibility body/steps/media. Fixtures reject title-only completion, invented
+states, private object metadata and mismatched source/canonical metadata.
+
+Compatibility steps preserve the actual R2 projection. Canonical steps expose
+`action`, the ordered following `instructions`, ordered `evidence_ids`, and
+`images` when that field was supplied, including an explicit empty array. A
+canonical action is not copied into instructions. Source steps retain `text`
+and their explicit positive `number`; the legacy instructions array may be
+derived from source text when absent or empty. An absent canonical number stays
+absent. The ordered document remains authoritative for display order. Step
+images use the same safe public metadata and local-reference transformation as
+article images; storage keys and provider URLs are not exposed, and rotating
+media URLs do not change the view revision.
