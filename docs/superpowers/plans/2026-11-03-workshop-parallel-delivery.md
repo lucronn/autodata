@@ -17,7 +17,7 @@ Implementation against a frozen interface may proceed while its runtime acceptan
 - Media worker: catalog_media_access.go, catalog_media_access_test.go, catalog_media_token.go and catalog_source.go only. Owns v2 token encoding, contextual source/article image projection, current-rights/grant checks before object reads and media unit tests. No edits to the access worker's files.
 - UI worker: existing thirty-three-path UI envelope except docs/architecture/workshop-interface.md, which remains the article-access worker's exclusive file (thirty-two paths). Owns sign-in, checkout, library, article reader and all planned browser fixtures/tests. Preserve the delivered SDK bytes unless a justified rebuild is needed. UI consumes the frozen HTTP DTOs; fixture integration binds actual backend helper symbols after they are committed. No business API implementation in UI.
 
-The paid-access and UI envelopes overlap only at workshop-interface.md; the exclusive allocation removes concurrent writes. No new application file, migration, service or test inventory is added by this amendment. Existing managed worktrees are reused on separate codex/ branches. The coordinator alone merges branches and resolves integration changes; workers must not edit another owner's paths.
+The paid-access and UI envelopes overlap only at workshop-interface.md; the exclusive allocation removes concurrent writes. No new application file, migration, service or test inventory is added by this amendment. Existing managed worktrees are reused on separate codex/ branches. The coordinator authorizes exact-SHA dependency merges and owns final integration/review. A worker may execute an expressly authorized dependency merge in its own branch to compile or test committed shared helpers; this preserves authorship and does not confer final acceptance. Workers must not edit another owner's paths.
 
 ## Shared Go interface
 
@@ -32,3 +32,6 @@ Media owner defines server helpers `rewritePaidCatalogArticleImages(ctx, Princip
 - [ ] Coordinator repairs the remaining commerce fixture and executes commerce/identity/R3 acceptance and production-image proof while workers implement paid access, media and UI.
 - [ ] Merge meaningful reviewed worker milestones, resolve actual helper/DTO differences, execute twelve paid-access and141 browser cases, retain all failed evidence and finish independent review/CI.
 - [ ] Complete actual hosting, merchant/identity configuration, staging acceptance and deliberate cars.tk deployment; keep production status unverified until demonstrated.
+
+
+The coordinator also owns the bounded existing `apps/api-go/main_test.go` expectation repair described in the paid-access plan. The paid-access envelope is seventeen paths; worker allocations stay twelve plus four and the UI allocation stays thirty-two.

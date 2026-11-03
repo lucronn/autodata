@@ -117,7 +117,7 @@ func TestCustomerServerRejectsHeaderAuthorityAndMapsDependencyErrors(t *testing.
 	}
 	check("GET", "/source-review-items", map[string]string{"X-Roles": "data_reviewer,platform_admin", "X-Organization-ID": "foreign"}, 403)
 	check("POST", "/dataset-requests", nil, 403)
-	check("GET", "/v1/catalog/years", map[string]string{"Authorization": "Bearer fixture"}, 401)
+	check("GET", "/source-review-items", map[string]string{"Authorization": "Bearer fixture"}, 401)
 	verifier.checkErr = ErrCustomerDependency
-	check("GET", "/v1/catalog/years", nil, 503)
+	check("GET", "/source-review-items", nil, 503)
 }
