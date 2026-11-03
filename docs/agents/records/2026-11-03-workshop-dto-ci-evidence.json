@@ -1,0 +1,16 @@
+{
+  "goal": "Retain actual Workshop DTO browser evidence from successful and failed GitHub Actions runs without changing the120-case inventory.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-dto-ci-evidence.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-03-workshop-dto-ci-evidence.md"
+  ],
+  "todo": [
+    "Expose a deterministic RUNNER_TEMP directory for actual DTO ready/log/browser evidence before fixture startup.",
+    "Always upload the owned DTO evidence directory with a SHA-bound artifact name, finite retention and no missing-evidence silent success.",
+    "Validate actual extracted YAML shell/readiness Python, success and failure evidence retention, unchanged strict120 inventory and bounded fixture cleanup; commit/push for independent review."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T20:43:03.665091+00:00"
+}
