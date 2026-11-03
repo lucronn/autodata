@@ -140,7 +140,7 @@ type CatalogArticle struct {
 	Body                     string               `json:"body,omitempty"`
 	Steps                    []CatalogStep        `json:"steps,omitempty"`
 	Document                 *CatalogDocument     `json:"document,omitempty"`
-	Images                   []CatalogImage       `json:"images,omitempty"`
+	Images                   []CatalogImage       `json:"images"`
 	Provenance               []CatalogProvenance  `json:"provenance,omitempty"`
 	SourceReview             *CatalogSourceReview `json:"source_review,omitempty"`
 	SourceOriginal           json.RawMessage      `json:"-"`

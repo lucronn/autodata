@@ -113,7 +113,7 @@ func r3Setup(t *testing.T) *r3Fixture {
 			payload[k] = v
 		}
 		raw, _ := json.MarshalIndent(payload, "", "  ")
-		if err := os.WriteFile(filepath.Join(os.Getenv("AUTODATA_CATALOG_TEST_CASE_DIR"), "go-measurement.json"), raw, 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(os.Getenv("AUTODATA_CATALOG_TEST_CASE_DIR"), "go-measurement.json"), raw, 0644); err != nil {
 			t.Error(err)
 		}
 	})
@@ -365,7 +365,7 @@ func TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP(t *testing.
 		t.Fatal("list failed")
 	}
 	after := f.snapshot("source_reads_done", source)
-	f.check("readable_source_during_hold", r3Int(r3Map(after, "proxy"), "downstream_waiting") == 1)
+	f.check("readable_source_during_hold", r3Int(r3Map(after, "proxy"), "downstream_waiting") == 1 && len(source.Images) == 1 && source.Images[0].ImageID != "" && source.Images[0].AssetID == source.Images[0].ImageID && (strings.HasPrefix(source.Images[0].URL, "/v1/catalog/images/") || source.Images[0].URL == "" && strings.Contains(string(raw), "Image unavailable")))
 	f.check("active_read_zero_ensure_provider_model_delta", r3ZeroDelta(before, after))
 	f.controlCall("POST", "release-model")
 	canonical := f.published()
@@ -396,7 +396,7 @@ func TestPostgresCatalogLifecycleAtomicPublication(t *testing.T) {
 	sraw, _ := json.Marshal(expectedSource)
 	observedSource, _ := json.Marshal(r3Projection(source))
 	if !bytes.Equal(sraw, observedSource) {
-		t.Fatal("source tuple differs from persisted source")
+		t.Fatalf("source tuple differs from persisted source: expected=%s observed=%s", sraw, observedSource)
 	}
 	expectedSource["canonical_article_id"] = f.article
 	expectedSource["source_revision_id"] = *source.SourceRevisionID

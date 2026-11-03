@@ -132,3 +132,56 @@ func TestCatalogSourceOrderedStepNumbers(t *testing.T) {
 		t.Fatalf("stored step number lost: %s", rendered)
 	}
 }
+
+func TestCatalogLifecyclePersistedEmptyImagesSurviveHTTP(t *testing.T) {
+	var persisted CatalogArticle
+	if err := json.Unmarshal([]byte(`{"id":"a","vehicle_id":"v","canonical_article_id":"a","source_revision_id":"s","content_origin":"source","availability":"available","document":{"schema_version":1,"normalization_version":"ordered-article-v1","blocks":[{"type":"ordered_list","items":["Remove the pump."]}]},"body":"Remove the pump.","steps":[{"number":1,"text":"Remove the pump.","evidence_ids":["e"]}],"images":[]}`), &persisted); err != nil {
+		t.Fatal(err)
+	}
+	store := newMemoryCatalogStore()
+	store.PutArticle(persisted)
+	response := catalogRequest(catalogServer(store), "/v1/catalog/vehicles/v/articles/a")
+	if response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var decoded CatalogArticleResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Article.Images == nil {
+		t.Fatalf("persisted empty image array lost over HTTP: %s", response.Body)
+	}
+	want, _ := json.Marshal(r3Projection(lifecycleArticle(persisted)))
+	got, _ := json.Marshal(r3Projection(decoded.Article))
+	if string(want) != string(got) {
+		t.Fatalf("PG/public projection differs: want=%s got=%s", want, got)
+	}
+}
+
+func TestCatalogLifecyclePendingAndLegacyImagesAreArrays(t *testing.T) {
+	for _, pending := range []bool{true, false} {
+		article := CatalogArticle{ID: "a", VehicleID: "v", Body: "Legacy source"}
+		wantStatus := 200
+		if pending {
+			article.Body = ""
+			article.CanonicalArticleID = stringPointer("a")
+			article.Processing = &CatalogProcessing{JobID: "j", State: "queued"}
+			wantStatus = 202
+		}
+		store := newMemoryCatalogStore()
+		store.PutArticle(article)
+		response := catalogRequest(catalogServer(store), "/v1/catalog/vehicles/v/articles/a")
+		var envelope map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if response.Code != wantStatus {
+			t.Fatal(response.Code, response.Body.String())
+		}
+		wireArticle := envelope["article"].(map[string]any)
+		images, ok := wireArticle["images"].([]any)
+		if !ok || len(images) != 0 {
+			t.Fatalf("pending=%v images must be []: %s", pending, response.Body)
+		}
+	}
+}

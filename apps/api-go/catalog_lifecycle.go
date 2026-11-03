@@ -39,6 +39,9 @@ type CatalogScheduleResult struct {
 }
 
 func lifecycleArticle(article CatalogArticle) CatalogArticle {
+	if article.Images == nil {
+		article.Images = []CatalogImage{}
+	}
 	article.Document = publicCatalogDocument(article.Document)
 	readable := article.Document != nil && len(article.Document.Blocks) > 0
 	if article.CanonicalArticleID == nil {

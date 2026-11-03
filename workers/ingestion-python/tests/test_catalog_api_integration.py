@@ -6,6 +6,7 @@ Ordinary suites may skip this module; required acceptance never skips a case.
 from __future__ import annotations
 
 import asyncio
+import base64
 from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 import hashlib
@@ -191,6 +192,24 @@ def serve(handler):
         server.server_close()
         thread.join(3)
         assert not thread.is_alive()
+
+
+def install_source_asset_fixture(runtime):
+    """Add a real separately persisted asset to this R3 connector fixture.
+
+    The shared R2 runtime starts with body-only descriptors. This case needs
+    both body and resource snapshots to exercise their quarantine policies.
+    """
+    from psycopg.types.json import Jsonb
+    png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')
+    for provider, server in runtime.servers.items():
+        server.body(b'<ol><li>Remove the pump.</li></ol><img data-resource-ref="figure" alt="Pump figure" src="https://provider.invalid/figure">', assets=['figure'])
+        server.body(png, 'image/png', ref='figure', kind='asset')
+        with runtime.repo.connect() as conn:
+            row = conn.execute('SELECT descriptor FROM canonical_articles WHERE canonical_article_id=%s', (runtime.articles[provider],)).fetchone()
+            descriptor = row['descriptor']
+            descriptor['asset_resource_refs'] = ['figure']
+            conn.execute('UPDATE canonical_articles SET descriptor=%s WHERE canonical_article_id=%s', (Jsonb(descriptor), runtime.articles[provider]))
 
 
 class Bridge:
@@ -456,6 +475,8 @@ def test_required_go_catalog_lifecycle(go_name, provider, fresh_database, monkey
         with ExitStack() as stack:
             runtime = LifecycleRuntime(repo, stack)
             runtime.article_id = runtime.articles[provider]
+            if go_name == GO_NAMES[1]:
+                install_source_asset_fixture(runtime)
             bridge = Bridge(runtime, go_name)
             model_url = stack.enter_context(serve(bridge.model_handler()))
             runtime.env['INCEPTION_API_BASE_URL'] = model_url + '/v1'
