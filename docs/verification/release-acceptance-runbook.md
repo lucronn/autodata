@@ -234,6 +234,35 @@ promotion is included. Both internal paid APIs remain unselected by CLI plan and
 validate; tests forbid dispatch to either and exercise this PG layer through the
 real confined ArtifactStore with inline synthetic files.
 
+The additional internal `inspect_paid_migration_receipts` layer first applies the
+common and PG checks, then binds all 36 migration phase receipts to the literal
+ordered 001–040 filenames. It checks the driver exit and actual driver bytes
+against an explicit `expected_driver_sha256` invocation input, closed typed phase
+and saved-command fields, fresh applied versus replay skipped vectors, and exact
+complete LF-delimited stdout marker records. Unknown, duplicate, reordered,
+truncated or malformed markers cannot override the declared vectors.
+
+Each raw dump must have the exact 18 table containers and forty unique typed
+ledger entries with the literal migration versions and UTC timestamps. Fresh and
+empty replay dumps must contain no fixture rows. The layer re-derives ledger/data
+hashes using the producer encoding and schema hashes from actual bytes, binds
+all declared before/after hashes, preserves the ledger and schema across phases,
+and requires identical fresh/empty and populated-before/after dumps. The prior
+PG layer independently binds populated-after rows to the final snapshot. SQL
+files are bounded nonempty UTF-8 data and are never executed.
+
+This is **receipt consistency only**: SQL bodies/DDL/schema completeness and
+candidate input checksums, driver generation/source authority, command capture
+and actual execution remain unverified. A trusted-looking invocation digest is
+not registered profile authority. The positive synthetic schema is deliberately
+opaque; it is not a real pg_dump or migration acceptance fixture. All existing
+missing families remain, including `paid_migration_replay`, with additional
+`paid_migration_schema_semantics` and `paid_migration_driver_provenance` diagnostics.
+The result remains unavailable/incomplete, with no verified IDs and every flag
+false; `observed_migration_phase_count` is diagnostic only. CLI plan/validate never
+select this layer. Source/document/media corroboration and DTO remain unfinished,
+and no historical run or acceptance profile is promoted by these checks.
+
 Bounded local checks:
 
 ```sh

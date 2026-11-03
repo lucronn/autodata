@@ -128,6 +128,49 @@ PAID_PG_COUNT_TABLES = {'article_jobs': 'source_fetch_jobs',
     'publication_events': 'publication_events',
     'source_observations': 'canonical_article_source_observations'}
 
+PAID_MIGRATION_MANIFEST = (
+    '001_extensions.sql',
+    '002_platform_spine.sql',
+    '003_canonical_vehicle.sql',
+    '004_normalized_source_bundle.sql',
+    '005_preserve_duplicate_article_ids.sql',
+    '006_backfill_article_source_locators.sql',
+    '007_link_evidence_to_revision.sql',
+    '008_publication_outbox_delivery.sql',
+    '009_feedback_evidence_link.sql',
+    '010_evidence_review_metadata.sql',
+    '011_feedback_review_metadata.sql',
+    '012_payment_fulfillment_reconciliation.sql',
+    '013_dataset_request_ownership.sql',
+    '014_normalized_article_content.sql',
+    '015_vehicle_identity_resolution.sql',
+    '016_catalog_article_configuration.sql',
+    '017_knowledge_catalog_evidence_index.sql',
+    '018_source_review_items.sql',
+    '019_article_content_provenance.sql',
+    '020_autoapi_article_fetch_jobs.sql',
+    '021_autoapi_article_fetch_job_retries.sql',
+    '022_job_plan_derived_articles.sql',
+    '023_catalog_article_images.sql',
+    '024_catalog_article_operations.sql',
+    '025_chat_quote_procedure.sql',
+    '026_chat_quote_operation_categories.sql',
+    '027_chat_runtime_durable_state.sql',
+    '028_vehicle_provider_mappings.sql',
+    '029_vehicle_catalog_sync.sql',
+    '030_vehicle_catalog_years.sql',
+    '031_catalog_article_classification.sql',
+    '032_catalog_article_source_original.sql',
+    '033_catalog_scope_coverage.sql',
+    '034_catalog_article_progress.sql',
+    '035_ordered_article_document.sql',
+    '036_source_fetch_jobs.sql',
+    '037_article_source_lifecycle.sql',
+    '038_article_transform_publication.sql',
+    '039_production_identity_sessions.sql',
+    '040_workshop_commerce.sql',
+)
+
 DTO_ENGINES = ('chromium', 'firefox', 'webkit')
 DTO_SCENARIOS = (
     'bankone-cascade', 'banktwo-cascade', 'dual-bank-coverage', 'one-bank-unavailable',
@@ -822,6 +865,115 @@ def inspect_paid_pg_snapshots(store, *, candidate_sha, trusted_base_sha, profile
     store.recheck()
     result['observed_pg_snapshot_count'] = observed
     result['missing_validation_families'].append('paid_pg_row_semantics')
+    return result
+
+
+def _paid_migration_rows(rows):
+    """Closed dump containers and ledger; other SQL row payloads remain opaque."""
+    exact(rows, PAID_PG_TABLES)
+    for values in rows.values():
+        array(values)
+        require(all(type(row) is dict and row for row in values), 'paid_migration_row_shape')
+    ledger = rows['schema_migrations']
+    require(len(ledger) == 40, 'paid_migration_ledger_inventory')
+    versions = []
+    for row in ledger:
+        exact(row, ('version', 'applied_at'))
+        require(type(row['version']) is str, 'paid_migration_version')
+        versions.append(row['version']); timestamp(row['applied_at'])
+    unique(versions)
+    require(sorted(versions) == [name[:-4] for name in PAID_MIGRATION_MANIFEST],
+            'paid_migration_ledger_inventory')
+
+
+def inspect_paid_migration_receipts(store, *, candidate_sha, trusted_base_sha, profile_sha256,
+        input_manifest_sha256, host_before_sha256, profile_version, expected_driver_sha256):
+    """Check fixed v2 receipt consistency, never SQL execution or trust authority."""
+    digest(expected_driver_sha256)
+    result = inspect_paid_pg_snapshots(store, candidate_sha=candidate_sha, trusted_base_sha=trusted_base_sha,
+        profile_sha256=profile_sha256, input_manifest_sha256=input_manifest_sha256,
+        host_before_sha256=host_before_sha256, profile_version=profile_version)
+    def read(ref):
+        require(ref in store.by_ref, 'paid_missing_raw')
+        return store.read(store.by_ref[ref]['artifact_id'])
+    def document(ref):
+        require(ref in store.by_ref, 'paid_missing_raw')
+        return store.read_raw_json(store.by_ref[ref]['artifact_id'], candidate_sha=candidate_sha,
+            trusted_base_sha=trusted_base_sha, profile_sha256=profile_sha256)
+    def text(raw):
+        require(type(raw) is bytes and 0 < len(raw) <= MAX_ARTIFACT_BYTES and b'\0' not in raw,
+                'paid_migration_text')
+        try: return raw.decode('utf-8')
+        except UnicodeError: raise ContractError('paid_migration_text') from None
+    def row_hash(rows):
+        return sha256(json.dumps(rows, sort_keys=True, allow_nan=False).encode('utf-8'))
+    observed = 0
+    for name in PAID_GO_ROOTS:
+        for bank in ('bankone', 'banktwo'):
+            prefix = 'paid-access/'+bank+'/'+name+'/'
+            migrations = document(prefix+'measured-runtime.json')['migrations']
+            exact(migrations, ('manifest', 'driver_sha256', 'driver_exit_code', 'fresh',
+                               'empty_replay', 'populated_replay'))
+            require(migrations['manifest'] == list(PAID_MIGRATION_MANIFEST), 'paid_migration_manifest')
+            require(type(migrations['driver_exit_code']) is int and migrations['driver_exit_code'] == 0,
+                    'paid_migration_driver_exit')
+            driver = read(prefix+'migration-driver.sql'); text(driver)
+            require(migrations['driver_sha256'] == expected_driver_sha256 == sha256(driver),
+                    'paid_migration_driver_hash')
+            fresh_hashes = fresh_ledger = fresh_schema = None
+            for phase, stem in (('fresh', 'fresh'), ('empty_replay', 'replay-empty'),
+                                ('populated_replay', 'replay-populated')):
+                entry = migrations[phase]
+                command_keys = ('exit_code', 'timed_out', 'applied', 'skipped')
+                hash_keys = tuple(kind+'_after_sha256' for kind in ('ledger', 'schema', 'data'))
+                if phase != 'fresh': hash_keys += tuple(kind+'_before_sha256' for kind in ('ledger', 'schema', 'data'))
+                exact(entry, command_keys+hash_keys)
+                require(type(entry['exit_code']) is int and entry['exit_code'] == 0 and
+                        entry['timed_out'] is False, 'paid_migration_command')
+                expected = list(PAID_MIGRATION_MANIFEST)
+                require(entry['applied'] == (expected if phase == 'fresh' else []) and
+                        entry['skipped'] == ([] if phase == 'fresh' else expected), 'paid_migration_vector')
+                for key in hash_keys: digest(entry[key])
+                saved = document(prefix+'migration-'+stem+'.json'); exact(saved, command_keys)
+                require(canonical(saved) == canonical({key:entry[key] for key in command_keys}),
+                        'paid_migration_saved_command')
+                markers = {'APPLIED': [], 'SKIPPED': []}
+                stdout = read(prefix+'migration-'+stem+'.stdout')
+                require(stdout.endswith(b'\n'), 'paid_migration_stdout')
+                for line in text(stdout).split('\n'):
+                    if 'AUTODATA_' not in line: continue
+                    match = re.fullmatch(r'AUTODATA_(APPLIED|SKIPPED) ([a-z0-9_]+\.sql)', line)
+                    require(match is not None, 'paid_migration_stdout')
+                    markers[match[1]].append(match[2])
+                require(markers['APPLIED'] == entry['applied'] and markers['SKIPPED'] == entry['skipped'],
+                        'paid_migration_stdout')
+                rows = document(prefix+'migration-'+stem+'.rows.json'); _paid_migration_rows(rows)
+                if phase != 'populated_replay':
+                    require(all(not values for table, values in rows.items() if table != 'schema_migrations'),
+                            'paid_migration_nonempty_fresh')
+                schema = read(prefix+'migration-'+stem+'.schema.sql'); text(schema)
+                hashes = dict(ledger=row_hash(rows['schema_migrations']), schema=sha256(schema), data=row_hash(rows))
+                require(all(entry[kind+'_after_sha256'] == value for kind,value in hashes.items()),
+                        'paid_migration_after_hash')
+                if phase == 'fresh':
+                    fresh_hashes, fresh_ledger, fresh_schema = hashes, rows['schema_migrations'], schema
+                else:
+                    require(all(entry[kind+'_before_sha256'] == value for kind,value in hashes.items()),
+                            'paid_migration_before_hash')
+                require(canonical(rows['schema_migrations']) == canonical(fresh_ledger) and schema == fresh_schema,
+                        'paid_migration_ledger_schema_drift')
+                if phase == 'empty_replay':
+                    require(hashes == fresh_hashes, 'paid_migration_empty_replay_drift')
+                if phase == 'populated_replay':
+                    before = document(prefix+'populated-before.rows.json'); _paid_migration_rows(before)
+                    before_schema = read(prefix+'populated-before.schema.sql'); text(before_schema)
+                    require(canonical(before) == canonical(rows) and before_schema == schema,
+                            'paid_migration_populated_replay_drift')
+                observed += 1
+    store.recheck()
+    result['observed_migration_phase_count'] = observed
+    result['missing_validation_families'].extend(('paid_migration_schema_semantics',
+                                                 'paid_migration_driver_provenance'))
     return result
 
 
