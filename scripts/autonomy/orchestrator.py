@@ -105,7 +105,10 @@ def validate_verification_contract(task: dict, trusted: dict) -> list[str]:
 
 
 def _agent_usable(result: dict, require_commit: bool, base_sha: str) -> bool:
-    if result.get("agent_decision", result.get("decision")) != "pass":
+    if result.get("agent_decision") != "pass":
+        return False
+    response = result.get("response")
+    if type(response) is not dict or response.get("decision") != "pass":
         return False
     if any(
         c.get("status") != "completed" or c.get("exit_code") != 0
@@ -385,6 +388,17 @@ def _measure_bundle(
             errors.extend(
                 r.validate_agent_response(response, trusted["schema"], expected)
             )
+            if response.get("decision") != "pass":
+                errors.append(label + ": retained provider decision is not pass")
+            if response.get("decision") != run.get("agent_decision"):
+                errors.append(
+                    label
+                    + ": retained provider decision differs from runner agent_decision"
+                )
+            if run.get("decision") != run.get("agent_decision"):
+                errors.append(
+                    label + ": runner decision differs from runner agent_decision"
+                )
             if run.get("response") != response:
                 errors.append("embedded response differs from retained response")
             if any(f not in run.get("findings", []) for f in response["findings"]):

@@ -267,6 +267,43 @@ class FullChainV2Tests(unittest.TestCase):
                     o.validate_evidence_bundle(bad, trusted, path.parent)["passed"],
                     mutate,
                 )
+            response_artifact = next(
+                a for a in final["artifacts"] if a["artifact_id"] == "security:response"
+            )
+            response_path = path.parent / response_artifact["ref"]
+            original_response = response_path.read_bytes()
+            for nonpass in ("fail", "blocked", "needs_review", "not_applicable"):
+                bad = copy.deepcopy(final)
+                response = copy.deepcopy(bad["agent_runs"]["security"]["response"])
+                response["decision"] = nonpass
+                changed = json.dumps(response).encode()
+                response_path.write_bytes(changed)
+                bad["agent_runs"]["security"]["response"] = response
+                digest = hashlib.sha256(changed).hexdigest()
+
+                def refresh(value):
+                    if isinstance(value, dict):
+                        if value.get("artifact_id") == "security:response":
+                            value["sha256"] = digest
+                            value["size_bytes"] = len(changed)
+                        for child in value.values():
+                            refresh(child)
+                    elif isinstance(value, list):
+                        for child in value:
+                            refresh(child)
+
+                refresh(bad)
+                try:
+                    replay = o.validate_evidence_bundle(bad, trusted, path.parent)
+                    self.assertFalse(replay["passed"], nonpass)
+                    self.assertTrue(
+                        any(
+                            "provider decision" in error for error in replay["failures"]
+                        ),
+                        replay,
+                    )
+                finally:
+                    response_path.write_bytes(original_response)
             artifact = final["artifacts"][0]
             (path.parent / artifact["ref"]).write_bytes(b"tampered")
             self.assertFalse(
