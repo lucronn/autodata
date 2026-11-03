@@ -33,7 +33,8 @@
     "Hostile source/CSS/media fixtures cannot trigger active execution or external browser requests.",
     "node --test apps/api-go/workshop-client.test.mjs",
     "Real browser acceptance covers keyboard navigation, cold/warm reads and reload.",
-    "Expired local media URLs trigger at most one automatic detail renewal per selected view, reconcile by stable asset identity without replacing unchanged content, and stop on cancellation, denial or repeated failure."
+    "Expired local media URLs trigger at most one automatic detail renewal per selected view, reconcile by stable asset identity without replacing unchanged content, and stop on cancellation, denial or repeated failure.",
+    "Session login availability distinguishes unavailable local login from an expired OIDC session; only explicit true offers sign-in, and false/malformed states clear protected content without redirect or retry loops."
   ],
   "forbidden_scope": [
     "Production deployment or production-data changes",
@@ -65,7 +66,8 @@
       "Hostile source/CSS/media fixtures cannot trigger active execution or external browser requests.",
       "node --test apps/api-go/workshop-client.test.mjs",
       "Real browser acceptance covers keyboard navigation, cold/warm reads and reload.",
-      "Expired local media URLs trigger at most one automatic detail renewal per selected view, reconcile by stable asset identity without replacing unchanged content, and stop on cancellation, denial or repeated failure."
+      "Expired local media URLs trigger at most one automatic detail renewal per selected view, reconcile by stable asset identity without replacing unchanged content, and stop on cancellation, denial or repeated failure.",
+      "Session login availability distinguishes unavailable local login from an expired OIDC session; only explicit true offers sign-in, and false/malformed states clear protected content without redirect or retry loops."
     ],
     "status": "blocked",
     "updated_at": "2026-11-03T09:19:59.667985+00:00"

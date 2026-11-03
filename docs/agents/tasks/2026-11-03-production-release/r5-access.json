@@ -1,7 +1,7 @@
 {
   "task_id": "production-release-r5-access",
   "repository": "lucronn/autodata",
-  "goal": "Verify production identity and catalog access boundaries using the deployment identity integration.",
+  "goal": "Implement configured OIDC identity, secure PostgreSQL sessions and consistent catalog access; reserve real issuer/staging verification for release acceptance.",
   "builder_agent": "autodata-go-builder",
   "allowed_paths": [
     "apps/api-go/auth_config.go",
@@ -35,13 +35,14 @@
     "infra/compose/compose.yaml",
     "infra/compose/compose.ci.yaml",
     "docker-compose.base44.yml",
-    ".env.base44-defaults",
     "infra/k8s/base.yaml",
     "scripts/dev/test_migrations.py",
     "scripts/dev/test_k8s_manifests.py",
     "scripts/dev/test_api_runtime.py",
     "docs/architecture/infrastructure-and-dev.md",
-    "docs/architecture/workshop-interface.md"
+    "docs/architecture/workshop-interface.md",
+    "infra/compose/compose.article-lifecycle-test.yaml",
+    "infra/compose/article-lifecycle-test.Dockerfile"
   ],
   "bounded_contexts": [
     "production identity",
@@ -60,12 +61,14 @@
     "docs/verification/production-access-runbook.md"
   ],
   "acceptance_tests": [
-    "The deployment identity integration and catalog access model are documented before implementation.",
+    "The provider-neutral deployment identity contract and R4 session handoff are documented before implementation; actual issuer/client/origin registration remains a separate live-acceptance prerequisite.",
     "Production rejects invalid or development-only credentials and enforces configured roles and scope.",
     "Source, canonical, processing-state and media access obey the same policy.",
     "Credential values never enter browser bundles, logs, tracked configuration or evidence.",
-    "Security verification uses deterministic and staging identities; sensitive reporting follows SECURITY.md.",
-    "OIDC code/PKCE and server-side sessions pass deterministic issuer and real-PostgreSQL tests; Workshop consumes the committed same-origin session contract, with live issuer verification recorded separately."
+    "Independent deterministic security verification is required; actual staging identities are additionally required before production verification, with sensitive reporting following SECURITY.md.",
+    "OIDC code/PKCE and server-side sessions pass deterministic issuer and real-PostgreSQL tests; Workshop consumes the committed same-origin session contract, with live issuer verification recorded separately.",
+    "OIDC startup requires a working PostgreSQL pool and migrated auth tables; it never falls back to memory persistence.",
+    "Explicit local mode retains headless bearer clients only; Workshop session login requires configured OIDC, including development."
   ],
   "forbidden_scope": [
     "Production deployment or production-data changes",
@@ -81,7 +84,7 @@
     "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
   },
   "pre_implementation": {
-    "goal": "Verify production identity and catalog access boundaries using the deployment identity integration.",
+    "goal": "Implement configured OIDC identity, secure PostgreSQL sessions and consistent catalog access; reserve real issuer/staging verification for release acceptance.",
     "plan_ref": "docs/superpowers/plans/2026-11-03-production-access.md",
     "issue_ref": "https://github.com/lucronn/autodata/issues/186",
     "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -90,12 +93,14 @@
       "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
     ],
     "todo": [
-      "The deployment identity integration and catalog access model are documented before implementation.",
+      "The provider-neutral deployment identity contract and R4 session handoff are documented before implementation; actual issuer/client/origin registration remains a separate live-acceptance prerequisite.",
       "Production rejects invalid or development-only credentials and enforces configured roles and scope.",
       "Source, canonical, processing-state and media access obey the same policy.",
       "Credential values never enter browser bundles, logs, tracked configuration or evidence.",
-      "Security verification uses deterministic and staging identities; sensitive reporting follows SECURITY.md.",
-      "OIDC code/PKCE and server-side sessions pass deterministic issuer and real-PostgreSQL tests; Workshop consumes the committed same-origin session contract, with live issuer verification recorded separately."
+      "Independent deterministic security verification is required; actual staging identities are additionally required before production verification, with sensitive reporting following SECURITY.md.",
+      "OIDC code/PKCE and server-side sessions pass deterministic issuer and real-PostgreSQL tests; Workshop consumes the committed same-origin session contract, with live issuer verification recorded separately.",
+      "OIDC startup requires a working PostgreSQL pool and migrated auth tables; it never falls back to memory persistence.",
+      "Explicit local mode retains headless bearer clients only; Workshop session login requires configured OIDC, including development."
     ],
     "status": "blocked",
     "updated_at": "2026-11-03T09:19:59.667985+00:00"

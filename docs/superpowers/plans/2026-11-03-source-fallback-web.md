@@ -77,6 +77,49 @@ python3 scripts/autonomy/pre_implementation.py --record "$AUTODATA_RELEASE_RECOR
   is not repaired by implementing first. Re-run after each integrated dependency
   changes the authorized base.
 
+## R3 isolated Go/Python verification boundary
+
+The narrowed R3 task lists every Go/test/contract/fixture path explicitly. It
+additionally owns `infra/compose/compose.article-lifecycle-test.yaml`,
+`infra/compose/article-lifecycle-test.Dockerfile`, and new
+`workers/ingestion-python/tests/test_catalog_api_integration.py`, only after R2
+integrates. No production Compose or workflow change belongs to this harness.
+
+Extend the existing fixture image with Go 1.26 and prefetch module dependencies
+at build time. Keep Python and Go in the same test container so R2's loopback
+connector/model/HTTP fixtures remain reachable. Add a `go-test-runner` service
+using that image, read-only checkout, writable temporary Go/cache/artifact
+locations, the existing internal network and private project volumes. Never
+mount host credentials, `/run/base44/app.env`, production env files or host ports.
+
+The Python bridge creates a unique `lifecycle_test_*` database through the real
+migrations, starts the committed R2 `http_service.make_handler` with deterministic
+connector/model controls, and invokes the named Go PostgreSQL/scheduling tests
+against that exact database and loopback ensure endpoint. Freeze actual R2
+fixture helper bindings in the dependency checkpoint after R2 review, before R3
+preflight; do not invent an alternate scheduling implementation. The test-only
+connection must accept only the explicit fixture host/database/user and never a
+host application DSN. Run with an explicit required-integration flag. Missing
+services/DSN, skipped cases or zero executed integration tests fail this run.
+Capture candidate SHA, migration head, Go JSON output and process exit.
+
+The future required command (not yet implemented) is:
+
+```sh
+AUTODATA_LIFECYCLE_ARTIFACT_DIR=/tmp/autodata-r3-lifecycle-artifacts \
+docker compose -p autodata-r3-lifecycle \
+  -f infra/compose/compose.article-lifecycle-test.yaml run --build --rm \
+  go-test-runner python -m pytest -q -p no:cacheprovider \
+  workers/ingestion-python/tests/test_catalog_api_integration.py
+```
+
+Prove concurrent cold reads create one actual R2 durable job; source remains
+readable while the model is blocked; publication switches atomically; and warm
+completed detail/source/list reads make zero actual ensure/provider/model calls.
+Ordinary `go test ./...` without the required fixture flag cannot certify these
+properties. R5 reuses this runner for migrated sessions and two-server revocation
+instead of creating another isolated stack.
+
 ## Task 1: Freeze public lifecycle DTOs and local reads
 
 **Owner:** R3 Go/contract builder, after R2 contract integration.
@@ -117,7 +160,9 @@ The public document contains no storage keys or upstream resource references.
 - [ ] Add fixtures `source-rewriting.json`, `pending-source.json`,
   `canonical-completed.json`, `source-needs-review.json`, and
   `legacy-unmanaged.json`. Add rejected fixtures for title-only completion,
-  unknown state, private object keys, and mismatched revision metadata.
+  unknown state, private object keys, and mismatched revision metadata, named
+  `rejected-title-only-complete.json`, `rejected-unknown-state.json`,
+  `rejected-private-object-key.json`, and `rejected-mismatched-revision.json`.
   Validate public fixtures with the existing verification dependency:
 
 ```python
@@ -312,7 +357,13 @@ assert.deepEqual(updates, ['source', 'canonical']);
   all related work. Source-review callbacks also check pinned source revision;
   a new source revision invalidates the prior review request. Consume the R5
   session contract; remove demo assumptions
-  without independently choosing an identity provider.
+  without independently choosing an identity provider. The R5 session 401 has
+  `error.details.login_available`: offer sign-in only for explicit true. False,
+  missing or invalid values stop all related work, clear protected content and
+  show sign-in-unavailable copy without redirect/retry loops. Local login503 uses
+  the fixed AUTHENTICATION_UNAVAILABLE contract; no local cookie login is added.
+  Include separate unavailable-local-login and expired-OIDC-session browser
+  fixtures, asserting no stale protected content or repeated login requests.
 - [ ] Render both origins through ordered blocks. Construct a complete detached
   fragment and replace atomically only when origin/view revision changes. Update
   processing copy independently; preserve focus, scroll/anchor, selection, and

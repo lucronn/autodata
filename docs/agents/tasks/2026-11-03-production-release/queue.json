@@ -25,8 +25,8 @@
       "integrated_sha": "643b8d3fc762cfdc9b456d28a47b7a4a9cde6402",
       "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md",
       "provider_runtime_validation": {
-        "status": "running",
-        "reason": "Third isolated CLI attempt after independently verified path-schema compatibility repair",
+        "status": "blocked",
+        "reason": "exec JSONL lacks effective profile metadata; architect assessments differ from assigned checks",
         "attempt_base_sha": "d437eff812b0efb0d3dbdf8388cd2f9c7916f12d"
       }
     },
@@ -81,7 +81,8 @@
       ],
       "state": "waiting_dependencies",
       "release_state": "unverified",
-      "needs_scope_refinement": false
+      "needs_scope_refinement": true,
+      "dispatch_prerequisite": "Freeze exact committed R2 helper bindings for required Go/Python/real-DB integration after independent R2 integration."
     },
     {
       "id": "r4-workshop",
@@ -102,7 +103,8 @@
       ],
       "state": "waiting_dependencies",
       "release_state": "unverified",
-      "needs_scope_refinement": true
+      "needs_scope_refinement": true,
+      "dispatch_prerequisite": "Verify R3 integration; freeze required session DB command and local login-unavailable/R4 contract; actual issuer registration remains a live-acceptance prerequisite."
     },
     {
       "id": "r6-evidence-adapter",
@@ -173,13 +175,18 @@
     {
       "id": "ci-dependencies",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/ci-dependencies.json",
-      "state": "ready",
+      "state": "in_review",
       "depends_on": [
         "r1-connectors"
       ],
       "dispatch_mode": "coordinator_direct",
       "verification_workflow": "Independently reviewed protected workflow-only setup repair; unchanged gates and tests, clean Python3.12 reproduction plus actual GitHub CI run.",
-      "release_state": "unverified"
+      "release_state": "unverified",
+      "implementation_base_sha": "2c0f44329852c834b832d017abb6d9b49ed5861b",
+      "verified_candidate_sha": "9e07beb286f6f67e5a5854c46ebc01cf82318a46",
+      "integrated_sha": "9e07beb286f6f67e5a5854c46ebc01cf82318a46",
+      "ci_run": "https://github.com/lucronn/autodata/actions/runs/41618670467",
+      "ci_status": "in_progress"
     }
   ]
 }

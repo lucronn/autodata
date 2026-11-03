@@ -105,5 +105,17 @@ other parsed schema values are unchanged. Actual finding/artifact/command/
 verification/trusted-input path checks remain enforced, including real unusual
 filenames and committed planning blobs. The candidate was promoted unchanged
 by fast-forward. Log: `/tmp/autodata-r0-path-schema-independent-d437-tests.log`.
-The third bounded real CLI fixture is running at this exact checkpoint with
-preflight errors=[]; runtime certification is not yet established.
+The third bounded real CLI fixture at this exact checkpoint passed preflight
+and schema acceptance. The provider exited 0 after 40.43 seconds with a retained
+structured response, but orchestration returned 20: effective execution metadata
+was absent, and the architect supplied six unassigned assessments instead of
+its assigned empty set. No builder ran. Evidence:
+`/tmp/autodata-cli-d437-ti73fxjo/evidence/run`; stdout SHA-256
+`94bd830ac45ee197894716da650d0a1012976dc221883320aa5daa9c2e726051`, response SHA-256
+`4e9e3393f68ab71fdcf5945a79abff9151cf6c4e73df17ebcae1e7ac97b91d20`.
+A read-only audit of official CLI0.162.1 source confirms exec JSONL does not emit
+`session_config`; its actual app-server startup response carries resolved runtime
+settings. A separately reviewed adapter/prompt plan is being prepared. Nothing
+in this run certifies runtime profile, sandbox writes, builder commit retention
+or release readiness. Resolved runtime Fast configuration must not be presented
+as proof of the upstream tier actually served.

@@ -69,3 +69,10 @@ verified isolated PostgreSQL runner; skips are not database acceptance.
 The [reviewed one-file CI repair](../superpowers/plans/2026-11-03-ingestion-ci-dependencies.md)
 preserves all test commands and release gates. Actual GitHub verification
 remains failing until that repair and a successful exact-head run are recorded.
+
+The one-file dependency setup repair passed independent exact-SHA review and a
+fresh exact-step Python3.12 replay at `9e07beb286f6f67e5a5854c46ebc01cf82318a46`
+(594 passed, 50 isolated-DB skips, 25 subtests). It is integrated unchanged.
+Builder replay artifacts are `/tmp/autodata-ci-dependency-builder/`.
+Actual [CI run41618670467](https://github.com/lucronn/autodata/actions/runs/41618670467)
+is in progress; its final outcome remains required.

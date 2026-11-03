@@ -218,5 +218,25 @@ post-merge tracking repair, canonical index/legacy query handoff, exhausted
 transformation reuse, bounded media URL renewal, and deterministic auth-fixture
 startup findings. Retry counts and catalog ordering are aligned across the
 product plans. These reviews concern design and planned tests, not implemented
-behavior. R5 still requires real issuer registration; R6/R6a scope and live
+behavior. R5 production verification still requires real issuer registration; deterministic
+implementation can use its frozen provider-neutral contract. R6/R6a scope and live
 evidence must be refined against their integrated dependencies before dispatch.
+
+## Read/access verification refinement
+
+Independent plan review narrowed R3 to exact Go, contract and nine fixture paths
+and a Go/Python bridge within the existing isolated lifecycle container. It must
+exercise actual R2 scheduling against real migrated PostgreSQL; ordinary skipped
+integration tests cannot certify the handoff. Exact R2 fixture bindings remain
+to freeze after verified R2 integration.
+
+R5 requires real PostgreSQL sessions and rejects executable memory fallback in
+OIDC mode. Its optional API bearer audience must differ from the web client ID.
+Local mode retains headless bearer clients only; Workshop login uses configured
+OIDC, including development. The session401 `error.details.login_available`
+discriminator and local login503/no-redirect behavior are frozen across R5, the
+web spec and R4 acceptance. Unavailable login stops requests and clears protected
+content without a redirect loop. Actual issuer/client/origin registration remains
+pending for live acceptance, not a reason to block deterministic implementation.
+These refinements are planning only; downstream task records remain blocked
+until their dependency checkpoint and committed-base preflight pass.

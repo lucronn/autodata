@@ -363,7 +363,8 @@ this automatic renewal budget even if the replacement media fails; show an
 unavailable placeholder and an explicit manual refresh control instead of an
 error/refetch loop. A new selection, new view revision or explicit manual refresh
 starts a fresh budget. Late or aborted renewal responses cannot update another
-selection. A renewal `401` stops work and requests sign-in; `403`/`410` clear the
+selection. A renewal `401` stops work and clears protected content, then applies the R5
+session login-availability contract before presenting sign-in; `403`/`410` clear the
 denied/withdrawn view without retry; other failures preserve eligible readable
 text and stop automatic media renewal. Renewal reads local detail and never
 reschedules ingestion or calls a bank/model for completed content.
@@ -419,10 +420,23 @@ OIDC code/PKCE login with server-side PostgreSQL sessions behind the existing
 `/auth/callback`, and `/auth/logout` using secure same-origin cookies and the
 documented CSRF boundary; R4 owns removal of browser demo-token assumptions.
 Independently registered verified JWT bearer access is optional for API clients.
+Explicit local development/test mode supports existing headless bearer clients;
+interactive Workshop login requires configured OIDC, including development.
+There is no browser demo token, implicit local cookie login or automatic session.
+An unauthenticated `GET /auth/session` returns the existing 401 UNAUTHENTICATED
+error envelope with `error.details.login_available`: false for local mode, true
+for configured OIDC. Local `GET /auth/login` returns 503 AUTHENTICATION_UNAVAILABLE,
+fixed message `Sign-in is unavailable.`, retryable false, request ID,
+details.login_available false, `Cache-Control: no-store`, and no redirect or
+transaction/session creation. R4 offers a sign-in action only for an explicitly
+true discriminator. False, missing or invalid values stop requests, clear
+protected content and show unavailable copy without a redirect/retry loop. Cover
+both unavailable login and expired OIDC session as distinct browser fixtures.
 
 The repository identifies no deployed issuer/client registration. The exact
 issuer, client, HTTPS origin and trusted role/organization mappings remain
-external configuration prerequisites in R5. No identity provider brand or
+external configuration prerequisites for staging/production verification;
+provider-neutral deterministic R5 implementation can precede those real values. No identity provider brand or
 commercial policy is inferred. Apply existing organization, role, entitlement,
 and takedown rules where they govern access; do not invent a purchase requirement
 for the shared catalog. R3/R4 use deterministic identity fixtures and cannot

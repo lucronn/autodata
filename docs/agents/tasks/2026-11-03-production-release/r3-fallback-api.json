@@ -8,19 +8,34 @@
     "apps/api-go/catalog_store.go",
     "apps/api-go/catalog_source.go",
     "apps/api-go/ingestion_http.go",
-    "apps/api-go/catalog*_test.go",
-    "apps/api-go/ingestion*_test.go",
-    "apps/api-go/openapi.json",
-    "apps/api-go/openapi.yaml",
-    "packages/contracts/**",
-    "docs/architecture/provider-neutral-catalog-api.md",
     "apps/api-go/catalog_lifecycle.go",
-    "apps/api-go/postgres_catalog_lifecycle_test.go",
     "apps/api-go/catalog_media_token.go",
     "apps/api-go/catalog_image_storage.go",
+    "apps/api-go/catalog_test.go",
+    "apps/api-go/catalog_media_test.go",
+    "apps/api-go/catalog_image_storage_test.go",
+    "apps/api-go/catalog_lifecycle_test.go",
+    "apps/api-go/postgres_catalog_lifecycle_test.go",
+    "apps/api-go/ingestion_http_test.go",
+    "apps/api-go/openapi.json",
+    "apps/api-go/openapi.yaml",
+    "packages/contracts/catalog/v1/article-lifecycle.schema.json",
+    "packages/contracts/catalog/v1/fixtures/source-rewriting.json",
+    "packages/contracts/catalog/v1/fixtures/pending-source.json",
+    "packages/contracts/catalog/v1/fixtures/canonical-completed.json",
+    "packages/contracts/catalog/v1/fixtures/source-needs-review.json",
+    "packages/contracts/catalog/v1/fixtures/legacy-unmanaged.json",
+    "packages/contracts/catalog/v1/fixtures/rejected-title-only-complete.json",
+    "packages/contracts/catalog/v1/fixtures/rejected-unknown-state.json",
+    "packages/contracts/catalog/v1/fixtures/rejected-private-object-key.json",
+    "packages/contracts/catalog/v1/fixtures/rejected-mismatched-revision.json",
     "scripts/contracts/test_catalog_lifecycle_contract.py",
+    "docs/architecture/provider-neutral-catalog-api.md",
     "docs/architecture/normalized-article-document.md",
-    "docs/architecture/catalog-source-review.md"
+    "docs/architecture/catalog-source-review.md",
+    "infra/compose/compose.article-lifecycle-test.yaml",
+    "infra/compose/article-lifecycle-test.Dockerfile",
+    "workers/ingestion-python/tests/test_catalog_api_integration.py"
   ],
   "bounded_contexts": [
     "catalog read API",
@@ -43,7 +58,8 @@
     "Nonempty partial/failed indexes remain explicitly incomplete and retryable.",
     "Both-bank source views retain ordered tables, warnings and local media or unavailable placeholders.",
     "Canonical/source/job/media paths preserve vehicle scope, access rules and takedown behavior.",
-    "OpenAPI JSON and YAML describe the complete selection cascade and additive lifecycle fields."
+    "OpenAPI JSON and YAML describe the complete selection cascade and additive lifecycle fields.",
+    "Required Go/Python integration runs against actual R2 HTTP scheduling and a freshly migrated isolated PostgreSQL database; unavailable services, skipped or zero integration cases fail the required run."
   ],
   "forbidden_scope": [
     "Production deployment or production-data changes",
@@ -74,7 +90,8 @@
       "Nonempty partial/failed indexes remain explicitly incomplete and retryable.",
       "Both-bank source views retain ordered tables, warnings and local media or unavailable placeholders.",
       "Canonical/source/job/media paths preserve vehicle scope, access rules and takedown behavior.",
-      "OpenAPI JSON and YAML describe the complete selection cascade and additive lifecycle fields."
+      "OpenAPI JSON and YAML describe the complete selection cascade and additive lifecycle fields.",
+      "Required Go/Python integration runs against actual R2 HTTP scheduling and a freshly migrated isolated PostgreSQL database; unavailable services, skipped or zero integration cases fail the required run."
     ],
     "status": "blocked",
     "updated_at": "2026-11-03T09:19:59.667985+00:00"
