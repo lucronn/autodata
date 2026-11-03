@@ -49,3 +49,13 @@ application code, migrations and release gates remain unchanged. All eight
 independent gates still apply before merge/release. No production deployment,
 new secrets, external application writes or live source/model calls are allowed.
 Implementation/review use Sol 6.1, medium reasoning, Fast/priority, no fallback.
+
+## Verified setup and later CI failure
+
+Exact candidate/integration `9e07beb286f6f67e5a5854c46ebc01cf82318a46`
+passed independent review and a clean Python3.12 exact-step replay: 594 tests
+and 25 subtests passed, with 50 separately covered database cases skipped.
+Actual [run41618670467](https://github.com/lucronn/autodata/actions/runs/41618670467)
+passed ingestion and failed later in live Compose smoke while replaying
+migration037. The dependency repair is verified within its scope; this run is
+failed overall. The migration defect requires its own reviewed checkpoint.

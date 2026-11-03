@@ -175,7 +175,7 @@
     {
       "id": "ci-dependencies",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/ci-dependencies.json",
-      "state": "in_review",
+      "state": "verified",
       "depends_on": [
         "r1-connectors"
       ],
@@ -186,7 +186,21 @@
       "verified_candidate_sha": "9e07beb286f6f67e5a5854c46ebc01cf82318a46",
       "integrated_sha": "9e07beb286f6f67e5a5854c46ebc01cf82318a46",
       "ci_run": "https://github.com/lucronn/autodata/actions/runs/41618670467",
-      "ci_status": "in_progress"
+      "ci_status": "failed_later_migration_replay",
+      "ci_result": "Ingestion setup and tests passed; live Compose smoke failed replaying new migration037. Independent full migration loop reproduced first pass0, second pass3. Separate repair required."
+    },
+    {
+      "id": "r0-app-server-runtime",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-app-server-runtime.json",
+      "state": "ready_after_committed_preflight",
+      "depends_on": [
+        "r0-evidence",
+        "r0-provider-path-schema"
+      ],
+      "dispatch_mode": "coordinator_direct",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md"
     }
   ]
 }

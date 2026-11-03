@@ -115,7 +115,10 @@ its assigned empty set. No builder ran. Evidence:
 `4e9e3393f68ab71fdcf5945a79abff9151cf6c4e73df17ebcae1e7ac97b91d20`.
 A read-only audit of official CLI0.162.1 source confirms exec JSONL does not emit
 `session_config`; its actual app-server startup response carries resolved runtime
-settings. A separately reviewed adapter/prompt plan is being prepared. Nothing
+settings. The [adapter/prompt plan](../superpowers/plans/2026-11-03-app-server-runtime-contract.md)
+has passed independent design review and is synchronized for a fresh committed-base
+gate. Its todo covers the bounded adapter, transcript replay, exact assessment
+assignments, independent code verification and only then disposable real trials. Nothing
 in this run certifies runtime profile, sandbox writes, builder commit retention
 or release readiness. Resolved runtime Fast configuration must not be presented
 as proof of the upstream tier actually served.

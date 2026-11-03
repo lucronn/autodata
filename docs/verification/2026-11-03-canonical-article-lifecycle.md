@@ -75,4 +75,11 @@ fresh exact-step Python3.12 replay at `9e07beb286f6f67e5a5854c46ebc01cf82318a46`
 (594 passed, 50 isolated-DB skips, 25 subtests). It is integrated unchanged.
 Builder replay artifacts are `/tmp/autodata-ci-dependency-builder/`.
 Actual [CI run41618670467](https://github.com/lucronn/autodata/actions/runs/41618670467)
-is in progress; its final outcome remains required.
+passed ingestion tests and then failed live Compose smoke. A second execution
+of the repository migration loop fails on migration037 because its unique index
+already exists. The coordinator reproduced the exact loop against a fresh
+isolated PostgreSQL database: first run exit0, second run exit3. Logs are retained
+at `/tmp/autodata-migration-repro/{run1.log,run2.log,result.json}`. This is a
+separate restart defect in the two new unreleased migrations; the reviewed
+dependency repair worked. A separately reviewed replay plan and fresh gate are
+required before changing those frozen migrations. CI and release remain failing.

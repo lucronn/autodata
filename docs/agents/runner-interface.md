@@ -133,13 +133,28 @@ both commits, and independent retained-bundle replay passed the success fixture
 while blocking failed-check, unavailable-provider, and malformed-response
 fixtures. These use fake provider responses and real local check processes.
 
-Real provider certification remains `blocked/invalid_json_schema`: the isolated
-CLI experiment reached the API, which rejected the schema's unsupported
-`uniqueItems` keyword before a provider response or builder execution. CLI argv explicitly
-requests Sol 6.1, medium reasoning, Fast mode, and no fallback; effective runtime
-metadata must independently confirm the profile. The current adapter consumes
-structured `session_config` events and blocks missing or conflicting metadata.
-Do not infer that an installed CLI emits such an event from the mocked tests.
-An isolated bounded experiment must establish compatibility before unattended
-use. Current source/data-quality measurement is synthetic only; it cannot be
-relabeled as authenticated staging or production acceptance.
+Real provider certification remains blocked. Two schema compatibility repairs
+passed independent review; the third bounded CLI trial at
+`d437eff812b0efb0d3dbdf8388cd2f9c7916f12d` returned structured output but lacked
+resolved execution metadata and used unassigned architect assessments. The
+installed0.162.1 exec JSONL does not emit the mocked `session_config` event.
+No builder ran and no runtime profile certification is claimed.
+
+The independently reviewed
+[app-server runtime plan](../superpowers/plans/2026-11-03-app-server-runtime-contract.md)
+is synchronized for a new committed-base gate. Its concrete todo is a bounded
+version-pinned adapter with actual catalog/startup/completion evidence, retained
+bidirectional transcript and independent replay, explicit role/check assignments,
+focused/full tests and independent exact-SHA promotion, then disposable real
+trials. The resolved profile must be exactly Sol6.1, medium, priority/Fast with
+no fallback. It certifies resolved request settings, not the unobserved upstream
+served/billed tier. Ordinary userMessage lifecycle items must be accepted and
+bound without being treated as responses.
+
+Real adapter execution is limited to the disposable non-root fixture container
+with a verified supervisor proof, authorized read-only Codex authentication,
+no GitHub/bank/production credentials or integrations, and truthfully recorded
+standard Docker unrestricted outbound networking. The coordinator prepares the
+scratch launch; no repository launcher or host execution fallback is added.
+Current source/data-quality measurement is synthetic only and cannot be relabeled
+as authenticated staging or production acceptance.
