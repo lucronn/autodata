@@ -1,0 +1,20 @@
+# Offline definition. Admin socket and parent directory are root-only.
+# No access logs: URLs may contain order/session/media capability identifiers.
+{
+    email ${ACME_EMAIL:?required}
+    admin unix//run/caddy/admin.sock
+    log {
+        output discard
+    }
+}
+
+${PUBLIC_ORIGIN:?required} {
+    import /run/autodata/caddy/maintenance.caddy
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+    }
+    reverse_proxy http://api:8080
+}

@@ -1,0 +1,14 @@
+{
+  "identities": [
+    {
+      "name": "worker",
+      "credentials": [{"accessKey": "@@S3_WORKER_ACCESS_KEY@@", "secretKey": "@@S3_WORKER_SECRET_KEY@@"}],
+      "actions": ["Read:autodata-sources", "Write:autodata-sources", "List:autodata-sources"]
+    },
+    {
+      "name": "api",
+      "credentials": [{"accessKey": "@@S3_API_ACCESS_KEY@@", "secretKey": "@@S3_API_SECRET_KEY@@"}],
+      "actions": ["Read:autodata-sources"]
+    }
+  ]
+}

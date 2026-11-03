@@ -1,0 +1,766 @@
+{
+  "name": "autodata-production",
+  "x-autodata-prerequisites": {
+    "disk_uuid": "${DISK_UUID:?required}",
+    "metadata_guard": "required",
+    "storage_guard": "required",
+    "tmpfs_secrets": "required",
+    "cached_images": "required"
+  },
+  "services": {
+    "caddy": {
+      "image": "${IMAGE_CADDY:?required}",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "user": "0:0",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "init": true,
+      "pids_limit": 256,
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      },
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=1777",
+        "/config:rw,nosuid,nodev,noexec,size=16777216,mode=0700",
+        "/run/caddy:rw,nosuid,nodev,noexec,size=1048576,mode=0700"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${RELEASE_DIR:?required}/Caddyfile",
+          "target": "/etc/caddy/Caddyfile",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "/run/autodata/caddy",
+          "target": "/run/autodata/caddy",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "/var/lib/autodata/caddy",
+          "target": "/data",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "networks": {
+        "edge": {
+          "ipv4_address": "172.30.10.20"
+        }
+      },
+      "command": [
+        "caddy",
+        "run",
+        "--config",
+        "/etc/caddy/Caddyfile",
+        "--adapter",
+        "caddyfile"
+      ],
+      "ports": [
+        "80:80/tcp",
+        "443:443/tcp",
+        "443:443/udp"
+      ],
+      "depends_on": {
+        "api": {
+          "condition": "service_started"
+        }
+      }
+    },
+    "api": {
+      "image": "${IMAGE_API:?required}",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "init": true,
+      "pids_limit": 256,
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      },
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=1777"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/run/autodata/api",
+          "target": "/run/autodata/api",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "networks": {
+        "edge": {
+          "ipv4_address": "172.30.10.10",
+          "gw_priority": 100
+        },
+        "backend": {
+          "ipv4_address": "172.30.20.10"
+        }
+      },
+      "command": [
+        "/usr/local/bin/autodata-api"
+      ],
+      "entrypoint": [
+        "/usr/local/bin/autodata-runtime-entrypoint"
+      ],
+      "environment": "${ENV_API:?required}",
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "minio": {
+          "condition": "service_started"
+        },
+        "nats": {
+          "condition": "service_started"
+        },
+        "ingestion-http": {
+          "condition": "service_started"
+        }
+      }
+    },
+    "ingestion-http": {
+      "image": "${IMAGE_INGESTION:?required}",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "init": true,
+      "pids_limit": 256,
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      },
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=1777"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/run/autodata/ingestion-http",
+          "target": "/run/autodata/ingestion-http",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "networks": {
+        "backend": {
+          "ipv4_address": "172.30.20.11"
+        },
+        "workers-egress": {
+          "ipv4_address": "172.30.30.11",
+          "gw_priority": 100
+        }
+      },
+      "command": [
+        "python",
+        "-m",
+        "autodata_ingestion.http_service"
+      ],
+      "entrypoint": [
+        "/usr/local/bin/autodata-runtime-entrypoint"
+      ],
+      "environment": "${ENV_INGESTION_HTTP:?required}",
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "minio": {
+          "condition": "service_started"
+        }
+      }
+    },
+    "article-worker": {
+      "image": "${IMAGE_INGESTION:?required}",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "init": true,
+      "pids_limit": 256,
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      },
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=1777"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/run/autodata/article-worker",
+          "target": "/run/autodata/article-worker",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "networks": {
+        "backend": {
+          "ipv4_address": "172.30.20.12"
+        },
+        "workers-egress": {
+          "ipv4_address": "172.30.30.12",
+          "gw_priority": 100
+        }
+      },
+      "command": [
+        "python",
+        "-c",
+        "from autodata_ingestion.worker import article_worker_main; raise SystemExit(article_worker_main())"
+      ],
+      "entrypoint": [
+        "/usr/local/bin/autodata-runtime-entrypoint"
+      ],
+      "environment": "${ENV_ARTICLE_WORKER:?required}",
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "minio": {
+          "condition": "service_started"
+        }
+      }
+    },
+    "payment-reconciler": {
+      "image": "${IMAGE_INGESTION:?required}",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "init": true,
+      "pids_limit": 256,
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      },
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=1777"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/run/autodata/payment-reconciler",
+          "target": "/run/autodata/payment-reconciler",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "networks": {
+        "backend": {
+          "ipv4_address": "172.30.20.13"
+        },
+        "workers-egress": {
+          "ipv4_address": "172.30.30.13",
+          "gw_priority": 100
+        }
+      },
+      "command": [
+        "python",
+        "/app/scripts/reconcile_payments.py",
+        "--poll-seconds",
+        "15",
+        "--batch-size",
+        "50"
+      ],
+      "entrypoint": [
+        "/usr/local/bin/autodata-runtime-entrypoint"
+      ],
+      "environment": "${ENV_PAYMENT_RECONCILER:?required}",
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "postgres": {
+      "image": "${IMAGE_POSTGRES:?required}",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "user": "999:999",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "init": true,
+      "pids_limit": 256,
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      },
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=1777",
+        "/var/run/postgresql:rw,nosuid,nodev,noexec,size=16777216,uid=999,gid=999,mode=0700"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/run/autodata/postgres",
+          "target": "/run/autodata/postgres",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "/var/lib/autodata/postgres",
+          "target": "/var/lib/postgresql/data",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "networks": {
+        "backend": {
+          "ipv4_address": "172.30.20.20"
+        }
+      },
+      "environment": "${ENV_POSTGRES:?required}",
+      "command": [
+        "postgres"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "pg_isready",
+          "-U",
+          "autodata_admin",
+          "-d",
+          "autodata"
+        ],
+        "interval": "10s",
+        "timeout": "3s",
+        "retries": 12
+      }
+    },
+    "nats": {
+      "image": "${IMAGE_NATS:?required}",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "init": true,
+      "pids_limit": 256,
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      },
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=1777"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/run/autodata/nats",
+          "target": "/run/autodata/nats",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "/var/lib/autodata/nats",
+          "target": "/data",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "networks": {
+        "backend": {
+          "ipv4_address": "172.30.20.30"
+        }
+      },
+      "environment": {},
+      "command": [
+        "--config",
+        "/run/autodata/nats/nats.conf"
+      ]
+    },
+    "minio": {
+      "image": "${IMAGE_MINIO:?required}",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "init": true,
+      "pids_limit": 256,
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      },
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=1777"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/run/autodata/minio",
+          "target": "/run/autodata/minio",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "/var/lib/autodata/seaweedfs",
+          "target": "/data",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "networks": {
+        "backend": {
+          "ipv4_address": "172.30.20.40"
+        }
+      },
+      "environment": {},
+      "command": [
+        "mini",
+        "-dir=/data",
+        "-s3.port=9000",
+        "-s3.config=/run/autodata/minio/s3.json",
+        "-admin.ui=false",
+        "-webdav=false",
+        "-s3.iam=false",
+        "-s3.port.iceberg=0",
+        "-s3.port.lance=0",
+        "-master.telemetry=false"
+      ]
+    },
+    "migration": {
+      "image": "${IMAGE_MIGRATION:?required}",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "no",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "init": true,
+      "pids_limit": 256,
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      },
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=1777"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/run/autodata/migration",
+          "target": "/run/autodata/migration",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "networks": {
+        "backend": {
+          "ipv4_address": "172.30.20.50"
+        }
+      },
+      "command": [
+        "sh",
+        "/release/scripts/dev/migrate_sql.sh",
+        "--migrations-dir",
+        "/release/db/migrations"
+      ],
+      "entrypoint": [
+        "/usr/local/bin/autodata-runtime-entrypoint"
+      ],
+      "environment": "${ENV_MIGRATION:?required}",
+      "profiles": [
+        "migration"
+      ],
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "bootstrap": {
+      "image": "${IMAGE_INGESTION:?required}",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "no",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "init": true,
+      "pids_limit": 256,
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      },
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=1777"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/run/autodata/bootstrap",
+          "target": "/run/autodata/bootstrap",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "networks": {
+        "backend": {
+          "ipv4_address": "172.30.20.51"
+        }
+      },
+      "entrypoint": [
+        "/usr/local/bin/autodata-runtime-entrypoint"
+      ],
+      "environment": "${ENV_BOOTSTRAP:?required}",
+      "profiles": [
+        "bootstrap"
+      ],
+      "depends_on": {
+        "minio": {
+          "condition": "service_started"
+        }
+      },
+      "command": [
+        "python",
+        "-c",
+        "import os; from minio import Minio; from urllib3 import PoolManager, Timeout; c=Minio('minio:9000', access_key=os.environ['AUTODATA_S3_ACCESS_KEY'], secret_key=os.environ['AUTODATA_S3_SECRET_KEY'], secure=False, http_client=PoolManager(timeout=Timeout(connect=3, read=10), retries=False)); c.make_bucket('autodata-sources') if not c.bucket_exists('autodata-sources') else None"
+      ]
+    },
+    "metrics-probe": {
+      "image": "${IMAGE_INGESTION:?required}",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "no",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "init": true,
+      "pids_limit": 256,
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      },
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=1777"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/run/autodata/metrics-probe",
+          "target": "/run/autodata/metrics-probe",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "networks": {
+        "backend": {
+          "ipv4_address": "172.30.20.52"
+        }
+      },
+      "command": [
+        "python",
+        "/app/scripts/operational_metrics.py",
+        "--address",
+        "postgres:5432"
+      ],
+      "entrypoint": [
+        "/usr/local/bin/autodata-runtime-entrypoint"
+      ],
+      "environment": "${ENV_METRICS_PROBE:?required}",
+      "profiles": [
+        "metrics"
+      ],
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        }
+      }
+    }
+  },
+  "networks": {
+    "edge": {
+      "name": "autodata-production-edge",
+      "driver": "bridge",
+      "driver_opts": {
+        "com.docker.network.bridge.name": "br-ad-edge"
+      },
+      "internal": false,
+      "enable_ipv6": false,
+      "ipam": {
+        "config": [
+          {
+            "subnet": "172.30.10.0/24"
+          }
+        ]
+      }
+    },
+    "backend": {
+      "name": "autodata-production-backend",
+      "driver": "bridge",
+      "driver_opts": {
+        "com.docker.network.bridge.name": "br-ad-back"
+      },
+      "internal": true,
+      "enable_ipv6": false,
+      "ipam": {
+        "config": [
+          {
+            "subnet": "172.30.20.0/24"
+          }
+        ]
+      }
+    },
+    "workers-egress": {
+      "name": "autodata-production-workers-egress",
+      "driver": "bridge",
+      "driver_opts": {
+        "com.docker.network.bridge.name": "br-ad-work"
+      },
+      "internal": false,
+      "enable_ipv6": false,
+      "ipam": {
+        "config": [
+          {
+            "subnet": "172.30.30.0/24"
+          }
+        ]
+      }
+    }
+  }
+}
