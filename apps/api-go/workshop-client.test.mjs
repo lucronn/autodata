@@ -201,3 +201,14 @@ test('indeterminate stage progress does not derive percentages from retries', ()
   assert.equal(loadingProgress('make',{attempt:2,attempts:40,hydrating:true}).percent,null);
   assert.equal(loadingProgress('make',{attempt:39,attempts:40,hydrating:true}).percent,null);
 });
+test('sign-out confirmation failure never reports revocation and allows same-CSRF retry', async()=>{
+  const {createSession}=await import('./workshop/auth.mjs');let logoutCalls=0;
+  const s=createSession({request:async(path,options)=>{if(path==='/auth/config')return{login_available:false};if(path==='/auth/session')return{authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'csrf'};assert.equal(options.headers['X-CSRF-Token'],'csrf');if(++logoutCalls===1)throw new TypeError('network');}});
+  await s.bootstrap();assert.equal(await s.logout(),false);assert.equal(s.state.authenticated,false);assert.match(s.state.message,/could not be confirmed/);assert.equal(await s.logout(),true);
+});
+test('cookie recheck after invalidation reuses the initialized memory SDK and enables explicit login',async()=>{
+  const {createSession}=await import('./workshop/auth.mjs');let initialized=0;
+  const sdk={initializeApp:()=>({}),initializeAuth:()=>{initialized++;return{};},inMemoryPersistence:'NONE',browserPopupRedirectResolver:{},setPersistence:async()=>{},GoogleAuthProvider:class{}};
+  const s=createSession({loadSDK:async()=>sdk,request:async path=>{if(path==='/auth/config')return{version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}};const e=new Error();e.status=401;throw e;}});
+  await s.bootstrap();assert.equal(s.state.ready,true);s.clear();await s.bootstrap();assert.equal(s.state.ready,true);assert.equal(initialized,1);
+});

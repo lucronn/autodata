@@ -127,3 +127,36 @@ storage behavior require the later UI implementation and browser lane. The
 acceptance remain pending under the unified UI plan. The final production image
 must prove the complete customer app and its assets. No production readiness or
 working sign-in is asserted by this packaging milestone.
+
+## Customer UI implementation lane
+
+The parallel delivery gate is `0da1309f860e475a1fa8b71a0d6b88dee04ed915`.
+The cookie/session, checkout and reader coordinator milestone is `e532c9b`.
+The customer application now consumes public selectors and the exact returned
+configuration ID/region, checks server quotes and private article access, opens
+My vehicles, explicitly prepares articles and polls observational reads.
+Normalized source/document text uses native DOM elements and `textContent`;
+image URLs are limited to same-origin v2 catalog capabilities. The shipped
+purchase configuration remains disabled with null unpublished policy URLs.
+
+Run `node --test apps/api-go/workshop-client.test.mjs`,
+`python3 -m unittest scripts/dev/test_workshop_browser_smoke.py -v`, and
+`go -C apps/api-go test ./...`. The additional Go fixture entry point runs only
+with `AUTODATA_WORKSHOP_BROWSER_FIXTURE=1` and an owned
+`AUTODATA_WORKSHOP_BROWSER_READY` file. It serves actual embedded production
+assets over `httptest` TLS, records the certificate and SDK hashes, and provides
+only synthetic external-identity token transport and bounded shutdown hooks.
+
+The browser runner requires the exact `playwright==1.64.1` package and its three
+engine revisions. Install at fixture-image build time, not during acceptance.
+DTO mode intercepts versioned application responses and is explicitly distinct
+from real API acceptance. It enforces all 40 names per requested engine, records
+requests/order, and fails unavailable engines, skips, unexpected network traffic
+or missing cases. Use an owned private output directory. No production endpoint,
+provider credential or customer account is involved.
+
+The first Chromium run exercised the production embedded application and exposed
+an image renewal fallback defect, repaired before the next fixture build. Partial
+or failed browser runs are diagnostic evidence only. The 21 real API browser
+cases and independent candidate review remain required before integration; this
+implementation entry does not assert completed browser acceptance.
