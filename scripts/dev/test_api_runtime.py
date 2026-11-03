@@ -26,7 +26,7 @@ class APIRuntimeContractTests(unittest.TestCase):
 
     def test_catalog_image_storage_key_is_internal_only(self):
         store = self.read("apps/api-go/catalog_store.go")
-        self.assertIn('StorageKey string `json:"-"`', store)
+        self.assertRegex(store, r'(?m)^[ \t]*StorageKey[ \t]+string[ \t]+`json:"-"`[ \t]*$')
         media_test = self.read("apps/api-go/catalog_media_test.go")
         self.assertIn("private/source-object/key", media_test)
         self.assertIn("storage_key", media_test)
