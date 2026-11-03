@@ -87,3 +87,21 @@ class OutboxTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_catalog_envelope_has_real_article_identifiers_and_no_dataset_fields():
+    from uuid import uuid4
+    event=OutboxEvent(publication_event_id=str(uuid4()),event_type="catalog.article.published",event_version=1,
+        request_id=None,projection_id=None,revision_id=None,correlation_id=str(uuid4()),idempotency_key="catalog.article.published:"+"a"*64,
+        payload={"source_revision_id":str(uuid4()),"review_status":"UNREVIEWED"},occurred_at=datetime.now(UTC),producer="ingestion-worker",
+        canonical_article_id=str(uuid4()),canonical_revision_id=str(uuid4()))
+    envelope=build_event_envelope(event)
+    assert event_subject(event)=="catalog.article.published"
+    assert envelope["canonical_article_id"]==event.canonical_article_id
+    assert not {"request_id","projection_id","revision_id","payload"}.intersection(envelope)
+
+
+def test_dataset_envelope_still_requires_dataset_identity():
+    import pytest
+    event=OutboxEvent("e","dataset.viewable",1,None,None,None,"c","k",{},datetime.now(UTC),"worker")
+    with pytest.raises(ValueError,match="request_id"):build_event_envelope(event)

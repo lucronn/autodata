@@ -58,7 +58,8 @@
     "chat.worker.progress",
     "chat.price.refresh.requested",
     "chat.procedure.published",
-    "chat.visual.published"
+    "chat.visual.published",
+    "catalog.article.published"
   ],
   "procedure_step": {
     "required": ["step_number", "instruction", "source_article_ids", "evidence_ids"],
@@ -417,6 +418,79 @@
       "correlation_id": {"type": "uuid"},
       "idempotency_key": {"type": "string"},
       "payload": {"type": "object"}
+    }
+  },
+  "article_processing_state": [
+    "queued",
+    "fetching_source",
+    "normalizing",
+    "rewriting",
+    "validating",
+    "publishing",
+    "completed",
+    "failed",
+    "needs_review"
+  ],
+  "article_content_origin": [
+    "source",
+    "canonical"
+  ],
+  "article_review_status": [
+    "UNREVIEWED",
+    "APPROVED",
+    "REJECTED"
+  ],
+  "catalog_article_published": {
+    "required": [
+      "event_id",
+      "event_type",
+      "event_version",
+      "occurred_at",
+      "producer",
+      "correlation_id",
+      "idempotency_key",
+      "canonical_article_id",
+      "source_revision_id",
+      "canonical_revision_id",
+      "review_status"
+    ],
+    "properties": {
+      "event_id": {
+        "type": "uuid"
+      },
+      "event_type": {
+        "enum": [
+          "catalog.article.published"
+        ]
+      },
+      "event_version": {
+        "type": "integer",
+        "const": 1
+      },
+      "occurred_at": {
+        "type": "string"
+      },
+      "producer": {
+        "type": "string"
+      },
+      "correlation_id": {
+        "type": "uuid"
+      },
+      "idempotency_key": {
+        "type": "string"
+      },
+      "canonical_article_id": {
+        "type": "uuid"
+      },
+      "source_revision_id": {
+        "type": "uuid"
+      },
+      "canonical_revision_id": {
+        "type": "uuid"
+      },
+      "review_status": {
+        "enum_ref": "article_review_status"
+      }
     }
   }
 }

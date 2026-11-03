@@ -10,6 +10,7 @@ from typing import Any
 
 
 EVENT_SUBJECTS = {
+    "catalog.article.published",
     "dataset.fast.requested",
     "dataset.viewable",
     "dataset.deep.requested",
@@ -26,8 +27,8 @@ class OutboxEvent:
     publication_event_id: str
     event_type: str
     event_version: int
-    request_id: str
-    projection_id: str
+    request_id: str | None
+    projection_id: str | None
     revision_id: str | None
     correlation_id: str
     idempotency_key: str
@@ -35,6 +36,10 @@ class OutboxEvent:
     occurred_at: datetime
     producer: str
     delivery_attempts: int = 0
+    canonical_article_id: str | None = None
+    canonical_revision_id: str | None = None
+    delivery_lease_owner: str | None = None
+    delivery_lease_token: int = 0
 
 
 def event_subject(event: OutboxEvent) -> str:
@@ -54,6 +59,19 @@ def delivery_status_after_failure(attempts: int, max_attempts: int) -> str:
 def build_event_envelope(event: OutboxEvent) -> dict[str, Any]:
     """Reconstruct the public event envelope from the immutable outbox row."""
 
+    if event.event_type == "catalog.article.published":
+        from dataclasses import asdict
+        from uuid import UUID
+        from autodata_contracts.contracts import CatalogArticlePublished, ARTICLE_REVIEW_STATUS_VALUES
+        for identifier in (event.publication_event_id,event.correlation_id,event.canonical_article_id,event.canonical_revision_id,event.payload.get("source_revision_id")):
+            UUID(str(identifier))
+        if event.event_version != 1 or event.payload.get("review_status") not in ARTICLE_REVIEW_STATUS_VALUES:
+            raise ValueError("invalid catalog publication envelope")
+        if any((event.request_id,event.projection_id,event.revision_id)):
+            raise ValueError("catalog event contains dataset identity")
+        return asdict(CatalogArticlePublished(event.publication_event_id,event.event_type,event.event_version,
+            event.occurred_at.astimezone(UTC).isoformat(),event.producer,event.correlation_id,event.idempotency_key,
+            event.canonical_article_id,event.payload["source_revision_id"],event.canonical_revision_id,event.payload["review_status"]))
     for field_name in (
         "publication_event_id",
         "event_type",
@@ -173,45 +191,40 @@ async def relay_pending_events(
 
 
 async def _ensure_stream(jetstream: Any) -> None:
-    try:
-        await jetstream.stream_info("AUTODATA")
-    except Exception as error:  # noqa: BLE001 - only the server decides whether it exists
-        if "stream name already in use" in str(error).lower():
-            return
-        await jetstream.add_stream(name="AUTODATA", subjects=["dataset.>"])
+    from nats.js.errors import NotFoundError
+    for name,subjects in (("AUTODATA",["dataset.>"]),("AUTODATA_CATALOG",["catalog.>"])):
+        try:
+            await jetstream.stream_info(name)
+        except NotFoundError:
+            await jetstream.add_stream(name=name,subjects=subjects)
 
 
 def _claim_next_event(max_attempts: int, address: str | None = None) -> OutboxEvent | None:
     import psycopg
-
+    from uuid import uuid4
+    owner=uuid4()
     with psycopg.connect(**_connection_kwargs(address=address)) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                WITH candidate AS (
-                    SELECT publication_event_id
-                    FROM publication_events
-                    WHERE delivery_status IN ('pending', 'failed')
-                      AND delivery_attempts < %s
-                    ORDER BY created_at, publication_event_id
-                    FOR UPDATE SKIP LOCKED
-                    LIMIT 1
-                )
-                UPDATE publication_events pe
-                SET delivery_status = 'failed',
-                    delivery_attempts = pe.delivery_attempts + 1
-                FROM candidate
-                WHERE pe.publication_event_id = candidate.publication_event_id
-                RETURNING pe.publication_event_id::text, pe.event_type,
-                          pe.event_version, pe.dataset_request_id::text,
-                          pe.dataset_projection_id::text, pe.dataset_revision_id::text,
-                          pe.correlation_id::text, pe.idempotency_key, pe.payload,
-                          pe.created_at, pe.producer, pe.delivery_attempts
-                """,
-                (max_attempts,),
-            )
-            row = cursor.fetchone()
-        connection.commit()
+            cursor.execute("""WITH exhausted AS (SELECT publication_event_id FROM publication_events
+                WHERE delivery_status='processing' AND delivery_lease_expires_at<clock_timestamp()
+                  AND delivery_attempts>=%s FOR UPDATE SKIP LOCKED)
+                UPDATE publication_events pe SET delivery_status='dead_letter',delivery_lease_owner=NULL,
+                  delivery_lease_expires_at=NULL,last_delivery_error='{"code":"DELIVERY_ATTEMPTS_EXHAUSTED"}'
+                FROM exhausted e WHERE pe.publication_event_id=e.publication_event_id""",(max_attempts,))
+            cursor.execute("""WITH candidate AS (
+                SELECT publication_event_id FROM publication_events WHERE delivery_attempts<%s AND
+                  ((delivery_status IN ('pending','failed') AND COALESCE(next_delivery_at,'-infinity'::timestamptz)<=clock_timestamp())
+                   OR (delivery_status='processing' AND delivery_lease_expires_at<clock_timestamp()))
+                ORDER BY created_at,publication_event_id FOR UPDATE SKIP LOCKED LIMIT 1)
+                UPDATE publication_events pe SET delivery_status='processing',delivery_attempts=pe.delivery_attempts+1,
+                  delivery_lease_owner=%s,delivery_lease_token=pe.delivery_lease_token+1,
+                  delivery_lease_expires_at=clock_timestamp()+interval '90 seconds'
+                FROM candidate WHERE pe.publication_event_id=candidate.publication_event_id
+                RETURNING pe.publication_event_id::text,pe.event_type,pe.event_version,pe.dataset_request_id::text,
+                  pe.dataset_projection_id::text,pe.dataset_revision_id::text,pe.correlation_id::text,
+                  pe.idempotency_key,pe.payload,pe.created_at,pe.producer,pe.delivery_attempts,
+                  pe.canonical_article_id::text,pe.canonical_article_revision_id::text,pe.delivery_lease_owner::text,pe.delivery_lease_token""",(max_attempts,owner))
+            row=cursor.fetchone()
     return _event_from_row(row) if row is not None else None
 
 
@@ -221,8 +234,8 @@ def _event_from_row(row: tuple[Any, ...]) -> OutboxEvent:
         publication_event_id=str(row[0]),
         event_type=str(row[1]),
         event_version=int(row[2]),
-        request_id=str(row[3]),
-        projection_id=str(row[4]),
+        request_id=str(row[3]) if row[3] is not None else None,
+        projection_id=str(row[4]) if row[4] is not None else None,
         revision_id=str(row[5]) if row[5] is not None else None,
         correlation_id=str(row[6]),
         idempotency_key=str(row[7]),
@@ -230,45 +243,38 @@ def _event_from_row(row: tuple[Any, ...]) -> OutboxEvent:
         occurred_at=row[9],
         producer=str(row[10]),
         delivery_attempts=int(row[11]),
+        canonical_article_id=row[12],canonical_revision_id=row[13],
+        delivery_lease_owner=row[14],delivery_lease_token=row[15],
     )
 
 
-def _mark_delivered(event: OutboxEvent, address: str | None = None) -> None:
-    import psycopg
+class DeliveryLeaseLost(RuntimeError):
+    pass
 
+
+def _finish_delivery(event, *, status, error=None, address=None):
+    import psycopg
+    from psycopg.types.json import Jsonb
     with psycopg.connect(**_connection_kwargs(address=address)) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE publication_events
-                SET delivery_status = 'published', delivered_at = now(),
-                    last_delivery_error = NULL
-                WHERE publication_event_id = %s
-                  AND delivery_attempts = %s
-                """,
-                (event.publication_event_id, event.delivery_attempts),
-            )
-        connection.commit()
+            cursor.execute("""UPDATE publication_events SET delivery_status=%s,
+                delivered_at=CASE WHEN %s='published' THEN clock_timestamp() ELSE NULL END,
+                last_delivery_error=%s,delivery_lease_owner=NULL,delivery_lease_expires_at=NULL,
+                next_delivery_at=CASE WHEN %s='failed' THEN clock_timestamp()+interval '5 seconds' ELSE NULL END
+                WHERE publication_event_id=%s AND delivery_status='processing' AND delivery_lease_owner=%s
+                  AND delivery_lease_token=%s AND delivery_lease_expires_at>clock_timestamp()
+                RETURNING publication_event_id""",
+                (status,status,Jsonb(error) if error else None,status,event.publication_event_id,event.delivery_lease_owner,event.delivery_lease_token))
+            if cursor.fetchone() is None: raise DeliveryLeaseLost("outbox delivery lease lost")
+
+
+def _mark_delivered(event: OutboxEvent, address: str | None = None) -> None:
+    _finish_delivery(event,status="published",address=address)
 
 
 def _record_delivery_failure(event: OutboxEvent, message: str, max_attempts: int, address: str | None = None) -> str:
-    import psycopg
-    from psycopg.types.json import Jsonb
-
-    status = delivery_status_after_failure(event.delivery_attempts, max_attempts)
-    with psycopg.connect(**_connection_kwargs(address=address)) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE publication_events
-                SET delivery_status = %s,
-                    last_delivery_error = %s
-                WHERE publication_event_id = %s
-                  AND delivery_attempts = %s
-                """,
-                (status, Jsonb({"message": message}), event.publication_event_id, event.delivery_attempts),
-            )
-        connection.commit()
+    status=delivery_status_after_failure(event.delivery_attempts,max_attempts)
+    _finish_delivery(event,status=status,error={"code":"BROKER_DELIVERY_FAILED"},address=address)
     return status
 
 

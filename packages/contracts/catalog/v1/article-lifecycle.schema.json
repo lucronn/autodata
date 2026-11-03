@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autodata.example/contracts/catalog/v1/article-lifecycle.schema.json",
+  "$defs": {
+    "article_processing_state": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "fetching_source",
+        "normalizing",
+        "rewriting",
+        "validating",
+        "publishing",
+        "completed",
+        "failed",
+        "needs_review"
+      ]
+    },
+    "article_content_origin": {
+      "type": "string",
+      "enum": [
+        "source",
+        "canonical"
+      ]
+    },
+    "article_review_status": {
+      "type": "string",
+      "enum": [
+        "UNREVIEWED",
+        "APPROVED",
+        "REJECTED"
+      ]
+    }
+  }
+}

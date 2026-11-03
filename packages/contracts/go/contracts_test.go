@@ -1,6 +1,9 @@
 package contracts
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestGeneratedBindingsExposeDatasetReadContract(t *testing.T) {
 	if SchemaVersion != 1 {
@@ -97,4 +100,25 @@ func contains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestCatalogPublicationHasSeparateIdentity(t *testing.T) {
+	value := CatalogArticlePublished{CanonicalArticleID: "article", CanonicalRevisionID: "revision", SourceRevisionID: "source", EventType: "catalog.article.published", EventVersion: 1, ReviewStatus: "UNREVIEWED"}
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if fields["canonical_article_id"] != "article" {
+		t.Fatalf("article identity missing: %s", payload)
+	}
+	if _, exists := fields["request_id"]; exists {
+		t.Fatalf("catalog event has dataset identity: %s", payload)
+	}
+	if len(ArticleProcessingStateValues) != 9 || len(ArticleReviewStatusValues) != 3 {
+		t.Fatal("lifecycle enums drifted")
+	}
 }
