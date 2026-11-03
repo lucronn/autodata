@@ -73,9 +73,17 @@ export function createSession({
   };
   async function prepare(current) {
     if (auth) {
-      await sdk.setPersistence(auth, sdk.inMemoryPersistence);
-      if (current === epoch) {
-        state.ready = true;
+      try {
+        if (!provider) provider = new sdk.GoogleAuthProvider();
+        await sdk.setPersistence(auth, sdk.inMemoryPersistence);
+        if (current === epoch) {
+          state.ready = true;
+          changed();
+        }
+      } catch (error) {
+        if (current !== epoch) return;
+        state.ready = false;
+        state.message = authMessage(error);
         changed();
       }
       return;
@@ -95,15 +103,16 @@ export function createSession({
           popupRedirectResolver: sdk.browserPopupRedirectResolver,
         },
       );
+      provider = new sdk.GoogleAuthProvider();
       await sdk.setPersistence(auth, sdk.inMemoryPersistence);
       if (current !== epoch) return;
-      provider = new sdk.GoogleAuthProvider();
       state.ready = true;
       changed();
     })();
     try {
       await preparation;
     } catch (error) {
+      if (current !== epoch) return;
       state.ready = false;
       state.message = authMessage(error);
       changed();
@@ -150,14 +159,12 @@ export function createSession({
       const current = epoch;
       state.ready = false;
       changed();
-      // Invoke before yielding so the popup starts within the explicit gesture.
-      const popup =
-        state.confirm && auth.currentUser
-          ? sdk.reauthenticateWithPopup(auth.currentUser, provider)
-          : sdk.signInWithPopup(auth, provider);
       return (async () => {
         try {
-          const result = await popup;
+          // Invoke before yielding so the popup starts within the explicit gesture.
+          const result = await (state.confirm && auth.currentUser
+            ? sdk.reauthenticateWithPopup(auth.currentUser, provider)
+            : sdk.signInWithPopup(auth, provider));
           if (current !== epoch) return;
           const token = await sdk.getIdTokenResult(result.user, true);
           if (current !== epoch) return;
