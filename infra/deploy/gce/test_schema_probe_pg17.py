@@ -31,6 +31,180 @@ ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 ADMIN = 'autodata_fixture_admin'
 EXPECTED = ('001_initial', '002_accounts')
 
+# Every case below runs against the owned disposable cluster when opted in.
+# IDs are the required runtime inventory, not evidence of execution.
+def _case(case, setup, **options):
+    return {'case': case, 'setup': setup, **options}
+
+
+HOSTILE_RELATIONS = [
+    _case('view_constant_expression', "DROP TABLE public.schema_migrations; CREATE VIEW public.schema_migrations AS SELECT public.probe_text('001_initial') AS version,now() AS applied_at; GRANT SELECT,MAINTAIN ON public.schema_migrations TO autodata_schema_probe;",
+          control='SELECT * FROM public.schema_migrations;', marker='expression'),
+    _case('view_custom_heap_dependency', "CREATE TABLE public.fixture_backing(version text,applied_at timestamptz) USING probe_heap; INSERT INTO public.fixture_backing VALUES('001_initial',now()); DROP TABLE public.schema_migrations; CREATE VIEW public.schema_migrations AS SELECT public.probe_text(version) AS version,applied_at FROM public.fixture_backing; GRANT SELECT,MAINTAIN ON public.schema_migrations,public.fixture_backing TO autodata_schema_probe;",
+          cleanup='DROP VIEW IF EXISTS public.schema_migrations; DROP TABLE public.fixture_backing;',
+          control='SELECT * FROM public.schema_migrations;', marker='heap'),
+    _case('foreign_relation', "DROP TABLE public.schema_migrations; CREATE FOREIGN TABLE public.schema_migrations(version text,applied_at timestamptz) SERVER probe_server; GRANT SELECT ON public.schema_migrations TO autodata_schema_probe;",
+          control='SELECT * FROM public.schema_migrations;', marker='fdw', control_success=False),
+    _case('rls_policy', "ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY; CREATE POLICY fixture_policy ON public.schema_migrations USING(public.probe_predicate('rls'));",
+          control='SET ROLE autodata_schema_probe; SELECT * FROM public.schema_migrations;', marker='predicate'),
+    _case('force_rls_policy', "ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY; ALTER TABLE public.schema_migrations FORCE ROW LEVEL SECURITY; CREATE POLICY fixture_policy ON public.schema_migrations USING(public.probe_predicate('rls'));",
+          control='SET ROLE autodata_schema_probe; SELECT * FROM public.schema_migrations;', marker='predicate'),
+    _case('custom_type_output', "DROP TABLE public.schema_migrations; CREATE TABLE public.schema_migrations(version public.probe_type,applied_at timestamptz NOT NULL); INSERT INTO public.schema_migrations VALUES('001_initial',now()); ALTER TABLE public.schema_migrations OWNER TO autodata_schema_owner; GRANT SELECT,MAINTAIN ON public.schema_migrations TO autodata_schema_probe;",
+          control='SELECT * FROM public.schema_migrations;', marker='output'),
+    _case('domain_version_type', "CREATE DOMAIN public.fixture_domain AS text; ALTER TABLE public.schema_migrations ALTER COLUMN version TYPE public.fixture_domain;",
+          cleanup='DROP DOMAIN public.fixture_domain CASCADE;'),
+    _case('custom_heap_am', 'ALTER TABLE public.schema_migrations SET ACCESS METHOD probe_heap;',
+          control='SELECT * FROM public.schema_migrations;', marker='heap'),
+    _case('custom_index_am', 'CREATE INDEX fixture ON public.schema_migrations USING probe_btree(version);',
+          control='SELECT * FROM public.schema_migrations;', marker='btree'),
+    _case('expression_index', "CREATE INDEX fixture ON public.schema_migrations((public.probe_text('constant')));",
+          control='SELECT * FROM public.schema_migrations;', marker='expression'),
+    _case('predicate_index', "CREATE INDEX fixture ON public.schema_migrations(version) WHERE public.probe_predicate('constant');",
+          control='SELECT * FROM public.schema_migrations;', marker='predicate'),
+    _case('custom_opclass_support_function', 'CREATE INDEX fixture ON public.schema_migrations(version public.probe_text_ops);',
+          control="ALTER TABLE public.schema_migrations DROP CONSTRAINT schema_migrations_pkey; SET enable_seqscan=off; SELECT version FROM public.schema_migrations WHERE version>'000_a';", marker='compare'),
+    _case('custom_operator_family', "CREATE FUNCTION public.fixture_op(text,text) RETURNS boolean LANGUAGE sql IMMUTABLE AS 'SELECT public.probe_predicate($1)'; CREATE OPERATOR public.#< (LEFTARG=text,RIGHTARG=text,FUNCTION=public.fixture_op); CREATE OPERATOR CLASS public.fixture_opclass FOR TYPE text USING btree AS OPERATOR 1 public.#<(text,text), OPERATOR 2 pg_catalog.<=(text,text), OPERATOR 3 pg_catalog.=(text,text), OPERATOR 4 pg_catalog.>=(text,text), OPERATOR 5 pg_catalog.>(text,text), FUNCTION 1 pg_catalog.bttextcmp(text,text); CREATE INDEX fixture ON public.schema_migrations(version public.fixture_opclass);",
+          cleanup='DROP OPERATOR CLASS public.fixture_opclass USING btree CASCADE; DROP OPERATOR FAMILY IF EXISTS public.fixture_opclass USING btree CASCADE; DROP OPERATOR public.#<(text,text); DROP FUNCTION public.fixture_op(text,text);',
+          control="SELECT 'a'::text OPERATOR(public.#<) 'b'::text;", marker='predicate'),
+    _case('custom_collation', "CREATE COLLATION public.fixture_collation(provider=libc,locale='C'); ALTER TABLE public.schema_migrations ALTER COLUMN version TYPE text COLLATE public.fixture_collation;",
+          cleanup='DROP COLLATION public.fixture_collation CASCADE;'),
+    _case('nondeterministic_collation', "CREATE COLLATION public.fixture_nondeterministic(provider=icu,locale='und',deterministic=false); ALTER TABLE public.schema_migrations ALTER COLUMN version TYPE text COLLATE public.fixture_nondeterministic;",
+          cleanup='DROP COLLATION public.fixture_nondeterministic CASCADE;'),
+    _case('invalid_concurrent_index', "CREATE UNIQUE INDEX CONCURRENTLY fixture_invalid ON public.schema_migrations((pg_catalog.left(version,1)));", setup_success=False),
+    _case('unlogged_ledger', 'ALTER TABLE public.schema_migrations SET UNLOGGED;'),
+    _case('exclusion_index', 'ALTER TABLE public.schema_migrations ADD CONSTRAINT fixture_exclusion EXCLUDE USING btree(version WITH =);'),
+    _case('extra_index', 'CREATE INDEX fixture ON public.schema_migrations(applied_at);'),
+    _case('include_index', 'CREATE INDEX fixture ON public.schema_migrations(version) INCLUDE(applied_at);'),
+    _case('non_immediate_primary_key', 'ALTER TABLE public.schema_migrations DROP CONSTRAINT schema_migrations_pkey; ALTER TABLE public.schema_migrations ADD PRIMARY KEY(version) DEFERRABLE INITIALLY DEFERRED;'),
+    _case('partitioned_ledger', "DROP TABLE public.schema_migrations; CREATE TABLE public.schema_migrations(version text PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now()) PARTITION BY RANGE(version); CREATE TABLE public.fixture_partition PARTITION OF public.schema_migrations DEFAULT; ALTER TABLE public.schema_migrations OWNER TO autodata_schema_owner; GRANT SELECT,MAINTAIN ON public.schema_migrations TO autodata_schema_probe;"),
+    _case('inherited_ledger', 'CREATE TABLE public.fixture_child () INHERITS(public.schema_migrations);', cleanup='DROP TABLE public.fixture_child;'),
+    _case('version_nullable', 'ALTER TABLE public.schema_migrations DROP CONSTRAINT schema_migrations_pkey; ALTER TABLE public.schema_migrations ALTER COLUMN version DROP NOT NULL;'),
+    _case('applied_at_nullable', 'ALTER TABLE public.schema_migrations ALTER COLUMN applied_at DROP NOT NULL;'),
+    _case('version_varchar', 'ALTER TABLE public.schema_migrations ALTER COLUMN version TYPE varchar(128);'),
+    _case('applied_at_date', 'ALTER TABLE public.schema_migrations ALTER COLUMN applied_at TYPE date;'),
+    _case('missing_applied_at_column', 'ALTER TABLE public.schema_migrations DROP COLUMN applied_at;'),
+    _case('extra_column', 'ALTER TABLE public.schema_migrations ADD COLUMN extra text;'),
+    _case('dropped_column', 'ALTER TABLE public.schema_migrations ADD COLUMN extra text; ALTER TABLE public.schema_migrations DROP COLUMN extra;'),
+    _case('reordered_columns', 'DROP TABLE public.schema_migrations; CREATE TABLE public.schema_migrations(applied_at timestamptz NOT NULL DEFAULT now(),version text PRIMARY KEY); ALTER TABLE public.schema_migrations OWNER TO autodata_schema_owner; GRANT SELECT,MAINTAIN ON public.schema_migrations TO autodata_schema_probe;'),
+    _case('generated_version', "DROP TABLE public.schema_migrations; CREATE TABLE public.schema_migrations(version text GENERATED ALWAYS AS('001_initial'::text) STORED PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now()); ALTER TABLE public.schema_migrations OWNER TO autodata_schema_owner; GRANT SELECT,MAINTAIN ON public.schema_migrations TO autodata_schema_probe;"),
+    _case('identity_version', 'DROP TABLE public.schema_migrations; CREATE TABLE public.schema_migrations(version bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now()); ALTER TABLE public.schema_migrations OWNER TO autodata_schema_owner; GRANT SELECT,MAINTAIN ON public.schema_migrations TO autodata_schema_probe;'),
+    _case('trigger', "CREATE FUNCTION public.fixture_trigger() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN PERFORM public.probe_predicate('trigger'); RETURN NEW; END$$; CREATE TRIGGER fixture BEFORE INSERT ON public.schema_migrations FOR EACH ROW EXECUTE FUNCTION public.fixture_trigger();",
+          cleanup='DROP FUNCTION public.fixture_trigger() CASCADE;', control="INSERT INTO public.schema_migrations(version) VALUES('003_extra');", marker='predicate'),
+    _case('rewrite_rule', "CREATE RULE fixture_rule AS ON UPDATE TO public.schema_migrations DO ALSO SELECT public.probe_text('rule');",
+          control='UPDATE public.schema_migrations SET applied_at=applied_at;', marker='expression'),
+    _case('missing_ledger', 'DROP TABLE public.schema_migrations;'),
+]
+
+_RESTORE_PROBE = '''CREATE ROLE autodata_schema_probe LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ GRANT CONNECT ON DATABASE autodata TO autodata_schema_probe;
+ GRANT USAGE ON SCHEMA public TO autodata_schema_probe;
+ GRANT SELECT,MAINTAIN ON public.schema_migrations TO autodata_schema_probe;'''
+REQUIRED_PRIVILEGES = [
+    _case('missing_role', 'DROP OWNED BY autodata_schema_probe; DROP ROLE autodata_schema_probe;', cleanup=_RESTORE_PROBE),
+    _case('role_cannot_login', 'ALTER ROLE autodata_schema_probe NOLOGIN;', cleanup='ALTER ROLE autodata_schema_probe LOGIN;'),
+    _case('missing_ledger_select', 'REVOKE SELECT ON public.schema_migrations FROM autodata_schema_probe;'),
+    _case('missing_ledger_maintain', 'REVOKE MAINTAIN ON public.schema_migrations FROM autodata_schema_probe;'),
+    _case('missing_database_connect', 'REVOKE CONNECT ON DATABASE autodata FROM autodata_schema_probe;', cleanup='GRANT CONNECT ON DATABASE autodata TO autodata_schema_probe;'),
+    _case('missing_schema_usage', 'REVOKE USAGE ON SCHEMA public FROM autodata_schema_probe;', cleanup='GRANT USAGE ON SCHEMA public TO autodata_schema_probe;'),
+]
+ROLE_AND_OWNERSHIP = [
+    _case('database_owner_even_after_revoke', 'ALTER DATABASE autodata OWNER TO autodata_schema_probe; REVOKE CREATE,TEMP ON DATABASE autodata FROM autodata_schema_probe;', cleanup='ALTER DATABASE autodata OWNER TO autodata_fixture_admin;'),
+    _case('schema_owner_even_after_revoke', 'ALTER SCHEMA public OWNER TO autodata_schema_probe; REVOKE CREATE ON SCHEMA public FROM autodata_schema_probe;', cleanup='ALTER SCHEMA public OWNER TO autodata_fixture_admin;'),
+    _case('relation_owner', 'ALTER TABLE public.schema_migrations OWNER TO autodata_schema_probe;'),
+    _case('sequence_owner', 'CREATE SEQUENCE public.fixture_sequence; ALTER SEQUENCE public.fixture_sequence OWNER TO autodata_schema_probe;', cleanup='DROP SEQUENCE public.fixture_sequence;'),
+    _case('ledger_owner_login', 'ALTER ROLE autodata_schema_owner LOGIN;', cleanup='ALTER ROLE autodata_schema_owner NOLOGIN;'),
+    _case('membership_without_inherit', 'CREATE ROLE fixture_power NOLOGIN; GRANT fixture_power TO autodata_schema_probe;', cleanup='REVOKE fixture_power FROM autodata_schema_probe; DROP ROLE fixture_power;'),
+    _case('inherited_write_privilege', 'CREATE ROLE fixture_power NOLOGIN; ALTER ROLE autodata_schema_probe INHERIT; GRANT fixture_power TO autodata_schema_probe; GRANT UPDATE ON public.schema_migrations TO fixture_power;', cleanup='ALTER ROLE autodata_schema_probe NOINHERIT; DROP OWNED BY fixture_power; REVOKE fixture_power FROM autodata_schema_probe; DROP ROLE fixture_power;'),
+]
+for _name, _flag, _restore in [('superuser','SUPERUSER','NOSUPERUSER'),('createdb','CREATEDB','NOCREATEDB'),
+                              ('createrole','CREATEROLE','NOCREATEROLE'),('replication','REPLICATION','NOREPLICATION'),
+                              ('bypassrls','BYPASSRLS','NOBYPASSRLS'),('inherit','INHERIT','NOINHERIT')]:
+    ROLE_AND_OWNERSHIP.append(_case('role_flag_' + _name, 'ALTER ROLE autodata_schema_probe ' + _flag + ';',
+                                   cleanup='ALTER ROLE autodata_schema_probe ' + _restore + ';'))
+
+EFFECTIVE_PRIVILEGES = []
+for _grantee, _label in [('autodata_schema_probe','direct'),('PUBLIC','public')]:
+    for _privilege in ('INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'):
+        EFFECTIVE_PRIVILEGES.append(_case(_label + '_table_' + _privilege.lower(),
+            'GRANT ' + _privilege + ' ON public.schema_migrations TO ' + _grantee + ';'))
+    for _privilege in ('INSERT','UPDATE','REFERENCES'):
+        EFFECTIVE_PRIVILEGES.append(_case(_label + '_column_' + _privilege.lower(),
+            'GRANT ' + _privilege + '(version) ON public.schema_migrations TO ' + _grantee + ';'))
+    EFFECTIVE_PRIVILEGES.extend([
+        _case(_label + '_other_maintain', 'GRANT MAINTAIN ON public.other_table TO ' + _grantee + ';', cleanup='REVOKE MAINTAIN ON public.other_table FROM ' + _grantee + ';'),
+        _case(_label + '_schema_create', 'GRANT CREATE ON SCHEMA public TO ' + _grantee + ';', cleanup='REVOKE CREATE ON SCHEMA public FROM ' + _grantee + ';'),
+        _case(_label + '_database_create', 'GRANT CREATE ON DATABASE autodata TO ' + _grantee + ';', cleanup='REVOKE CREATE ON DATABASE autodata FROM ' + _grantee + ';'),
+        _case(_label + '_database_temp', 'GRANT TEMP ON DATABASE autodata TO ' + _grantee + ';', cleanup='REVOKE TEMP ON DATABASE autodata FROM ' + _grantee + ';'),
+    ])
+    for _privilege in ('USAGE','UPDATE'):
+        EFFECTIVE_PRIVILEGES.append(_case(_label + '_sequence_' + _privilege.lower(),
+            'CREATE SEQUENCE public.fixture_sequence; GRANT ' + _privilege + ' ON SEQUENCE public.fixture_sequence TO ' + _grantee + ';',
+            cleanup='DROP SEQUENCE public.fixture_sequence;'))
+
+FORBIDDEN_OPERATIONS = [
+    ('probe_insert_denied', "INSERT INTO public.schema_migrations(version) VALUES('003_extra');"),
+    ('probe_update_denied', 'UPDATE public.schema_migrations SET applied_at=applied_at;'),
+    ('probe_delete_denied', 'DELETE FROM public.schema_migrations;'),
+    ('probe_truncate_denied', 'TRUNCATE public.schema_migrations;'),
+    ('probe_other_table_sre_denied', 'BEGIN; LOCK TABLE public.other_table IN SHARE ROW EXCLUSIVE MODE;'),
+]
+LEDGER_CASES = [
+    ('ledger_empty', (), EXPECTED), ('ledger_missing', ('001_initial',), EXPECTED),
+    ('ledger_extra', (*EXPECTED,'003_extra'), EXPECTED), ('ledger_wrong_manifest', EXPECTED, ('003_other',)),
+    ('ledger_value_124_bytes', ('001_'+'a'*120,), ('001_'+'a'*120,)),
+    ('ledger_value_125_bytes_invalid_suffix', ('001_'+'a'*121,), EXPECTED),
+    ('ledger_value_129_bytes', ('001_'+'a'*125,), EXPECTED),
+    ('ledger_non_ascii', ('001_é',), EXPECTED), ('ledger_invalid_spelling', ('001_UPPER',), EXPECTED),
+    ('ledger_256', tuple(f'{n:03}_entry' for n in range(256)), tuple(f'{n:03}_entry' for n in range(256))),
+    ('ledger_257', tuple(f'{n:03}_entry' for n in range(257)), EXPECTED),
+]
+DDL_CASES = [
+    ('locked_create_index', 'CREATE INDEX fixture ON public.schema_migrations(applied_at);', ''),
+    ('locked_create_index_concurrently', 'CREATE INDEX CONCURRENTLY fixture ON public.schema_migrations(applied_at);', ''),
+    ('locked_reindex_concurrently', 'REINDEX TABLE CONCURRENTLY public.schema_migrations;', ''),
+    ('locked_alter_rls', 'ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;', ''),
+    ('locked_alter_type', 'ALTER TABLE public.schema_migrations ALTER COLUMN version TYPE varchar(128);', ''),
+    ('locked_rename', 'ALTER TABLE public.schema_migrations RENAME TO fixture_old;', 'DROP TABLE public.fixture_old;'),
+    ('locked_drop', 'DROP TABLE public.schema_migrations;', ''),
+    ('locked_drop_recreate', 'DROP TABLE public.schema_migrations; CREATE TABLE public.schema_migrations(version text PRIMARY KEY,applied_at timestamptz NOT NULL);', ''),
+    ('locked_insert', "INSERT INTO public.schema_migrations(version) VALUES('003_extra');", ''),
+]
+QUEUED_DDL_CASES = [
+    ('queued_create_index', 'CREATE INDEX fixture ON public.schema_migrations(applied_at);'),
+    ('queued_create_index_concurrently', 'CREATE INDEX CONCURRENTLY fixture ON public.schema_migrations(applied_at);'),
+    ('queued_reindex_concurrently', 'REINDEX TABLE CONCURRENTLY public.schema_migrations;'),
+    ('queued_ledger_insert', "INSERT INTO public.schema_migrations(version) VALUES('003_extra');"),
+]
+PRELOCK_CASES = [
+    ('snapshot_after_index_commit', 'CREATE INDEX fixture ON public.schema_migrations(applied_at);', True),
+    ('snapshot_after_type_commit', 'ALTER TABLE public.schema_migrations ALTER COLUMN version TYPE varchar(128);', True),
+    ('snapshot_after_rls_commit', 'ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;', True),
+    ('snapshot_after_writer_commit', "INSERT INTO public.schema_migrations(version) VALUES('003_extra');", False),
+]
+FRAME_FAULTS = [
+    ('frame_invalid_json', lambda value: b'{bad}\n'), ('frame_unknown_protocol', lambda value: json.dumps({**json.loads(value), 'protocol_version': 1}).encode()+b'\n'),
+    ('frame_capture_overflow', lambda value: b' '*524289), ('frame_truncated', lambda value: value[:-1]),
+    ('frame_second_row', lambda value: value+b'{}\n'), ('frame_invalid_utf8', lambda value: b'\xff\n'),
+    ('frame_excessive_depth', lambda value: b'['*9+b']'*9+b'\n'),
+]
+LEDGER_FRAME_FAULTS = (
+    'ledger_frame_count_bool','ledger_frame_overflow','ledger_frame_invalid',
+    'ledger_frame_reordered','ledger_frame_truncated','ledger_frame_capture_overflow',
+    'ledger_frame_second_row','ledger_frame_missing_values')
+FINALIZE_FAULTS = ('terminal_marker_wrong','frontend_killed_before_clean_exit','finish_write_failure')
+CLIENT_FAULTS = ('client_killed_after_lock','client_killed_after_catalog','partial_write_after_lock',
+                 'stdin_pipe_closed_after_lock','server_terminated_after_catalog','stdout_eof_after_catalog',
+                 'transport_deadline_after_catalog')
+REQUIRED_RUNTIME_CASES = frozenset(
+    [case['case'] for table in (HOSTILE_RELATIONS, REQUIRED_PRIVILEGES, ROLE_AND_OWNERSHIP, EFFECTIVE_PRIVILEGES) for case in table]
+    + [case[0] for table in (FORBIDDEN_OPERATIONS, LEDGER_CASES, DDL_CASES, QUEUED_DDL_CASES, PRELOCK_CASES, FRAME_FAULTS) for case in table]
+    + list(CLIENT_FAULTS) + list(LEDGER_FRAME_FAULTS) + list(FINALIZE_FAULTS)
+    + ['safe_ledger','maintain_sre_read_only_non_owner','select_only_sre_denied',
+       'duplicate_rows_without_primary_key','safe_oid_replacement_before_lock',
+       'server_statement_timeout','server_query_cancelled','probe_lock_timeout',
+       'idle_cleanup_after_lock','idle_cleanup_after_catalog','closed_connection_reuse_rejected',
+       'containerless_wrong_socket_role_identity','containerless_wrong_database_identity'])
+
 
 def receipt(status, **details):
     """Fixed safe fields only, never exception/log/SQL/source payloads."""
@@ -86,7 +260,7 @@ def toolchain():
         if os.getuid() == 0: raise ValueError()
         hashes = {key: hashlib.sha256(value.read_bytes()).hexdigest() for key, value in tools.items()}
         hashes['pg_config.h'] = hashlib.sha256(header.read_bytes()).hexdigest()
-        for name in ('schema_probe.py', 'testdata/schema_probe_sentinel.c', 'testdata/schema_probe_fixtures.sql'):
+        for name in ('schema_probe.py', 'test_schema_probe_pg17.py', 'testdata/schema_probe_sentinel.c', 'testdata/schema_probe_fixtures.sql'):
             hashes[name] = hashlib.sha256((HERE / name).read_bytes()).hexdigest()
         return tools, include, compiler, version, hashes
     except (OSError, ValueError, subprocess.SubprocessError, UnicodeError):
@@ -96,13 +270,15 @@ def toolchain():
 
 class PsqlTransport:
     """A single bounded fixture-owned process. No arbitrary server endpoints."""
-    def __init__(self, fixture, role='autodata_schema_probe'):
+    def __init__(self, fixture, role='autodata_schema_probe', *, administrator=False):
         self.deadline = time.monotonic() + 12
         self.buffer = bytearray()
         self.writes = []
         self.fixture = fixture
-        self.proc = subprocess.Popen(fixture.argv(role), env={**fixture.env, 'PGOPTIONS': probe.PGOPTIONS,
-                                    'PGAPPNAME': 'autodata_probe_fixture'}, cwd=fixture.root,
+        if administrator and role != ADMIN: raise RuntimeError('invalid fixture administrator identity')
+        options = '-c statement_timeout=4000 -c lock_timeout=1000 -c search_path=pg_catalog' if administrator else probe.PGOPTIONS
+        self.proc = subprocess.Popen(fixture.argv(role), env={**fixture.env, 'PGOPTIONS': options,
+                                    'PGAPPNAME': 'autodata_ddl_fixture' if administrator else 'autodata_probe_fixture'}, cwd=fixture.root,
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         os.set_blocking(self.proc.stdin.fileno(), False)
         os.set_blocking(self.proc.stdout.fileno(), False)
@@ -221,7 +397,18 @@ class LocalFixture:
         return result.stdout
 
     def reset(self):
-        self.admin("""DO $f$ DECLARE k text; BEGIN
+        # Restore global fixture authority so a previous privilege adversary
+        # cannot make later catalog cases pass merely through an auth failure.
+        self.admin("""ALTER DATABASE autodata OWNER TO autodata_fixture_admin;
+ ALTER SCHEMA public OWNER TO autodata_fixture_admin;
+ ALTER ROLE autodata_schema_probe LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ REVOKE CREATE,TEMP ON DATABASE autodata FROM PUBLIC,autodata_schema_probe,autodata_metrics;
+ GRANT CONNECT ON DATABASE autodata TO autodata_schema_probe,autodata_metrics;
+ REVOKE ALL ON SCHEMA public FROM PUBLIC;
+ REVOKE CREATE ON SCHEMA public FROM autodata_schema_probe,autodata_metrics;
+ GRANT USAGE ON SCHEMA public TO autodata_schema_probe,autodata_metrics,autodata_schema_owner;
+ REVOKE ALL ON public.other_table FROM PUBLIC,autodata_schema_probe;
+ DO $f$ DECLARE k text; BEGIN
  SELECT relkind::text INTO k FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
  WHERE n.nspname='public' AND c.relname='schema_migrations';
  IF k='v' THEN DROP VIEW public.schema_migrations CASCADE;
@@ -233,10 +420,13 @@ class LocalFixture:
  GRANT SELECT ON public.schema_migrations TO autodata_metrics;
  INSERT INTO public.schema_migrations(version) VALUES ('001_initial'),('002_accounts');""")
 
-    def marker_count(self, offset):
+    def marker_count(self, offset, kind=None):
         with self.log.open('rb') as stream:
             stream.seek(offset)
-            return stream.read(1048576).count(b'AUTODATA_PROBE_SENTINEL:')
+            data = stream.read(1048577)
+            if len(data) > 1048576: raise RuntimeError('fixture log observation limit')
+            marker = b'AUTODATA_PROBE_SENTINEL:' + (kind.encode('ascii') if kind else b'')
+            return data.count(marker)
 
     def clean_sessions(self):
         limit = time.monotonic() + 7
@@ -254,6 +444,14 @@ class LocalFixture:
             if count.strip() == b'1': return
             time.sleep(0.02)
         raise RuntimeError('fixture lock barrier unavailable')
+
+    def wait_catalog(self, sql, expected=b'1', seconds=0.7):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if self.admin(sql).strip() == expected:
+                return
+            time.sleep(0.01)
+        raise RuntimeError('fixture catalog barrier unavailable')
 
     def stop(self):
         errors = []
@@ -314,6 +512,22 @@ class ToolchainGateTests(unittest.TestCase):
                         Pg17Acceptance.tearDownClass.__func__(owner)
                 self.assertEqual(calls, ['clean', 'stop'])
                 self.assertIs(caught.exception, clean_error if clean_fails else stop_error)
+
+    def test_missing_runtime_case_fails_after_owned_server_shutdown(self):
+        from types import SimpleNamespace
+        calls = []
+        owner = SimpleNamespace(fixture=SimpleNamespace(
+            clean_sessions=lambda: calls.append('clean'),
+            stop=lambda: calls.append('stop')), cases=[])
+        with patch(__name__ + '.receipt') as emit:
+            with self.assertRaisesRegex(AssertionError, 'PG17 runtime matrix incomplete'):
+                Pg17Acceptance.tearDownClass.__func__(owner)
+        self.assertEqual(calls, ['clean', 'stop'])
+        details = emit.call_args.kwargs
+        self.assertFalse(details['matrix_complete'])
+        self.assertFalse(details['runtime_verified'])
+        self.assertEqual(set(details['missing_cases']), REQUIRED_RUNTIME_CASES)
+        self.assertEqual(details['passed_cases'], [])
 
     def test_transport_bounds_frames_and_reaps_owned_client(self):
         import sys
@@ -382,8 +596,12 @@ class Pg17Acceptance(unittest.TestCase):
             except BaseException:
                 pass  # Evidence I/O must not replace the original cleanup error.
             raise primary
-        receipt('fixture_stopped', passed_cases=cls.cases, runtime_verified=False,
-                qualification='Individual case receipts do not establish production or full planned-matrix acceptance.')
+        missing = sorted(REQUIRED_RUNTIME_CASES.difference(cls.cases))
+        receipt('fixture_stopped', passed_cases=sorted(cls.cases), missing_cases=missing,
+                runtime_verified=False, matrix_complete=not missing,
+                qualification='Execution still requires independent evidence review; production authority remains false.')
+        if missing:
+            raise AssertionError('PG17 runtime matrix incomplete: ' + ','.join(missing))
 
     def setUp(self):
         self.fixture.reset()
@@ -392,132 +610,362 @@ class Pg17Acceptance(unittest.TestCase):
         for client in self.fixture.clients: client.abort()
         self.fixture.clean_sessions()
 
-    def passed(self):
-        self.cases.append(self.id().split('.')[-1])
-        receipt('case_passed', case=self.cases[-1], runtime_verified=False)
+    def passed(self, case, **details):
+        self.assertNotIn(case, self.cases)
+        self.cases.append(case)
+        receipt('case_passed', case=case, runtime_verified=False, **details)
 
-    def observe(self, expected=EXPECTED):
-        return probe.observe_catalog_ledger(PsqlTransport(self.fixture), expected)
+    def observe(self, expected=EXPECTED, transport=None):
+        return probe.observe_catalog_ledger(transport or PsqlTransport(self.fixture), expected)
 
-    def rejected(self):
+    def rejected(self, role='autodata_schema_probe', transport=None):
         offset = self.fixture.log.stat().st_size
-        transport = PsqlTransport(self.fixture)
-        with self.assertRaises(probe.ProbeUnavailable): probe.observe_catalog_ledger(transport, EXPECTED)
+        transport = transport or PsqlTransport(self.fixture, role)
+        with self.assertRaises(probe.ProbeUnavailable): self.observe(transport=transport)
         self.assertNotIn(hashlib.sha256(probe.LEDGER_SQL).hexdigest(), transport.writes)
         self.assertEqual(self.fixture.marker_count(offset), 0)
+        self.fixture.clean_sessions()
+        return {'sql_sha256_order': transport.writes, 'sentinel_offset': offset, 'sentinel_count': 0,
+                'backend_and_lock_cleanup': True}
 
-    def test_safe_ledger_and_select_only_lock_denial(self):
-        self.assertFalse(self.observe()['production_ready'])
+    def hostile_case(self, case, setup, cleanup='', control=None, marker=None, control_success=True,
+                     setup_success=True):
+        with self.subTest(case=case):
+            self.fixture.reset()
+            self.assertTrue(self.observe()['ledger_matches'], 'invalid clean fixture control')
+            evidence = {}
+            try:
+                self.fixture.admin(setup, success=setup_success)
+                evidence = {}
+                if control is not None:
+                    offset = self.fixture.log.stat().st_size
+                    self.fixture.admin(control, success=control_success)
+                    count = self.fixture.marker_count(offset, marker)
+                    self.assertGreater(count, 0, 'invalid sentinel positive control')
+                    evidence.update(control_offset=offset, control_marker=marker, control_count=count)
+                evidence.update(self.rejected())
+            finally:
+                for client in self.fixture.clients: client.abort()
+                if cleanup: self.fixture.admin(cleanup)
+            self.passed(case, **evidence)
+
+    def test_safe_ledger_and_effective_probe_authority(self):
+        self.assertEqual(self.observe(), {'protocol_version': 3, 'scope': 'disposable_schema_ledger',
+                         'ledger_matches': True, 'schema_attested': False,
+                         'production_ready': False, 'deployment_authorized': False})
+        self.passed('safe_ledger')
+        t = PsqlTransport(self.fixture)
+        t.send(probe.BEGIN_SQL); self.fixture.wait_lock()
+        t.send(probe.CATALOG_SQL)
+        facts = probe._decode(t.read_frame(524288, time.monotonic() + 3))
+        probe.validate_catalog(facts)
+        self.assertFalse(facts['rights']['relation_owner'])
+        self.assertEqual(facts['rights']['membership_count'], 0)
+        self.assertTrue(facts['identity']['transaction_read_only'])
+        self.assertTrue(facts['rights']['ledger_maintain'])
+        t.send(probe.FINISH_SQL); t.close()
+        self.passed('maintain_sre_read_only_non_owner')
         t = PsqlTransport(self.fixture, 'autodata_metrics')
         t.send(probe.BEGIN_SQL + probe.CATALOG_SQL)
         with self.assertRaises(probe.ProbeUnavailable): t.read_frame(524288, time.monotonic() + 3)
         t.abort()
-        self.passed()
+        self.passed('select_only_sre_denied')
+        for name, statement in FORBIDDEN_OPERATIONS:
+            with self.subTest(case=name):
+                self.fixture.admin('SET ROLE autodata_schema_probe; ' + statement, success=False)
+                self.assertTrue(self.observe()['ledger_matches'])
+                self.passed(name)
 
-    def test_hostile_sentinels_have_positive_controls(self):
-        # Every negative control intentionally reads the hostile object locally.
-        # Setup log output is excluded before observing either control or probe.
-        cases = [
-            ("DROP TABLE public.schema_migrations; CREATE VIEW public.schema_migrations AS SELECT public.probe_text('001_initial') AS version,now() AS applied_at; GRANT SELECT ON public.schema_migrations TO autodata_schema_probe;", "SELECT * FROM public.schema_migrations;", True),
-            ("DROP TABLE public.schema_migrations; CREATE FOREIGN TABLE public.schema_migrations(version text,applied_at timestamptz) SERVER probe_server; GRANT SELECT ON public.schema_migrations TO autodata_schema_probe;", "SELECT * FROM public.schema_migrations;", False),
-            ("ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY; ALTER TABLE public.schema_migrations FORCE ROW LEVEL SECURITY; CREATE POLICY fixture ON public.schema_migrations USING(public.probe_predicate('rls'));", "SET ROLE autodata_schema_probe; SELECT * FROM public.schema_migrations;", True),
-            ("DROP TABLE public.schema_migrations; CREATE TABLE public.schema_migrations(version public.probe_type,applied_at timestamptz NOT NULL); INSERT INTO public.schema_migrations VALUES('001_initial',now()); ALTER TABLE public.schema_migrations OWNER TO autodata_schema_owner; GRANT SELECT,MAINTAIN ON public.schema_migrations TO autodata_schema_probe;", "SELECT * FROM public.schema_migrations;", True),
-            ("ALTER TABLE public.schema_migrations SET ACCESS METHOD probe_heap;", "SELECT * FROM public.schema_migrations;", True),
-            ("CREATE INDEX fixture ON public.schema_migrations USING probe_btree(version);", "SELECT * FROM public.schema_migrations;", True),
-            ("CREATE INDEX fixture ON public.schema_migrations((public.probe_text('constant')));", "SELECT * FROM public.schema_migrations;", True),
-            ("CREATE INDEX fixture ON public.schema_migrations(version) WHERE public.probe_predicate('constant');", "SELECT * FROM public.schema_migrations;", True),
-        ]
-        for setup, control, success in cases:
-            with self.subTest(fixture=cases.index((setup, control, success))):
-                self.fixture.reset(); self.fixture.admin(setup)
+    def test_hostile_relation_and_execution_matrix(self):
+        for case in HOSTILE_RELATIONS:
+            self.hostile_case(**case)
+
+    def test_missing_role_and_required_privileges(self):
+        for case in REQUIRED_PRIVILEGES:
+            self.hostile_case(**case)
+
+    def test_role_flags_membership_and_object_ownership(self):
+        for case in ROLE_AND_OWNERSHIP:
+            self.hostile_case(**case)
+
+    def test_effective_public_table_column_sequence_privileges(self):
+        for case in EFFECTIVE_PRIVILEGES:
+            self.hostile_case(**case)
+
+    def test_bounded_ledger_value_matrix(self):
+        for case, versions, expected in LEDGER_CASES:
+            with self.subTest(case=case):
+                self.fixture.reset()
+                self.fixture.admin('TRUNCATE public.schema_migrations;')
+                if versions:
+                    # Values are fixture-owned literals, never user inputs.
+                    values = ','.join("('" + value.replace("'", "''") + "')" for value in versions)
+                    self.fixture.admin('INSERT INTO public.schema_migrations(version) VALUES ' + values + ';')
                 offset = self.fixture.log.stat().st_size
-                self.fixture.admin(control, success=success)
-                self.assertGreater(self.fixture.marker_count(offset), 0, 'invalid sentinel negative control')
-                self.rejected()
-        self.passed()
+                transport = PsqlTransport(self.fixture)
+                if case in ('ledger_256', 'ledger_value_124_bytes'):
+                    self.assertTrue(self.observe(expected, transport)['ledger_matches'])
+                else:
+                    with self.assertRaises(probe.ProbeUnavailable): self.observe(expected, transport)
+                self.assertIn(hashlib.sha256(probe.LEDGER_SQL).hexdigest(), transport.writes)
+                self.assertEqual(self.fixture.marker_count(offset), 0)
+                self.fixture.clean_sessions()
+                self.passed(case, sql_sha256_order=transport.writes, sentinel_count=0)
+        # A duplicate is impossible in the accepted primary-key shape. Removing
+        # that constraint permits a duplicate fixture but must fail catalog phase.
+        self.hostile_case('duplicate_rows_without_primary_key',
+            "ALTER TABLE public.schema_migrations DROP CONSTRAINT schema_migrations_pkey; "
+            "INSERT INTO public.schema_migrations(version) VALUES('001_initial');")
 
-    def test_additional_indexes_columns_rls_and_privileges(self):
-        statements = ["CREATE INDEX fixture ON public.schema_migrations(applied_at);",
-                      "CREATE INDEX fixture ON public.schema_migrations(version public.probe_text_ops);",
-                      "ALTER TABLE public.schema_migrations ALTER COLUMN applied_at DROP NOT NULL;",
-                      "ALTER TABLE public.schema_migrations ADD COLUMN extra text;",
-                      "ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;",
-                      "GRANT UPDATE ON public.schema_migrations TO PUBLIC;",
-                      "GRANT UPDATE(version) ON public.schema_migrations TO autodata_schema_probe;",
-                      "GRANT MAINTAIN ON public.other_table TO PUBLIC;",
-                      "ALTER TABLE public.schema_migrations OWNER TO autodata_schema_probe;"]
-        for sql in statements:
-            with self.subTest(statement=statements.index(sql)):
-                self.fixture.reset(); self.fixture.admin(sql); self.rejected()
-                self.fixture.admin('REVOKE MAINTAIN ON public.other_table FROM PUBLIC;')
-        self.passed()
-
-    def test_bounded_ledger_values(self):
-        for rows in ([], ['003_extra'], ['001_' + 'x' * 129], ['001_é'], [f'{i:03}_entry' for i in range(257)]):
-            self.fixture.reset(); self.fixture.admin('TRUNCATE public.schema_migrations;')
-            if rows:
-                self.fixture.admin('INSERT INTO public.schema_migrations(version) VALUES ' + ','.join("('" + value + "')" for value in rows) + ';')
-            with self.assertRaises(probe.ProbeUnavailable): self.observe()
-        self.fixture.reset(); self.fixture.admin('TRUNCATE public.schema_migrations;')
-        rows = tuple(f'{i:03}_entry' for i in range(256))
-        self.fixture.admin('INSERT INTO public.schema_migrations(version) VALUES ' + ','.join("('" + value + "')" for value in rows) + ';')
-        self.assertTrue(self.observe(rows)['ledger_matches'])
-        self.passed()
-
-    def test_concurrent_ddl_waits_for_strong_lock(self):
-        statements = ['CREATE INDEX fixture ON public.schema_migrations(applied_at);',
-                      'CREATE INDEX CONCURRENTLY fixture ON public.schema_migrations(applied_at);',
-                      'REINDEX TABLE CONCURRENTLY public.schema_migrations;',
-                      'ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;',
-                      'ALTER TABLE public.schema_migrations ALTER COLUMN version TYPE varchar(128);',
-                      'ALTER TABLE public.schema_migrations RENAME TO fixture_old;',
-                      'DROP TABLE public.schema_migrations;',
-                      "INSERT INTO public.schema_migrations(version) VALUES('003_extra');"]
-        for sql in statements:
-            with self.subTest(statement=statements.index(sql)):
+    def test_concurrent_ddl_lock_timeout_and_completion(self):
+        for case, statement, cleanup in DDL_CASES:
+            with self.subTest(case=case):
                 self.fixture.reset()
                 t = PsqlTransport(self.fixture); t.send(probe.BEGIN_SQL); self.fixture.wait_lock()
-                self.fixture.admin("SET lock_timeout='1s'; " + sql, success=False)
+                started = time.monotonic()
+                self.fixture.admin("SET lock_timeout='1s'; " + statement, success=False)
+                self.assertLess(time.monotonic() - started, 4)
+                self.fixture.wait_lock()  # observer still owns its strong lock
                 t.send(probe.FINISH_SQL); t.close()
-                if 'CREATE INDEX' in sql: self.fixture.admin('DROP INDEX IF EXISTS public.fixture;')
-                self.fixture.admin(sql)
-                if 'RENAME' in sql: self.fixture.admin('DROP TABLE public.fixture_old;')
-        self.passed()
+                # Concurrent CREATE INDEX can leave an invalid index after its
+                # timeout. Remove that test-owned remnant before retrying.
+                if 'CREATE INDEX' in statement: self.fixture.admin('DROP INDEX IF EXISTS public.fixture;')
+                self.fixture.admin(statement)
+                if cleanup: self.fixture.admin(cleanup)
+                self.passed(case, held_lock_barrier=True, denied_while_locked=True,
+                            completed_after_rollback=True)
 
-    def test_first_snapshot_after_ddl_commit(self):
-        # A fixture-owned second psql holds DDL before the observer's first LOCK.
-        owner = subprocess.Popen(self.fixture.argv(ADMIN), env=self.fixture.env, cwd=self.fixture.root,
-                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    def test_queued_ddl_completes_only_after_rollback(self):
+        for case, statement in QUEUED_DDL_CASES:
+            with self.subTest(case=case):
+                self.fixture.reset()
+                t = PsqlTransport(self.fixture); t.send(probe.BEGIN_SQL); self.fixture.wait_lock()
+                waiter = PsqlTransport(self.fixture, ADMIN, administrator=True)
+                try:
+                    waiter.send(statement.encode() + b'\n\\echo DDL_COMPLETED\n')
+                    self.fixture.wait_catalog("SELECT count(*) FROM pg_catalog.pg_locks l JOIN pg_catalog.pg_stat_activity a ON a.pid=l.pid WHERE a.application_name='autodata_ddl_fixture' AND NOT l.granted;")
+                    self.assertIsNone(waiter.proc.poll())
+                    t.send(probe.FINISH_SQL); t.close()
+                    self.assertEqual(waiter.read_frame(64, time.monotonic() + 2), b'DDL_COMPLETED\n')
+                    waiter.send(probe.FINISH_SQL); waiter.close()
+                    self.passed(case, waiting_lock_barrier=True, completed_after_rollback=True)
+                finally:
+                    waiter.abort(); t.abort()
+
+    def test_first_snapshot_follows_committed_index_type_rls_or_write(self):
+        for case, ddl, should_reject_catalog in PRELOCK_CASES:
+            with self.subTest(case=case):
+                self.fixture.reset()
+                owner = PsqlTransport(self.fixture, ADMIN, administrator=True)
+                t = PsqlTransport(self.fixture)
+                try:
+                    owner.send(('BEGIN; ' + ddl + '\n\\echo HELD\n').encode())
+                    self.assertEqual(owner.read_frame(64, time.monotonic() + 2), b'HELD\n')
+                    t.send(probe.BEGIN_SQL)
+                    self.fixture.wait_catalog("SELECT count(*) FROM pg_catalog.pg_locks l JOIN pg_catalog.pg_stat_activity a ON a.pid=l.pid WHERE a.usename='autodata_schema_probe' AND NOT l.granted;")
+                    owner.send(b'COMMIT;\n\\echo AUTODATA_SCHEMA_PROBE_CLOSED_V3\n\\quit\n'); owner.close()
+                    t.send(probe.CATALOG_SQL)
+                    facts = probe._decode(t.read_frame(524288, time.monotonic() + 3))
+                    if should_reject_catalog:
+                        with self.assertRaises(probe.ProbeUnavailable): probe.validate_catalog(facts)
+                        self.assertNotIn(hashlib.sha256(probe.LEDGER_SQL).hexdigest(), t.writes)
+                    else:
+                        probe.validate_catalog(facts)
+                        t.send(probe.LEDGER_SQL)
+                        rows = probe._decode(t.read_frame(524288, time.monotonic() + 3))
+                        self.assertEqual(rows['count'], 3)
+                        self.assertEqual(rows['migrations'], ['001_initial', '002_accounts', '003_extra'])
+                    t.send(probe.FINISH_SQL); t.close()
+                    self.passed(case, waited_before_snapshot=True, observed_committed_change=True)
+                finally:
+                    owner.abort(); t.abort()
+
+    def test_new_safe_relation_oid_before_lock(self):
+        old = self.fixture.admin("SELECT 'public.schema_migrations'::regclass::oid;").strip()
+        self.fixture.reset()
+        new = self.fixture.admin("SELECT 'public.schema_migrations'::regclass::oid;").strip()
+        self.assertNotEqual(old, new)
+        self.assertTrue(self.observe()['ledger_matches'])
+        self.passed('safe_oid_replacement_before_lock')
+
+    def test_malformed_frames_under_actual_held_transaction(self):
+        for case, corrupt in FRAME_FAULTS:
+            with self.subTest(case=case):
+                t = PsqlTransport(self.fixture)
+                class CorruptFrame:
+                    def send(self, data): return t.send(data)
+                    def read_frame(self, maximum, deadline):
+                        actual = t.read_frame(maximum, deadline)
+                        return corrupt(actual)
+                    def abort(self): return t.abort()
+                    def close(self): return t.close()
+                with self.assertRaises(probe.ProbeUnavailable): self.observe(transport=CorruptFrame())
+                self.assertNotIn(hashlib.sha256(probe.LEDGER_SQL).hexdigest(), t.writes)
+                self.fixture.clean_sessions()
+                self.passed(case, backend_and_lock_cleanup=True)
+
+    def test_ledger_frame_failures_after_valid_catalog(self):
+        for case in LEDGER_FRAME_FAULTS:
+            with self.subTest(case=case):
+                t = PsqlTransport(self.fixture)
+                class CorruptLedger:
+                    reads = 0
+                    def send(self, data): return t.send(data)
+                    def read_frame(self, maximum, deadline):
+                        actual = t.read_frame(maximum, deadline)
+                        self.reads += 1
+                        if self.reads == 1: return actual
+                        if case == 'ledger_frame_truncated': return actual[:-1]
+                        if case == 'ledger_frame_capture_overflow': return b' ' * 524289
+                        if case == 'ledger_frame_second_row': return actual + b'{}\n'
+                        value = json.loads(actual)
+                        if case == 'ledger_frame_count_bool': value['count'] = True
+                        elif case == 'ledger_frame_overflow': value['overflow'] = True
+                        elif case == 'ledger_frame_invalid': value['invalid'] = True
+                        elif case == 'ledger_frame_reordered': value['migrations'].reverse()
+                        elif case == 'ledger_frame_missing_values': del value['migrations']
+                        return json.dumps(value).encode() + b'\n'
+                    def close(self): return t.close()
+                    def abort(self): return t.abort()
+                with self.assertRaises(probe.ProbeUnavailable): self.observe(transport=CorruptLedger())
+                self.assertEqual(t.writes.count(hashlib.sha256(probe.LEDGER_SQL).hexdigest()), 1)
+                self.fixture.clean_sessions()
+                self.passed(case, backend_and_lock_cleanup=True)
+
+    def test_terminal_and_exit_failures_cannot_emit_success(self):
+        for case in FINALIZE_FAULTS:
+            with self.subTest(case=case):
+                t = PsqlTransport(self.fixture)
+                class FinalizeFault:
+                    def send(self, data):
+                        if data == probe.FINISH_SQL and case == 'terminal_marker_wrong':
+                            return t.send(b'ROLLBACK;\n\\echo WRONG_MARKER\n\\quit\n')
+                        if data == probe.FINISH_SQL and case == 'frontend_killed_before_clean_exit':
+                            return t.send(probe.ROLLBACK_SQL + b'\\echo AUTODATA_SCHEMA_PROBE_CLOSED_V3\n')
+                        if data == probe.FINISH_SQL and case == 'finish_write_failure':
+                            t.send(probe.ROLLBACK_SQL)
+                            raise BrokenPipeError()
+                        return t.send(data)
+                    def read_frame(self, maximum, deadline): return t.read_frame(maximum, deadline)
+                    def close(self):
+                        if case == 'frontend_killed_before_clean_exit':
+                            # Hold frontend alive until this injected exit fault,
+                            # rather than racing a naturally completed psql exit.
+                            if t.read_frame(524288, time.monotonic() + 1) != probe.TERMINAL:
+                                raise probe.ProbeUnavailable()
+                            t.proc.kill(); t.proc.wait(timeout=1)
+                            raise OSError('injected nonzero client exit')
+                        return t.close()
+                    def abort(self): return t.abort()
+                with self.assertRaises(probe.ProbeUnavailable): self.observe(transport=FinalizeFault())
+                self.assertEqual(t.writes.count(hashlib.sha256(probe.LEDGER_SQL).hexdigest()), 1)
+                self.fixture.clean_sessions()
+                self.passed(case, backend_and_lock_cleanup=True)
+
+    def test_client_faults_before_and_after_catalog(self):
+        for case in CLIENT_FAULTS:
+            with self.subTest(case=case):
+                t = PsqlTransport(self.fixture)
+                fixture = self.fixture
+                class FaultClient:
+                    def send(self, data):
+                        if data == probe.CATALOG_SQL and case == 'client_killed_after_lock':
+                            fixture.wait_lock(); t.proc.kill(); t.proc.wait(timeout=1)
+                            raise BrokenPipeError()
+                        if data == probe.CATALOG_SQL and case == 'partial_write_after_lock':
+                            fixture.wait_lock(); t.send(data[:32]); raise BrokenPipeError()
+                        if data == probe.CATALOG_SQL and case == 'stdin_pipe_closed_after_lock':
+                            fixture.wait_lock(); t.proc.stdin.close(); raise BrokenPipeError()
+                        return t.send(data)
+                    def read_frame(self, maximum, deadline):
+                        value = t.read_frame(maximum, deadline)
+                        if case == 'client_killed_after_catalog':
+                            t.proc.kill(); t.proc.wait(timeout=1)
+                        elif case == 'server_terminated_after_catalog':
+                            fixture.admin("SELECT pg_catalog.pg_terminate_backend(pid) FROM pg_catalog.pg_stat_activity WHERE usename='autodata_schema_probe';")
+                            t.proc.wait(timeout=2)
+                        elif case == 'stdout_eof_after_catalog':
+                            t.proc.stdout.close(); raise EOFError()
+                        elif case == 'transport_deadline_after_catalog':
+                            raise TimeoutError()
+                        return value
+                    def close(self): return t.close()
+                    def abort(self): return t.abort()
+                with self.assertRaises(probe.ProbeUnavailable): self.observe(transport=FaultClient())
+                self.assertNotIn(hashlib.sha256(probe.LEDGER_SQL).hexdigest(), t.writes)
+                self.fixture.clean_sessions()
+                self.passed(case, backend_and_lock_cleanup=True)
+
+    def test_statement_cancellation_timeout_and_lock_timeout(self):
+        for case in ('server_statement_timeout', 'server_query_cancelled'):
+            with self.subTest(case=case):
+                t = PsqlTransport(self.fixture)
+                fixture = self.fixture
+                class SlowCatalog:
+                    def send(self, data):
+                        if data == probe.CATALOG_SQL:
+                            t.send(b'SELECT pg_catalog.pg_sleep(5);\n')
+                            if case == 'server_query_cancelled':
+                                fixture.wait_catalog("SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE usename='autodata_schema_probe' AND state='active' AND wait_event='PgSleep';")
+                                fixture.admin("SELECT pg_catalog.pg_cancel_backend(pid) FROM pg_catalog.pg_stat_activity WHERE usename='autodata_schema_probe';")
+                            return
+                        return t.send(data)
+                    def read_frame(self, maximum, deadline): return t.read_frame(maximum, deadline)
+                    def close(self): return t.close()
+                    def abort(self): return t.abort()
+                with self.assertRaises(probe.ProbeUnavailable): self.observe(transport=SlowCatalog())
+                self.assertNotIn(hashlib.sha256(probe.LEDGER_SQL).hexdigest(), t.writes)
+                self.fixture.clean_sessions()
+                self.passed(case, backend_and_lock_cleanup=True)
+        owner = PsqlTransport(self.fixture, ADMIN, administrator=True)
         try:
-            owner.stdin.write(b'BEGIN; CREATE INDEX fixture ON public.schema_migrations(applied_at); \\echo HELD\n'); owner.stdin.flush()
-            with selectors.DefaultSelector() as selected:
-                selected.register(owner.stdout, selectors.EVENT_READ)
-                if not selected.select(2) or os.read(owner.stdout.fileno(), 4096) != b'HELD\n':
-                    self.fail('DDL barrier unavailable')
-            t = PsqlTransport(self.fixture); t.send(probe.BEGIN_SQL)
-            # Observe a real waiting lock before allowing the DDL commit.
-            deadline = time.monotonic() + 0.7
-            while True:
-                waiting = self.fixture.admin("SELECT count(*) FROM pg_catalog.pg_locks l JOIN pg_catalog.pg_stat_activity a ON a.pid=l.pid WHERE a.usename='autodata_schema_probe' AND NOT l.granted;")
-                if waiting.strip() == b'1': break
-                if time.monotonic() >= deadline: self.fail('waiting-lock barrier unavailable')
-                time.sleep(0.01)
-            owner.stdin.write(b'COMMIT;\n\\quit\n'); owner.stdin.flush(); owner.wait(timeout=1)
-            t.send(probe.CATALOG_SQL)
-            with self.assertRaises(probe.ProbeUnavailable): probe.validate_catalog(probe._decode(t.read_frame(524288, time.monotonic() + 3)))
-            t.abort()
+            owner.send(b'BEGIN; LOCK TABLE public.schema_migrations IN ACCESS EXCLUSIVE MODE;\n\\echo HELD\n')
+            self.assertEqual(owner.read_frame(64, time.monotonic() + 2), b'HELD\n')
+            t = PsqlTransport(self.fixture)
+            with self.assertRaises(probe.ProbeUnavailable): self.observe(transport=t)
+            self.assertNotIn(hashlib.sha256(probe.LEDGER_SQL).hexdigest(), t.writes)
+            self.fixture.clean_sessions()
+            self.passed('probe_lock_timeout', backend_and_lock_cleanup=True)
         finally:
-            if owner.poll() is None: owner.kill(); owner.wait(timeout=1)
-            owner.stdin.close(); owner.stdout.close()
-        self.passed()
+            owner.abort()
 
-    def test_abandoned_backend_idle_cleanup(self):
-        t = PsqlTransport(self.fixture); t.send(probe.BEGIN_SQL); self.fixture.wait_lock()
-        # Leave the frontend process alive but send no further bytes. Server's
-        # idle_in_transaction_session_timeout must release backend/session locks.
-        self.fixture.clean_sessions()
-        t.abort()
-        self.passed()
+    def test_abandoned_live_frontend_uses_server_idle_cleanup(self):
+        for case, after_catalog in (('idle_cleanup_after_lock', False), ('idle_cleanup_after_catalog', True)):
+            with self.subTest(case=case):
+                t = PsqlTransport(self.fixture); t.send(probe.BEGIN_SQL); self.fixture.wait_lock()
+                if after_catalog:
+                    t.send(probe.CATALOG_SQL)
+                    probe.validate_catalog(probe._decode(t.read_frame(524288, time.monotonic() + 3)))
+                self.assertIsNone(t.proc.poll())
+                self.fixture.clean_sessions()
+                self.assertNotIn(hashlib.sha256(probe.LEDGER_SQL).hexdigest(), t.writes)
+                t.abort()
+                self.passed(case, backend_and_lock_cleanup=True, frontend_was_left_alive=True)
+
+    def test_connection_reuse_and_wrong_identity_cannot_succeed(self):
+        t = PsqlTransport(self.fixture)
+        self.assertTrue(self.observe(transport=t)['ledger_matches'])
+        with self.assertRaises(probe.ProbeUnavailable): self.observe(transport=t)
+        self.assertEqual(t.writes.count(hashlib.sha256(probe.LEDGER_SQL).hexdigest()), 1)
+        self.passed('closed_connection_reuse_rejected')
+        self.fixture.admin('GRANT MAINTAIN ON public.schema_migrations TO autodata_metrics;')
+        try:
+            evidence = self.rejected(role='autodata_metrics')
+            self.passed('containerless_wrong_socket_role_identity', **evidence)
+        finally:
+            self.fixture.admin('REVOKE MAINTAIN ON public.schema_migrations FROM autodata_metrics;')
+        self.fixture.admin('CREATE TABLE public.schema_migrations(version text PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now()); ALTER TABLE public.schema_migrations OWNER TO autodata_schema_owner; GRANT SELECT,MAINTAIN ON public.schema_migrations TO autodata_schema_probe;', database='postgres')
+        try:
+            fixture = self.fixture
+            class OtherDatabase:
+                root = fixture.root
+                env = fixture.env
+                clients = fixture.clients
+                def argv(self, role): return fixture.argv(role, database='postgres')
+            evidence = self.rejected(transport=PsqlTransport(OtherDatabase()))
+            self.passed('containerless_wrong_database_identity', **evidence)
+        finally:
+            self.fixture.admin('DROP TABLE public.schema_migrations;', database='postgres')
 
 
 if __name__ == '__main__':
