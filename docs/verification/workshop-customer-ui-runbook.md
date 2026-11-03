@@ -248,6 +248,7 @@ Git rejected the mounted checkout's different owner, and root-owned0600 fixture
 artifacts prevented the host inventory from reading them. Browser provenance now
 uses an explicit safe.directory for the already verified owned checkout and
 requires actual Git HEAD; an environment SHA cannot replace that observation.
-The external reviewed runner must hand its owned artifacts to the invoking host
-UID/GID in its finalizer before host validation/inventory. Retain the failed
+The external reviewed runner uses the invoking host UID/GID so owned artifacts
+remain readable even after forced termination. Task-specific XDG cache/config
+and temporary paths stay under /tmp; HOME is retained unchanged. Retain the failed
 receipt as harness diagnosis; it does not count toward120 DTO or21 API passes.

@@ -78,7 +78,7 @@ def _child(root_name,engine,provider,directory,monkeypatch):
             runtime.env['INCEPTION_API_BASE_URL']=model+'/v1';runtime.env['INCEPTION_API_TIMEOUT_SECONDS']='35'
             for key,value in runtime.env.items():monkeypatch.setenv(key,value)
             ensure=stack.enter_context(serve(bridge.ensure_handler()));control=stack.enter_context(serve(bridge.control_handler()))
-            allowed=('PATH','GOTOOLCHAIN','GOPROXY','GOFLAGS','CGO_ENABLED','GOMODCACHE','GOCACHE','GOTMPDIR','PLAYWRIGHT_BROWSERS_PATH')
+            allowed=('PATH','GOTOOLCHAIN','GOPROXY','GOFLAGS','CGO_ENABLED','GOMODCACHE','GOCACHE','GOTMPDIR','PLAYWRIGHT_BROWSERS_PATH','XDG_CACHE_HOME','XDG_CONFIG_HOME','TMPDIR')
             env={key:os.environ[key] for key in allowed if key in os.environ}
             assert env.get('GOTOOLCHAIN')=='local' and env.get('GOPROXY')=='off'
             for key in ('GOCACHE','GOTMPDIR'):Path(env[key]).mkdir(parents=True,exist_ok=True)
@@ -136,7 +136,7 @@ def _case(root_name,engine,provider,fresh_database,monkeypatch):
     directory=Path('/artifacts/workshop-browser')/root_name/(engine+'-'+provider)
     directory.mkdir(mode=0o700,parents=True,exist_ok=False)
     repo=fresh_database()
-    allowed=('PATH','PYTHONPATH','PYTHONDONTWRITEBYTECODE','AUTODATA_R3_CANDIDATE_SHA','AUTODATA_LIFECYCLE_TEST','AUTODATA_CATALOG_INTEGRATION_REQUIRED','AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION','GOTOOLCHAIN','GOPROXY','GOFLAGS','CGO_ENABLED','GOMODCACHE','GOCACHE','GOTMPDIR','PLAYWRIGHT_BROWSERS_PATH')
+    allowed=('PATH','PYTHONPATH','PYTHONDONTWRITEBYTECODE','AUTODATA_R3_CANDIDATE_SHA','AUTODATA_LIFECYCLE_TEST','AUTODATA_CATALOG_INTEGRATION_REQUIRED','AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION','GOTOOLCHAIN','GOPROXY','GOFLAGS','CGO_ENABLED','GOMODCACHE','GOCACHE','GOTMPDIR','PLAYWRIGHT_BROWSERS_PATH','XDG_CACHE_HOME','XDG_CONFIG_HOME','TMPDIR')
     env={key:os.environ[key] for key in allowed if key in os.environ}
     env.update(AUTODATA_WORKSHOP_BROWSER_CHILD='1',AUTODATA_WORKSHOP_BROWSER_DATABASE=repo.database_name,AUTODATA_WORKSHOP_BROWSER_DIRECTORY=str(directory))
     suffix=engine if root_name=='test_browser_google_exchange_checkout_library_real_api' else engine+'-'+provider
