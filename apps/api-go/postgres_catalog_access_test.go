@@ -202,6 +202,7 @@ func (f *paidFixture) grant(owner int, configuration, region string) string {
 		{`INSERT INTO workshop_orders(order_id,customer_account_id,organization_id,configuration_id,region,dataset_product_id,terms_version,amount_minor,currency,stripe_account_id,livemode,expected_price_id,provider_idempotency_key,status,first_create_attempt_at,paid_at) SELECT $1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,dataset_product_id,'workshop-v1',2000,'USD','acct_fixture',false,'price_fixture',$6,'paid',now(),now() FROM dataset_products WHERE product_key='workshop-configuration-v1' AND product_version=1`, []any{order, o.AccountID, o.OrganizationID, configuration, region, "fixture:" + order}},
 		{`INSERT INTO dataset_requests(dataset_request_id,dataset_product_id,vehicle_key,region,status,lane,correlation_id,idempotency_key,processing_version,organization_id) SELECT $1::uuid,dataset_product_id,$2,$3,'purchased','fast',$4::uuid,$5,'workshop-v1',$6::uuid FROM dataset_products WHERE product_key='workshop-configuration-v1' AND product_version=1`, []any{request, configuration, region, order, "fixture:" + request, o.OrganizationID}},
 		{`INSERT INTO entitlements(entitlement_id,organization_id,dataset_request_id,provider_event_id,status,granted_at,customer_account_id,configuration_id,region,commerce_order_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4,'active',now(),$5::uuid,$6::uuid,$7,$8::uuid)`, []any{entitlement, o.OrganizationID, request, "fixture:" + entitlement, o.AccountID, configuration, region, order}},
+		{`INSERT INTO dataset_projections(dataset_projection_id,dataset_product_id,dataset_request_id,entitlement_id) SELECT gen_random_uuid(),dataset_product_id,$1::uuid,$2::uuid FROM dataset_requests WHERE dataset_request_id=$1::uuid`, []any{request, entitlement}},
 		{`UPDATE workshop_orders SET entitlement_id=$1::uuid,dataset_request_id=$2::uuid WHERE order_id=$3::uuid`, []any{entitlement, request, order}},
 	}
 	for _, s := range statements {
@@ -328,11 +329,13 @@ func TestPostgresPaidCatalogGrantBeforeWork(t *testing.T) {
 		f.expect(0, "GET", f.path(suffix), "", 403)
 	}
 	f.expect(0, "POST", f.path("/"+f.article+"/prepare"), "{}", 403)
+	f.image(0, "/v1/catalog/images/invalid-v2-token", 404)
 	f.check("unpaid_denied_before_work", paidWorkUnchanged(selectors, f.snapshot("unpaid")))
 	f.exec(`UPDATE auth_sessions SET expires_at=now()-interval '1 second' WHERE customer_account_id=$1::uuid`, f.owners[1].session.AccountID)
 	for _, suffix := range []string{"", "/" + f.article, "/" + f.article + "/source"} {
 		f.expect(1, "GET", f.path(suffix), "", 401)
 	}
+	f.image(1, "/v1/catalog/images/invalid-v2-token", 401)
 	f.check("expired_session_denied_before_work", paidWorkUnchanged(selectors, f.snapshot("expired")))
 	f.grant(0, f.configuration, "US")
 	f.expect(0, "GET", f.path(""), "", 200)
@@ -341,6 +344,13 @@ func TestPostgresPaidCatalogGrantBeforeWork(t *testing.T) {
 	f.controlPaid("grant-unavailable")
 	f.expect(0, "GET", f.path("/"+f.article), "", 503)
 	f.controlPaid("grant-available")
+	f.verifier.mu.Lock()
+	f.verifier.err = ErrCustomerDependency
+	f.verifier.mu.Unlock()
+	f.expect(0, "GET", f.path("/"+f.article), "", 503)
+	f.verifier.mu.Lock()
+	f.verifier.err = nil
+	f.verifier.mu.Unlock()
 	f.check("unavailable_grant_denied_before_work", paidWorkUnchanged(selectors, f.snapshot("unavailable")))
 }
 func TestPostgresPaidCatalogExactScopeAndOwnerIsolation(t *testing.T) {
@@ -358,6 +368,11 @@ func TestPostgresPaidCatalogExactScopeAndOwnerIsolation(t *testing.T) {
 		f.expect(0, "GET", "/v1/catalog/vehicles/"+id+"/articles", "", want)
 	}
 	f.expect(0, "GET", f.path("?region=CA"), "", 404)
+	var adjacentArticle string
+	if err := f.pool.QueryRow(context.Background(), `SELECT canonical_article_id::text FROM canonical_articles WHERE vehicle_configuration_id::text=$1 AND provider_slug=$2`, f.adjacent, f.provider).Scan(&adjacentArticle); err != nil {
+		t.Fatal(err)
+	}
+	f.expect(0, "GET", f.path("/"+adjacentArticle), "", 404)
 	f.check("owner_region_configuration_isolation", true)
 	f.expect(0, "GET", f.path("/"+f.unscoped), "", 404)
 	f.expect(0, "GET", f.path("/legacy"), "", 404)
@@ -388,10 +403,15 @@ func TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse(t *testing.T) {
 	}
 	wg.Wait()
 	close(statuses)
+	responses := 0
 	for status := range statuses {
+		responses++
 		if status != 202 {
 			t.Fatal("concurrent prepare did not observe durable accepted work", status)
 		}
+	}
+	if responses != 8 {
+		t.Fatal("missing concurrent prepare response", responses)
 	}
 	scheduled := f.snapshot("scheduled")
 	f.check("shared_article_job", r3Int(r3Map(scheduled, "counts"), "article_jobs") == 1)
@@ -554,6 +574,7 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	f.check("historical_source_selected", ref.SelectedSourceRevisionID == oldSource && ref.AnchorSourceRevisionID == *fresh.SourceRevisionID)
 	f.image(0, source.Images[0].URL, 200)
 	before := f.reader.calls.Load()
+	rightsBefore := f.snapshot("rights_before")
 	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=(SELECT body_source_snapshot_id FROM canonical_article_source_revisions WHERE source_revision_id=$1::uuid)`, *fresh.SourceRevisionID)
 	f.expect(0, "GET", f.path("/"+f.article), "", 410)
 	f.image(0, fresh.Images[0].URL, 410)
@@ -561,6 +582,36 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE content_sha256::text IN (SELECT asset->>'sha256' FROM canonical_article_source_revisions, jsonb_array_elements(resource_manifest) asset WHERE source_revision_id=$1::uuid AND asset->>'role'='asset')`, *fresh.SourceRevisionID)
 	f.expect(0, "GET", f.path("/"+f.article), "", 410)
 	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE content_sha256::text IN (SELECT asset->>'sha256' FROM canonical_article_source_revisions, jsonb_array_elements(resource_manifest) asset WHERE source_revision_id=$1::uuid AND asset->>'role'='asset')`, *fresh.SourceRevisionID)
+	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=(SELECT descriptor_source_snapshot_id FROM canonical_articles WHERE canonical_article_id=$1::uuid)`, f.article)
+	f.expect(0, "GET", f.path("/"+f.article), "", 410)
+	f.image(0, fresh.Images[0].URL, 410)
+	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=(SELECT descriptor_source_snapshot_id FROM canonical_articles WHERE canonical_article_id=$1::uuid)`, f.article)
+	rows, err := f.pool.Query(context.Background(), `SELECT snapshot.source_snapshot_id::text FROM canonical_articles a JOIN canonical_article_source_revisions revision ON revision.source_revision_id=a.current_source_revision_id JOIN source_snapshots snapshot ON snapshot.source_snapshot_id IN (a.descriptor_source_snapshot_id,revision.body_source_snapshot_id) OR EXISTS(SELECT 1 FROM jsonb_array_elements(revision.resource_manifest) asset WHERE asset->>'sha256'=snapshot.content_sha256::text) WHERE a.canonical_article_id::text=$1 ORDER BY snapshot.source_snapshot_id`, f.article)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshots []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		snapshots = append(snapshots, id)
+	}
+	rows.Close()
+	if rows.Err() != nil || len(snapshots) < 3 {
+		t.Fatal("descriptor/body/resource rights fixture incomplete", rows.Err(), len(snapshots))
+	}
+	for _, snapshot := range snapshots {
+		var review string
+		if err := f.pool.QueryRow(context.Background(), `INSERT INTO source_review_items(source_review_item_id,item_key,item_kind,reason_code,source_snapshot_ids) VALUES(gen_random_uuid(),gen_random_uuid()::text,'quarantine','FIXTURE',jsonb_build_array($1::text)) RETURNING source_review_item_id::text`, snapshot).Scan(&review); err != nil {
+			t.Fatal(err)
+		}
+		f.expect(0, "GET", f.path("/"+f.article), "", 404)
+		f.expect(0, "GET", sourcePath, "", 404)
+		f.image(0, fresh.Images[0].URL, 404)
+		f.exec(`UPDATE source_review_items SET status='approved' WHERE source_review_item_id::text=$1`, review)
+	}
 	f.exec(`UPDATE canonical_articles SET membership_status='retired' WHERE canonical_article_id=$1::uuid`, f.article)
 	f.expect(0, "GET", f.path("/"+f.article), "", 404)
 	f.exec(`UPDATE canonical_articles SET membership_status='active' WHERE canonical_article_id=$1::uuid`, f.article)
@@ -568,14 +619,17 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	f.expect(0, "GET", f.path("/"+f.article), "", 404)
 	f.exec(`UPDATE vehicle_configurations SET reviewer_state='approved' WHERE vehicle_configuration_id=$1::uuid`, f.configuration)
 	f.expect(0, "GET", f.path("/"+f.other+"/source?source_revision_id="+oldSource), "", 404)
-	f.check("rights_denied_before_reader", f.reader.calls.Load() == before)
+	f.check("rights_denied_before_reader", f.reader.calls.Load() == before && paidWorkUnchanged(rightsBefore, f.snapshot("rights_denied")))
 	sanitized, err := sanitizeCatalogSourceHTML(`<img src="https://provider.invalid/private"><script>secret()</script>`, "https://provider.invalid/private", f.applications[0].catalogImageKey)
 	f.check("source_sanitizer_no_private_leak", err == nil && !strings.Contains(sanitized, "https://provider.invalid") && !strings.Contains(sanitized, "script") && !bytes.Contains(raw, []byte("storage_key")) && !bytes.Contains(raw, []byte("source_article_ref")))
 	f.snapshot("rights_final")
 }
 func TestPostgresPaidCatalogCustomerLegacyRoutesDenied(t *testing.T) {
 	f := paidSetup(t)
-	f.grant(0, f.configuration, "US")
+	order := f.grant(0, f.configuration, "US")
+	legacyRequest := f.uuid()
+	f.exec(`INSERT INTO dataset_requests(dataset_request_id,dataset_product_id,vehicle_key,region,status,lane,correlation_id,idempotency_key,processing_version,organization_id) SELECT $1::uuid,dataset_product_id,vehicle_key,region,status,lane,gen_random_uuid(),$1,'fixture-legacy',organization_id FROM dataset_requests WHERE dataset_request_id=(SELECT dataset_request_id FROM workshop_orders WHERE order_id=$2::uuid)`, legacyRequest, order)
+	f.exec(`INSERT INTO entitlements(organization_id,dataset_request_id,provider_event_id,status,granted_at) VALUES($1::uuid,$2::uuid,$3,'active',now())`, f.owners[0].session.OrganizationID, legacyRequest, "legacy:"+legacyRequest)
 	before := f.snapshot("before")
 	routes := []string{"POST /dataset-requests", "GET /dataset-requests/x", "POST /vehicle-identities/resolve", "GET /vehicle-identities/selectors", "POST /knowledge-queries", "POST /job-plans", "GET /datasets/x", "GET /datasets/x/sections", "GET /datasets/x/revisions", "GET /datasets/x/evidence/x", "GET /datasets/x/search", "GET /datasets/x/knowledge", "POST /datasets/x/feedback"}
 	for _, route := range routes {

@@ -91,9 +91,13 @@ func (s *postgresCatalogStore) PaidArticleIdentity(ctx context.Context, configur
 	if !commerceUUID(configurationID) || !commerceUUID(articleID) {
 		return identity, ErrCatalogNotFound
 	}
-	err := s.pool.QueryRow(ctx, `SELECT vehicle_configuration_id::text,canonical_article_id::text,vehicle_id::text,provider_slug,source_vehicle_ref,source_article_ref,current_source_revision_id::text FROM canonical_articles WHERE vehicle_configuration_id::text=$1 AND canonical_article_id::text=$2`, configurationID, articleID).Scan(&identity.ConfigurationID, &identity.CanonicalArticleID, &identity.VehicleID, &identity.ProviderSlug, &identity.SourceVehicleRef, &identity.SourceArticleRef, &identity.CurrentSourceRevisionID)
+	var articleRights, descriptorRights string
+	err := s.pool.QueryRow(ctx, `SELECT a.vehicle_configuration_id::text,a.canonical_article_id::text,a.vehicle_id::text,a.provider_slug,a.source_vehicle_ref,a.source_article_ref,a.current_source_revision_id::text,a.takedown_status,descriptor.takedown_status FROM canonical_articles a JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id WHERE a.vehicle_configuration_id::text=$1 AND a.canonical_article_id::text=$2 AND `+lifecycleEligibleSQL, configurationID, articleID).Scan(&identity.ConfigurationID, &identity.CanonicalArticleID, &identity.VehicleID, &identity.ProviderSlug, &identity.SourceVehicleRef, &identity.SourceArticleRef, &identity.CurrentSourceRevisionID, &articleRights, &descriptorRights)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PaidArticleIdentity{}, ErrCatalogNotFound
+	}
+	if err == nil && (articleRights != "active" || descriptorRights != "active") {
+		return PaidArticleIdentity{}, ErrCatalogWithdrawn
 	}
 	return identity, err
 }
