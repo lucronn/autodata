@@ -1,14 +1,18 @@
 """Inline synthetic parser tests; these are never product acceptance evidence."""
 import copy
 import hashlib
+import io
 import json
 import os
+import stat
+import struct
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+import zipfile
+from unittest.mock import DEFAULT, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import release_acceptance as assembler
@@ -453,6 +457,162 @@ class TrustedBoundaryTests(unittest.TestCase):
             run = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(run.returncode, 2)
             self.assertNotIn('SECRET_PRIVATE_TOKEN', run.stdout+run.stderr)
+
+
+class RawPrimitiveTests(unittest.TestCase):
+    """Synthetic format tests; no producer profile or acceptance is enabled."""
+    def test_raw_json_has_its_own_four_mebibyte_limit(self):
+        raw = b'{"padding":"' + b'x' * (4 * 1024 * 1024 - 14) + b'"}'
+        self.assertEqual(len(raw), 4 * 1024 * 1024)
+        self.assertIn('padding', assembler.strict_raw_json(raw))
+        with self.assertRaisesRegex(assembler.ContractError, '^manifest_size$'):
+            assembler.strict_json(raw)
+        with self.assertRaisesRegex(assembler.ContractError, '^raw_json_size$'):
+            assembler.strict_raw_json(raw + b' ')
+        for invalid in (b'{"x":1,"x":2}', b'{"n":{"x":1,"x":2}}', b'{"x":NaN}',
+                        b'{"x":1e999}', b'{"x":"\\ud800"}', b'\xff', b'[]'):
+            with self.subTest(raw=invalid), self.assertRaises(assembler.ContractError):
+                assembler.strict_raw_json(invalid)
+
+    def test_go_jsonl_requires_complete_bounded_object_records(self):
+        raw = b'{"Action":"run"}\n{"Action":"pass"}\r\n'
+        self.assertEqual([x['Action'] for x in assembler.strict_jsonl(raw)], ['run', 'pass'])
+        for invalid in (b'', b'{}', b'{}\n\n', b'[]\n', b'{}\nnull\n',
+                        b'{"x":1,"x":2}\n', b'{"x":Infinity}\n', b'\xff\n',
+                        b'{}\n' * 65537, b' ' * (4 * 1024 * 1024 + 1)):
+            with self.subTest(raw=invalid[:40]), self.assertRaises(assembler.ContractError):
+                assembler.strict_jsonl(invalid)
+
+    def test_junit_xml_is_utf8_bounded_and_forbids_dtd_entities_and_ambiguity(self):
+        raw = b'<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite tests="1"><testcase name="one"/></testsuite></testsuites>'
+        self.assertEqual(assembler.strict_junit_xml(raw).tag, 'testsuites')
+        invalids = [b'', b'<testsuite', b'<testsuite tests="1" tests="2"/>', b'\xff',
+                    b'<!DOCTYPE testsuite [<!ENTITY x "expanded">]><testsuite>&x;</testsuite>',
+                    b'<!DOCTYPE testsuite SYSTEM "https://example.invalid/private"><testsuite/>',
+                    b'<testsuite><!-- hidden --></testsuite>', b'<testsuite><?hidden x?></testsuite>',
+                    b'<?xml version="1.0" encoding="latin1"?><testsuite/>',
+                    b'<testsuite xmlns="urn:other"/>', b'<other/>',
+                    b'<testsuite>' + b'<x>' * 65 + b'</x>' * 65 + b'</testsuite>',
+                    b'<testsuite>' + b'<testcase/>' * 20001 + b'</testsuite>',
+                    b' ' * (4 * 1024 * 1024 + 1)]
+        for raw in invalids:
+            with self.subTest(raw=raw[:80]), self.assertRaises(assembler.ContractError):
+                assembler.strict_junit_xml(raw)
+
+    def archive(self, entries=None, *, compression=zipfile.ZIP_DEFLATED):
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w', compression=compression) as archive:
+            for name, raw, mode in entries or [('browser/evidence.json', b'{}', stat.S_IFREG | 0o600),
+                                              ('go-fixture.log', b'fixture', stat.S_IFREG | 0o600),
+                                              ('ready.json', b'{}', stat.S_IFREG | 0o600)]:
+                info = zipfile.ZipInfo(name); info.create_system = 3
+                info.external_attr = mode << 16; info.compress_type = compression
+                archive.writestr(info, raw)
+        return stream.getvalue()
+
+    def test_dto_zip_is_fixed_inventory_and_never_extracts(self):
+        raw = self.archive()
+        self.assertEqual(assembler.strict_dto_archive(raw), {
+            'browser/evidence.json': b'{}', 'go-fixture.log': b'fixture', 'ready.json': b'{}'})
+        entries = [('browser/evidence.json', b'{}', stat.S_IFREG | 0o600),
+                   ('go-fixture.log', b'fixture', stat.S_IFREG | 0o600),
+                   ('ready.json', b'{}', stat.S_IFREG | 0o600)]
+        invalids = [b'not a zip', raw[:-3], raw + b'private trailing bytes', b'prefix' + raw,
+                    self.archive(entries[:-1]), self.archive(entries + [('extra', b'x', stat.S_IFREG)]),
+                    self.archive([('browser/evidence.json', b'x', stat.S_IFLNK | 0o777)] + entries[1:]),
+                    self.archive([('../evidence.json', b'{}', stat.S_IFREG)] + entries[1:]),
+                    self.archive([('browser\\evidence.json', b'{}', stat.S_IFREG)] + entries[1:]),
+                    self.archive([('browser/evidence.json', b' ' * (4 * 1024 * 1024 + 1), stat.S_IFREG)] + entries[1:]),
+                    self.archive(compression=zipfile.ZIP_BZIP2)]
+        # Duplicate central names, despite a complete-looking final inventory.
+        with self.assertWarns(UserWarning):
+            invalids.append(self.archive(entries + [entries[0]]))
+        # Mutate compressed bytes, local/central encryption flags and CRC independently.
+        damaged = bytearray(raw); damaged[raw.index(b'browser/evidence.json') + len(b'browser/evidence.json')] ^= 0xff
+        invalids.append(bytes(damaged))
+        encrypted = bytearray(raw); central = raw.index(b'PK\x01\x02')
+        struct.pack_into('<H', encrypted, 6, 1); struct.pack_into('<H', encrypted, central + 8, 1)
+        invalids.append(bytes(encrypted))
+        crc = bytearray(raw); struct.pack_into('<I', crc, central + 16, 0)
+        invalids.append(bytes(crc))
+        # Declared tiny output plus a large actual deflate stream must not hide expansion.
+        bomb = bytearray(self.archive([('browser/evidence.json', b'x' * (4 * 1024 * 1024 + 1),
+                                       stat.S_IFREG | 0o600)] + entries[1:]))
+        central = bomb.index(b'PK\x01\x02')
+        for offset in (22, central + 24): struct.pack_into('<I', bomb, offset, 1)
+        for offset in (14, central + 16): struct.pack_into('<I', bomb, offset, zipfile.crc32(b'x'))
+        invalids.append(bytes(bomb))
+        version = bytearray(raw); struct.pack_into('<H', version, 4, 63)
+        invalids.append(bytes(version))
+        for raw in invalids:
+            with self.subTest(raw=raw[:40]), self.assertRaises(assembler.ContractError):
+                assembler.strict_dto_archive(raw)
+
+    def test_raw_foundations_are_never_selected_by_the_disabled_cli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory); manifest = parent/'envelope.json'
+            root = parent/'raw'; root.mkdir(); (root/'proof.json').write_bytes(b'{}')
+            for tier in ('fixture', 'staging'):
+                item = committed_envelope(); item['requested_tier'] = tier
+                manifest.write_text(json.dumps(item))
+                argv = ['plan', '--manifest', str(manifest), '--evidence-root', str(root),
+                        '--trusted-base-sha', TRUSTED_BASE, '--task-ref', TASK, '--requested-tier', tier]
+                with patch.multiple(assembler, strict_raw_json=DEFAULT, strict_jsonl=DEFAULT,
+                        strict_junit_xml=DEFAULT, strict_dto_archive=DEFAULT,
+                        paid_case_identities=DEFAULT, dto_case_identities=DEFAULT) as mocks:
+                    for mock in mocks.values(): mock.side_effect = AssertionError('raw dispatch forbidden')
+                    with patch.object(assembler, 'ArtifactStore', side_effect=AssertionError('plan root I/O')):
+                        with patch('builtins.print') as output:
+                            self.assertEqual(assembler.main(argv), 0)
+                    result = json.loads(output.call_args.args[0])
+                    self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+                    argv[0] = 'validate'
+                    with patch('builtins.print') as output:
+                        self.assertEqual(assembler.main(argv), 3)
+                    result = json.loads(output.call_args.args[0])
+                    self.assertEqual(result['status'], 'unavailable')
+                    self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+                    self.assertTrue(all(value == 0 for value in result['derived_counts'].values()))
+                    for mock in mocks.values(): mock.assert_not_called()
+
+    def test_fixed_paid_and_dto_identities_reject_count_substitution(self):
+        paid = list(assembler.PAID_CASE_IDS)
+        dto = [dict(browser=browser, scenario=scenario) for browser, scenario in assembler.DTO_CASE_IDS]
+        self.assertEqual(len(assembler.paid_case_identities(paid)), 12)
+        self.assertEqual(len(assembler.dto_case_identities(dto)), 120)
+        for value in [paid[:-1], paid + paid[:1], ['unknown'] + paid[1:], [True] + paid[1:], {}]:
+            with self.subTest(value=str(value)[:40]), self.assertRaises(assembler.ContractError):
+                assembler.paid_case_identities(value)
+        invalids = [dto[:-1], dto + dto[:1], [dict(browser='chromium', scenario='unknown')] + dto[1:],
+                    [dict(browser='other', scenario=dto[0]['scenario'])] + dto[1:],
+                    [dict(browser=True, scenario=dto[0]['scenario'])] + dto[1:],
+                    [dict(dto[0], unknown=True)] + dto[1:], {}]
+        for value in invalids:
+            with self.subTest(value=str(value)[:60]), self.assertRaises(assembler.ContractError):
+                assembler.dto_case_identities(value)
+
+    def test_explicit_store_raw_reader_rechecks_reserved_identity_and_drift(self):
+        value = dict(candidate_sha=BASE, trusted_base_sha=TRUSTED_BASE, profile_sha256='1'*64,
+                     padding='x' * (2 * 1024 * 1024))
+        raw = json.dumps(value).encode()
+        artifact = dict(artifact_id='raw', kind='collector_result', ref='raw.json',
+                        sha256=hashlib.sha256(raw).hexdigest(), bytes=len(raw), visibility='private')
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'raw.json'; path.write_bytes(raw)
+            with assembler.ArtifactStore(directory, [artifact]) as store:
+                result = store.read_raw_json('raw', candidate_sha=BASE,
+                    trusted_base_sha=TRUSTED_BASE, profile_sha256='1'*64)
+                self.assertEqual(result['candidate_sha'], BASE)
+                with self.assertRaises(assembler.ContractError):
+                    store.read_raw_json('raw', candidate_sha='2'*40,
+                        trusted_base_sha=TRUSTED_BASE, profile_sha256='1'*64)
+                original = assembler.strict_raw_json
+                def changed_after_parse(data):
+                    parsed = original(data); path.write_bytes(raw + b' '); return parsed
+                with patch.object(assembler, 'strict_raw_json', side_effect=changed_after_parse):
+                    with self.assertRaisesRegex(assembler.ContractError, '^artifact_size_mismatch$'):
+                        store.read_raw_json('raw', candidate_sha=BASE,
+                            trusted_base_sha=TRUSTED_BASE, profile_sha256='1'*64)
 
 
 if __name__ == '__main__': unittest.main()
