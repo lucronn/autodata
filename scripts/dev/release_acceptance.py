@@ -95,6 +95,39 @@ PAID_MISSING_FAMILIES = ('paid_source_pg_bindings', 'paid_http_media_rights',
     'paid_host_and_input_provenance', 'paid_supervisor_commands_and_isolation',
     'paid_supervisor_authority')
 
+
+# SQL payloads outside these six paid tables remain opaque in this layer.
+PAID_PG_TABLES = ('schema_migrations', 'catalog_articles', 'canonical_articles',
+    'canonical_article_source_revisions', 'canonical_article_source_observations',
+    'canonical_article_revisions', 'canonical_article_reviews',
+    'canonical_article_rewrite_attempts', 'source_fetch_jobs', 'publication_events',
+    'source_snapshots', 'catalog_article_provider_scopes', 'catalog_article_index_pages',
+    'canonical_article_aliases', 'customer_accounts', 'auth_sessions',
+    'workshop_orders', 'workshop_checkout_requests')
+PAID_ROW_FIELDS = {
+    'customer_accounts': 'created_at customer_account_id firebase_project_id firebase_uid personal_organization_id status',
+    'auth_sessions': 'created_at customer_account_id expires_at firebase_auth_time revoked_at session_token_hash',
+    'entitlements': 'commerce_order_id configuration_id customer_account_id dataset_request_id entitlement_id granted_at organization_id payment_event_id provider_event_id region revoke_reason revoked_at status',
+    'workshop_orders': 'amount_minor checkout_session_id checkout_url configuration_id created_at currency customer_account_id dataset_product_id dataset_request_id entitlement_id expected_price_id first_create_attempt_at last_reconciled_at livemode order_id organization_id paid_at payment_intent_id preparation_attempts preparation_index_job_ids preparation_last_error_code preparation_lease_expires_at preparation_lease_owner preparation_next_attempt_at preparation_state provider_expires_at provider_idempotency_key region revocation_reason_code revoked_at status stripe_account_id terms_version updated_at',
+    'dataset_requests': 'correlation_id created_at dataset_product_id dataset_request_id idempotency_key lane organization_id processing_version region source_snapshot_id status updated_at vehicle_id vehicle_key',
+    'dataset_projections': 'created_at dataset_product_id dataset_projection_id dataset_request_id entitlement_id',
+}
+PAID_ROW_NULLABLE = {
+    'customer_accounts': (), 'auth_sessions': ('revoked_at',),
+    'entitlements': ('commerce_order_id', 'configuration_id', 'customer_account_id',
+        'payment_event_id', 'region', 'revoke_reason', 'revoked_at'),
+    'workshop_orders': ('checkout_session_id', 'checkout_url', 'last_reconciled_at',
+        'payment_intent_id', 'preparation_last_error_code', 'preparation_lease_expires_at',
+        'preparation_lease_owner', 'provider_expires_at', 'revocation_reason_code', 'revoked_at'),
+    'dataset_requests': ('source_snapshot_id', 'vehicle_id'), 'dataset_projections': (),
+}
+PAID_PG_COUNT_TABLES = {'article_jobs': 'source_fetch_jobs',
+    'source_revisions': 'canonical_article_source_revisions',
+    'canonical_revisions': 'canonical_article_revisions',
+    'published_revisions': 'canonical_article_revisions',
+    'publication_events': 'publication_events',
+    'source_observations': 'canonical_article_source_observations'}
+
 DTO_ENGINES = ('chromium', 'firefox', 'webkit')
 DTO_SCENARIOS = (
     'bankone-cascade', 'banktwo-cascade', 'dual-bank-coverage', 'one-bank-unavailable',
@@ -597,6 +630,199 @@ def inspect_paid_common(store, *, candidate_sha, trusted_base_sha, profile_sha25
         candidate_sha=candidate_sha, trusted_base_sha=trusted_base_sha, observed_case_ids=observed,
         verified_case_ids=[], missing_validation_families=list(PAID_MISSING_FAMILIES),
         **{flag: False for flag in FLAGS})
+
+
+def _paid_uuid(value):
+    require(type(value) is str and re.fullmatch(
+        r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}', value) is not None,
+        'paid_pg_uuid')
+
+
+def _paid_pg_rows(paid):
+    """Closed paid row shapes and owner/order scope; not full commerce semantics."""
+    exact(paid, PAID_ROW_FIELDS)
+    for table, fields in PAID_ROW_FIELDS.items():
+        array(paid[table])
+        for row in paid[table]:
+            exact(row, fields.split())
+            for key, value in row.items():
+                if value is None and key in PAID_ROW_NULLABLE[table]:
+                    continue
+                if key in ('firebase_auth_time', 'amount_minor', 'preparation_attempts'):
+                    integer(value)
+                elif key == 'livemode':
+                    require(type(value) is bool, 'paid_pg_scalar')
+                elif key == 'preparation_index_job_ids':
+                    array(value)
+                    for item in value: _paid_uuid(item)
+                    unique(value)
+                else:
+                    require(type(value) is str, 'paid_pg_scalar')
+    accounts = paid['customer_accounts']
+    ids = [row['customer_account_id'] for row in accounts]
+    require(len(ids) == 2, 'paid_pg_accounts')
+    for value in ids: _paid_uuid(value)
+    unique(ids)
+    organizations = [row['personal_organization_id'] for row in accounts]
+    for value in organizations: _paid_uuid(value)
+    unique(organizations)
+    unique([row['firebase_uid'] for row in accounts])
+    sessions = paid['auth_sessions']
+    require(len(sessions) >= 2 and {row['customer_account_id'] for row in sessions} == set(ids),
+            'paid_pg_sessions')
+    tokens = []
+    for row in sessions:
+        token = row['session_token_hash']
+        require(re.fullmatch(r'\\x[a-f0-9]{64}', token) is not None, 'paid_pg_session_hash')
+        tokens.append(token)
+        require(timestamp(row['created_at']) <= timestamp(row['expires_at']), 'paid_pg_session_time')
+        if row['revoked_at'] is not None: timestamp(row['revoked_at'])
+    unique(tokens)
+    orders = {}
+    for row in paid['workshop_orders']:
+        _paid_uuid(row['order_id'])
+        require(row['order_id'] not in orders and row['customer_account_id'] in ids,
+                'paid_pg_orders')
+        _paid_uuid(row['configuration_id'])
+        orders[row['order_id']] = row
+    active = set(); grants = []
+    for row in paid['entitlements']:
+        _paid_uuid(row['entitlement_id']); grants.append(row['entitlement_id'])
+        enum(row['status'], ('active', 'revoked'))
+        if row['customer_account_id'] is None:
+            # The frozen negative legacy fixture intentionally lacks structured scope.
+            require(row['configuration_id'] is None and row['commerce_order_id'] is None and
+                    row['region'] is None, 'paid_pg_legacy_scope')
+            continue
+        require(row['customer_account_id'] in ids and row['region'] in ('US', 'CA'), 'paid_pg_grant')
+        _paid_uuid(row['configuration_id'])
+        order = orders.get(row['commerce_order_id'])
+        require(order is not None and all(order[key] == row[key] for key in
+            ('customer_account_id', 'configuration_id', 'region')), 'paid_pg_order_scope')
+        require(order['status'] == 'paid' and order['amount_minor'] == 2000 and order['currency'] == 'USD'
+                and order['livemode'] is False and order['stripe_account_id'] == 'acct_fixture'
+                and order['expected_price_id'] == 'price_fixture', 'paid_pg_payment_binding')
+        if row['status'] == 'active':
+            scope = (row['customer_account_id'], row['configuration_id'], row['region'])
+            require(scope not in active and row['revoked_at'] is None, 'paid_pg_active_scope')
+            timestamp(row['granted_at']); active.add(scope)
+    unique(grants)
+
+
+def _paid_pg_snapshot(snapshot, provider, *, final=False):
+    """Check snapshot boundaries and PG bindings, leaving source payloads opaque."""
+    keys = ('article', 'asset_calls', 'counts', 'ensure', 'ensure_requests', 'grant_calls',
+        'immutable_rows', 'immutable_sha256', 'model_calls', 'paid_rows', 'payment_calls',
+        'provider_calls', 'provider_traces', 'proxy', 'selector_ensure', 'selector_ensure_requests',
+        'source_calls', 'workers') + (() if final else ('reader_calls', 'identity_checks'))
+    exact(snapshot, keys)
+    for key in ('model_calls', 'grant_calls', 'payment_calls') + (() if final else ('reader_calls', 'identity_checks')):
+        integer(snapshot[key])
+    require(snapshot['payment_calls'] == 0, 'paid_pg_payment_work')
+    for group in ('ensure', 'selector_ensure'):
+        value = snapshot[group]; exact(value, ('entered', 'completed', 'active'))
+        for item in value.values(): integer(item)
+        require(value['entered'] == value['completed'] + value['active'] and value['active'] == 0,
+                'paid_pg_unfinished_work')
+        requests = snapshot[group+'_requests']; array(requests)
+        require(len(requests) == value['entered'] and all(type(row) is dict and row for row in requests),
+                'paid_pg_request_inventory')
+    for group in ('provider_calls', 'source_calls', 'asset_calls'):
+        exact(snapshot[group], ('bankone', 'banktwo'))
+        for item in snapshot[group].values(): integer(item)
+    traces = snapshot['provider_traces']; exact(traces, ('bankone', 'banktwo'))
+    for bank, trace in traces.items():
+        array(trace)
+        require(all(type(item) is str and item.startswith('/') for item in trace) and
+                len(trace) == snapshot['provider_calls'][bank], 'paid_pg_provider_trace')
+    proxy = snapshot['proxy']
+    exact(proxy, ('request_received', 'upstream_completed', 'downstream_completed',
+                  'downstream_waiting', 'response_captured', 'errors'))
+    for key in ('request_received', 'upstream_completed', 'downstream_completed', 'downstream_waiting'):
+        integer(proxy[key])
+    require(type(proxy['response_captured']) is bool and proxy['errors'] == [] and
+            proxy['request_received'] >= proxy['upstream_completed'] >= proxy['downstream_completed']
+            and proxy['downstream_waiting'] <= proxy['upstream_completed'] - proxy['downstream_completed'],
+            'paid_pg_proxy')
+    array(snapshot['workers'])
+    for worker in snapshot['workers']:
+        exact(worker, ('kind', 'alive', 'exit_code'))
+        require(worker['kind'] == 'cli' and type(worker['alive']) is bool and
+            (worker['exit_code'] is None if worker['alive'] else type(worker['exit_code']) is int),
+            'paid_pg_worker')
+    rows = snapshot['immutable_rows']; exact(rows, PAID_PG_TABLES)
+    for values in rows.values():
+        array(values)
+        require(all(type(row) is dict and row for row in values), 'paid_pg_row_shape')
+    digest(snapshot['immutable_sha256'])
+    # Frozen producer rows_digest uses JSON's default spacing and ASCII escaping.
+    raw_hash = sha256(json.dumps(rows, sort_keys=True, allow_nan=False).encode('utf-8'))
+    require(raw_hash == snapshot['immutable_sha256'], 'paid_pg_row_hash')
+    article = snapshot['article']
+    require(type(article) is dict, 'paid_pg_article')
+    article_id = article.get('canonical_article_id'); _paid_uuid(article_id)
+    require(article.get('provider_slug') == provider, 'paid_pg_provider')
+    article_ids = []
+    for row in rows['canonical_articles']:
+        value = row.get('canonical_article_id'); _paid_uuid(value); article_ids.append(value)
+        require(row.get('provider_slug') in ('bankone', 'banktwo'), 'paid_pg_provider')
+    unique(article_ids)
+    selected = [row for row in rows['canonical_articles'] if row['canonical_article_id'] == article_id]
+    require(len(selected) == 1 and selected[0]['provider_slug'] == provider, 'paid_pg_article')
+    exact(snapshot['counts'], PAID_PG_COUNT_TABLES)
+    for key, table in PAID_PG_COUNT_TABLES.items():
+        integer(snapshot['counts'][key])
+        for row in rows[table]:
+            require('canonical_article_id' in row, 'paid_pg_count_row')
+            if row['canonical_article_id'] is not None or table != 'source_fetch_jobs':
+                _paid_uuid(row['canonical_article_id'])
+            if table == 'source_fetch_jobs':
+                require(type(row.get('job_kind')) is str, 'paid_pg_count_row')
+            if table == 'canonical_article_revisions':
+                require(type(row.get('status')) is str, 'paid_pg_count_row')
+        counted = [row for row in rows[table] if row['canonical_article_id'] == article_id]
+        if key == 'article_jobs': counted = [row for row in counted if row['job_kind'] == 'article']
+        if key == 'published_revisions': counted = [row for row in counted if row['status'] == 'published']
+        require(len(counted) == snapshot['counts'][key], 'paid_pg_count_binding')
+    _paid_pg_rows(snapshot['paid_rows'])
+    for table in ('customer_accounts', 'auth_sessions', 'workshop_orders'):
+        require(canonical(rows[table]) == canonical(snapshot['paid_rows'][table]), 'paid_pg_paid_row_seam')
+
+
+def inspect_paid_pg_snapshots(store, *, candidate_sha, trusted_base_sha, profile_sha256,
+                              input_manifest_sha256, host_before_sha256, profile_version):
+    """An explicit incomplete PG binding layer, never selected by disabled CLI."""
+    result = inspect_paid_common(store, candidate_sha=candidate_sha, trusted_base_sha=trusted_base_sha,
+        profile_sha256=profile_sha256, input_manifest_sha256=input_manifest_sha256,
+        host_before_sha256=host_before_sha256, profile_version=profile_version)
+    def document(ref):
+        require(ref in store.by_ref, 'paid_missing_raw')
+        return store.read_raw_json(store.by_ref[ref]['artifact_id'], candidate_sha=candidate_sha,
+            trusted_base_sha=trusted_base_sha, profile_sha256=profile_sha256)
+    observed = 0
+    for name in PAID_GO_ROOTS:
+        for bank in ('bankone', 'banktwo'):
+            prefix = 'paid-access/'+bank+'/'+name+'/'
+            measured = document(prefix+'measured-runtime.json')
+            probes = measured['service_probes']; exact(probes, ('postgres', 's3', 'nats'))
+            pg = probes['postgres']; exact(pg, ('database', 'server_version_num', 'user'))
+            require(pg['database'] == measured['fixture_database'] and pg['user'] == 'lifecycle_test' and
+                type(pg['server_version_num']) is int and 170000 <= pg['server_version_num'] < 180000,
+                'paid_pg_probe')
+            s3 = probes['s3']; exact(s3, ('bucket', 'roundtrip_ok'))
+            require(s3['roundtrip_ok'] is True and type(s3['bucket']) is str and
+                re.fullmatch(r'lifecycle-[a-f0-9]{32}', s3['bucket']) is not None, 'paid_s3_probe')
+            exact(probes['nats'], ('jetstream_account_info_ok',))
+            require(probes['nats']['jetstream_account_info_ok'] is True, 'paid_nats_probe')
+            for snapshot in measured['snapshots'].values():
+                _paid_pg_snapshot(snapshot, bank); observed += 1
+            final = measured['final_snapshot']; _paid_pg_snapshot(final, bank, final=True); observed += 1
+            raw_rows = document(prefix+'migration-replay-populated.rows.json')
+            require(canonical(raw_rows) == canonical(final['immutable_rows']), 'paid_pg_final_row_seam')
+    store.recheck()
+    result['observed_pg_snapshot_count'] = observed
+    result['missing_validation_families'].append('paid_pg_row_semantics')
+    return result
 
 
 def references(value, artifacts):
