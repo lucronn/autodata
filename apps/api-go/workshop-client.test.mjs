@@ -5,12 +5,11 @@ import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 test('loading progress uses fixed ordered stages and caps incomplete hydration', () => {
   assert.deepEqual(LOAD_STAGES.map(stage => stage.key), ['year', 'make', 'model', 'configuration', 'articles', 'article']);
-  assert.equal(loadingProgress('make', { complete: true }).percent, 30);
+  assert.equal(loadingProgress('make', { complete: true }).complete, true);
   const partial = loadingProgress('make', { attempt: 40, attempts: 40, hydrating: true });
   assert.equal(partial.step, 2);
   assert.equal(partial.total, 6);
-  assert.equal(partial.percent, 27);
-  assert.ok(partial.percent < 30);
+  assert.equal(partial.percent, null);
 });
 
 test('partial selector hydration expands until complete', async () => {
@@ -102,9 +101,10 @@ test('legacy descriptions get readable paragraph breaks without changing text or
 });
 
 test('image rendering does not contact original providers or accept script URLs', () => {
-  assert.equal(localImageURL('/images/a.png', 'http://localhost:8080'), 'http://localhost:8080/images/a.png');
+  assert.equal(localImageURL('/images/a.png', 'http://localhost:8080'), null);
+  assert.equal(localImageURL('/v1/catalog/images/v2.opaque', 'http://localhost:8080'), 'http://localhost:8080/v1/catalog/images/v2.opaque');
   for (const url of ['https://provider.example/a.png', '//provider.example/a.png', 'javascript:alert(1)', 'data:image/svg+xml,<svg/>', 'artifact://missing']) assert.equal(localImageURL(url, 'http://localhost:8080'), null);
-  assert.equal(localImageURL('data:image/png;base64,YQ==', 'http://localhost:8080'), 'data:image/png;base64,YQ==');
+  assert.equal(localImageURL('data:image/png;base64,YQ==', 'http://localhost:8080', { compatibility: true }), 'data:image/png;base64,YQ==');
 });
 
 test('source references stay same-origin and retain evidence locator context', () => {
@@ -121,4 +121,106 @@ test('search matches all words without changing catalog order or IDs', () => {
   assert.deepEqual(filterArticles(articles, ' PUMP oil ').map(a => a.id), ['one', 'three']);
   assert.deepEqual(filterArticles(articles, ''), articles);
   assert.equal(configurationLabel({ engine: '2.0', trim: 'Base' }), '2.0 / Base');
+});
+
+const scope = { configuration_id: '11111111-1111-4111-8111-111111111111', region: 'US' };
+const orderID = '22222222-2222-4222-8222-222222222222';
+const quote = { version: 'v1', ...scope, product_key: 'workshop-configuration-v1', configuration_label: '2005 Toyota / 2.4L / US', amount_minor: 2000, currency: 'USD', purchase_terms_version: 'workshop-v1', purchasable: true };
+test('quote requires server price and exact configuration/region', async () => {
+  const { validQuote } = await import('./workshop/commerce.mjs');
+  assert.equal(validQuote(quote, scope), true);
+  for (const change of [{ amount_minor: 1 }, { region: 'CA' }, { purchase_terms_version: 'unknown' }, { configuration_id: orderID }, { purchasable: false }]) assert.equal(validQuote({ ...quote, ...change }, scope), false);
+});
+test('checkout URL validation preserves opaque fragment and rejects ambiguous hosts', async () => {
+  const { hostedCheckoutURL } = await import('./workshop/commerce.mjs');
+  const url = 'https://checkout.stripe.com/c/pay/cs_test_123#opaque%2Ffragment';
+  assert.equal(hostedCheckoutURL(url), url);
+  for (const value of ['https://checkout.stripe.com:443/c/pay/x', 'https://checkout.stripe.com.evil/c/pay/x', 'https://user@checkout.stripe.com/c/pay/x', 'https://checkout.stripe.com/c/pay/', 'https://checkout.stripe.com/c/pay/x\n', '//checkout.stripe.com/c/pay/x']) assert.equal(hostedCheckoutURL(value), null);
+});
+test('order discriminants cannot grant access or create automatic replacement', async () => {
+  const { validOrder } = await import('./workshop/commerce.mjs');
+  assert.equal(validOrder({ version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' }, orderID), true);
+  assert.equal(validOrder({ version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'new_key' }, orderID), false);
+});
+test('library requires nullable cursor and accepts revoked never-granted tombstone', async () => {
+  const { validLibrary } = await import('./workshop/commerce.mjs');
+  const item = { ...scope, library_item_id: orderID, label: 'Vehicle', access_state: 'revoked', granted_at: null };
+  for (const next_cursor of [null, '', 'opaque+/=']) assert.equal(validLibrary({ version: 'v1', items: [item], next_cursor }), true);
+  for (const bad of [{ version: 'v1', items: [] }, { version: 'v1', items: [], next_cursor: 4 }, { version: 'v1', items: [{ ...item, access_state: 'paid' }], next_cursor: null }]) assert.equal(validLibrary(bad), false);
+});
+test('checkout attempt shares one in-flight request and retries the same key/body', async () => {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  const values = new Map(), calls = []; let release;
+  const storage = { getItem: k => values.get(k) ?? null, setItem: (k,v) => values.set(k,v), removeItem: k => values.delete(k) };
+  const checkout = createCheckout({ storage, uuid: () => orderID, request: (path, options) => { calls.push(options); return new Promise(resolve => { release = resolve; }); } });
+  const a = checkout.start(scope, 'csrf'); const b = checkout.start(scope, 'csrf');
+  assert.equal(calls.length, 1);
+  release({ version: 'v1', ...scope, order_id: orderID, state: 'processing' });
+  await Promise.all([a,b]);
+  const c = checkout.start(scope, 'fresh-csrf');
+  release({ version: 'v1', ...scope, order_id: orderID, state: 'processing' }); await c;
+  assert.equal(calls[0].headers['Idempotency-Key'], calls[1].headers['Idempotency-Key']);
+  assert.deepEqual(calls[0].body, calls[1].body);
+  assert.ok(![...values.values()].join('').includes('csrf'));
+});
+test('reader is sequential, retains source during transient failure and stops at terminal canonical', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const updates = [], waits = []; let now = 0, calls = 0;
+  const versions = [{ status: 200, data: { article: { body: 'source', processing: { job_id: 'job', state: 'fetching' } } } }, new TypeError('network'), { status: 200, data: { article: { document: { blocks: [{ type: 'paragraph', text: 'canonical' }] }, processing: { job_id: 'job', state: 'completed' } } } }];
+  const result = await readArticle(async () => { calls++; const value=versions.shift();if(value instanceof Error)throw value;return value; }, { now: () => now, wait: async ms => { waits.push(ms);now += ms; }, onUpdate: r => updates.push(r.data.article) });
+  assert.equal(calls,3);assert.equal(updates.length,2);assert.deepEqual(waits,[1000,2000]);assert.equal(result.timedOut,false);
+});
+test('reader honors retry-after and absolute budget without extra request', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs'); let now=0,calls=0;
+  const result = await readArticle(async () => {calls++;return {status:202,data:{article:{processing:{job_id:'job',state:'queued'}}},retryAfterSeconds:9};}, {budgetMs:5000,now:()=>now,wait:async ms=>{now+=ms;}});
+  assert.equal(calls,1);assert.equal(now,5000);assert.equal(result.timedOut,true);
+});
+test('generation invalidation aborts every old callback', async () => {
+  const { NavigationGeneration } = await import('./workshop/article-read.mjs');
+  const g = new NavigationGeneration();const a=g.next();const b=g.next();assert.equal(a.signal.aborted,true);assert.equal(a.current(),false);assert.equal(b.current(),true);g.clear();assert.equal(b.current(),false);
+});
+test('session bootstrap validates cookie authority and never loads SDK for existing session', async () => {
+  const { createSession } = await import('./workshop/auth.mjs'); let sdkLoads=0;const calls=[];
+  const session=createSession({request:async path=>{calls.push(path);return path==='/auth/config'?{version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}}:{authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'memory-only'};},loadSDK:async()=>{sdkLoads++;}});
+  await session.bootstrap();assert.equal(session.state.authenticated,true);assert.equal(sdkLoads,0);assert.deepEqual(calls,['/auth/config','/auth/session']);
+});
+test('Firebase persistence is awaited before popup and token exchange clears SDK user', async () => {
+  const { createSession }=await import('./workshop/auth.mjs');const calls=[];let release;
+  const user={}; const sdk={initializeApp:()=>({}),initializeAuth:(_,options)=>{assert.equal(options.persistence,'NONE');return {};},inMemoryPersistence:'NONE',browserPopupRedirectResolver:{},setPersistence:()=>new Promise(resolve=>{release=resolve;}),GoogleAuthProvider:class{},signInWithPopup:async()=>{calls.push('popup');return{user};},getIdTokenResult:async()=>({token:'synthetic-token',authTime:new Date().toISOString()}),signOut:async()=>{calls.push('sdk-signout');}};
+  let loggedIn=false;const session=createSession({loadSDK:async()=>sdk,request:async(path,options)=>{if(path==='/auth/config')return{version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}};if(path==='/auth/session'){if(!loggedIn){const error=new Error();error.status=401;throw error;}return{authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'csrf'};}assert.equal(path,'/auth/firebase/session');assert.equal(options.body.id_token,'synthetic-token');assert.equal(options.headers['X-Autodata-Session-Exchange'],'1');loggedIn=true;calls.push('exchange');}});
+  const bootstrap=session.bootstrap();await new Promise(resolve=>setImmediate(resolve));assert.equal(session.state.ready,false);release();await bootstrap;await session.signIn();assert.deepEqual(calls,['popup','exchange','sdk-signout']);assert.equal(session.state.authenticated,true);
+});
+test('cookie transport sends JSON/CSRF without bearer, honors response status and safe retry metadata', async () => {
+  const { requestArticleJSON, CatalogRequestError } = await import('./workshop/catalog.mjs');
+  let options;
+  const result = await requestArticleJSON('/v1/catalog/vehicles/a/articles/b/prepare', { method:'POST',body:{},headers:{'X-CSRF-Token':'csrf'},fetcher:async(_,o)=>{options=o;return new Response('{"article":{"id":"b"}}',{status:202,headers:{'Retry-After':'3'}});} });
+  assert.equal(options.credentials,'same-origin');assert.equal(options.cache,'no-store');assert.equal(options.body,'{}');assert.equal(options.headers.Authorization,undefined);assert.equal(result.status,202);assert.equal(result.retryAfterSeconds,3);
+  await assert.rejects(requestJSON('/x',{fetcher:async()=>new Response('{"error":{"code":"ENTITLEMENT_REQUIRED","message":"PRIVATE SECRET","retryable":false,"request_id":"safe-id"}}',{status:403})}),e=>e instanceof CatalogRequestError&&e.code==='ENTITLEMENT_REQUIRED'&&!e.message.includes('PRIVATE'));
+});
+test('indeterminate stage progress does not derive percentages from retries', () => {
+  assert.equal(loadingProgress('make',{attempt:2,attempts:40,hydrating:true}).percent,null);
+  assert.equal(loadingProgress('make',{attempt:39,attempts:40,hydrating:true}).percent,null);
+});
+test('sign-out confirmation failure never reports revocation and allows same-CSRF retry', async()=>{
+  const {createSession}=await import('./workshop/auth.mjs');let logoutCalls=0;
+  const s=createSession({request:async(path,options)=>{if(path==='/auth/config')return{login_available:false};if(path==='/auth/session')return{authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'csrf'};assert.equal(options.headers['X-CSRF-Token'],'csrf');if(++logoutCalls===1)throw new TypeError('network');}});
+  await s.bootstrap();assert.equal(await s.logout(),false);assert.equal(s.state.authenticated,false);assert.match(s.state.message,/could not be confirmed/);assert.equal(await s.logout(),true);
+});
+test('cookie recheck after invalidation reuses the initialized memory SDK and enables explicit login',async()=>{
+  const {createSession}=await import('./workshop/auth.mjs');let initialized=0;
+  const sdk={initializeApp:()=>({}),initializeAuth:()=>{initialized++;return{};},inMemoryPersistence:'NONE',browserPopupRedirectResolver:{},setPersistence:async()=>{},GoogleAuthProvider:class{}};
+  const s=createSession({loadSDK:async()=>sdk,request:async path=>{if(path==='/auth/config')return{version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}};const e=new Error();e.status=401;throw e;}});
+  await s.bootstrap();assert.equal(s.state.ready,true);s.clear();await s.bootstrap();assert.equal(s.state.ready,true);assert.equal(initialized,1);
+});
+
+test('confirmed cookie-only logout prepares memory-only SDK for the next explicit sign-in', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  let loaded = 0;
+  const sdk = { initializeApp: () => ({}), initializeAuth: () => ({}), setPersistence: async () => {}, inMemoryPersistence: {}, browserPopupRedirectResolver: {}, GoogleAuthProvider: class {}, signOut: async () => {} };
+  const account = createSession({ request: async path => path === '/auth/config' ? {version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}} : path === '/auth/session' ? {authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'csrf'} : null, loadSDK: async () => { loaded++; return sdk; } });
+  await account.bootstrap();
+  assert.equal(loaded, 0);
+  assert.equal(await account.logout(), true);
+  assert.equal(account.state.ready, true);
+  assert.equal(loaded, 1);
 });

@@ -127,3 +127,98 @@ storage behavior require the later UI implementation and browser lane. The
 acceptance remain pending under the unified UI plan. The final production image
 must prove the complete customer app and its assets. No production readiness or
 working sign-in is asserted by this packaging milestone.
+
+## Customer UI implementation lane
+
+The parallel delivery gate is `0da1309f860e475a1fa8b71a0d6b88dee04ed915`.
+The cookie/session, checkout and reader coordinator milestone is `e532c9b`.
+The customer application now consumes public selectors and the exact returned
+configuration ID/region, checks server quotes and private article access, opens
+My vehicles, explicitly prepares articles and polls observational reads.
+Normalized source/document text uses native DOM elements and `textContent`;
+image URLs are limited to same-origin v2 catalog capabilities. The shipped
+purchase configuration remains disabled with null unpublished policy URLs.
+
+Run `node --test apps/api-go/workshop-client.test.mjs`,
+`python3 -m unittest scripts/dev/test_workshop_browser_smoke.py -v`, and
+`go -C apps/api-go test ./...`. The additional Go fixture entry point runs only
+with `AUTODATA_WORKSHOP_BROWSER_FIXTURE=1` and an owned
+`AUTODATA_WORKSHOP_BROWSER_READY` file. It serves actual embedded production
+assets over `httptest` TLS, records the certificate and SDK hashes, and provides
+only synthetic external-identity token transport and bounded shutdown hooks.
+
+The browser runner requires the exact `playwright==1.64.1` package and its three
+engine revisions. Install at fixture-image build time, not during acceptance.
+DTO mode intercepts versioned application responses and is explicitly distinct
+from real API acceptance. It enforces all 40 names per requested engine, records
+requests/order, and fails unavailable engines, skips, unexpected network traffic
+or missing cases. Use an owned private output directory. No production endpoint,
+provider credential or customer account is involved.
+
+The first Chromium run exercised the production embedded application and exposed
+an image renewal fallback defect, repaired before the next fixture build. Partial
+or failed browser runs are diagnostic evidence only. The 21 real API browser
+cases and independent candidate review remain required before integration; this
+implementation entry does not assert completed browser acceptance.
+
+Independent review of `8cedb81` reproduced three customer-flow defects. A focused
+unit regression first failed for cookie-only logout; memory SDK preparation now
+runs after confirmed logout. Strengthened existing browser cases first failed
+for empty hydrating paid indexes and library B opened after browsing A. The
+index now uses bounded cancellable observational collection polling, and library
+navigation clears the unrelated hierarchy before writing an exact configuration
+route. Six affected browser scenarios passed in both Chromium and Firefox after
+rebuilding Go assets; diagnostic results are in
+`/tmp/autodata-ui-review-green.json`. The earlier complete DTO diagnostic run
+passed 40 Chromium and 40 Firefox cases; WebKit was unavailable on this host and
+was correctly retained as failed/unavailable acceptance evidence.
+
+## Real API browser fixture binding
+
+The API fixture consumes the committed `paidSetup`, `PaidBridge` and
+`configure_scoped_runtime` helpers from dependency `d198ba6`. It adds an explicit
+multi-account variation of the existing official Admin SDK certificate/user
+transport; a Go regression verifies signatures and current-user lookups for both
+synthetic accounts. It creates no authenticated browser cookie or role. Login
+uses the actual bundled SDK and `/auth/firebase/session`, and the browser checks
+Secure, HttpOnly, SameSite=Lax cookie flags plus hashed PostgreSQL session rows.
+
+The four frozen pytest roots collect exactly21 cases: three engines for the
+Google/checkout/library case, and three engines times two banks for each source,
+account-isolation and signed-refund case. Their application auth, quote, checkout,
+order, library, prepare, detail, source and image responses come from actual Go
+HTTP and private HTTP commerce/worker/S3 services. Test-only external Google and
+Stripe transports use synthetic fixtures. Signed settlement/refund facts enter
+the actual public webhook over TLS, then the official private verifier and real
+reconciler. Fixture merchant configuration is served only by the guarded test
+mux; the shipped disabled configuration and all other embedded assets are kept.
+
+Run in the coordinator-owned browser-runtime image and isolated R3 network:
+
+```sh
+AUTODATA_LIFECYCLE_TEST=1 \
+AUTODATA_CATALOG_INTEGRATION_REQUIRED=1 \
+AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION=1 \
+AUTODATA_R3_CANDIDATE_SHA="$CANDIDATE_SHA" \
+GOTOOLCHAIN=local GOPROXY=off \
+python -m pytest -q -p no:cacheprovider \
+  --junitxml=/artifacts/workshop-browser-api.xml \
+  workers/ingestion-python/tests/test_workshop_browser_integration.py
+```
+
+Use the existing owned Go cache/temp environment, readonly candidate mount and
+private writable `/artifacts`. The parent creates each isolated database through
+the shared migration runner. Every case runs in an owned process group with an
+84-second child boundary and six seconds reserved for group termination and
+fixture/database cleanup. The child owns its TLS server, browser, workers and S3
+bucket. Missing engines/services and skipped cases cannot pass required mode.
+The ordinary non-required pytest skip is not acceptance evidence.
+
+The API browser binding has compiled, collected21 cases and passed the official
+identity transport regression, full Go tests/vet,29 native helper tests and four
+runner unit tests. These checks do not assert that the21 integrated cases passed;
+first real fixture execution and exact-candidate review remain pending. Browser
+JSON records candidate/SDK/input/asset hashes, engine revisions/version, safe
+route templates and explicit assertions. Failure screenshots contain only
+synthetic fixture content. No credentials, raw tokens or signed image paths are
+recorded by the API browser request log.
