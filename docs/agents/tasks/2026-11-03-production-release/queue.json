@@ -444,21 +444,28 @@
       "id": "workshop-dto-timeout-diagnostics",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-dto-timeout-diagnostics.json",
       "depends_on": [],
-      "state": "planning_checkpoint",
+      "state": "planning_amendment_awaiting_gate_review",
       "tracking_status": "synchronized",
       "release_state": "unverified",
       "needs_scope_refinement": false,
-      "source_integration_base_sha": "c3659bce633a439d2ad713296b3a1443ba39473d",
+      "source_integration_base_sha": "b11c29444cde7b505bed3dd31bc7515d6d4ece5c",
       "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-dto-timeout-diagnostics.md",
       "record_ref": "docs/agents/records/2026-11-03-workshop-dto-timeout-diagnostics.json",
       "verification_ref": "docs/verification/workshop-customer-ui-runbook.md",
       "dispatch_mode": "coordinator_direct_after_synchronized_checkpoint",
-      "review_status": "Independent plan-only re-review approved draft SHA256 0ab6debc22818f9231a97987c82423c2bade0907d13c297a0472601be9221ae5; tracking read back. Commit/push, exact-base preflight and independent checkpoint handoff precede implementation dispatch.",
+      "review_status": "Cleanup/trace amendment requires independent exact-checkpoint review after synchronization and full-SHA preflight; no follow-up implementation dispatch.",
       "implementation_scope": [
         "scripts/dev/workshop_browser_smoke.py",
         "scripts/dev/test_workshop_browser_smoke.py"
       ],
-      "tracking_sync": {
+      "todo": [
+        "Synchronize this cleanup/trace amendment in Issue #186/Project #8 and the five canonical documents, commit/push the plan-only checkpoint and pass full-SHA preflight; obtain independent gate approval before any follow-up implementation.",
+        "In workshop_browser_smoke.py only, retain outer 20-second and inner 10-second timeouts; keep screenshot and trace export at most one second each within one shared three-second cleanup deadline, and allow context.close only the remaining shared budget without a fresh deadline or retry.",
+        "Export the bounded DTO trace before context.close, retain it on any scenario or cleanup failure/cancellation, and delete it only after fully successful cleanup; keep retained ZIPs at most 16 MiB, remove oversize/late exports and explicitly fail missing or failed required trace capture.",
+        "In test_workshop_browser_smoke.py only, prove a context close longer than one second succeeds within the remaining budget, exhausted cleanup stays bounded/failed, cleanup-only failure retains a trace and complete success deletes it; preserve controlled inner/outer timeout, cancellation, strict rejection and no-retry tests.",
+        "Run focused and developer tests, fresh exact-candidate owned TLS 120-case DTO acceptance and valid browser-backed failure ZIP probes; preserve b11 117/3 and original f9 push 117/3 versus PR merge 120 provenance, then obtain independent exact-commit review before coordinator integration."
+      ],
+      "prior_tracking_sync": {
         "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617902111",
         "project_ref": "https://github.com/users/lucronn/projects/8",
         "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
@@ -471,6 +478,19 @@
         "initial_verified_at": "2026-11-03T23:14:57.867643+00:00",
         "issue_comment_body_sha256": "28bf8f178facef692d3354b6b5c2a37251f90e4b481dac43661459e16eb06198",
         "receipt_correction": "Checkpoint 4b97ab44c6a944f883741e5a9b8f4a4a0384c2b6 hashed the Issue comment body into issue_body_sha256. Re-read the live Issue body, Issue comment and Project field; their separate UTF-8 body/text hashes are now correctly named. The Issue body matches both original saved snapshots and was not modified."
+      },
+      "planning_status": "synchronized",
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6618124676",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-03T23:29:01.292644+00:00",
+        "issue_body_sha256": "534997d1af2a9abc240fac8d2d6e9e22121befb9fceb81a078668cf2b855438e",
+        "issue_comment_body_sha256": "a2bfdf53f3085d92607bf7598413c1b55ed2a89084424be7ff195bff6fdd5f9c",
+        "project_text_sha256": "bda629e6972eb3dff68be47ee1a009324b18e0ddd078c11613a09165e88bd019",
+        "project_index_note": "Exact amended goal/five todos/two-file allowlist/five canonical paths and strict cleanup/trace contract in Issue comment; original and immediately preceding full Project fields preserved verbatim. A/B/R6/retry authority unchanged; PG17 successor references retained. Issue body concurrently appended by separate PG17 planner, never modified/restored by this DTO task. Independent exact-checkpoint review required before follow-up code.",
+        "amendment_base_sha": "b11c29444cde7b505bed3dd31bc7515d6d4ece5c"
       }
     }
   ],
