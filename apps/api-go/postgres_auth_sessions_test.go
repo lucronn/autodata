@@ -220,7 +220,7 @@ func TestPostgresAuthSessionsIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		old := &postgresCustomerSessions{pool: customerIntegrationPool(t, "AUTODATA_AUTH_TEST_UNMIGRATED_DATABASE_URL")}
-		if err := old.CheckSchema(ctx); !errors.Is(err, ErrCustomerDependency) {
+		if _, err := newConfiguredCustomerAuth(ctx, config, old, &customerVerifierFixture{}); !errors.Is(err, ErrCustomerDependency) {
 			t.Fatal("038 schema accepted")
 		}
 		var count int

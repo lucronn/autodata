@@ -431,3 +431,36 @@ The first dashboards and alerts must cover:
 - Source takedown, revision revocation, and access-denied counts.
 
 The checked-in baseline alert policy is [`infra/observability/prometheus-alerts.yaml`](../../infra/observability/prometheus-alerts.yaml). It uses only the provider-neutral metric names above, separates page-level availability/billing failures from warning-level freshness/review signals, and links each alert to a repository runbook. A deployment may translate these rules into its observability provider, but it must preserve the thresholds, severity intent, and runbook links or record an explicit reviewed policy change.
+
+
+## Explicit customer authentication runtime
+
+The API requires AUTODATA_ENV, AUTODATA_AUTH_MODE and AUTODATA_PUBLIC_ORIGIN.
+Compose/Base44 select development/local explicitly; CI selects test/local.
+These headless fixtures retain existing header authentication but expose no
+browser login or demo account. HTTPS localhost origins are configuration values;
+local stacks do not gain a TLS listener from this setting. Only test mode permits
+an HTTP loopback origin. Staging/production require firebase mode; production
+origin is exactly https://cars.tk.
+
+Firebase mode additionally requires AUTODATA_FIREBASE_PROJECT_ID,
+AUTODATA_FIREBASE_WEB_API_KEY, AUTODATA_FIREBASE_WEB_APP_ID and
+AUTODATA_FIREBASE_AUTH_DOMAIN. Kubernetes references these public app values
+from externally managed ConfigMap autodata-firebase-config. Its absence fails
+startup instead of selecting local mode. Do not put service-account JSON into
+that ConfigMap or the checkout. Provision the runtime's approved ADC/workload
+identity and Firebase Auth user-read permission separately; the provider-neutral
+manifest does not invent a cloud service account or binding. Firebase mode
+rejects FIREBASE_AUTH_EMULATOR_HOST, in-memory persistence, unavailable PostgreSQL
+and schema before 039. Run the shared migration driver before starting replicas.
+
+All replicas use the same durable project+UID accounts and SHA256 session hashes.
+Absolute sessions expire after 12 hours without sliding renewal. Every protected
+request checks current database status and live Firebase user revocation against
+original auth_time; outages fail503 without stale acceptance. Requests carrying
+Authorization headers cannot fall back to customer cookies. Only dataset_viewer
+is assigned; existing organization-owned reads retain their predicates.
+
+See docs/verification/production-access-runbook.md for deterministic acceptance
+and the separate live staging prerequisites. This identity change does not
+certify commerce or paid catalog/media access.

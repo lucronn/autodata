@@ -2,13 +2,19 @@ openapi: 3.0.3
 info:
   title: AutoData Catalog API
   version: 1.0.0
-  description: Provider-neutral selector cascade, descriptor index, ordered source/canonical lifecycle, immutable source review and localized media.
+  description: Provider-neutral selector cascade, descriptor index, ordered source/canonical
+    lifecycle, immutable source review and localized media. Firebase Google customer
+    sessions use an opaque secure cookie; explicit local headless mode retains fixture
+    bearer authentication. Firebase mode rejects Authorization headers. Paid catalog
+    access is separately gated.
 servers:
 - url: /
 security:
+- customerSession: []
 - bearerAuth: []
 tags:
 - name: Catalog media
+- name: Customer identity
 paths:
   /v1/catalog/vehicles/{vehicle_id}/articles:
     get:
@@ -20,7 +26,8 @@ paths:
       - $ref: '#/components/parameters/VehicleId'
       responses:
         '200':
-          description: Catalog article list. Missing or unlocalized images have no display URL.
+          description: Catalog article list. Missing or unlocalized images have no
+            display URL.
           content:
             application/json:
               schema:
@@ -53,7 +60,8 @@ paths:
       - $ref: '#/components/parameters/ArticleId'
       responses:
         '200':
-          description: Normalized article; internal object keys and provider URLs are omitted.
+          description: Normalized article; internal object keys and provider URLs
+            are omitted.
           content:
             application/json:
               schema:
@@ -295,7 +303,8 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
         '202':
-          description: Durable job accepted; no readable source yet, availability pending.
+          description: Durable job accepted; no readable source yet, availability
+            pending.
           content:
             application/json:
               schema:
@@ -528,15 +537,18 @@ paths:
                 minimum: 1
         '409':
           $ref: '#/components/responses/Conflict'
-      description: Read one authorized immutable source or canonical projection. A cold known descriptor schedules bounded durable work. Repeated reads join its job.
-        Readable source returns 200 throughout rewriting and on terminal rewrite failure. complete means validated canonical publication.
+      description: Read one authorized immutable source or canonical projection. A
+        cold known descriptor schedules bounded durable work. Repeated reads join
+        its job. Readable source returns 200 throughout rewriting and on terminal
+        rewrite failure. complete means validated canonical publication.
   /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source:
     get:
       tags:
       - Catalog media
       operationId: getStoredArticleSource
       summary: Read sanitized stored source content
-      description: Read the authorized immutable ordered source document without provider, model or scheduling calls. Sanitized compatibility content and local media
+      description: Read the authorized immutable ordered source document without provider,
+        model or scheduling calls. Sanitized compatibility content and local media
         retain unavailable placeholders.
       parameters:
       - $ref: '#/components/parameters/VehicleId'
@@ -554,7 +566,8 @@ paths:
         required: false
         schema:
           type: string
-        description: Pins an immutable revision belonging to this authorized article and vehicle.
+        description: Pins an immutable revision belonging to this authorized article
+          and vehicle.
       responses:
         '200':
           description: Sanitized stored source in the requested representation.
@@ -590,8 +603,10 @@ paths:
       - Catalog media
       operationId: getLocalizedCatalogImage
       summary: Fetch an AutoData-localized image
-      description: The token is randomly minted by AutoData and resolves only to a validated local object key. It is not a provider URL or storage key. No bearer
-        token is required; invalid or unavailable references fail closed. Tokens are environment-specific and must not be constructed from this document.
+      description: The token is randomly minted by AutoData and resolves only to a
+        validated local object key. It is not a provider URL or storage key. No bearer
+        token is required; invalid or unavailable references fail closed. Tokens are
+        environment-specific and must not be constructed from this document.
       security: []
       parameters:
       - name: token
@@ -630,7 +645,8 @@ paths:
       - Catalog media
       operationId: rejectLegacyCatalogImageReference
       summary: Reject the legacy source-bearing image route
-      description: The src query parameter is not accepted; the handler never fetches caller-supplied URLs.
+      description: The src query parameter is not accepted; the handler never fetches
+        caller-supplied URLs.
       deprecated: true
       security: []
       responses:
@@ -874,11 +890,182 @@ paths:
           $ref: '#/components/responses/InvalidRequest'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /auth/config:
+    get:
+      tags:
+      - Customer identity
+      operationId: getCustomerAuthConfig
+      summary: Read public sign-in configuration
+      security: []
+      responses:
+        '200':
+          description: Public Firebase configuration or explicit unavailable local
+            mode.
+          headers:
+            Cache-Control: &id001
+              schema:
+                type: string
+                enum:
+                - no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerAuthConfig'
+  /auth/session:
+    get:
+      tags:
+      - Customer identity
+      operationId: getCustomerSession
+      summary: Read current session and CSRF token
+      security:
+      - customerSession: []
+      responses:
+        '200':
+          description: Current PostgreSQL session and live Firebase user verified.
+          headers:
+            Cache-Control: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerSession'
+        '401': &id002
+          description: Missing, invalid, expired, revoked or deleted identity. Definite
+            denial clears the cookie.
+          headers:
+            Cache-Control: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403': &id003
+          description: Account blocked or Origin/CSRF rejected.
+          headers:
+            Cache-Control: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '503': &id004
+          description: Authentication dependency unavailable; retryable, no stale
+            acceptance. Cookie retained on dependency outage. Local exchange returns
+            login_available=false and retryable=false.
+          headers:
+            Cache-Control: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+  /auth/firebase/session:
+    post:
+      tags:
+      - Customer identity
+      operationId: exchangeFirebaseSession
+      summary: Exchange a fresh Firebase Google token for a durable opaque session
+      security: []
+      responses:
+        '204':
+          description: Account and new session committed; any presented old session
+            revoked atomically.
+          headers:
+            Cache-Control: *id001
+            Set-Cookie:
+              schema:
+                type: string
+              description: Opaque secure cookie is set only after database commit;
+                logout expires it.
+        '401': *id002
+        '403': *id003
+        '503': *id004
+        '400':
+          description: Invalid JSON or unknown fields.
+          headers:
+            Cache-Control: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '413':
+          description: Body exceeds 32 KiB.
+          headers:
+            Cache-Control: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '415':
+          description: Content-Type must be application/json.
+          headers:
+            Cache-Control: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      parameters:
+      - &id005
+        name: Origin
+        in: header
+        required: true
+        schema:
+          type: string
+        description: Must exactly match configured public origin; cross-site Fetch
+          Metadata is rejected.
+      - name: X-Autodata-Session-Exchange
+        in: header
+        required: true
+        schema:
+          type: string
+        description: Must be 1.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirebaseSessionExchange'
+  /auth/logout:
+    post:
+      tags:
+      - Customer identity
+      operationId: logoutCustomerSession
+      summary: Revoke the current session across replicas
+      security:
+      - customerSession: []
+      responses:
+        '204':
+          description: Session revocation committed. Firebase availability is not
+            required for logout.
+          headers:
+            Cache-Control: *id001
+            Set-Cookie:
+              schema:
+                type: string
+              description: Opaque secure cookie is set only after database commit;
+                logout expires it.
+        '401': *id002
+        '403': *id003
+        '503': *id004
+      parameters:
+      - *id005
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+        description: Session-bound token returned by GET /auth/session.
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
+      description: Explicit local headless fixtures only. Rejected in Firebase customer
+        mode.
+    customerSession:
+      type: apiKey
+      in: cookie
+      name: __Host-autodata_session
+      description: Opaque session, Secure; HttpOnly; SameSite=Lax; Path=/; no Domain.
+        Absolute expiry 12 hours; revocable across replicas. No raw Firebase token
+        stored. State-changing requests require exact Origin and X-CSRF-Token from
+        GET /auth/session.
   parameters:
     VehicleId:
       name: vehicle_id
@@ -1063,7 +1250,8 @@ components:
               number:
                 type: integer
                 minimum: 1
-                description: Explicit source step number, when present. Canonical document traversal does not fabricate numbers.
+                description: Explicit source step number, when present. Canonical
+                  document traversal does not fabricate numbers.
               heading:
                 type: string
               instructions:
@@ -1338,6 +1526,92 @@ components:
                 retry_after_seconds:
                   type: integer
                   minimum: 1
+    FirebaseWebConfig:
+      type: object
+      additionalProperties: false
+      required:
+      - apiKey
+      - authDomain
+      - projectId
+      - appId
+      properties:
+        apiKey:
+          type: string
+        authDomain:
+          type: string
+        projectId:
+          type: string
+        appId:
+          type: string
+    CustomerAuthConfig:
+      type: object
+      additionalProperties: false
+      required:
+      - version
+      - mode
+      - login_available
+      - providers
+      properties:
+        version:
+          type: string
+          enum:
+          - v1
+        mode:
+          type: string
+          enum:
+          - firebase
+          - local
+        login_available:
+          type: boolean
+        providers:
+          type: array
+          items:
+            type: string
+            enum:
+            - google.com
+        firebase:
+          $ref: '#/components/schemas/FirebaseWebConfig'
+      description: Public web configuration only. Local mode returns login_available=false,
+        providers=[] and omits firebase; it creates no demo identity.
+    CustomerSession:
+      type: object
+      additionalProperties: false
+      required:
+      - authenticated
+      - roles
+      - expires_at
+      - csrf_token
+      properties:
+        authenticated:
+          type: boolean
+          enum:
+          - true
+        roles:
+          type: array
+          items:
+            type: string
+            enum:
+            - dataset_viewer
+        expires_at:
+          type: string
+          format: date-time
+        csrf_token:
+          type: string
+      description: No project, UID, token hash, account identifier or raw provider
+        payload is exposed.
+    FirebaseSessionExchange:
+      type: object
+      additionalProperties: false
+      required:
+      - id_token
+      properties:
+        id_token:
+          type: string
+          writeOnly: true
+      description: Fresh Google Firebase ID token with iat/auth_time within 5 minutes,
+        at most 60 seconds future skew. Signature, issuer, audience, provider, expiry
+        and live user state are verified. SDK revocation uses iat; application additionally
+        compares auth_time. The same still-fresh token may be exchanged again.
   responses:
     Unauthorized:
       description: Authentication is required.

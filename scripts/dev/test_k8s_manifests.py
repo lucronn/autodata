@@ -42,6 +42,19 @@ class KubernetesManifestTests(unittest.TestCase):
         self.assertIn("            limits:", deployment)
         self.assertIn("                name: autodata-runtime-secrets", deployment)
 
+    def test_api_uses_explicit_production_firebase_and_external_web_config(self):
+        config = self.by_key[("ConfigMap", "autodata-config")]
+        self.assertIn('AUTODATA_ENV: production', config)
+        self.assertIn('AUTODATA_AUTH_MODE: firebase', config)
+        self.assertIn('AUTODATA_PUBLIC_ORIGIN: https://cars.tk', config)
+        api = self.by_key[("Deployment", "autodata-api")]
+        for key in ('PROJECT_ID', 'WEB_API_KEY', 'WEB_APP_ID', 'AUTH_DOMAIN'):
+            self.assertIn('name: AUTODATA_FIREBASE_' + key, api)
+            self.assertIn('key: AUTODATA_FIREBASE_' + key, api)
+        self.assertIn('name: autodata-firebase-config', api)
+        self.assertNotIn('FIREBASE_AUTH_EMULATOR_HOST', api)
+        self.assertNotIn('GOOGLE_APPLICATION_CREDENTIALS', api)
+
     def test_ingestion_http_is_internal_and_has_health_checks(self):
         service = self.by_key[("Service", "autodata-ingestion-http")]
         self.assertIn("  type: ClusterIP", service)

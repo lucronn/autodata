@@ -93,7 +93,9 @@ func TestCustomerLocalLoginUnavailable(t *testing.T) {
 func testFirebaseExchangeAndUserRevocation(t *testing.T, persist customerSessionStore) {
 	f := newFirebaseSDKFixture(t)
 	service := &customerAuthService{config: customerAuthConfig{Mode: "firebase", Origin: "https://cars.example", ProjectID: "fixture-project"}, store: persist, verifier: f.verifier, now: func() time.Time { return f.now }}
-	server := httptest.NewServer(customerAuthHandler(service))
+	api := NewServer(staticReadiness{})
+	api.customerAuth, api.auth = service, service
+	server := httptest.NewServer(api.Handler())
 	defer server.Close()
 	exchange := func(token string, cookie *http.Cookie) *http.Response {
 		body, _ := json.Marshal(map[string]string{"id_token": token})
@@ -123,15 +125,22 @@ func testFirebaseExchangeAndUserRevocation(t *testing.T, persist customerSession
 		t.Fatal("fresh token re-exchange rejected")
 	}
 	cookie := response.Cookies()[0]
-	request := httptest.NewRequest("GET", "https://cars.example/datasets/id", nil)
-	request.AddCookie(old)
-	if _, err := service.Authenticate(request); !errors.Is(err, ErrUnauthenticated) {
-		t.Fatal("old cookie survived rotation")
+	protectedStatus := func(cookie *http.Cookie) int {
+		request, _ := http.NewRequest("GET", server.URL+"/v1/catalog/years", nil)
+		request.AddCookie(cookie)
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.Copy(io.Discard, response.Body)
+		response.Body.Close()
+		return response.StatusCode
 	}
-	request = httptest.NewRequest("GET", "https://cars.example/datasets/id", nil)
-	request.AddCookie(cookie)
-	if _, err := service.Authenticate(request); err != nil {
-		t.Fatal(err)
+	if status := protectedStatus(old); status != 401 {
+		t.Fatal("old cookie survived rotation", status)
+	}
+	if status := protectedStatus(cookie); status != 200 {
+		t.Fatal("protected request denied", status)
 	}
 	if response = exchange(f.token(t, func(c map[string]any) { c["aud"] = "foreign" }), nil); response.StatusCode != 401 {
 		t.Fatal("wrong project accepted")
@@ -139,22 +148,22 @@ func testFirebaseExchangeAndUserRevocation(t *testing.T, persist customerSession
 	f.mu.Lock()
 	f.validSince = f.now.Unix() + 1
 	f.mu.Unlock()
-	if _, err := service.Authenticate(request); !errors.Is(err, ErrUnauthenticated) {
-		t.Fatal("Firebase revocation ignored")
+	if status := protectedStatus(cookie); status != 401 {
+		t.Fatal("Firebase revocation ignored", status)
 	}
 	f.mu.Lock()
 	f.validSince = 0
 	f.disabled = true
 	f.mu.Unlock()
-	if _, err := service.Authenticate(request); !errors.Is(err, ErrUnauthenticated) {
-		t.Fatal("Firebase disabled ignored")
+	if status := protectedStatus(cookie); status != 401 {
+		t.Fatal("Firebase disabled ignored", status)
 	}
 	f.mu.Lock()
 	f.disabled = false
 	f.status = 403
 	f.mu.Unlock()
-	if _, err := service.Authenticate(request); !errors.Is(err, ErrCustomerDependency) {
-		t.Fatal("Firebase outage accepted stale state")
+	if status := protectedStatus(cookie); status != 503 {
+		t.Fatal("Firebase outage accepted stale state", status)
 	}
 }
 
