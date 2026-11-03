@@ -354,6 +354,7 @@ def _measure_bundle(
         wanted_subject = base if label == "architect" else subject
         checks = [c for c in v["checks"] if c["gate"] == label]
         aid = v["required_agent_evidence"][index]
+        expected_findings.extend(run.get("findings", []))
         try:
             response = _json_artifact(by_id, aid, evidence_root)
             response_artifact = by_id[aid]
@@ -386,7 +387,6 @@ def _measure_bundle(
             )
             if run.get("response") != response:
                 errors.append("embedded response differs from retained response")
-            expected_findings.extend(run.get("findings", []))
             if any(f not in run.get("findings", []) for f in response["findings"]):
                 errors.append("provider finding dropped")
         except (OSError, ValueError, KeyError, r.RunnerError) as error:

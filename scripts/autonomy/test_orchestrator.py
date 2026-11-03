@@ -291,6 +291,10 @@ class FullChainV2Tests(unittest.TestCase):
             security = final["agent_runs"]["security"]
             self.assertEqual(security["commands_run"][0]["exit_code"], 0)
             self.assertEqual(security["agent_decision"], "blocked")
+            validation = o.validate_evidence_bundle(final, trusted, path.parent)
+            self.assertNotIn(
+                "final findings differ from runner findings", validation["failures"]
+            )
             self.assertFalse(
                 o.validate_evidence_bundle(final, trusted, path.parent)["passed"]
             )
