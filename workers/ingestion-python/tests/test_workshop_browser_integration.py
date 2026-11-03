@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -102,6 +103,11 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                 metadata=json.loads(ready.read_text());assert metadata['kind']=='api-fixture'
                 browser_env={key:value for key,value in env.items() if key in allowed}
                 browser_env.update(CANDIDATE_SHA=candidate,AUTODATA_WORKSHOP_BROWSER_CASE=root_name)
+                browser_home=(directory/'browser-home').absolute()
+                browser_home.mkdir(mode=0o700,exist_ok=False)
+                home_stat=browser_home.lstat()
+                assert stat.S_ISDIR(home_stat.st_mode) and stat.S_IMODE(home_stat.st_mode)==0o700 and home_stat.st_uid==os.getuid(),'browser home must be an owned private directory'
+                browser_env['HOME']=str(browser_home)
                 command=[sys.executable,str(ROOT/'scripts/dev/workshop_browser_smoke.py'),'--base-url',metadata['origin'],'--mode','api-fixture','--browser',engine,'--candidate-sha',candidate,'--output',str(directory/'browser')]
                 with (directory/'browser.stdout.log').open('wb') as stdout,(directory/'browser.stderr.log').open('wb') as stderr:
                     tested=subprocess.run(command,cwd=ROOT,env=browser_env,stdout=stdout,stderr=stderr,timeout=max(1,deadline-time.monotonic()-8))
