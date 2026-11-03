@@ -57,3 +57,7 @@ does not authorize public article enumeration or source/processing reads.
 
 No production service, source credentials, cloud resources or customer data
 are used by this repair. Staging and release acceptance remain outstanding.
+
+## Verified bounded implementation
+
+Candidate `2d1b6a89a1c1282c0462c97556b983726df08c39` passed independent review and the real13-case coverage suite after the observed CA failure. Integrated at `924fdc447cb2b91b85d4633b077cb8b5b3da76db`. See [retained evidence](../../verification/2026-11-03-workshop-catalog-region.md). Affected paid/browser and final release acceptance remain outstanding.
