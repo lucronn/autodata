@@ -165,8 +165,12 @@
       "state": "planning_checkpoint",
       "release_state": "unverified",
       "needs_scope_refinement": false,
-      "implementation_scope": "first3_offline_structural_only",
-      "profile_status": "all_tiers_disabled"
+      "implementation_scope": "first3_offline_paid12_dto120_internal_validators_only",
+      "profile_status": "all_tiers_disabled",
+      "planning_status": "synchronized",
+      "planning_source_sha": "1138ddd2c4c9ba1f90556f568377099e4733745a",
+      "planning_record_ref": "docs/agents/records/2026-11-03-workshop-product-evidence.json",
+      "dispatch_prerequisite": "Issue186 comment6617239424 and Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4 read back with matching raw-validator goal/todo/refs. Pin the exact commit containing this synchronized plan/task/record/queue, pass exact-base preflight and obtain independent gate handoff before first3 implementation. No profile promotion."
     },
     {
       "id": "workshop-commerce",
