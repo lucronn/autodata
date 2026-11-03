@@ -350,15 +350,21 @@ class DTODiagnostics:
                                late_cleanup=lambda: image_path.unlink(missing_ok=True)):
                 os.chmod(image_path, 0o600)
         trace_path = self.output / (self.name + '-failure-trace.zip')
+        def remove_failed_trace():
+            try:
+                trace_path.unlink(missing_ok=True)
+            except OSError as error:
+                self.diagnostic_errors.append(f'trace.remove: {error}')
+                self.fail(error)
         if self.tracing_started:
             # Stage the trace before close: close itself may be the first failure.
             self.output.mkdir(mode=0o700, parents=True, exist_ok=True)
             os.chmod(self.output, 0o700)
             stopped = await operation('trace.stop',
                 lambda: self.context.tracing.stop(path=str(trace_path)),
-                late_cleanup=lambda: trace_path.unlink(missing_ok=True))
+                late_cleanup=remove_failed_trace)
             if not stopped:
-                trace_path.unlink(missing_ok=True)
+                remove_failed_trace()
                 self.trace_status = 'timeout' if 'deadline exceeded' in self.diagnostic_errors[-1] else 'failed'
             else:
                 try:

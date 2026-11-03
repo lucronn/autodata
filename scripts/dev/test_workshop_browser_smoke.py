@@ -637,6 +637,22 @@ class BrowserDTOTimeoutDiagnostics(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stored['diagnostics']['trace_status'], 'retained')
         self.assertTrue((self.output / 'bankone-cascade-failure-trace.zip').is_file())
 
+    async def test_failed_export_and_failed_deletion_keep_primary_timeout_and_close(self):
+        context = self.context(); context.tracing.stop_error = RuntimeError('trace export unavailable')
+        original = Path.unlink
+        def fail_owned_trace(path, *args, **kwargs):
+            if path.name.endswith('-failure-trace.zip'):
+                raise OSError('failed export deletion denied')
+            return original(path, *args, **kwargs)
+        with patch.object(Path, 'unlink', fail_owned_trace):
+            result = await self.execute(context)
+        self.assert_failed_evidence(result, 'action_timeout')
+        self.assertIn('element stability', result['error'])
+        self.assertEqual(result['diagnostics']['trace_status'], 'failed')
+        self.assertTrue(any('failed export deletion denied' in error
+            for error in result['diagnostics']['diagnostic_errors']))
+        self.assertTrue(context.closed)
+
     async def test_dto_browser_shutdown_cannot_hang_acceptance(self):
         self.assertTrue(callable(getattr(smoke, 'close_dto_browser', None)))
         close_entered, release = asyncio.Event(), asyncio.Event()
