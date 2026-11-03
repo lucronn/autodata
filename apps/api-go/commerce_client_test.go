@@ -213,10 +213,37 @@ func TestWorkshopCommercePythonIntegration(t *testing.T) {
 	input = owner()
 	input["cursor"], input["limit"] = "", 20
 	library := invoke("library", input).(commerceLibrary)
-	if len(library.Items) != 0 || library.NextCursor != nil {
+	if !commerceFixtureLibraryHasNoGrant(library) {
 		t.Fatal("unpaid fixture must have no library grant")
 	}
 	if _, err := client.CheckVehicleGrant(ctx, fixture["ACCOUNT_ID"], fixture["ORGANIZATION_ID"], fixture["CONFIGURATION_ID"], fixture["REGION"]); err != ErrVehicleGrantRequired {
 		t.Fatal("unpaid fixture must return the typed required grant outcome")
+	}
+}
+
+func commerceFixtureLibraryHasNoGrant(library commerceLibrary) bool {
+	return len(library.Items) == 0 && (library.NextCursor == nil || *library.NextCursor == "")
+}
+
+func TestCommerceFixtureLibraryTerminalCursorProjection(t *testing.T) {
+	for _, tc := range []struct {
+		name, cursor, items string
+		wantNoGrant         bool
+	}{
+		{"null terminal", "null", "[]", true},
+		{"empty terminal", `""`, "[]", true},
+		{"nonempty continuation", `"continue"`, "[]", false},
+		{"existing grant", "null", `[{"library_item_id":"22222222-2222-4222-8222-222222222222","configuration_id":"33333333-3333-4333-8333-333333333333","region":"US","label":"Vehicle","access_state":"paid","granted_at":"2026-11-03T20:00:00+00:00"}]`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := []byte(`{"version":"v1","items":` + tc.items + `,"next_cursor":` + tc.cursor + `}`)
+			projected, ok := commercePublicResult("library", 200, raw, map[string]any{"limit": 20})
+			if !ok {
+				t.Fatal("valid library cursor representation rejected")
+			}
+			if commerceFixtureLibraryHasNoGrant(projected.(commerceLibrary)) != tc.wantNoGrant {
+				t.Fatal("fixture no-grant assertion misclassified projected library")
+			}
+		})
 	}
 }
