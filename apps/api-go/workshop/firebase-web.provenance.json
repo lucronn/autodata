@@ -30,8 +30,8 @@
   "inputs": [
     {
       "path": "apps/api-go/workshop-client/build.mjs",
-      "sha256": "9897238ce209841ebfdbea295b0f9294c43cba709ead6f0ff0f24b7320555fcb",
-      "bytes": 6900
+      "sha256": "8fb4188cba753652657035d0fc57b5a9cfb686e608abb26abe4ac94e8b2e47ea",
+      "bytes": 18991
     },
     {
       "path": "apps/api-go/workshop-client/firebase-entry.mjs",
@@ -57,8 +57,8 @@
     },
     {
       "path": "apps/api-go/workshop/firebase-web.mjs.LEGAL.txt",
-      "sha256": "f58a840118564ea5e5ee44371a3ab39ef5764babe723d29b62a75063d55df703",
-      "bytes": 24100
+      "sha256": "70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319",
+      "bytes": 35536
     }
   ],
   "exports": [
@@ -72,5 +72,13 @@
     "setPersistence",
     "signInWithPopup",
     "signOut"
+  ],
+  "licenses": [
+    {
+      "id": "Apache-2.0",
+      "source": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bytes": 11358
+    }
   ]
 }

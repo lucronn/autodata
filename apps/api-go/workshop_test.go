@@ -98,12 +98,37 @@ func TestWorkshopFirebaseServedProvenance(t *testing.T) {
 				Sourcemap     bool   `json:"sourcemap"`
 			} `json:"options"`
 		} `json:"build"`
-		Inputs  []artifact `json:"inputs"`
-		Outputs []artifact `json:"outputs"`
-		Exports []string   `json:"exports"`
+		Inputs   []artifact `json:"inputs"`
+		Outputs  []artifact `json:"outputs"`
+		Exports  []string   `json:"exports"`
+		Licenses []struct {
+			ID     string `json:"id"`
+			Source string `json:"source"`
+			SHA256 string `json:"sha256"`
+			Bytes  int    `json:"bytes"`
+		} `json:"licenses"`
+	}
+
+	const apacheSHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+	const apacheBytes = 11358
+	legal := string(serve("firebase-web.mjs.LEGAL.txt"))
+	_, terms, found := strings.Cut(legal, "===== Apache-2.0 full license =====\n")
+	if !found {
+		t.Fatal("served legal asset is missing full Apache-2.0 terms")
+	}
+	terms, _, found = strings.Cut(terms, "===== End Apache-2.0 full license =====")
+	digest := sha256.Sum256([]byte(terms))
+	if !found || len(terms) != apacheBytes || hex.EncodeToString(digest[:]) != apacheSHA256 {
+		t.Fatal("served Apache-2.0 terms are truncated or altered")
+	}
+	if !strings.Contains(legal, "Copyright 2017 Google LLC") || !strings.Contains(legal, "Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted") {
+		t.Fatal("served legal asset lost extracted headers or ISC terms")
 	}
 	if err := json.Unmarshal(serve("firebase-web.provenance.json"), &provenance); err != nil {
 		t.Fatal(err)
+	}
+	if len(provenance.Licenses) != 1 || provenance.Licenses[0].ID != "Apache-2.0" || provenance.Licenses[0].Source != "https://www.apache.org/licenses/LICENSE-2.0.txt" || provenance.Licenses[0].SHA256 != apacheSHA256 || provenance.Licenses[0].Bytes != apacheBytes {
+		t.Fatalf("unexpected official license provenance: %+v", provenance.Licenses)
 	}
 	if provenance.Schema != "autodata.firebase-web.provenance" || provenance.Version != 1 || provenance.SDK.Name != "firebase" || provenance.SDK.Version != "12.19.0" {
 		t.Fatalf("unexpected provenance identity: %+v", provenance)
