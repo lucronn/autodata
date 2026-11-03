@@ -294,6 +294,27 @@ class ToolchainGateTests(unittest.TestCase):
                                     'deployment_authorized': False})
             self.assertEqual(reports[0].stat().st_mode & 0o777, 0o600)
 
+    def test_class_cleanup_always_stops_and_preserves_primary_failure(self):
+        from types import SimpleNamespace
+        for clean_fails, stop_fails, receipt_fails in ((True, False, False), (True, True, False),
+                                                      (True, True, True), (False, True, False)):
+            with self.subTest(clean=clean_fails, stop=stop_fails, receipt=receipt_fails):
+                clean_error = RuntimeError('primary cleanup failure')
+                stop_error = RuntimeError('shutdown failure')
+                calls = []
+                def clean():
+                    calls.append('clean')
+                    if clean_fails: raise clean_error
+                def stop():
+                    calls.append('stop')
+                    if stop_fails: raise stop_error
+                owner = SimpleNamespace(fixture=SimpleNamespace(clean_sessions=clean, stop=stop), cases=[])
+                with patch(__name__ + '.receipt', side_effect=RuntimeError('receipt failure') if receipt_fails else None):
+                    with self.assertRaises(RuntimeError) as caught:
+                        Pg17Acceptance.tearDownClass.__func__(owner)
+                self.assertEqual(calls, ['clean', 'stop'])
+                self.assertIs(caught.exception, clean_error if clean_fails else stop_error)
+
     def test_transport_bounds_frames_and_reaps_owned_client(self):
         import sys
         class ProcessFixture:
@@ -342,12 +363,25 @@ class Pg17Acceptance(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        primary = None
         try:
             cls.fixture.clean_sessions()
-            cls.fixture.stop()
-        except BaseException:
-            receipt('cleanup_failed', runtime_verified=False)
-            raise
+        except BaseException as error:
+            primary = error
+        finally:
+            # A failed session/lock observation must not leave the owned server
+            # running. Shutdown is attempted even when that observation raises.
+            try:
+                cls.fixture.stop()
+            except BaseException as error:
+                if primary is None:
+                    primary = error
+        if primary is not None:
+            try:
+                receipt('cleanup_failed', runtime_verified=False)
+            except BaseException:
+                pass  # Evidence I/O must not replace the original cleanup error.
+            raise primary
         receipt('fixture_stopped', passed_cases=cls.cases, runtime_verified=False,
                 qualification='Individual case receipts do not establish production or full planned-matrix acceptance.')
 
