@@ -483,7 +483,7 @@ func TestPostgresPaidCatalogGrantBeforeWork(t *testing.T) {
 	f.expect(0, "POST", f.path("/"+f.article+"/prepare"), "{}", 403)
 	f.image(0, "/v1/catalog/images/invalid-v2-token", 404)
 	f.check("unpaid_denied_before_work", paidWorkUnchanged(selectors, f.snapshot("unpaid")))
-	f.exec(`UPDATE auth_sessions SET expires_at=now()-interval '1 second' WHERE customer_account_id=$1::uuid`, f.owners[1].session.AccountID)
+	f.exec(`UPDATE auth_sessions SET created_at=now()-interval '2 hours',expires_at=now()-interval '1 hour',firebase_auth_time=floor(extract(epoch FROM now()-interval '2 hours'))::bigint WHERE customer_account_id=$1::uuid`, f.owners[1].session.AccountID)
 	for _, suffix := range []string{"", "/" + f.article, "/" + f.article + "/source"} {
 		f.expect(1, "GET", f.path(suffix), "", 401)
 	}
