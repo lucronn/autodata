@@ -96,6 +96,12 @@ new exact-base checkpoint are ready. The
 [planning record](records/2026-11-03-production-release-orchestration.json)
 and task-specific record must pass preflight at the actual committed base before
 a builder starts. Do not copy a historical synchronized record to bypass this.
+R1 intake may run alongside R0 through direct coordinator dispatch after its
+separate synchronized checkpoint passes preflight. Their implementation paths
+are disjoint. The coordinator verifies protected migrations through isolated
+real-database clean/upgrade/concurrency tests and independent exact-SHA review;
+the normal runner's protected-path refusal is not disabled. This mode cannot
+grant local-runner or release authority before R0 is independently verified.
 
 Dispatch sequence:
 

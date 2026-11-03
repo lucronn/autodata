@@ -16,9 +16,11 @@
       "id": "r0-evidence",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-evidence.json",
       "depends_on": [],
-      "state": "ready_for_preflight",
+      "state": "in_progress",
       "release_state": "unverified",
-      "needs_scope_refinement": false
+      "needs_scope_refinement": false,
+      "implementation_base_sha": "d09ef282c3756efd78bac112236660bff4471dad",
+      "dispatch_mode": "coordinator_direct"
     },
     {
       "id": "r0-release",
@@ -33,12 +35,12 @@
     {
       "id": "r1-connectors",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r1-connectors.json",
-      "depends_on": [
-        "r0-evidence"
-      ],
-      "state": "waiting_dependencies",
+      "depends_on": [],
+      "state": "ready_for_preflight",
       "release_state": "unverified",
-      "needs_scope_refinement": false
+      "needs_scope_refinement": false,
+      "dispatch_mode": "coordinator_direct",
+      "verification_workflow": "Isolated clean/upgrade/legacy-preservation/concurrency database checks and independent exact-SHA schema/source/reliability review; no local-runner or release authority."
     },
     {
       "id": "r2-rewrite",

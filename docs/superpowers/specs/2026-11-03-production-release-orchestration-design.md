@@ -104,7 +104,7 @@ equally to canonical, source, status, and media responses.
 | ID | Owner | Result | Dependencies |
 | --- | --- | --- | --- |
 | R0 | coordinator + reliability/review agents | Verifiable orchestration and release-control evidence | Planning synchronization |
-| R1 | Python builder + source/schema agents | Provider-correct identities, resource routing, complete-detail checks, durable job store | R0 |
+| R1 | Python builder + source/schema agents | Provider-correct identities, resource routing, complete-detail checks, durable job store | Synchronized direct-dispatch checkpoint; R0 before local-runner/release automation |
 | R2 | Python builder + quality/reliability agents | Durable normalize/rewrite/publish lifecycle, concurrency and replay recovery | R1 |
 | R3 | Go builder + contract/source agents | Immediate source fallback and explicit additive lifecycle API | R2 contract |
 | R4 | Go/web builder + consumer/test agents | Workshop source-to-canonical experience and browser tests | R3, R5 identity/session contract |

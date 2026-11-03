@@ -12,7 +12,6 @@
     "workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py",
     "workers/ingestion-python/src/autodata_ingestion/worker.py",
     "workers/ingestion-python/tests/**",
-    "db/migrations/**",
     "docs/architecture/independent-bank-connectors.md",
     "workers/ingestion-python/src/autodata_ingestion/article_lifecycle_types.py",
     "workers/ingestion-python/src/autodata_ingestion/article_lifecycle_store.py",
@@ -21,7 +20,9 @@
     "infra/compose/compose.article-lifecycle-test.yaml",
     "infra/compose/article-lifecycle-test.Dockerfile",
     "scripts/dev/test_migrations.py",
-    "scripts/dev/source_connector_fixture_server.py"
+    "scripts/dev/source_connector_fixture_server.py",
+    "db/migrations/037_article_source_lifecycle.sql",
+    "db/migrations/038_article_transform_publication.sql"
   ],
   "bounded_contexts": [
     "source connectors",
@@ -73,8 +74,8 @@
       "Catalog union records per-bank coverage and preserves healthy rows if one bank fails.",
       "PostgreSQL tests prove provider-separated job claims and legacy-state preservation."
     ],
-    "status": "blocked",
-    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+    "status": "synchronized",
+    "updated_at": "2026-11-03T09:25:08.684596+00:00"
   },
   "execution": {
     "model": "gpt-6.1-sol",
@@ -84,5 +85,6 @@
       "fast_mode": true
     },
     "allow_fallback": false
-  }
+  },
+  "dispatch_mode": "coordinator_direct"
 }

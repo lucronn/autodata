@@ -15,8 +15,8 @@
 **Issue:** https://github.com/lucronn/autodata/issues/186
 
 **Planning state:** Reviewed checkpoint linked to verified Issue #186 and Project
-#8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`. R0 evidence is ready for exact-base
-preflight once this checkpoint is committed. Dependent tasks remain blocked until
+#8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`. R0 evidence and disjoint R1 intake use
+direct coordinator dispatch with their own passing exact-base preflight. Dependent tasks remain blocked until
 their verified prerequisites and refined scope are committed. No implementation
 or release certification is claimed.
 
@@ -155,6 +155,21 @@ state contract before R3; freeze R3 before R4. R5 may proceed after contract
 freeze in a separate worktree; integrate its identity/session boundary before R4 completes so Workshop authentication and reader changes have one writer. R6 waits for all application lanes. If two tasks
 need the same file, integrate the producer first and re-pin the consumer base.
 
+R0 evidence and R1 intake may be implemented concurrently through the current
+coordinator's collaboration tools: their implementation paths are disjoint and
+each has its own synchronized committed record and machine preflight. R1 does
+not invoke the legacy local runner or consume unverified R0 evidence. This
+bounded scheduling refinement was independently reviewed against the existing
+policy; it changes no required gate or protected input. Local-runner execution
+and release automation remain blocked until R0 tooling is independently verified.
+
+R1's 037/038 migrations have one writer. Before integration, the coordinator
+collects clean/upgrade/legacy-preservation and concurrency results from the
+isolated real PostgreSQL fixture, plus independent schema/source/reliability
+review at the exact R1 SHA. Use this explicit protected-change workflow; the
+normal runner's protected-path refusal remains intact. All eight required gates
+still apply before release/merge, and no migration touches production data.
+
 The coordinator records each builder's actual commit, commands, results and
 review; preserves failures; and never combines reports from different heads.
 Task JSON describes the next bounded assignment. The coordinator rechecks
@@ -175,8 +190,9 @@ Nine task contracts pass the existing structural validator, reference existing
 plans/docs, have an acyclic dependency graph, and record the requested Sol 6.1 /
 medium / Fast profile. These are draft-input checks; the legacy runner does not
 yet enforce the new execution field. Every task references verified Issue #186. Only the first R0 evidence record is
-synchronized at this checkpoint; dependent task records remain blocked until
-their own dependency integration and fresh preflight.
+synchronized at the initial checkpoint; the separately committed R1 direct-dispatch
+refinement has its own synchronized record. Other dependent task records remain
+blocked until their dependency integration and fresh preflight.
 
 Independent planning review resolved the staging-evidence adapter boundary,
 post-merge tracking repair, canonical index/legacy query handoff, exhausted
