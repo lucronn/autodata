@@ -44,7 +44,8 @@
     "Two full-chain processes serialize at one shared session advisory lock and both succeed; disconnection releases lock and rolls back the active migration.",
     "Fault injection before a version marker rolls back all newly executed migration statements; previous migration commits remain and retry succeeds.",
     "Compose, Base44, native and Docker migrate.py, and lifecycle fixture chain execution all use the same embedded-SQL psql driver; external Kubernetes migrator remains explicitly uncertified until it delegates this contract.",
-    "Focused real PostgreSQL matrix, full ingestion, utility tests and actual exact-head GitHub verification pass with independent exact-SHA review."
+    "Focused real PostgreSQL matrix, full ingestion, utility tests and actual exact-head GitHub verification pass with independent exact-SHA review.",
+    "Default manifest exactly matches canonical001\u2013038 filenames; explicit fixture manifests are contiguous001..N prefixes. Missing middle/first files, truncated defaults, and absent or empty ledgers with known application tables fail before application DDL."
   ],
   "forbidden_scope": [
     "Production deployment, live providers or production-data changes",

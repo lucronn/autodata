@@ -31,17 +31,17 @@ Keep the existing marker-only provenance. A committed valid version is trusted a
 
 For markerless033, do NOT infer completion merely because034/036 exists. On first adoption, execute the unchanged033 once inside a runner transaction and insert `033_catalog_scope_coverage` in that same transaction. This intentionally retains033's existing reviewer-state/timestamp effects on matching malformed rows. The coordinator accepts this explicit one-time replay for the implementation and isolated acceptance scope and records it in Issue/Project. It executes the existing pending033 semantics and records them atomically; it does not authorize applying migrations to production. A production adoption must account for the documented reviewer-state/timestamp effects through the deployment runbook. Later runs skip033 like every other version. If such one-time data effects are not acceptable for a target database, stop adoption and design a separately reviewed explicit schema/data attestation path; never silently stamp033.
 
-Recognize legacy committed prefixes with the sole historical033 gap. Reject unknown version strings, duplicate file numbers, mismatched filename numbering/stems and any other ledger gap before application DDL. Reject a missing ledger with known application tables already present rather than guessing an untracked baseline. Empty database bootstrap is valid. A legacy partial001–035 migration with absent final marker is retried under its existing replay-oriented SQL, now in a transaction; its preexisting partial state is not retrospectively certified as atomic.
+Recognize legacy committed prefixes with the sole historical033 gap. Reject unknown version strings, duplicate file numbers, mismatched filename numbering/stems and any other ledger gap before application DDL. Reject a missing OR empty ledger when known application tables already exist, rather than guessing an untracked baseline.001 creates only extensions/ledger, so an empty ledger alongside later application tables is not an interrupted001 baseline. Bootstrap with an absent or empty ledger is valid only with no known application tables. A recorded001 marker plus a partially applied next legacy migration remains retryable. A legacy partial001–035 migration with absent final marker is retried under its existing replay-oriented SQL, now in a transaction; its preexisting partial state is not retrospectively certified as atomic.
 
 ## Shared driver contract
 
 Create `scripts/dev/migrate_sql.sh`. It must run under `/bin/sh` in `postgres:17-alpine` using only existing shell/core utilities and psql: no Python/runtime/package changes in the PostgreSQL image.
 
 - Interface: `sh scripts/dev/migrate_sql.sh --emit` writes one complete psql driver to stdout and exits; it performs no DB calls. Default invocation generates that same driver into a private temporary file, invokes `psql -X --set ON_ERROR_STOP=1 --file <temp>`, and removes the file through a trap. Existing PG* environment determines target. Support `--migrations-dir <absolute-dir>` for fixture tests; default resolves repository db/migrations relative to the script. No eval or shell interpolation of SQL content.
-- Fully validate filenames and manifest before emitting/executing SQL: exactly three decimal digits, underscore, lowercase alphanumeric/underscore stem, `.sql`; unique ascending numbers. Filenames produce SQL-safe expected version strings. Refuse symlink/ambiguous duplicate/unsupported names rather than interpolate unsafe names.
+- Fully validate filenames and manifest before emitting/executing SQL: exactly three decimal digits, underscore, lowercase alphanumeric/underscore stem, `.sql`; unique ascending numbers. Default production execution requires the exact38 canonical filenames listed below, including001 and038; missing middle files or a truncated checkout fail before SQL emission. Explicit fixture `--migrations-dir` may contain only an exact contiguous canonical001..N prefix without holes, with audited copies used for fault injection. Numeric order alone never establishes completeness. Filenames produce SQL-safe expected version strings. Refuse symlink/ambiguous duplicate/unsupported names rather than interpolate unsafe names.
 - Emit literal SQL bodies with `cat`, separated by an explicit newline. No `\i`/filesystem includes: the emitted driver must work when streamed to psql inside an existing postgres container that does not mount source. Reject psql metacommands in migration bodies; current files contain none.
 - Driver uses `\set ON_ERROR_STOP on`, `SET default_transaction_isolation TO 'read committed'`, `SET lock_timeout TO '60s'`, then `SELECT pg_advisory_lock(186,3738);`. Reserve this lock pair for the migration session. A single psql process holds it across initial ledger validation and every file. Release on normal completion; connection close/disconnection also releases it. Do not split check/apply into different psql sessions.
-- Check `to_regclass('schema_migrations')` before referencing the table. If absent on an empty DB, apply001 first inside runner BEGIN/COMMIT;001 itself creates/inserts ledger. Validate existing ledger shape with queries whose failure is fatal. Ledger table may legitimately not exist before001; SQL parsing must not reference it in a branch executed before creation.
+- Check `to_regclass('schema_migrations')` before referencing the table. If absent or empty with no known application tables, apply001 first inside runner BEGIN/COMMIT;001 itself creates/inserts ledger. Validate existing ledger shape with queries whose failure is fatal. Ledger table may legitimately not exist before001; SQL parsing must not reference it in a branch executed before creation.
 - Once ledger exists, compare exact applied versions against the complete validated manifest and require a prefix except historical033. Reject unknown/higher versions instead of running an old checkout on a newer DB. Perform this before pending application DDL.
 - For every expected version, use `SELECT EXISTS(...) AS autodata_skip \gset` and `\if :autodata_skip` to skip; otherwise execute that file. psql conditionals evaluate result variables, not migration text. The same session and lock cover the check plus execution.
 - For001–035 (including033), emit runner BEGIN, original body verbatim, runner `INSERT INTO schema_migrations(version) VALUES ('<expected>') ON CONFLICT(version) DO NOTHING`, exact marker validation, COMMIT. Existing file inserts are harmless duplicates inside the same transaction. This supplies missing033 marker without editing historical SQL.
@@ -73,6 +73,51 @@ $driver_check$;
 ```
 
 The body comment specifies byte-preserving embedding of an existing file, not new replacement DDL. Actual generator reads the original file, not this illustration.
+
+## Canonical manifest
+
+The shared driver audits this exact default manifest. A future migration requires a reviewed manifest/transaction-contract update; it does not silently extend support.
+
+```text
+001_extensions.sql
+002_platform_spine.sql
+003_canonical_vehicle.sql
+004_normalized_source_bundle.sql
+005_preserve_duplicate_article_ids.sql
+006_backfill_article_source_locators.sql
+007_link_evidence_to_revision.sql
+008_publication_outbox_delivery.sql
+009_feedback_evidence_link.sql
+010_evidence_review_metadata.sql
+011_feedback_review_metadata.sql
+012_payment_fulfillment_reconciliation.sql
+013_dataset_request_ownership.sql
+014_normalized_article_content.sql
+015_vehicle_identity_resolution.sql
+016_catalog_article_configuration.sql
+017_knowledge_catalog_evidence_index.sql
+018_source_review_items.sql
+019_article_content_provenance.sql
+020_autoapi_article_fetch_jobs.sql
+021_autoapi_article_fetch_job_retries.sql
+022_job_plan_derived_articles.sql
+023_catalog_article_images.sql
+024_catalog_article_operations.sql
+025_chat_quote_procedure.sql
+026_chat_quote_operation_categories.sql
+027_chat_runtime_durable_state.sql
+028_vehicle_provider_mappings.sql
+029_vehicle_catalog_sync.sql
+030_vehicle_catalog_years.sql
+031_catalog_article_classification.sql
+032_catalog_article_source_original.sql
+033_catalog_scope_coverage.sql
+034_catalog_article_progress.sql
+035_ordered_article_document.sql
+036_source_fetch_jobs.sql
+037_article_source_lifecycle.sql
+038_article_transform_publication.sql
+```
 
 ## Entrypoint ownership and compatibility
 
@@ -120,8 +165,8 @@ No migration SQL, API, worker business behavior, policy, CI test command or sche
 | Genuine036 upgrade | Original chain through036, legacy033 missing marker; seed legacy job statuses before036 import | Only033,037,038 pending; legacy UUID/idempotency/status/retry/snapshot invariants retained;033 effects explicitly match existing SQL |
 | Original037/038 adoption | DB from original full chain; shared driver twice | Existing037/038 and031 skip; only first033 replays once; second run no-op |
 | Markerless033 policy | Legacy table/data exists but033 marker absent; matching malformed review rows and control rows | Original033 executes once transactionally and only its documented rows change; marker inserted; next run changes nothing |
-| Initial ledger absent | Truly empty DB vs known app table present without ledger | Empty bootstrap works; untracked application baseline fails closed |
-| Bad manifest/ledger | Duplicate number, unsafe name, unknown version, same numeric version with wrong stem, missing032 below036 | Fail before pending DDL; missing033 alone is accepted by explicit adoption policy |
+| Initial ledger absent/empty | Truly empty DB vs known app table with absent ledger or empty ledger | Empty bootstrap works; either untracked application baseline fails before application DDL |
+| Bad manifest/ledger | Duplicate number, unsafe name, missing middle file, missing001, truncated default chain, unknown version, wrong stem, missing032 ledger row below036 | Fail before pending DDL; only explicit contiguous fixture prefixes and the historical033 ledger gap are accepted |
 | Two full runners | Two independent shared drivers target same fresh DB and then same036 DB | One holds session lock; other waits; both succeed; each migration executes once; no duplicate objects |
 |001–035 transaction rollback | Test-only migration fixture with two DDL statements then injected error before marker | Both DDL and marker absent after failure; prior commits intact; fixed fixture retry succeeds |
 |036–038 rollback/retry | Test-only copied file with failure before existing marker; original files untouched | Existing BEGIN/body/marker atomicity retained; failed version objects absent; retry succeeds |
