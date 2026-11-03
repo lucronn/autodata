@@ -99,6 +99,30 @@ def persist_resource(cur, resource):
     return snapshot
 
 
+def _remap_snapshot_references(value, snapshots):
+    """Copy JSON provenance using persisted blob IDs, preserving evidence IDs."""
+    if isinstance(value, list):
+        return [_remap_snapshot_references(item, snapshots) for item in value]
+    if not isinstance(value, dict):
+        return deepcopy(value)
+    result = {}
+    for key, item in value.items():
+        if (key == "snapshot_id" or key.endswith("_snapshot_id")) and str(
+            item
+        ) in snapshots:
+            result[key] = str(snapshots[str(item)])
+        elif (key == "snapshot_ids" or key.endswith("_snapshot_ids")) and isinstance(
+            item, list
+        ):
+            result[key] = [
+                str(snapshots[str(ref)]) if str(ref) in snapshots else deepcopy(ref)
+                for ref in item
+            ]
+        else:
+            result[key] = _remap_snapshot_references(item, snapshots)
+    return result
+
+
 def store_captured_source(repo, lease, captured):
     """Source revision, observation, pointer and transformation transition are atomic."""
     context = captured.context
@@ -140,13 +164,17 @@ def store_captured_source(repo, lease, captured):
                 lease.canonical_article_id,
                 captured.source_fingerprint,
                 body_snapshot,
-                Jsonb(captured.resource_manifest),
+                Jsonb(
+                    _remap_snapshot_references(captured.resource_manifest, snapshots)
+                ),
                 Jsonb(captured.source_document),
                 Jsonb(captured.source_images),
                 captured.source_body,
                 Jsonb(captured.source_steps),
                 captured.projection_status,
-                Jsonb(captured.evidence_manifest),
+                Jsonb(
+                    _remap_snapshot_references(captured.evidence_manifest, snapshots)
+                ),
                 captured.captured_at,
             ),
         ).fetchone()
@@ -156,12 +184,7 @@ def store_captured_source(repo, lease, captured):
                 (lease.canonical_article_id, captured.source_fingerprint),
             ).fetchone()
         revision_id = row["source_revision_id"]
-        provenance = deepcopy(captured.resource_provenance)
-        for resource in provenance:
-            if str(resource.get("source_snapshot_id")) in snapshots:
-                resource["source_snapshot_id"] = str(
-                    snapshots[str(resource["source_snapshot_id"])]
-                )
+        provenance = _remap_snapshot_references(captured.resource_provenance, snapshots)
         body_resource = next(r for r in captured.resources if r["role"] == "body")
         cur.execute(
             """INSERT INTO canonical_article_source_observations(source_observation_id,canonical_article_id,source_revision_id,source_fetch_job_id,request_generation,body_provider_revision,resource_provenance,captured_context,resolution_source_snapshot_id,descriptor_source_snapshot_id,captured_at)

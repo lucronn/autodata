@@ -196,6 +196,82 @@ def test_blob_dedupe_preserves_bank_specific_provenance(
         }
 
 
+def test_legacy_blob_dedupe_remaps_all_evidence_snapshot_references(
+    fresh_database, capture_fixture
+):
+    from copy import deepcopy
+    from autodata_ingestion.article_lifecycle_store import (
+        store_captured_source,
+        load_source_revision,
+    )
+
+    repo = fresh_database()
+    legacy_body = seed_snapshot(repo, b"<p>Remove the pump.</p>")
+    legacy_asset = seed_snapshot(repo, b"shared fixture figure")
+    for provider in ("bankone", "banktwo"):
+        context, lease, _ = prepare(repo, capture_fixture, provider)
+        context = replace(
+            context,
+            descriptor={**context.descriptor, "asset_resource_refs": ["figure"]},
+        )
+        capture_fixture.body(
+            provider, b"shared fixture figure", "image/png", ref="figure", kind="asset"
+        )
+        captured = capture_source_article(
+            context,
+            registry=capture_fixture.registry,
+            object_store=capture_fixture.objects,
+        )
+        assert captured.body_source_snapshot_id != legacy_body
+        asset_snapshot = next(
+            r["source_snapshot_id"] for r in captured.resources if r["role"] == "asset"
+        )
+        evidence = deepcopy(captured.evidence_manifest)
+        evidence[0]["resources"] = [{"source_snapshot_id": asset_snapshot}]
+        evidence[0]["source_snapshot_ids"] = [
+            str(captured.body_source_snapshot_id),
+            asset_snapshot,
+        ]
+        captured = replace(captured, evidence_manifest=evidence)
+        original_evidence = deepcopy(captured.evidence_manifest)
+        original_document = deepcopy(captured.source_document)
+        revision = store_captured_source(repo, lease, captured)
+        saved = load_source_revision(repo, revision)
+        assert saved.body_source_snapshot_id == legacy_body
+        assert saved.evidence_manifest[0]["body_source_snapshot_id"] == str(legacy_body)
+        assert saved.evidence_manifest[0]["resources"][0]["source_snapshot_id"] == str(
+            legacy_asset
+        )
+        assert saved.evidence_manifest[0]["source_snapshot_ids"] == [
+            str(legacy_body),
+            str(legacy_asset),
+        ]
+        assert (
+            saved.evidence_manifest[0]["evidence_id"]
+            == original_evidence[0]["evidence_id"]
+        )
+        assert saved.source_document == original_document
+        assert captured.evidence_manifest == original_evidence
+        with repo.connect() as conn:
+            observation = conn.execute(
+                "SELECT resource_provenance FROM canonical_article_source_observations WHERE source_revision_id=%s",
+                (revision,),
+            ).fetchone()["resource_provenance"]
+            assert {r["provider"] for r in observation} == {provider}
+            assert {r["source_snapshot_id"] for r in observation} == {
+                str(legacy_body),
+                str(legacy_asset),
+            }
+            assert (
+                conn.execute(
+                    "SELECT count(*) AS n FROM source_snapshots WHERE source_snapshot_id=ANY(%s)",
+                    ([legacy_body, legacy_asset],),
+                ).fetchone()["n"]
+                == 2
+            )
+        fail_source_job(repo, lease, code="MODEL_NOT_CONFIGURED", retryable=False)
+
+
 def test_loaded_source_context_is_immutable_after_descriptor_changes(
     fresh_database, capture_fixture
 ):
