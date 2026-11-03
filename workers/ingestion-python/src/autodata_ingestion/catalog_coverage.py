@@ -161,11 +161,12 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
         configuration_unresolved = False
         if scope["vehicle_configuration_id"]:
             configuration = cur.execute(
-                """SELECT c.trim,c.engine_displacement_l,b.drivetrain FROM vehicle_configurations c
+                """SELECT c.trim,c.engine_displacement_l,b.drivetrain,b.region FROM vehicle_configurations c
                 JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
                 WHERE c.vehicle_configuration_id=%s""",
                 (scope["vehicle_configuration_id"],),
             ).fetchone()
+            selector["region"] = configuration["region"]
             label = " ".join(
                 str(value).strip()
                 for value in (
