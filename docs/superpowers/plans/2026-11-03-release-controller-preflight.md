@@ -14,6 +14,14 @@
 
 **Issue:** https://github.com/lucronn/autodata/issues/186
 
+## Concrete todo
+
+- [ ] Validate the complete release context and generate supported Project/merge argv.
+- [ ] Revalidate pinned v2 evidence and live GitHub Issue/Project/PR state before any mutation.
+- [ ] Order tracking before merge, recheck the exact head, and distinguish queued from confirmed merge.
+- [ ] Implement idempotent tracking-only recovery for a confirmed merged candidate.
+- [ ] Run focused and complete autonomy suites, verify installed CLI flags, update the canonical release-controller document, and obtain independent exact-SHA review.
+
 ## Global constraints
 
 - After planning, implementation and review use `gpt-6.1-sol`, medium reasoning, and Fast/priority service, as explicitly requested by the user.
