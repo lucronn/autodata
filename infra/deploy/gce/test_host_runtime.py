@@ -875,5 +875,265 @@ class GuardTests(unittest.TestCase):
         self.assertNotIn('ExecStop', guard['Service'])
 
 
+
+class DeployCheckTests(unittest.TestCase):
+    """Disposable filesystem plus fixed fake findmnt/nft transcripts only."""
+    def setUp(self):
+        ContractTests.setUp(self)
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.cleanup_tree)
+        self.base = Path(self.temp.name)
+        self.rt.HOST_CONFIG = str(self.base / 'config/host.json')
+        self.rt.RELEASE_ROOT = str(self.base / 'releases')
+        self.rt.DATA_ROOT = str(self.base / 'data')
+        self.rt.SECRET_ROOT = str(self.base / 'secrets')
+        for directory in (Path(self.rt.HOST_CONFIG).parent, Path(self.rt.RELEASE_ROOT), Path(self.rt.RELEASE_ROOT) / SHA,
+                          Path(self.rt.DATA_ROOT), Path(self.rt.SECRET_ROOT)):
+            directory.mkdir(mode=0o700)
+        self.private_json(Path(self.rt.HOST_CONFIG), self.config)
+        self.private_json(Path(self.rt.RELEASE_ROOT) / SHA / 'release.json', self.manifest)
+        for service in ('api', 'ingestion-http', 'article-worker', 'payment-reconciler'):
+            self.secret_directory(service, {name: b'opaque-do-not-print' for name in self.rt.SECRET_NAMES[service]})
+        self.secret_directory('postgres', {'POSTGRES_PASSWORD': b'opaque-do-not-print'})
+        nats = (HERE / 'nats.conf.template').read_bytes().replace(b'@@NATS_METRICS_USER@@', b'metrics_user').replace(b'@@NATS_METRICS_PASSWORD@@', b'opaque-do-not-print')
+        self.secret_directory('nats', {'nats.conf': nats})
+        s3 = (HERE / 'seaweedfs-s3.json.template').read_bytes()
+        for name in ('S3_WORKER_ACCESS_KEY', 'S3_WORKER_SECRET_KEY', 'S3_API_ACCESS_KEY', 'S3_API_SECRET_KEY'):
+            s3 = s3.replace(('@@' + name + '@@').encode(), ('opaque-' + name).encode())
+        self.secret_directory('minio', {'s3.json': s3})
+        self.secret_directory('caddy', {'maintenance.caddy': b''})
+        self.data_mount = {'filesystems': [{'target': self.rt.DATA_ROOT, 'uuid': self.config['resources']['data_disk_filesystem_uuid'], 'fstype': 'ext4', 'options': 'rw,relatime'}]}
+        self.secret_mount = {'filesystems': [{'target': self.rt.SECRET_ROOT, 'uuid': None, 'fstype': 'tmpfs', 'options': 'rw,nosuid,nodev,noexec,relatime'}]}
+        self.guard_tables = upstream_guard_readback()
+        self.calls = []
+        self.wrong_owner = None
+        self.wrong_group = None
+        # Simulate a root-installed filesystem using real disposable inodes.
+        # Preserve actual modes/links/sizes/types; only UID/GID differ on hosts
+        # where tests run as the ordinary developer rather than UID0.
+        original_fstat = os.fstat
+        def metadata(fd):
+            result = list(original_fstat(fd))
+            path = Path(os.readlink('/proc/self/fd/' + str(fd)))
+            relative = path.relative_to(self.base) if path.is_relative_to(self.base) else None
+            if relative is not None:
+                parts = relative.parts
+                service = parts[1] if len(parts) >= 2 and parts[0] == 'secrets' else None
+                owner = 999 if service == 'postgres' else (1000 if service in ('api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'nats', 'minio') else 0)
+                result[4] = result[5] = owner
+                if path == self.wrong_owner: result[4] = 12345
+                if path == self.wrong_group: result[5] = 12345
+            return os.stat_result(result)
+        for guard in (patch.object(os, 'geteuid', return_value=0), patch.object(os, 'fstat', side_effect=metadata),
+                      patch.object(subprocess, 'run', side_effect=self.execute)):
+            guard.start(); self.addCleanup(guard.stop)
+
+    def cleanup_tree(self):
+        for directory, _, _ in os.walk(self.temp.name): Path(directory).chmod(0o700)
+        self.temp.cleanup()
+
+    def private_json(self, path, value):
+        path.write_bytes(self.rt.canonical_bytes(value)); path.chmod(0o600)
+
+    def secret_directory(self, service, files):
+        directory = Path(self.rt.SECRET_ROOT) / service; directory.mkdir(mode=0o700)
+        for name, value in files.items():
+            target = directory / name; target.write_bytes(value); target.chmod(0o400)
+        directory.chmod(0o500)
+
+    def execute(self, argv, **kwargs):
+        self.calls.append(argv)
+        self.assertEqual(kwargs, {'stdin': subprocess.DEVNULL, 'stdout': subprocess.PIPE, 'stderr': subprocess.DEVNULL,
+            'timeout': 5, 'check': False, 'cwd': '/', 'env': {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}})
+        for path, data in ((self.rt.DATA_ROOT, self.data_mount), (self.rt.SECRET_ROOT, self.secret_mount)):
+            if argv == ['/usr/bin/findmnt', '--json', '--list', '--mountpoint', path, '--output', 'TARGET,UUID,FSTYPE,OPTIONS']:
+                return subprocess.CompletedProcess(argv, 0, json.dumps(data).encode())
+        for family in ('inet', 'bridge'):
+            if argv == ['/usr/sbin/nft', '--json', '--numeric', 'list', 'table', family, 'autodata_guard']:
+                return subprocess.CompletedProcess(argv, 0, json.dumps(self.guard_tables[family]).encode())
+        raise AssertionError('unexpected command: ' + repr(argv))
+
+    def deploy(self, argv=None):
+        self.assertTrue(callable(getattr(self.rt, 'deploy_cli', None)), 'fixed deploy check implementation missing')
+        code, receipt = self.rt.deploy_cli(argv or ['check', SHA])
+        self.assertIn(code, (2, 3, 5)); self.assertNotEqual(receipt['status'], 'passed')
+        self.assertNotIn('opaque-do-not-print', json.dumps(receipt))
+        self.assertEqual(set(receipt), {'schema_version', 'operation', 'run_id', 'source_sha', 'status',
+                                       'started_at', 'finished_at', 'checks', 'failure_code'})
+        return code, receipt
+
+    def test_valid_local_prerequisites_do_not_claim_unimplemented_runtime_evidence(self):
+        code, receipt = self.deploy()
+        self.assertEqual(code, 3)
+        self.assertEqual(receipt['failure_code'], 'missing_dependency')
+        self.assertEqual(receipt['checks'], {'config': True, 'manifest': True, 'disk_uuid': True,
+            'metadata_guard': True, 'storage_guard': True, 'secrets': True, 'cached_images': False,
+            'schema': False, 'services': False, 'runtime_evidence': False})
+        self.assertEqual(len(self.calls), 4)
+
+    def test_missing_wrong_or_readonly_mount_never_creates_data_files(self):
+        baseline = copy.deepcopy(self.data_mount)
+        for key, value in (('uuid', '87654321-1234-4234-8234-123456789abc'), ('target', '/'),
+                           ('fstype', 'tmpfs'), ('options', 'ro,relatime')):
+            self.data_mount = copy.deepcopy(baseline); self.data_mount['filesystems'][0][key] = value
+            code, receipt = self.deploy()
+            self.assertEqual(code, 3); self.assertFalse(receipt['checks']['disk_uuid'])
+            self.assertEqual(list(Path(self.rt.DATA_ROOT).iterdir()), [])
+        self.data_mount = {'filesystems': []}
+        self.assertFalse(self.deploy()[1]['checks']['disk_uuid'])
+
+    def test_tmpfs_must_be_exact_mount_with_safe_options(self):
+        baseline = copy.deepcopy(self.secret_mount)
+        for key, value in (('target', '/run'), ('fstype', 'ext4'), ('options', 'rw,nosuid,nodev'),
+                           ('options', 'ro,nosuid,nodev,noexec')):
+            self.secret_mount = copy.deepcopy(baseline); self.secret_mount['filesystems'][0][key] = value
+            self.assertFalse(self.deploy()[1]['checks']['secrets'])
+        self.secret_mount = {'filesystems': [baseline['filesystems'][0], baseline['filesystems'][0]]}
+        self.assertFalse(self.deploy()[1]['checks']['secrets'])
+
+    def test_guard_drift_blocks_secret_and_runtime_approval(self):
+        self.guard_tables['inet']['nftables'].pop()
+        code, receipt = self.deploy()
+        self.assertEqual(code, 3); self.assertEqual(receipt['failure_code'], 'guard_missing')
+        self.assertFalse(receipt['checks']['metadata_guard']); self.assertFalse(receipt['checks']['secrets'])
+
+    def test_manifest_config_source_and_private_metadata_are_enforced_before_tools(self):
+        cases = ('config_hash', 'source_sha', 'manifest_mode', 'manifest_owner', 'config_mode', 'release_symlink', 'config_directory_mode')
+        manifest_path = Path(self.rt.RELEASE_ROOT) / SHA / 'release.json'
+        for case in cases:
+            with self.subTest(case=case):
+                self.calls.clear(); self.private_json(manifest_path, self.manifest)
+                Path(self.rt.HOST_CONFIG).chmod(0o600); Path(self.rt.HOST_CONFIG).parent.chmod(0o700)
+                self.wrong_owner = None
+                candidate = copy.deepcopy(self.manifest)
+                if case == 'config_hash': candidate['service_config_sha256'] = '0' * 64; self.private_json(manifest_path, candidate)
+                elif case == 'source_sha': candidate['source_sha'] = 'b' * 40; self.private_json(manifest_path, candidate)
+                elif case == 'manifest_mode': manifest_path.chmod(0o644)
+                elif case == 'manifest_owner': self.wrong_owner = manifest_path
+                elif case == 'config_mode': Path(self.rt.HOST_CONFIG).chmod(0o644)
+                elif case == 'config_directory_mode': Path(self.rt.HOST_CONFIG).parent.chmod(0o777)
+                else:
+                    moved = manifest_path.parent.with_name('moved'); manifest_path.parent.rename(moved)
+                    manifest_path.parent.symlink_to(moved)
+                try:
+                    code, receipt = self.deploy()
+                    self.assertEqual(code, 3); self.assertFalse(receipt['checks']['manifest']); self.assertEqual(self.calls, [])
+                finally:
+                    if case == 'release_symlink': manifest_path.parent.unlink(); moved.rename(manifest_path.parent)
+
+    def test_secret_files_reject_wrong_metadata_links_names_and_malformed_values(self):
+        directory = Path(self.rt.SECRET_ROOT) / 'api'; target = directory / 'AUTODATA_POSTGRES_PASSWORD'
+        for value in (b'', b'new\nline', b'new\rline', b'nul\x00value', b'x' * 16385):
+            target.chmod(0o600); target.write_bytes(value); target.chmod(0o400)
+            self.assertFalse(self.deploy()[1]['checks']['secrets'])
+        target.chmod(0o600); target.write_bytes(b'opaque-do-not-print'); target.chmod(0o400)
+        target.chmod(0o644); self.assertFalse(self.deploy()[1]['checks']['secrets']); target.chmod(0o400)
+        self.wrong_owner = target; self.assertFalse(self.deploy()[1]['checks']['secrets']); self.wrong_owner = None
+        self.wrong_group = target; self.assertFalse(self.deploy()[1]['checks']['secrets']); self.wrong_group = None
+        directory.chmod(0o700); self.assertFalse(self.deploy()[1]['checks']['secrets']); directory.chmod(0o500)
+        directory.chmod(0o700); extra = directory / '.unexpected'; extra.write_bytes(b'opaque-do-not-print'); directory.chmod(0o500)
+        self.assertFalse(self.deploy()[1]['checks']['secrets'])
+        directory.chmod(0o700); extra.unlink(); target.unlink(); target.symlink_to(Path(self.rt.HOST_CONFIG)); directory.chmod(0o500)
+        self.assertFalse(self.deploy()[1]['checks']['secrets'])
+        directory.chmod(0o700); target.unlink(); other = self.base / 'other'; other.write_bytes(b'opaque-do-not-print'); other.chmod(0o400); os.link(other, target); directory.chmod(0o500)
+        self.assertFalse(self.deploy()[1]['checks']['secrets'])
+
+    def test_native_secret_configs_reject_missing_unresolved_or_widened_policy(self):
+        for service, filename in (('postgres', 'POSTGRES_PASSWORD'), ('nats', 'nats.conf'), ('minio', 's3.json'), ('caddy', 'maintenance.caddy')):
+            target = Path(self.rt.SECRET_ROOT) / service / filename
+            before = target.read_bytes(); target.chmod(0o600); target.write_bytes(b'@@UNRESOLVED@@'); target.chmod(0o400)
+            self.assertFalse(self.deploy()[1]['checks']['secrets'])
+            target.chmod(0o600); target.write_bytes(before); target.chmod(0o400)
+        target = Path(self.rt.SECRET_ROOT) / 'nats/nats.conf'; before = target.read_bytes()
+        target.chmod(0o600); target.write_bytes(before.replace(b'["$JS.API.INFO"]', b'[">"]')); target.chmod(0o400)
+        self.assertFalse(self.deploy()[1]['checks']['secrets'])
+        target.chmod(0o600); target.write_bytes(before); target.chmod(0o400)
+        directory = target.parent; directory.chmod(0o700); target.unlink(); directory.chmod(0o500)
+        self.assertFalse(self.deploy()[1]['checks']['secrets'])
+        directory.chmod(0o700); target.write_bytes(before); target.chmod(0o400); directory.chmod(0o500)
+        target = Path(self.rt.SECRET_ROOT) / 'minio/s3.json'; before = target.read_bytes()
+        widened = json.loads(before); widened['identities'][1]['actions'] = ['Admin']
+        target.chmod(0o600); target.write_bytes(json.dumps(widened).encode()); target.chmod(0o400)
+        self.assertFalse(self.deploy()[1]['checks']['secrets'])
+
+    def test_all_mutation_verbs_and_invalid_input_are_blocked_without_observation(self):
+        for verb in ('install', 'start', 'stop', 'maintenance', 'resume'):
+            code, receipt = self.deploy([verb, SHA])
+            self.assertEqual(code, 3); self.assertEqual(receipt['operation'], 'deploy.sh ' + verb)
+            self.assertEqual(self.calls, [])
+        for args in ([], ['check'], ['check', SHA, 'extra'], ['check', '../' + SHA], ['unknown', SHA]):
+            self.assertEqual(self.rt.deploy_cli(args)[0], 2); self.assertEqual(self.calls, [])
+
+    def test_missing_tools_timeout_and_failed_observation_are_redacted(self):
+        for outcome, code in ((FileNotFoundError('opaque-do-not-print'), 3),
+                              (subprocess.TimeoutExpired('findmnt', 5, output=b'opaque-do-not-print'), 5),
+                              (subprocess.CompletedProcess([], 1, b'opaque-do-not-print'), 3),
+                              (subprocess.CompletedProcess([], 0, b'{"filesystems":[]}'), 3)):
+            with patch.object(subprocess, 'run', **({'side_effect': outcome} if isinstance(outcome, Exception) else {'return_value': outcome})):
+                self.assertEqual(self.deploy()[0], code)
+
+    def test_wrapper_isolated_fixed_import_and_mutation_fallback(self):
+        source = HERE / 'deploy.sh'; self.assertTrue(source.is_file(), 'fixed deploy wrapper missing')
+        body = source.read_text().split("<<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
+        namespace = {'__name__': 'deploy_test'}; exec(compile(body, str(source), 'exec'), namespace)
+        expected = '/opt/autodata/bin/runtime-check.py'
+        original_spec = importlib.util.spec_from_file_location
+        def spec(name, path):
+            self.assertEqual(path, expected)
+            return original_spec(name, HERE / 'runtime-check.py')
+        with patch.object(importlib.util, 'spec_from_file_location', side_effect=spec):
+            # Loading is real but fixtures are injected into the loaded module
+            # only by the fake loader below; production accepts no path/env hook.
+            loaded = namespace['load_runtime']()
+            self.assertEqual(loaded.HOST_CONFIG, '/etc/autodata/host.json')
+        for argv in (['start', SHA], ['check', '../bad']):
+            with patch.object(subprocess, 'run', side_effect=AssertionError('tool forbidden')):
+                code, result = namespace['main'](argv)
+            self.assertIn(code, (2, 3)); self.assertNotEqual(result['status'], 'passed')
+
+
+class DeployWrapperTests(unittest.TestCase):
+    """Execute only a disposable wrapper and local import-boundary probe."""
+    def test_shell_clears_caller_environment_and_uses_isolated_python(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            source = (HERE / 'deploy.sh').read_text()
+            literal = '/opt/autodata/bin/runtime-check.py'
+            self.assertEqual(source.count(literal), 1)
+            probe = base / 'probe.py'
+            probe.write_text("import os,sys\ndef deploy_cli(argv):\n return 3, {'argv':argv,'environment':dict(os.environ),'isolated':sys.flags.isolated}\n")
+            script = base / 'deploy.sh'; script.write_text(source.replace(literal, str(probe)))
+            environment = {'PATH': '/nonexistent-caller-path', 'PYTHONPATH': str(base), 'PYTHONHOME': '/nonexistent',
+                           'AUTODATA_POSTGRES_PASSWORD': 'opaque-do-not-print', 'GOOGLE_APPLICATION_CREDENTIALS': '/do-not-read',
+                           'CLOUDSDK_AUTH_ACCESS_TOKEN': 'opaque-do-not-print'}
+            result = subprocess.run(['/bin/sh', str(script), 'check', SHA], env=environment, capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 3, result.stderr)
+            observed = json.loads(result.stdout)
+            self.assertEqual(observed['argv'], ['check', SHA]); self.assertEqual(observed['isolated'], 1)
+            self.assertTrue(set(observed['environment']).isdisjoint(environment))
+            self.assertNotIn('opaque-do-not-print', result.stdout + result.stderr)
+            self.assertEqual(result.stderr, '')
+            # Blocked/invalid inputs never import even the fixed runtime module.
+            probe.write_text("raise RuntimeError('opaque-do-not-print')\n")
+            for verb in ('install', 'start', 'stop', 'maintenance', 'resume'):
+                result = subprocess.run(['/bin/sh', str(script), verb, SHA], env=environment, capture_output=True, text=True, timeout=5)
+                receipt = json.loads(result.stdout)
+                self.assertEqual(result.returncode, 3); self.assertEqual(receipt['operation'], 'deploy.sh ' + verb)
+                self.assertEqual(receipt['checks'], {'runtime_evidence': False}); self.assertEqual(result.stderr, '')
+            result = subprocess.run(['/bin/sh', str(script), 'check', SHA, '/tmp/caller-path'], env=environment, capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 2); self.assertEqual(json.loads(result.stdout)['failure_code'], 'invalid_input')
+
+    def test_fixed_module_load_failure_returns_only_redacted_common_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory); probe = base / 'probe.py'
+            probe.write_text("raise RuntimeError('opaque-do-not-print')\n")
+            source = (HERE / 'deploy.sh').read_text().replace('/opt/autodata/bin/runtime-check.py', str(probe))
+            script = base / 'deploy.sh'; script.write_text(source)
+            result = subprocess.run(['/bin/sh', str(script), 'check', SHA], env={'PATH': '/usr/bin:/bin'}, capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 3); self.assertEqual(result.stderr, '')
+            receipt = json.loads(result.stdout)
+            self.assertEqual(receipt['failure_code'], 'missing_dependency'); self.assertEqual(receipt['status'], 'failed')
+            self.assertNotIn('opaque-do-not-print', result.stdout)
+
 if __name__ == '__main__':
     unittest.main()
