@@ -165,7 +165,8 @@ as authenticated staging or production acceptance.
 The local-cli adapter requires exactly `codex-cli 0.162.1`; it never connects to
 an existing daemon or retries with another model. Its actual protocol sequence
 is `initialize`, `initialized`, paginated `model/list`, `thread/start`, and one
-`turn/start`. Catalog discovery must exhaust within 16 pages/1600 entries and
+`turn/start`. Discovery waits for the validated disabled startup snapshot
+described below. Catalog discovery must exhaust within 16 pages/1600 entries and
 advertise one exact `gpt-6.1-sol`, medium reasoning and the `priority` service
 tier. The resolved thread response must confirm that model, provider `openai`,
 reasoning `medium`, tier `priority`, isolated cwd and selected permissions.
@@ -258,8 +259,35 @@ fake-process tests does not certify a real provider or authenticated staging.
 
 ### Runtime packaging checkpoint
 
-The independently approved app-server adapter is integrated at `f4d95680f721ce32f4d3cb2f8da0552ef1673750` (131 integrated tests). Actual startup currently blocks on the missing-bubblewrap warning. The [separate packaging plan](../superpowers/plans/2026-11-03-runtime-packaging.md) authorizes only a scratch image dependency correction and one bounded retry after fresh preflight; strict warning rejection and the execution/isolation contract stay unchanged.
+The independently approved app-server adapter is integrated at `f4d95680f721ce32f4d3cb2f8da0552ef1673750` (131 integrated tests). Actual startup at that checkpoint blocked on the missing-bubblewrap warning. The [separate packaging plan](../superpowers/plans/2026-11-03-runtime-packaging.md) authorized only a scratch image dependency correction and one bounded retry after fresh preflight; strict warning rejection and the execution/isolation contract stay unchanged.
 
 ### Pinned disabled startup notification follow-up
 
-The package-only retry at31d1582 cleared the bubblewrap warning, then blocked before discovery/inference on the official `remoteControl/status/changed` startup snapshot with `status: disabled` and null environment. The [independently reviewed dedicated-state plan](../superpowers/plans/2026-11-03-runtime-disabled-notification.md) defines a single exact-shaped snapshot after validated initialize, with discovery queued behind initialized only after validation. Implementation still requires a fresh committed task gate. Active/unknown/malformed/repeated states, all config warnings, approvals and other unsupported notifications remain blocked; this metadata is not execution-profile proof.
+The package-only retry at31d1582 cleared the bubblewrap warning, then blocked
+before discovery/inference on the official `remoteControl/status/changed`
+startup snapshot. The [dedicated-state plan](../superpowers/plans/2026-11-03-runtime-disabled-notification.md)
+pins the accepted shape to official Codex 0.162.1. The adapter and retained
+replay require exactly one such report after a successful validated initialize
+response. It may arrive before or after the client writes `initialized`.
+Initialize queues only `initialized`; snapshot validation queues `model/list`
+behind it. A missing report times out within the existing invocation budget;
+an invalid first report blocks before model discovery, thread creation or a turn.
+
+The report must have exactly `method`, `params` and `emittedAtMs`. Its params
+must have exactly `status: "disabled"`, `environmentId: null`, `serverName` and
+`installationId`. The timestamp is a non-boolean integer from 0 through
+`2**63-1`. The server name is trimmed, nonempty, 1–255 UTF-8 bytes and contains
+no ASCII control characters; Unicode names are allowed. The installation ID
+must be canonical lowercase hyphenated UUID text, without a version restriction.
+Missing, extra or duplicate fields, active/unknown states and every repeated
+snapshot (including identical reports or changed identities) block. The adapter
+sends no remote-control RPC and does not broaden the informational-event allowlist.
+Config warnings, approvals, reroutes, settings changes and all other unsupported
+notifications remain blocked. Existing causal thread/turn ordering and profile,
+completion, cancellation, retained-root and output bounds remain required.
+
+This snapshot is informational connection metadata. It supplies no hostname
+attestation, proof of historical absence of connections, execution-profile proof
+or upstream served/billed-tier receipt. Failed trials remain unchanged. Offline
+fake-process success does not authorize a real retry: independent exact-commit
+review, coordinator promotion and a fresh trial checkpoint are still required.

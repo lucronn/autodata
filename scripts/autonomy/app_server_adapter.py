@@ -13,6 +13,7 @@ import signal
 import stat
 import subprocess
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -74,12 +75,45 @@ def provider_argv():
             "-c", "features.fast_mode=true"]
 
 
+def _disabled_startup_snapshot(frame):
+    """Validate only the pinned disabled startup report, never remote authority."""
+    _require(set(frame) == {"method", "params", "emittedAtMs"},
+             "invalid disabled startup envelope")
+    params = frame["params"]
+    _require(set(params) == {"status", "serverName", "installationId", "environmentId"},
+             "invalid disabled startup fields")
+    _require(params["status"] == "disabled" and params["environmentId"] is None,
+             "remote control is not disabled without an environment")
+    timestamp = frame["emittedAtMs"]
+    _require(type(timestamp) is int and 0 <= timestamp <= 2**63-1,
+             "invalid disabled startup timestamp")
+    name = params["serverName"]
+    _require(type(name) is str and name == name.strip()
+             and all(ord(c) >= 32 and ord(c) != 127 for c in name),
+             "invalid disabled startup server name")
+    try:
+        _require(1 <= len(name.encode("utf-8")) <= 255,
+                 "invalid disabled startup server name bound")
+    except UnicodeError as error:
+        raise ProtocolError("invalid disabled startup server name encoding") from error
+    installation = params["installationId"]
+    _require(type(installation) is str, "invalid disabled startup installation identity")
+    try:
+        _require(str(uuid.UUID(installation)) == installation,
+                 "noncanonical disabled startup installation identity")
+    except ValueError as error:
+        raise ProtocolError("invalid disabled startup installation identity") from error
+    return dict(params)
+
+
 class _Session:
     def __init__(self, expected):
         self.expected = expected
         self.ready = []
         self.pending = {}
         self.next_id = 1
+        self.initialize_complete = False
+        self.remote_control_snapshot = None
         self.cursor = None
         self.cursors = set()
         self.models = []
@@ -130,7 +164,16 @@ class _Session:
         elif method.startswith("thread/"):
             _require(self.thread is not None or "thread/start" in self.pending.values(),
                      "thread-scoped event before written thread request")
-        if method == "thread/started":
+        if method == "remoteControl/status/changed":
+            _require(self.initialize_complete and self.remote_control_snapshot is None,
+                     "unexpected disabled startup snapshot stage/repetition")
+            _require(self.pages == 0 and not self.thread and not self.turn and not self.completed
+                     and not any(m in self.pending.values()
+                                 for m in ("model/list", "thread/start", "turn/start")),
+                     "remote-control snapshot outside initialization")
+            self.remote_control_snapshot = _disabled_startup_snapshot(frame)
+            self.request("model/list", {"cursor": None, "limit": 100, "includeHidden": True})
+        elif method == "thread/started":
             _require(self.thread is not None or "thread/start" in self.pending.values(), "thread event before request")
             self.thread_events.append(params["thread"]["id"])
             _require(len(self.thread_events) == 1, "second thread event")
@@ -179,8 +222,8 @@ class _Session:
         if method == "initialize":
             _require(all(type(result.get(k)) is str and result[k] for k in ("userAgent", "codexHome", "platformFamily", "platformOs")), "invalid initialize result")
             _require(result["codexHome"] == e["codex_home"], "wrong disposable Codex home")
+            self.initialize_complete = True
             self.ready.append({"method": "initialized"})
-            self.request("model/list", {"cursor": None, "limit": 100, "includeHidden": True})
         elif method == "model/list":
             self.pages += 1
             data = result.get("data")
@@ -216,6 +259,8 @@ class _Session:
             raise ProtocolError("unexpected response method")
 
     def finish(self):
+        _require(self.initialize_complete and self.remote_control_snapshot is not None,
+                 "missing validated disabled startup snapshot")
         _require(not self.ready and not self.pending and self.thread and self.turn and len(self.completed) == 1, "incomplete protocol")
         self.check_scope()
         answers = list(self.answers.values())

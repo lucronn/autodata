@@ -35,6 +35,33 @@ def boundary(cwd):
             "namespaces": {"mnt": "mnt:[1]", "net": "net:[2]", "pid": "pid:[3]"}}
 
 
+def disabled_notification():
+    """Synthetic values with the exact official 0.162.1 notification shape."""
+    return {"method": "remoteControl/status/changed", "params": {
+        "status": "disabled", "serverName": "autodata-fixture",
+        "installationId": "123e4567-e89b-12d3-a456-426614174000",
+        "environmentId": None}, "emittedAtMs": 1793700000000}
+
+
+def numbered(records):
+    for seq, record in enumerate(records, 1):
+        record["seq"] = seq
+    return records
+
+
+def startup_snapshot(records, *, after_initialized=False):
+    records = [copy.deepcopy(r) for r in records
+               if json.loads(r["raw"]).get("method") != "remoteControl/status/changed"]
+    if after_initialized:
+        index = next(i for i, r in enumerate(records) if r["direction"] == "client"
+                     and json.loads(r["raw"]).get("method") == "initialized")
+    else:
+        index = next(i for i, r in enumerate(records) if r["direction"] == "server"
+                     and json.loads(r["raw"]).get("id") == 1)
+    records.insert(index+1, {"direction": "server", "raw": json.dumps(disabled_notification())+"\n"})
+    return numbered(records)
+
+
 def exchange():
     e = expected_context()
     response = {"schema_version": 2, "assessments": []}
@@ -58,7 +85,7 @@ def exchange():
     item = {"id": "answer", "type": "agentMessage", "phase": "final_answer", "text": json.dumps(response)}
     add("server", {"method": "item/completed", "params": {"threadId": "thread-1", "turnId": "turn-1", "item": item, "completedAtMs": 2}})
     add("server", {"method": "turn/completed", "params": {"threadId": "thread-1", "turn": {"id": "turn-1", "status": "completed", "error": None, "items": [user, item]}}})
-    return records, e
+    return startup_snapshot(records), e
 
 
 def mutate(records, predicate, change):
@@ -69,6 +96,105 @@ def mutate(records, predicate, change):
             r["raw"] = json.dumps(frame)+"\n"
             return
     raise AssertionError("fixture frame absent")
+
+
+class DisabledStartupTests(unittest.TestCase):
+    def test_source_shaped_snapshot_before_or_after_written_initialized(self):
+        for after in (False, True):
+            with self.subTest(after_initialized=after):
+                frames, expected = exchange()
+                frames = startup_snapshot(frames, after_initialized=after)
+                self.assertTrue(a.replay_protocol(frames, expected=expected)["completed"])
+        # Metadata text is retained as information, never used as a hostname command.
+        frames, expected = exchange()
+        frames = startup_snapshot(frames)
+        mutate(frames, lambda f: f.get("method") == "remoteControl/status/changed",
+               lambda f: f["params"].update(serverName="évidence"))
+        self.assertEqual(a.replay_protocol(frames, expected=expected)["profile"], PROFILE)
+        for name, timestamp in (("x"*255, 0), ("é"*127+"x", 2**63-1)):
+            frames, expected = exchange()
+            mutate(frames, lambda f: f.get("method") == "remoteControl/status/changed",
+                   lambda f: (f["params"].update(serverName=name), f.update(emittedAtMs=timestamp)))
+            self.assertTrue(a.replay_protocol(frames, expected=expected)["completed"])
+
+    def test_missing_snapshot_does_not_certify_or_queue_catalog(self):
+        frames, expected = exchange()
+        missing = numbered([r for r in frames if json.loads(r["raw"]).get("method") != "remoteControl/status/changed"])
+        with self.assertRaises(a.ProtocolError):
+            a.replay_protocol(missing, expected=expected)
+        session = a._Session(expected)
+        for rec in missing[:2]:
+            session.feed(rec["direction"], json.loads(rec["raw"]))
+        self.assertEqual(session.ready, [{"method": "initialized"}])
+        with self.assertRaises(a.ProtocolError):session.finish()
+
+    def test_exact_shape_types_bounds_and_disabled_state_are_required(self):
+        mutations = []
+        for value in ("connecting", "connected", "errored", "active", "unknown", None, True, {}):
+            mutations.append(("status", lambda f, v=value: f["params"].update(status=v)))
+        for field, values in {
+            "serverName": (None, 4, "", " ", " padded", "bad\nname", "\x7f", "x"*256, "é"*128, "\ud800"),
+            "installationId": (None, 4, "", "invalid", "123E4567-E89B-12D3-A456-426614174000",
+                               "123e4567e89b12d3a456426614174000"),
+            "environmentId": ("", "environment", False, {}),
+        }.items():
+            for value in values:
+                mutations.append((field, lambda f, k=field, v=value: f["params"].update({k: v})))
+        for field in ("status", "serverName", "installationId", "environmentId"):
+            mutations.append(("missing-"+field, lambda f, k=field: f["params"].pop(k)))
+        for value in (None, True, "1793700000000", -1, 2**63):
+            mutations.append(("timestamp", lambda f, v=value: f.update(emittedAtMs=v)))
+        mutations.extend([
+            ("missing-timestamp", lambda f: f.pop("emittedAtMs")),
+            ("profile", lambda f: f["params"].update(model="gpt-6.1-sol")),
+            ("scope", lambda f: f["params"].update(threadId="thread-1")),
+            ("extra-top", lambda f: f.update(settings={})),
+            ("request", lambda f: f.update(id=100)),
+            ("params-list", lambda f: f.update(params=[])),
+        ])
+        for label, change in mutations:
+            with self.subTest(mutation=label, change=change):
+                frames, expected = exchange()
+                frames = startup_snapshot(frames)
+                mutate(frames, lambda f: f.get("method") == "remoteControl/status/changed", change)
+                with self.assertRaises(a.ProtocolError):a.replay_protocol(frames, expected=expected)
+        frames, expected = exchange();frames = startup_snapshot(frames)
+        rec = next(r for r in frames if json.loads(r["raw"]).get("method") == "remoteControl/status/changed")
+        rec["raw"] = rec["raw"].replace('"status": "disabled"', '"status":"disabled","status":"disabled"')
+        with self.assertRaises(a.ProtocolError):a.replay_protocol(frames, expected=expected)
+
+    def test_snapshot_before_successful_initialize_and_all_repeats_block(self):
+        for stage in ("before-request", "before-response", "failed-init", "repeat-startup",
+                      "repeat-turn", "repeat-terminal", "changed-identity"):
+            with self.subTest(stage=stage):
+                frames, expected = exchange();frames = startup_snapshot(frames)
+                snapshot = next(r for r in frames if json.loads(r["raw"]).get("method") == "remoteControl/status/changed")
+                if stage.startswith("before"):
+                    frames.remove(snapshot)
+                    frames.insert(0 if stage == "before-request" else 1, snapshot)
+                elif stage == "failed-init":
+                    mutate(frames, lambda f: f.get("id") == 1 and "result" in f,
+                           lambda f: (f.pop("result"), f.update(error={"code": -1, "message": "failed"})))
+                else:
+                    duplicate = copy.deepcopy(snapshot)
+                    if stage == "changed-identity":
+                        f = json.loads(duplicate["raw"]);f["params"]["serverName"] = "other";duplicate["raw"] = json.dumps(f)+"\n"
+                    if stage == "repeat-terminal":frames.append(duplicate)
+                    elif stage == "repeat-turn":
+                        i = next(i for i,r in enumerate(frames) if json.loads(r["raw"]).get("method") == "turn/start")
+                        frames.insert(i+1, duplicate)
+                    else:frames.insert(frames.index(snapshot)+1, duplicate)
+                with self.assertRaises(a.ProtocolError):a.replay_protocol(numbered(frames), expected=expected)
+
+    def test_valid_snapshot_does_not_allow_other_remote_methods_warnings_or_settings(self):
+        for method in ("remoteControl/status/read", "remoteControl/unknown", "configWarning", "warning",
+                       "model/rerouted", "thread/settings/updated", "unknown/startup"):
+            with self.subTest(method=method):
+                frames, expected = exchange();frames = startup_snapshot(frames)
+                index = next(i for i, rec in enumerate(frames)
+                             if json.loads(rec["raw"]).get("method") == "remoteControl/status/changed")
+                frames.insert(index+1, {"direction": "server", "raw": json.dumps({"method": method, "params": {}})+"\n"})
+                with self.assertRaises(a.ProtocolError):a.replay_protocol(numbered(frames), expected=expected)
 
 
 class ProtocolTests(unittest.TestCase):
@@ -217,6 +343,15 @@ for line in sys.stdin:
             if os.environ.get('FAKE_CHILD_PID_FILE'):Path(os.environ['FAKE_CHILD_PID_FILE']).write_text(str(child.pid))
             sys.exit(0)
         answer(i,{'userAgent':'codex/0.162.1','codexHome':home,'platformFamily':'unix','platformOs':'linux'})
+        if mode!='startup-missing':
+            snapshot={'method':'remoteControl/status/changed','params':{'status':'disabled','serverName':'autodata-fixture','installationId':'123e4567-e89b-12d3-a456-426614174000','environmentId':None},'emittedAtMs':1793700000000}
+            if mode in ('startup-connecting','startup-connected','startup-errored'):
+                snapshot['params']['status']=mode.removeprefix('startup-')
+            if mode=='startup-malformed':snapshot['params']['environmentId']='unexpected-environment'
+            send(snapshot)
+            if mode=='startup-repeated':send(snapshot)
+            if mode in ('startup-unknown','startup-config-warning'):
+                send({'method':'unknown/startup' if mode=='startup-unknown' else 'configWarning','params':{}})
     elif method=='initialized': assert set(f)=={'method'}
     elif method=='model/list':
         assert p=={'cursor':None,'limit':100,'includeHidden':True}
@@ -281,7 +416,42 @@ class TransportTests(unittest.TestCase):
             captured=[json.loads(x) for x in result['protocol'].splitlines()]
             outbound=[json.loads(x['raw']).get('method') for x in captured[1:-1] if x['direction']=='client']
             self.assertEqual(outbound,['initialize','initialized','model/list','thread/start','turn/start'])
+            snapshots=[x for x in captured[1:-1] if x['direction']=='server'
+                       and json.loads(x['raw']).get('method')=='remoteControl/status/changed']
+            self.assertEqual(len(snapshots),1)
+            self.assertEqual(json.loads(snapshots[0]['raw']),disabled_notification())
+            discovery=next(x for x in captured[1:-1] if x['direction']=='client'
+                           and json.loads(x['raw']).get('method')=='model/list')
+            self.assertLess(snapshots[0]['seq'],discovery['seq'])
             with self.assertRaises(a.ProtocolError):a.replay_capture(result['protocol'],stdout=result['stdout']+b'{}\n',expected=e)
+
+    def test_startup_failure_processes_are_bounded_and_never_start_thread_or_turn(self):
+        modes=['startup-missing','startup-connecting','startup-connected','startup-errored',
+               'startup-malformed','startup-repeated','startup-unknown','startup-config-warning']
+        for mode in modes:
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as d:
+                cwd=Path(d);bindir=fake_codex(cwd);e=expected_context(str(cwd))
+                env={**os.environ,'PATH':str(bindir)+os.pathsep+os.environ['PATH'],
+                     'CODEX_HOME':e['codex_home'],'FAKE_CODEX_MODE':mode}
+                started=time.monotonic()
+                with patch.object(a,'validate_boundary',return_value=boundary(cwd)):
+                    result=a.run_app_server(argv=ARGV,cwd=cwd,env=env,prompt=e['prompt'],
+                        schema=e['schema'],expected=e,boundary_proof=a.BOUNDARY,timeout_seconds=4)
+                self.assertLess(time.monotonic()-started,5)
+                self.assertNotEqual(result['status'],'completed')
+                self.assertLessEqual(len(result['stdout']),4*1024*1024)
+                self.assertLessEqual(len(result['stderr']),4*1024*1024)
+                frames=[json.loads(x) for x in result['protocol'].splitlines()][1:-1]
+                methods=[json.loads(x['raw']).get('method') for x in frames if x['direction']=='client']
+                self.assertNotIn('thread/start',methods)
+                self.assertNotIn('turn/start',methods)
+                if mode in modes[:5]:
+                    self.assertTrue(set(methods)<= {'initialize','initialized'},methods)
+                server=[json.loads(x['raw']) for x in frames if x['direction']=='server']
+                snapshots=[f for f in server if f.get('method')=='remoteControl/status/changed']
+                self.assertEqual(len(snapshots),0 if mode=='startup-missing' else 2 if mode=='startup-repeated' else 1)
+                self.assertTrue(result['stdout'])
+                self.assertEqual(result['stdout'],b''.join(x['raw'].encode() for x in frames if x['direction']=='server'))
 
     def test_unavailable_profile_never_starts_thread_or_turn(self):
         self.assertTrue(a is not None and hasattr(a,'run_app_server'),'bounded transport missing')
@@ -344,17 +514,20 @@ class StrictScopeTests(unittest.TestCase):
 
     def test_catalog_pagination_follows_actual_cursor_then_exhausts(self):
         frames,e=exchange()
-        first=frames[4]
+        first_index=next(i for i,r in enumerate(frames) if r['direction']=='server'
+                         and json.loads(r['raw']).get('id')==2)
+        first=frames[first_index]
         frame=json.loads(first['raw']);frame['result']['nextCursor']='page-2';frame['result']['data']=[];first['raw']=json.dumps(frame)+'\n'
         page={'seq':6,'direction':'client','raw':json.dumps({'id':3,'method':'model/list','params':{'cursor':'page-2','limit':100,'includeHidden':True}})+'\n'}
-        models=json.loads(exchange()[0][4]['raw'])['result']
+        models=next(json.loads(r['raw'])['result'] for r in exchange()[0]
+                    if r['direction']=='server' and json.loads(r['raw']).get('id')==2)
         response={'seq':7,'direction':'server','raw':json.dumps({'id':3,'result':models})+'\n'}
-        tail=frames[5:]
+        tail=frames[first_index+1:]
         for r in tail:
             f=json.loads(r['raw'])
             if 'id' in f:f['id']+=1
             r['raw']=json.dumps(f)+'\n'
-        frames=frames[:5]+[page,response]+tail
+        frames=frames[:first_index+1]+[page,response]+tail
         for seq,r in enumerate(frames,1):r['seq']=seq
         self.assertEqual(a.replay_protocol(frames,expected=e)['profile'],PROFILE)
         response['raw']=json.dumps({'id':3,'result':{'data':[],'nextCursor':'page-2'}})+'\n'
