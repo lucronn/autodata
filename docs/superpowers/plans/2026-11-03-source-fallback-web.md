@@ -79,6 +79,8 @@ python3 scripts/autonomy/pre_implementation.py --record "$AUTODATA_RELEASE_RECOR
 
 ## R3 isolated Go/Python verification boundary
 
+The independently reviewed [exact runtime handoff](2026-11-03-catalog-runtime-integration.md) is part of this R3 plan. It freezes actual R2 helper/Go signatures, the real model-response proxy, four named Go cases for both banks, counter ownership and truthful clone provenance. Its coordinator-owned `/tmp` supervisor bounds setup/testing/cleanup and requires all eight cases and host-after evidence; the raw commands below are component commands, not standalone acceptance. R3 remains blocked until the migration driver is integrated and these exact dependencies are re-inspected at the fresh checkpoint.
+
 The narrowed R3 task lists every Go/test/contract/fixture path explicitly. It
 additionally owns `infra/compose/compose.article-lifecycle-test.yaml`,
 `infra/compose/article-lifecycle-test.Dockerfile`, and new

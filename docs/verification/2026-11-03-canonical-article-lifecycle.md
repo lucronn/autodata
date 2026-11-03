@@ -206,3 +206,7 @@ repair is synchronized for committed-base preflight; it does not change historic
 SQL. R3 public Go source fallback, R5 identity, R4 browser behavior and R6 live
 acceptance/release gates remain outstanding. No production readiness or deployment
 is claimed.
+
+## Clean CI development discovery follow-up
+
+[Run41625088678](https://github.com/lucronn/autodata/actions/runs/41625088678) at `31d1582d0b805f870e6fa42f9c812f7396d11c82` passed ingestion, then failed development unittest discovery importing `test_backfill_article_lifecycle`: `lifecycle_support` is absent from that command's import path. Actual failure log is `/tmp/autodata-ci-31d1582-failed.log`. The [one-file test discovery plan](../superpowers/plans/2026-11-03-dev-test-discovery.md) preserves all tests and workflow commands; its fresh gate precedes the import-path-only correction, clean Python3.12 reproduction, six real PG backfill cases and independent review. Migration replay remains a separate pending CI prerequisite.

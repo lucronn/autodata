@@ -46,7 +46,8 @@
     "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
     "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
     "docs/superpowers/plans/2026-11-03-source-fallback-web.md",
-    "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md"
+    "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md",
+    "docs/superpowers/plans/2026-11-03-catalog-runtime-integration.md"
   ],
   "outputs": [
     "apps/api-go/catalog_http.go"
@@ -94,7 +95,7 @@
       "Required Go/Python integration runs against actual R2 HTTP scheduling and a freshly migrated isolated PostgreSQL database; unavailable services, skipped or zero integration cases fail the required run."
     ],
     "status": "blocked",
-    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+    "updated_at": "2026-11-03T11:14:20.835289+00:00"
   },
   "execution": {
     "model": "gpt-6.1-sol",
