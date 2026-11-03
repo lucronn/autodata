@@ -891,6 +891,281 @@ class GuardTests(unittest.TestCase):
 
 
 
+def schema_wire():
+    return {'protocol_version': 1,
+        'identity': {'session_user': 'autodata_metrics', 'current_user': 'autodata_metrics', 'database': 'autodata',
+                     'server_version_num': 170006, 'transaction_read_only': True, 'default_transaction_read_only': True,
+                     'client_addr': None, 'client_port': None},
+        'rights': {'login': True, 'superuser': False, 'create_db': False, 'create_role': False, 'replication': False,
+                   'bypass_rls': False, 'inherit': False, 'membership_count': 0, 'connect': True, 'schema_usage': True,
+                   'ledger_select': True, 'database_create': False, 'database_temp': False, 'database_owner': False,
+                   'schema_create': False, 'schema_owner': False, 'relation_owner': False, 'sequence_owner': False,
+                   'relation_write': False, 'column_write': False, 'sequence_write': False},
+        'ledger_relation': {'oid': 16389, 'schema': 'public', 'name': 'schema_migrations', 'kind': 'r', 'persistence': 'p',
+                            'is_partition': False, 'has_inheritance': False, 'rls': False, 'force_rls': False,
+                            'version_type': 'pg_catalog.text', 'version_not_null': True, 'version_generated': '',
+                            'version_identity': '', 'primary_key_version': True},
+        'ledger': {'version': 2, 'overflow': False, 'invalid_value': False, 'migrations': ['001_initial', '002_next']}}
+
+
+def postgres_wire(image_id, data='/var/lib/autodata', secrets='/run/autodata'):
+    # Pinned Docker typed InspectResponse; bind mount list order is unspecified.
+    return {'id': 'd' * 64, 'name': '/autodata-production-postgres-1', 'image': image_id,
+            'user': '999:999', 'project': 'autodata-production', 'service': 'postgres', 'command': ['postgres'],
+            'running': True, 'paused': False, 'restarting': False, 'dead': False,
+            'started_at': '2026-11-03T12:00:00.123456789Z', 'readonly_root': True, 'privileged': False,
+            'cap_add': None, 'cap_drop': ['ALL'], 'security_opt': ['no-new-privileges:true'],
+            'mounts': [{'Type': 'bind', 'Source': data + '/postgres', 'Destination': '/var/lib/postgresql/data',
+                        'Mode': '', 'RW': True, 'Propagation': 'rprivate'},
+                       {'Type': 'bind', 'Source': secrets + '/postgres', 'Destination': '/run/autodata/postgres',
+                        'Mode': '', 'RW': False, 'Propagation': 'rprivate'}],
+            'tmpfs': {'/tmp': 'rw,nosuid,nodev,noexec,size=67108864,mode=1777',
+                      '/var/run/postgresql': 'rw,nosuid,nodev,noexec,size=16777216,uid=999,gid=999,mode=0700'}}
+
+
+class FakeSchemaPipe:
+    def __init__(self, payload, chunk=4096):
+        self.payload = payload; self.chunk = chunk; self.offset = 0; self.closed = False; self.requests = []
+    def read1(self, size):
+        assert not self.closed
+        self.requests.append(size)
+        size = min(size, self.chunk)
+        data = self.payload[self.offset:self.offset + size]; self.offset += len(data)
+        return data
+    def close(self): self.closed = True
+
+
+class FakeSchemaProcess:
+    def __init__(self, payload, code=0, chunk=4096):
+        self.stdout = FakeSchemaPipe(payload, chunk); self.code = code
+        self.done = False; self.killed = False; self.waits = []; self.wait_timeout = False; self.cleanup_failure = False
+    def poll(self): return self.code if self.done else None
+    def kill(self): self.killed = True
+    def wait(self, timeout):
+        self.waits.append(timeout)
+        if self.cleanup_failure or (self.wait_timeout and not self.killed): raise subprocess.TimeoutExpired('fake', timeout)
+        self.done = True; return self.code
+
+
+class FakeSchemaSelector:
+    def __init__(self, ready=True): self.ready = ready; self.closed = False
+    def register(self, pipe, events): self.pipe = pipe
+    def select(self, timeout): return [(None, None)] if self.ready else []
+    def close(self): self.closed = True
+
+
+class SchemaObservationTests(unittest.TestCase):
+    def setUp(self):
+        ContractTests.setUp(self)
+        self.observation = schema_wire()
+        self.container = postgres_wire(self.manifest['images']['postgres']['image_id'])
+        self.calls = []; self.children = []; self.after = None; self.sql_payload = None
+
+    def require_feature(self, name):
+        self.assertTrue(callable(getattr(self.rt, name, None)), name + ' missing')
+
+    def fake_exec(self, argv, **kwargs):
+        self.calls.append(argv)
+        self.assertEqual(kwargs, {'stdin': subprocess.DEVNULL, 'stdout': subprocess.PIPE, 'stderr': subprocess.DEVNULL,
+                                 'cwd': '/', 'env': {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}})
+        template = self.rt.POSTGRES_INSPECT_TEMPLATE
+        prefix = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock']
+        if argv == prefix + ['container', 'inspect', '--format', template, 'autodata-production-postgres-1']:
+            payload = json.dumps(self.container).encode()
+        elif argv == prefix + ['container', 'inspect', '--format', template, 'd' * 64]:
+            payload = json.dumps(self.after or self.container).encode()
+        else:
+            self.assertEqual(argv, prefix + ['exec', '--user', '999:999', '--workdir', '/', 'd' * 64,
+                '/usr/bin/env', '-i', 'PATH=/usr/lib/postgresql/17/bin:/usr/bin:/bin', 'LANG=C', 'LC_ALL=C',
+                'HOME=/nonexistent', 'PGPASSFILE=/dev/null', 'PGSERVICEFILE=/dev/null',
+                'PGOPTIONS=-c default_transaction_read_only=on -c statement_timeout=2000 -c lock_timeout=1000 -c search_path=pg_catalog',
+                '/usr/lib/postgresql/17/bin/psql', '--no-psqlrc', '--no-password', '--no-align', '--tuples-only', '--quiet',
+                '--host=/var/run/postgresql', '--port=5432', '--username=autodata_metrics', '--dbname=autodata',
+                '--set=ON_ERROR_STOP=1', '--command=' + self.rt.POSTGRES_SCHEMA_SQL])
+            payload = self.sql_payload if self.sql_payload is not None else json.dumps(self.observation).encode()
+        child = FakeSchemaProcess(payload, chunk=37); self.children.append(child); return child
+
+    def collect(self):
+        self.require_feature('collect_postgres_schema')
+        with patch.object(subprocess, 'Popen', side_effect=self.fake_exec), patch.object(self.rt.selectors, 'DefaultSelector', side_effect=FakeSchemaSelector):
+            return self.rt.collect_postgres_schema(self.manifest)
+
+    def test_fixed_schema_observation_has_only_three_readonly_processes(self):
+        self.assertTrue(self.collect())
+        self.assertEqual(len(self.calls), 3)
+        self.assertTrue(all(p.stdout.closed and p.done and not p.killed for p in self.children))
+        self.assertTrue(all(0 < n <= 4096 for p in self.children for n in p.stdout.requests))
+        projection = [('id', '.ID'), ('name', '.Name'), ('image', '.Image'), ('user', '.Config.User'),
+            ('project', '(index .Config.Labels "com.docker.compose.project")'),
+            ('service', '(index .Config.Labels "com.docker.compose.service")'), ('command', '.Config.Cmd'),
+            ('running', '.State.Running'), ('paused', '.State.Paused'), ('restarting', '.State.Restarting'),
+            ('dead', '.State.Dead'), ('started_at', '.State.StartedAt'), ('readonly_root', '.HostConfig.ReadonlyRootfs'),
+            ('privileged', '.HostConfig.Privileged'), ('cap_add', '.HostConfig.CapAdd'), ('cap_drop', '.HostConfig.CapDrop'),
+            ('security_opt', '.HostConfig.SecurityOpt'), ('mounts', '.Mounts'), ('tmpfs', '.HostConfig.Tmpfs')]
+        expected = '{' + ','.join('"' + key + '":{{json ' + expression + '}}' for key, expression in projection) + '}'
+        self.assertEqual(self.rt.POSTGRES_INSPECT_TEMPLATE, expected)
+        self.assertNotIn('.Config.Env', self.rt.POSTGRES_INSPECT_TEMPLATE)
+        self.assertNotIn('data_directory', self.rt.POSTGRES_SCHEMA_SQL)
+
+    def test_container_identity_and_hardening_fail_before_sql(self):
+        for key, value in [('id', 'bad'), ('name', '/other'), ('image', 'sha256:' + '0' * 64), ('user', '0:0'),
+                           ('project', 'other'), ('service', 'api'), ('command', ['sh']), ('running', False),
+                           ('paused', True), ('restarting', True), ('dead', True), ('readonly_root', False),
+                           ('privileged', True), ('cap_add', ['SYS_ADMIN']), ('cap_drop', []), ('security_opt', []),
+                           ('started_at', ''), ('running', 1)]:
+            with self.subTest(key=key):
+                saved = copy.deepcopy(self.container); self.container[key] = value; self.calls.clear()
+                with self.assertRaises(self.rt.ContractError): self.collect()
+                self.assertEqual(len(self.calls), 1); self.container = saved
+
+    def test_mounts_cannot_shadow_data_secrets_or_socket(self):
+        original = copy.deepcopy(self.container)
+        candidates = []
+        for key, value in [('Source', '/wrong'), ('Destination', '/wrong'), ('Type', 'volume'), ('RW', False)]:
+            candidate = copy.deepcopy(original); candidate['mounts'][0][key] = value; candidates.append(candidate)
+        for key, value in [('RW', True), ('Source', '/wrong')]:
+            candidate = copy.deepcopy(original); candidate['mounts'][1][key] = value; candidates.append(candidate)
+        for destination in ('/var/lib/postgresql/data/pgdata', '/var/run/postgresql', '/', '/tmp'):
+            candidate = copy.deepcopy(original); candidate['mounts'].append(dict(candidate['mounts'][0], Destination=destination)); candidates.append(candidate)
+        candidate = copy.deepcopy(original); candidate['tmpfs']['/var/run/postgresql'] = 'rw'; candidates.append(candidate)
+        candidate = copy.deepcopy(original); candidate['tmpfs']['/extra'] = 'rw'; candidates.append(candidate)
+        candidate = copy.deepcopy(original); candidate['mounts'].pop(); candidates.append(candidate)
+        for candidate in candidates:
+            self.container = candidate; self.calls.clear()
+            with self.assertRaises(self.rt.ContractError): self.collect()
+            self.assertEqual(len(self.calls), 1)
+        self.container = original; self.container['mounts'].reverse(); self.assertTrue(self.collect())
+
+    def test_every_identity_right_and_relation_fact_is_strict(self):
+        self.require_feature('validate_schema_observation')
+        self.assertTrue(self.rt.validate_schema_observation(self.manifest, self.observation))
+        for group in ('identity', 'rights', 'ledger_relation'):
+            for key, value in self.observation[group].items():
+                wrong = (not value if type(value) is bool else (0 if key == 'oid' else (value + 100000 if type(value) is int else 'wrong')))
+                candidate = copy.deepcopy(self.observation); candidate[group][key] = wrong
+                with self.subTest(group=group, key=key), self.assertRaises(self.rt.ContractError):
+                    self.rt.validate_schema_observation(self.manifest, candidate)
+                candidate[group][key] = None
+                if value is not None:
+                    with self.assertRaises(self.rt.ContractError): self.rt.validate_schema_observation(self.manifest, candidate)
+        for key in self.observation:
+            candidate = copy.deepcopy(self.observation); candidate[key] = None
+            with self.assertRaises(self.rt.ContractError): self.rt.validate_schema_observation(self.manifest, candidate)
+        for group in (None, 'identity', 'rights', 'ledger_relation', 'ledger'):
+            candidate = copy.deepcopy(self.observation)
+            (candidate if group is None else candidate[group])['extra'] = True
+            with self.assertRaises(self.rt.ContractError): self.rt.validate_schema_observation(self.manifest, candidate)
+
+    def test_revoked_create_temp_does_not_make_database_owner_safe(self):
+        self.require_feature('validate_schema_observation')
+        self.observation['rights']['database_owner'] = True
+        self.assertFalse(self.observation['rights']['database_create']); self.assertFalse(self.observation['rights']['database_temp'])
+        with self.assertRaises(self.rt.ContractError): self.rt.validate_schema_observation(self.manifest, self.observation)
+
+    def test_public_maintain_and_column_only_write_grants_are_unsafe(self):
+        self.require_feature('validate_schema_observation')
+        for key in ('relation_write', 'column_write'):
+            candidate = copy.deepcopy(self.observation); candidate['rights'][key] = True
+            with self.assertRaises(self.rt.ContractError): self.rt.validate_schema_observation(self.manifest, candidate)
+        sql = self.rt.POSTGRES_SCHEMA_SQL
+        for expression in ("has_table_privilege", "'MAINTAIN'", 'has_any_column_privilege', "'INSERT'", "'UPDATE'", "'REFERENCES'", 'd.datdba = r.oid', 'has_schema_privilege'):
+            self.assertIn(expression, sql)
+        self.assertNotIn('pg_authid', sql); self.assertNotIn('pg_read_all_settings', sql)
+
+    def test_ledger_row_count_value_and_grammar_limits_are_enforced(self):
+        self.require_feature('validate_schema_observation')
+        manifest = copy.deepcopy(self.manifest)
+        names = [f'{i:03d}_migration' for i in range(1, 1000)]
+        manifest['migrations']['files'] = [{'name': name + '.sql', 'sha256': HEX} for name in names]
+        candidate = copy.deepcopy(self.observation); candidate['ledger'].update(version=999, migrations=names)
+        self.assertTrue(self.rt.validate_schema_observation(manifest, candidate))
+        for change in ({'version': 1000, 'overflow': True}, {'version': 999, 'overflow': True}, {'invalid_value': True},
+                       {'version': 0, 'migrations': []}, {'version': True}, {'version': 998},
+                       {'migrations': names[:-1]}, {'migrations': names + ['999_extra']}):
+            bad = copy.deepcopy(candidate); bad['ledger'].update(change)
+            with self.assertRaises(self.rt.ContractError): self.rt.validate_schema_observation(manifest, bad)
+        name = '001_' + 'a' * 247
+        manifest['migrations']['files'] = [{'name': name + '.sql', 'sha256': HEX}]
+        candidate['ledger'].update(version=1, migrations=[name])
+        self.assertTrue(self.rt.validate_schema_observation(manifest, candidate))
+        for invalid in (name + 'x', None, '001_é', '001_bad-name', '001_bad\nline', '', '001_'):
+            bad = copy.deepcopy(candidate); bad['ledger']['migrations'] = [invalid]
+            with self.assertRaises(self.rt.ContractError): self.rt.validate_schema_observation(manifest, bad)
+        sql = self.rt.POSTGRES_SCHEMA_SQL
+        for token in ('LIMIT 1000', 'octet_length(version) <= 251', 'CASE', 'MATERIALIZED', 'COLLATE "C"'):
+            self.assertIn(token, sql)
+
+    def test_schema_output_is_strict_and_post_query_restart_never_passes(self):
+        for payload in (b'{}', b'{"protocol_version":1,"protocol_version":1}', b'NaN', b'opaque-do-not-print'):
+            self.sql_payload = payload
+            with self.assertRaises(self.rt.ContractError): self.collect()
+        self.sql_payload = None
+        for key, value in [('id', 'e' * 64), ('started_at', '2026-11-04T12:00:00Z'), ('running', False)]:
+            self.after = dict(self.container, **{key: value})
+            with self.assertRaises(self.rt.ContractError): self.collect()
+
+    def test_streaming_capture_caps_retention_and_reaps_failed_children(self):
+        self.require_feature('_bounded_schema_command')
+        for cap in (65536, 524288):
+            child = FakeSchemaProcess(b'x' * cap, chunk=13)
+            with patch.object(subprocess, 'Popen', return_value=child), patch.object(self.rt.selectors, 'DefaultSelector', side_effect=FakeSchemaSelector):
+                result = self.rt._bounded_schema_command(['/fake-only'], cap, self.rt.time.monotonic() + 15)
+            self.assertEqual(len(result), cap); self.assertFalse(child.killed); self.assertTrue(child.stdout.closed)
+            child = FakeSchemaProcess(b'x' * (cap + 10000), chunk=4096)
+            with patch.object(subprocess, 'Popen', return_value=child), patch.object(self.rt.selectors, 'DefaultSelector', side_effect=FakeSchemaSelector), self.assertRaises(self.rt.ContractError):
+                self.rt._bounded_schema_command(['/fake-only'], cap, self.rt.time.monotonic() + 15)
+            self.assertTrue(child.killed and child.stdout.closed and child.done)
+            self.assertEqual(child.stdout.offset, cap + 1)
+            self.assertTrue(all(0 < n <= 4096 for n in child.stdout.requests))
+            self.assertLessEqual(child.waits[-1], 1)
+
+    def test_sql_rights_checks_do_not_call_table_functions_on_sequences(self):
+        self.require_feature('collect_postgres_schema')
+        sql = self.rt.POSTGRES_SCHEMA_SQL
+        self.assertIn("CASE WHEN x.relkind IN ('r','p','v','m','f') THEN has_table_privilege", sql)
+        self.assertIn("CASE WHEN x.relkind IN ('r','p','v','m','f') THEN has_any_column_privilege", sql)
+        self.assertIn("CASE WHEN x.relkind = 'S' THEN has_sequence_privilege", sql)
+
+    def test_capture_deadline_cannot_reset_during_stream_or_spawn_after_expiry(self):
+        self.require_feature('_bounded_schema_command')
+        clock = {'now': 0}
+        child = FakeSchemaProcess(b'opaque-do-not-print' * 10000, chunk=10)
+        read = child.stdout.read1
+        def slow_read(size):
+            result = read(size); clock['now'] += 6; return result
+        child.stdout.read1 = slow_read
+        with patch.object(subprocess, 'Popen', return_value=child), patch.object(self.rt.selectors, 'DefaultSelector', side_effect=FakeSchemaSelector), patch.object(self.rt.time, 'monotonic', side_effect=lambda: clock['now']), self.assertRaises(subprocess.TimeoutExpired):
+            self.rt._bounded_schema_command(['/fake-only'], 65536, 15)
+        self.assertEqual(child.stdout.offset, 10); self.assertTrue(child.killed and child.stdout.closed and child.done)
+        with patch.object(subprocess, 'Popen', side_effect=AssertionError('expired collector must not spawn')), self.assertRaises(subprocess.TimeoutExpired):
+            self.rt._bounded_schema_command(['/fake-only'], 65536, self.rt.time.monotonic() - 1)
+
+    def test_oversized_single_read_and_read_error_close_and_reap(self):
+        self.require_feature('_bounded_schema_command')
+        for failure in ('oversized', 'read_error'):
+            child = FakeSchemaProcess(b'')
+            child.stdout.read1 = lambda size: b'x' * 70000
+            if failure == 'read_error':
+                def broken(size): raise OSError('opaque-do-not-print')
+                child.stdout.read1 = broken
+            expected = self.rt.ContractError if failure == 'oversized' else OSError
+            with patch.object(subprocess, 'Popen', return_value=child), patch.object(self.rt.selectors, 'DefaultSelector', side_effect=FakeSchemaSelector), self.assertRaises(expected):
+                self.rt._bounded_schema_command(['/fake-only'], 65536, self.rt.time.monotonic() + 15)
+            self.assertTrue(child.stdout.closed and child.killed and child.done)
+
+    def test_capture_timeout_failure_and_cleanup_failure_are_unavailable(self):
+        self.require_feature('_bounded_schema_command')
+        for kind in ('idle', 'wait_timeout', 'exit', 'cleanup'):
+            child = FakeSchemaProcess(b'{}', code=1 if kind == 'exit' else 0)
+            child.wait_timeout = kind in ('wait_timeout', 'cleanup'); child.cleanup_failure = kind == 'cleanup'
+            selector = FakeSchemaSelector(ready=kind != 'idle')
+            expected = subprocess.TimeoutExpired if kind in ('idle', 'wait_timeout') else self.rt.ContractError
+            with self.subTest(kind=kind), patch.object(subprocess, 'Popen', return_value=child), patch.object(self.rt.selectors, 'DefaultSelector', return_value=selector), self.assertRaises(expected):
+                self.rt._bounded_schema_command(['/fake-only'], 65536, self.rt.time.monotonic() + 15)
+            self.assertTrue(child.stdout.closed and selector.closed)
+            if kind in ('idle', 'wait_timeout', 'cleanup'): self.assertTrue(child.killed)
+
+
 class DeployCheckTests(unittest.TestCase):
     """Disposable filesystem plus fixed fake findmnt/nft/Docker transcripts only."""
     def setUp(self):
@@ -957,7 +1232,8 @@ class DeployCheckTests(unittest.TestCase):
                 if path == self.wrong_group: result[5] = 12345
             return os.stat_result(result)
         for guard in (patch.object(os, 'geteuid', return_value=0), patch.object(os, 'fstat', side_effect=metadata),
-                      patch.object(subprocess, 'run', side_effect=self.execute)):
+                      patch.object(subprocess, 'run', side_effect=self.execute),
+                      patch.object(subprocess, 'Popen', side_effect=FileNotFoundError('schema prerequisite absent'))):
             guard.start(); self.addCleanup(guard.stop)
 
     def cleanup_tree(self):
@@ -1006,6 +1282,22 @@ class DeployCheckTests(unittest.TestCase):
             'metadata_guard': True, 'storage_guard': True, 'secrets': True, 'cached_images': True, 'migration_tree': True,
             'schema': False, 'services': False, 'runtime_evidence': False})
         self.assertEqual(len(self.calls), 11)
+
+    def test_schema_evidence_can_pass_without_readiness_or_deployment(self):
+        fixture = SchemaObservationTests(); fixture.rt = self.rt; fixture.manifest = self.manifest
+        fixture.container = postgres_wire(self.manifest['images']['postgres']['image_id'], self.rt.DATA_ROOT, self.rt.SECRET_ROOT)
+        fixture.observation = schema_wire(); fixture.calls = []; fixture.children = []; fixture.after = None; fixture.sql_payload = None
+        self.assertTrue(callable(getattr(self.rt, 'collect_postgres_schema', None)), 'schema collector missing')
+        with patch.object(subprocess, 'Popen', side_effect=fixture.fake_exec), patch.object(self.rt.selectors, 'DefaultSelector', side_effect=FakeSchemaSelector):
+            code, receipt = self.deploy()
+        self.assertEqual(code, 3); self.assertEqual(receipt['failure_code'], 'missing_dependency')
+        self.assertTrue(receipt['checks']['schema']); self.assertFalse(receipt['checks']['services']); self.assertFalse(receipt['checks']['runtime_evidence'])
+        self.assertEqual(len(fixture.calls), 3)
+        fixture.calls.clear()
+        for error, expected in ((FileNotFoundError('opaque-do-not-print'), 3), (subprocess.TimeoutExpired('fake', 5), 5)):
+            with patch.object(subprocess, 'Popen', side_effect=error):
+                code, receipt = self.deploy()
+            self.assertEqual(code, expected); self.assertFalse(receipt['checks']['schema'])
 
     def test_every_cached_role_requires_selected_digest_and_local_image_id(self):
         for role in self.images:
