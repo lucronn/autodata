@@ -219,3 +219,8 @@ activation time. Every granted item retains its actual grant timestamp.
 
 - [ ] Pass this synchronized exact-base preflight, then implement the thirty-two exclusively assigned UI paths under the parallel delivery plan.
 - [ ] Coordinate only committed backend interfaces; keep all141 browser cases and separate backend/image/CI acceptance before release.
+
+
+## Bounded real-API fixture status amendment — 2026-11-03
+
+The authoritative paid-media contract returns404 when an authenticated account presents another account's contextual image capability, before grant/object reading. Same-owner missing/revoked grant remains403; logged-out/expired/disabled authentication remains401. Source inspection at fa30a2204dc8a5c0907d090ec4f41fdd8bec9b4b found the real-API browser fixture incorrectly expects403 for that wrong-account image at scripts/dev/workshop_browser_smoke.py:527, affecting six account-scope cases. Correct only that fixture expectation and its focused unit regression under [the two-file plan](2026-11-03-workshop-browser-account-media-status.md), task/record workshop-browser-account-media-status. Exact21 parametrization,120DTO inventory, actual backend transports and frozen runtime runner remain unchanged. This is a planning gate, not observed21 success. Synchronize Issue186/Project8, commit and pass pinned preflight, then obtain coordinator review before implementation; auth repair/paid12/actual21 acceptance are separately required.
