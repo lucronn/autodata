@@ -32,3 +32,19 @@ No application behavior, shared fake, catalog hydration or other test changes.
 
 Model remains Sol6.1, medium, Fast/priority. This bounded repair does not expand
 either commerce builder's39-path scope or their disjoint31+8 ownership.
+
+
+## Verified repair
+
+Gate347cc2042b245e71861e62c9606085bb1d01f04f passed exact-base preflight.
+Implementation79c17ae12ed45d7ee86eae0f385e95acff4c9b07 changes only the
+authorized test file. Root targeted race1.035s, full race2.455s and ordinary
+Go1.162s pass. An independent Sol6.1/medium/Fast reviewer approved the exact
+one-file diff with no findings and reran the target10times under the race
+detector (1.059s). Original red log remains at
+`/tmp/autodata-pre-commerce-api-full-race.log`; green logs use
+`/tmp/autodata-catalog-test-race-{targeted,full,normal}-green.log`.
+The received native review is recorded in
+`/tmp/autodata-catalog-test-race-independent-review.md`.
+Final combined commerce acceptance must include this verified repair; it does
+not count as executing the fourteen PostgreSQL commerce cases.
