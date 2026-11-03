@@ -33,6 +33,119 @@ func customerHTTP(t *testing.T, handler http.Handler, method, path, body string,
 	}
 	return w
 }
+func TestCustomerAuthErrorCachePolicy(t *testing.T) {
+	service := &customerAuthService{config: customerAuthConfig{Mode: "firebase"}}
+	for _, failure := range []struct {
+		name, code, message    string
+		err                    error
+		status                 int
+		retryable, clearCookie bool
+	}{
+		{"unauthenticated", "UNAUTHENTICATED", "Authentication is required.", ErrUnauthenticated, 401, false, true},
+		{"blocked", "FORBIDDEN", "Access is denied.", ErrCustomerBlocked, 403, false, false},
+		{"csrf", "FORBIDDEN", "Request origin or CSRF token is invalid.", ErrCustomerCSRF, 403, false, false},
+		{"dependency", "AUTHENTICATION_UNAVAILABLE", "Authentication is temporarily unavailable.", ErrCustomerDependency, 503, true, false},
+	} {
+		for _, policy := range []struct{ name, initial, want string }{
+			{"protected", "private, no-store", "private, no-store"},
+			{"unset", "", "no-store"},
+			{"auth", "no-store", "no-store"},
+			{"unsafe", "public, max-age=3600", "no-store"},
+		} {
+			t.Run(failure.name+"/"+policy.name, func(t *testing.T) {
+				r := httptest.NewRequest("GET", "https://cars.example/v1/catalog/years", nil)
+				r = r.WithContext(context.WithValue(r.Context(), requestIDContextKey, "cache-policy-request"))
+				w := httptest.NewRecorder()
+				if policy.initial != "" {
+					w.Header().Set("Cache-Control", policy.initial)
+				}
+				service.writeError(w, r, failure.err)
+				if got := w.Header().Get("Cache-Control"); got != policy.want {
+					t.Errorf("Cache-Control = %q, want %q", got, policy.want)
+				}
+				if w.Code != failure.status {
+					t.Errorf("status = %d, want %d", w.Code, failure.status)
+				}
+				var body struct {
+					Error struct {
+						Code, Message string
+						Retryable     bool
+						RequestID     string `json:"request_id"`
+						Details       struct {
+							LoginAvailable bool `json:"login_available"`
+						}
+					}
+				}
+				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if body.Error.Code != failure.code || body.Error.Message != failure.message || body.Error.Retryable != failure.retryable || body.Error.RequestID != "cache-policy-request" || !body.Error.Details.LoginAvailable {
+					t.Errorf("unexpected error body: %s", w.Body.String())
+				}
+				cookies := w.Result().Cookies()
+				if failure.clearCookie {
+					if len(cookies) != 1 || cookies[0].Name != "__Host-autodata_session" || cookies[0].Value != "" || cookies[0].MaxAge != -1 || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].Path != "/" {
+						t.Errorf("unauthenticated response must clear the secure session cookie: %v", cookies)
+					}
+				} else if len(cookies) != 0 {
+					t.Errorf("error must preserve the session cookie: %v", cookies)
+				}
+			})
+		}
+	}
+}
+
+func TestCustomerAuthProtectedCachePolicy(t *testing.T) {
+	now := time.Now().UTC()
+	token, _, err := newCustomerSessionToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &customerAuthService{
+		config:   customerAuthConfig{Mode: "firebase", Origin: "https://cars.example"},
+		store:    &customerSessionFixture{session: customerSession{AccountID: "account", OrganizationID: "org", ProjectID: "fixture-project", UID: "fixture-user", AuthTime: now.Unix(), ExpiresAt: now.Add(time.Hour)}},
+		verifier: &customerVerifierFixture{},
+		now:      func() time.Time { return now },
+	}
+	server := NewServer(staticReadiness{})
+	server.customerAuth, server.auth = service, service
+	for _, tc := range []struct {
+		name, method, origin, csrf string
+		cookie                     bool
+		status                     int
+	}{
+		{"missing_session", "GET", "", "", false, 401},
+		{"invalid_origin", "POST", "https://foreign.example", "invalid", true, 403},
+		{"invalid_csrf", "POST", "https://cars.example", "invalid", true, 403},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			called := false
+			handler := server.paidCatalogAuthenticated(func(http.ResponseWriter, *http.Request, Principal) { called = true })
+			r := httptest.NewRequest(tc.method, "https://cars.example/v1/catalog/years", nil)
+			if tc.origin != "" {
+				r.Header.Set("Origin", tc.origin)
+			}
+			if tc.csrf != "" {
+				r.Header.Set("X-CSRF-Token", tc.csrf)
+			}
+			if tc.cookie {
+				r.AddCookie(customerSessionCookie(token, now.Add(time.Hour), now))
+			}
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != tc.status || called {
+				t.Errorf("protected boundary: status = %d, next called = %v", w.Code, called)
+			}
+			if got := w.Header().Get("Cache-Control"); got != "private, no-store" {
+				t.Errorf("Cache-Control = %q, want private, no-store", got)
+			}
+			if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+			}
+		})
+	}
+}
+
 func TestCustomerAuthHTTPBoundaries(t *testing.T) {
 	now := time.Now().UTC()
 	identity := VerifiedCustomerIdentity{ProjectID: "fixture-project", UID: "fixture-user", AuthTime: now.Unix(), IssuedAt: now.Unix(), Expires: now.Add(time.Hour).Unix()}
@@ -43,6 +156,11 @@ func TestCustomerAuthHTTPBoundaries(t *testing.T) {
 	w := customerHTTP(t, handler, "GET", "/auth/config", "", nil, nil)
 	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte(`"login_available":true`)) {
 		t.Fatal("missing Firebase public config", w.Code)
+	}
+	for _, tc := range []struct{ method, path string }{{"GET", "/auth/session"}, {"POST", "/auth/logout"}} {
+		if w = customerHTTP(t, handler, tc.method, tc.path, "", nil, nil); w.Code != 401 {
+			t.Fatal("missing session accepted", tc.path, w.Code)
+		}
 	}
 	good := map[string]string{"Origin": "https://cars.example", "Content-Type": "application/json", "X-Autodata-Session-Exchange": "1"}
 	for _, headers := range []map[string]string{nil, {"Origin": "https://foreign.example", "Content-Type": "application/json", "X-Autodata-Session-Exchange": "1"}, {"Origin": "https://cars.example", "Content-Type": "application/json"}} {
@@ -67,6 +185,14 @@ func TestCustomerAuthHTTPBoundaries(t *testing.T) {
 	if len(session) != 4 || session["authenticated"] != true {
 		t.Fatal("unsafe public session")
 	}
+	for _, headers := range []map[string]string{
+		{"Origin": "https://foreign.example", "X-CSRF-Token": session["csrf_token"].(string)},
+		{"Origin": "https://cars.example", "X-CSRF-Token": "invalid"},
+	} {
+		if w = customerHTTP(t, handler, "POST", "/auth/logout", "", headers, cookie); w.Code != 403 || store.revoked {
+			t.Fatal("unbound logout accepted", w.Code)
+		}
+	}
 	verifier.checkErr = ErrCustomerDependency
 	w = customerHTTP(t, handler, "GET", "/auth/session", "", nil, cookie)
 	if w.Code != 503 || len(w.Result().Cookies()) != 0 {
@@ -75,6 +201,10 @@ func TestCustomerAuthHTTPBoundaries(t *testing.T) {
 	w = customerHTTP(t, handler, "POST", "/auth/logout", "", map[string]string{"Origin": "https://cars.example", "X-CSRF-Token": session["csrf_token"].(string)}, cookie)
 	if w.Code != 204 || !store.revoked {
 		t.Fatal("local logout failed during Firebase outage", w.Code)
+	}
+	service.verifier = nil
+	if w = customerHTTP(t, handler, "POST", "/auth/firebase/session", `{"id_token":"fixture"}`, good, nil); w.Code != 503 || len(w.Result().Cookies()) != 0 {
+		t.Fatal("exchange dependency outage must preserve cookie and deny", w.Code)
 	}
 }
 func TestCustomerLocalLoginUnavailable(t *testing.T) {
