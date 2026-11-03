@@ -480,18 +480,18 @@ def _guard_expected(family):
         return match_payload('ip6' if ':' in address else 'ip', 'daddr', address)
     def s3(bridge, subnet, interface='iifname'):
         return rule(match_meta(interface, bridge), match_payload('ip', 'saddr', {'prefix': {'addr': subnet, 'len': 24}}),
-                    destination('172.30.20.40'), match_meta('l4proto', 'tcp'), match_payload('tcp', 'dport', 9000), verdict='accept')
+                    destination('172.30.20.40'), match_payload('tcp', 'dport', 9000), verdict='accept')
     if family == 'inet':
         chains['forward'] = [
             rule(match_meta('iifname', 'br-ad-edge'), match_payload('ip', 'saddr', '172.30.10.10'),
-                 destination('169.254.169.254'), match_meta('l4proto', 'tcp'), match_payload('tcp', 'dport', 80), verdict='accept'),
+                 destination('169.254.169.254'), match_payload('tcp', 'dport', 80), verdict='accept'),
             rule(destination('169.254.169.254')), rule(destination('fd20:ce::254'))]
         chains['forward'] += [rule(match_meta('iifname', bridge), match_meta('nfproto', 'ipv6'))
                               for bridge in ('br-ad-edge', 'br-ad-back', 'br-ad-work')]
         chains['forward'] += [s3(bridge, subnet) for bridge, subnet in (
             ('br-ad-edge', '172.30.10.0'), ('br-ad-back', '172.30.20.0'), ('br-ad-work', '172.30.30.0'))]
         chains['forward'] += [rule(destination('172.30.20.40'))]
-        chains['output'] = [rule(match_meta('skuid', 0), destination('169.254.169.254'), match_meta('l4proto', 'tcp'),
+        chains['output'] = [rule(match_meta('skuid', 0), destination('169.254.169.254'),
                                  match_payload('tcp', 'dport', 80), verdict='accept'),
                             rule(destination('169.254.169.254')), rule(destination('fd20:ce::254'))]
     else:
@@ -500,9 +500,11 @@ def _guard_expected(family):
                               for bridge in ('br-ad-edge', 'br-ad-back', 'br-ad-work')]
         chains['forward'] += [s3('br-ad-back', '172.30.20.0', 'ibrname'), rule(destination('172.30.20.40'))]
     records = [{'table': {'family': family, 'name': table}}]
-    for name, expressions in chains.items():
+    # nft table_print_json_full emits all chain declarations before rules.
+    for name in chains:
         records.append({'chain': {'family': family, 'table': table, 'name': name, 'type': 'filter',
                                   'hook': name, 'prio': -200, 'policy': 'accept'}})
+    for name, expressions in chains.items():
         records.extend({'rule': {'family': family, 'table': table, 'chain': name, 'expr': expr}} for expr in expressions)
     return records
 
@@ -511,7 +513,8 @@ def validate_guard_tables(snapshots):
     """Compare full table/chain/rule content, retaining rule order per chain.
 
     Only nondeterministic kernel handles and the nft version envelope are
-    discarded; exact protocol number/name equivalents are normalized. Extra chains, rules, expressions or object fields fail closed.
+    discarded; exact protocol number/name equivalents and the redundant TCP
+    dependency are normalized. Extra chains/rules/fields fail closed.
     Docker's unrelated tables are neither read nor changed.
     """
     exact_object(snapshots, ('inet', 'bridge'))
@@ -554,10 +557,22 @@ def validate_guard_tables(snapshots):
                         numeric = (34525, 'ip6')
                     if numeric and type(match.get('right')) is int and match['right'] == numeric[0]:
                         match['right'] = numeric[1]
+                # nft delinearization removes meta l4proto tcp immediately
+                # before a tcp payload match, whose typed protocol implies it
+                # (payload_dependency_kill; upstream inet/tcp.t.json). Support
+                # the retained form too, but only for our two exact TCP ports.
+                dependency = {'match': {'op': '==', 'left': {'meta': {'key': 'l4proto'}}, 'right': 'tcp'}}
+                ports = [{'match': {'op': '==', 'left': {'payload': {'protocol': 'tcp', 'field': 'dport'}}, 'right': port}}
+                         for port in (80, 9000)]
+                expressions = data['expr']
+                data['expr'] = [expr for index, expr in enumerate(expressions)
+                    if not (expr == dependency and index + 1 < len(expressions) and expressions[index + 1] in ports)]
             records.append({kind: data})
-        # nft lists each chain and its rules together; no sorting of rules can
-        # hide a changed first-match decision. Exact equality also rejects any
-        # unrecognized expression/field or duplicate object.
+        # Normalize only object-class placement: source and nft readback put
+        # declarations differently. Preserve chain order and the entire rule
+        # sequence; never sort/deduplicate rules or predicates. Exact equality
+        # rejects all extra/missing/changed objects and expressions.
+        records = [record for kind in ('table', 'chain', 'rule') for record in records if kind in record]
         require(canonical_bytes(records) == canonical_bytes(_guard_expected(family)))
     return True
 
