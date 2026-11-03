@@ -133,7 +133,9 @@ both commits, and independent retained-bundle replay passed the success fixture
 while blocking failed-check, unavailable-provider, and malformed-response
 fixtures. These use fake provider responses and real local check processes.
 
-Real provider certification remains `blocked/not_executed`. CLI argv explicitly
+Real provider certification remains `blocked/invalid_json_schema`: the isolated
+CLI experiment reached the API, which rejected the schema's unsupported
+`uniqueItems` keyword before a provider response or builder execution. CLI argv explicitly
 requests Sol 6.1, medium reasoning, Fast mode, and no fallback; effective runtime
 metadata must independently confirm the profile. The current adapter consumes
 structured `session_config` events and blocks missing or conflicting metadata.

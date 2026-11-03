@@ -577,6 +577,16 @@ ACK-before-mark crash/redelivery.
 `python scripts/dev/article_worker.py` (one-second polling); generic batch
 compatibility; offline alias/backfill tool with explicit reviewed mappings.
 
+The R1 capture boundary bounds caller waiting, but an already-running upload
+cannot be forcibly cancelled. R2's real object-store adapter must configure
+bounded connection/read timeouts and disable unbounded SDK retries (initial
+limits: two-second connect, five-second read, zero automatic retries). Keep
+all upload effects content-addressed and outside database transactions. Exercise
+actual SDK storage exceptions and delayed responses: optional image failures
+retain partial readable source, required body failure is fatal, and a timed-out
+or stale worker cannot commit observations or publish. Do not treat the caller
+deadline alone as a bound on background network/thread lifetime.
+
 - [ ] Add an internal HTTP regression that blocks all provider/model functions
   and asserts durable acceptance completes before they are invoked:
 

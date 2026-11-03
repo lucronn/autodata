@@ -107,7 +107,7 @@ uses `--ignore-user-config`. R0's deterministic enforcement was independently
 verified at `a7493d41be4f0c4aa93bdaaa74afa14c30d49965` and integrated at
 `643b8d3fc762cfdc9b456d28a47b7a4a9cde6402`. Requested flags alone are not proof
 of the effective provider profile. Real CLI certification remains
-`blocked/not_executed`; missing or conflicting runtime metadata blocks the run.
+`blocked/invalid_json_schema`; missing or conflicting runtime metadata blocks the run.
 In the current host's
 collaboration tools, GPT-6.1 Sol advertises the priority tier corresponding to
 Fast mode; dispatch must also explicitly set medium reasoning.

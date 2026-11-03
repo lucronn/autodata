@@ -26,7 +26,8 @@
       "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md",
       "provider_runtime_validation": {
         "status": "blocked",
-        "reason": "not_executed"
+        "reason": "invalid_json_schema: uniqueItems unsupported by provider",
+        "attempt_base_sha": "3634a59cea79dc3d36f1ec610b927ab74e6d166a"
       }
     },
     {
@@ -133,5 +134,16 @@
   },
   "execution_requirement_source": "Explicit user instruction: once planning is complete use Sol 6.1, medium reasoning, Fast mode.",
   "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
-  "provider_runtime_fixture_ref": "docs/agents/tasks/2026-11-03-production-release/runtime-fixture.json"
+  "provider_runtime_fixture_ref": "docs/agents/tasks/2026-11-03-production-release/runtime-fixture.json",
+  "tooling_remediation": [
+    {
+      "id": "r0-provider-schema",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-provider-schema.json",
+      "state": "ready",
+      "depends_on": [
+        "r0-evidence"
+      ],
+      "release_state": "unverified"
+    }
+  ]
 }

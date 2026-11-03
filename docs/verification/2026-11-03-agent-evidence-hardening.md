@@ -43,11 +43,26 @@ responses with real local check processes; they are not source-bank canaries
 or actual model executions. Full-chain regressions are reproducible from
 `scripts/autonomy/test_orchestrator.py`.
 
-Real CLI runtime validation remains **blocked / not_executed**. Profile flags,
-schema support, sandbox writes, commit retention and provider interruption must
-still be exercised with an isolated nonproduction identity and a complete
-committed v2 fixture task. Effective model/medium/Fast metadata is required;
-mocked session events do not establish installed CLI or account compatibility.
+Real CLI runtime validation is **blocked / invalid_json_schema**. The first
+isolated experiment used the complete v2 task at
+`3634a59cea79dc3d36f1ec610b927ab74e6d166a`, installed CLI `0.162.1`, explicit
+Sol 6.1 / medium / Fast flags, a 120-second provider bound and a 400-second outer
+deadline. The API rejected `uniqueItems` in the output schema with HTTP 400.
+The provider exited 1 after 4.4 seconds; orchestration returned 20 and retained
+the architect command/stdout plus its blocked decision. No builder was invoked,
+no fixture commit was created, and effective runtime metadata was absent.
+
+Evidence is retained at `/tmp/autodata-cli-3634-8weuyq91/evidence/run`; the
+sanitized architect stdout SHA-256 is
+`dfa7ea6e02fcfa92cdcb233570126198cce5689bbf4e2ad45882fa5bf1ec03e2`.
+The container was disposable and mounted only the isolated clone/evidence,
+installed CLI package and model authentication; no host configuration,
+GitHub/SSH credentials or source-bank/production secrets were supplied.
+
+The [bounded schema repair](../superpowers/plans/2026-11-03-provider-schema-compatibility.md)
+must preserve deterministic uniqueness checks and pass independent verification
+before retry. Schema acceptance, effective model/medium/Fast settings, sandbox
+writes, commit retention and interrupted-provider behavior remain unverified.
 No release, staging, deployment or live-provider certification is claimed.
 
 The [bounded runtime experiment plan](../superpowers/plans/2026-11-03-local-cli-certification.md)
@@ -55,8 +70,11 @@ and complete
 [v2 fixture task](../agents/tasks/2026-11-03-production-release/runtime-fixture.json)
 were independently checked for exact scope, real command definitions, all
 required agent responses, synthetic labeling, and profile constraints before
-execution. Their committed-base preflight and actual runtime result remain
-separate evidence; document review does not certify the provider.
+execution. The committed-base planning and complete verification-contract
+checks passed with zero errors at `3634a59cea79dc3d36f1ec610b927ab74e6d166a`.
+The evaluator bytes were checked equal to the independently promoted integration.
+Document/preflight success did not certify the provider, as the real API rejection
+above demonstrates.
 
 R0 release-controller implementation may consume the independently verified
 validator interface through a freshly synchronized direct-dispatch checkpoint.
