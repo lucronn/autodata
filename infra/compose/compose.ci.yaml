@@ -1,9 +1,16 @@
 services:
   api:
     environment:
+      AUTODATA_COMMERCE_MODE: "disabled"
       AUTODATA_ENV: "test"
       AUTODATA_AUTH_MODE: "local"
       AUTODATA_PUBLIC_ORIGIN: "http://localhost:8080"
+  ingestion-http:
+    environment:
+      AUTODATA_COMMERCE_MODE: "disabled"
+  payment-reconciler:
+    environment:
+      AUTODATA_COMMERCE_MODE: "disabled"
   # GitHub-hosted runners cannot pull the local MinIO image from Quay. Keep the
   # developer stack untouched and use a public S3-compatible implementation
   # only for the ephemeral CI fast lane.

@@ -67,6 +67,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "037_article_source_lifecycle.sql",
                 "038_article_transform_publication.sql",
                 "039_production_identity_sessions.sql",
+                "040_workshop_commerce.sql",
             ],
         )
 
@@ -78,9 +79,23 @@ class MigrationPlanTests(unittest.TestCase):
             self.assertIn(expected, text)
         self.assertNotIn("auth_login_transactions", text)
         driver = (ROOT / "scripts/dev/migrate_sql.sh").read_text()
-        self.assertEqual(driver.count("036_*|037_*|038_*|039_*"), 4)
+        self.assertEqual(driver.count("036_*|037_*|038_*|039_*|040_*"), 4)
         self.assertNotIn("036_*|037_*|038_*)", driver)
         for table in ("customer_accounts", "auth_sessions"):
+            self.assertIn("'" + table + "'", driver)
+
+    def test_commerce_migration_has_structured_owner_and_financial_guards(self):
+        sql = (ROOT / 'db/migrations/040_workshop_commerce.sql').read_text()
+        self.assertEqual(sql.strip().splitlines()[0], 'BEGIN;')
+        self.assertEqual(sql.strip().splitlines()[-1], 'COMMIT;')
+        for expected in ('workshop_orders', 'workshop_checkout_requests', 'canonical_request_sha256',
+                         'workshop-configuration-v1', 'amount_minor = 2000', "currency = 'USD'",
+                         'customer_account_id, organization_id', 'personal_organization_id',
+                         'preparation_lease_expires_at', 'preparation_index_job_ids',
+                         '040_workshop_commerce'):
+            self.assertIn(expected, sql)
+        driver = (ROOT / 'scripts/dev/migrate_sql.sh').read_text()
+        for table in ('workshop_orders', 'workshop_checkout_requests'):
             self.assertIn("'" + table + "'", driver)
 
     def test_dataset_request_ownership_is_backfilled_without_overwriting_existing_values(self):

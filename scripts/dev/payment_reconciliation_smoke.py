@@ -120,6 +120,10 @@ def main(argv: list[str] | None = None) -> None:
         help="Database host:port address override",
     )
     args = parser.parse_args(argv)
+    # This legacy fake exercises reconciliation only; it is never a live
+    # Workshop authority or a production payment readiness check.
+    if os.getenv('AUTODATA_COMMERCE_MODE','disabled') != 'disabled':
+        raise SystemExit('legacy fake payment smoke requires commerce disabled')
     provider = FakePaymentProvider(os.getenv("AUTODATA_FAKE_PAYMENT_SIGNING_SECRET", "local-fixture-signing-key"))
     session = provider.create_checkout_session(
         "vehicle-core-fixture",

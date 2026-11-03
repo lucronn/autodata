@@ -18,7 +18,7 @@ GO_NAMES = ('ConcurrentCustomerProvisionAndRotation', 'SharedSessionRevocation',
             'ExpiryAndPersistedSecrecy', 'FirebaseExchangeAndUserRevocation',
             'FirebaseStartupRequiresMigratedPostgres')
 GO_IDS = tuple(GO_ROOT + '/' + name for name in GO_NAMES)
-ASSERTION_KEYS = GO_NAMES + ('fresh_migration_head_039', 'unmigrated_fixture_stays_038',
+ASSERTION_KEYS = GO_NAMES + ('fresh_migration_head_040', 'unmigrated_fixture_stays_038',
                             'required_pytest_no_skips', 'candidate_input_provenance')
 RAW_FILES = ('r5-access-migrations.xml', 'r5-access-go-events.jsonl',
              'r5-access-go-stderr.log', 'r5-access-migration-rows.json',
@@ -158,7 +158,7 @@ def collect(candidate, output):
         if go_code != 0 or rows['go_timed_out']:
             failures.append('required Go suite failed or timed out')
         expected = [p.stem for p in sorted((ROOT / 'db/migrations').glob('*.sql'))]
-        assertions['fresh_migration_head_039'] = (len(expected) == 39 and expected[-1] == '039_production_identity_sessions'
+        assertions['fresh_migration_head_040'] = (len(expected) == 40 and expected[-1] == '040_workshop_commerce'
             and [r['version'] for r in rows['schema_migrations']] == expected
             and bool(rows['customer_accounts']) and bool(rows['auth_sessions']))
         assertions['unmigrated_fixture_stays_038'] = [r['version'] for r in rows['unmigrated_schema_migrations']] == expected[:38]
@@ -180,7 +180,7 @@ def collect(candidate, output):
                   candidate_origin='coordinator-host-plain-clone', started_at=started, finished_at=now(),
                   pytest_exit_code=code, timed_out=timed_out, pytest_test_count=count,
                   go_root=GO_ROOT, go_subtests=list(GO_IDS), go_exit_code=go_code,
-                  migration_head='039_production_identity_sessions', assertion_results=assertions,
+                  migration_head='040_workshop_commerce', assertion_results=assertions,
                   passed=passed, failures=failures, artifact_sha256=hashes)
     result.pop('runner_git_observation', None)
     write_json(output, result)

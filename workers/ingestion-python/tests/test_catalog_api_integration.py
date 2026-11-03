@@ -45,7 +45,8 @@ TABLES = ('schema_migrations', 'catalog_articles', 'canonical_articles',
           'canonical_article_revisions', 'canonical_article_reviews',
           'canonical_article_rewrite_attempts', 'source_fetch_jobs', 'publication_events',
           'source_snapshots', 'catalog_article_provider_scopes', 'catalog_article_index_pages',
-          'canonical_article_aliases', 'customer_accounts', 'auth_sessions')
+          'canonical_article_aliases', 'customer_accounts', 'auth_sessions',
+          'workshop_orders', 'workshop_checkout_requests')
 
 
 def digest(data):
@@ -484,7 +485,7 @@ def test_required_go_catalog_lifecycle(go_name, provider, fresh_database, monkey
         assert re.fullmatch(r'lifecycle_test_[a-f0-9]{32}', repo.database_name)
         result['fixture_database'] = repo.database_name
         manifest = [path.name for path in sorted((ROOT / 'db/migrations').glob('*.sql'))]
-        assert len(manifest) == 39 and manifest[32] == '033_catalog_scope_coverage.sql' and manifest[-1] == '039_production_identity_sessions.sql'
+        assert len(manifest) == 40 and manifest[32] == '033_catalog_scope_coverage.sql' and manifest[-1] == '040_workshop_commerce.sql'
         emitted = bounded(['sh', str(ROOT / 'scripts/dev/migrate_sql.sh'), '--emit'], timeout=30)
         (directory / 'migration-driver.sql').write_bytes(emitted.stdout)
         (directory / 'migration-driver.stderr').write_bytes(emitted.stderr)
@@ -547,9 +548,9 @@ def test_required_go_catalog_lifecycle(go_name, provider, fresh_database, monkey
             (directory / 'populated-before.schema.sql').write_bytes(schema)
             write_json(directory / 'populated-before.rows.json', before['rows'])
             migrations['populated_replay'], _ = run_migrations(repo, directory, 'replay-populated', manifest, before)
-            result['assertion_results'].update(fresh_manifest_applied_001_039=True,
-                                             empty_replay_noop_001_039=True,
-                                             populated_replay_noop_001_039=True)
+            result['assertion_results'].update(fresh_manifest_applied_001_040=True,
+                                             empty_replay_noop_001_040=True,
+                                             populated_replay_noop_001_040=True)
             versions = {}
             for tool, argv in {'go': ['go', 'version'], 'python': ['python', '--version'], 'psql': ['psql', '--version'], 'pg_dump': ['pg_dump', '--version']}.items():
                 version = bounded(argv)
