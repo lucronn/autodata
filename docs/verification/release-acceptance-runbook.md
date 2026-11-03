@@ -237,7 +237,13 @@ real confined ArtifactStore with inline synthetic files.
 The additional internal `inspect_paid_migration_receipts` layer first applies the
 common and PG checks, then binds all 36 migration phase receipts to the literal
 ordered 001–040 filenames. It checks the driver exit and actual driver bytes
-against an explicit `expected_driver_sha256` invocation input, closed typed phase
+against an explicit `expected_driver_sha256` invocation input. The closed migration
+object also requires the v2 producer's `runner_sha256` field: a lowercase 64-hex
+SHA256 string recording `scripts/dev/migrate_sql.sh`. The historical retained
+value is `4970eab6f20be35c354547ed5acf73c991dae1a83433094715f051463790a8f3`.
+This field is type-checked metadata; it is not proof of runner bytes, source
+binding, execution or registered authority, and driver provenance remains missing.
+The layer checks closed typed phase
 and saved-command fields, fresh applied versus replay skipped vectors, and exact
 complete LF-delimited stdout marker records. Unknown, duplicate, reordered,
 truncated or malformed markers cannot override the declared vectors.

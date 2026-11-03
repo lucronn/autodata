@@ -912,8 +912,10 @@ def inspect_paid_migration_receipts(store, *, candidate_sha, trusted_base_sha, p
         for bank in ('bankone', 'banktwo'):
             prefix = 'paid-access/'+bank+'/'+name+'/'
             migrations = document(prefix+'measured-runtime.json')['migrations']
-            exact(migrations, ('manifest', 'driver_sha256', 'driver_exit_code', 'fresh',
-                               'empty_replay', 'populated_replay'))
+            exact(migrations, ('manifest', 'driver_sha256', 'driver_exit_code', 'runner_sha256',
+                               'fresh', 'empty_replay', 'populated_replay'))
+            # Retained producer metadata only; source/runner authority remains missing.
+            digest(migrations['runner_sha256'])
             require(migrations['manifest'] == list(PAID_MIGRATION_MANIFEST), 'paid_migration_manifest')
             require(type(migrations['driver_exit_code']) is int and migrations['driver_exit_code'] == 0,
                     'paid_migration_driver_exit')
