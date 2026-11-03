@@ -1,5 +1,7 @@
 # Workshop Paid Catalog and Contextual Media Access Implementation Plan
 
+
+Current dispatch amendment: [parallel delivery](2026-11-03-workshop-parallel-delivery.md) replaces serial implementation prerequisites. A synchronized exact-base gate still precedes edits; complete dependency/runtime verification remains required for release acceptance.
 > For agentic workers: execute only after the coordinator's canonical planning/tracking gate and exact-base machine preflight pass. Use the approved execution/review workflow; this draft does not authorize implementation.
 
 Goal: a verified customer can read and prepare only a permanently purchased canonical configuration plus region, including eligible Bankone/Banktwo articles and their current permitted source/media.

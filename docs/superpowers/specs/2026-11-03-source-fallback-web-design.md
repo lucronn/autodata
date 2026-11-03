@@ -516,3 +516,8 @@ Its120 DTO/browser and21 real API/browser cases are distinct evidence.
 Actual production assets, pinned official SDK storage, real settlement/grants
 and source/media access must be verified; no browser redirect or local state
 grants ownership. Task/record remain waiting for dependencies and a fresh gate.
+
+
+### Concurrent Workshop delivery
+
+The user requested three concurrent builders. The canonical parallel plan is `docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md`: twelve article-access paths, four protected-media paths and thirty-two UI paths have exclusive owners. Reviewed interfaces permit parallel implementation after synchronized preflight while the coordinator completes dependency/runtime acceptance. This replaces serial dispatch timing, not production acceptance requirements. Commerce candidate9d33e1e remains unverified pending its remaining fixture repair and runtime/image/CI checks.

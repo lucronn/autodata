@@ -93,3 +93,8 @@ placement, region, capacity, secret delivery and operating cost before creation.
 The user's launch goal authorizes preparing and executing a concrete release;
 earlier orchestration-only deployment restrictions are historical scope, not a
 reason to abandon the launch request. No code or infrastructure gate is waived.
+
+
+### Concurrent Workshop delivery
+
+The user requested three concurrent builders. The canonical parallel plan is `docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md`: twelve article-access paths, four protected-media paths and thirty-two UI paths have exclusive owners. Reviewed interfaces permit parallel implementation after synchronized preflight while the coordinator completes dependency/runtime acceptance. This replaces serial dispatch timing, not production acceptance requirements. Commerce candidate9d33e1e remains unverified pending its remaining fixture repair and runtime/image/CI checks.

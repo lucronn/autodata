@@ -1,5 +1,7 @@
 # Complete Paid Workshop Customer UI Implementation Plan
 
+
+Current dispatch amendment: [parallel delivery](2026-11-03-workshop-parallel-delivery.md) replaces serial implementation prerequisites. A synchronized exact-base gate still precedes edits; complete dependency/runtime verification remains required for release acceptance.
 > For agentic workers: use the approved plan execution/review workflow only after the coordinator commits this plan, synchronizes its task/Issue186/Project8/canonical documents, pins integrated dependencies and passes machine preflight. This draft authorizes no implementation.
 
 **Goal:** let a customer safely browse, sign in with Google, buy the selected configuration and region for $20 USD once, and return to purchased articles/source/media from My vehicles.

@@ -470,3 +470,8 @@ Two raw Go files extend the commerce artifact inventory to10;17assertion keys an
 implementation, independently freeze the strict final collector and run actual
 acceptance. The catalog race repair79c17ae is independently verified and must be
 included before the final combined full-race run.
+
+
+### Concurrent Workshop delivery
+
+The user requested three concurrent builders. The canonical parallel plan is `docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md`: twelve article-access paths, four protected-media paths and thirty-two UI paths have exclusive owners. Reviewed interfaces permit parallel implementation after synchronized preflight while the coordinator completes dependency/runtime acceptance. This replaces serial dispatch timing, not production acceptance requirements. Commerce candidate9d33e1e remains unverified pending its remaining fixture repair and runtime/image/CI checks.
