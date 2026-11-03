@@ -88,7 +88,12 @@ func (s incompleteScopeCatalogStore) CatalogScopeComplete(context.Context, Princ
 
 func TestUsableConfigurationsAreNotBlockedByMissingHydrationScope(t *testing.T) {
 	store := incompleteScopeCatalogStore{memoryCatalogStore: catalogFixtureStore()}
-	capture := &fakeIngestionClient{status: http.StatusAccepted}
+	capture := &blockingCatalogHydrationClient{
+		started:  make(chan struct{}),
+		release:  make(chan struct{}),
+		finished: make(chan struct{}),
+	}
+	close(capture.release)
 	server := NewServerWithCatalogStore(staticReadiness{}, &fakeAuthenticator{
 		principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}},
 	}, newMemoryRequestStore(), store)
@@ -105,12 +110,10 @@ func TestUsableConfigurationsAreNotBlockedByMissingHydrationScope(t *testing.T) 
 	if body.Hydrating || len(body.Items) != 1 || !body.Items[0].Complete {
 		t.Fatalf("body = %#v, want usable items with hydrating false", body)
 	}
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for capture.path == "" && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if capture.path != "/v1/catalog/ensure" {
-		t.Fatalf("expected background ensure to fill the missing scope marker, got path %q", capture.path)
+	select {
+	case <-capture.finished:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected background /v1/catalog/ensure to fill the missing scope marker")
 	}
 }
 
