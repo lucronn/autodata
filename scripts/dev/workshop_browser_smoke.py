@@ -236,14 +236,177 @@ class DTOFixture:
         await route.fulfill(content_type='application/json',body=json.dumps(data),headers={'Access-Control-Allow-Origin':self.origin})
 
 
-async def select_vehicle(page, configuration=CONFIG):
+# Keep abandoned Playwright operations alive until their browser shutdown settles
+# them. In particular, never await a cancellation-resistant task past a deadline.
+_DTO_PENDING_TASKS = set()
+
+
+def _dto_task(coroutine):
+    task = asyncio.create_task(coroutine)
+    _DTO_PENDING_TASKS.add(task)
+    def settled(done):
+        _DTO_PENDING_TASKS.discard(done)
+        if not done.cancelled(): done.exception()
+    task.add_done_callback(settled)
+    return task
+
+
+async def _dto_bounded(coroutine, timeout, *, late_cleanup=None):
+    task = _dto_task(coroutine)
+    try:
+        done, _ = await asyncio.wait({task}, timeout=max(0, timeout))
+        if not done: raise TimeoutError('operation deadline exceeded')
+        return task.result()
+    except BaseException:
+        if late_cleanup is not None:
+            task.add_done_callback(lambda done: late_cleanup())
+        if not task.done(): task.cancel()
+        raise
+
+
+async def close_dto_browser(browser, *, timeout=3):
+    try: await _dto_bounded(browser.close(), timeout)
+    except Exception as error:
+        raise RuntimeError(f'DTO browser shutdown failed: {error}') from error
+
+
+class DTODiagnostics:
+    def __init__(self, output, name, *, cleanup_timeout=3):
+        self.output, self.name = Path(output), name
+        self.cleanup_timeout = cleanup_timeout
+        self.stage = 'context.create'
+        self.fixture = self.context = self.page = None
+        self.failure_stage = self.failure_kind = self.error = None
+        self.trace_status = 'not_started'
+        self.trace_path = None
+        self.tracing_started = False
+        self.requests, self.errors, self.unexpected = [], [], []
+        self.diagnostic_errors = []
+        self.execution_elapsed_seconds = self.cleanup_elapsed_seconds = 0
+
+    def fail(self, error, *, kind=None):
+        if self.failure_kind is not None: return
+        if kind is None:
+            from playwright.async_api import TimeoutError as ActionTimeoutError
+            kind = 'cancelled' if isinstance(error, asyncio.CancelledError) else (
+                'action_timeout' if isinstance(error, ActionTimeoutError) else 'exception')
+        self.failure_stage, self.failure_kind = self.stage, kind
+        self.error = str(error) or type(error).__name__
+        if self.fixture is not None:
+            # DTO requests already contain no headers or bodies. Exclude credential
+            # query parameters as well; unexpected URLs retain origin/path only.
+            self.requests = [dict(method=row['method'], path=row['path'], query={
+                key: value for key, value in row['query'].items()
+                if not re.search(r'token|csrf|authorization|cookie|session', key, re.I)
+            }) for row in self.fixture.requests]
+            self.errors = list(self.fixture.errors)
+            self.unexpected = [urlsplit(url)._replace(query='', fragment='').geturl()
+                               for url in self.fixture.unexpected]
+
+    def snapshot(self):
+        data = dict(failure_stage=self.failure_stage, failure_kind=self.failure_kind,
+            requests=self.requests, errors=self.errors, unexpected=self.unexpected,
+            trace_status=self.trace_status, diagnostic_errors=list(self.diagnostic_errors),
+            execution_elapsed_seconds=round(self.execution_elapsed_seconds, 3),
+            cleanup_elapsed_seconds=round(self.cleanup_elapsed_seconds, 3))
+        if self.trace_path is not None: data['trace_path'] = self.trace_path
+        return data
+
+    def write_failure(self):
+        if self.failure_kind is None: return
+        self.output.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(self.output, 0o700)
+        target = self.output / (self.name + '-failure.json')
+        target.write_text(json.dumps(dict(status='failed', error=self.error,
+            diagnostics=self.snapshot()), indent=2) + '\n')
+        os.chmod(target, 0o600)
+
+    async def finish(self):
+        start = time.monotonic()
+        deadline = start + self.cleanup_timeout
+        self.write_failure()
+        async def operation(name, factory, *, late_cleanup=None):
+            self.stage = name
+            try:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0: raise TimeoutError('cleanup deadline exceeded')
+                await _dto_bounded(factory(), min(1, remaining), late_cleanup=late_cleanup)
+                return True
+            except Exception as error:
+                self.diagnostic_errors.append(f'{name}: {error}')
+                if self.failure_kind is None: self.fail(error)
+                return False
+        if self.failure_kind is not None and self.page is not None:
+            image_path = self.output / (self.name + '-failure.png')
+            if await operation('screenshot', lambda: self.page.screenshot(path=str(image_path), timeout=1000),
+                               late_cleanup=lambda: image_path.unlink(missing_ok=True)):
+                os.chmod(image_path, 0o600)
+        if self.tracing_started:
+            trace_path = self.output / (self.name + '-failure-trace.zip')
+            retain = self.failure_kind is not None
+            stopped = await operation('trace.stop',
+                lambda: self.context.tracing.stop(**({'path': str(trace_path)} if retain else {})),
+                late_cleanup=lambda: trace_path.unlink(missing_ok=True))
+            if not stopped:
+                trace_path.unlink(missing_ok=True)
+                self.trace_status = 'timeout' if 'deadline exceeded' in self.diagnostic_errors[-1] else 'failed'
+            elif retain:
+                if not trace_path.is_file():
+                    self.trace_status = 'missing'
+                    self.diagnostic_errors.append('trace.stop: exported trace missing')
+                elif trace_path.stat().st_size > 16 * 1024 * 1024:
+                    trace_path.unlink()
+                    self.trace_status = 'oversize'
+                    self.diagnostic_errors.append('trace.stop: exported trace exceeds 16 MiB')
+                else:
+                    os.chmod(trace_path, 0o600)
+                    self.trace_status = 'retained'
+                    self.trace_path = self.output.name + '/' + trace_path.name
+            else: self.trace_status = 'discarded'
+        if self.context is not None:
+            await operation('context.close', self.context.close)
+        self.cleanup_elapsed_seconds = time.monotonic() - start
+        self.write_failure()
+
+
+async def run_dto_case(browser, origin, name, output, *, case_timeout=20, cleanup_timeout=3):
+    diagnostics = DTODiagnostics(output, name, cleanup_timeout=cleanup_timeout)
+    start = time.monotonic()
+    task = _dto_task(dto_case(browser, origin, name, output, diagnostics=diagnostics))
+    result = None
+    try:
+        done, _ = await asyncio.wait({task}, timeout=case_timeout)
+        if not done:
+            diagnostics.fail(TimeoutError('DTO case exceeded 20-second execution watchdog'), kind='case_timeout')
+            task.cancel()
+        else: result = task.result()
+    except asyncio.CancelledError as error:
+        diagnostics.fail(error, kind='cancelled')
+        task.cancel()
+        raise
+    except Exception as error:
+        diagnostics.fail(error)
+    finally:
+        diagnostics.execution_elapsed_seconds = time.monotonic() - start
+        await diagnostics.finish()
+    if diagnostics.failure_kind is not None:
+        return dict(status='failed', error=diagnostics.error, diagnostics=diagnostics.snapshot())
+    return result
+
+
+async def select_vehicle(page, configuration=CONFIG, *, diagnostics=None):
     for field,value in [('year','2024'),('make','fixture-make'),('model','fixture-model'),('configuration',configuration)]:
+        if diagnostics is not None: diagnostics.stage = 'vehicle.' + field
         await page.locator('#'+field).select_option(value)
+    if diagnostics is not None: diagnostics.stage = 'scenario.' + diagnostics.name + '.actions'
 
 
-async def open_article(page):
+async def open_article(page, *, diagnostics=None):
+    if diagnostics is not None: diagnostics.stage = 'article.open.click'
     await page.locator('#articles a').first.click()
+    if diagnostics is not None: diagnostics.stage = 'article.open.title'
     await page.locator('#article-title').filter(has_text='Fixture repair procedure').wait_for()
+    if diagnostics is not None: diagnostics.stage = 'scenario.' + diagnostics.name + '.actions'
 
 
 async def assert_text(page, selector, value):
@@ -251,19 +414,33 @@ async def assert_text(page, selector, value):
     await expect(page.locator(selector)).to_contain_text(value)
 
 
-async def dto_case(browser, origin, name, output):
+async def dto_case(browser, origin, name, output, *, diagnostics=None):
     from playwright.async_api import expect
-    context=await browser.new_context(ignore_https_errors=True,viewport={'width':390 if name=='keyboard-print-mobile' else 1280,'height':900})
-    fixture=DTOFixture(origin,name)
-    await context.route('**/*',fixture.route)
-    page=await context.new_page();page.on('pageerror',lambda error:fixture.errors.append(str(error)))
-    if name == 'google-popup-blocked':
-        # Browser popup blocking is exercised at window.open, never by replacing SDK functions.
-        await page.add_init_script('window.open=()=>null')
+    owns_diagnostics = diagnostics is None
+    diagnostics = diagnostics or DTODiagnostics(output, name)
     try:
+        context=await browser.new_context(ignore_https_errors=True,viewport={'width':390 if name=='keyboard-print-mobile' else 1280,'height':900})
+        diagnostics.context = context
+        context.set_default_timeout(10000)
+        context.set_default_navigation_timeout(10000)
+        diagnostics.stage = 'trace.start'
+        diagnostics.trace_status = 'start_failed'
+        await context.tracing.start(screenshots=True, snapshots=True, sources=False)
+        diagnostics.tracing_started = True
+        diagnostics.trace_status = 'recording'
+        fixture=DTOFixture(origin,name)
+        diagnostics.fixture = fixture
+        await context.route('**/*',fixture.route)
+        diagnostics.stage = 'page.create'
+        page=await context.new_page();diagnostics.page = page;page.on('pageerror',lambda error:fixture.errors.append(str(error)))
+        if name == 'google-popup-blocked':
+            # Browser popup blocking is exercised at window.open, never by replacing SDK functions.
+            await page.add_init_script('window.open=()=>null')
         url=origin+'/workshop/'
         if name in {'checkout-processing-return','checkout-untrusted-return','checkout-expired'}: url+='?order='+ORDER
+        diagnostics.stage = 'navigation'
         await page.goto(url)
+        diagnostics.stage = 'scenario.' + name + '.actions'
         if name in {'signin-unavailable-local','signin-malformed-config','session-blocked','auth-dependency-unavailable'}:
             await expect(page.locator('#signin')).to_be_disabled()
             await expect(page.locator('#year')).to_be_enabled()
@@ -285,7 +462,7 @@ async def dto_case(browser, origin, name, output):
             else: await assert_text(page,'#purchase-message','Do not pay again')
             assert fixture.checkout_count==0
         elif name=='library-pagination-and-states':
-            await select_vehicle(page);await assert_text(page,'#articles','Fixture repair procedure');await page.locator('#my-vehicles').click()
+            await select_vehicle(page, diagnostics=diagnostics);await assert_text(page,'#articles','Fixture repair procedure');await page.locator('#my-vehicles').click()
             await expect(page.locator('#library-items > li')).to_have_count(4)
             await expect(page.locator('#library-items button')).to_have_count(3)
             await page.locator('#library-more').click();await expect(page.locator('#library-items > li')).to_have_count(5)
@@ -293,7 +470,7 @@ async def dto_case(browser, origin, name, output):
             assert 'year=' not in page.url and 'configuration='+OTHER in page.url, 'library route retained another vehicle hierarchy'
             await page.reload();await assert_text(page,'#articles','Fixture repair procedure')
         else:
-            await select_vehicle(page)
+            await select_vehicle(page, diagnostics=diagnostics)
             if name in {'quote-exact-scope','terms-config-unavailable','checkout-double-click-retry'}:
                 await assert_text(page,'#purchase-message','purchase' if name!='terms-config-unavailable' else 'unavailable')
                 if name=='checkout-double-click-retry':
@@ -312,7 +489,7 @@ async def dto_case(browser, origin, name, output):
             elif name in {'warm-reload','history-restore','auth-cookie-reload'}:
                 await assert_text(page,'#articles','Fixture repair procedure')
                 if name=='history-restore':
-                    await open_article(page);await page.go_back();await assert_text(page,'#articles','Fixture repair procedure');await page.go_forward();await assert_text(page,'#article-content','Disconnect battery')
+                    await open_article(page, diagnostics=diagnostics);await page.go_back();await assert_text(page,'#articles','Fixture repair procedure');await page.go_forward();await assert_text(page,'#article-content','Disconnect battery')
                 else:
                     await page.reload();await assert_text(page,'#articles','Fixture repair procedure')
                 assert not any('/firebase-web.mjs' in row['path'] for row in fixture.requests)
@@ -320,7 +497,7 @@ async def dto_case(browser, origin, name, output):
                 if name in {'session-expired','withdrawal'}:
                     await page.locator('#articles a').first.click()
                     await expect(page.locator('#critical-error')).not_to_be_empty()
-                else: await open_article(page)
+                else: await open_article(page, diagnostics=diagnostics)
                 if name=='pending-no-content':
                     await expect(page.locator('#print')).to_be_disabled();await expect(page.locator('#loading-progress-bar')).not_to_have_attribute('value',re.compile('.+'));await page.locator('#cancel').click()
                 elif name=='session-expired': await expect(page.locator('#article-content')).to_be_empty()
@@ -352,16 +529,15 @@ async def dto_case(browser, origin, name, output):
                         await expect(page.locator('#print')).to_be_enabled();await page.emulate_media(media='print');await expect(page.locator('#article-content')).to_be_visible();assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth')
                     if name=='cancel-and-retry':
                         await page.locator('#cancel').click();await assert_text(page,'#activity-text','Loading stopped');await page.locator('#retry').click();await assert_text(page,'#activity-text','Article ready.');assert fixture.prepare_count==2
+        diagnostics.stage = 'assertions'
         assert not fixture.unexpected, f'unexpected external/application requests: {fixture.unexpected}'
         assert not fixture.errors, f'browser errors: {fixture.errors}'
         return {'status':'passed','requests':fixture.requests,'sdk_requests':sum(row['path']=='/workshop/firebase-web.mjs' for row in fixture.requests)}
-    except BaseException:
-        output.mkdir(mode=0o700,parents=True,exist_ok=True)
-        try: await page.screenshot(path=str(output/(name+'-failure.png')),timeout=1500)
-        except Exception: pass
+    except BaseException as error:
+        diagnostics.fail(error)
         raise
     finally:
-        await context.close()
+        if owns_diagnostics: await diagnostics.finish()
 
 
 API_CASES=(
@@ -659,14 +835,18 @@ async def run(args):
                     for name in names:
                         start=time.monotonic()
                         try:
-                            case=dto_case if args.mode=='dto-fixture' else api_case
-                            result=await asyncio.wait_for(case(browser,args.base_url,name,output/engine),timeout=20 if args.mode=='dto-fixture' else 65)
+                            if args.mode=='dto-fixture':
+                                result=await run_dto_case(browser,args.base_url,name,output/engine)
+                            else:
+                                result=await asyncio.wait_for(api_case(browser,args.base_url,name,output/engine),timeout=65)
                         except Exception as error: result={'status':'failed','error':str(error) or type(error).__name__}
                         rows.append(dict(browser=engine,scenario=name,elapsed_seconds=round(time.monotonic()-start,3),**result))
                         evidence['browser_versions']=evidence.get('browser_versions',{})|{engine:browser.version}
                         target=output/'evidence.json';target.write_text(json.dumps(evidence,indent=2)+'\n');os.chmod(target,0o600)
                         print(f"{engine} {name}: {result['status']}",flush=True)
-                finally: await browser.close()
+                finally:
+                    if args.mode=='dto-fixture': await close_dto_browser(browser)
+                    else: await browser.close()
         validate_results(rows,expected)
     finally:
         target=output/'evidence.json';target.write_text(json.dumps(evidence,indent=2)+'\n');os.chmod(target,0o600)

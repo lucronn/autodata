@@ -4,6 +4,9 @@ import copy
 import json
 import importlib.util
 import unittest
+import sys
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -295,6 +298,255 @@ class BrowserCheckoutResponseLoss(unittest.IsolatedAsyncioTestCase):
             mutate(changed)
             with self.assertRaises(AssertionError):
                 fixture.validate_pending_checkout(measure, changed, snapshot)
+
+
+class DTOActionTimeout(Exception):
+    pass
+
+
+class DTOLocator:
+    def __init__(self, page, selector):
+        self.page, self.selector = page, selector
+        self.first = self
+
+    async def select_option(self, value):
+        self.page.selections.append((self.selector, value))
+
+    async def click(self):
+        self.page.clicks += 1
+        self.page.context.fixture.requests.append({'method': 'GET', 'path': '/v1/catalog/years',
+            'query': {'region': ['US'], 'id_token': ['do-not-retain']}})
+        if self.page.mode != 'passed': self.page.errors('synthetic-page-error')
+        self.page.click_entered.set()
+        if self.page.mode == 'action_timeout':
+            raise DTOActionTimeout('Locator.click: timed out\nCall log: waiting for element stability')
+        if self.page.mode == 'held':
+            await self.page.release.wait()
+
+    def filter(self, **kwargs): return self
+    def nth(self, index): return self
+    async def wait_for(self): pass
+
+
+class DTOPage:
+    def __init__(self, context, mode):
+        self.context, self.mode = context, mode
+        self.selections, self.clicks = [], 0
+        self.click_entered, self.release = asyncio.Event(), asyncio.Event()
+        self.screenshot_error = None
+
+    def on(self, name, callback):
+        assert name == 'pageerror'
+        self.errors = callback
+
+    async def goto(self, url): pass
+    def locator(self, selector): return DTOLocator(self, selector)
+
+    async def screenshot(self, *, path, timeout):
+        if self.screenshot_error: raise self.screenshot_error
+        Path(path).write_bytes(b'owned synthetic screenshot')
+
+
+class DTOTrace:
+    def __init__(self):
+        self.started = False
+        self.start_error = self.stop_error = None
+        self.size = 8
+        self.stop_entered, self.release = asyncio.Event(), asyncio.Event()
+        self.hold = False
+        self.resist_cancel = False
+
+    async def start(self, *, screenshots, snapshots, sources):
+        assert screenshots and snapshots and not sources
+        if self.start_error: raise self.start_error
+        self.started = True
+
+    async def stop(self, *, path=None):
+        self.stop_entered.set()
+        if self.hold:
+            try: await self.release.wait()
+            except asyncio.CancelledError:
+                if not self.resist_cancel: raise
+                await self.release.wait()
+        if self.stop_error: raise self.stop_error
+        if path:
+            with Path(path).open('wb') as stream: stream.truncate(self.size)
+
+
+class DTOContext:
+    def __init__(self, mode='action_timeout'):
+        self.tracing, self.page = DTOTrace(), DTOPage(self, mode)
+        self.closed = False
+        self.close_hold = False
+        self.close_release = asyncio.Event()
+        self.action_timeout = self.navigation_timeout = None
+
+    def set_default_timeout(self, timeout): self.action_timeout = timeout
+    def set_default_navigation_timeout(self, timeout): self.navigation_timeout = timeout
+    async def route(self, pattern, callback): self.fixture = callback.__self__
+    async def new_page(self): return self.page
+    async def close(self):
+        if self.close_hold: await self.close_release.wait()
+        self.closed = True
+
+
+class DTOBrowser:
+    def __init__(self, context): self.context = context
+    async def new_context(self, **kwargs): return self.context
+
+
+class DTOExpectation:
+    async def to_contain_text(self, value): pass
+    async def to_have_text(self, value): pass
+
+
+class BrowserDTOTimeoutDiagnostics(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.directory = TemporaryDirectory()
+        self.output = Path(self.directory.name) / 'webkit'
+        self.api = patch.dict(sys.modules, {'playwright.async_api': SimpleNamespace(
+            expect=lambda locator: DTOExpectation(), TimeoutError=DTOActionTimeout)})
+        self.api.start()
+        self.contexts = []
+
+    async def asyncTearDown(self):
+        for context in self.contexts:
+            context.page.release.set(); context.tracing.release.set(); context.close_release.set()
+        pending = list(getattr(smoke, '_DTO_PENDING_TASKS', ()))
+        if pending: await asyncio.wait(pending, timeout=0.2)
+        self.api.stop()
+        self.directory.cleanup()
+
+    def context(self, mode='action_timeout'):
+        context = DTOContext(mode); self.contexts.append(context); return context
+
+    async def execute(self, context, **kwargs):
+        self.assertTrue(callable(getattr(smoke, 'run_dto_case', None)),
+            'DTO timeout wrapper must retain failure diagnostics')
+        return await smoke.run_dto_case(DTOBrowser(context), 'https://127.0.0.1:32001',
+            'bankone-cascade', self.output, **kwargs)
+
+    def assert_failed_evidence(self, result, kind):
+        self.assertEqual(result['status'], 'failed')
+        diagnostics = result['diagnostics']
+        self.assertEqual(diagnostics['failure_kind'], kind)
+        self.assertEqual(diagnostics['failure_stage'], 'article.open.click')
+        self.assertEqual(diagnostics['requests'], [{'method': 'GET', 'path': '/v1/catalog/years',
+            'query': {'region': ['US']}}])
+        self.assertEqual(diagnostics['errors'], ['synthetic-page-error'])
+        self.assertNotIn('do-not-retain', json.dumps(result))
+        with self.assertRaises(ValueError):
+            smoke.validate_results([dict(browser='webkit', scenario='bankone-cascade', **result)],
+                [('webkit', 'bankone-cascade')])
+        stored = json.loads((self.output / 'bankone-cascade-failure.json').read_text())
+        self.assertEqual(stored['status'], 'failed')
+        self.assertEqual(stored['diagnostics']['failure_stage'], 'article.open.click')
+
+    async def test_inner_action_timeout_keeps_call_log_and_trace(self):
+        context = self.context()
+        result = await self.execute(context)
+        self.assert_failed_evidence(result, 'action_timeout')
+        self.assertIn('Call log: waiting for element stability', result['error'])
+        self.assertEqual(result['diagnostics']['trace_status'], 'retained')
+        self.assertTrue((self.output / 'bankone-cascade-failure-trace.zip').is_file())
+        self.assertEqual(context.page.clicks, 1)
+        self.assertEqual((context.action_timeout, context.navigation_timeout), (10000, 10000))
+        self.assertTrue(context.closed)
+        for path in self.output.iterdir(): self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.output.stat().st_mode & 0o777, 0o700)
+
+    async def test_outer_timeout_retains_actual_stage_observations_and_failure(self):
+        context = self.context('held')
+        result = await self.execute(context, case_timeout=0.03)
+        self.assert_failed_evidence(result, 'case_timeout')
+        self.assertTrue(context.page.click_entered.is_set())
+        self.assertEqual(context.page.clicks, 1)
+        self.assertEqual(result['diagnostics']['trace_status'], 'retained')
+        self.assertLess(result['diagnostics']['execution_elapsed_seconds'], 0.5)
+
+    async def test_external_cancellation_propagates_after_retaining_diagnostics(self):
+        context = self.context('held')
+        self.assertTrue(callable(getattr(smoke, 'run_dto_case', None)))
+        task = asyncio.create_task(self.execute(context))
+        await asyncio.wait_for(context.page.click_entered.wait(), timeout=0.2)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError): await task
+        stored = json.loads((self.output / 'bankone-cascade-failure.json').read_text())
+        self.assertEqual(stored['diagnostics']['failure_kind'], 'cancelled')
+        self.assertTrue(context.closed)
+
+    async def test_cancellation_resistant_trace_and_stalled_close_are_bounded(self):
+        context = self.context()
+        context.tracing.hold = context.tracing.resist_cancel = context.close_hold = True
+        start = asyncio.get_running_loop().time()
+        result = await asyncio.wait_for(self.execute(context, cleanup_timeout=0.05), timeout=0.5)
+        self.assert_failed_evidence(result, 'action_timeout')
+        self.assertLess(asyncio.get_running_loop().time() - start, 0.3)
+        self.assertLess(result['diagnostics']['cleanup_elapsed_seconds'], 0.2)
+        self.assertEqual(result['diagnostics']['trace_status'], 'timeout')
+        self.assertTrue(result['diagnostics']['diagnostic_errors'])
+        context.tracing.release.set(); context.close_release.set()
+        pending = list(smoke._DTO_PENDING_TASKS)
+        if pending: await asyncio.wait(pending, timeout=0.2)
+        self.assertFalse((self.output / 'bankone-cascade-failure-trace.zip').exists(),
+            'a late trace export must not recreate an unbounded artifact')
+
+    async def test_screenshot_and_trace_errors_preserve_primary_timeout(self):
+        context = self.context()
+        context.page.screenshot_error = RuntimeError('screenshot unavailable')
+        context.tracing.stop_error = RuntimeError('trace unavailable')
+        result = await self.execute(context)
+        self.assert_failed_evidence(result, 'action_timeout')
+        self.assertIn('element stability', result['error'])
+        self.assertEqual(result['diagnostics']['trace_status'], 'failed')
+        self.assertEqual(len(result['diagnostics']['diagnostic_errors']), 2)
+
+    async def test_oversize_trace_is_removed_without_losing_failure(self):
+        context = self.context(); context.tracing.size = 16 * 1024 * 1024 + 1
+        result = await self.execute(context)
+        self.assert_failed_evidence(result, 'action_timeout')
+        self.assertEqual(result['diagnostics']['trace_status'], 'oversize')
+        self.assertFalse((self.output / 'bankone-cascade-failure-trace.zip').exists())
+
+    async def test_trace_start_failure_is_explicit_and_never_executes_scenario(self):
+        context = self.context(); context.tracing.start_error = RuntimeError('cannot start trace')
+        result = await self.execute(context)
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(result['diagnostics']['failure_stage'], 'trace.start')
+        self.assertEqual(result['diagnostics']['trace_status'], 'start_failed')
+        self.assertEqual(result['diagnostics']['requests'], [])
+        self.assertEqual(context.page.clicks, 0)
+        self.assertTrue(context.closed)
+
+    async def test_passing_case_discards_trace_and_keeps_success_fields(self):
+        context = self.context('passed')
+        result = await self.execute(context)
+        self.assertEqual(result['status'], 'passed')
+        self.assertEqual(result['sdk_requests'], 0)
+        self.assertEqual(context.page.clicks, 1)
+        self.assertTrue(context.closed)
+        self.assertFalse(list(self.output.glob('*')))
+        smoke.validate_results([dict(browser='webkit', scenario='bankone-cascade', **result)],
+            [('webkit', 'bankone-cascade')])
+
+    async def test_successful_case_with_failed_cleanup_cannot_pass(self):
+        context = self.context('passed'); context.tracing.stop_error = RuntimeError('cannot stop trace')
+        result = await self.execute(context)
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(result['diagnostics']['trace_status'], 'failed')
+
+    async def test_dto_browser_shutdown_cannot_hang_acceptance(self):
+        self.assertTrue(callable(getattr(smoke, 'close_dto_browser', None)))
+        close_entered, release = asyncio.Event(), asyncio.Event()
+        async def close():
+            close_entered.set()
+            try: await release.wait()
+            except asyncio.CancelledError: await release.wait()
+        try:
+            with self.assertRaisesRegex(RuntimeError, 'shutdown'):
+                await asyncio.wait_for(smoke.close_dto_browser(SimpleNamespace(close=close), timeout=0.03), timeout=0.2)
+            self.assertTrue(close_entered.is_set())
+        finally: release.set()
 
 
 if __name__ == '__main__': unittest.main()
