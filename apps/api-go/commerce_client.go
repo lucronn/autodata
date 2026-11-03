@@ -49,6 +49,12 @@ func (c *HTTPCommerceClient) Do(ctx context.Context, operation string, body []by
 	}
 	r.Header.Set("X-Autodata-Internal-Token", c.token)
 	r.Header.Set("Accept", "application/json")
+	if id, ok := ctx.Value(requestIDContextKey).(string); ok && validRequestID(id) {
+		r.Header.Set("X-Request-ID", id)
+	}
+	if trace, ok := ctx.Value(traceparentContextKey).(string); ok && validTraceparent(trace) {
+		r.Header.Set("traceparent", trace)
+	}
 	r.Header.Set("Content-Type", "application/json")
 	if operation == "stripe/webhook" {
 		r.Header.Set("Stripe-Signature", signature)
@@ -93,7 +99,11 @@ func configuredCommerceClient(getenv func(string) string) (CommerceClient, error
 	case "", "disabled":
 		return nil, nil
 	case "stripe_test", "stripe_live":
-		return NewHTTPCommerceClient(getenv("AUTODATA_INGESTION_URL"), getenv("AUTODATA_INGESTION_INTERNAL_TOKEN"))
+		client, err := NewHTTPCommerceClient(getenv("AUTODATA_INGESTION_URL"), getenv("AUTODATA_INGESTION_INTERNAL_TOKEN"))
+		if err != nil {
+			return nil, err
+		}
+		return client, nil
 	default:
 		return nil, fmt.Errorf("invalid commerce mode")
 	}

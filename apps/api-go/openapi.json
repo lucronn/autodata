@@ -24,6 +24,9 @@
     },
     {
       "name": "Customer identity"
+    },
+    {
+      "name": "Workshop commerce"
     }
   ],
   "paths": {
@@ -1694,6 +1697,807 @@
           }
         ]
       }
+    },
+    "/v1/workshop/quote": {
+      "get": {
+        "tags": [
+          "Workshop commerce"
+        ],
+        "operationId": "getWorkshopQuote",
+        "summary": "Read a DB-only USD20 configuration quote without provider hydration",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Server-resolved read-only quote.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopQuote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid shape, scope or pagination.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown configuration or owner-scoped order.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commerce or authentication dependency unavailable; safe retryable error.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "configuration_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/workshop/checkout-sessions": {
+      "post": {
+        "tags": [
+          "Workshop commerce"
+        ],
+        "operationId": "createWorkshopCheckout",
+        "summary": "Create or reuse the verified customer checkout; server owns price and ownership",
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "New confirmed hosted checkout.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopCheckout"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Existing hosted checkout or permanent ownership.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopCheckoutResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Creation/payment unresolved; do not repay.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "2"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopProcessing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid shape, scope or pagination.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Verified customer session required.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin/CSRF rejected, account blocked or entitlement revoked.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown configuration or owner-scoped order.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency/terms/payment conflict.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds the body limit.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commerce or authentication dependency unavailable; safe retryable error.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "Must exactly match the configured public origin."
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token from GET /auth/session for the same verified customer session."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkshopCheckoutRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workshop/orders/{order_id}": {
+      "get": {
+        "tags": [
+          "Workshop commerce"
+        ],
+        "operationId": "getWorkshopOrder",
+        "summary": "Read a verified customer-owned order and safe retry disposition",
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unknown/other-owner orders are indistinguishable 404.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopOrder"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid shape, scope or pagination.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Verified customer session required.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin/CSRF rejected, account blocked or entitlement revoked.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown configuration or owner-scoped order.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commerce or authentication dependency unavailable; safe retryable error.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/workshop/library": {
+      "get": {
+        "tags": [
+          "Workshop commerce"
+        ],
+        "operationId": "getWorkshopLibrary",
+        "summary": "Read the permanent owner-only library with stable keyset pagination",
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account-scoped library and opaque next cursor. Another account cursor is invalid.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopLibrary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid shape, scope or pagination.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Verified customer session required.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin/CSRF rejected, account blocked or entitlement revoked.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commerce or authentication dependency unavailable; safe retryable error.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ]
+      }
+    },
+    "/v1/payments/stripe/webhook": {
+      "post": {
+        "tags": [
+          "Workshop commerce"
+        ],
+        "operationId": "receiveStripeWebhook",
+        "summary": "Relay bounded signed raw bytes to the authenticated private settlement authority",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Verified, replay-safe accepted/pending/quarantined/ignored event.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeWebhookDisposition"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid shape, scope or pagination.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds the body limit.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commerce or authentication dependency unavailable; safe retryable error.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Stripe-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Exact unmodified raw body, maximum 1 MiB. No customer session or CSRF required. Signature verification belongs to the private payment authority.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "maxLength": 1048576
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2486,6 +3290,423 @@
           }
         },
         "description": "Fresh Google Firebase ID token with iat/auth_time within 5 minutes, at most 60 seconds future skew. Signature, issuer, audience, provider, expiry and live user state are verified. SDK revocation uses iat; application additionally compares auth_time. The same still-fresh token may be exchanged again."
+      },
+      "WorkshopQuote": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "product_key": {
+            "type": "string",
+            "enum": [
+              "workshop-configuration-v1"
+            ]
+          },
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "configuration_label": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+              2000
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USD"
+            ]
+          },
+          "purchase_terms_version": {
+            "type": "string",
+            "enum": [
+              "workshop-v1"
+            ]
+          },
+          "purchasable": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "product_key",
+          "configuration_id",
+          "region",
+          "configuration_label",
+          "amount_minor",
+          "currency",
+          "purchase_terms_version",
+          "purchasable"
+        ]
+      },
+      "WorkshopCheckoutRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "terms_version": {
+            "type": "string",
+            "enum": [
+              "workshop-v1"
+            ]
+          }
+        },
+        "required": [
+          "configuration_id",
+          "region",
+          "terms_version"
+        ]
+      },
+      "WorkshopCheckout": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "checkout"
+            ]
+          },
+          "checkout_url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://checkout[.]stripe[.]com/c/pay/",
+            "description": "Exact validated Stripe-hosted HTTPS URL, including its opaque provider fragment when present."
+          },
+          "provider_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC3339 UTC timestamp."
+          }
+        },
+        "required": [
+          "version",
+          "order_id",
+          "configuration_id",
+          "region",
+          "state",
+          "checkout_url",
+          "provider_expires_at"
+        ]
+      },
+      "WorkshopProcessing": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "processing"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "order_id",
+          "configuration_id",
+          "region",
+          "state"
+        ]
+      },
+      "WorkshopOwned": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "owned"
+            ]
+          },
+          "library_item_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          }
+        },
+        "required": [
+          "version",
+          "order_id",
+          "configuration_id",
+          "region",
+          "state",
+          "library_item_id"
+        ]
+      },
+      "WorkshopCheckoutResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/WorkshopCheckout"
+          },
+          {
+            "$ref": "#/components/schemas/WorkshopProcessing"
+          },
+          {
+            "$ref": "#/components/schemas/WorkshopOwned"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "state",
+          "mapping": {
+            "checkout": "#/components/schemas/WorkshopCheckout",
+            "processing": "#/components/schemas/WorkshopProcessing",
+            "owned": "#/components/schemas/WorkshopOwned"
+          }
+        }
+      },
+      "WorkshopOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "creating",
+              "open",
+              "processing",
+              "paid",
+              "expired",
+              "canceled",
+              "reconciliation_required",
+              "revoked"
+            ]
+          },
+          "retry_disposition": {
+            "type": "string",
+            "enum": [
+              "new_key",
+              "do_not_repay"
+            ],
+            "description": "Only remotely confirmed expired/canceled orders permit a new key. Browser return parameters never establish payment."
+          }
+        },
+        "required": [
+          "version",
+          "order_id",
+          "configuration_id",
+          "region",
+          "state",
+          "retry_disposition"
+        ]
+      },
+      "WorkshopLibraryItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "library_item_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "access_state": {
+            "type": "string",
+            "enum": [
+              "paid",
+              "preparing",
+              "viewable",
+              "revoked"
+            ]
+          },
+          "granted_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC3339 UTC timestamp."
+          },
+          "revoked_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC3339 UTC timestamp."
+          },
+          "dataset_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "content_error_code": {
+            "type": "string",
+            "enum": [
+              "CATALOG_PREPARATION_UNAVAILABLE",
+              "CATALOG_PREPARATION_REVIEW",
+              "CATALOG_SOURCE_UNAVAILABLE"
+            ]
+          }
+        },
+        "required": [
+          "library_item_id",
+          "configuration_id",
+          "region",
+          "label",
+          "access_state",
+          "granted_at"
+        ],
+        "description": "Permanent account ownership with current source readiness. No normal grant expiry. Revoked tombstones remain visible; viewable does not promise all articles are complete."
+      },
+      "WorkshopLibrary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/WorkshopLibraryItem"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2048
+          }
+        },
+        "required": [
+          "version",
+          "items",
+          "next_cursor"
+        ]
+      },
+      "StripeWebhookDisposition": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "pending",
+              "quarantined",
+              "ignored"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
       }
     },
     "responses": {

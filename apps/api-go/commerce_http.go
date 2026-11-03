@@ -74,6 +74,11 @@ func (s *Server) commerceCheckoutHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if len(r.Header.Values("Origin")) != 1 || len(r.Header.Values("X-CSRF-Token")) != 1 {
+		w.Header().Set("Cache-Control", "no-store")
+		s.customerAuth.writeError(w, r, ErrCustomerCSRF)
+		return
+	}
 	if _, ok := commerceQuery(r); !ok || len(r.Header.Values("Idempotency-Key")) != 1 || !commerceUUID(r.Header.Get("Idempotency-Key")) {
 		commerceInvalid(w, r, 400)
 		return

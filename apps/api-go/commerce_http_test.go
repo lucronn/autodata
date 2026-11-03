@@ -138,3 +138,71 @@ func TestCommerceWebhookRawAndBounds(t *testing.T) {
 		t.Fatal("invalid webhook reached authority")
 	}
 }
+
+func TestCommerceRejectsUnsafeAuthorityResponses(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		status     int
+	}{
+		{"foreign checkout", `{"version":"v1","state":"checkout","order_id":"` + commerceOrderID + `","configuration_id":"` + commerceConfigID + `","region":"US","checkout_url":"https://checkout.stripe.com.evil.example/c/pay/cs_test","provider_expires_at":"2026-11-03T20:00:00Z"}`, 201},
+		{"wrong scope", `{"version":"v1","state":"processing","order_id":"` + commerceOrderID + `","configuration_id":"11111111-1111-4111-8111-111111111111","region":"US"}`, 202},
+		{"status mismatch", `{"version":"v1","state":"processing","order_id":"` + commerceOrderID + `","configuration_id":"` + commerceConfigID + `","region":"US"}`, 201},
+		{"secret error", `{"error":{"code":"raw_secret=sk_live_forbidden"}}`, 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, cookie, csrf := commerceTestAPI(t, commerceFixture(func(context.Context, string, []byte, string) (int, []byte, error) {
+				return tc.status, []byte(tc.body), nil
+			}))
+			w := customerHTTP(t, s.Handler(), "POST", "/v1/workshop/checkout-sessions", commerceCheckoutBody, map[string]string{"Content-Type": "application/json", "Origin": "https://cars.example", "X-CSRF-Token": csrf, "Idempotency-Key": commerceOrderID}, cookie)
+			if w.Code != 503 || strings.Contains(w.Body.String(), "raw_secret") {
+				t.Fatal(w.Code, w.Body.String())
+			}
+		})
+	}
+}
+func TestCommerceCheckoutDiscriminantsAndProviderFragment(t *testing.T) {
+	url := "https://checkout.stripe.com/c/pay/cs_test_fixture#fidkdOpaque"
+	for _, tc := range []struct {
+		state, extra string
+		status       int
+	}{{"checkout", `,"checkout_url":"` + url + `","provider_expires_at":"2026-11-03T20:00:00Z"`, 201}, {"checkout", `,"checkout_url":"` + url + `","provider_expires_at":"2026-11-03T20:00:00Z"`, 200}, {"processing", "", 202}, {"owned", `,"library_item_id":"` + commerceOrderID + `"`, 200}} {
+		t.Run(tc.state+string(rune(tc.status)), func(t *testing.T) {
+			s, cookie, csrf := commerceTestAPI(t, commerceFixture(func(context.Context, string, []byte, string) (int, []byte, error) {
+				return tc.status, []byte(`{"version":"v1","state":"` + tc.state + `","order_id":"` + commerceOrderID + `","configuration_id":"` + commerceConfigID + `","region":"US"` + tc.extra + `}`), nil
+			}))
+			w := customerHTTP(t, s.Handler(), "POST", "/v1/workshop/checkout-sessions", commerceCheckoutBody, map[string]string{"Content-Type": "application/json", "Origin": "https://cars.example", "X-CSRF-Token": csrf, "Idempotency-Key": commerceOrderID}, cookie)
+			if w.Code != tc.status {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			if tc.status == 202 && w.Header().Get("Retry-After") != "2" {
+				t.Error("missing safe retry delay")
+			}
+			if tc.state == "checkout" && !strings.Contains(w.Body.String(), "#fidkdOpaque") {
+				t.Error("lost provider fragment")
+			}
+		})
+	}
+}
+
+func TestCommerceRejectsDuplicateCheckoutAuthorityHeaders(t *testing.T) {
+	s, cookie, csrf := commerceTestAPI(t, commerceFixture(func(context.Context, string, []byte, string) (int, []byte, error) {
+		t.Error("ambiguous authority forwarded")
+		return 503, nil, nil
+	}))
+	for _, header := range []string{"Origin", "X-CSRF-Token"} {
+		t.Run(header, func(t *testing.T) {
+			r := httptest.NewRequest("POST", "https://cars.example/v1/workshop/checkout-sessions", strings.NewReader(commerceCheckoutBody))
+			r.AddCookie(cookie)
+			r.Header.Set("Origin", "https://cars.example")
+			r.Header.Set("X-CSRF-Token", csrf)
+			r.Header.Set("Content-Type", "application/json")
+			r.Header.Set("Idempotency-Key", commerceOrderID)
+			r.Header.Add(header, r.Header.Get(header))
+			w := httptest.NewRecorder()
+			s.Handler().ServeHTTP(w, r)
+			if w.Code != 403 {
+				t.Fatal("ambiguous authority", w.Code)
+			}
+		})
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCommerceClientPrivateBoundary(t *testing.T) {
@@ -93,3 +94,43 @@ func TestCommerceGrantTypedOutcomes(t *testing.T) {
 		})
 	}
 }
+
+func TestCommerceClientSanitizedCorrelationAndDeadlines(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Request-ID") != "commerce-safe-request" {
+			t.Error("missing safe correlation")
+		}
+		io.WriteString(w, `{}`)
+	}))
+	defer s.Close()
+	c, _ := NewHTTPCommerceClient(s.URL, "token")
+	c.client.Transport = commerceRoundTrip(func(r *http.Request) (*http.Response, error) {
+		deadline, ok := r.Context().Deadline()
+		if !ok || time.Until(deadline) <= 0 || time.Until(deadline) > 2*time.Second {
+			t.Error("missing read deadline")
+		}
+		return http.DefaultTransport.RoundTrip(r)
+	})
+	ctx := context.WithValue(context.Background(), requestIDContextKey, "commerce-safe-request")
+	if _, _, err := c.Do(ctx, "quote", []byte(`{}`), ""); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestCommerceConfigurationFailsClosed(t *testing.T) {
+	for _, tc := range []struct {
+		mode, url, token     string
+		wantErr, wantEnabled bool
+	}{{"disabled", "", "", false, false}, {"", "", "", false, false}, {"stripe_test", "http://localhost:8081", "token", false, true}, {"stripe_live", "http://localhost:8081", "token", false, true}, {"stripe_live", "http://localhost:8081", "", true, false}, {"stripe_test", "", "token", true, false}, {"automatic", "http://localhost:8081", "token", true, false}} {
+		t.Run(tc.mode+tc.token+tc.url, func(t *testing.T) {
+			values := map[string]string{"AUTODATA_COMMERCE_MODE": tc.mode, "AUTODATA_INGESTION_URL": tc.url, "AUTODATA_INGESTION_INTERNAL_TOKEN": tc.token}
+			c, e := configuredCommerceClient(func(k string) string { return values[k] })
+			if (e != nil) != tc.wantErr || (c != nil) != tc.wantEnabled {
+				t.Fatal(c, e)
+			}
+		})
+	}
+}
+
+type commerceRoundTrip func(*http.Request) (*http.Response, error)
+
+func (f commerceRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
