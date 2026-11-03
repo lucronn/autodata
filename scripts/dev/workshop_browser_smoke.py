@@ -325,13 +325,21 @@ class DTODiagnostics:
         start = time.monotonic()
         deadline = start + self.cleanup_timeout
         self.write_failure()
-        async def operation(name, factory, *, late_cleanup=None):
+        cancelled = None
+        async def operation(name, factory, *, limit=1, late_cleanup=None):
+            nonlocal cancelled
             self.stage = name
             try:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0: raise TimeoutError('cleanup deadline exceeded')
-                await _dto_bounded(factory(), min(1, remaining), late_cleanup=late_cleanup)
+                await _dto_bounded(factory(), remaining if limit is None else min(limit, remaining),
+                                   late_cleanup=late_cleanup)
                 return True
+            except asyncio.CancelledError as error:
+                cancelled = error
+                self.diagnostic_errors.append(f'{name}: cancelled')
+                self.fail(error, kind='cancelled')
+                return False
             except Exception as error:
                 self.diagnostic_errors.append(f'{name}: {error}')
                 if self.failure_kind is None: self.fail(error)
@@ -341,32 +349,47 @@ class DTODiagnostics:
             if await operation('screenshot', lambda: self.page.screenshot(path=str(image_path), timeout=1000),
                                late_cleanup=lambda: image_path.unlink(missing_ok=True)):
                 os.chmod(image_path, 0o600)
+        trace_path = self.output / (self.name + '-failure-trace.zip')
         if self.tracing_started:
-            trace_path = self.output / (self.name + '-failure-trace.zip')
-            retain = self.failure_kind is not None
+            # Stage the trace before close: close itself may be the first failure.
+            self.output.mkdir(mode=0o700, parents=True, exist_ok=True)
+            os.chmod(self.output, 0o700)
             stopped = await operation('trace.stop',
-                lambda: self.context.tracing.stop(**({'path': str(trace_path)} if retain else {})),
+                lambda: self.context.tracing.stop(path=str(trace_path)),
                 late_cleanup=lambda: trace_path.unlink(missing_ok=True))
             if not stopped:
                 trace_path.unlink(missing_ok=True)
                 self.trace_status = 'timeout' if 'deadline exceeded' in self.diagnostic_errors[-1] else 'failed'
-            elif retain:
-                if not trace_path.is_file():
-                    self.trace_status = 'missing'
-                    self.diagnostic_errors.append('trace.stop: exported trace missing')
-                elif trace_path.stat().st_size > 16 * 1024 * 1024:
-                    trace_path.unlink()
-                    self.trace_status = 'oversize'
-                    self.diagnostic_errors.append('trace.stop: exported trace exceeds 16 MiB')
-                else:
+            else:
+                try:
+                    if not trace_path.is_file():
+                        self.trace_status = 'missing'
+                        raise RuntimeError('exported trace missing')
+                    size = trace_path.stat().st_size
+                    if size == 0 or size > 16 * 1024 * 1024:
+                        self.trace_status = 'empty' if size == 0 else 'oversize'
+                        trace_path.unlink()
+                        raise RuntimeError('exported trace empty' if size == 0 else 'exported trace exceeds 16 MiB')
                     os.chmod(trace_path, 0o600)
                     self.trace_status = 'retained'
                     self.trace_path = self.output.name + '/' + trace_path.name
-            else: self.trace_status = 'discarded'
+                except Exception as error:
+                    self.diagnostic_errors.append(f'trace.stop: {error}')
+                    self.fail(error)
         if self.context is not None:
-            await operation('context.close', self.context.close)
+            # The shared deadline, not a fresh per-operation allowance, owns close.
+            await operation('context.close', self.context.close, limit=None)
+        if self.failure_kind is None and self.trace_path is not None:
+            self.stage = 'trace.delete'
+            try:
+                trace_path.unlink()
+                self.trace_status, self.trace_path = 'deleted', None
+            except OSError as error:
+                self.diagnostic_errors.append(f'trace.delete: {error}')
+                self.fail(error)
         self.cleanup_elapsed_seconds = time.monotonic() - start
         self.write_failure()
+        if cancelled is not None: raise cancelled
 
 
 async def run_dto_case(browser, origin, name, output, *, case_timeout=20, cleanup_timeout=3):
