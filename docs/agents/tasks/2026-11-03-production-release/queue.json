@@ -294,12 +294,25 @@
       "needs_scope_refinement": false,
       "dispatch_mode": "coordinator_parallel_offline",
       "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
-      "source_integration_base_sha": "3b551c992263f74e3ebdc6e4fa2c4ffda3b979a6",
-      "dispatch_prerequisite": "Coordinator review of exact synchronized checkpoint and passing pinned preflight; initially A eight-path pure schema/parser/render only, then B two-path fake CLI after reviewed A contract. No runtime/cloud/DNS/secrets.",
+      "source_integration_base_sha": "a0eed5dce45171f5f94f72d99d2fdf694235df0d",
+      "dispatch_prerequisite": "B archive-reader live goal/five-todo/scope/limits synchronization read back at Issue186 comment6617360191 and Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4. Commit/push the synchronized seven-doc checkpoint, pass full-SHA preflight and obtain independent coordinator gate handoff before implementation. Historical A/R6 scope preserved; no workflow/cloud/provider/deployment execution.",
       "runtime_prerequisites": [
         "verified integrated product candidate and actual acceptance/CI",
         "approved real project/cost/provider/recovery configuration and separate staging authorization"
-      ]
+      ],
+      "planning_status": "synchronized",
+      "planning_record_ref": "docs/agents/records/2026-11-03-workshop-hosting.json",
+      "next_milestone": "offline-release-zip-archive-verifier",
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617360191",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-03T22:43:36.177270+00:00",
+        "issue_body_sha256": "d8a0c748f3c3f53c4189fcf97540db74815c29a1aa72fe31c7963f8a3c1dfcbd",
+        "project_text_sha256": "ddf9226064689dec8b1ad476e365a27acb28f8e9aac36c8b7b355ba14354799d",
+        "project_index_note": "Compact field preserves historical A/R6 checkpoint references and indexes the exact B goal/five todos/scope/limits in the issue comment."
+      }
     },
     {
       "id": "workshop-browser-private-home",
