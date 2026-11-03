@@ -252,3 +252,23 @@ The external reviewed runner uses the invoking host UID/GID so owned artifacts
 remain readable even after forced termination. Task-specific XDG cache/config
 and temporary paths stay under /tmp; HOME is retained unchanged. Retain the failed
 receipt as harness diagnosis; it does not count toward120 DTO or21 API passes.
+
+## DTO timeout diagnostics — synchronized plan-only checkpoint
+
+Plan: `docs/superpowers/plans/2026-11-03-workshop-dto-timeout-diagnostics.md`. Task: `docs/agents/tasks/2026-11-03-production-release/workshop-dto-timeout-diagnostics.json`. Record: `docs/agents/records/2026-11-03-workshop-dto-timeout-diagnostics.json`. Source integration base: `c3659bce633a439d2ad713296b3a1443ba39473d`. Independent exact-draft re-review approved SHA256 `0ab6debc22818f9231a97987c82423c2bade0907d13c297a0472601be9221ae5`; Issue #186/Project #8 synchronization was read back. This subsection describes proposed diagnostics; no implementation or acceptance result is claimed.
+
+The failed push [41735157815](https://github.com/lucronn/autodata/actions/runs/41735157815) tested f9afa62dfdabf13041c13e9fd0bb2b4371818e0d and retained 117 passes plus three WebKit 20-second timeouts. Passing PR run [41735165863](https://github.com/lucronn/autodata/actions/runs/41735165863) tested merge checkout cbabf8438f7da063d7e64cb67cc76a5145184428, despite the same f9afa62 head SHA. Identical input/asset/browser hashes do not make these identical checkout candidates. Exact-f9 local WebKit12+40 diagnostic passes did not reproduce the failure or prove a cause. Preserve all original evidence and record future workflow head and tested candidate separately.
+
+Proposed behavior: retain named failure stage, actual fixture request/error observations and a bounded per-case trace on failure/cancellation; use a 10-second DTO action/navigation timeout under the unchanged 20-second case watchdog. Bound the existing cancellation-cleanup tail to three seconds and report it separately. Keep timeout rows failed, strict 120-case validation, no retry and API mode unchanged. Trace export is limited to owned synthetic DTO cases; its DOM/network snapshots may include synthetic session data. JSON diagnostics omit tokens, raw headers and response bodies. Trace absence/failure/oversize must be explicit.
+
+Execution requires the reviewed synchronized committed checkpoint and passing exact-base preflight. Controlled cancellation tests must prove retained diagnostics and failed acceptance; fresh exact-candidate 120-case artifacts and independent review remain required. Separate 21-case real API evidence and release authority remain unverified.
+
+### Concrete todo
+
+- [ ] Independently review this five-document plan-only draft; synchronize its exact goal, two-file implementation scope and concrete todo in Issue #186/Project #8, commit the reviewed checkpoint, re-pin the integration SHA and pass machine preflight before implementation.
+- [ ] Add DTO-only named execution stages, retained fixture requests/errors, bounded failure trace metadata and 10-second inner action/navigation timeouts in workshop_browser_smoke.py; preserve the 20-second outer timeout, failed result classification, external cancellation propagation and separate API mode.
+- [ ] Add deterministic controlled action-timeout, outer-cancellation and stalled-cleanup tests in test_workshop_browser_smoke.py; prove diagnostics survive, cleanup is bounded, strict acceptance rejects the failed row and no retry or duplicate case occurs.
+- [ ] Run the targeted and developer tests, then the unchanged owned Go TLS 120-case DTO command at the exact candidate with pinned Playwright 1.64.1; retain all evidence and independently review the exact commit before coordinator integration.
+- [ ] Record fresh candidate results and downloadable artifacts in the runbook and Issue #186/Project #8 while preserving the original push 117/3 failure, PR merge 120-pass provenance, local diagnostic-only passes and unverified real API/release authority.
+
+Tracking receipt: [Issue186 comment6617902111](https://github.com/lucronn/autodata/issues/186#issuecomment-6617902111) and Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`, field `Source or dependency reference`, matched the goal/five todos/two-file allowlist at `2026-11-03T23:14:57.867643+00:00`. Exact body SHA256 `28bf8f178facef692d3354b6b5c2a37251f90e4b481dac43661459e16eb06198`; Project text SHA256 `237f706c07636c0fcfb4ae1d12b161850130fcdb26695369ef50cfc431b41ce5`. Prior full Project text and A/B/R6/retry references are preserved. Full-checkpoint preflight and independent coordinator dispatch remain required before implementation.
