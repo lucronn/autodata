@@ -1,0 +1,66 @@
+{
+  "task_id": "workshop-auth-provider-readiness",
+  "repository": "lucronn/autodata",
+  "goal": "Ensure Workshop sign-in readiness always includes an initialized Google provider after overlapping logout SDK preparation and session bootstrap, and recover consistently from synchronous popup invocation errors and asynchronous popup rejections.",
+  "builder_agent": "coordinator-assigned",
+  "source_integration_base": "1b9b6fff6a482a7c82a7291e0732132e15ead6ed",
+  "allowed_paths": [
+    "apps/api-go/workshop/auth.mjs",
+    "apps/api-go/workshop-client.test.mjs"
+  ],
+  "bounded_contexts": [
+    "Workshop Firebase provider readiness during epoch-changing session rechecks",
+    "Synchronous and asynchronous popup failure cleanup"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-auth-provider-readiness.md",
+    "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "outputs": [
+    "apps/api-go/workshop/auth.mjs",
+    "apps/api-go/workshop-client.test.mjs"
+  ],
+  "acceptance_tests": [
+    "Deterministic deferred cookie-only logout/bootstrap overlap never exposes ready state without a Google provider; next explicit sign-in receives a constructed provider and completes cookie exchange.",
+    "Provider constructor failure during initial preparation and a subsequent existing-auth retry keeps readiness false with safe feedback and no escaped rejection; a later successful retry constructs the provider, reuses one auth initialization, awaits persistence and completes sign-in.",
+    "Synchronous popup invocation throw and asynchronous rejection follow the same safe message, SDK cleanup and restored readiness path without an escaped rejection; popup invocation remains synchronous within the gesture.",
+    "Keep epoch guards, memory-only persistence, token freshness, same-origin exchange and cookie session authority intact.",
+    "API21/DTO120 graph, case identities, timeouts, frozen supervisor/image inputs, SDK bytes and original failed full21 receipt stay unchanged.",
+    "Independent exact-commit review and fresh coordinator immutable-candidate evidence remain required; Node tests and selected repeats do not confer browser acceptance."
+  ],
+  "forbidden_scope": [
+    "Any implementation path outside the literal two-file allowlist",
+    "Browser fixture diagnostics, provider/SDK bundle, transport, catalog/commerce/server/schema changes",
+    "Relaxed assertions, timeouts/retries, API21/DTO120 graph changes or rewriting failed evidence",
+    "Builder browser/provider/cloud/deployment/DNS/secret operations"
+  ],
+  "pre_implementation": {
+    "goal": "Ensure Workshop sign-in readiness always includes an initialized Google provider after overlapping logout SDK preparation and session bootstrap, and recover consistently from synchronous popup invocation errors and asynchronous popup rejections.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-auth-provider-readiness.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+      "docs/superpowers/plans/2026-11-03-workshop-auth-provider-readiness.md",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json"
+    ],
+    "todo": [
+      "Synchronize the goal, exact two-file scope, evidence limits, dedicated plan, canonical customer UI plan, queue, task and record in Issue186/Project8; commit and push the planning checkpoint and pass exact-SHA preflight before implementation.",
+      "Add a failing deterministic Node regression for cookie-only logout preparation overlapping epoch-changing bootstrap, asserting every ready state has a constructed provider and the next explicit sign-in receives that provider and completes cookie exchange.",
+      "Add failing regressions for synchronous popup invocation throw and asynchronous popup rejection, requiring the same safe message, SDK sign-out cleanup, restored readiness, and no escaped rejection; retain immediate popup invocation within the user gesture.",
+      "Construct provider before the persistence await and move popup invocation inside the existing async try without an intervening await; retain epoch guards, memory-only persistence, fresh token checks, session exchange and cookie-session authority.",
+      "Run the focused red/green Node cases, full Workshop Node tests, applicable Go tests and diff/scope/provenance checks; commit and promptly push the coherent fix, then obtain independent exact-commit review.",
+      "Coordinator integrates the reviewed fix and collects fresh immutable-candidate API21/DTO120 evidence using the frozen infrastructure; selected-case repeats remain diagnostic only and the original failed receipt remains retained."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T22:22:29.570981+00:00",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6616892250",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4"
+  },
+  "failed_run_ref": "/tmp/autodata-workshop-browser-api-87f4d8b",
+  "diagnosis_candidate_sha": "87f4d8b44d9ecccd3f0ead1d4f31a4a5f136f6cf",
+  "evidence_limit": "Deterministic auth/provider invariant bug; not proven cause of original WebKit Banktwo full21 failure.",
+  "reproduction_script_ref": "/tmp/autodata-auth-epoch-repro.mjs",
+  "reproduction_output_ref": "/tmp/autodata-auth-epoch-repro.output.jsonl"
+}
