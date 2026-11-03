@@ -61,6 +61,7 @@ func (staticReadiness) Check() map[string]string {
 }
 
 type Server struct {
+	customerAuth               *customerAuthService
 	readiness                  ReadinessChecker
 	auth                       Authenticator
 	requests                   RequestStore
@@ -146,6 +147,11 @@ func NewServerWithIngestionClient(readiness ReadinessChecker, auth Authenticator
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	authService := s.customerAuth
+	if authService == nil {
+		authService = &customerAuthService{config: customerAuthConfig{Mode: "local"}}
+	}
+	authService.mountRoutes(mux)
 	mux.HandleFunc("GET /{$}", func(response http.ResponseWriter, request *http.Request) {
 		http.Redirect(response, request, "/dashboard/", http.StatusFound)
 	})
@@ -269,6 +275,10 @@ func (s *Server) requireRole(role string, next authenticatedHandler) http.Handle
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		principal, err := s.auth.Authenticate(request)
 		if err != nil {
+			if s.customerAuth != nil && s.customerAuth.config.Mode == "firebase" {
+				s.customerAuth.writeError(response, request, err)
+				return
+			}
 			s.metrics.recordUnauthenticated()
 			writeAPIError(response, request, http.StatusUnauthorized, "UNAUTHENTICATED", err.Error(), false)
 			return
@@ -604,6 +614,10 @@ func configuredReadiness() ReadinessChecker {
 const defaultIngestionTimeoutSeconds = 120
 
 func main() {
+	authConfig, err := loadCustomerAuthConfig(os.Getenv)
+	if err != nil {
+		log.Fatal("configure customer authentication: invalid configuration")
+	}
 	address := envOrDefault("AUTODATA_API_ADDR", ":8080")
 	requestStore, projectionStore, cleanup, err := configuredStores(context.Background())
 	if err != nil {
@@ -619,6 +633,19 @@ func main() {
 		application.vehicleIdentity = newLayeredVehicleIdentityStore(durableProjections.pool)
 		application.catalog = newPostgresCatalogStore(durableProjections.pool)
 		application.sourceReviews = newPostgresSourceReviewStore(durableProjections.pool)
+	}
+	var sessionStore customerSessionStore
+	if durable, ok := projectionStore.(*postgresProjectionStore); ok {
+		sessionStore = &postgresCustomerSessions{pool: durable.pool}
+	}
+	authContext, authCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	application.customerAuth, err = newConfiguredCustomerAuth(authContext, authConfig, sessionStore, nil)
+	authCancel()
+	if err != nil {
+		log.Fatal("configure customer authentication: dependency unavailable")
+	}
+	if authConfig.Mode == "firebase" {
+		application.auth = application.customerAuth
 	}
 	if endpoint := strings.TrimSpace(os.Getenv("AUTODATA_INGESTION_URL")); endpoint != "" {
 		client, err := NewHTTPIngestionClient(

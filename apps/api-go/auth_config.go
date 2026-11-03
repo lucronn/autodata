@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 )
@@ -53,4 +55,30 @@ func loadCustomerAuthConfig(getenv func(string) string) (customerAuthConfig, err
 		return c, invalid
 	}
 	return c, nil
+}
+
+// newConfiguredCustomerAuth validates persistence before any cloud adapter is
+// initialized. Tests inject the same official verifier with an isolated transport.
+func newConfiguredCustomerAuth(ctx context.Context, c customerAuthConfig, store customerSessionStore, verifier CustomerIdentityVerifier) (*customerAuthService, error) {
+	service := &customerAuthService{config: c, store: store, verifier: verifier}
+	if c.Mode == "local" {
+		return service, nil
+	}
+	if c.Mode != "firebase" || os.Getenv("FIREBASE_AUTH_EMULATOR_HOST") != "" || store == nil {
+		return nil, ErrCustomerDependency
+	}
+	if _, ok := store.(*postgresCustomerSessions); !ok {
+		return nil, ErrCustomerDependency
+	}
+	if err := store.CheckSchema(ctx); err != nil {
+		return nil, ErrCustomerDependency
+	}
+	if verifier == nil {
+		var err error
+		service.verifier, err = newFirebaseCustomerVerifier(ctx, c)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return service, nil
 }
