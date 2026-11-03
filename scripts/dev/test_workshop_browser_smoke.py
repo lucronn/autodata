@@ -1,6 +1,8 @@
+import ast
 import importlib.util
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 spec = importlib.util.spec_from_file_location('workshop_browser_smoke', Path(__file__).with_name('workshop_browser_smoke.py'))
 smoke = importlib.util.module_from_spec(spec)
@@ -8,6 +10,20 @@ spec.loader.exec_module(smoke)
 
 
 class BrowserEvidenceContract(unittest.TestCase):
+    def test_wrong_account_media_requires_not_found(self):
+        source = ast.parse(Path(smoke.__file__).read_text())
+        case = next(node for node in source.body if isinstance(node, ast.AsyncFunctionDef) and node.name == 'api_case')
+        assertions = [node for node in ast.walk(case) if isinstance(node, ast.Assert)
+                      and any(isinstance(value, ast.Attribute) and value.attr == 'status'
+                              and isinstance(value.value, ast.Name) and value.value.id == 'denied_image'
+                              for value in ast.walk(node.test))]
+        self.assertEqual(len(assertions), 1)
+        check = compile(ast.fix_missing_locations(ast.Module(body=assertions, type_ignores=[])), smoke.__file__, 'exec')
+        exec(check, {'denied_image': SimpleNamespace(status=404)})
+        for status in (200, 401, 403, 410, 503):
+            with self.subTest(status=status), self.assertRaises(AssertionError):
+                exec(check, {'denied_image': SimpleNamespace(status=status)})
+
     def test_only_owned_loopback_https_origins(self):
         for value in ['https://example.com', 'http://127.0.0.1:3000', 'https://localhost.evil:3000', 'https://user@localhost:3000', 'https://localhost:3000/path', 'https://localhost:3000?token=x']:
             with self.subTest(value=value), self.assertRaises(ValueError):
