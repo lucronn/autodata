@@ -1,0 +1,19 @@
+[Unit]
+Description=AutoData metadata and storage forwarding guard
+Documentation=file:/etc/autodata/metadata-guard.nft
+Before=docker.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/sbin/nft -f /etc/autodata/metadata-guard.nft
+ExecStartPost=/usr/bin/env -i /usr/bin/python3 -I /opt/autodata/bin/runtime-check.py guard
+RemainAfterExit=yes
+TimeoutStartSec=30
+# Stopping this unit never removes the guard. Reload is a full atomic restart.
+
+[Install]
+WantedBy=multi-user.target

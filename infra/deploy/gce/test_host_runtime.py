@@ -4,6 +4,8 @@ import hashlib
 import importlib.util
 import json
 import os
+import ipaddress
+import shlex
 from pathlib import Path
 import socket
 import subprocess
@@ -557,6 +559,215 @@ class EntrypointTests(unittest.TestCase):
         self.assertGreater(len(copied), 0)
         self.assertIn('psql --version', text)
         self.assertIn('USER 1000:1000', text)
+
+
+
+# This intentionally small offline reader models only the nft syntax emitted by
+# this artifact. It is NOT nft parser/kernel validation; staging must do that.
+def guard_fixture():
+    source = (HERE / 'metadata-guard.nft').read_text()
+    records, family, table, chain = [], None, None, None
+    declarations = []
+    for raw in source.splitlines():
+        line = raw.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith(('add table ', 'flush table ')):
+            declarations.append(line)
+            continue
+        words = shlex.split(line)
+        if words[0] == 'table':
+            family, table = words[1:3]
+            records.append({'table': {'family': family, 'name': table, 'handle': 1}})
+        elif words[0] == 'chain':
+            chain = words[1]
+        elif words[0] == 'type':
+            records.append({'chain': {'family': family, 'table': table, 'name': chain,
+                'type': words[1], 'hook': words[3], 'prio': int(words[5].rstrip(';')),
+                'policy': words[7].rstrip(';'), 'handle': 2}})
+        elif words[0] == '}':
+            continue
+        else:
+            expr = []
+            while len(words) > 1:
+                kind, field, value = words[:3]; words = words[3:]
+                left = {'meta': {'key': field}} if kind == 'meta' else {'payload': {'protocol': kind, 'field': field}}
+                if '/' in value:
+                    address = ipaddress.ip_network(value)
+                    value = {'prefix': {'addr': str(address.network_address), 'len': address.prefixlen}}
+                elif value.isdecimal(): value = int(value)
+                expr.append({'match': {'op': '==', 'left': left, 'right': value}})
+            if words not in (['accept'], ['drop']): raise AssertionError('unsupported rule')
+            expr.append({words[0]: None})
+            records.append({'rule': {'family': family, 'table': table, 'chain': chain, 'expr': expr, 'handle': 3}})
+    if declarations != ['add table inet autodata_guard', 'flush table inet autodata_guard',
+                        'add table bridge autodata_guard', 'flush table bridge autodata_guard']:
+        raise AssertionError('must replace only owned tables atomically')
+    return {'inet': {'nftables': [r for r in records if next(iter(r.values()))['family'] == 'inet']},
+            'bridge': {'nftables': [r for r in records if next(iter(r.values()))['family'] == 'bridge']}}
+
+
+def packet_verdict(snapshot, chain, **packet):
+    for record in snapshot['nftables']:
+        rule = record.get('rule')
+        if rule is None or rule['chain'] != chain: continue
+        matched = True
+        for expr in rule['expr'][:-1]:
+            match = expr['match']; left = match['left']; right = match['right']
+            key = left['meta']['key'] if 'meta' in left else left['payload']['protocol'] + '.' + left['payload']['field']
+            actual = packet.get(key)
+            if isinstance(right, dict):
+                prefix = right['prefix']; matched &= actual is not None and ipaddress.ip_address(actual) in ipaddress.ip_network(prefix['addr'] + '/' + str(prefix['len']))
+            else: matched &= actual == right
+        if matched: return next(iter(rule['expr'][-1]))
+    return 'accept'
+
+
+class GuardTests(unittest.TestCase):
+    def setUp(self):
+        self.rt = load_runtime()
+        self.daemon_guard = patch.object(subprocess, 'Popen', side_effect=AssertionError('real subprocess forbidden'))
+        self.network_guard = patch.object(socket, 'socket', side_effect=AssertionError('network forbidden'))
+        self.daemon_guard.start(); self.network_guard.start()
+        self.addCleanup(self.daemon_guard.stop); self.addCleanup(self.network_guard.stop)
+
+    def snapshots(self):
+        self.assertTrue((HERE / 'metadata-guard.nft').is_file(), 'guard artifact missing')
+        return guard_fixture()
+
+    def test_metadata_exception_requires_both_api_source_and_edge_ingress(self):
+        rules = self.snapshots()['inet']
+        base = {'iifname': 'br-ad-edge', 'ip.saddr': '172.30.10.10', 'ip.daddr': '169.254.169.254',
+                'l4proto': 'tcp', 'tcp.dport': 80, 'nfproto': 'ipv4'}
+        self.assertEqual(packet_verdict(rules, 'forward', **base), 'accept')
+        for network in self.rt.TOPOLOGY.values():
+            for address in network['addresses'].values():
+                if address == '172.30.10.10': continue
+                with self.subTest(service_address=address):
+                    self.assertEqual(packet_verdict(rules, 'forward', **dict(base, **{'ip.saddr': address})), 'drop')
+        for changed in ({'iifname': 'br-ad-work'}, {'iifname': 'eth0'}, {'ip.saddr': '172.30.10.20'},
+                        {'ip.saddr': '172.30.20.10'}, {'ip.saddr': '172.30.30.11'}, {'tcp.dport': 443},
+                        {'l4proto': 'udp'}, {'l4proto': 'icmp'}, {'ip.daddr': None, 'ip6.daddr': 'fd20:ce::254', 'nfproto': 'ipv6'}):
+            with self.subTest(changed=changed):
+                self.assertEqual(packet_verdict(rules, 'forward', **dict(base, **changed)), 'drop')
+
+    def test_root_host_exception_never_exempts_unprivileged_output(self):
+        rules = self.snapshots()['inet']
+        base = {'skuid': 0, 'ip.daddr': '169.254.169.254', 'l4proto': 'tcp', 'tcp.dport': 80}
+        self.assertEqual(packet_verdict(rules, 'output', **base), 'accept')
+        for changed in ({'skuid': 1000}, {'skuid': 65534}, {'tcp.dport': 443}, {'l4proto': 'udp'},
+                        {'ip.daddr': None, 'ip6.daddr': 'fd20:ce::254'}):
+            with self.subTest(changed=changed):
+                self.assertEqual(packet_verdict(rules, 'output', **dict(base, **changed)), 'drop')
+
+    def test_storage_boundary_covers_routed_and_same_bridge_listeners(self):
+        rules = self.snapshots()
+        for family, interface_key, interface, address in (
+            ('inet', 'iifname', 'br-ad-edge', '172.30.10.10'),
+            ('inet', 'iifname', 'br-ad-work', '172.30.30.11'),
+            ('inet', 'iifname', 'br-ad-back', '172.30.20.12'),
+            ('bridge', 'ibrname', 'br-ad-back', '172.30.20.10'),
+            ('bridge', 'ibrname', 'br-ad-back', '172.30.20.11'),
+            ('bridge', 'ibrname', 'br-ad-back', '172.30.20.12')):
+            base = {interface_key: interface, 'ip.saddr': address, 'ip.daddr': '172.30.20.40', 'l4proto': 'tcp', 'tcp.dport': 9000}
+            self.assertEqual(packet_verdict(rules[family], 'forward', **base), 'accept')
+            for port in (0, 22, 80, 443, 8888, 18888, 9333, 19333, 8080, 18080, 23646, 33646, 65535):
+                with self.subTest(family=family, address=address, port=port):
+                    self.assertEqual(packet_verdict(rules[family], 'forward', **dict(base, **{'tcp.dport': port})), 'drop')
+            for change in ({'l4proto': 'udp'}, {interface_key: 'other'}, {'ip.saddr': '192.0.2.1'}):
+                self.assertEqual(packet_verdict(rules[family], 'forward', **dict(base, **change)), 'drop')
+
+    def test_unrelated_forwarding_is_untouched_and_application_ipv6_is_denied(self):
+        rules = self.snapshots()
+        for family, key in (('inet', 'iifname'), ('bridge', 'ibrname')):
+            self.assertEqual(packet_verdict(rules[family], 'forward', **{key: 'other', 'nfproto': 'ipv6', 'ether.type': 'ip6'}), 'accept')
+            for bridge in ('br-ad-edge', 'br-ad-back', 'br-ad-work'):
+                self.assertEqual(packet_verdict(rules[family], 'forward', **{key: bridge, 'nfproto': 'ipv6', 'ether.type': 'ip6'}), 'drop')
+
+    def test_live_validator_rejects_missing_reordered_and_extra_rules(self):
+        snapshots = self.snapshots()
+        self.rt.validate_guard_tables(snapshots)
+        for family in ('inet', 'bridge'):
+            for mutation in ('missing', 'extra', 'priority', 'verdict', 'reordered', 'foreign_table'):
+                changed = copy.deepcopy(snapshots); records = changed[family]['nftables']
+                rules = [r['rule'] for r in records if 'rule' in r]
+                if mutation == 'missing': records.pop()
+                elif mutation == 'extra': records.append(copy.deepcopy(records[-1]))
+                elif mutation == 'priority': next(r['chain'] for r in records if 'chain' in r)['prio'] = 0
+                elif mutation == 'verdict': rules[0]['expr'][-1] = {'accept': None} if rules[0]['expr'][-1] == {'drop': None} else {'drop': None}
+                elif mutation == 'reordered': rules[0]['expr'], rules[1]['expr'] = rules[1]['expr'], rules[0]['expr']
+                else: records[0]['table']['name'] = 'docker'
+                with self.subTest(family=family, mutation=mutation), self.assertRaises(self.rt.ContractError):
+                    self.rt.validate_guard_tables(changed)
+        self.assertTrue(all(next(r['chain'] for r in v['nftables'] if 'chain' in r)['prio'] < -100 for v in snapshots.values()))
+
+    def test_live_validator_accepts_only_exact_protocol_encoding_equivalents(self):
+        snapshots = self.snapshots()
+        numeric = copy.deepcopy(snapshots)
+        for family, snapshot in numeric.items():
+            snapshot['nftables'].insert(0, {'metainfo': {'version': 'review-in-staging', 'json_schema_version': 1}})
+            for record in snapshot['nftables']:
+                if 'rule' not in record: continue
+                for expression in record['rule']['expr']:
+                    if 'match' not in expression: continue
+                    match = expression['match']; left = match['left']
+                    if left == {'meta': {'key': 'ibrname'}}:
+                        match['left'] = {'meta': {'key': 'ibridgename'}}
+                    elif left == {'meta': {'key': 'l4proto'}}: match['right'] = 6
+                    elif left == {'meta': {'key': 'nfproto'}}: match['right'] = 10
+                    elif left == {'payload': {'protocol': 'ether', 'field': 'type'}}: match['right'] = 34525
+        self.assertTrue(self.rt.validate_guard_tables(numeric))
+        changed = copy.deepcopy(numeric)
+        first_rule = next(r['rule'] for r in changed['inet']['nftables'] if 'rule' in r)
+        first_rule['expr'][-2]['match']['right'] = 443
+        with self.assertRaises(self.rt.ContractError): self.rt.validate_guard_tables(changed)
+        for snapshot in numeric.values():
+            snapshot['nftables'].append({'metainfo': {}})
+        with self.assertRaises(self.rt.ContractError): self.rt.validate_guard_tables(numeric)
+
+    def test_guard_cli_uses_only_fixed_readonly_observations_and_redacts_failure(self):
+        snapshots = self.snapshots()
+        expected = [['/usr/sbin/nft', '--json', '--numeric', 'list', 'table', family, 'autodata_guard'] for family in ('inet', 'bridge')]
+        seen = []
+        def execute(argv, **kwargs):
+            self.assertEqual(argv, expected[len(seen)]); seen.append(argv)
+            self.assertEqual(kwargs, {'stdin': subprocess.DEVNULL, 'stdout': subprocess.PIPE, 'stderr': subprocess.DEVNULL,
+                'timeout': 5, 'check': False, 'cwd': '/', 'env': {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}})
+            return subprocess.CompletedProcess(argv, 0, json.dumps(snapshots[argv[-2]]).encode())
+        with patch.object(os, 'geteuid', return_value=0), patch.object(subprocess, 'run', side_effect=execute):
+            code, result = self.rt.cli(['guard'])
+        self.assertEqual(code, 0); self.assertEqual(result['status'], 'passed')
+        self.assertEqual(result['checks'], {'metadata_guard': True, 'storage_guard': True})
+        self.assertEqual(len(seen), 2)
+        failures = ((subprocess.CompletedProcess(expected[0], 1, b'secret-do-not-print'), 3),
+                    (subprocess.CompletedProcess(expected[0], 0, b'{}'), 3),
+                    (FileNotFoundError('secret-do-not-print'), 3),
+                    (subprocess.TimeoutExpired(expected[0], 5, output=b'secret-do-not-print'), 5))
+        for outcome, status in failures:
+            with patch.object(os, 'geteuid', return_value=0), patch.object(subprocess, 'run', **({'side_effect': outcome} if isinstance(outcome, Exception) else {'return_value': outcome})):
+                code, result = self.rt.cli(['guard'])
+            self.assertEqual(code, status); self.assertNotEqual(result['status'], 'passed')
+            self.assertNotIn('secret-do-not-print', json.dumps(result))
+        with patch.object(os, 'geteuid', return_value=1000):
+            self.assertEqual(self.rt.cli(['guard'])[0], 3)
+        self.assertEqual(self.rt.cli(['guard', '/tmp/rules'])[0], 2)
+
+    def test_systemd_dependencies_fail_closed_before_docker_start(self):
+        import configparser
+        def unit(name):
+            self.assertTrue((HERE / name).is_file(), name + ' missing')
+            config = configparser.ConfigParser(interpolation=None, strict=False)
+            config.read(HERE / name); return config
+        guard = unit('autodata-metadata-guard.service')
+        docker = unit('docker-autodata.conf')
+        self.assertIn('docker.service', guard['Unit']['Before'].split())
+        for key in ('Requires', 'After'):
+            self.assertTrue({'var-lib-autodata.mount', 'autodata-metadata-guard.service'} <= set(docker['Unit'][key].split()))
+        self.assertEqual(guard['Service']['ExecStart'], '/usr/sbin/nft -f /etc/autodata/metadata-guard.nft')
+        check = '/usr/bin/env -i /usr/bin/python3 -I /opt/autodata/bin/runtime-check.py guard'
+        self.assertEqual(guard['Service']['ExecStartPost'], check)
+        self.assertEqual(docker['Service']['ExecStartPre'], check)
+        self.assertNotIn('ExecStop', guard['Service'])
 
 
 if __name__ == '__main__':

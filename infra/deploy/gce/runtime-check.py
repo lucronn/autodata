@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Workshop hosting v1 passive contract.
 
-This first milestone validates and renders definitions only. The installed CLI
-fails closed: no host, endpoint, daemon, secret, or runtime observation is made.
-Imports are the shared interface for later, separately authorized helpers.
+The release check/metrics CLI fails closed without runtime observations. The
+additive fixed guard CLI only reads its two nft tables; it never mutates rules,
+starts services, probes endpoints or reads credentials. Imports remain the
+shared interface for later, separately authorized helpers.
 """
 import copy
 from datetime import datetime, timezone
@@ -15,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import subprocess
 import sys
 from urllib.parse import urlsplit
 import uuid
@@ -341,6 +343,8 @@ def parse_helper_args(helper, args):
              'backup-host.sh': ('begin', 'status', 'export', 'resume'), 'restore.sh': ('restore', 'validate'),
              'runtime-check.py': ('check', 'metrics')}
     require(helper in verbs)
+    if helper == 'runtime-check.py' and args == ['guard']:
+        return {'operation': 'runtime-check.py guard', 'source_sha': None, 'run_id': None}
     require(len(args) == (3 if helper == 'runtime-check.py' else 2) and args[0] in verbs[helper])
     if helper == 'runtime-check.py': require(args[1] == '--release')
     value = args[-1]
@@ -358,7 +362,7 @@ def operation_receipt(operation, source_sha, run_id, exit_code, checks, failure_
     require(operation in [helper + ' ' + verb for helper, verbs in {
         'deploy.sh': ('install', 'check', 'start', 'stop', 'maintenance', 'resume'),
         'backup-host.sh': ('begin', 'status', 'export', 'resume'), 'restore.sh': ('restore', 'validate'),
-        'runtime-check.py': ('check', 'metrics')}.items() for verb in verbs])
+        'runtime-check.py': ('check', 'metrics', 'guard')}.items() for verb in verbs])
     if source_sha is not None: match(source_sha, SHA_PATTERN)
     if run_id is not None: _uuid(run_id)
     require(exit_code in EXIT_STATUS and type(checks) is dict and set(checks) <= CHECK_NAMES)
@@ -458,7 +462,132 @@ def render_bundle(manifest, config, rollback_manifest=None):
             'seaweedfs-s3.json.template': (here / 'seaweedfs-s3.json.template').read_text()}
 
 
+def _guard_expected(family):
+    """Literal guard contract in nft JSON form; no host observation or mutation.
+
+    Exact readback deliberately fails closed on a different nft JSON encoding.
+    The reviewed toolchain must prove its parser/JSON/kernel semantics in staging.
+    """
+    table = 'autodata_guard'
+    chains = {}
+    def match_meta(key, value):
+        return {'match': {'op': '==', 'left': {'meta': {'key': key}}, 'right': value}}
+    def match_payload(protocol, field, value):
+        return {'match': {'op': '==', 'left': {'payload': {'protocol': protocol, 'field': field}}, 'right': value}}
+    def rule(*expressions, verdict='drop'):
+        return list(expressions) + [{verdict: None}]
+    def destination(address):
+        return match_payload('ip6' if ':' in address else 'ip', 'daddr', address)
+    def s3(bridge, subnet, interface='iifname'):
+        return rule(match_meta(interface, bridge), match_payload('ip', 'saddr', {'prefix': {'addr': subnet, 'len': 24}}),
+                    destination('172.30.20.40'), match_meta('l4proto', 'tcp'), match_payload('tcp', 'dport', 9000), verdict='accept')
+    if family == 'inet':
+        chains['forward'] = [
+            rule(match_meta('iifname', 'br-ad-edge'), match_payload('ip', 'saddr', '172.30.10.10'),
+                 destination('169.254.169.254'), match_meta('l4proto', 'tcp'), match_payload('tcp', 'dport', 80), verdict='accept'),
+            rule(destination('169.254.169.254')), rule(destination('fd20:ce::254'))]
+        chains['forward'] += [rule(match_meta('iifname', bridge), match_meta('nfproto', 'ipv6'))
+                              for bridge in ('br-ad-edge', 'br-ad-back', 'br-ad-work')]
+        chains['forward'] += [s3(bridge, subnet) for bridge, subnet in (
+            ('br-ad-edge', '172.30.10.0'), ('br-ad-back', '172.30.20.0'), ('br-ad-work', '172.30.30.0'))]
+        chains['forward'] += [rule(destination('172.30.20.40'))]
+        chains['output'] = [rule(match_meta('skuid', 0), destination('169.254.169.254'), match_meta('l4proto', 'tcp'),
+                                 match_payload('tcp', 'dport', 80), verdict='accept'),
+                            rule(destination('169.254.169.254')), rule(destination('fd20:ce::254'))]
+    else:
+        require(family == 'bridge')
+        chains['forward'] = [rule(match_meta('ibrname', bridge), match_payload('ether', 'type', 'ip6'))
+                              for bridge in ('br-ad-edge', 'br-ad-back', 'br-ad-work')]
+        chains['forward'] += [s3('br-ad-back', '172.30.20.0', 'ibrname'), rule(destination('172.30.20.40'))]
+    records = [{'table': {'family': family, 'name': table}}]
+    for name, expressions in chains.items():
+        records.append({'chain': {'family': family, 'table': table, 'name': name, 'type': 'filter',
+                                  'hook': name, 'prio': -200, 'policy': 'accept'}})
+        records.extend({'rule': {'family': family, 'table': table, 'chain': name, 'expr': expr}} for expr in expressions)
+    return records
+
+
+def validate_guard_tables(snapshots):
+    """Compare full table/chain/rule content, retaining rule order per chain.
+
+    Only nondeterministic kernel handles and the nft version envelope are
+    discarded; exact protocol number/name equivalents are normalized. Extra chains, rules, expressions or object fields fail closed.
+    Docker's unrelated tables are neither read nor changed.
+    """
+    exact_object(snapshots, ('inet', 'bridge'))
+    for family in ('inet', 'bridge'):
+        snapshot = snapshots[family]
+        exact_object(snapshot, ('nftables',))
+        require(type(snapshot['nftables']) is list and len(snapshot['nftables']) <= 64)
+        records, metainfo_seen = [], False
+        for record in snapshot['nftables']:
+            require(type(record) is dict and len(record) == 1)
+            kind, data = next(iter(record.items()))
+            if kind == 'metainfo':
+                require(not metainfo_seen and type(data) is dict)
+                metainfo_seen = True
+                continue
+            require(kind in ('table', 'chain', 'rule') and type(data) is dict)
+            data = copy.deepcopy(data)
+            if 'handle' in data:
+                require(type(data['handle']) is int and data['handle'] >= 0)
+                del data['handle']
+            if kind == 'rule':
+                # nft JSON versions use these exact symbolic/numeric spellings
+                # for identical protocol values. Do not normalize other values,
+                # operators, fields, or expressions.
+                require(type(data.get('expr')) is list)
+                for expression in data['expr']:
+                    if type(expression) is not dict or set(expression) != {'match'}:
+                        continue
+                    match = expression['match']
+                    require(type(match) is dict)
+                    left = match.get('left')
+                    if left == {'meta': {'key': 'ibridgename'}}:
+                        match['left'] = {'meta': {'key': 'ibrname'}}
+                    numeric = None
+                    if left == {'meta': {'key': 'l4proto'}}:
+                        numeric = (6, 'tcp')
+                    elif left == {'meta': {'key': 'nfproto'}}:
+                        numeric = (10, 'ipv6')
+                    elif left == {'payload': {'protocol': 'ether', 'field': 'type'}}:
+                        numeric = (34525, 'ip6')
+                    if numeric and type(match.get('right')) is int and match['right'] == numeric[0]:
+                        match['right'] = numeric[1]
+            records.append({kind: data})
+        # nft lists each chain and its rules together; no sorting of rules can
+        # hide a changed first-match decision. Exact equality also rejects any
+        # unrecognized expression/field or duplicate object.
+        require(canonical_bytes(records) == canonical_bytes(_guard_expected(family)))
+    return True
+
+
+def guard_cli():
+    """One fixed read-only operation for trusted root/systemd, with no paths."""
+    checks = {'metadata_guard': False, 'storage_guard': False}
+    code, failure = 3, 'guard_missing'
+    try:
+        require(os.geteuid() == 0)
+        snapshots = {}
+        for family in ('inet', 'bridge'):
+            result = subprocess.run(['/usr/sbin/nft', '--json', '--numeric', 'list', 'table', family, 'autodata_guard'],
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                timeout=5, check=False, cwd='/', env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'})
+            require(result.returncode == 0)
+            snapshots[family] = strict_json(result.stdout)
+        validate_guard_tables(snapshots)
+        code, failure = 0, None
+        checks = {'metadata_guard': True, 'storage_guard': True}
+    except subprocess.TimeoutExpired:
+        code, failure = 5, 'operation_timed_out'
+    except (OSError, ContractError):
+        pass
+    return code, operation_receipt('runtime-check.py guard', None, None, code, checks, failure)
+
+
 def cli(argv):
+    if argv == ['guard']:
+        return guard_cli()
     try:
         args = parse_helper_args('runtime-check.py', argv)
     except ContractError:
