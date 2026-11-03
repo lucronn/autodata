@@ -7,7 +7,7 @@ reader in this tool's owned checkout, with an isolated Git configuration.
 import argparse
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import math
@@ -171,7 +171,7 @@ def sha256(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
-def _strict_json(raw, limit, size_code):
+def _strict_json(raw, limit, size_code, *, exact_floats=False):
     require(type(raw) is bytes and len(raw) <= limit, size_code)
 
     def pairs(items):
@@ -183,6 +183,12 @@ def _strict_json(raw, limit, size_code):
 
     def nonfinite(_):
         raise ContractError('nonfinite_number')
+
+    def number(token):
+        # Keep the existing nonfinite/overflow rejection even in exact mode.
+        value = float(token)
+        require(math.isfinite(value), 'nonfinite_number')
+        return Decimal(token) if exact_floats else value
 
     def walk(value):
         if type(value) is float:
@@ -196,9 +202,10 @@ def _strict_json(raw, limit, size_code):
             for item in value:
                 walk(item)
     try:
-        result = json.loads(raw.decode('utf-8'), object_pairs_hook=pairs, parse_constant=nonfinite)
+        result = json.loads(raw.decode('utf-8'), object_pairs_hook=pairs, parse_constant=nonfinite,
+                            parse_float=number)
         walk(result)
-    except (UnicodeError, json.JSONDecodeError, RecursionError, OverflowError, ValueError) as exc:
+    except (UnicodeError, json.JSONDecodeError, RecursionError, OverflowError, InvalidOperation, ValueError) as exc:
         if isinstance(exc, ContractError):
             raise
         raise ContractError('invalid_json') from None
@@ -216,14 +223,19 @@ def strict_raw_json(raw):
     return _strict_json(raw, MAX_RAW_JSON_BYTES, 'raw_json_size')
 
 
-def strict_jsonl(raw):
-    """Bounded complete UTF-8 object records, without interpreting Go outcomes."""
+def _strict_jsonl(raw, *, exact_floats=False):
     require(type(raw) is bytes and 0 < len(raw) <= MAX_RAW_JSON_BYTES, 'jsonl_size')
     require(raw.endswith(b'\n'), 'incomplete_jsonl')
     require(raw.count(b'\n') <= MAX_JSONL_RECORDS, 'jsonl_record_limit')
     lines = raw.split(b'\n')[:-1]
     require(len(lines) <= MAX_JSONL_RECORDS, 'jsonl_record_limit')
-    return [strict_raw_json(line) for line in lines]
+    return [_strict_json(line, MAX_RAW_JSON_BYTES, 'raw_json_size',
+                         exact_floats=exact_floats) for line in lines]
+
+
+def strict_jsonl(raw):
+    """Bounded complete UTF-8 object records, without interpreting Go outcomes."""
+    return _strict_jsonl(raw)
 
 
 def strict_junit_xml(raw):
@@ -416,7 +428,8 @@ def _paid_junit(raw, case_ids, maximum):
 
 
 def _paid_go_outcome(raw, name, started, finished):
-    events = strict_jsonl(raw)
+    # Decimal preserves the JSON token before a float can round across 0 or 90.
+    events = _strict_jsonl(raw, exact_floats=True)
     first, last = timestamp(started), timestamp(finished)
     package_started = root_running = root_passed = package_passed = False
     previous = first
@@ -447,7 +460,7 @@ def _paid_go_outcome(raw, name, started, finished):
             require(type(event['Output']) is str and (test is None or root_running), 'paid_go_order')
         elif action == 'pass':
             duration = event['Elapsed']
-            require(type(duration) in (int, float) and 0 <= duration <= 90 and math.isfinite(duration),
+            require(type(duration) in (int, Decimal) and 0 <= duration <= 90,
                     'paid_go_elapsed')
             if test is not None:
                 require(root_running and not root_passed, 'paid_go_order')

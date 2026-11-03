@@ -814,6 +814,26 @@ class PaidCommonTests(unittest.TestCase):
             with self.subTest(raw=altered[:80]),self.assertRaises(assembler.ContractError):
                 assembler._paid_junit(altered,assembler.PAID_CASE_IDS,1806)
 
+    def test_go_elapsed_preserves_exact_json_number_bounds(self):
+        case = self.model()['cases'][0]
+        for event_index in (2, 3):
+            def encoded(token):
+                lines = [json.dumps(event).encode() for event in case['events']]
+                original = str(case['events'][event_index]['Elapsed']).encode()
+                lines[event_index] = lines[event_index].replace(b'"Elapsed": '+original,
+                    b'"Elapsed": '+token)
+                return b'\n'.join(lines)+b'\n'
+            for token in (b'90', b'9e1', b'90.0000000000000000000000000000000000000000',
+                          b'89.9999999999999999999999999999999999999999', b'0', b'1e-999'):
+                with self.subTest(event=event_index, accepted=token):
+                    assembler._paid_go_outcome(encoded(token), case['name'],
+                        case['result']['started_at'], case['result']['finished_at'])
+            for token in (b'90.0000000000000000000000000000000000000001',
+                          b'-1e-999', b'true', b'"90"', b'null', b'NaN', b'Infinity', b'1e999'):
+                with self.subTest(event=event_index, rejected=token), self.assertRaises(assembler.ContractError):
+                    assembler._paid_go_outcome(encoded(token), case['name'],
+                        case['result']['started_at'], case['result']['finished_at'])
+
     def test_case_deadlines_preserve_submicrosecond_precision(self):
         assembler._paid_duration('2026-11-03T00:00:00Z', '2026-11-03T00:02:00Z', 120)
         with self.assertRaises(assembler.ContractError):
