@@ -15,9 +15,13 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import stat
 
 CONTRACT = 'workshop-product-evidence-v1'
 MAX_MANIFEST_BYTES = 2 * 1024 * 1024
+# Transport ceilings only; these do not enable any raw acceptance profile.
+MAX_ARTIFACT_BYTES = 8 * 1024 * 1024
+MAX_EVIDENCE_BYTES = 64 * 1024 * 1024
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TASK_REF = 'docs/agents/tasks/2026-11-03-production-release/r6-release.json'
 GATES = ('deterministic_ci', 'contract_compatibility', 'schema_integrity',
@@ -247,6 +251,187 @@ def parse_envelope(raw):
     return item
 
 
+def file_identity(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink, info.st_size,
+            info.st_mtime_ns, info.st_ctime_ns)
+
+
+class ArtifactStore:
+    """Confined immutable transport, independent of any raw producer schema.
+
+    Every read reopens files and rechecks the complete inventory. No bytes are
+    cached across calls. A matching digest proves integrity, never authorship.
+    """
+    def __init__(self, root, artifacts, *, max_file_bytes=MAX_ARTIFACT_BYTES,
+                 max_total_bytes=MAX_EVIDENCE_BYTES):
+        integer(max_file_bytes, 1); integer(max_total_bytes, 1)
+        require(max_file_bytes <= MAX_ARTIFACT_BYTES and max_total_bytes <= MAX_EVIDENCE_BYTES,
+                'unsupported_transport_limit')
+        root_path = os.fspath(root)
+        string(root_path)
+        require('..' not in root_path.split('/'), 'unsafe_evidence_root')
+        self.root = os.path.abspath(root_path)
+        self.closed = False
+        self.artifacts = {}
+        self.by_ref = {}
+        self.directories = {''}
+        array(artifacts)
+        total = 0
+        for record in artifacts:
+            exact(record, ('artifact_id', 'kind', 'ref', 'sha256', 'bytes', 'visibility'))
+            identifier(record['artifact_id']); safe_ref(record['ref']); digest(record['sha256'])
+            enum(record['kind'], ARTIFACT_KINDS); enum(record['visibility'], ('private', 'public'))
+            integer(record['bytes'])
+            require(record['artifact_id'] not in self.artifacts and record['ref'] not in self.by_ref,
+                    'duplicate_artifact_identity')
+            require(record['bytes'] <= max_file_bytes, 'artifact_size_limit')
+            total += record['bytes']
+            require(total <= max_total_bytes, 'evidence_size_limit')
+            # Snapshot declarations too: callers cannot mutate records after binding.
+            record = dict(record)
+            self.artifacts[record['artifact_id']] = record
+            self.by_ref[record['ref']] = record
+            parts = record['ref'].split('/')
+            self.directories.update('/'.join(parts[:index]) for index in range(1, len(parts)))
+        self.snapshot = self._inventory()
+
+    def __enter__(self):
+        require(not self.closed, 'artifact_store_closed')
+        return self
+
+    def __exit__(self, *_):
+        self.closed = True
+
+    def _open_root(self):
+        # Open every absolute component with NOFOLLOW, including root ancestors.
+        current = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            for part in self.root.split('/')[1:]:
+                if not part:
+                    continue
+                next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                  dir_fd=current)
+                os.close(current)
+                current = next_fd
+            return current
+        except BaseException:
+            os.close(current)
+            raise
+
+    def _inventory(self):
+        require(not self.closed, 'artifact_store_closed')
+        pending = []
+        result = {}
+        found = set()
+        inodes = set()
+        try:
+            pending.append(('', self._open_root()))
+            while pending:
+                prefix, fd = pending.pop()
+                try:
+                    before = file_identity(os.fstat(fd))
+                    result[prefix+'/'] = before
+                    for name in os.listdir(fd):
+                        ref = prefix+'/'+name if prefix else name
+                        info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                        if stat.S_ISDIR(info.st_mode):
+                            require(ref in self.directories, 'undeclared_inventory_entry')
+                            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                            dir_fd=fd)
+                            if file_identity(os.fstat(child)) != file_identity(info):
+                                os.close(child)
+                                raise ContractError('artifact_identity_drift')
+                            pending.append((ref, child))
+                        else:
+                            require(stat.S_ISREG(info.st_mode), 'unsafe_evidence_file')
+                            require(ref in self.by_ref, 'undeclared_inventory_entry')
+                            require(info.st_nlink == 1 and (info.st_dev, info.st_ino) not in inodes,
+                                    'aliased_evidence_inode')
+                            require(info.st_size == self.by_ref[ref]['bytes'], 'artifact_size_mismatch')
+                            found.add(ref); inodes.add((info.st_dev, info.st_ino))
+                            result[ref] = file_identity(info)
+                    require(file_identity(os.fstat(fd)) == before, 'artifact_identity_drift')
+                finally:
+                    os.close(fd)
+            require(found == set(self.by_ref), 'missing_evidence_file')
+            return result
+        except OSError:
+            raise ContractError('evidence_unavailable') from None
+        finally:
+            for _, fd in pending:
+                os.close(fd)
+
+    def recheck(self):
+        require(self._inventory() == self.snapshot, 'artifact_identity_drift')
+
+    def _open_file(self, ref):
+        current = self._open_root()
+        try:
+            parts = ref.split('/')
+            for part in parts[:-1]:
+                next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                  dir_fd=current)
+                os.close(current); current = next_fd
+            return os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                           dir_fd=current)
+        finally:
+            os.close(current)
+
+    def read(self, artifact_id):
+        identifier(artifact_id)
+        require(artifact_id in self.artifacts, 'undeclared_artifact')
+        self.recheck()
+        record = self.artifacts[artifact_id]
+        expected = self.snapshot[record['ref']]
+        try:
+            fd = self._open_file(record['ref'])
+            try:
+                require(file_identity(os.fstat(fd)) == expected, 'artifact_identity_drift')
+                chunks = []
+                remaining = record['bytes']+1
+                while remaining:
+                    chunk = os.read(fd, min(65536, remaining))
+                    if not chunk:
+                        break
+                    chunks.append(chunk); remaining -= len(chunk)
+                raw = b''.join(chunks)
+                require(file_identity(os.fstat(fd)) == expected, 'artifact_identity_drift')
+            finally:
+                os.close(fd)
+        except OSError:
+            raise ContractError('evidence_unavailable') from None
+        require(len(raw) == record['bytes'], 'artifact_size_mismatch')
+        require(sha256(raw) == record['sha256'], 'artifact_hash_mismatch')
+        self.recheck()
+        return raw
+
+    def read_identity_json(self, artifact_id, *, candidate_sha, trusted_base_sha, profile_sha256=None):
+        """Explicit JSON reader; missing identity is never filled in or proof.
+
+        This checks declared reserved identities only. Required fields and raw
+        producer schemas remain unavailable until their own profile is frozen.
+        """
+        digest(candidate_sha, 40); digest(trusted_base_sha, 40)
+        if profile_sha256 is not None:
+            digest(profile_sha256)
+        value = strict_json(self.read(artifact_id))
+        expected = dict(candidate_sha=candidate_sha, trusted_base_sha=trusted_base_sha,
+                        profile_sha256=profile_sha256)
+        pending = [value]
+        while pending:
+            item = pending.pop()
+            if type(item) is dict:
+                for key, nested in item.items():
+                    if key in expected:
+                        require(type(nested) is str and expected[key] is not None and nested == expected[key],
+                                'raw_identity_mismatch')
+                    pending.append(nested)
+            elif type(item) is list:
+                pending.extend(item)
+        self.recheck()
+        return value
+
+
 @dataclass(frozen=True)
 class TrustedInvocation:
     base_sha: str
@@ -335,6 +520,12 @@ def assemble(envelope, trusted, mode, manifest_sha256=None):
     require(envelope['trusted_base_sha'] == trusted.base_sha and envelope['task_ref'] == trusted.task_ref and
             envelope['requested_tier'] == trusted.tier and envelope['policy_sha256'] == trusted.policy_sha256,
             'trusted_invocation_mismatch')
+    profiles = {profile['slot_id']: profile for profile in trusted.profile['slot_profiles']}
+    for slot in envelope['slots']:
+        if slot['slot_id'] in profiles:
+            require(slot['profile_sha256'] == sha256(canonical(profiles[slot['slot_id']])),
+                    'slot_profile_hash_mismatch')
+        # Missing/disabled profiles remain unavailable, never inferred from raw.
     result = diagnostic(mode, envelope['candidate_sha'], trusted.base_sha, trusted.tier, manifest_sha256)
     # No supplied report, counter, file hash or execution flag can enable trust.
     result['failures'] = ['profiles_unavailable', 'raw_validation_unimplemented']
@@ -348,7 +539,7 @@ def main(argv=None):
     parser.add_argument('mode', choices=('plan', 'validate'))
     parser.add_argument('--manifest', required=True)
     parser.add_argument('--evidence-root', required=True,
-                        help='Dedicated raw input directory; unread in diagnostic milestone 1')
+                        help='Dedicated declared raw input directory; plan does not read it')
     parser.add_argument('--trusted-base-sha', required=True)
     parser.add_argument('--task-ref', required=True)
     parser.add_argument('--requested-tier', required=True, choices=('fixture', 'staging'))
@@ -362,6 +553,11 @@ def main(argv=None):
         manifest_hash = sha256(raw)
         envelope = parse_envelope(raw)
         result, code = assemble(envelope, trusted, args.mode, manifest_hash)
+        if args.mode == 'validate':
+            with ArtifactStore(args.evidence_root, envelope['artifacts']) as store:
+                for artifact in envelope['artifacts']:
+                    store.read(artifact['artifact_id'])
+                store.recheck()
     except (ContractError, OSError) as exc:
         result = diagnostic(args.mode, manifest_hash=manifest_hash)
         result['status'] = 'failed'
