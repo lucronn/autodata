@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -16,7 +17,7 @@ import (
 
 func TestMinioCatalogImageReaderReadsOnlyValidatedLocalObject(t *testing.T) {
 	const storageKey = "procedure-images/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	const expected = "localized-image-bytes"
+	const expected = "\x89PNG\r\n\x1a\nfixture-localized"
 	var getCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Query().Has("location") {
@@ -31,7 +32,7 @@ func TestMinioCatalogImageReaderReadsOnlyValidatedLocalObject(t *testing.T) {
 			t.Error("S3-compatible request was not signed")
 		}
 		response.Header().Set("Content-Type", "image/png")
-		response.Header().Set("Content-Length", "21")
+		response.Header().Set("Content-Length", strconv.Itoa(len(expected)))
 		response.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 		response.Header().Set("ETag", `"local-test-etag"`)
 		if request.Method == http.MethodGet {

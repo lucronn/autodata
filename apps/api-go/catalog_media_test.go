@@ -159,10 +159,10 @@ func TestOpaqueCatalogImageEndpointReadsLocalObjectAndRejectsLegacyURL(t *testin
 		t.Fatal(err)
 	}
 
-	server.catalogImageReader = fakeCatalogImageReader{key: objectKey, body: []byte("png-bytes"), mediaType: "image/png"}
+	server.catalogImageReader = fakeCatalogImageReader{key: objectKey, body: []byte("\x89PNG\r\n\x1a\nfixture"), mediaType: "image/png"}
 
 	response := catalogRequest(server, "/v1/catalog/images/"+token)
-	if response.Code != http.StatusOK || response.Body.String() != "png-bytes" || response.Header().Get("Content-Type") != "image/png" {
+	if response.Code != http.StatusOK || response.Body.String() != "\x89PNG\r\n\x1a\nfixture" || response.Header().Get("Content-Type") != "image/png" {
 		t.Fatalf("opaque image response = %d %q %#v", response.Code, response.Body.String(), response.Header())
 	}
 	if response.Header().Get("Referrer-Policy") != "no-referrer" {
@@ -200,4 +200,38 @@ func (reader fakeCatalogImageReader) ReadImage(_ context.Context, key string) ([
 		return nil, "", errors.New("unexpected object key")
 	}
 	return reader.body, reader.mediaType, nil
+}
+
+func TestCatalogMediaIsolation(t *testing.T) {
+	key := deriveCatalogImageReferenceKey(testCatalogImageSecret)
+	token, err := sealCatalogImageReference("procedure-images/"+strings.Repeat("a", 64), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, media, body string
+		want              int
+	}{{"html disguised as png", "image/png", "<html>unsafe</html>", 404}, {"svg sandbox", "image/svg+xml", `<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>`, 200}} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", "/v1/catalog/images/"+token, nil)
+			r.SetPathValue("token", token)
+			w := httptest.NewRecorder()
+			serveCatalogImage(w, r, key, &r3ImageReader{[]byte(tc.body), tc.media})
+			if w.Code != tc.want {
+				t.Fatalf("status %d want %d", w.Code, tc.want)
+			}
+			if tc.want == 200 && !strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox;") {
+				t.Fatal("direct media navigation lacks sandbox")
+			}
+		})
+	}
+}
+
+type r3ImageReader struct {
+	body  []byte
+	media string
+}
+
+func (r *r3ImageReader) ReadImage(context.Context, string) ([]byte, string, error) {
+	return r.body, r.media, nil
 }

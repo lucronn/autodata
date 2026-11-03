@@ -40,6 +40,32 @@ services:
       - ../..:/workspace:ro
       - ${AUTODATA_LIFECYCLE_ARTIFACT_DIR:?set isolated artifact directory}:/artifacts
     networks: [lifecycle]
+  go-test-runner:
+    image: ${AUTODATA_R3_TEST_IMAGE:?set owned R3 test image}
+    build:
+      context: ../..
+      dockerfile: infra/compose/article-lifecycle-test.Dockerfile
+    working_dir: /workspace
+    environment:
+      AUTODATA_LIFECYCLE_TEST: "1"
+      AUTODATA_CATALOG_INTEGRATION_REQUIRED: "1"
+      AUTODATA_CATALOG_TEST_CANDIDATE_SHA: ${AUTODATA_R3_CANDIDATE_SHA:?set candidate SHA}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: /workspace/workers/ingestion-python/src:/workspace/workers/enrichment-python/src:/workspace/packages/contracts/python:/workspace/workers/ingestion-python/tests
+      GOTOOLCHAIN: local
+      GOPROXY: "off"
+      GOFLAGS: -mod=readonly
+      CGO_ENABLED: "0"
+      GOMODCACHE: /opt/go-module-cache
+      GOCACHE: /tmp/go-cache
+      GOTMPDIR: /tmp/go-tmp
+    volumes:
+      - ../..:/workspace:ro
+      - ${AUTODATA_LIFECYCLE_ARTIFACT_DIR:?set isolated artifact directory}:/artifacts
+    tmpfs:
+      - /tmp:exec
+    networks: [lifecycle]
+
 networks:
   lifecycle:
     internal: true
