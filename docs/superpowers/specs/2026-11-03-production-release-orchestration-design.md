@@ -1,5 +1,7 @@
 # Dual-source production release orchestration
 
+> **Product-evidence scope update (2026-11-03):** [The bounded R6 assembler plan](../plans/2026-11-03-workshop-product-evidence-assembler.md) governs its first3 offline files and later2 separately gated staging collector. It preserves all eight release gates, keeps fixture and live evidence distinct, and grants no deployment or DNS authority. Earlier broader R6 tool-boundary descriptions below are historical for this implementation slice; agent-runtime certification remains unverified.
+
 **Date:** 2026-11-03  
 **Baseline:** `0ed449fe5119484f8dd8f40b40607aa3beb11e49`  
 **Scope:** AutoData platform, catalog API, and Workshop web application.

@@ -1,0 +1,19 @@
+{
+  "goal": "Implement a pure offline Workshop product-evidence assembler with explicit fixture and staging outcomes; preserve all eight release gates.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-release-acceptance.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "Synchronize Issue186, Project8, canonical plan/task/record and first3/later2 scope at a committed checkpoint; pass exact-base preflight before code.",
+    "Implement strict offline envelope parsing, trusted task/profile binding and diagnostic plan output; unfinished profiles remain disabled and cannot verify a tier.",
+    "Validate raw fixture cases, supporting CI/image/SDK/migration evidence and all eight report identities only when their exact reviewed profiles are enabled.",
+    "Document fixture versus staging outcomes and conservative policy mapping; add inline synthetic negative tests, run bounded checks and obtain independent review.",
+    "Promote reviewed tooling and freeze final paid/browser profiles at a separate checkpoint; later2 staging collector requires real licensed enrollment and own gate."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T21:37:26.032997+00:00"
+}

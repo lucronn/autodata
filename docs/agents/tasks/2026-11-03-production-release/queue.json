@@ -143,30 +143,30 @@
       "id": "r6-evidence-adapter",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r6-evidence-adapter.json",
       "depends_on": [
-        "r0-evidence",
-        "r2-rewrite",
-        "r3-fallback-api"
+        "r6-release"
       ],
-      "state": "waiting_dependencies",
+      "state": "waiting_enrollment_and_trust_promotion",
       "release_state": "unverified",
-      "needs_scope_refinement": true
+      "needs_scope_refinement": true,
+      "implementation_scope": "later2_real_staging_only"
     },
     {
       "id": "r6-release",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r6-release.json",
       "depends_on": [
-        "r0-release",
+        "r0-evidence",
         "r2-rewrite",
         "r3-fallback-api",
         "r4-workshop",
         "r5-access",
-        "r6-evidence-adapter",
         "workshop-commerce",
         "workshop-paid-access"
       ],
-      "state": "waiting_dependencies",
+      "state": "planning_checkpoint",
       "release_state": "unverified",
-      "needs_scope_refinement": true
+      "needs_scope_refinement": false,
+      "implementation_scope": "first3_offline_structural_only",
+      "profile_status": "all_tiers_disabled"
     },
     {
       "id": "workshop-commerce",
