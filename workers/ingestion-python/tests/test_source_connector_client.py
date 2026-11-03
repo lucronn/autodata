@@ -416,3 +416,14 @@ class SourceConnectorClientTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_retry_after_is_redacted_and_available_to_durable_scheduler():
+    import pytest
+    from urllib.error import HTTPError
+    def opener(request, timeout):
+        raise HTTPError(request.full_url,429,'limited',{'Retry-After':'120'},None)
+    client=SourceConnectorClient('https://bankone.cars.tk',provider='bankone',opener=opener)
+    with pytest.raises(SourceConnectorError) as caught:
+        client.read_resource('opaque')
+    assert caught.value.retry_after_seconds==120

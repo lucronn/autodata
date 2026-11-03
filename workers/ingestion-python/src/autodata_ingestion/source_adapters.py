@@ -1575,3 +1575,166 @@ def _binary_artifact(kind: str, resource: SourceResource, metadata: dict[str, An
         raw_payload=resource.payload,
         metadata=metadata,
     )
+
+
+def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
+    """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
+    from .banktwo_connector import ArticleParser
+    from .article_document import segment_plain_article_text
+
+    media = resource.media_type.split(";", 1)[0]
+    if media == "application/json":
+        value = json.loads(resource.payload)
+        if not isinstance(value, dict):
+            raise ValueError("invalid article document")
+        embedded = value.get("_embedded")
+        if isinstance(embedded, dict) and isinstance(embedded.get("data"), dict):
+            value = embedded["data"]
+        explicit = value.get("vehicle") or {}
+        if not isinstance(explicit, dict):
+            raise ValueError("wrong applicability")
+        aliases = {
+            "model_year": "year",
+            "vehicle_id": "vehicle_id",
+            "vehicle_configuration_id": "vehicle_configuration_id",
+            "source_vehicle_ref": "source_vehicle_ref",
+        }
+        expected = {
+            **context.vehicle,
+            "vehicle_id": str(context.key.vehicle_id),
+            "vehicle_configuration_id": (
+                str(context.key.vehicle_configuration_id)
+                if context.key.vehicle_configuration_id
+                else None
+            ),
+            "source_vehicle_ref": context.key.source_vehicle_ref,
+        }
+        for field, actual in explicit.items():
+            key = aliases.get(field, field)
+            if key in expected and str(actual) != str(expected[key]):
+                raise ValueError("wrong applicability")
+        for field in ("vehicle_id", "vehicle_configuration_id", "source_vehicle_ref"):
+            if field in value and str(value[field]) != str(expected[field]):
+                raise ValueError("wrong applicability")
+        article = value.get("article", value)
+        if not isinstance(article, dict):
+            raise ValueError("invalid article document")
+        blocks = article.get("blocks")
+        if not isinstance(blocks, list):
+            if article.get("steps"):
+                blocks = [
+                    {
+                        "kind": "step",
+                        "text": (
+                            s
+                            if isinstance(s, str)
+                            else s.get("text") or s.get("instruction")
+                        ),
+                        "number": i,
+                    }
+                    for i, s in enumerate(article["steps"], 1)
+                ]
+            else:
+                text = str(
+                    article.get("body")
+                    or article.get("text")
+                    or article.get("content")
+                    or ""
+                )
+                if re.search(
+                    r"</?(?:p|div|ol|ul|li|table|h[1-6]|script|style|img)\b", text, re.I
+                ):
+                    nested = SourceResource.from_bytes(
+                        resource.source_uri,
+                        resource.source_version,
+                        text.encode(),
+                        "text/html",
+                        resource.locator,
+                        resource.metadata,
+                    )
+                    return adapt_bound_article(nested, context)
+                blocks = segment_plain_article_text(text)
+        return {
+            "blocks": blocks,
+            "asset_resource_refs": article.get("asset_resource_refs", []),
+        }
+    if media == "text/html":
+
+        class BoundParser(ArticleParser):
+            def handle_starttag(self, tag, attrs):
+                super().handle_starttag(tag, attrs)
+                values = dict(attrs)
+                if tag == "img":
+                    targets = (
+                        self._table_cell
+                        if self._table_cell is not None
+                        else self.blocks
+                    )
+                    if targets and targets[-1].get("kind") == "image":
+                        ref = values.get("data-resource-ref") or values.get(
+                            "asset_resource_ref"
+                        )
+                        if ref:
+                            targets[-1]["asset_resource_ref"] = ref
+
+        parser = BoundParser()
+        parser.feed(resource.payload.decode("utf-8-sig"))
+        parser.close()
+        parser.flush()
+        # HTML's explicit structured vehicle metadata is checked independently of body text.
+        metadata_parser = _ArticleHTMLParser()
+        metadata_parser.feed(resource.payload.decode("utf-8-sig"))
+        for field, keys in {
+            "year": ("vehicle.year", "vehicle_year", "year"),
+            "make": ("vehicle.make", "vehicle_make"),
+            "model": ("vehicle.model", "vehicle_model"),
+        }.items():
+            supplied = _first_meta_value(metadata_parser.meta, *keys)
+            if (
+                supplied
+                and field in context.vehicle
+                and supplied != str(context.vehicle[field])
+            ):
+                raise ValueError("wrong applicability")
+        for candidate in _html_article_candidates(resource):
+            if candidate.kind == "vehicle_identity":
+                for field in ("year", "make", "model"):
+                    if (
+                        field in candidate.data
+                        and field in context.vehicle
+                        and str(candidate.data[field]) != str(context.vehicle[field])
+                    ):
+                        raise ValueError("wrong applicability")
+        return {"blocks": parser.blocks, "asset_resource_refs": []}
+    if media == "text/plain":
+        return {
+            "blocks": segment_plain_article_text(resource.payload.decode("utf-8-sig")),
+            "asset_resource_refs": [],
+        }
+    if media == "application/pdf":
+        artifact = adapt_source_resource(resource)
+        text_candidates = [
+            c
+            for c in artifact.candidates
+            if c.kind in ("document_text", "ocr_text", "image_text")
+        ]
+        images = {
+            image["image_id"]: image
+            for c in text_candidates
+            for image in c.data.get("images", [])
+        }
+        blocks = []
+        for candidate in text_candidates:
+            blocks.extend(segment_plain_article_text(candidate.data.get("text", "")))
+            page = (
+                candidate.locator.split(":")[1]
+                if candidate.locator.startswith("page:")
+                else None
+            )
+            for image_id, image in list(images.items()):
+                if str(image.get("page")) == page:
+                    blocks.append({"kind": "image", **image})
+                    del images[image_id]
+        blocks.extend({"kind": "image", **image} for image in images.values())
+        return {"blocks": blocks, "asset_resource_refs": []}
+    raise ValueError("unsupported article media")

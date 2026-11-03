@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: lifecycle_test
+      POSTGRES_PASSWORD: lifecycle_test_only
+      POSTGRES_DB: lifecycle_fixture
+    volumes: ["lifecycle-postgres:/var/lib/postgresql/data"]
+    networks: [lifecycle]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U lifecycle_test -d lifecycle_fixture"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-sd", "/data"]
+    volumes: ["lifecycle-nats:/data"]
+    networks: [lifecycle]
+    healthcheck:
+      test: [CMD, sh, -c, "nc -z localhost 4222"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  minio:
+    image: ghcr.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    command: [mini, "-dir=/data", "-s3.port=9000"]
+    volumes: ["lifecycle-s3:/data"]
+    networks: [lifecycle]
+  test-runner:
+    build:
+      context: ../..
+      dockerfile: infra/compose/article-lifecycle-test.Dockerfile
+    working_dir: /workspace
+    environment:
+      AUTODATA_LIFECYCLE_TEST: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: /workspace/workers/ingestion-python/src:/workspace/workers/enrichment-python/src:/workspace/packages/contracts/python:/workspace/workers/ingestion-python/tests
+    volumes:
+      - ../..:/workspace:ro
+      - ${AUTODATA_LIFECYCLE_ARTIFACT_DIR:?set isolated artifact directory}:/artifacts
+    networks: [lifecycle]
+networks:
+  lifecycle:
+    internal: true
+volumes:
+  lifecycle-postgres:
+  lifecycle-nats:
+  lifecycle-s3:

@@ -57,6 +57,8 @@ class MigrationPlanTests(unittest.TestCase):
                 "034_catalog_article_progress.sql",
                 "035_ordered_article_document.sql",
                 "036_source_fetch_jobs.sql",
+                "037_article_source_lifecycle.sql",
+                "038_article_transform_publication.sql",
             ],
         )
 

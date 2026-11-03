@@ -11,6 +11,7 @@ ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from autodata_ingestion import procedure_images
+from autodata_ingestion.article_lifecycle_types import ResourceRef
 from autodata_ingestion.source_connector_client import SourceConnectorClient
 
 
@@ -53,6 +54,7 @@ def test_localization_reads_opaque_asset_ref_and_keeps_verified_provenance(monke
     monkeypatch.setattr(procedure_images, "_put_object", lambda key, data, media: stored.append((key, data, media)))
 
     result = procedure_images.localize_procedure_images({
+        "provider": "banktwo",
         "images": [{"image_id": "stable-figure-id", "asset_resource_ref": "opaque-asset-1", "alt": "Pump"}],
         "normalized_document": {"blocks": [{"type": "image", "image_id": "stable-figure-id"}]},
     })
@@ -96,6 +98,7 @@ def test_invalid_binary_hash_never_reaches_object_storage(monkeypatch):
     monkeypatch.setattr(procedure_images, "_put_object", lambda *args: writes.append(args))
 
     result = procedure_images.localize_procedure_images({
+        "provider": "banktwo",
         "images": [{"image_id": "bad-figure", "asset_resource_ref": "opaque-bad-asset"}],
     })
 
@@ -310,7 +313,7 @@ def test_localization_localizes_document_only_article_with_opaque_asset_ref(monk
             ]
         },
     }
-    result = procedure_images.localize_procedure_images(article)
+    result = procedure_images.localize_procedure_images(article, provider="banktwo")
     assert stored == [(f"procedure-images/{digest}", payload, "image/png")]
     block = result["normalized_document"]["blocks"][0]
     assert block["status"] == "available"
@@ -357,7 +360,7 @@ def test_localization_localizes_document_and_cell_data_uris(monkeypatch):
             ]
         }
     }
-    result = procedure_images.localize_procedure_images(article)
+    result = procedure_images.localize_procedure_images(article, provider="banktwo")
     assert (f"procedure-images/{digest1}", payload1, "image/png") in stored
     assert (f"procedure-images/{digest2}", payload2, "image/png") in stored
 
@@ -369,7 +372,7 @@ def test_localization_localizes_document_and_cell_data_uris(monkeypatch):
     assert cell_img["storage_key"] == f"procedure-images/{digest2}"
 
 
-def test_read_asset_resource_routes_connector_prefixes(monkeypatch):
+def test_read_asset_resource_routes_explicit_provider(monkeypatch):
     from types import SimpleNamespace
     from unittest.mock import MagicMock
 
@@ -400,12 +403,12 @@ def test_read_asset_resource_routes_connector_prefixes(monkeypatch):
         lambda **_kwargs: {"bankone": bankone_mock, "banktwo": banktwo_mock},
     )
 
-    res1 = procedure_images._read_asset_resource("bankone:asset/1001")
+    res1 = procedure_images._read_asset_resource(ResourceRef("bankone", "bankone:asset/1001"))
     assert res1["payload"] == b"bankone-bytes"
     assert res1["media_type"] == "image/jpeg"
     bankone_mock.read_resource.assert_called_once_with("bankone:asset/1001")
 
-    res2 = procedure_images._read_asset_resource("banktwo:asset/2002")
+    res2 = procedure_images._read_asset_resource(ResourceRef("banktwo", "banktwo:asset/2002"))
     assert res2["payload"] == b"banktwo-bytes"
     assert res2["media_type"] == "image/png"
     banktwo_mock.read_resource.assert_called_once_with("banktwo:asset/2002")
@@ -415,14 +418,14 @@ def test_read_asset_resource_routes_connector_prefixes(monkeypatch):
         lambda **_kwargs: {"banktwo": banktwo_mock},
     )
     with pytest.raises(ValueError, match="unknown or unconfigured source connector 'bankone'"):
-        procedure_images._read_asset_resource("bankone:asset/3003")
+        procedure_images._read_asset_resource(ResourceRef("bankone", "bankone:asset/3003"))
 
     monkeypatch.setattr(
         "autodata_ingestion.source_connector_client.source_connector_registry",
         lambda **_kwargs: {},
     )
     with pytest.raises(ValueError, match="unknown or unconfigured source connector 'banktwo'"):
-        procedure_images._read_asset_resource("opaque-asset-ref")
+        procedure_images._read_asset_resource(ResourceRef("banktwo", "opaque-asset-ref"))
 
 
 def test_collect_and_rewrite_arbitrary_block_images():
@@ -570,3 +573,18 @@ def test_rewrite_document_images_resolves_source_url_src_and_href():
     assert b1["status"] == "available"
     assert b1["storage_key"] == "procedure-images/tierod456"
     assert b1["url"] == "artifact://fig-src-url"
+
+
+def test_asset_routing_requires_explicit_provider_even_with_misleading_prefix(monkeypatch):
+    from autodata_ingestion.article_lifecycle_types import ResourceRef
+    from types import SimpleNamespace
+    calls=[]
+    class Client:
+        def read_resource(self,ref):
+            calls.append(ref)
+            return SimpleNamespace(to_source_resource=lambda:SimpleNamespace(payload=b'bankone',media_type='image/png',source_version='v1',locator='fixture://asset',metadata={'kind':'asset'}))
+    registry={'bankone':Client()}
+    assert procedure_images._read_asset_resource(ResourceRef('bankone','banktwo:shared'),registry=registry)['payload']==b'bankone'
+    assert calls==['banktwo:shared']
+    with pytest.raises((ValueError,TypeError)):
+        procedure_images._read_asset_resource('banktwo:shared',registry=registry)
