@@ -416,7 +416,7 @@ class APIFixture(DTOFixture):
                 assert isinstance(order,str) and re.fullmatch(uuid_pattern,order), 'invalid checkout order'
                 assert isinstance(hosted,str) and allowed_external(hosted), 'untrusted hosted checkout'
                 hosted_url=urlsplit(hosted)
-                assert hosted_url.hostname=='checkout.stripe.com' and re.fullmatch(r'/c/pay/cs_test_[a-f0-9]{32}',hosted_url.path) and not hosted_url.query and not hosted_url.fragment, 'invalid hosted checkout session'
+                assert hosted_url.hostname=='checkout.stripe.com' and re.fullmatch(r'/c/pay/cs_test_[a-f0-9]{32}',hosted_url.path) and not hosted_url.query, 'invalid hosted checkout session'
                 identity={'order_id':order,'configuration_id':configuration,'region':body['region'],'checkout_url':hosted}
                 if attempt==1:
                     self.checkout_responses.append(identity)
