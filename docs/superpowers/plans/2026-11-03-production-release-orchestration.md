@@ -293,6 +293,19 @@ The [independently reviewed runtime repair](2026-11-03-runtime-check-contract.md
 
 ## Updated user release objective and commit cadence
 
+The current [paid Workshop contract](../../architecture/workshop-commerce.md)
+records the user's $20 price, USD assumption, cars.tk/Cloudflare domain and
+proposed Firebase/Google Cloud deployment. The initial SKU is the selected
+normalized configuration and region. The previous R5 OIDC-only and role-only
+catalog assumptions require replacement before customer/commerce implementation.
+The requested commit rule is implemented and pushed at `85aa09a`.
+
+Runtime check repair `6992bd0` is independently reviewed and integrated at
+`91c8e85`; actual restricted offline acceptance passes146 tests and all eight
+frozen checks with zero provider calls. The integrated suite also passes146.
+See [the verification record](../../verification/2026-11-03-runtime-check-contract.md).
+Additional live synthetic trials remain deferred for product delivery.
+
 The user now targets launching a working production Workshop where a customer makes one payment for a single vehicle dataset and retains permanent account-bound access. Existing dual-bank ingestion, canonical rewriting and source fallback remain supporting requirements. Inspect the existing Stripe/payment reconciliation and entitlement boundaries before freezing the commerce/customer-account implementation plan. Price/currency and production domain/hosting/login configuration are still being clarified. R3 source acceptance continues; additional synthetic provider-runtime trial preparation is deferred while the product release requirements are reassessed. This objective update does not authorize an implementation agent to expand its pinned file scope without a new synchronized plan/gate.
 
 The user also requested frequent GitHub commits. The [bounded instruction update](2026-11-03-frequent-commits.md) records the concrete todo: small coherent commits, clear messages and prompt pushes of validated milestones according to branch ownership. It preserves all planning and testing gates and avoids empty/artificial history changes. Its committed checkpoint must pass preflight before editing AGENTS.md.
