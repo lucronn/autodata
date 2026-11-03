@@ -24,7 +24,8 @@ The bounded plans are [agent evidence](2026-11-03-agent-evidence-hardening.md),
 [release control](2026-11-03-release-controller-preflight.md),
 [canonical article lifecycle](2026-11-03-canonical-article-lifecycle.md), and
 [source fallback API/Workshop](2026-11-03-source-fallback-web.md), and
-[production identity/access](2026-11-03-production-access.md). The
+[production identity/access](2026-11-03-production-access.md), and
+[release acceptance](2026-11-03-release-acceptance.md). The
 [machine queue](../../agents/tasks/2026-11-03-production-release/queue.json)
 contains nine assignments and their dependencies.
 

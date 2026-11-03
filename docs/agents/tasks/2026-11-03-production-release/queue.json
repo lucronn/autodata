@@ -36,11 +36,12 @@
       "id": "r1-connectors",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/r1-connectors.json",
       "depends_on": [],
-      "state": "ready_for_preflight",
+      "state": "in_progress",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_mode": "coordinator_direct",
-      "verification_workflow": "Isolated clean/upgrade/legacy-preservation/concurrency database checks and independent exact-SHA schema/source/reliability review; no local-runner or release authority."
+      "verification_workflow": "Isolated clean/upgrade/legacy-preservation/concurrency database checks and independent exact-SHA schema/source/reliability review; no local-runner or release authority.",
+      "implementation_base_sha": "4a8a0d24a8555911b567b8691e6ba3f4a0477fa8"
     },
     {
       "id": "r2-rewrite",

@@ -5,12 +5,20 @@
   "builder_agent": "autodata-python-builder",
   "allowed_paths": [
     ".github/workflows/autonomous-verification.yml",
-    "infra/compose/**",
-    "infra/k8s/**",
-    "infra/observability/**",
-    "scripts/dev/**",
+    "infra/compose/compose.yaml",
+    "infra/compose/compose.ci.yaml",
+    "infra/compose/compose.release-test.yaml",
+    "infra/k8s/base.yaml",
+    "scripts/dev/backup_restore_smoke.py",
+    "scripts/dev/test_backup_restore_smoke.py",
+    "scripts/dev/test_k8s_manifests.py",
+    "scripts/dev/test_bank_topology.py",
+    "scripts/dev/test_storage_messaging_operations.py",
+    "scripts/dev/release_acceptance.py",
+    "scripts/dev/test_release_acceptance.py",
     "docs/architecture/infrastructure-and-dev.md",
-    "docs/agents/runbooks.md"
+    "docs/agents/runbooks.md",
+    "docs/verification/release-acceptance-runbook.md"
   ],
   "bounded_contexts": [
     "release acceptance",
@@ -20,10 +28,11 @@
   "inputs": [
     "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
     "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
-    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    "docs/superpowers/plans/2026-11-03-release-acceptance.md"
   ],
   "outputs": [
-    ".github/workflows/autonomous-verification.yml"
+    "scripts/dev/release_acceptance.py",
+    "docs/verification/release-acceptance-runbook.md"
   ],
   "acceptance_tests": [
     "Clean and upgrade migrations and real PostgreSQL concurrency/recovery checks pass.",
@@ -48,7 +57,7 @@
   },
   "pre_implementation": {
     "goal": "Verify the integrated production candidate across both banks, browser workflows, migrations, recovery and release gates.",
-    "plan_ref": "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-release-acceptance.md",
     "issue_ref": "https://github.com/lucronn/autodata/issues/186",
     "project_ref": "https://github.com/users/lucronn/projects/8",
     "repository_doc_refs": [
@@ -64,7 +73,7 @@
       "A reviewable release candidate and rollout/recovery procedure exist; production deployment remains separately authorized."
     ],
     "status": "blocked",
-    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+    "updated_at": "2026-11-03T09:29:16.473896+00:00"
   },
   "execution": {
     "model": "gpt-6.1-sol",
