@@ -63,7 +63,9 @@ Successor review SHA256:
 
 ## Remaining release evidence
 
-Integrated GitHub CI is pending at this documentation checkpoint. Final UI work
+Integrated GitHub CI [41700061868](https://github.com/lucronn/autodata/actions/runs/41700061868)
+passed at `3114366d409f3fde98bdd921a8cc1ef6c4377d17`, including the actual live
+Compose fast-lane smoke and Go/Python/contracts/development suites. Final UI work
 must execute the actual bundled SDK popup/storage behavior,120 DTO/browser and21
 actual API/browser cases, plus production image asset proof. No live Firebase,
 Stripe, cloud resource, customer data or DNS operation occurred in this milestone.
