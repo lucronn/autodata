@@ -17,6 +17,8 @@ import os
 from pathlib import Path
 import re
 import stat
+import selectors
+import time
 import subprocess
 import sys
 from urllib.parse import urlsplit
@@ -328,6 +330,271 @@ def collect_cached_images(manifest):
         require(image['os'] == 'linux' and image['architecture'] == 'amd64' and image['variant'] == '')
         observations[role] = {'reference': reference, 'image_id': image['image_id'], 'platform': 'linux/amd64'}
     return validate_cached_images(manifest, observations)
+
+
+SCHEMA_PROTOCOL_VERSION = 2
+POSTGRES_CONTAINER = 'autodata-production-postgres-1'
+POSTGRES_ROLE = 'autodata_metrics'
+POSTGRES_DATABASE = 'autodata'
+POSTGRES_SOCKET = '/var/run/postgresql'
+POSTGRES_PORT = 5432
+POSTGRES_CLIENT = '/usr/lib/postgresql/17/bin/psql'
+MAX_INSPECT_STDOUT_BYTES = 65536
+MAX_SQL_STDOUT_BYTES = 524288
+READ_CHUNK_BYTES = 4096
+COMMAND_TIMEOUT_SECONDS = 5
+COLLECTOR_TIMEOUT_SECONDS = 15
+REAP_TIMEOUT_SECONDS = 1
+SCHEMA_HOST_ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
+POSTGRES_PGOPTIONS = '-c default_transaction_read_only=on -c statement_timeout=2000 -c lock_timeout=1000 -c search_path=pg_catalog'
+POSTGRES_INSPECT_TEMPLATE = '{"id":{{json .ID}},"name":{{json .Name}},"image":{{json .Image}},"user":{{json .Config.User}},"project":{{json (index .Config.Labels "com.docker.compose.project")}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"command":{{json .Config.Cmd}},"running":{{json .State.Running}},"paused":{{json .State.Paused}},"restarting":{{json .State.Restarting}},"dead":{{json .State.Dead}},"started_at":{{json .State.StartedAt}},"readonly_root":{{json .HostConfig.ReadonlyRootfs}},"privileged":{{json .HostConfig.Privileged}},"cap_add":{{json .HostConfig.CapAdd}},"cap_drop":{{json .HostConfig.CapDrop}},"security_opt":{{json .HostConfig.SecurityOpt}},"mounts":{{json .Mounts}},"tmpfs":{{json .HostConfig.Tmpfs}}}'
+# Catalog metadata only: never bind, plan or read an application relation.
+POSTGRES_CATALOG_SQL = r'''WITH
+r AS MATERIALIZED (SELECT oid, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
+    rolreplication, rolbypassrls, rolinherit FROM pg_catalog.pg_roles WHERE rolname = 'autodata_metrics'),
+d AS MATERIALIZED (SELECT oid, datdba FROM pg_catalog.pg_database WHERE datname = 'autodata'),
+n AS MATERIALIZED (SELECT oid, nspowner FROM pg_catalog.pg_namespace WHERE nspname = 'public'),
+app_ns AS MATERIALIZED (SELECT oid, nspowner FROM pg_catalog.pg_namespace
+    WHERE nspname <> 'information_schema' AND nspname !~ '^pg_'),
+app_rel AS MATERIALIZED (SELECT c.* FROM pg_catalog.pg_class c JOIN app_ns ON app_ns.oid = c.relnamespace),
+c AS MATERIALIZED (SELECT c.* FROM pg_catalog.pg_class c JOIN n ON n.oid = c.relnamespace
+    WHERE c.relname = 'schema_migrations'),
+a AS MATERIALIZED (SELECT a.* FROM pg_catalog.pg_attribute a JOIN c ON c.oid = a.attrelid
+    WHERE a.attname = 'version' AND a.attnum > 0 AND NOT a.attisdropped)
+SELECT pg_catalog.json_build_object(
+ 'protocol_version', 2, 'phase', 'catalog',
+ 'identity', pg_catalog.json_build_object('session_user', session_user, 'current_user', current_user,
+    'database', pg_catalog.current_database(), 'server_version_num', pg_catalog.current_setting('server_version_num')::pg_catalog.int4,
+    'transaction_read_only', pg_catalog.current_setting('transaction_read_only') = 'on',
+    'default_transaction_read_only', pg_catalog.current_setting('default_transaction_read_only') = 'on',
+    'client_addr', pg_catalog.inet_client_addr(), 'client_port', pg_catalog.inet_client_port()),
+ 'rights', (SELECT pg_catalog.json_build_object(
+    'login', r.rolcanlogin, 'superuser', r.rolsuper, 'create_db', r.rolcreatedb,
+    'create_role', r.rolcreaterole, 'replication', r.rolreplication,
+    'bypass_rls', r.rolbypassrls, 'inherit', r.rolinherit,
+    'membership_count', (SELECT pg_catalog.count(*) FROM pg_catalog.pg_auth_members m WHERE m.member = r.oid),
+    'connect', pg_catalog.has_database_privilege(r.oid, d.oid, 'CONNECT'),
+    'schema_usage', (SELECT pg_catalog.has_schema_privilege(r.oid, n.oid, 'USAGE') FROM n),
+    'ledger_select', (SELECT pg_catalog.has_table_privilege(r.oid, c.oid, 'SELECT') FROM c),
+    'database_create', pg_catalog.has_database_privilege(r.oid, d.oid, 'CREATE'),
+    'database_temp', pg_catalog.has_database_privilege(r.oid, d.oid, 'TEMP'),
+    'database_owner', d.datdba = r.oid,
+    'schema_create', EXISTS (SELECT FROM app_ns x WHERE pg_catalog.has_schema_privilege(r.oid, x.oid, 'CREATE')),
+    'schema_owner', EXISTS (SELECT FROM app_ns x WHERE x.nspowner = r.oid),
+    'relation_owner', EXISTS (SELECT FROM app_rel x WHERE x.relkind <> 'S' AND x.relowner = r.oid),
+    'sequence_owner', EXISTS (SELECT FROM app_rel x WHERE x.relkind = 'S' AND x.relowner = r.oid),
+    'relation_write', EXISTS (SELECT FROM app_rel x CROSS JOIN pg_catalog.unnest(ARRAY[
+        'INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN']) AS p(privilege)
+        WHERE CASE WHEN x.relkind IN ('r','p','v','m','f') THEN pg_catalog.has_table_privilege(r.oid, x.oid, p.privilege) ELSE false END),
+    'column_write', EXISTS (SELECT FROM app_rel x CROSS JOIN pg_catalog.unnest(ARRAY['INSERT','UPDATE','REFERENCES']) AS p(privilege)
+        WHERE CASE WHEN x.relkind IN ('r','p','v','m','f') THEN pg_catalog.has_any_column_privilege(r.oid, x.oid, p.privilege) ELSE false END),
+    'sequence_write', EXISTS (SELECT FROM app_rel x WHERE CASE WHEN x.relkind = 'S' THEN pg_catalog.has_sequence_privilege(r.oid, x.oid, 'USAGE,UPDATE') ELSE false END)
+    ) FROM r CROSS JOIN d),
+ 'ledger_relation', (SELECT pg_catalog.json_build_object(
+    'oid', c.oid, 'schema', 'public', 'name', c.relname, 'kind', c.relkind, 'persistence', c.relpersistence,
+    'is_partition', c.relispartition,
+    'has_inheritance', EXISTS (SELECT FROM pg_catalog.pg_inherits i WHERE i.inhrelid = c.oid OR i.inhparent = c.oid),
+    'rls', c.relrowsecurity, 'force_rls', c.relforcerowsecurity,
+    'version_type', CASE WHEN a.atttypid = 'pg_catalog.text'::pg_catalog.regtype THEN 'pg_catalog.text' ELSE NULL END,
+    'version_not_null', a.attnotnull, 'version_generated', a.attgenerated, 'version_identity', a.attidentity,
+    'primary_key_version', EXISTS (SELECT FROM pg_catalog.pg_constraint k
+        WHERE k.conrelid = c.oid AND k.contype = 'p' AND k.conkey = ARRAY[a.attnum]::pg_catalog.int2[])
+    ) FROM c CROSS JOIN a))'''
+
+
+def _bounded_schema_command(argv, maximum, collector_deadline):
+    """Bound new schema observations before retaining bytes, including cleanup.
+
+    CLI kill does not stop a remote exec; the fixed server statement_timeout
+    separately bounds the SQL. Exceptional kill/reap has a single extra second.
+    """
+    deadline = min(collector_deadline, time.monotonic() + COMMAND_TIMEOUT_SECONDS)
+    if time.monotonic() >= deadline:
+        raise subprocess.TimeoutExpired('schema observation', COMMAND_TIMEOUT_SECONDS)
+    process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, cwd='/', env=dict(SCHEMA_HOST_ENV))
+    selector = None
+    try:
+        selector = selectors.DefaultSelector()
+        selector.register(process.stdout, selectors.EVENT_READ)
+        data = bytearray()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not selector.select(remaining):
+                raise subprocess.TimeoutExpired('schema observation', COMMAND_TIMEOUT_SECONDS)
+            wanted = min(READ_CHUNK_BYTES, maximum + 1 - len(data))
+            chunk = process.stdout.read1(wanted)
+            require(type(chunk) is bytes and len(chunk) <= wanted)
+            if not chunk:
+                break
+            data.extend(chunk)
+            require(len(data) <= maximum)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired('schema observation', COMMAND_TIMEOUT_SECONDS)
+        require(process.wait(timeout=remaining) == 0)
+        return bytes(data)
+    finally:
+        cleanup_failed = False
+        try:
+            if process.poll() is None:
+                process.kill()
+        except OSError:
+            cleanup_failed = True
+        try:
+            process.stdout.close()
+        except OSError:
+            cleanup_failed = True
+        if selector is not None:
+            try:
+                selector.close()
+            except OSError:
+                cleanup_failed = True
+        try:
+            process.wait(timeout=max(0, min(REAP_TIMEOUT_SECONDS, collector_deadline + REAP_TIMEOUT_SECONDS - time.monotonic())))
+        except (OSError, subprocess.TimeoutExpired):
+            cleanup_failed = True
+        require(not cleanup_failed)
+
+
+def validate_postgres_container(manifest, value):
+    """Bind only the inspected container facts; mounts do not attest PGDATA."""
+    exact_object(value, ('id', 'name', 'image', 'user', 'project', 'service', 'command', 'running', 'paused',
+                         'restarting', 'dead', 'started_at', 'readonly_root', 'privileged', 'cap_add', 'cap_drop',
+                         'security_opt', 'mounts', 'tmpfs'))
+    match(value['id'], HASH_PATTERN)
+    require(value['name'] == '/' + POSTGRES_CONTAINER and value['image'] == manifest['images']['postgres']['image_id'])
+    require(value['user'] == '999:999' and value['project'] == 'autodata-production' and value['service'] == 'postgres')
+    require(value['command'] == ['postgres'])
+    for key, expected in (('running', True), ('paused', False), ('restarting', False), ('dead', False),
+                          ('readonly_root', True), ('privileged', False)):
+        require(type(value[key]) is bool and value[key] is expected)
+    match(value['started_at'], r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z')
+    try:
+        require(datetime.fromisoformat(value['started_at'].replace('Z', '+00:00')).year >= 1970)
+    except ValueError:
+        raise ContractError('invalid container timestamp') from None
+    require(value['cap_add'] is None or value['cap_add'] == [])
+    require(value['cap_drop'] == ['ALL'] and value['security_opt'] == ['no-new-privileges:true'])
+    require(type(value['mounts']) is list and len(value['mounts']) == 2)
+    mounts = {}
+    expected = {'/var/lib/postgresql/data': (DATA_ROOT + '/postgres', True),
+                '/run/autodata/postgres': (SECRET_ROOT + '/postgres', False)}
+    for mount in value['mounts']:
+        exact_object(mount, ('Type', 'Source', 'Destination', 'Mode', 'RW', 'Propagation'))
+        target = mount['Destination']
+        require(type(target) is str and target in expected and target not in mounts)
+        source, writable = expected[target]
+        require(mount['Type'] == 'bind' and mount['Source'] == source)
+        require(type(mount['RW']) is bool and mount['RW'] is writable and mount['Propagation'] == 'rprivate')
+        require(mount['Mode'] in ('', 'rw' if writable else 'ro'))
+        mounts[target] = mount
+    exact_object(value['tmpfs'], ('/tmp', POSTGRES_SOCKET))
+    require(value['tmpfs'] == {'/tmp': 'rw,nosuid,nodev,noexec,size=67108864,mode=1777',
+                             POSTGRES_SOCKET: 'rw,nosuid,nodev,noexec,size=16777216,uid=999,gid=999,mode=0700'})
+    normalized = copy.deepcopy(value)
+    normalized['mounts'] = [mounts[key] for key in sorted(mounts)]
+    normalized['cap_add'] = []
+    return normalized
+
+
+def validate_postgres_catalog(value):
+    """Strict v2 catalog facts only; this never establishes schema evidence."""
+    _catalog_value_bounds(value)
+    exact_object(value, ('protocol_version', 'phase', 'identity', 'rights', 'ledger_relation'))
+    require(type(value['protocol_version']) is int and value['protocol_version'] == SCHEMA_PROTOCOL_VERSION)
+    require(value['phase'] == 'catalog')
+    identity = value['identity']
+    exact_object(identity, ('session_user', 'current_user', 'database', 'server_version_num', 'transaction_read_only',
+                            'default_transaction_read_only', 'client_addr', 'client_port'))
+    require(identity['session_user'] == POSTGRES_ROLE and identity['current_user'] == POSTGRES_ROLE)
+    require(identity['database'] == POSTGRES_DATABASE)
+    require(type(identity['server_version_num']) is int and 170000 <= identity['server_version_num'] <= 179999)
+    require(identity['transaction_read_only'] is True and identity['default_transaction_read_only'] is True)
+    require(identity['client_addr'] is None and identity['client_port'] is None)
+    rights = value['rights']
+    expected_rights = {'login': True, 'superuser': False, 'create_db': False, 'create_role': False,
+        'replication': False, 'bypass_rls': False, 'inherit': False, 'membership_count': 0,
+        'connect': True, 'schema_usage': True, 'ledger_select': True, 'database_create': False, 'database_temp': False,
+        'database_owner': False, 'schema_create': False, 'schema_owner': False, 'relation_owner': False,
+        'sequence_owner': False, 'relation_write': False, 'column_write': False, 'sequence_write': False}
+    exact_object(rights, expected_rights)
+    for key, expected in expected_rights.items():
+        require(type(rights[key]) is type(expected) and rights[key] == expected)
+    relation = value['ledger_relation']
+    expected_relation = {'schema': 'public', 'name': 'schema_migrations', 'kind': 'r', 'persistence': 'p',
+        'is_partition': False, 'has_inheritance': False, 'rls': False, 'force_rls': False, 'version_type': 'pg_catalog.text',
+        'version_not_null': True, 'version_generated': '', 'version_identity': '', 'primary_key_version': True}
+    exact_object(relation, (*expected_relation, 'oid'))
+    require(type(relation['oid']) is int and 0 < relation['oid'] <= 4294967295)
+    for key, expected in expected_relation.items():
+        require(type(relation[key]) is type(expected) and relation[key] == expected)
+
+
+def _catalog_value_bounds(value, depth=1):
+    if type(value) is dict:
+        require(depth <= 2 and len(value) <= 32)
+        for key, item in value.items():
+            require(type(key) is str and key.isascii() and len(key) <= 64)
+            _catalog_value_bounds(item, depth + 1)
+    elif type(value) is str:
+        require(value.isascii() and len(value) <= 64)
+    else:
+        require(value is None or type(value) is bool or
+                (type(value) is int and 0 <= value <= 4294967295))
+
+
+def _catalog_json(data):
+    """Reject excessive lexical structure before allocating a JSON object tree."""
+    require(type(data) is bytes and len(data) <= MAX_SQL_STDOUT_BYTES)
+    try:
+        text = data.decode('utf-8')
+    except UnicodeError:
+        raise ContractError('invalid catalog JSON') from None
+    position, members = 0, []
+    while position < len(text):
+        char = text[position]
+        if char in ' \t\r\n,':
+            position += 1
+        elif char == '{':
+            members.append(0); require(len(members) <= 2); position += 1
+        elif char == '}':
+            require(members); members.pop(); position += 1
+        elif char == ':':
+            require(members); members[-1] += 1; require(members[-1] <= 32); position += 1
+        elif char == '"':
+            token = re.match(r'"(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"', text[position:])
+            require(token is not None)
+            value = json.loads(token[0])
+            require(value.isascii() and len(value) <= 64)
+            position += len(token[0])
+        else:
+            token = re.match(r'[^\s{}\[\],:"]+', text[position:])
+            require(token is not None)
+            require(token[0] in ('true', 'false', 'null') or re.fullmatch(r'0|[1-9][0-9]{0,9}', token[0]) is not None)
+            position += len(token[0])
+    require(not members)
+    return strict_json(data)
+
+
+def collect_postgres_catalog(manifest):
+    """Observe fixed socket-only catalog facts; never return schema success."""
+    deadline = time.monotonic() + COLLECTOR_TIMEOUT_SECONDS
+    prefix = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock']
+    def inspect(target):
+        output = _bounded_schema_command(prefix + ['container', 'inspect', '--format', POSTGRES_INSPECT_TEMPLATE, target],
+                                         MAX_INSPECT_STDOUT_BYTES, deadline)
+        return validate_postgres_container(manifest, strict_json(output))
+    before = inspect(POSTGRES_CONTAINER)
+    argv = prefix + ['exec', '--user', '999:999', '--workdir', '/', before['id'],
+        '/usr/bin/env', '-i', 'PATH=/usr/lib/postgresql/17/bin:/usr/bin:/bin', 'LANG=C', 'LC_ALL=C',
+        'HOME=/nonexistent', 'PGPASSFILE=/dev/null', 'PGSERVICEFILE=/dev/null', 'PGOPTIONS=' + POSTGRES_PGOPTIONS,
+        POSTGRES_CLIENT, '--no-psqlrc', '--no-password', '--no-align', '--tuples-only', '--quiet',
+        '--host=' + POSTGRES_SOCKET, '--port=5432', '--username=' + POSTGRES_ROLE, '--dbname=' + POSTGRES_DATABASE,
+        '--set=ON_ERROR_STOP=1', '--command=' + POSTGRES_CATALOG_SQL]
+    observation = _catalog_json(_bounded_schema_command(argv, MAX_SQL_STDOUT_BYTES, deadline))
+    validate_postgres_catalog(observation)
+    require(inspect(before['id']) == before)
 
 
 def validate_start_prerequisites(config, evidence):
@@ -843,6 +1110,8 @@ def deploy_cli(argv):
         checks['cached_images'] = True
         validate_installed_migration_tree(manifest)
         checks['migration_tree'] = True
+        collect_postgres_catalog(manifest)
+        # Catalog metadata cannot establish the live schema version.
         # Intentionally retain missing_dependency/exit3 even when all above pass.
     except subprocess.TimeoutExpired:
         code, failure = 5, 'operation_timed_out'
