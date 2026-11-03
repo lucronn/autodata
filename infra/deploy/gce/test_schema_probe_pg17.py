@@ -492,6 +492,41 @@ class ToolchainGateTests(unittest.TestCase):
                                     'deployment_authorized': False})
             self.assertEqual(reports[0].stat().st_mode & 0o777, 0o600)
 
+    def test_startup_receipt_failure_stops_once_and_preserves_primary_error(self):
+        from types import SimpleNamespace
+        for stop_fails in (False, True):
+            with self.subTest(stop_fails=stop_fails), tempfile.TemporaryDirectory(prefix='ad-probe-setup-') as temporary:
+                root = Path(temporary)
+                owned = root / 'owned_fixture'
+                owned.mkdir()
+                module = owned / 'sentinel.so'
+                module.write_bytes(b'controlled local fixture module')
+                calls = []
+                primary = OSError('injected startup receipt failure')
+                def stop():
+                    calls.append('stop')
+                    shutil.rmtree(owned)
+                    if stop_fails: raise RuntimeError('secondary shutdown failure')
+                fixture = SimpleNamespace(module=module, stop=stop)
+                class StartupCase(unittest.TestCase):
+                    setUpClass = classmethod(Pg17Acceptance.setUpClass.__func__)
+                    @classmethod
+                    def tearDownClass(cls): calls.append('tearDownClass')
+                    def test_body(self): calls.append('body')
+                class CaptureResult(unittest.TestResult):
+                    def addError(self, test, error):
+                        self.primary = error[1]
+                        super().addError(test, error)
+                result = CaptureResult()
+                with patch(__name__ + '.toolchain', return_value=({}, None, None, '17.controlled', {})), \
+                     patch(__name__ + '.LocalFixture', return_value=fixture), \
+                     patch(__name__ + '.receipt', side_effect=primary):
+                    unittest.TestSuite([StartupCase('test_body')]).run(result)
+                self.assertEqual(len(result.errors), 1)
+                self.assertIs(result.primary, primary)
+                self.assertEqual(calls, ['stop'])
+                self.assertFalse(owned.exists())
+
     def test_class_cleanup_always_stops_and_preserves_primary_failure(self):
         from types import SimpleNamespace
         for clean_fails, stop_fails, receipt_fails in ((True, False, False), (True, True, False),
@@ -572,8 +607,18 @@ class Pg17Acceptance(unittest.TestCase):
         except BaseException:
             receipt('blocked_fixture_setup', runtime_verified=False)
             raise RuntimeError('PG17 disposable fixture setup failed') from None
-        receipt('fixture_started', server_version=version, tool_source_hashes=hashes, runtime_verified=False,
-                module_sha256=hashlib.sha256(cls.fixture.module.read_bytes()).hexdigest())
+        try:
+            receipt('fixture_started', server_version=version, tool_source_hashes=hashes, runtime_verified=False,
+                    module_sha256=hashlib.sha256(cls.fixture.module.read_bytes()).hexdigest())
+        except BaseException:
+            # unittest skips tearDownClass when setUpClass fails. Everything
+            # after successful construction must therefore guard the owned
+            # server, including module hashing and receipt creation/write.
+            try:
+                cls.fixture.stop()
+            except BaseException:
+                pass  # Preserve the original setup error if shutdown also fails.
+            raise
 
     @classmethod
     def tearDownClass(cls):
