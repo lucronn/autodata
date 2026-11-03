@@ -99,6 +99,135 @@ class CloudTests(unittest.TestCase):
                                           fake_cli, now=NOW)
         return result, calls
 
+    def published_fixture(self):
+        payload = self.rt.canonical_bytes(self.manifest)
+        binding = {'published_run_id': '1234', 'artifact_id': '5678',
+                   'artifact_digest': 'sha256:' + hashlib.sha256(payload).hexdigest(),
+                   'manifest_sha256': hashlib.sha256(payload).hexdigest()}
+        policy = dict(self.policy, workflow_ref='lucronn/autodata/.github/workflows/release-workshop.yml@refs/heads/release-reviewed')
+        transcript = {
+            'run': {'id': '1234', 'repository': 'lucronn/autodata',
+                    'source_sha': self.manifest['source_sha'], 'workflow_ref': policy['workflow_ref'],
+                    'event': 'workflow_dispatch', 'status': 'completed', 'conclusion': 'success'},
+            'artifact': {'id': '5678', 'run_id': '1234', 'name': 'workshop-release-' + self.manifest['source_sha'],
+                         'expired': False, 'digest': binding['artifact_digest'], 'bytes': len(payload)},
+            'manifest': payload,
+            'images': {role: dict(image, platform='linux/amd64') for role, image in self.manifest['images'].items()}}
+        return binding, policy, transcript
+
+    def published(self, transcript=None, binding=None):
+        default_binding, policy, default_transcript = self.published_fixture()
+        transcript = default_transcript if transcript is None else transcript
+        calls = []
+        def fake_cli(step):
+            calls.append(step)
+            value = transcript[step['name']]
+            if isinstance(value, Exception): raise value
+            return value
+        self.assertTrue(hasattr(self.ops, 'evaluate_published_release'), 'published transcript verifier is missing')
+        result = self.ops.evaluate_published_release(self.manifest, self.config,
+                                                     default_binding if binding is None else binding,
+                                                     policy, dict(policy), fake_cli)
+        return result, calls
+
+    def test_published_transcript_binds_exact_ids_bytes_and_images_without_authorizing_deploy(self):
+        result, calls = self.published()
+        self.assertEqual(result['status'], 'transcript_consistent')
+        self.assertTrue(result['simulation'])
+        self.assertFalse(result['deployment_authorized'])
+        self.assertNotIn('passed', result)
+        self.assertEqual(result['consistent_binding'], self.published_fixture()[0])
+        self.assertEqual([step['name'] for step in calls], ['run', 'artifact', 'manifest', 'images'])
+        self.assertTrue(all(not step['argv'] for step in calls))
+        self.assertLessEqual(sum(step['timeout_seconds'] for step in calls), 2700)
+        self.assertLessEqual(len(self.rt.canonical_bytes(result)), 65536)
+
+    def test_published_transcript_rejects_wrong_missing_extra_expired_and_ambiguous_metadata(self):
+        mutations = [lambda x: x['run'].update(id='9999'),
+                     lambda x: x['run'].update(repository='attacker/autodata'),
+                     lambda x: x['run'].update(source_sha='d' * 40),
+                     lambda x: x['run'].update(workflow_ref='wrong'),
+                     lambda x: x['run'].update(event='pull_request'),
+                     lambda x: x['run'].update(status='in_progress'),
+                     lambda x: x['run'].update(conclusion='failure'),
+                     lambda x: x['run'].update(extra='FAKE_SECRET'),
+                     lambda x: x['artifact'].update(id='9999'),
+                     lambda x: x['artifact'].update(run_id='9999'),
+                     lambda x: x['artifact'].update(name='latest'),
+                     lambda x: x['artifact'].update(expired=True),
+                     lambda x: x['artifact'].update(expired=0),
+                     lambda x: x['artifact'].update(bytes=True),
+                     lambda x: x['artifact'].pop('digest'),
+                     lambda x: x['artifact'].update(digest='sha256:' + '0' * 64),
+                     lambda x: x['artifact'].update(bytes=1048577),
+                     lambda x: x['artifact'].update(extra='FAKE_SECRET'),
+                     lambda x: x['images'].pop('api'),
+                     lambda x: x['images'].update(extra={})]
+        for mutate in mutations:
+            _, _, transcript = self.published_fixture(); mutate(transcript)
+            result, _ = self.published(transcript)
+            self.assertEqual(result['status'], 'failed')
+            self.assertIsNone(result['consistent_binding'])
+            self.assertFalse(result['deployment_authorized'])
+            self.assertNotIn('FAKE_SECRET', str(result))
+
+    def test_published_transcript_rejects_corrupt_or_type_drifted_manifest_and_image_evidence(self):
+        for payload in (b'{}', b'FAKE_SECRET', b'x' * (1048576 + 1),
+                        self.rt.canonical_bytes(self.manifest)[:-1] + b' '):
+            _, _, transcript = self.published_fixture(); transcript['manifest'] = payload
+            result, _ = self.published(transcript)
+            self.assertEqual(result['status'], 'failed')
+        for field, value in [('platform', 'linux/arm64'), ('reference', 'tag:latest'),
+                             ('image_id', 'sha256:' + '0' * 64), ('sbom_uri', 'https://wrong'),
+                             ('provenance_uri', 'https://wrong'), ('extra', 'FAKE_SECRET')]:
+            _, _, transcript = self.published_fixture(); transcript['images']['api'][field] = value
+            result, _ = self.published(transcript)
+            self.assertEqual(result['status'], 'failed')
+            self.assertIsNone(result['consistent_binding'])
+        # Rebind the raw digest to the tampered bytes, retaining the approved
+        # canonical manifest hash: JSON true must not collapse into integer 1.
+        binding, _, transcript = self.published_fixture()
+        candidate = copy.deepcopy(self.manifest); candidate['schema_version'] = True
+        payload = self.rt.canonical_bytes(candidate)
+        binding['artifact_digest'] = 'sha256:' + hashlib.sha256(payload).hexdigest()
+        transcript['manifest'] = payload
+        transcript['artifact'].update(digest=binding['artifact_digest'], bytes=len(payload))
+        result, _ = self.published(transcript, binding)
+        self.assertEqual(result['status'], 'failed')
+        # Duplicate keys must fail even when both values agree and the raw
+        # artifact digest/byte count have been rebound to the duplicate JSON.
+        binding, _, transcript = self.published_fixture()
+        payload = transcript['manifest'].replace(b'{', b'{"schema_version":1,', 1)
+        binding['artifact_digest'] = 'sha256:' + hashlib.sha256(payload).hexdigest()
+        transcript['manifest'] = payload
+        transcript['artifact'].update(digest=binding['artifact_digest'], bytes=len(payload))
+        result, _ = self.published(transcript, binding)
+        self.assertEqual(result['status'], 'failed')
+
+    def test_published_transcript_timeout_and_exception_remain_diagnostic_and_redacted(self):
+        for error in (TimeoutError('FAKE_SECRET'), RuntimeError('FAKE_SECRET'), EOFError('FAKE_SECRET')):
+            _, _, transcript = self.published_fixture(); transcript['manifest'] = error
+            result, calls = self.published(transcript)
+            self.assertEqual(result['status'], 'timed_out' if isinstance(error, TimeoutError) else 'failed')
+            self.assertEqual([step['name'] for step in calls], ['run', 'artifact', 'manifest'])
+            self.assertFalse(result['deployment_authorized'])
+            self.assertIsNone(result['consistent_binding'])
+            self.assertNotIn('FAKE_SECRET', str(result))
+
+    def test_published_transcript_rejects_unbound_ids_and_identity_before_fake_cli(self):
+        binding, policy, _ = self.published_fixture()
+        self.assertTrue(hasattr(self.ops, 'evaluate_published_release'), 'published transcript verifier is missing')
+        def forbidden(step): raise AssertionError('unexpected fake CLI')
+        for field, value in [('published_run_id', 'latest'), ('artifact_id', True),
+                             ('artifact_digest', 'sha256:bad'), ('manifest_sha256', '0' * 64),
+                             ('extra', 'bad')]:
+            candidate = dict(binding, **{field: value})
+            with self.assertRaises(self.rt.ContractError):
+                self.ops.evaluate_published_release(self.manifest, self.config, candidate, policy, dict(policy), forbidden)
+        wrong = dict(policy, repository_id='1')
+        with self.assertRaises(self.rt.ContractError):
+            self.ops.evaluate_published_release(self.manifest, self.config, binding, policy, wrong, forbidden)
+
     def bootstrap(self):
         path = HERE / 'cloud-bootstrap.sh'
         if not path.is_file():
