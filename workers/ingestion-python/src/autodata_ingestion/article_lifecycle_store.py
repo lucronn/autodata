@@ -417,6 +417,9 @@ def store_rewrite_result(repo,lease,result):
         if attempt is None: raise ValueError("no dispatched rewrite attempt")
         if (attempt["input_hash"]!=result.input_hash or attempt["prompt_hash"]!=result.prompt_hash
             or result.profile_version!=job["rewrite_profile_version"]
+            or result.model_metadata.get("model")!=attempt["model"]
+            or result.model_metadata.get("profile_version")!=attempt["profile_version"]
+            or result.model_metadata.get("prompt_hash")!=attempt["prompt_hash"]
             or result.output_hash!=digest_json(result.document)):
             raise ValueError("rewrite input/output binding mismatch")
         revision=uuid4()
@@ -454,7 +457,7 @@ def store_validation(repo,lease,validation):
         cur.execute("UPDATE source_fetch_jobs SET phase='publishing',checkpoint=checkpoint||%s WHERE source_fetch_job_id=%s",(Jsonb({"validation_hash":digest_json(validation.report)}),lease.job_id))
 
 
-def publish_article_revision(repo,lease,revision_id):
+def publish_article_revision(repo,lease,revision_id,*,hooks=None):
     from .article_lifecycle_types import digest_json
     from .article_document import project_ordered_document
     from .procedure_rewrite import validate_article_rewrite
@@ -486,9 +489,12 @@ def publish_article_revision(repo,lease,revision_id):
         attempt=cur.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s AND status='succeeded'",(revision_id,)).fetchone()
         if (attempt is None or attempt["input_hash"]!=row["normalized_source_hash"]
             or attempt["response_hash"]!=digest_json(attempt["response"])
-            or attempt["prompt_hash"]!=row["model_metadata"].get("prompt_hash")):
+            or attempt["prompt_hash"]!=row["model_metadata"].get("prompt_hash")
+            or attempt["model"]!=row["model_metadata"].get("model")
+            or attempt["profile_version"]!=row["model_metadata"].get("profile_version")):
             raise ValueError("publication attempt binding failed")
         cur.execute("UPDATE canonical_article_revisions SET status='published',published_at=clock_timestamp() WHERE canonical_article_revision_id=%s",(revision_id,))
+        if hooks is not None:hooks("inside_publication")
         cur.execute("UPDATE canonical_articles SET current_canonical_revision_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s",(revision_id,lease.canonical_article_id))
         cur.execute("UPDATE source_fetch_jobs SET status='completed',phase='completed',retryable=false,error_code=NULL,next_attempt_at=NULL,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",(lease.job_id,))
         cur.execute("""INSERT INTO publication_events(publication_event_id,event_type,event_version,canonical_article_id,canonical_article_revision_id,correlation_id,idempotency_key,payload,producer)
