@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 const paidTestConfiguration = "33333333-3333-4333-8333-333333333333"
@@ -83,5 +85,155 @@ func TestPaidCatalogGrantErrorsAreSafe(t *testing.T) {
 				t.Fatal(w.Body.String())
 			}
 		})
+	}
+}
+
+type paidHTTPStore struct {
+	*memoryCatalogStore
+	protected int
+	identity  PaidArticleIdentity
+	view      *CatalogArticleView
+}
+
+func (c *paidHTTPStore) ConfigurationByVehicle(_ context.Context, _ Principal, id string) (CatalogConfiguration, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, configuration := range c.configurations {
+		if configuration.ID == id || configuration.VehicleID == id {
+			return configuration, nil
+		}
+	}
+	return CatalogConfiguration{}, ErrCatalogNotFound
+}
+func (c *paidHTTPStore) Articles(ctx context.Context, p Principal, id string) ([]CatalogArticle, error) {
+	c.protected++
+	return c.memoryCatalogStore.Articles(ctx, p, id)
+}
+func (c *paidHTTPStore) ArticleView(ctx context.Context, p Principal, v, id string) (CatalogArticleView, error) {
+	c.protected++
+	if c.view != nil {
+		return *c.view, nil
+	}
+	return c.memoryCatalogStore.ArticleView(ctx, p, v, id)
+}
+func (c *paidHTTPStore) CatalogArticleProgress(context.Context, Principal, string) (*CatalogArticleProgress, error) {
+	c.protected++
+	return nil, nil
+}
+func (c *paidHTTPStore) PaidArticleIdentity(context.Context, string, string) (PaidArticleIdentity, error) {
+	return c.identity, nil
+}
+func paidHTTPServer() (*Server, *paidHTTPStore, *paidGrantClient) {
+	c := &paidHTTPStore{memoryCatalogStore: newMemoryCatalogStore()}
+	c.PutConfiguration(CatalogConfiguration{ID: paidTestConfiguration, VehicleID: paidTestVehicle, Region: "CA", Year: 2024, Make: "Acme", Model: "Roadster", Complete: true})
+	p := Principal{CustomerAccountID: "11111111-1111-4111-8111-111111111111", OrganizationID: "22222222-2222-4222-8222-222222222222", Roles: []string{"platform_admin"}}
+	s := NewServerWithCatalogStore(staticReadiness{}, &fakeAuthenticator{principal: p}, newMemoryRequestStore(), c)
+	s.customerAuth = &customerAuthService{config: customerAuthConfig{Mode: "firebase"}}
+	g := &paidGrantClient{err: ErrVehicleGrantRequired}
+	s.commerceClient = g
+	return s, c, g
+}
+func TestPaidCatalogPublicSelectorsAndDeniedBeforeWork(t *testing.T) {
+	s, c, g := paidHTTPServer()
+	for _, path := range []string{"/v1/catalog/years", "/v1/catalog/years/2024/makes", "/v1/catalog/years/2024/makes/acme/models", "/v1/catalog/years/2024/makes/acme/models/roadster/configurations"} {
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != 200 {
+			t.Fatal(path, w.Code, w.Body.String())
+		}
+	}
+	if g.calls != 0 || c.protected != 0 {
+		t.Fatal("selectors reached protected work")
+	}
+	for _, suffix := range []string{"", "/55555555-5555-4555-8555-555555555555", "/55555555-5555-4555-8555-555555555555/source"} {
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles"+suffix, nil))
+		if w.Code != 403 || w.Header().Get("Cache-Control") != "private, no-store" {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	if c.protected != 0 {
+		t.Fatal("unpaid request read content/progress")
+	}
+}
+func TestPaidCatalogCustomerLegacyRoutesDenied(t *testing.T) {
+	s, _, _ := paidHTTPServer()
+	for _, route := range []string{"POST /dataset-requests", "GET /dataset-requests/x", "POST /vehicle-identities/resolve", "GET /vehicle-identities/selectors", "POST /knowledge-queries", "POST /job-plans", "GET /datasets/x", "GET /datasets/x/sections", "GET /datasets/x/revisions", "GET /datasets/x/evidence/x", "GET /datasets/x/search", "GET /datasets/x/knowledge", "POST /datasets/x/feedback"} {
+		parts := strings.SplitN(route, " ", 2)
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, httptest.NewRequest(parts[0], parts[1], strings.NewReader("{}")))
+		if w.Code != 403 || !strings.Contains(w.Body.String(), "CUSTOMER_ROUTE_UNAVAILABLE") {
+			t.Fatal(route, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestPaidCatalogColdReadsDoNotScheduleAndDescriptorsHaveNoBodies(t *testing.T) {
+	s, c, g := paidHTTPServer()
+	g.err = nil
+	id := "55555555-5555-4555-8555-555555555555"
+	c.identity = PaidArticleIdentity{ConfigurationID: paidTestConfiguration, CanonicalArticleID: id, VehicleID: paidTestVehicle, ProviderSlug: "bankone", SourceVehicleRef: "opaque/vehicle", SourceArticleRef: "opaque/article"}
+	c.view = &CatalogArticleView{Article: CatalogArticle{ID: id, CanonicalArticleID: &id, Availability: "unavailable"}, CanSchedule: true}
+	c.PutArticle(CatalogArticle{ID: id, VehicleID: paidTestConfiguration, CanonicalArticleID: &id, Body: "private body", Images: []CatalogImage{{ID: "private-image"}}})
+	c.PutArticle(CatalogArticle{ID: "legacy", VehicleID: paidTestConfiguration, Body: "legacy private"})
+	ensure := &fakeIngestionClient{}
+	s.ingestionClient = ensure
+	for _, suffix := range []string{"", "/" + id} {
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles"+suffix, nil))
+		want := 200
+		if suffix != "" {
+			want = 503
+		}
+		if w.Code != want {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		if suffix == "" && (strings.Contains(w.Body.String(), "private") || strings.Contains(w.Body.String(), "legacy")) {
+			t.Fatal(w.Body.String())
+		}
+	}
+	if ensure.path != "" {
+		t.Fatal("observational GET scheduled work")
+	}
+}
+func TestPaidCatalogPrepareBodyOriginAndNoAcknowledgement(t *testing.T) {
+	s, c, g := paidHTTPServer()
+	g.err = nil
+	id := "55555555-5555-4555-8555-555555555555"
+	c.identity = PaidArticleIdentity{ConfigurationID: paidTestConfiguration, CanonicalArticleID: id, VehicleID: paidTestVehicle, ProviderSlug: "bankone", SourceVehicleRef: "opaque/vehicle", SourceArticleRef: "opaque/article"}
+	c.view = &CatalogArticleView{Article: CatalogArticle{ID: id, CanonicalArticleID: &id, Availability: "unavailable"}, CanSchedule: true}
+	now := time.Now()
+	token, _, _ := newCustomerSessionToken()
+	service := &customerAuthService{config: customerAuthConfig{Mode: "firebase", Origin: "https://cars.example"}, store: &customerSessionFixture{session: customerSession{AccountID: "11111111-1111-4111-8111-111111111111", OrganizationID: "22222222-2222-4222-8222-222222222222", ProjectID: "fixture-project", UID: "user", AuthTime: now.Unix(), ExpiresAt: now.Add(time.Hour)}}, verifier: &customerVerifierFixture{}}
+	s.customerAuth, s.auth = service, service
+	for _, tc := range []struct {
+		body, origin string
+		want         int
+	}{{"{}", "https://foreign.example", 403}, {"null", "https://cars.example", 400}, {"[]", "https://cars.example", 400}, {"{\"source_uri\":\"https://private.example\"}", "https://cars.example", 400}, {"{} {}", "https://cars.example", 400}, {strings.Repeat(" ", 2049), "https://cars.example", 413}, {"{}", "https://cars.example", 503}} {
+		r := httptest.NewRequest("POST", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles/"+id+"/prepare", strings.NewReader(tc.body))
+		r.AddCookie(customerSessionCookie(token, now.Add(time.Hour), now))
+		r.Header.Set("Origin", tc.origin)
+		r.Header.Set("X-CSRF-Token", customerCSRF(token))
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != tc.want {
+			t.Fatal(tc.body, w.Code, w.Body.String())
+		}
+	}
+}
+func TestPaidCatalogProductionDependenciesFailClosed(t *testing.T) {
+	s, _, _ := paidHTTPServer()
+	if s.validatePaidCatalogDependencies() == nil {
+		t.Fatal("memory catalog accepted as production dependency")
+	}
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if w.Code != 503 {
+		t.Fatal("incomplete paid runtime ready")
+	}
+	s.customerAuth = nil
+	if s.validatePaidCatalogDependencies() != nil {
+		t.Fatal("explicit local injection lost compatibility")
 	}
 }

@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"mime"
 	"net/http"
 	"strings"
 	"time"
@@ -93,4 +96,155 @@ func (s *postgresCatalogStore) PaidArticleIdentity(ctx context.Context, configur
 		return PaidArticleIdentity{}, ErrCatalogNotFound
 	}
 	return identity, err
+}
+
+type paidCatalogContextKey struct{}
+type paidCatalogContext struct {
+	configuration CatalogConfiguration
+	identity      *PaidArticleIdentity
+}
+
+func (s *Server) catalogSelector(next authenticatedHandler) http.Handler {
+	if !s.paidCatalogEnabled() {
+		return s.requireRole("dataset_viewer", next)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { next(w, r, Principal{}) })
+}
+func (s *Server) catalogProtected(next authenticatedHandler, article bool) http.Handler {
+	if !s.paidCatalogEnabled() {
+		return s.requireRole("dataset_viewer", next)
+	}
+	return s.paidCatalogAuthenticated(func(w http.ResponseWriter, r *http.Request, p Principal) {
+		regions := r.URL.Query()["region"]
+		if len(regions) > 1 {
+			s.writePaidCatalogError(w, r, ErrCatalogNotFound)
+			return
+		}
+		configuration, err := s.resolvePaidCatalogScope(r.Context(), p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"))
+		if err != nil {
+			s.writePaidCatalogError(w, r, err)
+			return
+		}
+		scope := paidCatalogContext{configuration: configuration}
+		if article {
+			identity, err := s.loadPaidArticleIdentity(r.Context(), configuration, r.PathValue("article_id"))
+			if err != nil {
+				s.writePaidCatalogError(w, r, err)
+				return
+			}
+			scope.identity = &identity
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), paidCatalogContextKey{}, scope)), p)
+	})
+}
+func (s *Server) paidCatalogAuthenticated(next authenticatedHandler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		r = r.WithContext(ctx)
+		if r.Method == http.MethodPost && (len(r.Header.Values("Origin")) != 1 || len(r.Header.Values("X-CSRF-Token")) != 1 || !s.customerAuth.validOrigin(r)) {
+			s.customerAuth.writeError(w, r, ErrCustomerCSRF)
+			return
+		}
+		p, err := s.auth.Authenticate(r)
+		if err != nil {
+			s.customerAuth.writeError(w, r, err)
+			return
+		}
+		if !commerceUUID(p.CustomerAccountID) || !commerceUUID(p.OrganizationID) {
+			s.customerAuth.writeError(w, r, ErrCustomerDependency)
+			return
+		}
+		next(w, r, p)
+	})
+}
+func (s *Server) loadPaidArticleIdentity(ctx context.Context, c CatalogConfiguration, id string) (PaidArticleIdentity, error) {
+	if !commerceUUID(id) {
+		return PaidArticleIdentity{}, ErrCatalogNotFound
+	}
+	repository, ok := s.catalog.(paidArticleIdentityStore)
+	if !ok {
+		return PaidArticleIdentity{}, ErrVehicleGrantUnavailable
+	}
+	identity, err := repository.PaidArticleIdentity(ctx, c.ID, id)
+	if err != nil {
+		return PaidArticleIdentity{}, err
+	}
+	if identity.ConfigurationID != c.ID || identity.CanonicalArticleID != id || identity.VehicleID != c.VehicleID || (identity.ProviderSlug != "bankone" && identity.ProviderSlug != "banktwo") || identity.SourceVehicleRef == "" || identity.SourceArticleRef == "" {
+		return PaidArticleIdentity{}, ErrCatalogNotFound
+	}
+	return identity, nil
+}
+func (s *Server) validatePaidCatalogDependencies() error {
+	if !s.paidCatalogEnabled() {
+		return nil
+	}
+	catalog, ok := s.catalog.(*postgresCatalogStore)
+	if !ok || catalog == nil || catalog.pool == nil {
+		return ErrVehicleGrantUnavailable
+	}
+	if _, ok := s.commerceClient.(VehicleGrantChecker); !ok {
+		return ErrVehicleGrantUnavailable
+	}
+	if len(s.catalogImageKey) != 32 || s.catalogImageReader == nil || s.customerAuth.store == nil {
+		return ErrVehicleGrantUnavailable
+	}
+	return nil
+}
+
+func (s *Server) preparePaidCatalogArticle(w http.ResponseWriter, r *http.Request, p Principal) {
+	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || media != "application/json" {
+		writeAPIError(w, r, 415, "INVALID_REQUEST", "A JSON object is required.", false)
+		return
+	}
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 2048))
+	if err != nil {
+		var large *http.MaxBytesError
+		status := 400
+		if errors.As(err, &large) {
+			status = 413
+		}
+		writeAPIError(w, r, status, "INVALID_REQUEST", "An empty JSON object is required.", false)
+		return
+	}
+	var body map[string]json.RawMessage
+	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	if decoder.Decode(&body) != nil || body == nil || len(body) != 0 || decoder.Decode(new(any)) != io.EOF {
+		writeAPIError(w, r, 400, "INVALID_REQUEST", "An empty JSON object is required.", false)
+		return
+	}
+	scope, ok := r.Context().Value(paidCatalogContextKey{}).(paidCatalogContext)
+	if !ok || scope.identity == nil {
+		s.writePaidCatalogError(w, r, ErrVehicleGrantUnavailable)
+		return
+	}
+	view, err := s.catalog.ArticleView(r.Context(), p, scope.configuration.ID, scope.identity.CanonicalArticleID)
+	if err != nil {
+		s.writePaidCatalogError(w, r, err)
+		return
+	}
+	if view.Withdrawn {
+		s.writePaidCatalogError(w, r, ErrCatalogWithdrawn)
+		return
+	}
+	if view.CanSchedule {
+		if err = s.checkPaidCatalogGrant(r.Context(), p, scope.configuration); err != nil {
+			s.writePaidCatalogError(w, r, err)
+			return
+		}
+		_, scheduleErr := s.ensureCatalogArticleScheduled(r, map[string]any{"scope": "article", "vehicle_id": scope.identity.VehicleID, "vehicle_configuration_id": scope.configuration.ID, "canonical_article_id": scope.identity.CanonicalArticleID})
+		view, err = s.catalog.ArticleView(r.Context(), p, scope.configuration.ID, scope.identity.CanonicalArticleID)
+		if err != nil {
+			s.writePaidCatalogError(w, r, err)
+			return
+		}
+		if scheduleErr != nil && view.Article.Processing == nil && view.Article.Document == nil {
+			s.writeCatalogLifecycleError(w, r, 503, "CATALOG_SCHEDULING_UNAVAILABLE", true, view.Article)
+			return
+		}
+	}
+	s.respondCatalogArticleView(w, r, p, view)
 }
