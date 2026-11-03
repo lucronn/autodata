@@ -623,6 +623,41 @@
       "integrated_sha": "1b53dc3e22e195cc996588d8fbb20ffd73758238",
       "ci_status": "success",
       "ci_run": "https://github.com/lucronn/autodata/actions/runs/41692463236"
+    },
+    {
+      "id": "retry-queue-test-clock",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/retry-queue-test-clock.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-retry-queue-test-clock.md",
+      "record_ref": "docs/agents/records/2026-11-03-retry-queue-test-clock.json",
+      "goal": "Make the two retry-queue pre-due assertions deterministic by supplying an explicit instant before the persisted retry due time, with application behavior unchanged.",
+      "todo": [
+        "Independently review this blocked four-document draft; synchronize the exact goal, one-file scope, references and todo in existing Issue #186/Project #8 only after review; commit/push the synchronized checkpoint and pass exact-base machine preflight before implementation.",
+        "In workers/ingestion-python/tests/test_chat_service.py only, import datetime and timedelta and replace the two immediate real-time empty-queue assertions with explicit now values one microsecond before each persisted next_attempt timestamp; retain all due-time, retry-count, dead-letter and available-answer assertions.",
+        "Verify both controlled-clock boundary reproductions fail with the original assertions and pass with the proposed assertions; run both focused tests, the complete chat-service test module and ingestion suite, and inspect the exact one-file diff.",
+        "Commit and promptly push the validated test-only milestone, obtain independent exact-commit review, then let the coordinator integrate and record fresh exact-candidate CI without relabeling historical evidence or changing release authority."
+      ],
+      "allowed_paths": [
+        "workers/ingestion-python/tests/test_chat_service.py"
+      ],
+      "state": "planning_synchronized_awaiting_gate_handoff",
+      "planning_status": "synchronized",
+      "tracking_status": "synchronized",
+      "source_integration_base_sha": "3a511f1d8a7c3b45fcc67c93a121063286c95097",
+      "depends_on": [],
+      "dispatch_mode": "coordinator_direct",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "dispatch_prerequisite": "Approved draft goal/four todos/one-test-file scope/four refs read back in Issue186 comment6617577291 and Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4. Commit/push this synchronized four-document checkpoint, pin its full SHA, pass exact-base machine preflight and obtain independent coordinator gate handoff before test implementation. A/B/R6 scopes preserved.",
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617577291",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-03T22:55:56.306591+00:00",
+        "issue_body_sha256": "1818a092a98cb40bf172284ed9450488965a7dd25d73e714430b737fb65ecc17",
+        "project_text_sha256": "e51731eb7c7da9dbeffd6b86f2eb0cbaf2e4ad6ebc5527b405128fb1b45537f6",
+        "project_index_note": "Compact field indexes exact retry goal/four todos/one-file scope/four refs in Issue comment and preserves A/B/R6 references; prior full field retained verbatim in the same comment."
+      }
     }
   ]
 }

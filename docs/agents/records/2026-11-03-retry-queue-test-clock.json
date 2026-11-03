@@ -1,0 +1,29 @@
+{
+  "goal": "Make the two retry-queue pre-due assertions deterministic by supplying an explicit instant before the persisted retry due time, with application behavior unchanged.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-retry-queue-test-clock.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-retry-queue-test-clock.md",
+    "docs/agents/tasks/2026-11-03-production-release/retry-queue-test-clock.json",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "todo": [
+    "Independently review this blocked four-document draft; synchronize the exact goal, one-file scope, references and todo in existing Issue #186/Project #8 only after review; commit/push the synchronized checkpoint and pass exact-base machine preflight before implementation.",
+    "In workers/ingestion-python/tests/test_chat_service.py only, import datetime and timedelta and replace the two immediate real-time empty-queue assertions with explicit now values one microsecond before each persisted next_attempt timestamp; retain all due-time, retry-count, dead-letter and available-answer assertions.",
+    "Verify both controlled-clock boundary reproductions fail with the original assertions and pass with the proposed assertions; run both focused tests, the complete chat-service test module and ingestion suite, and inspect the exact one-file diff.",
+    "Commit and promptly push the validated test-only milestone, obtain independent exact-commit review, then let the coordinator integrate and record fresh exact-candidate CI without relabeling historical evidence or changing release authority."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T22:55:56.306591+00:00",
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617577291",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_note_field": "Source or dependency reference",
+    "verified_at": "2026-11-03T22:55:56.306591+00:00",
+    "issue_body_sha256": "1818a092a98cb40bf172284ed9450488965a7dd25d73e714430b737fb65ecc17",
+    "project_text_sha256": "e51731eb7c7da9dbeffd6b86f2eb0cbaf2e4ad6ebc5527b405128fb1b45537f6",
+    "project_index_note": "Compact field indexes exact retry goal/four todos/one-file scope/four refs in Issue comment and preserves A/B/R6 references; prior full field retained verbatim in the same comment."
+  }
+}
