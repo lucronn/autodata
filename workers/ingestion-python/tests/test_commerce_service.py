@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'src'))
 from autodata_ingestion.commerce_service import (CommerceError, validate_uuid, exact_fields,
-    validate_settlement, validate_checkout_url, canonical_checkout_hash, checkout_return_origin)
+    validate_settlement, validate_checkout_url, canonical_checkout_hash, checkout_return_origin, CommerceService, CommerceConfig)
 
 
 class CommerceAuthorityTests(unittest.TestCase):
@@ -62,3 +62,11 @@ class CommerceAuthorityTests(unittest.TestCase):
             ('test','https://user@localhost'),('test','https://localhost:bad'),
             ('test','https://localhost/'),('test','https://localhost?q=x'),('test','https://localhost#x')]:
             with self.assertRaises(CommerceError,msg=(environment,value)):checkout_return_origin(environment,value)
+
+    def test_checkout_projection_versions_and_owned_race_status(self):
+        service=CommerceService(lambda:None,CommerceConfig('stripe_test','acct_fixture','price_fixture'),None)
+        order=dict(self.order,configuration_id=self.order['order_id'],region='US',status='paid')
+        response=service._response(order,201)
+        self.assertEqual(response['version'],'v1')
+        self.assertEqual(response.http_status,200)
+        self.assertEqual(response['library_item_id'],order['order_id'])

@@ -200,11 +200,12 @@ class CommerceService:
         return row['dataset_product_id']
 
     def _response(self, order, status=200):
-        result = dict(state='processing', order_id=str(order['order_id']), configuration_id=str(order['configuration_id']), region=order['region'])
+        result = dict(version='v1', state='processing', order_id=str(order['order_id']), configuration_id=str(order['configuration_id']), region=order['region'])
         if order['status'] == 'revoked':
             raise CommerceError('ENTITLEMENT_REVOKED', 403)
         if order['status'] == 'paid':
             result.update(state='owned', library_item_id=str(order['order_id']))
+            status = 200
         elif order['status'] == 'open' and order.get('checkout_url') and order.get('provider_expires_at') and order['provider_expires_at'] > self.clock():
             result.update(state='checkout', checkout_url=validate_checkout_url(order['checkout_url']), provider_expires_at=order['provider_expires_at'].isoformat())
         else:
