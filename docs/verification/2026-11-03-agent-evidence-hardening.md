@@ -50,6 +50,14 @@ committed v2 fixture task. Effective model/medium/Fast metadata is required;
 mocked session events do not establish installed CLI or account compatibility.
 No release, staging, deployment or live-provider certification is claimed.
 
+The [bounded runtime experiment plan](../superpowers/plans/2026-11-03-local-cli-certification.md)
+and complete
+[v2 fixture task](../agents/tasks/2026-11-03-production-release/runtime-fixture.json)
+were independently checked for exact scope, real command definitions, all
+required agent responses, synthetic labeling, and profile constraints before
+execution. Their committed-base preflight and actual runtime result remain
+separate evidence; document review does not certify the provider.
+
 R0 release-controller implementation may consume the independently verified
 validator interface through a freshly synchronized direct-dispatch checkpoint.
 Its own tests and review remain required. R6 requires its separately verified

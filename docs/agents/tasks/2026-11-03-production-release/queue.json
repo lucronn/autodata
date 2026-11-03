@@ -35,10 +35,11 @@
       "depends_on": [
         "r0-evidence"
       ],
-      "state": "ready",
+      "state": "in_progress",
       "release_state": "unverified",
       "needs_scope_refinement": false,
-      "dispatch_mode": "coordinator_direct"
+      "dispatch_mode": "coordinator_direct",
+      "implementation_base_sha": "179a0056f39ce9d6258789442c4d1f3457b4a880"
     },
     {
       "id": "r1-connectors",
@@ -50,7 +51,7 @@
       "dispatch_mode": "coordinator_direct",
       "verification_workflow": "Isolated clean/upgrade/legacy-preservation/concurrency database checks and independent exact-SHA schema/source/reliability review; no local-runner or release authority.",
       "implementation_base_sha": "4a8a0d24a8555911b567b8691e6ba3f4a0477fa8",
-      "candidate_sha": "2755244bdfc521a3b8582e1877fbd9d68dcdb8ba"
+      "candidate_sha": "f8bf1ace6266563291576258fb0a5d81295bed4a"
     },
     {
       "id": "r2-rewrite",
@@ -131,5 +132,6 @@
     "allow_fallback": false
   },
   "execution_requirement_source": "Explicit user instruction: once planning is complete use Sol 6.1, medium reasoning, Fast mode.",
-  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4"
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+  "provider_runtime_fixture_ref": "docs/agents/tasks/2026-11-03-production-release/runtime-fixture.json"
 }

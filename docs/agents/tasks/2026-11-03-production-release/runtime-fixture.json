@@ -1,0 +1,222 @@
+{
+  "task_id": "production-release-runtime-fixture",
+  "repository": "lucronn/autodata",
+  "goal": "Certify the installed real CLI boundary by committing only docs/verification/provider-runtime-fixture.txt with exactly AutoData runtime fixture verified. followed by one newline, using Sol 6.1, medium reasoning and Fast mode.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "docs/verification/provider-runtime-fixture.txt"
+  ],
+  "bounded_contexts": [
+    "nonproduction provider runtime certification"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-local-cli-certification.md",
+    "docs/verification/2026-11-03-agent-evidence-hardening.md"
+  ],
+  "outputs": [
+    "docs/verification/provider-runtime-fixture.txt"
+  ],
+  "acceptance_tests": [
+    "Create exactly the required fixture text and commit it locally with no other changes.",
+    "The actual provider must accept the strict v2 schema and report runtime settings matching the requested profile.",
+    "All required commands, responses and retained artifacts must pass independent replay at the actual fixture commit.",
+    "Synthetic provenance stays synthetic and cannot approve staging or release."
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Certify the installed real CLI boundary by committing only docs/verification/provider-runtime-fixture.txt with exactly AutoData runtime fixture verified. followed by one newline, using Sol 6.1, medium reasoning and Fast mode.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-local-cli-certification.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/runner-interface.md",
+      "docs/verification/2026-11-03-agent-evidence-hardening.md"
+    ],
+    "todo": [
+      "Create exactly the required fixture text and commit it locally with no other changes.",
+      "The actual provider must accept the strict v2 schema and report runtime settings matching the requested profile.",
+      "All required commands, responses and retained artifacts must pass independent replay at the actual fixture commit.",
+      "Synthetic provenance stays synthetic and cannot approve staging or release."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T09:53:18.095883+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  },
+  "evidence_contract_version": 2,
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/runtime-fixture.json",
+  "verification": {
+    "checks": [
+      {
+        "check_id": "runtime-deterministic-ci",
+        "gate": "deterministic_ci",
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "scripts/autonomy",
+          "-p",
+          "test_*.py"
+        ],
+        "cwd": ".",
+        "timeout_seconds": 60,
+        "expected_exit_code": 0,
+        "outputs": []
+      },
+      {
+        "check_id": "runtime-contract-compatibility",
+        "gate": "contract_compatibility",
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "scripts/autonomy",
+          "-p",
+          "test_validate_run.py"
+        ],
+        "cwd": ".",
+        "timeout_seconds": 60,
+        "expected_exit_code": 0,
+        "outputs": []
+      },
+      {
+        "check_id": "runtime-schema-integrity",
+        "gate": "schema_integrity",
+        "argv": [
+          "python3",
+          "-c",
+          "import json; from pathlib import Path; from runner import validate_schema_inventory; errors=validate_schema_inventory(json.loads(Path(\"agent-output.schema.json\").read_text())); assert not errors, errors"
+        ],
+        "cwd": "scripts/autonomy",
+        "timeout_seconds": 60,
+        "expected_exit_code": 0,
+        "outputs": []
+      },
+      {
+        "check_id": "source-fixture",
+        "gate": "source_provenance",
+        "argv": [
+          "python3",
+          "scripts/autonomy/fixtures/run_provenance_fixture.py",
+          "--population",
+          "scripts/autonomy/fixtures/provenance-v1/population.json"
+        ],
+        "cwd": ".",
+        "timeout_seconds": 60,
+        "expected_exit_code": 0,
+        "outputs": [
+          {
+            "artifact_id": "source-fixture:proof",
+            "kind": "provenance-result",
+            "relative_path": "provenance.json",
+            "format": "json"
+          }
+        ]
+      },
+      {
+        "check_id": "quality-fixture",
+        "gate": "data_quality",
+        "argv": [
+          "python3",
+          "scripts/autonomy/fixtures/run_provenance_fixture.py",
+          "--population",
+          "scripts/autonomy/fixtures/provenance-v1/population.json"
+        ],
+        "cwd": ".",
+        "timeout_seconds": 60,
+        "expected_exit_code": 0,
+        "outputs": [
+          {
+            "artifact_id": "quality-fixture:proof",
+            "kind": "provenance-result",
+            "relative_path": "provenance.json",
+            "format": "json"
+          }
+        ]
+      },
+      {
+        "check_id": "runtime-security",
+        "gate": "security",
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "test_runner.TrustBoundaryTests",
+          "test_runner.CandidateScopeTests"
+        ],
+        "cwd": "scripts/autonomy",
+        "timeout_seconds": 60,
+        "expected_exit_code": 0,
+        "outputs": []
+      },
+      {
+        "check_id": "runtime-reliability",
+        "gate": "reliability",
+        "argv": [
+          "python3",
+          "-m",
+          "unittest",
+          "test_runner.EvidenceExecutionTests",
+          "test_runner.IntegrityEdgeTests"
+        ],
+        "cwd": "scripts/autonomy",
+        "timeout_seconds": 60,
+        "expected_exit_code": 0,
+        "outputs": []
+      },
+      {
+        "check_id": "runtime-independent-review",
+        "gate": "independent_review",
+        "argv": [
+          "python3",
+          "-c",
+          "from pathlib import Path; p=Path(\"docs/verification/provider-runtime-fixture.txt\"); assert not p.is_symlink(); assert p.read_bytes()==b\"AutoData runtime fixture verified.\\n\""
+        ],
+        "cwd": ".",
+        "timeout_seconds": 60,
+        "expected_exit_code": 0,
+        "outputs": []
+      }
+    ],
+    "provenance": {
+      "check_id": "source-fixture",
+      "population_ref": "scripts/autonomy/fixtures/provenance-v1/population.json",
+      "report_artifact_id": "source-fixture:proof"
+    },
+    "required_agent_evidence": [
+      "architect:response",
+      "builder:response",
+      "deterministic_ci:response",
+      "contract_compatibility:response",
+      "schema_integrity:response",
+      "source_provenance:response",
+      "data_quality:response",
+      "security:response",
+      "reliability:response",
+      "independent_review:response"
+    ]
+  }
+}
