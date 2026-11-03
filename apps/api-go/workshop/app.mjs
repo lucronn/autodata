@@ -1105,9 +1105,10 @@ $("cancel").addEventListener("click", () => {
   });
 });
 $("source-review-load").addEventListener("click", () => {
-  if (currentArticle && viewGeneration?.current())
-    void loadSource(currentArticle.source_review?.url, viewGeneration).catch(
-      (error) => handleSourceError(error, viewGeneration),
+  const g = viewGeneration;
+  if (currentArticle && g?.current())
+    void loadSource(currentArticle.source_review?.url, g).catch(
+      (error) => handleSourceError(error, g),
     );
 });
 $("back").addEventListener("click", () => {

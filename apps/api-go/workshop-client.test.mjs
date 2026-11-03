@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { NavigationGeneration } from './workshop/article-read.mjs';
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
@@ -224,3 +227,94 @@ test('confirmed cookie-only logout prepares memory-only SDK for the next explici
   assert.equal(account.state.ready, true);
   assert.equal(loaded, 1);
 });
+
+// Execute production app boundaries without starting its browser bootstrap.
+function appSection(start, end) {
+  const source = readFileSync(new URL('./workshop/app.mjs', import.meta.url), 'utf8');
+  assert.equal(source.split(start).length, 2, `unique app boundary: ${start}`);
+  assert.equal(source.split(end).length, 2, `unique app boundary: ${end}`);
+  const first = source.indexOf(start), last = source.indexOf(end);
+  assert.ok(last > first, 'app boundaries are ordered');
+  return source.slice(first, last);
+}
+
+function sourceReviewHarness() {
+  const navigation = new NavigationGeneration();
+  const first = navigation.next();
+  const state = { content: 'article A', status: 'A ready', view: 'reader' };
+  const loads = [], errors = [];
+  let click, rejectSource;
+  const context = {
+    currentArticle: { source_review: { url: '/article-A/source' } },
+    viewGeneration: first,
+    $: () => ({ addEventListener(event, callback) {
+      assert.equal(event, 'click');
+      click = callback;
+    } }),
+    loadSource(url, generation) {
+      loads.push({ url, generation });
+      return new Promise((_, reject) => { rejectSource = reject; });
+    },
+    invalidate() { navigation.clear(); state.content = ''; },
+    show(view) { state.view = view; },
+    status(message) { state.status = message; },
+  };
+  runInNewContext(
+    appSection('function handleSourceError(error, g) {', 'async function renewMedia(') +
+    appSection('$("source-review-load").addEventListener', '$("back").addEventListener'),
+    context,
+  );
+  const handleError = context.handleSourceError;
+  context.handleSourceError = (error, generation) => {
+    errors.push(generation);
+    handleError(error, generation);
+  };
+  return { context, state, first, loads, errors, navigation,
+    click: () => click(), reject: error => rejectSource(error) };
+}
+
+for (const failure of ['AbortError', 401, 403, 410]) {
+  test(`source review ignores stale ${failure} after selection A changes to B`, async () => {
+    const h = sourceReviewHarness();
+    h.click();
+    assert.equal(h.loads.length, 1);
+    assert.equal(h.loads[0].url, '/article-A/source');
+    assert.equal(h.loads[0].generation, h.first);
+    const second = h.navigation.next();
+    h.context.viewGeneration = second;
+    Object.assign(h.state, { content: 'article B', status: 'B ready', view: 'reader' });
+    const error = failure === 'AbortError'
+      ? new DOMException('Source A canceled', 'AbortError')
+      : Object.assign(new Error('Source A denied'), { status: failure });
+    h.reject(error);
+    await new Promise(setImmediate);
+    assert.deepEqual(h.state, { content: 'article B', status: 'B ready', view: 'reader' });
+    assert.equal(second.current(), true);
+    assert.deepEqual(h.errors, [h.first]);
+  });
+}
+
+for (const failure of [401, 403, 410]) {
+  test(`source review still clears current selection on ${failure}`, async () => {
+    const h = sourceReviewHarness();
+    h.click();
+    h.reject(Object.assign(new Error('Current source denied'), { status: failure }));
+    await new Promise(setImmediate);
+    assert.deepEqual(h.state, { content: '', status: 'Current source denied', view: 'welcome' });
+    assert.equal(h.first.current(), false);
+    assert.deepEqual(h.errors, [h.first]);
+  });
+}
+
+for (const unavailable of ['article', 'generation', 'canceled generation']) {
+  test(`source review does not load without a current ${unavailable}`, () => {
+    const h = sourceReviewHarness();
+    if (unavailable === 'article') h.context.currentArticle = null;
+    else if (unavailable === 'generation') h.context.viewGeneration = null;
+    else h.navigation.clear();
+    h.click();
+    assert.equal(h.loads.length, 0);
+    assert.equal(h.errors.length, 0);
+    assert.deepEqual(h.state, { content: 'article A', status: 'A ready', view: 'reader' });
+  });
+}
