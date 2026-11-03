@@ -183,6 +183,20 @@ func paidSetup(t *testing.T) *paidFixture {
 		t.Fatal("control token required")
 	}
 	t.Cleanup(func() {
+		if t.Failed() {
+			request, _ := http.NewRequest("GET", f.control.control+"/r3-fixture/snapshot", nil)
+			request.Header.Set("X-R3-Fixture-Token", f.control.token)
+			client := http.Client{Timeout: 2 * time.Second}
+			if response, err := client.Do(request); err == nil {
+				var snapshot map[string]any
+				if response.StatusCode == 200 && json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&snapshot) == nil {
+					snapshot["reader_calls"] = f.reader.calls.Load()
+					snapshot["identity_checks"] = f.verifier.calls.Load()
+					f.phases["failure"] = snapshot
+				}
+				response.Body.Close()
+			}
+		}
 		raw, _ := json.MarshalIndent(map[string]any{"phase_snapshots": f.phases, "assertion_results": f.assertions, "observed_views": f.views, "identity_checks": f.verifier.calls.Load(), "reader_calls": f.reader.calls.Load(), "http_observations": f.observations, "held_model_receipt": f.heldModelReceipt}, "", "  ")
 		if err := os.WriteFile(filepath.Join(os.Getenv("AUTODATA_CATALOG_TEST_CASE_DIR"), "go-measurement.json"), raw, 0644); err != nil {
 			t.Error(err)
@@ -379,7 +393,76 @@ func (f *paidFixture) publish() {
 	f.control.wait("snapshot", func(s map[string]any) bool { return r3Int(r3Map(s, "counts"), "published_revisions") == 1 })
 }
 func paidWorkUnchanged(a, b map[string]any) bool {
-	return r3ZeroDelta(a, b) && r3Int(r3Map(a, "counts"), "article_jobs") == r3Int(r3Map(b, "counts"), "article_jobs") && r3Int(r3Map(a, "counts"), "canonical_revisions") == r3Int(r3Map(b, "counts"), "canonical_revisions") && a["reader_calls"] == b["reader_calls"]
+	for _, key := range []string{"entered", "completed"} {
+		if r3Int(r3Map(a, "selector_ensure"), key) != r3Int(r3Map(b, "selector_ensure"), key) {
+			return false
+		}
+	}
+	return r3Int(r3Map(b, "selector_ensure"), "active") == 0 && r3ZeroDelta(a, b) && r3Int(r3Map(a, "counts"), "article_jobs") == r3Int(r3Map(b, "counts"), "article_jobs") && r3Int(r3Map(a, "counts"), "canonical_revisions") == r3Int(r3Map(b, "counts"), "canonical_revisions") && a["reader_calls"] == b["reader_calls"]
+}
+
+func paidSelectorsMetadataOnly(before, after map[string]any) bool {
+	// Only selector discovery may advance; article ensure and every body/model/
+	// object-reader counter remain unchanged even when selectors read through.
+	for _, key := range []string{"counts", "ensure", "source_calls", "asset_calls"} {
+		a, _ := json.Marshal(before[key])
+		b, _ := json.Marshal(after[key])
+		if !bytes.Equal(a, b) {
+			return false
+		}
+	}
+	if before["reader_calls"] != after["reader_calls"] || before["model_calls"] != after["model_calls"] || r3Int(r3Map(before, "proxy"), "request_received") != r3Int(r3Map(after, "proxy"), "request_received") {
+		return false
+	}
+	requests, ok := after["selector_ensure_requests"].([]any)
+	if !ok || len(requests) != 3 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, item := range requests {
+		receipt, ok := item.(map[string]any)
+		if !ok || receipt["completed"] != true || r3Int(receipt, "status") != 200 {
+			return false
+		}
+		scope, _ := receipt["scope"].(string)
+		if (scope != "makes" && scope != "models" && scope != "configurations") || seen[scope] {
+			return false
+		}
+		seen[scope] = true
+		payload := r3Map(receipt, "payload")
+		if payload["scope"] != scope {
+			return false
+		}
+		for key := range payload {
+			switch key {
+			case "scope", "year", "make", "model", "region", "idempotency_key":
+			default:
+				return false
+			}
+		}
+	}
+	for _, provider := range []string{"bankone", "banktwo"} {
+		traces, ok := r3Map(after, "provider_traces")[provider].([]any)
+		if !ok {
+			return false
+		}
+		for _, trace := range traces {
+			path, ok := trace.(string)
+			if !ok {
+				return false
+			}
+			parsed, err := url.Parse(path)
+			if err != nil || parsed.IsAbs() {
+				return false
+			}
+			switch parsed.Path {
+			case "/v1/catalog/years", "/v1/catalog/makes", "/v1/catalog/models", "/v1/catalog/configurations":
+			default:
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func TestPostgresPaidCatalogGrantBeforeWork(t *testing.T) {
@@ -388,8 +471,12 @@ func TestPostgresPaidCatalogGrantBeforeWork(t *testing.T) {
 	for _, path := range []string{"/v1/catalog/years", "/v1/catalog/years/2024/makes", "/v1/catalog/years/2024/makes/example/models", "/v1/catalog/years/2024/makes/example/models/car/configurations"} {
 		f.expect(-1, "GET", path, "", 200)
 	}
+	f.control.wait("snapshot", func(s map[string]any) bool {
+		selector := r3Map(s, "selector_ensure")
+		return r3Int(selector, "entered") == 3 && r3Int(selector, "completed") == 3 && r3Int(selector, "active") == 0
+	})
 	selectors := f.snapshot("selectors")
-	f.check("public_selectors_metadata_only", paidWorkUnchanged(before, selectors))
+	f.check("public_selectors_metadata_only", paidSelectorsMetadataOnly(before, selectors))
 	for _, suffix := range []string{"", "/" + f.article, "/" + f.article + "/source"} {
 		f.expect(0, "GET", f.path(suffix), "", 403)
 	}
