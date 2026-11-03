@@ -26,11 +26,15 @@ schema/source/reliability review and 644 ingestion tests plus 25 subtests in the
 isolated PostgreSQL/S3/NATS fixture. It is integrated at
 `c3b7a46d1233a1af8c0f0cba19a2f169d5a9a4b4`; see the
 [lifecycle verification record](../../verification/2026-11-03-canonical-article-lifecycle.md).
-R2 tasks 5–8 are now the next bounded direct-coordinator assignment, authorized
-only after this synchronized checkpoint passes committed-base preflight.
+R2 tasks 5–8 are running through direct coordinator dispatch from checkpoint
+`262d180dec9b0411fa914393f4d8900ce23e466b`, whose committed-base preflight
+passed with zero errors.
 The real CLI schema repair passed independent review and 71 autonomy tests at
 `e90047f2d50829ae0bcdc68c0dc8ed69c998cb4a`; the bounded retry reached a second schema incompatibility (regex lookaround).
-R0 controller remediation remains under independent review. Other dependent
+R0 controller candidate `6762e844d12ef0d342e28f0131d477d73e1fe4a1` is
+independently approved and integrated at `116d949029edeccd3447da9dd0c5f3de4252c42b`,
+with 101 integrated autonomy tests passing; see
+[controller verification](../../verification/2026-11-03-release-controller-preflight.md). Other dependent
 tasks remain blocked pending verified integrations and refreshed checkpoints.
 Production release certification remains outstanding.
 

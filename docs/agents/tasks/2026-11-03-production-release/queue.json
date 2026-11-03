@@ -36,11 +36,14 @@
       "depends_on": [
         "r0-evidence"
       ],
-      "state": "in_progress",
+      "state": "verified",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_mode": "coordinator_direct",
-      "implementation_base_sha": "179a0056f39ce9d6258789442c4d1f3457b4a880"
+      "implementation_base_sha": "179a0056f39ce9d6258789442c4d1f3457b4a880",
+      "verified_candidate_sha": "6762e844d12ef0d342e28f0131d477d73e1fe4a1",
+      "integrated_sha": "116d949029edeccd3447da9dd0c5f3de4252c42b",
+      "verification_ref": "docs/verification/2026-11-03-release-controller-preflight.md"
     },
     {
       "id": "r1-connectors",
@@ -63,11 +66,12 @@
       "depends_on": [
         "r1-connectors"
       ],
-      "state": "ready",
+      "state": "in_progress",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "dispatch_mode": "coordinator_direct",
-      "dependency_integrated_sha": "c3b7a46d1233a1af8c0f0cba19a2f169d5a9a4b4"
+      "dependency_integrated_sha": "c3b7a46d1233a1af8c0f0cba19a2f169d5a9a4b4",
+      "implementation_base_sha": "262d180dec9b0411fa914393f4d8900ce23e466b"
     },
     {
       "id": "r3-fallback-api",
@@ -152,6 +156,15 @@
       "verified_candidate_sha": "e90047f2d50829ae0bcdc68c0dc8ed69c998cb4a",
       "integrated_sha": "e90047f2d50829ae0bcdc68c0dc8ed69c998cb4a",
       "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md"
+    },
+    {
+      "id": "r0-provider-path-schema",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-provider-path-schema.json",
+      "state": "ready",
+      "depends_on": [
+        "r0-evidence"
+      ],
+      "release_state": "unverified"
     }
   ]
 }
