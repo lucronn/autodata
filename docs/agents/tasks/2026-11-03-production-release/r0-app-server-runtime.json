@@ -1,0 +1,78 @@
+{
+  "task_id": "production-release-r0-app-server-runtime",
+  "repository": "lucronn/autodata",
+  "goal": "Retain and replay truthful resolved local-cli execution settings through the bounded Codex 0.162.1 app-server protocol, with exact gpt-6.1-sol / medium / Fast and no fallback.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "scripts/autonomy/app_server_adapter.py",
+    "scripts/autonomy/test_app_server_adapter.py",
+    "scripts/autonomy/runner.py",
+    "scripts/autonomy/test_runner.py",
+    "scripts/autonomy/orchestrator.py",
+    "scripts/autonomy/test_orchestrator.py",
+    ".cursor/agents/autodata-architect.md",
+    "docs/agents/runner-interface.md"
+  ],
+  "bounded_contexts": [
+    "local-cli runtime contract and evidence replay"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-app-server-runtime-contract.md",
+    "docs/agents/runner-interface.md",
+    "docs/verification/2026-11-03-agent-evidence-hardening.md"
+  ],
+  "outputs": [
+    "scripts/autonomy/app_server_adapter.py",
+    "docs/agents/runner-interface.md"
+  ],
+  "acceptance_tests": [
+    "Add failing protocol-state-machine and bounded-subprocess regressions, then implement the frozen Codex 0.162.1 app-server adapter and disposable-container launch preflight.",
+    "Integrate retained bidirectional transcript artifacts, protected adapter loading, candidate binding and independent orchestrator replay without schema, registry, policy or gate relaxation.",
+    "Add explicit role and assigned-check prompt instructions; preserve exact frozen architect contract and exact assessment assignment validation.",
+    "Run focused and full autonomy suites, review the exact committed SHA independently, and promote only the reviewed implementation for disposable runtime trials.",
+    "After independent promotion, run bounded real success, unavailable-profile and interrupted-provider trials solely in the authorized disposable container; preserve all old and new evidence and report configured settings separately from unobserved upstream served tier."
+  ],
+  "forbidden_scope": [
+    "Implementation before fresh synchronized committed-base preflight",
+    "Production, bank/source-provider, live GitHub, push, merge or deployment operations",
+    "Provider calls or authentication inspection during planning, implementation tests or independent review",
+    "Provider execution outside the coordinator-authorized disposable container",
+    "Changing schema, registry, autonomy policy, the eight required gates or exact execution profile",
+    "Inferring runtime settings from argv/model prose, fabricating session_config events, claiming an upstream served billing tier, rewriting failed evidence, or silently falling back",
+    "Editing implementation paths outside allowed_paths; coordinator owns task-record and planning checkpoint updates"
+  ],
+  "compatibility": {
+    "api": "Keep local-cli provider identity and strict v2 response shape; replace its internal exec transport with a version-pinned app-server adapter.",
+    "events": "Retain actual bidirectional protocol frames and raw server output; do not synthesize CLI runtime events.",
+    "schema": "Preserve all existing schema constraints and artifact-kind enums; add transcript artifacts using the existing stdout kind."
+  },
+  "pre_implementation": {
+    "goal": "Retain and replay truthful resolved local-cli execution settings through the bounded Codex 0.162.1 app-server protocol, with exact gpt-6.1-sol / medium / Fast and no fallback.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-app-server-runtime-contract.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/runner-interface.md",
+      "docs/verification/2026-11-03-agent-evidence-hardening.md"
+    ],
+    "todo": [
+      "Synchronize Issue #186, Project #8, canonical runner documentation, this plan and this concrete todo; commit a fresh synchronized task record and pass validate_record at the exact implementation base before code changes.",
+      "Add failing protocol-state-machine and bounded-subprocess regressions, then implement the frozen Codex 0.162.1 app-server adapter and disposable-container launch preflight.",
+      "Integrate retained bidirectional transcript artifacts, protected adapter loading, candidate binding and independent orchestrator replay without schema, registry, policy or gate relaxation.",
+      "Add explicit role and assigned-check prompt instructions; preserve exact frozen architect contract and exact assessment assignment validation.",
+      "Run focused and full autonomy suites, review the exact committed SHA independently, and promote only the reviewed implementation for disposable runtime trials.",
+      "After independent promotion, run bounded real success, unavailable-profile and interrupted-provider trials solely in the authorized disposable container; preserve all old and new evidence and report configured settings separately from unobserved upstream served tier."
+    ],
+    "status": "blocked",
+    "updated_at": "2026-11-03T10:29:29.128151+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}
