@@ -113,7 +113,9 @@ class EvidenceAggregationTests(unittest.TestCase):
 
 
 class FullChainV2Tests(unittest.TestCase):
-    def run_fixture(self, directory, fail_check=False, unavailable=False):
+    def run_fixture(
+        self, directory, fail_check=False, unavailable=False, malformed=False
+    ):
         from test_runner import make_trusted_repository
 
         root = directory / "repo"
@@ -204,6 +206,8 @@ class FullChainV2Tests(unittest.TestCase):
                 "assessments": assessments,
                 "evidence_ids": [],
             }
+            if malformed and envelope.get("gate") == "security":
+                response["findings"] = None
             Path(argv[argv.index("-o") + 1]).write_text(json.dumps(response))
             return {
                 "started_at": r.utc_now(),
@@ -308,6 +312,28 @@ class FullChainV2Tests(unittest.TestCase):
             (path.parent / artifact["ref"]).write_bytes(b"tampered")
             self.assertFalse(
                 o.validate_evidence_bundle(final, trusted, path.parent)["passed"]
+            )
+
+    def test_malformed_provider_record_retains_blocked_complete_bundle(self):
+        with tempfile.TemporaryDirectory() as d:
+            code, path, trusted, _ = self.run_fixture(Path(d), malformed=True)
+            self.assertEqual(code, 20)
+            final = json.loads(path.read_text())
+            self.assertTrue((path.parent / "decision.json").is_file())
+            security = final["agent_runs"]["security"]
+            self.assertEqual(security["agent_decision"], "blocked")
+            self.assertIsNone(security["response"])
+            self.assertEqual(security["commands_run"][0]["exit_code"], 0)
+            raw = next(
+                a for a in final["artifacts"] if a["artifact_id"] == "security:response"
+            )
+            self.assertIsNone(
+                json.loads((path.parent / raw["ref"]).read_text())["findings"]
+            )
+            replay = o.validate_evidence_bundle(final, trusted, path.parent)
+            self.assertFalse(replay["passed"])
+            self.assertTrue(
+                any("findings" in error for error in replay["failures"]), replay
             )
 
     def test_real_failed_check_cannot_be_overridden_by_fake_provider_pass(self):

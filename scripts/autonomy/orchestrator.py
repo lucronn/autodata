@@ -385,24 +385,28 @@ def _measure_bundle(
                 "artifact_ids": available,
                 "task_contract": {k: trusted["task"][k] for k in CONTRACT_FIELDS},
             }
-            errors.extend(
-                r.validate_agent_response(response, trusted["schema"], expected)
+            response_errors = r.validate_agent_response(
+                response, trusted["schema"], expected
             )
-            if response.get("decision") != "pass":
-                errors.append(label + ": retained provider decision is not pass")
-            if response.get("decision") != run.get("agent_decision"):
-                errors.append(
-                    label
-                    + ": retained provider decision differs from runner agent_decision"
-                )
+            errors.extend(response_errors)
+            if run.get("response") != response:
+                errors.append("embedded response differs from retained response")
+            # Invalid provider bytes remain retained evidence, but are never traversed
+            # as a typed response. Bundle assembly must still write its blocked result.
+            if not response_errors:
+                if response["decision"] != "pass":
+                    errors.append(label + ": retained provider decision is not pass")
+                if response["decision"] != run.get("agent_decision"):
+                    errors.append(
+                        label
+                        + ": retained provider decision differs from runner agent_decision"
+                    )
+                if any(f not in run.get("findings", []) for f in response["findings"]):
+                    errors.append("provider finding dropped")
             if run.get("decision") != run.get("agent_decision"):
                 errors.append(
                     label + ": runner decision differs from runner agent_decision"
                 )
-            if run.get("response") != response:
-                errors.append("embedded response differs from retained response")
-            if any(f not in run.get("findings", []) for f in response["findings"]):
-                errors.append("provider finding dropped")
         except (OSError, ValueError, KeyError, r.RunnerError) as error:
             errors.append(label + ": " + str(error))
         errors.extend(r.validate_execution_profile(run.get("execution")))

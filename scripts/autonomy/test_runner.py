@@ -771,6 +771,53 @@ class IntegrityEdgeTests(unittest.TestCase):
             )
             self.assertTrue(any(f["blocking"] for f in findings))
 
+    def test_later_setup_failure_preserves_earlier_check_evidence(self):
+        for failure in ("unsafe-cwd", "symlink-cwd", "staging-mkdir"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                work = root / "work"
+                work.mkdir()
+                output = root / "out"
+                checks = [
+                    {
+                        "check_id": cid,
+                        "gate": "security",
+                        "argv": ["python3", "-c", 'print("retained")'],
+                        "cwd": ".",
+                        "timeout_seconds": 2,
+                        "expected_exit_code": 0,
+                        "outputs": [],
+                    }
+                    for cid in ("first", "second")
+                ]
+                if failure == "unsafe-cwd":
+                    checks[1]["cwd"] = "../outside"
+                elif failure == "symlink-cwd":
+                    (work / "linked").symlink_to(root, target_is_directory=True)
+                    checks[1]["cwd"] = "linked"
+                else:
+                    stage = output / "staging" / "second"
+                    stage.mkdir(parents=True)
+                commands, artifacts, findings = r.execute_required_checks(
+                    work, SHA, checks, output, dict(os.environ)
+                )
+                self.assertEqual([c["check_id"] for c in commands], ["first"])
+                self.assertEqual(commands[0]["exit_code"], 0)
+                self.assertEqual(
+                    {a["artifact_id"] for a in artifacts},
+                    {"first:stdout", "first:stderr", "first:command"},
+                )
+                self.assertTrue(
+                    all(not r.validate_artifact(a, output) for a in artifacts)
+                )
+                self.assertTrue(
+                    any(
+                        f["blocking"] and f["finding_id"] == "runner.second.setup"
+                        for f in findings
+                    ),
+                    findings,
+                )
+
     def test_cleanup_failure_keeps_command_and_artifact_records(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

@@ -1443,46 +1443,56 @@ def execute_required_checks(
     commands = []
     artifacts = []
     findings = []
-    output_root.mkdir(parents=True, exist_ok=True)
+    try:
+        output_root.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        findings.append(finding("runner.checks.setup", redact_text(str(error))))
+        return commands, artifacts, findings
     for check in checks:
         cid = check["check_id"]
-        stage = output_root / "staging" / cid
-        stage.mkdir(parents=True, exist_ok=False)
-        unsafe_argv = any(
-            redact_text(argument) != argument for argument in check["argv"]
-        )
-        executable = (
-            None
-            if unsafe_argv
-            else shutil.which(check["argv"][0], path=environment.get("PATH"))
-        )
-        if unsafe_argv:
-            findings.append(
-                finding(
-                    f"runner.{cid}.credential",
-                    "command containing credential pattern was withheld and not executed",
-                )
+        try:
+            stage = output_root / "staging" / cid
+            stage.mkdir(parents=True, exist_ok=False)
+            unsafe_argv = any(
+                redact_text(argument) != argument for argument in check["argv"]
             )
-        if check["argv"][0] not in ("python3", "go", "node"):
-            raise RunnerError("executable not permitted")
-        cwd = worktree / check["cwd"]
-        if (
-            not safe_ref(check["cwd"], True)
-            or not cwd.resolve().is_relative_to(worktree.resolve())
-            or cwd.is_symlink()
-        ):
-            raise RunnerError("unsafe check cwd")
-        env = {
-            **environment,
-            "AUTODATA_EVIDENCE_ROOT": str(stage.resolve()),
-            "AUTODATA_SUBJECT_SHA": subject_sha,
-            "AUTODATA_CHECK_ID": cid,
-            "PYTHONDONTWRITEBYTECODE": "1",
-        }
-        argv = [
-            str(Path(executable).resolve()) if executable else check["argv"][0],
-            *(redact_text(arg) for arg in check["argv"][1:]),
-        ]
+            executable = (
+                None
+                if unsafe_argv
+                else shutil.which(check["argv"][0], path=environment.get("PATH"))
+            )
+            if unsafe_argv:
+                findings.append(
+                    finding(
+                        f"runner.{cid}.credential",
+                        "command containing credential pattern was withheld and not executed",
+                    )
+                )
+            if check["argv"][0] not in ("python3", "go", "node"):
+                raise RunnerError("executable not permitted")
+            cwd = worktree / check["cwd"]
+            if (
+                not safe_ref(check["cwd"], True)
+                or not cwd.resolve().is_relative_to(worktree.resolve())
+                or cwd.is_symlink()
+            ):
+                raise RunnerError("unsafe check cwd")
+            env = {
+                **environment,
+                "AUTODATA_EVIDENCE_ROOT": str(stage.resolve()),
+                "AUTODATA_SUBJECT_SHA": subject_sha,
+                "AUTODATA_CHECK_ID": cid,
+                "PYTHONDONTWRITEBYTECODE": "1",
+            }
+            argv = [
+                str(Path(executable).resolve()) if executable else check["argv"][0],
+                *(redact_text(arg) for arg in check["argv"][1:]),
+            ]
+        except (OSError, RuntimeError, RunnerError) as error:
+            # A check that never launched has no command record. Preserve all
+            # observations from earlier checks and stop on this integrity failure.
+            findings.append(finding(f"runner.{cid}.setup", redact_text(str(error))))
+            break
         process = (
             bounded_process(argv, cwd, env, check["timeout_seconds"])
             if executable
