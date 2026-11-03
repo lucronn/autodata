@@ -307,6 +307,33 @@
       "state": "planning_checkpoint",
       "release_state": "unverified",
       "needs_scope_refinement": false
+    },
+    {
+      "id": "2026-11-03-workshop-browser-client-response-loss",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/2026-11-03-workshop-browser-client-response-loss.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-browser-client-response-loss.md",
+      "record_ref": "docs/agents/records/2026-11-03-workshop-browser-client-response-loss.json",
+      "depends_on": [
+        "workshop-browser-private-home",
+        "r4-workshop"
+      ],
+      "state": "planning_checkpoint",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "source_integration_base": "35aef11cb37cb6f1f6b6b609ff374689dde9d516",
+      "dispatch_mode": "coordinator_direct",
+      "dispatch_prerequisite": "Committed synchronized exact-base preflight and independent coordinator gate approval before two-file fixture implementation; coordinator alone runs pilot/full21.",
+      "allowed_paths": [
+        "scripts/dev/workshop_browser_smoke.py",
+        "scripts/dev/test_workshop_browser_smoke.py"
+      ],
+      "todo": [
+        "Synchronize Issue186/Project8, the dedicated plan, canonical UI plan, queue, task and record; commit/push the checkpoint and pass exact-SHA preflight before independent coordinator approval.",
+        "Add failing async route regressions for actual API fetch before browser abort, exact one-shot scope, same-key/body retry, unchanged real response forwarding and fail-closed invalid responses.",
+        "Replace the first real-API case provider lose-response control with browser-route response loss after successful checkout; retain retry visibility, hosted redirect, exact request reuse, durable order/session and provider-call assertions.",
+        "Run focused browser fixture units, syntax, 21/120 inventory, frozen-input and two-file scope checks; commit/push the coherent fixture fix and obtain independent exact-commit review.",
+        "Coordinator integrates the reviewed fix, reruns the Chromium pilot then the unchanged full21 actual API inventory at a clean immutable SHA using the frozen supervisor/image, and independently checks raw provenance and cleanup."
+      ]
     }
   ],
   "execution": {
