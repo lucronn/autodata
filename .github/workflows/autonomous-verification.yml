@@ -109,6 +109,18 @@ jobs:
         working-directory: workers/ingestion-python
         run: |
           python -m pip install --disable-pip-version-check --no-input pytest
+          python - <<'PY'
+          import subprocess
+          import sys
+          import tomllib
+
+          with open("pyproject.toml", "rb") as project_file:
+              dependencies = tomllib.load(project_file)["project"]["dependencies"]
+          subprocess.run(
+              [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--no-input", *dependencies],
+              check=True,
+          )
+          PY
           python -m pytest tests -q
 
       - name: Run enrichment worker tests
