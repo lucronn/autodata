@@ -242,3 +242,12 @@ deadline and fixture-parent liveness checks. Its EXIT trap terminates the owned
 process group, waits at most two seconds before KILL, then reaps the parent.
 Exact120+21 execution remains pending the independently reviewed frozen
 candidate and coordinator-owned runtime capacity.
+
+The first container DTO author run at d849c29 stopped before any browser case:
+Git rejected the mounted checkout's different owner, and root-owned0600 fixture
+artifacts prevented the host inventory from reading them. Browser provenance now
+uses an explicit safe.directory for the already verified owned checkout and
+requires actual Git HEAD; an environment SHA cannot replace that observation.
+The external reviewed runner must hand its owned artifacts to the invoking host
+UID/GID in its finalizer before host validation/inventory. Retain the failed
+receipt as harness diagnosis; it does not count toward120 DTO or21 API passes.

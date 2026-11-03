@@ -64,10 +64,7 @@ def validate_results(rows, expected):
 
 
 def verify_provenance(args):
-    try:
-        head=subprocess.run(['git','rev-parse','HEAD'],cwd=ROOT,text=True,capture_output=True,check=True,timeout=5).stdout.strip()
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        head=os.environ.get('CANDIDATE_SHA')
+    head=subprocess.run(['git','--no-optional-locks','-c',f'safe.directory={ROOT}','rev-parse','HEAD'],cwd=ROOT,text=True,capture_output=True,check=True,timeout=5).stdout.strip()
     if head!=args.candidate_sha: raise ValueError('candidate SHA does not match the actual checkout/image input')
     host=urlsplit(args.base_url)
     certificate=ssl.get_server_certificate((host.hostname,host.port),timeout=5)
