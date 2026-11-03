@@ -1102,6 +1102,8 @@ class PaidPGSnapshotTests(unittest.TestCase):
 
 class PaidMigrationReceiptTests(unittest.TestCase):
     manifest = ['001_extensions.sql', '002_platform_spine.sql', '003_canonical_vehicle.sql', '004_normalized_source_bundle.sql', '005_preserve_duplicate_article_ids.sql', '006_backfill_article_source_locators.sql', '007_link_evidence_to_revision.sql', '008_publication_outbox_delivery.sql', '009_feedback_evidence_link.sql', '010_evidence_review_metadata.sql', '011_feedback_review_metadata.sql', '012_payment_fulfillment_reconciliation.sql', '013_dataset_request_ownership.sql', '014_normalized_article_content.sql', '015_vehicle_identity_resolution.sql', '016_catalog_article_configuration.sql', '017_knowledge_catalog_evidence_index.sql', '018_source_review_items.sql', '019_article_content_provenance.sql', '020_autoapi_article_fetch_jobs.sql', '021_autoapi_article_fetch_job_retries.sql', '022_job_plan_derived_articles.sql', '023_catalog_article_images.sql', '024_catalog_article_operations.sql', '025_chat_quote_procedure.sql', '026_chat_quote_operation_categories.sql', '027_chat_runtime_durable_state.sql', '028_vehicle_provider_mappings.sql', '029_vehicle_catalog_sync.sql', '030_vehicle_catalog_years.sql', '031_catalog_article_classification.sql', '032_catalog_article_source_original.sql', '033_catalog_scope_coverage.sql', '034_catalog_article_progress.sql', '035_ordered_article_document.sql', '036_source_fetch_jobs.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql']
+    # Retained v2 producer digest of scripts/dev/migrate_sql.sh; no authority claim.
+    runner_sha256 = '4970eab6f20be35c354547ed5acf73c991dae1a83433094715f051463790a8f3'
     driver = b'-- synthetic already-emitted driver; never executed\n'
     schema = b'-- synthetic opaque schema; DDL semantics deliberately unavailable\n'
 
@@ -1118,7 +1120,8 @@ class PaidMigrationReceiptTests(unittest.TestCase):
             measured=json.loads(raw[prefix+'measured-runtime.json'])
             fresh={table:[] for table in pg.tables};fresh['schema_migrations']=copy.deepcopy(ledger)
             populated=measured['final_snapshot']['immutable_rows']
-            migrations=dict(manifest=self.manifest,driver_sha256=hashlib.sha256(self.driver).hexdigest(),driver_exit_code=0)
+            migrations=dict(manifest=self.manifest,driver_sha256=hashlib.sha256(self.driver).hexdigest(),
+                driver_exit_code=0,runner_sha256=self.runner_sha256)
             raw[prefix+'migration-driver.sql']=self.driver
             for phase,stem,rows in [('fresh','fresh',fresh),('empty_replay','replay-empty',fresh),
                                     ('populated_replay','replay-populated',populated)]:
@@ -1164,6 +1167,29 @@ class PaidMigrationReceiptTests(unittest.TestCase):
         self.assertIn('paid_migration_schema_semantics',result['missing_validation_families'])
         self.assertIn('paid_migration_driver_provenance',result['missing_validation_families'])
         self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+
+    def test_runner_digest_requires_producer_shape_and_strict_hash_scalar(self):
+        baseline=self.files();prefix='paid-access/bankone/'+assembler.PAID_GO_ROOTS[0]+'/'
+        migrations=json.loads(baseline[prefix+'measured-runtime.json'])['migrations']
+        self.assertEqual(set(migrations),{'manifest','driver_sha256','driver_exit_code',
+            'runner_sha256','fresh','empty_replay','populated_replay'})
+        self.assertEqual(migrations['runner_sha256'],self.runner_sha256)
+        result=self.inspect(baseline)
+        self.assertEqual(result['status'],'unavailable')
+        self.assertIn('paid_migration_driver_provenance',result['missing_validation_families'])
+        self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+        for value in (None,True,0,[],{},'',self.runner_sha256.upper(),self.runner_sha256[:-1],
+                      self.runner_sha256+'0',' '+self.runner_sha256):
+            raw=copy.deepcopy(baseline);measured=json.loads(raw[prefix+'measured-runtime.json'])
+            measured['migrations']['runner_sha256']=value
+            raw[prefix+'measured-runtime.json']=json.dumps(measured).encode()
+            PaidPGSnapshotTests().reseal(raw)
+            with self.subTest(value=value),self.assertRaisesRegex(assembler.ContractError,'^invalid_digest$'):
+                self.inspect(raw)
+        raw=copy.deepcopy(baseline);measured=json.loads(raw[prefix+'measured-runtime.json'])
+        del measured['migrations']['runner_sha256']
+        raw[prefix+'measured-runtime.json']=json.dumps(measured).encode();PaidPGSnapshotTests().reseal(raw)
+        with self.assertRaisesRegex(assembler.ContractError,'^invalid_object_keys$'):self.inspect(raw)
 
     def test_migration_phase_and_driver_contradictions_reject(self):
         baseline=self.files();prefix='paid-access/bankone/'+assembler.PAID_GO_ROOTS[0]+'/'
