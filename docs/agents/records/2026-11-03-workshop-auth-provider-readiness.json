@@ -1,0 +1,23 @@
+{
+  "goal": "Ensure Workshop sign-in readiness always includes an initialized Google provider after overlapping logout SDK preparation and session bootstrap, and recover consistently from synchronous popup invocation errors and asynchronous popup rejections.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-auth-provider-readiness.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+    "docs/superpowers/plans/2026-11-03-workshop-auth-provider-readiness.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "todo": [
+    "Synchronize the goal, exact two-file scope, evidence limits, dedicated plan, canonical customer UI plan, queue, task and record in Issue186/Project8; commit and push the planning checkpoint and pass exact-SHA preflight before implementation.",
+    "Add a failing deterministic Node regression for cookie-only logout preparation overlapping epoch-changing bootstrap, asserting every ready state has a constructed provider and the next explicit sign-in receives that provider and completes cookie exchange.",
+    "Add failing regressions for synchronous popup invocation throw and asynchronous popup rejection, requiring the same safe message, SDK sign-out cleanup, restored readiness, and no escaped rejection; retain immediate popup invocation within the user gesture.",
+    "Construct provider before the persistence await and move popup invocation inside the existing async try without an intervening await; retain epoch guards, memory-only persistence, fresh token checks, session exchange and cookie-session authority.",
+    "Run the focused red/green Node cases, full Workshop Node tests, applicable Go tests and diff/scope/provenance checks; commit and promptly push the coherent fix, then obtain independent exact-commit review.",
+    "Coordinator integrates the reviewed fix and collects fresh immutable-candidate API21/DTO120 evidence using the frozen infrastructure; selected-case repeats remain diagnostic only and the original failed receipt remains retained."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T22:22:29.570981+00:00",
+  "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6616892250",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4"
+}
