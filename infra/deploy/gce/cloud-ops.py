@@ -4,7 +4,9 @@
 No subprocess, network, credential discovery or live adapter exists here. The CLI
 always fails closed. evaluate_backup consumes an explicitly supplied fake CLI
 transcript; its passed receipt is a simulated definition result, never evidence
-of an actual backup. Provider pins, bootstrap, IAM and execution remain gated.
+of an actual backup. evaluate_published_release only compares supplied fake
+metadata and bytes; consistency cannot authenticate provenance or authorize
+deployment. Provider pins, bootstrap, IAM and execution remain gated.
 """
 import copy
 from datetime import datetime, timezone
@@ -91,6 +93,76 @@ def cli(argv):
         return 2, _external_receipt('backup', None, 'failed', 'invalid_input')
     # Intentionally no apply/execute flag, ambient config, gcloud or SSH fallback.
     return 3, _external_receipt(operation, identifier, 'failed', 'missing_dependency')
+
+
+def evaluate_published_release(manifest, config, binding, policy, claims, fake_cli, *, rollback_manifest=None):
+    """Compare a supplied read-only fake transcript with independently bound inputs.
+
+    There is no executable argv or live adapter. Metadata/bytes are untrusted
+    simulation inputs, not GitHub/registry authentication or signed provenance.
+    Budgets describe a future adapter; this callback has no cancellation claim.
+    Even a consistent transcript never authorizes publishing or deployment.
+    """
+    rt.validate_manifest(manifest, config, rollback_manifest)
+    validate_identity('publish', policy, claims, config['environment'])
+    rt.exact_object(binding, ('published_run_id', 'artifact_id', 'artifact_digest', 'manifest_sha256'))
+    for field in ('published_run_id', 'artifact_id'):
+        rt.match(binding[field], r'[1-9][0-9]{0,19}')
+    rt.match(binding['artifact_digest'], r'sha256:[0-9a-f]{64}')
+    require(binding['manifest_sha256'] == rt.sha256(manifest))
+    result = _external_receipt('publish', manifest['source_sha'], 'failed', 'operation_failed')
+    result.update(operation='cloud-ops.py publish-transcript', simulation=True,
+                  deployment_authorized=False, consistent_binding=None)
+    # Fixed read-only observation names; no cloud executable or shell is chosen.
+    def observe(name):
+        limits = {'run': (30, MAX_RECEIPT), 'artifact': (30, MAX_RECEIPT),
+                  'manifest': (300, rt.MAX_JSON_BYTES), 'images': (300, MAX_RECEIPT)}
+        seconds, maximum = limits[name]
+        value = fake_cli({'name': name, 'argv': [], 'timeout_seconds': seconds,
+                          'max_output_bytes': maximum})
+        if name == 'manifest':
+            require(type(value) is bytes and 0 < len(value) <= maximum)
+        else:
+            require(len(rt.canonical_bytes(value)) <= maximum)
+        return value
+    try:
+        run = observe('run')
+        rt.exact_object(run, ('id', 'repository', 'source_sha', 'workflow_ref', 'event', 'status', 'conclusion'))
+        require(run['id'] == binding['published_run_id'])
+        require(run['repository'] == policy['repository'])
+        require(run['source_sha'] == manifest['source_sha'])
+        require(run['workflow_ref'] == policy['workflow_ref'])
+        require(run['event'] == 'workflow_dispatch' and run['status'] == 'completed' and run['conclusion'] == 'success')
+        artifact = observe('artifact')
+        rt.exact_object(artifact, ('id', 'run_id', 'name', 'expired', 'digest', 'bytes'))
+        require(artifact['id'] == binding['artifact_id'] and artifact['run_id'] == binding['published_run_id'])
+        require(artifact['name'] == 'workshop-release-' + manifest['source_sha'])
+        require(artifact['expired'] is False and artifact['digest'] == binding['artifact_digest'])
+        require(type(artifact['bytes']) is int and 0 < artifact['bytes'] <= rt.MAX_JSON_BYTES)
+        payload = observe('manifest')
+        require(len(payload) == artifact['bytes'])
+        require('sha256:' + hashlib.sha256(payload).hexdigest() == binding['artifact_digest'])
+        decoded = rt.strict_json(payload)
+        # Bind both raw artifact bytes and the type-strict canonical manifest.
+        # Python equality alone would accept JSON true as integer 1.
+        require(rt.sha256(decoded) == binding['manifest_sha256'])
+        require(rt.canonical_bytes(decoded) == rt.canonical_bytes(manifest))
+        observations = observe('images')
+        rt.exact_object(observations, manifest['images'])
+        for role, image in manifest['images'].items():
+            expected = dict(image, platform=manifest['platform'])
+            rt.exact_object(observations[role], expected)
+            require(rt.canonical_bytes(observations[role]) == rt.canonical_bytes(expected))
+        result.update(status='transcript_consistent', failure_code=None,
+                      checks={'manifest': True, 'cached_images': True},
+                      consistent_binding=copy.deepcopy(binding))
+    except Exception as error:
+        timed_out = isinstance(error, TimeoutError)
+        result.update(status='timed_out' if timed_out else 'failed',
+                      failure_code='operation_timed_out' if timed_out else 'operation_failed')
+    result['finished_at'] = rt._timestamp()
+    require(len(rt.canonical_bytes(result)) <= MAX_RECEIPT)
+    return result
 
 
 def validate_metrics(value, source_sha):
