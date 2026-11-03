@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -183,5 +184,66 @@ func TestCatalogLifecyclePendingAndLegacyImagesAreArrays(t *testing.T) {
 		if !ok || len(images) != 0 {
 			t.Fatalf("pending=%v images must be []: %s", pending, response.Body)
 		}
+	}
+}
+
+type descriptorOnlyCatalogStore struct {
+	CatalogStore
+	detailReads int
+}
+
+func (s *descriptorOnlyCatalogStore) ArticleView(context.Context, Principal, string, string) (CatalogArticleView, error) {
+	s.detailReads++
+	return CatalogArticleView{}, ErrCatalogNotFound
+}
+func (s *descriptorOnlyCatalogStore) Article(context.Context, Principal, string, string) (CatalogArticle, error) {
+	s.detailReads++
+	return CatalogArticle{}, ErrCatalogNotFound
+}
+func (s *descriptorOnlyCatalogStore) ArticleSource(context.Context, Principal, string, string) (CatalogSourceContent, error) {
+	s.detailReads++
+	return CatalogSourceContent{}, ErrCatalogNotFound
+}
+func (s *descriptorOnlyCatalogStore) ArticleSourceRevision(context.Context, Principal, string, string, string) (CatalogSourceContent, error) {
+	s.detailReads++
+	return CatalogSourceContent{}, ErrCatalogNotFound
+}
+func (s *descriptorOnlyCatalogStore) CatalogArticleProgress(context.Context, Principal, string) (*CatalogArticleProgress, error) {
+	return &CatalogArticleProgress{Status: "complete", Complete: true}, nil
+}
+func TestCatalogDescriptorListImagesAreArraysWithoutDetailWork(t *testing.T) {
+	memory := newMemoryCatalogStore()
+	memory.PutArticle(CatalogArticle{ID: "canonical", VehicleID: "v", CanonicalArticleID: stringPointer("canonical"), Title: "Managed descriptor"})
+	memory.PutArticle(CatalogArticle{ID: "legacy", VehicleID: "v", Title: "Legacy descriptor"})
+	store := &descriptorOnlyCatalogStore{CatalogStore: memory}
+	client := &fakeIngestionClient{status: 503}
+	server := catalogServer(store)
+	server.ingestionClient = client
+	response := catalogRequest(server, "/v1/catalog/vehicles/v/articles")
+	if response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var envelope struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if len(envelope.Items) != 2 {
+		t.Fatal(response.Body.String())
+	}
+	for _, item := range envelope.Items {
+		images, ok := item["images"].([]any)
+		if !ok || len(images) != 0 {
+			t.Fatalf("descriptor %v images must be []: %s", item["id"], response.Body)
+		}
+		for _, field := range []string{"body", "document", "steps"} {
+			if _, ok := item[field]; ok {
+				t.Fatalf("descriptor loaded %s: %s", field, response.Body)
+			}
+		}
+	}
+	if store.detailReads != 0 || client.path != "" {
+		t.Fatalf("list performed source/model detail work: reads=%d ingestion=%s", store.detailReads, client.path)
 	}
 }

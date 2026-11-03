@@ -266,6 +266,9 @@ const catalogImageMaxBytes = 12 << 20
 // rewriteCatalogImageURLs exposes only references to already-localized
 // objects. A source URL without a stored object key is not displayable.
 func rewriteCatalogImageURLs(article *CatalogArticle, key []byte) {
+	if article.Images == nil {
+		article.Images = []CatalogImage{}
+	}
 	for index := range article.Images {
 		image := &article.Images[index]
 		if image.Status == "unavailable" || !localCatalogImageKeyPattern.MatchString(image.StorageKey) || len(key) != 32 {
