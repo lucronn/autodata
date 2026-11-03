@@ -212,3 +212,15 @@ test('cookie recheck after invalidation reuses the initialized memory SDK and en
   const s=createSession({loadSDK:async()=>sdk,request:async path=>{if(path==='/auth/config')return{version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}};const e=new Error();e.status=401;throw e;}});
   await s.bootstrap();assert.equal(s.state.ready,true);s.clear();await s.bootstrap();assert.equal(s.state.ready,true);assert.equal(initialized,1);
 });
+
+test('confirmed cookie-only logout prepares memory-only SDK for the next explicit sign-in', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  let loaded = 0;
+  const sdk = { initializeApp: () => ({}), initializeAuth: () => ({}), setPersistence: async () => {}, inMemoryPersistence: {}, browserPopupRedirectResolver: {}, GoogleAuthProvider: class {}, signOut: async () => {} };
+  const account = createSession({ request: async path => path === '/auth/config' ? {version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}} : path === '/auth/session' ? {authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'csrf'} : null, loadSDK: async () => { loaded++; return sdk; } });
+  await account.bootstrap();
+  assert.equal(loaded, 0);
+  assert.equal(await account.logout(), true);
+  assert.equal(account.state.ready, true);
+  assert.equal(loaded, 1);
+});

@@ -223,8 +223,9 @@ export function createSession({
           timeout: 10000,
         });
         state.message = "Signed out.";
-        state.ready = Boolean(sdk && state.available);
+        state.ready = false;
         changed();
+        if (state.available) await prepare(epoch);
         return true;
       } catch {
         state.message = "Sign-out could not be confirmed. Retry sign-out.";
