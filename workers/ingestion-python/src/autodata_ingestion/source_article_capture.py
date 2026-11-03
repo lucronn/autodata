@@ -168,11 +168,19 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
         """
 
         def put_object(self, *args):
+            timeout = deadline - time.monotonic()
+            if timeout <= 0:
+                raise SourceConnectorError("CAPTURE_DEADLINE", retryable=True)
             pool = ThreadPoolExecutor(max_workers=1)
             try:
-                pool.submit(object_store.put_object, *args).result(timeout=remaining())
+                pool.submit(object_store.put_object, *args).result(timeout=timeout)
             except TimeoutError:
                 raise SourceConnectorError("CAPTURE_DEADLINE", retryable=True) from None
+            except Exception:
+                # SDK and transport exceptions have no shared OSError base.
+                raise SourceConnectorError(
+                    "ASSET_STORAGE_UNAVAILABLE", retryable=True
+                ) from None
             finally:
                 pool.shutdown(wait=False, cancel_futures=True)
 
@@ -264,8 +272,6 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
                 None,
                 "SOURCE_NOT_FOUND" if error.status == 404 else error.code,
             )
-        except OSError:
-            return ref, role, None, "ASSET_STORAGE_UNAVAILABLE"
 
     pool = ThreadPoolExecutor(max_workers=4)
     futures = [pool.submit(fetch, pair) for pair in optional]
@@ -333,12 +339,8 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
                 node["asset_resource_ref"] = ref
             except (ValueError, TypeError):
                 node["reason"] = "INVALID_EMBEDDED_IMAGE"
-            except (OSError, SourceConnectorError) as error:
-                node["reason"] = (
-                    error.code
-                    if isinstance(error, SourceConnectorError)
-                    else "ASSET_STORAGE_UNAVAILABLE"
-                )
+            except SourceConnectorError as error:
+                node["reason"] = error.code
     positioned = set()
     image_records = {}
     for node in _walk(blocks):

@@ -532,13 +532,35 @@ def test_unbound_image_cannot_keep_upstream_object_locators(capture_fixture):
     assert "untrusted" not in str(captured.source_document)
 
 
-def test_optional_asset_upload_failure_preserves_readable_source(capture_fixture):
+@pytest.fixture(params=["os", "s3", "connection"])
+def storage_failure(request):
+    if request.param == "s3":
+        from minio.error import S3Error
+
+        return S3Error(
+            response=None,
+            code="ServiceUnavailable",
+            message="private object endpoint unreachable",
+            resource=None,
+            request_id=None,
+            host_id=None,
+        )
+    if request.param == "connection":
+        from urllib3.exceptions import NewConnectionError
+
+        return NewConnectionError(None, "private object endpoint unreachable")
+    return OSError("private object endpoint unreachable")
+
+
+def test_optional_asset_upload_failure_preserves_readable_source(
+    capture_fixture, storage_failure
+):
     from autodata_ingestion.source_article_capture import capture_source_article
 
     class FailingAssets(Objects):
         def put_object(self, key, payload, media_type):
             if media_type.startswith("image/"):
-                raise OSError("private object endpoint unreachable")
+                raise storage_failure
             super().put_object(key, payload, media_type)
 
     capture_fixture.body(
@@ -614,17 +636,58 @@ def test_embedded_asset_upload_deadline_keeps_partial_source(capture_fixture):
     assert captured.source_images[0]["unavailable_reason"] == "CAPTURE_DEADLINE"
 
 
-def test_required_body_upload_failure_is_fatal(capture_fixture):
+def test_required_body_upload_failure_is_fatal(capture_fixture, storage_failure):
     from autodata_ingestion.source_article_capture import capture_source_article
 
     class BrokenObjects(Objects):
         def put_object(self, *args):
-            raise OSError("fixture required body upload failure")
+            raise storage_failure
 
     capture_fixture.body("bankone", b"<p>Check pump.</p>")
-    with pytest.raises(OSError, match="required body"):
+    with pytest.raises(
+        SourceConnectorError, match="asset_storage_unavailable"
+    ) as error:
         capture_source_article(
             capture_fixture.context("bankone"),
             registry=capture_fixture.registry,
             object_store=BrokenObjects(),
         )
+    assert "private object endpoint" not in str(error.value)
+    assert error.value.retryable is True
+
+
+def test_embedded_asset_storage_failure_preserves_readable_source(
+    capture_fixture, storage_failure
+):
+    import base64
+    import json
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    class BrokenAssets(Objects):
+        def put_object(self, key, payload, media_type):
+            if media_type.startswith("image/"):
+                raise storage_failure
+            super().put_object(key, payload, media_type)
+
+    payload = {
+        "blocks": [
+            {"kind": "paragraph", "text": "Check pump."},
+            {
+                "kind": "image",
+                "url": "data:image/png;base64," + base64.b64encode(b"figure").decode(),
+            },
+        ]
+    }
+    capture_fixture.body("banktwo", json.dumps(payload).encode(), "application/json")
+    captured = capture_source_article(
+        capture_fixture.context("banktwo"),
+        registry=capture_fixture.registry,
+        object_store=BrokenAssets(),
+    )
+    assert captured.source_body == "Check pump."
+    assert captured.projection_status == "partial"
+    assert captured.source_images[0]["status"] == "unavailable"
+    assert (
+        captured.source_images[0]["unavailable_reason"] == "ASSET_STORAGE_UNAVAILABLE"
+    )
+    assert "private object endpoint" not in str(captured)
