@@ -560,3 +560,38 @@ def test_connection_completing_after_total_deadline_cannot_schedule(fresh_databa
 
 
 from lifecycle_support import runtime
+
+
+def test_timeout_revokes_commit_authority_after_precommit_check(fresh_database):
+    import threading,time
+    from lifecycle_support import seed_vehicle
+    from autodata_ingestion.catalog_service import _ensure_lifecycle_catalog,LifecycleSchedulingUnavailable
+    repo=fresh_database();vehicle=seed_vehicle(repo)
+    arrived=threading.Event();release=threading.Event();finished=threading.Event()
+    class DelayedCommit:
+        def __init__(self,conn):self.conn=conn
+        def __getattr__(self,key):return getattr(self.conn,key)
+        def __enter__(self):self.conn.__enter__();return self
+        def __exit__(self,*args):
+            # Bounded barrier simulates descheduling/network pause immediately before
+            # COMMIT, after the scheduling wrapper's last deadline check.
+            arrived.set();release.wait(4)
+            try:return self.conn.__exit__(*args)
+            finally:finished.set()
+    class PausedRepository:
+        calls=0
+        def connect(self):
+            self.calls+=1
+            conn=repo.connect()
+            return DelayedCommit(conn) if self.calls==2 else conn
+    try:
+        with pytest.raises(LifecycleSchedulingUnavailable):
+            _ensure_lifecycle_catalog({'scope':'articles','vehicle_id':str(vehicle)},repo=PausedRepository())
+        assert arrived.is_set()
+        # Allow cancellation to finish while the connection is idle in transaction.
+        time.sleep(.2)
+    finally:release.set()
+    assert finished.wait(3)
+    with repo.connect() as conn:
+        assert conn.execute('SELECT count(*) AS n FROM source_fetch_jobs').fetchone()['n']==0
+        assert conn.execute('SELECT count(*) AS n FROM catalog_article_provider_scopes').fetchone()['n']==0

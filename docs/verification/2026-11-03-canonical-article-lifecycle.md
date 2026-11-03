@@ -162,3 +162,13 @@ The builder's repaired runtime/catalog/HTTP/publication/worker focused suite
 passed **89 tests** in 134.76 seconds (`review-repairs-focused.xml` and log).
 The final exact-candidate full run and smoke manifest remain the authoritative
 acceptance records; independent review must verify the repaired commit.
+
+The `8be01c9` checkpoint passed 761 tests plus 25 subtests in 234.29
+seconds with a clean immutable checkout, but independent review demonstrated a
+late-COMMIT race after the last client deadline check. The retained barrier
+regression failed with two jobs committed after HTTP 503 (`late-commit-red.xml`).
+Scheduling now sets PostgreSQL 17 transaction and idle-transaction deadlines
+from the remaining total budget, so server rollback survives a client pause
+between the pre-commit check and COMMIT. Query cancellation remains a prompt
+cleanup aid; the server deadline revokes commit authority. Final acceptance
+records must name the subsequent corrected candidate.

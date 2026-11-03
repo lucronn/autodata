@@ -1403,8 +1403,14 @@ class _SchedulingBudget:
 
     def apply(self,cur):
         milliseconds=max(1,int((self.remaining()-.02)*1000))
-        cur.execute("SELECT set_config('statement_timeout',%s,true),set_config('lock_timeout',%s,true)",
-                    (str(milliseconds),str(milliseconds)))
+        # PostgreSQL 17 enforces this deadline even while the client is idle
+        # immediately before COMMIT. Cancellation alone is not sticky there:
+        # a paused client could otherwise commit after its HTTP caller timed out.
+        cur.execute("""SELECT set_config('statement_timeout',%s,true),
+                    set_config('lock_timeout',%s,true),
+                    set_config('transaction_timeout',%s,true),
+                    set_config('idle_in_transaction_session_timeout',%s,true)""",
+                    (str(milliseconds),)*4)
         self.remaining()
 
 
