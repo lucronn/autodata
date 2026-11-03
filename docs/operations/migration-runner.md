@@ -12,7 +12,7 @@ Default execution uses a private temporary driver file removed on exit. Use a
 supported PostgreSQL client with psql conditionals. No Python is required by the
 shell driver or the production PostgreSQL image.
 
-The default manifest requires exactly the reviewed 001–038 filenames. Missing,
+The default manifest requires exactly the reviewed 001–039 filenames. Missing,
 renamed, duplicate-numbered, additional, unsafe or symlinked files fail before
 SQL output or DB access. The repository's empty `.gitkeep` is allowed.
 `--migrations-dir /absolute/path` accepts only a contiguous canonical 001..N
@@ -38,7 +38,7 @@ Committed version markers are trusted and skipped, preserving `applied_at`.
 This is marker-only provenance: it supplies no historical checksum attestation
 and cannot detect edits to already-applied SQL. Historical 001–038 remain
 immutable. Runner transactions wrap 001–035, verify the expected marker, and
-commit.033's missing marker is inserted in that transaction.036–038 retain their
+commit. 033's missing marker is inserted in that transaction. 036–039 retain their
 original complete BEGIN/body/marker/COMMIT blocks without nested transactions.
 Output records `AUTODATA_APPLIED <filename>` or `AUTODATA_SKIPPED <filename>`.
 
@@ -106,3 +106,19 @@ This repair does not certify it. Kubernetes release is blocked until image
 provenance demonstrates delegation to this shared driver against the same
 migration artifact and the image passes the restart matrix. No Kubernetes image
 change, publication or deployment is authorized by this repair.
+
+
+Migration 039 adds customer_accounts and auth_sessions. The same shared driver,
+advisory lock and explicit self-contained transaction checks apply. Both tables
+are known application tables: an absent/empty ledger cannot adopt them. The
+project+UID account key and personal organization are durable; sessions persist
+only 32-byte SHA256 token hashes, original Firebase authentication time, creation,
+absolute expiry (at most 12 hours), and revocation. An038 database remains038 when
+Firebase startup refuses it; startup never migrates. Apply the driver first.
+
+Required private fixture coverage includes fresh039/twice, populated038→039 with
+unchanged prior ledger timestamps/data, populated account/session restart,
+039 rollback/retry and concurrent full runners. Historical 001–038 SQL remains
+unchanged. The Kubernetes migration image is an external prerequisite: build and
+verify an image carrying this exact 039 manifest before deployment; the manifest
+alone does not certify that external image.

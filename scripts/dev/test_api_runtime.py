@@ -24,6 +24,16 @@ class APIRuntimeContractTests(unittest.TestCase):
         self.assertIn("scripts/dev/api_runtime_smoke.py", compose)
         self.assertIn("api:\n        condition: service_healthy", compose)
 
+    def test_local_auth_mode_is_explicit_and_unavailable(self):
+        for path in ('infra/compose/compose.yaml', 'docker-compose.base44.yml'):
+            compose = self.read(path)
+            self.assertIn('AUTODATA_ENV: "development"', compose)
+            self.assertIn('AUTODATA_AUTH_MODE: "local"', compose)
+            self.assertIn('AUTODATA_PUBLIC_ORIGIN: "https://localhost:', compose)
+        ci = self.read('infra/compose/compose.ci.yaml')
+        self.assertIn('AUTODATA_ENV: "test"', ci)
+        self.assertIn('AUTODATA_AUTH_MODE: "local"', ci)
+
     def test_catalog_image_storage_key_is_internal_only(self):
         store = self.read("apps/api-go/catalog_store.go")
         self.assertRegex(store, r'(?m)^[ \t]*StorageKey[ \t]+string[ \t]+`json:"-"`[ \t]*$')

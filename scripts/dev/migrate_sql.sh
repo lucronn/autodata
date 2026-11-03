@@ -58,6 +58,7 @@ canonical=$(cat <<'MANIFEST'
 036_source_fetch_jobs.sql
 037_article_source_lifecycle.sql
 038_article_transform_publication.sql
+039_production_identity_sessions.sql
 MANIFEST
 )
 # Validate everything before producing even the first byte of SQL.
@@ -75,7 +76,7 @@ for path in "$migrations_dir"/* "$migrations_dir"/.[!.]* "$migrations_dir"/..?*;
     # prevents inline psql commands, including commands after SQL on one line.
     if grep -F '\' "$path" >/dev/null; then fail "psql metacommand/backslash in $name"; fi
     case "$name" in
-        036_*|037_*|038_*)
+        036_*|037_*|038_*|039_*)
             [ "$(sed '/^[[:space:]]*$/d' "$path" | head -n 1)" = 'BEGIN;' ] || fail "missing audited BEGIN in $name"
             [ "$(sed '/^[[:space:]]*$/d' "$path" | tail -n 1)" = 'COMMIT;' ] || fail "missing audited COMMIT in $name"
             [ "$(grep -Ec '^(BEGIN|COMMIT);$' "$path")" -eq 2 ] || fail "unsupported transaction delimiters in $name"
@@ -95,6 +96,8 @@ BEGIN
     IF EXISTS (
         SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname=current_schema() AND c.relname IN (
+            'customer_accounts',
+            'auth_sessions',
             'dataset_products',
             'source_snapshots',
             'payment_events',
@@ -231,15 +234,15 @@ for path in "$migrations_dir"/*.sql; do
         printf '%s\n' '\else' '\set autodata_skip false' '\endif'
     fi
     printf '%s\n' '\if :autodata_skip' "\echo AUTODATA_SKIPPED $name" '\else'
-    case "$name" in 036_*|037_*|038_*) ;; *) printf '%s\n' 'BEGIN;' ;; esac
+    case "$name" in 036_*|037_*|038_*|039_*) ;; *) printf '%s\n' 'BEGIN;' ;; esac
     cat "$path"
     printf '\n'
     case "$name" in
-        036_*|037_*|038_*) ;;
+        036_*|037_*|038_*|039_*) ;;
         *) printf '%s\n' "INSERT INTO schema_migrations(version) VALUES ('$version') ON CONFLICT(version) DO NOTHING;" ;;
     esac
     printf '%s\n' "DO \$driver_check\$ BEGIN IF NOT EXISTS (SELECT FROM schema_migrations WHERE version='$version') THEN RAISE EXCEPTION 'expected migration marker missing: $version'; END IF; END \$driver_check\$;"
-    case "$name" in 036_*|037_*|038_*) ;; *) printf '%s\n' 'COMMIT;' ;; esac
+    case "$name" in 036_*|037_*|038_*|039_*) ;; *) printf '%s\n' 'COMMIT;' ;; esac
     printf '%s\n' "\echo AUTODATA_APPLIED $name" '\endif'
 done
 printf '%s\n' 'SELECT pg_advisory_unlock(186,3738);'

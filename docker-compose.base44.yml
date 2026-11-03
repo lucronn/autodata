@@ -156,6 +156,9 @@ services:
     environment:
       <<: [*database-env, *object-storage-env]
       AUTODATA_API_ADDR: ":8080"
+      AUTODATA_ENV: "development"
+      AUTODATA_AUTH_MODE: "local"
+      AUTODATA_PUBLIC_ORIGIN: "https://localhost:3000"
       AUTODATA_PROJECTION_STORE: postgres
       AUTODATA_NATS_ADDRESS: nats:4222
       AUTODATA_INGESTION_URL: http://ingestion-http:8081

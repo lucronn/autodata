@@ -5,6 +5,9 @@ metadata:
   labels:
     app.kubernetes.io/part-of: autodata
 data:
+  AUTODATA_ENV: production
+  AUTODATA_AUTH_MODE: firebase
+  AUTODATA_PUBLIC_ORIGIN: https://cars.tk
   AUTODATA_DB_ADDRESS: postgres.example.internal:5432
   AUTODATA_POSTGRES_DB: autodata
   AUTODATA_POSTGRES_USER: autodata
@@ -172,6 +175,26 @@ spec:
             - secretRef:
                 name: autodata-runtime-secrets
           env:
+            - name: AUTODATA_FIREBASE_PROJECT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: autodata-firebase-config
+                  key: AUTODATA_FIREBASE_PROJECT_ID
+            - name: AUTODATA_FIREBASE_WEB_API_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: autodata-firebase-config
+                  key: AUTODATA_FIREBASE_WEB_API_KEY
+            - name: AUTODATA_FIREBASE_WEB_APP_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: autodata-firebase-config
+                  key: AUTODATA_FIREBASE_WEB_APP_ID
+            - name: AUTODATA_FIREBASE_AUTH_DOMAIN
+              valueFrom:
+                configMapKeyRef:
+                  name: autodata-firebase-config
+                  key: AUTODATA_FIREBASE_AUTH_DOMAIN
             - name: AUTODATA_INGESTION_URL
               valueFrom:
                 configMapKeyRef:

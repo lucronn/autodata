@@ -180,3 +180,47 @@ func assertErrorCode(t *testing.T, response *httptest.ResponseRecorder, want str
 		t.Fatalf("error code = %q, want %q", body.Error.Code, want)
 	}
 }
+
+func TestCustomerAuthOpenAPIHasExplicitCookieAndCSRFContract(t *testing.T) {
+	body, err := dashboardFiles.ReadFile("openapi.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec struct {
+		Paths      map[string]map[string]json.RawMessage `json:"paths"`
+		Components struct {
+			SecuritySchemes map[string]struct{ Type, In, Name string } `json:"securitySchemes"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(body, &spec); err != nil {
+		t.Fatal(err)
+	}
+	cookie := spec.Components.SecuritySchemes["customerSession"]
+	if cookie.Type != "apiKey" || cookie.In != "cookie" || cookie.Name != customerSessionName {
+		t.Fatal("missing opaque cookie scheme")
+	}
+	for path, method := range map[string]string{"/auth/config": "get", "/auth/session": "get", "/auth/firebase/session": "post", "/auth/logout": "post"} {
+		var operation struct {
+			Security  []map[string][]string      `json:"security"`
+			Responses map[string]json.RawMessage `json:"responses"`
+		}
+		if err := json.Unmarshal(spec.Paths[path][method], &operation); err != nil {
+			t.Fatalf("missing %s %s: %v", method, path, err)
+		}
+		if path == "/auth/config" || path == "/auth/firebase/session" {
+			if len(operation.Security) != 0 {
+				t.Fatal("public route requires session", path)
+			}
+		} else if len(operation.Security) != 1 || operation.Security[0]["customerSession"] == nil {
+			t.Fatal("session route lacks cookie security", path)
+		}
+		if len(operation.Responses) == 0 {
+			t.Fatal("missing responses", path)
+		}
+	}
+	for _, text := range []string{"X-Autodata-Session-Exchange", "X-CSRF-Token", "auth_time", "no-store", "12 hours"} {
+		if !strings.Contains(string(body), text) {
+			t.Fatal("missing auth contract", text)
+		}
+	}
+}

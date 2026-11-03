@@ -1,6 +1,8 @@
 import unittest
 from pathlib import Path
 
+import yaml
+
 
 ROOT = Path(__file__).parents[2]
 MANIFEST = ROOT / "infra/k8s/base.yaml"
@@ -41,6 +43,21 @@ class KubernetesManifestTests(unittest.TestCase):
         self.assertIn("            requests:", deployment)
         self.assertIn("            limits:", deployment)
         self.assertIn("                name: autodata-runtime-secrets", deployment)
+
+    def test_api_uses_explicit_production_firebase_and_external_web_config(self):
+        config = self.by_key[("ConfigMap", "autodata-config")]
+        parsed = yaml.safe_load(config)
+        expected = {'AUTODATA_ENV': 'production', 'AUTODATA_AUTH_MODE': 'firebase',
+                    'AUTODATA_PUBLIC_ORIGIN': 'https://cars.tk'}
+        self.assertEqual({key: parsed['data'].get(key) for key in expected}, expected)
+        self.assertTrue(set(expected).isdisjoint(parsed['metadata']))
+        api = self.by_key[("Deployment", "autodata-api")]
+        for key in ('PROJECT_ID', 'WEB_API_KEY', 'WEB_APP_ID', 'AUTH_DOMAIN'):
+            self.assertIn('name: AUTODATA_FIREBASE_' + key, api)
+            self.assertIn('key: AUTODATA_FIREBASE_' + key, api)
+        self.assertIn('name: autodata-firebase-config', api)
+        self.assertNotIn('FIREBASE_AUTH_EMULATOR_HOST', api)
+        self.assertNotIn('GOOGLE_APPLICATION_CREDENTIALS', api)
 
     def test_ingestion_http_is_internal_and_has_health_checks(self):
         service = self.by_key[("Service", "autodata-ingestion-http")]

@@ -20,8 +20,11 @@ var (
 )
 
 type Principal struct {
-	OrganizationID string
-	Roles          []string
+	CustomerAccountID string
+	FirebaseProjectID string
+	FirebaseUID       string
+	OrganizationID    string
+	Roles             []string
 }
 
 func (p Principal) HasRole(role string) bool {

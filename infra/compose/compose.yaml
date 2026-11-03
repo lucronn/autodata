@@ -54,6 +54,9 @@ services:
       dockerfile: apps/api-go/Dockerfile
     environment:
       AUTODATA_API_ADDR: ":8080"
+      AUTODATA_ENV: "development"
+      AUTODATA_AUTH_MODE: "local"
+      AUTODATA_PUBLIC_ORIGIN: "https://localhost:8080"
       AUTODATA_DB_ADDRESS: "postgres:5432"
       AUTODATA_POSTGRES_DB: ${AUTODATA_POSTGRES_DB:-autodata}
       AUTODATA_POSTGRES_USER: ${AUTODATA_POSTGRES_USER:-autodata}
