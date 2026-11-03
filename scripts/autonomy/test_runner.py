@@ -287,6 +287,147 @@ class EvidenceSchemaTests(unittest.TestCase):
         ):
             self.assertTrue(r.validate_agent_response(bad, schema, expected), bad)
 
+    def test_provider_schema_omits_rejected_unique_items_keyword(self):
+        # The real provider rejected this keyword before executing any agent.
+        schema = json.loads(
+            (Path(__file__).parent / "agent-output.schema.json").read_text()
+        )
+        unsupported = []
+
+        def visit(value, path=""):
+            if isinstance(value, dict):
+                if "uniqueItems" in value:
+                    unsupported.append(path + "/uniqueItems")
+                for key, child in value.items():
+                    visit(child, path + "/" + key)
+            elif isinstance(value, list):
+                for index, child in enumerate(value):
+                    visit(child, path + "/" + str(index))
+
+        visit(schema)
+        self.assertEqual(unsupported, [], "provider rejects uniqueItems")
+        self.assertEqual(r.validate_schema_inventory(schema), [])
+
+    def test_runtime_rejects_duplicate_response_finding_and_assessment_evidence(self):
+        schema = json.loads(
+            (Path(__file__).parent / "agent-output.schema.json").read_text()
+        )
+        expected = {
+            "run_id": "r",
+            "task_id": "t",
+            "agent_name": "a",
+            "subject_sha": SHA,
+            "role": "verification",
+            "check_ids": ["check"],
+            "artifact_ids": ["log"],
+        }
+        observed = r.finding("finding", "observed")
+        observed["evidence_ids"] = ["log"]
+        response = {
+            "schema_version": 2,
+            "run_id": "r",
+            "task_id": "t",
+            "agent_name": "a",
+            "subject_sha": SHA,
+            "decision": "pass",
+            "summary": "checked",
+            "task_contract": None,
+            "findings": [observed],
+            "assessments": [
+                {
+                    "check_id": "check",
+                    "decision": "pass",
+                    "evidence_ids": ["log"],
+                    "explanation": "checked report",
+                }
+            ],
+            "evidence_ids": ["log"],
+        }
+        self.assertEqual(r.validate_agent_response(response, schema, expected), [])
+        for path, error in (
+            (["evidence_ids"], "unknown/duplicate evidence IDs"),
+            (["findings", 0, "evidence_ids"], "invalid finding evidence IDs"),
+            (["assessments", 0, "evidence_ids"], "invalid assessment"),
+        ):
+            with self.subTest(path=path):
+                bad = copy.deepcopy(response)
+                target = bad
+                for key in path[:-1]:
+                    target = target[key]
+                target[path[-1]].append("log")
+                self.assertIn(error, r.validate_agent_response(bad, schema, expected))
+        for key, error in (
+            ("findings", "duplicate finding ID"),
+            ("assessments", "assessments must match assigned checks exactly"),
+        ):
+            bad = copy.deepcopy(response)
+            bad[key] *= 2
+            self.assertIn(error, r.validate_agent_response(bad, schema, expected))
+
+    def test_runtime_rejects_duplicate_command_output_ids(self):
+        record = {
+            "schema_version": 2,
+            "check_id": "check",
+            "subject_sha": SHA,
+            "argv": ["python3", "-c", "pass"],
+            "executable": "/usr/bin/python3",
+            "cwd": ".",
+            "started_at": "2026-11-03T00:00:00Z",
+            "finished_at": "2026-11-03T00:00:01Z",
+            "status": "completed",
+            "exit_code": 0,
+            "stdout_id": "check:stdout",
+            "stderr_id": "check:stderr",
+            "output_ids": ["report"],
+        }
+        self.assertEqual(r._command_errors(record), [])
+        record["output_ids"].append("report")
+        self.assertIn("invalid command output IDs", r._command_errors(record))
+
+    def test_runtime_rejects_duplicate_provenance_eligible_and_covered_ids(self):
+        report = {
+            "schema_version": 2,
+            "subject_sha": SHA,
+            "population_id": "population",
+            "scope": "synthetic-regression",
+            "population_sha256": "b" * 64,
+            "eligible_ids": ["fact"],
+            "covered_ids": ["fact"],
+            "uncovered": [],
+            "records": [
+                {
+                    "fact_id": "fact",
+                    "source_sha256": "c" * 64,
+                    "extraction_sha256": "d" * 64,
+                    "source_pointer": "/value",
+                    "extraction_pointer": "/value",
+                    "value_sha256": "e" * 64,
+                }
+            ],
+        }
+        self.assertEqual(r.validate_provenance_record(report), [])
+        for key in ("eligible_ids", "covered_ids"):
+            with self.subTest(key=key):
+                bad = copy.deepcopy(report)
+                bad[key].append("fact")
+                self.assertIn(
+                    "invalid provenance scope/IDs", r.validate_provenance_record(bad)
+                )
+
+    def test_runtime_rejects_duplicate_required_agent_evidence_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            task, _ = make_trusted_repository(Path(directory))
+            verification = task["verification"]
+            self.assertEqual(r.validate_verification(verification), [])
+            # Preserve the required count so length alone cannot catch the duplicate.
+            verification["required_agent_evidence"][-1] = verification[
+                "required_agent_evidence"
+            ][0]
+            self.assertIn(
+                "ten independent agent evidence IDs are required",
+                r.validate_verification(verification),
+            )
+
     def test_schema_inventory_matches_fixed_records(self):
         schema = json.loads(
             (Path(__file__).parent / "agent-output.schema.json").read_text()

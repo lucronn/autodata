@@ -70,8 +70,7 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
-          },
-          "uniqueItems": true
+          }
         }
       },
       "required": [
@@ -153,8 +152,7 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
-          },
-          "uniqueItems": true
+          }
         }
       },
       "required": [
@@ -193,8 +191,7 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
-          },
-          "uniqueItems": true
+          }
         },
         "explanation": {
           "type": "string",
@@ -344,8 +341,7 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
-          },
-          "uniqueItems": true
+          }
         }
       },
       "required": [
@@ -439,16 +435,14 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
-          },
-          "uniqueItems": true
+          }
         },
         "covered_ids": {
           "type": "array",
           "items": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
-          },
-          "uniqueItems": true
+          }
         },
         "uncovered": {
           "type": "array",
@@ -611,8 +605,7 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
-          },
-          "uniqueItems": true
+          }
         }
       },
       "required": [
@@ -911,8 +904,7 @@
       "items": {
         "type": "string",
         "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
-      },
-      "uniqueItems": true
+      }
     }
   },
   "required": [
