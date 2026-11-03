@@ -241,3 +241,7 @@ command matching, check environment and synthetic-role instructions. Preserve
 all container restrictions, `/tmp` noexec, provider guards, exact requested
 execution profile and raw replay. Any subsequent live retry needs another
 committed checkpoint; unavailable-profile and interruption cases remain open.
+
+## Reviewed runtime check-contract repair checkpoint
+
+The [five-file repair plan](../superpowers/plans/2026-11-03-runtime-check-contract.md) passed independent planning review for exact proposal11851c73b006b29747f41acffd09f0478bf13482fdcaae4e4741a6bc34a93825 atc5cd1a2; reviewf0dfc17f2973de1aeeb63dda8509ea3ff39d4b2f2f76f2d5c669ab41a65daaa2 is retained locally. Concrete work is explicit Python3.11 command compatibility, sanitized trusted-check/provider separation, and fixture-only assigned verifier instructions with strict global/redaction regressions. Coordinator scratch must separately pass independent review and bounded networknone/noauth acceptance with all eight unchanged checks and zero sentinel calls. This synchronized checkpoint must be committed and preflighted before implementation; no new offline/live pass is claimed. All earlier failures remain unchanged and any further live retry needs another gate.

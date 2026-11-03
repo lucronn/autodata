@@ -1,0 +1,78 @@
+{
+  "task_id": "production-release-r0-runtime-check-contract",
+  "repository": "lucronn/autodata",
+  "goal": "Repair actual runtime check executable matching, trusted-check environment and synthetic verifier assignment scope while preserving strict runtime evidence and all release gates.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "scripts/autonomy/runner.py",
+    "scripts/autonomy/orchestrator.py",
+    "scripts/autonomy/test_runner.py",
+    "scripts/autonomy/test_orchestrator.py",
+    "docs/agents/runner-interface.md"
+  ],
+  "bounded_contexts": [
+    "runtime required-check environment",
+    "pinned Python executable compatibility",
+    "synthetic fixture verifier assignment"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-runtime-check-contract.md",
+    "docs/superpowers/plans/2026-11-03-app-server-runtime-contract.md"
+  ],
+  "outputs": [
+    "scripts/autonomy/runner.py",
+    "scripts/autonomy/orchestrator.py",
+    "scripts/autonomy/test_runner.py",
+    "scripts/autonomy/test_orchestrator.py",
+    "docs/agents/runner-interface.md"
+  ],
+  "acceptance_tests": [
+    "Explicit resolved Python3.11 passes while wrong argv, cwd, executable, subject and evidence IDs still fail.",
+    "Trusted checks receive sanitized ordinary PATH; only provider environments carry the owned guard; real nested fixture cleanup works.",
+    "Only exact synthetic fixture assigned verifiers receive local-decision instructions; missing global gates and credential-pattern transcript output still block.",
+    "Exact candidate passes full unchanged baseline and new regressions with independent review and five-file scope.",
+    "Reviewed offline scratch acceptance retains actual restricted image, full suite, all eight frozen checks, exact parent/fixture child identities and zero sentinel calls; missing evidence or cleanup failure blocks."
+  ],
+  "forbidden_scope": [
+    "Changing profiles, policy, schema, registry, base role prompts, raw replay/redaction or global gate semantics",
+    "Any real provider/bank/production calls during implementation or offline review",
+    "Changing HOME/CODEX_HOME, making /tmp executable or adding privileges/credentials",
+    "Editing outside the five paths; scratch files are coordinator-owned",
+    "Integrating or pushing synthetic fixture child commits; automatic live retry"
+  ],
+  "compatibility": {
+    "api": "Existing runner/private-call signatures remain compatible; only private sanitized helper added.",
+    "events": "Raw actual protocol and strict replay preserved.",
+    "schema": "No schema, policy, registry or task-contract version changes."
+  },
+  "pre_implementation": {
+    "goal": "Repair actual runtime check executable matching, trusted-check environment and synthetic verifier assignment scope while preserving strict runtime evidence and all release gates.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-runtime-check-contract.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/runner-interface.md",
+      "docs/verification/2026-11-03-agent-evidence-hardening.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Synchronize this independently reviewed five-file plan, Issue186/Project8, canonical docs and concrete task; commit and pass exact-base machine preflight before implementation.",
+      "Add failing Python3.11/full-command-binding, separate check/provider environment, real nested guard cleanup, fixture prompt scope and strict global/redaction regressions.",
+      "Implement only explicit Python3.11 compatibility, sanitized trusted-check environment and exact-task assigned verifier instructions; retain all provider guards, profiles and strict validators.",
+      "Run focused and full offline tests at an immutable five-file candidate, preserve red/green results and obtain independent exact-SHA review.",
+      "Separately prepare and independently review coordinator scratch supervisors/sentinel, then run bounded networknone/noauth/no-real-Codex acceptance with executable owned TMPDIR, full suite, all eight frozen checks and zero sentinel invocations.",
+      "Integrate only reviewed implementation; keep all synthetic fixture child commits quarantined. Require a fresh separately synchronized checkpoint before any one bounded live retry."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T11:49:16.843114+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

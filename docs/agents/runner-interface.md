@@ -291,3 +291,7 @@ attestation, proof of historical absence of connections, execution-profile proof
 or upstream served/billed-tier receipt. Failed trials remain unchanged. Offline
 fake-process success does not authorize a real retry: independent exact-commit
 review, coordinator promotion and a fresh trial checkpoint are still required.
+
+## Runtime check-contract repair checkpoint
+
+The [independently reviewed bounded repair](../superpowers/plans/2026-11-03-runtime-check-contract.md) addresses the actual Python3.11 executable mismatch, nested trusted-check/provider environment conflict and synthetic verifier assignment scope. Its five-file implementation requires the synchronized committed task and passing exact-base preflight. The coordinator separately owns executable scratch and offline sentinel acceptance. Raw transcript equality, redaction, profile settings, provider guards and all eight release gates stay required. The ten-role trial remains blocked; this checkpoint records planned work, not passing runtime evidence.

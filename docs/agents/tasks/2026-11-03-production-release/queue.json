@@ -311,6 +311,19 @@
         "evidence_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md"
       },
       "actual_exit_code": 20
+    },
+    {
+      "id": "r0-runtime-check-contract",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r0-runtime-check-contract.json",
+      "state": "ready",
+      "depends_on": [
+        "r0-runtime-disabled-notification"
+      ],
+      "dispatch_mode": "coordinator_direct",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "dispatch_prerequisite": "Independently reviewed exact five-file plan; this committed synchronized checkpoint must pass exact-base preflight before implementation. Separate reviewed scratch/offline acceptance precedes any newly gated live retry.",
+      "verification_ref": "docs/verification/2026-11-03-agent-evidence-hardening.md"
     }
   ]
 }

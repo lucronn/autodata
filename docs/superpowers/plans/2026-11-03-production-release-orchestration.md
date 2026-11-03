@@ -286,3 +286,7 @@ Disabled startup amendment0da3c88 is independently approved and integrated
 atf4cc249, with137 exact tests and44 independent adversarial checks. Its separate
 one-trial coordinator record requires this fresh gate and preserves unchanged
 container restrictions/profile settings. Runtime certification remains unverified.
+
+## Runtime check-contract implementation checkpoint
+
+The [independently reviewed runtime repair](2026-11-03-runtime-check-contract.md) has an exact five-file contract and synchronized concrete todo. It addresses observed Python3.11 command matching, trusted-check environment and fixture-local verifier scope while retaining strict replay/redaction and every global gate. Implementation follows a new committed-base preflight. Coordinator scratch receives separate independent review and restricted offline full-suite/eight-check acceptance; successful offline evidence is required before another separately gated live attempt. R3 continues its independent application lane, and release certification remains outstanding.

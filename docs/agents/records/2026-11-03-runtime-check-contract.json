@@ -1,0 +1,21 @@
+{
+  "goal": "Repair actual runtime check executable matching, trusted-check environment and synthetic verifier assignment scope while preserving strict runtime evidence and all release gates.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-runtime-check-contract.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/runner-interface.md",
+    "docs/verification/2026-11-03-agent-evidence-hardening.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "Synchronize this independently reviewed five-file plan, Issue186/Project8, canonical docs and concrete task; commit and pass exact-base machine preflight before implementation.",
+    "Add failing Python3.11/full-command-binding, separate check/provider environment, real nested guard cleanup, fixture prompt scope and strict global/redaction regressions.",
+    "Implement only explicit Python3.11 compatibility, sanitized trusted-check environment and exact-task assigned verifier instructions; retain all provider guards, profiles and strict validators.",
+    "Run focused and full offline tests at an immutable five-file candidate, preserve red/green results and obtain independent exact-SHA review.",
+    "Separately prepare and independently review coordinator scratch supervisors/sentinel, then run bounded networknone/noauth/no-real-Codex acceptance with executable owned TMPDIR, full suite, all eight frozen checks and zero sentinel invocations.",
+    "Integrate only reviewed implementation; keep all synthetic fixture child commits quarantined. Require a fresh separately synchronized checkpoint before any one bounded live retry."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T11:49:16.843114+00:00"
+}
