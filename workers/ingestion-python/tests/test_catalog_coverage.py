@@ -198,8 +198,9 @@ def test_ambiguous_resolution_retains_exact_evidence(fresh_database, capture_fix
     assert state["coverage"]["banktwo"]["resolution_source_snapshot_id"] is not None
 
 
+@pytest.mark.parametrize("base_region", ["US", "CA"])
 def test_configuration_resolution_sends_human_selector_in_exact_scope(
-    fresh_database, capture_fixture
+    fresh_database, capture_fixture, base_region
 ):
     from lifecycle_support import seed_configuration
     from autodata_ingestion.catalog_coverage import (
@@ -217,8 +218,8 @@ def test_configuration_resolution_sends_human_selector_in_exact_scope(
             (configuration,),
         )
         conn.execute(
-            "UPDATE vehicle_identity_bases SET drivetrain='AWD' WHERE vehicle_id=%s",
-            (vehicle,),
+            "UPDATE vehicle_identity_bases SET drivetrain='AWD',region=%s WHERE vehicle_id=%s",
+            (base_region, vehicle),
         )
     ensure_article_catalog_jobs(
         repo, vehicle_id=vehicle, vehicle_configuration_id=configuration
@@ -234,7 +235,7 @@ def test_configuration_resolution_sends_human_selector_in_exact_scope(
         "year": 2024,
         "make": "Example",
         "model": "Car",
-        "region": "US",
+        "region": base_region,
         "configuration": "Touring 2.0L AWD",
     }
     for provider in ("bankone", "banktwo"):

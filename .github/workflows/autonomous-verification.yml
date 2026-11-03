@@ -87,6 +87,18 @@ jobs:
           --evidence-root scripts/autonomy/fixtures/evidence
           --json
 
+      - name: Set up build-only Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify pinned browser SDK and native client helpers
+        run: |
+          npm --prefix apps/api-go/workshop-client ci --ignore-scripts --no-audit --no-fund
+          node apps/api-go/workshop-client/build.mjs --check
+          node --test apps/api-go/workshop-client.test.mjs
+          python -m unittest scripts/dev/test_workshop_browser_smoke.py -v
+
       - name: Run Go API tests
         working-directory: apps/api-go
         run: go test ./...
@@ -166,3 +178,36 @@ jobs:
           docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml up -d --wait api
           docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml run --rm api-runtime-smoke
           docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml run --rm --no-deps ingestion-smoke
+
+  workshop-dto-browser:
+    name: Workshop DTO browser inventory (not real API acceptance)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+      - name: Install exact browser fixture runtime
+        run: |
+          python -m pip install -r scripts/dev/requirements-workshop-browser.txt
+          python -m playwright install --with-deps chromium firefox webkit
+      - name: Exercise all 120 DTO browser cases over actual Go TLS assets
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          fixture_dir=$(mktemp -d)
+          chmod 700 "$fixture_dir"
+          cleanup() {
+            if [ -n "${fixture_pid:-}" ]; then kill "$fixture_pid" 2>/dev/null || true; wait "$fixture_pid" 2>/dev/null || true; fi
+          }
+          trap cleanup EXIT
+          AUTODATA_WORKSHOP_BROWSER_FIXTURE=1 AUTODATA_WORKSHOP_BROWSER_READY="$fixture_dir/ready.json" go -C apps/api-go test -run '^TestWorkshopBrowserFixtureHTTP$' -count=1 -timeout=75m >"$fixture_dir/go-fixture.log" 2>&1 &
+          fixture_pid=$!
+          python -c 'import pathlib,sys,time; p=pathlib.Path(sys.argv[1]); deadline=time.monotonic()+120; exec("while not p.exists():\n if time.monotonic()>deadline: raise SystemExit("fixture readiness timeout")\n time.sleep(.1)")' "$fixture_dir/ready.json"
+          fixture_origin=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["origin"])' "$fixture_dir/ready.json")
+          python scripts/dev/workshop_browser_smoke.py --base-url "$fixture_origin" --mode dto-fixture --browser all --candidate-sha "$CANDIDATE_SHA" --output "$fixture_dir/browser"

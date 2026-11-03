@@ -58,8 +58,9 @@ exposes selectors and a safe quote, with bounded catalog hydration.
 
 The repository already has a Stripe adapter, durable payment reconciliation,
 non-expiring organization entitlements and protected dataset projections.
-Customer accounts, checkout/webhook HTTP wiring, library reads and purchased
-Workshop catalog authorization still need implementation.
+Customer identity, checkout/webhook HTTP wiring and owner-scoped library reads
+are implemented and verified. Purchased Workshop catalog authorization and the
+customer UI are being completed against these reviewed interfaces.
 
 The customer design supersedes the generic OIDC-only assumptions and
 role-only shared-catalog rule in the earlier R5 plan. That older plan does not
@@ -67,9 +68,9 @@ authorize the expanded commerce implementation unchanged.
 
 Concrete todo:
 
-- [ ] Freeze and verify Firebase account/session contracts and additive
+- [x] Freeze and verify Firebase account/session contracts and additive
   migration 039 against the integrated R3 interfaces and shared migration runner.
-- [ ] Freeze server-owned orders, authoritative USD 2000 pricing, idempotent
+- [x] Freeze server-owned orders, authoritative USD 2000 pricing, idempotent
   Stripe settlement, durable grants and explicit refund/revocation handling.
 - [ ] Add safe browse/quote and owned-library APIs; enforce purchased scope
   across article, source, processing and media access.
@@ -97,4 +98,4 @@ reason to abandon the launch request. No code or infrastructure gate is waived.
 
 ### Concurrent Workshop delivery
 
-The user requested three concurrent builders. The canonical parallel plan is `docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md`: twelve article-access paths, four protected-media paths and thirty-two UI paths have exclusive owners. Reviewed interfaces permit parallel implementation after synchronized preflight while the coordinator completes dependency/runtime acceptance. This replaces serial dispatch timing, not production acceptance requirements. Commerce candidate9d33e1e remains unverified pending its remaining fixture repair and runtime/image/CI checks.
+The user requested three concurrent builders. The canonical parallel plan is `docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md`: twelve article-access paths, four protected-media paths and thirty-two UI paths have exclusive owners. Reviewed interfaces permit parallel implementation after synchronized preflight while the coordinator completes dependency/runtime acceptance. This replaces serial dispatch timing, not production acceptance requirements. Commerce candidate `d2eb70fa9b96fcebe1c33ef6cddcdad5c4a5eec7` is verified as a development dependency: all14 commerce/5identity/8R3 cases, the actual ingestion production-image import proof and full CI41705272372 passed. Evidence: `docs/verification/2026-11-03-workshop-commerce.md`. Production deployment remains unverified.

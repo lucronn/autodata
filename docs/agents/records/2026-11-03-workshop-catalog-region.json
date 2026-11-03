@@ -1,0 +1,18 @@
+{
+  "goal": "Resolve each purchased configuration against its own authoritative region in both source banks.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-catalog-region.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-workshop-paid-access.md",
+    "docs/architecture/workshop-commerce.md"
+  ],
+  "todo": [
+    "Synchronize the exact two-file region repair plan with Issue186 and Project8, commit and pass the pinned machine preflight.",
+    "Observe the actual both-bank configuration selector regression fail for a CA base under a US vehicle, then resolve using the configuration base region.",
+    "Run the real PostgreSQL and connector coverage suite in owned disposable services, independently review, commit and push.",
+    "Integrate the exact approved repair and rerun affected paid and browser acceptance without weakening their inventories."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T20:13:55.418273+00:00"
+}
