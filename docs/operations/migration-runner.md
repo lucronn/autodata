@@ -122,3 +122,14 @@ unchanged prior ledger timestamps/data, populated account/session restart,
 unchanged. The Kubernetes migration image is an external prerequisite: build and
 verify an image carrying this exact 039 manifest before deployment; the manifest
 alone does not certify that external image.
+
+## Workshop commerce 040
+
+The shared manifest now includes `040_workshop_commerce.sql` after the immutable
+identity 039 migration. Its order/client-key tables and structured entitlement
+scope are created atomically under the same driver lock and four transaction
+boundary dispatch sites. Unknown or untracked application tables, including the
+new Workshop tables, are rejected before adoption. Do not run 040 directly as an
+operational upgrade or relabel a historical 038/039 receipt. Current fixture
+collectors measure all 001–040 markers and retain populated replay rows; historical
+identity 038 startup-refusal and 038→039 upgrade proofs remain distinct.

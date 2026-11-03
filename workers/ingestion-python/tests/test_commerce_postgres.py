@@ -69,7 +69,7 @@ class StripeFixture:
                 intent = dict(id=pid,metadata={'order_id':order},livemode=False,amount=2000,amount_received=0,
                     currency='usd',capture_method='automatic',status='requires_payment_method')
                 self.intents[pid] = intent
-                self.sessions[sid] = dict(id=sid,url='https://checkout.stripe.com/c/pay/' + sid,metadata={'order_id':order},
+                self.sessions[sid] = dict(id=sid,url='https://checkout.stripe.com/c/pay/' + sid + '#fidkdFixtureFragment',metadata={'order_id':order},
                     mode='payment',livemode=False,amount_total=2000,currency='usd',payment_status='unpaid',status='open',
                     expires_at=int(one('expires_at')),line_items={'data':[{'price':{'id':one('line_items[0][price]')},'quantity':1}]},payment_intent=pid)
                 self.keys[key] = sid
@@ -267,6 +267,9 @@ def test_refund_chargeback_ordering_and_monotonic_revocation(commerce):
     sid=order(c,second['order_id'])['checkout_session_id']
     c[1].webhook(*c[2].event(sid,kind='charge.refunded',refunded=False,amount_refunded=100))
     assert order(c,second['order_id'])['status']=='paid'
+    c[1].webhook(*c[2].event(sid,kind='charge.dispute.closed',status='won',amount=2000))
+    c[1].webhook(*c[2].event(sid,kind='charge.dispute.closed',status='lost',amount=100))
+    assert order(c,second['order_id'])['status']=='paid'
     c[1].webhook(*c[2].event(sid,kind='charge.dispute.closed',status='lost',amount=2000))
     assert order(c,second['order_id'])['status']=='revoked'
     c[1].webhook(*c[2].event(sid));assert order(c,second['order_id'])['status']=='revoked'
@@ -288,6 +291,14 @@ def test_payment_survives_source_unavailable_and_restart(commerce):
     def real(serialized):return _ensure_lifecycle_catalog(json.loads(serialized),repo=c[0])
     with c[0].connect() as conn:
         conn.execute('UPDATE workshop_orders SET preparation_next_attempt_at=now()')
+    def crash_after_ensure(serialized):
+        real(serialized)
+        raise RuntimeError('controlled crash after durable scheduling, before acknowledgement')
+    with c[0].connect() as conn:assert reconcile_workshop_preparation(conn,scheduler=crash_after_ensure)[0]['preparation_state']=='retry'
+    with c[0].connect() as conn:
+        durable=conn.execute("SELECT source_fetch_job_id FROM source_fetch_jobs WHERE job_kind='catalog_index' ORDER BY source_fetch_job_id").fetchall()
+        assert len(durable)==2
+        conn.execute('UPDATE workshop_orders SET preparation_next_attempt_at=now()')
     with c[0].connect() as conn:assert reconcile_workshop_preparation(conn,scheduler=real)[0]['preparation_state']=='index_queued'
     before=order(c,first['order_id'])['preparation_index_job_ids'];assert len(set(before))==2
     with c[0].connect() as conn:
@@ -301,6 +312,17 @@ def test_payment_survives_source_unavailable_and_restart(commerce):
     assert order(c,first['order_id'])['preparation_state']=='index_ready'
     assert c[1].library(*c[3])['items'][0]['access_state']=='paid'
     assert counts(c)['entitlements']==1
+    with c[0].connect() as conn:
+        account=conn.execute("INSERT INTO customer_accounts(firebase_project_id,firebase_uid) VALUES('fixture','second-owner') RETURNING customer_account_id,personal_organization_id").fetchone()
+    owner=(str(account['customer_account_id']),str(account['personal_organization_id']))
+    second_context=(c[0],c[1],c[2],owner,c[4],c[5])
+    second=checkout(second_context);settle(second_context,second)
+    with c[0].connect() as conn:reconcile_workshop_preparation(conn,scheduler=real)
+    assert order(c,second['order_id'])['preparation_index_job_ids']==before
+    assert c[1].library(*owner)['items'][0]['access_state']=='paid'
+    with c[0].connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM source_fetch_jobs WHERE job_kind='catalog_index'").fetchone()['n']==2
+        assert conn.execute("SELECT count(*) AS n FROM source_fetch_jobs WHERE job_kind='article'").fetchone()['n']==0
 
 
 def test_library_is_owner_only_and_paginated(commerce):
@@ -325,7 +347,14 @@ def test_library_is_owner_only_and_paginated(commerce):
 def test_grant_check_exact_scope_legacy_and_revoked(commerce):
     c=commerce;first=checkout(c);settle(c,first)
     assert c[1].grant_check(*c[3],c[4],'US')['order_id']==first['order_id']
-    for config,region in ((str(uuid.uuid4()),'US'),(c[4],'CA')):
+    legacy_configuration=str(uuid.uuid4())
+    with c[0].connect() as conn:
+        product=order(c,first['order_id'])['dataset_product_id']
+        request=conn.execute("""INSERT INTO dataset_requests(dataset_product_id,vehicle_key,region,status,lane,correlation_id,idempotency_key,processing_version,organization_id)
+            VALUES(%s,%s,'US','purchased','fast',%s,%s,'legacy-fixture',%s) RETURNING dataset_request_id""",
+            (product,legacy_configuration,uuid.uuid4(),uuid.uuid4().hex,c[3][1])).fetchone()['dataset_request_id']
+        conn.execute("INSERT INTO entitlements(organization_id,dataset_request_id,provider_event_id,status,granted_at) VALUES(%s,%s,'legacy-unscoped','active',now())",(c[3][1],request))
+    for config,region in ((legacy_configuration,'US'),(c[4],'CA')):
         with pytest.raises(CommerceError) as error:c[1].grant_check(*c[3],config,region)
         assert error.value.code=='ENTITLEMENT_REQUIRED'
     sid=order(c,first['order_id'])['checkout_session_id'];c[1].webhook(*c[2].event(sid,kind='charge.refunded',refunded=True,amount_refunded=2000))

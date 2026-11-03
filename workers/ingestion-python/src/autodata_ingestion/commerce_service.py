@@ -62,8 +62,9 @@ def validate_checkout_url(value):
     try:
         parsed = urlsplit(value)
         valid = (parsed.scheme == 'https' and parsed.hostname == 'checkout.stripe.com'
-                 and parsed.netloc == 'checkout.stripe.com' and not parsed.fragment
-                 and parsed.path.startswith('/c/pay/'))
+                 and parsed.netloc == 'checkout.stripe.com'
+                 and parsed.path.startswith('/c/pay/') and len(parsed.path)>len('/c/pay/')
+                 and not any(c.isspace() or ord(c)<32 or ord(c)==127 for c in value))
     except (ValueError, TypeError):
         valid = False
     if not valid:
@@ -220,6 +221,9 @@ class CommerceService:
         with self.transaction() as (_, cursor):
             self._account(cursor, account_id, organization_id)
             self._lock(cursor, account_id, config_id, region)
+            cursor.execute("SELECT 1 FROM entitlements WHERE customer_account_id=%s AND configuration_id=%s AND region=%s AND status='revoked' LIMIT 1", (account_id,config_id,region))
+            if cursor.fetchone():
+                raise CommerceError('ENTITLEMENT_REVOKED',403)
             cursor.execute('SELECT * FROM workshop_checkout_requests WHERE customer_account_id=%s AND client_idempotency_key=%s', (account_id, key))
             mapping = cursor.fetchone()
             if mapping:

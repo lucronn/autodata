@@ -42,9 +42,12 @@ class CommerceAuthorityTests(unittest.TestCase):
         for value in ('no',self.order['order_id'].upper(),None):
             with self.assertRaises(CommerceError):validate_uuid(value)
         for value in ('http://checkout.stripe.com/c/pay/a','https://evil.test/c/pay/a',
-                      'https://user@checkout.stripe.com/c/pay/a','https://checkout.stripe.com/c/pay/a#x'):
+                      'https://user@checkout.stripe.com/c/pay/a','https://checkout.stripe.com:443/c/pay/a',
+                      'https://checkout.stripe.com/c/pay/','https://checkout.stripe.com/c/pay/a\n'):
             with self.assertRaises(CommerceError):validate_checkout_url(value)
         self.assertEqual(validate_checkout_url('https://checkout.stripe.com/c/pay/a'),'https://checkout.stripe.com/c/pay/a')
+        hosted='https://checkout.stripe.com/c/pay/cs_test_fixture#fidkdFixtureFragment'
+        self.assertEqual(validate_checkout_url(hosted),hosted)
         self.assertEqual(canonical_checkout_hash('id','US','v1'),canonical_checkout_hash('id','US','v1'))
         self.assertNotEqual(canonical_checkout_hash('id','US','v1'),canonical_checkout_hash('id','CA','v1'))
 
