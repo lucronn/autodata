@@ -103,7 +103,7 @@ def validate_settlement(order, session):
         return type(value) is bool and value == order['livemode']
     intent = session.get('payment_intent')
     lines = session.get('line_items', {}).get('data')
-    valid = (session.get('mode') == 'payment' and same_mode(session.get('livemode'))
+    valid = (session.get('mode') == 'payment' and session.get('payment_method_types') == ['card'] and same_mode(session.get('livemode'))
              and type(session.get('amount_total')) is int and session['amount_total'] == order['amount_minor']
              and session.get('currency') == order['currency'].lower()
              and session.get('payment_status') == 'paid' and session.get('status') == 'complete'
@@ -112,6 +112,7 @@ def validate_settlement(order, session):
              and type(lines[0].get('quantity')) is int
              and lines[0].get('price', {}).get('id') == order['expected_price_id']
              and isinstance(intent, dict) and intent.get('metadata', {}).get('order_id') == str(order['order_id'])
+             and intent.get('payment_method_types') == ['card']
              and same_mode(intent.get('livemode')) and intent.get('capture_method') == 'automatic'
              and intent.get('status') == 'succeeded' and intent.get('amount') == order['amount_minor']
              and type(intent.get('amount')) is int and type(intent.get('amount_received')) is int

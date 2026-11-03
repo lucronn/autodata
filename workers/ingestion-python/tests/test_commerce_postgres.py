@@ -66,11 +66,11 @@ class StripeFixture:
                 sid = 'cs_test_' + uuid.uuid4().hex
                 pid = 'pi_' + uuid.uuid4().hex
                 order = one('metadata[order_id]')
-                intent = dict(id=pid,metadata={'order_id':order},livemode=False,amount=2000,amount_received=0,
+                intent = dict(id=pid,metadata={'order_id':order},payment_method_types=['card'],livemode=False,amount=2000,amount_received=0,
                     currency='usd',capture_method='automatic',status='requires_payment_method')
                 self.intents[pid] = intent
                 self.sessions[sid] = dict(id=sid,url='https://checkout.stripe.com/c/pay/' + sid + '#fidkdFixtureFragment',metadata={'order_id':order},
-                    mode='payment',livemode=False,amount_total=2000,currency='usd',payment_status='unpaid',status='open',
+                    mode='payment',payment_method_types=['card'],livemode=False,amount_total=2000,currency='usd',payment_status='unpaid',status='open',
                     expires_at=int(one('expires_at')),line_items={'data':[{'price':{'id':one('line_items[0][price]')},'quantity':1}]},payment_intent=pid)
                 self.keys[key] = sid
             sid = self.keys[key]
@@ -400,7 +400,7 @@ def export_case_rows(c, name):
             server_version_num=int(conn.execute('SHOW server_version_num').fetchone()['server_version_num']),
             schema_migrations=conn.execute('SELECT version,applied_at FROM schema_migrations ORDER BY version').fetchall(),
             stripe_sdk_version=stripe.VERSION,stripe_transport_calls=list(c[2].calls),stripe_create_attempts=list(c[2].create_attempts),
-            stripe_remote_sessions=[dict(session_id=s['id'],order_id=s['metadata']['order_id'],status=s['status'],payment_status=s['payment_status'],amount_total=s['amount_total'],currency=s['currency'],price_id=s['line_items']['data'][0]['price']['id'],quantity=s['line_items']['data'][0]['quantity'],payment_intent_id=s['payment_intent']) for s in c[2].sessions.values()])
+            stripe_remote_sessions=[dict(session_id=s['id'],order_id=s['metadata']['order_id'],status=s['status'],payment_status=s['payment_status'],amount_total=s['amount_total'],currency=s['currency'],price_id=s['line_items']['data'][0]['price']['id'],quantity=s['line_items']['data'][0]['quantity'],payment_intent_id=s['payment_intent'],payment_method_types=s['payment_method_types'],payment_intent_payment_method_types=c[2].intents[s['payment_intent']]['payment_method_types'],payment_intent_capture_method=c[2].intents[s['payment_intent']]['capture_method']) for s in c[2].sessions.values()])
         for table,columns in SAFE_COLUMNS.items():
             rows=conn.execute('SELECT '+','.join(columns)+' FROM '+table+' ORDER BY 1').fetchall()
             if table=='workshop_checkout_requests':

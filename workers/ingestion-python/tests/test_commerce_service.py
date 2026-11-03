@@ -15,11 +15,11 @@ class CommerceAuthorityTests(unittest.TestCase):
         self.order = {'order_id':'6f0a2166-0df4-4d2b-916d-99b4d0bd52de','amount_minor':2000,
                       'currency':'USD','livemode':False,'expected_price_id':'price_fixture'}
         self.session = {'id':'cs_test_fixture','metadata':{'order_id':self.order['order_id']},
-            'mode':'payment','livemode':False,'amount_total':2000,'currency':'usd',
+            'mode':'payment','payment_method_types':['card'],'livemode':False,'amount_total':2000,'currency':'usd',
             'payment_status':'paid','status':'complete',
             'line_items':{'data':[{'price':{'id':'price_fixture'},'quantity':1}]},
             'payment_intent':{'id':'pi_fixture','metadata':{'order_id':self.order['order_id']},
-                'livemode':False,'amount':2000,'amount_received':2000,'currency':'usd',
+                'payment_method_types':['card'],'livemode':False,'amount':2000,'amount_received':2000,'currency':'usd',
                 'capture_method':'automatic','status':'succeeded'}}
 
     def test_settlement_requires_all_server_financial_bindings(self):
@@ -28,7 +28,9 @@ class CommerceAuthorityTests(unittest.TestCase):
                         ('currency','eur'),('payment_status','unpaid'),('status','open')]:
             session=copy.deepcopy(self.session);session[key]=bad
             with self.assertRaises(CommerceError,msg=key):validate_settlement(self.order,session)
-        for mutation in (lambda s:s['metadata'].update(order_id='foreign'),
+        for mutation in (lambda s:s.update(payment_method_types=['us_bank_account']),
+                         lambda s:s['payment_intent'].update(payment_method_types=['us_bank_account']),
+                         lambda s:s['metadata'].update(order_id='foreign'),
                          lambda s:s['line_items']['data'][0].update(quantity=2),
                          lambda s:s['line_items']['data'][0]['price'].update(id='foreign'),
                          lambda s:s['payment_intent'].update(capture_method='manual'),
