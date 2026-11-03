@@ -135,6 +135,11 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 		format, content = "html", renderCatalogOrderedSource(stored.Document, stored.Images)
 	} else {
 		format, content, err = renderStoredCatalogSource(stored.Original, stored.SourceURI, s.catalogImageKey)
+		// Paid review exposes ordered projections or sanitized HTML, never a
+		// generic raw provider JSON download. Canonical PG sources have Documents.
+		if err == nil && format != "html" {
+			err = ErrVehicleGrantUnavailable
+		}
 	}
 	if err != nil {
 		s.writePaidCatalogError(w, r, err)

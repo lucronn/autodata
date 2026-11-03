@@ -159,7 +159,7 @@ func openPaidCatalogImageReference(token string, key []byte, now time.Time) (pai
 		return ref, invalid
 	}
 	sealed, err := base64.RawURLEncoding.Strict().DecodeString(strings.TrimPrefix(token, "v2."))
-	if err != nil {
+	if err != nil || base64.RawURLEncoding.EncodeToString(sealed) != strings.TrimPrefix(token, "v2.") {
 		return ref, invalid
 	}
 	block, err := aes.NewCipher(key)
