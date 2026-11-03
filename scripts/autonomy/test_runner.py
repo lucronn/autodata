@@ -308,6 +308,30 @@ class EvidenceSchemaTests(unittest.TestCase):
         self.assertEqual(unsupported, [], "provider rejects uniqueItems")
         self.assertEqual(r.validate_schema_inventory(schema), [])
 
+    def test_provider_schema_omits_unsupported_regex_lookaround(self):
+        # The provider validates unused definitions too, before executing any agent.
+        schema = json.loads(
+            (Path(__file__).parent / "agent-output.schema.json").read_text()
+        )
+        unsupported = []
+
+        def visit(value, path=""):
+            if isinstance(value, dict):
+                pattern = value.get("pattern")
+                if isinstance(pattern, str) and any(
+                    token in pattern for token in ("(?=", "(?!", "(?<=", "(?<!")
+                ):
+                    unsupported.append(path + "/pattern")
+                for key, child in value.items():
+                    visit(child, path + "/" + key)
+            elif isinstance(value, list):
+                for index, child in enumerate(value):
+                    visit(child, path + "/" + str(index))
+
+        visit(schema)
+        self.assertEqual(unsupported, [], "provider rejects regex lookaround")
+        self.assertEqual(r.validate_schema_inventory(schema), [])
+
     def test_runtime_rejects_duplicate_response_finding_and_assessment_evidence(self):
         schema = json.loads(
             (Path(__file__).parent / "agent-output.schema.json").read_text()
@@ -436,6 +460,121 @@ class EvidenceSchemaTests(unittest.TestCase):
         altered = copy.deepcopy(schema)
         altered["$defs"]["Finding"]["properties"]["extra"] = {}
         self.assertTrue(r.validate_schema_inventory(altered))
+
+
+# These forms must remain rejected after provider-side path patterns are removed.
+UNSAFE_PATHS = (
+    "",
+    "/file",
+    "../file",
+    "dir/../file",
+    "dir\\file",
+    "dir\x00file",
+    "dir//file",
+    "./file",
+    "dir/./file",
+    "dir/.",
+    "dir/",
+)
+
+
+class RuntimePathBoundaryTests(unittest.TestCase):
+    def test_finding_response_rejects_unsafe_paths_and_allows_root(self):
+        schema = json.loads(
+            (Path(__file__).parent / "agent-output.schema.json").read_text()
+        )
+        expected = {
+            "run_id": "r", "task_id": "t", "agent_name": "a",
+            "subject_sha": SHA, "role": "implementation",
+            "check_ids": [], "artifact_ids": [],
+        }
+        response = {
+            "schema_version": 2, "run_id": "r", "task_id": "t",
+            "agent_name": "a", "subject_sha": SHA, "decision": "pass",
+            "summary": "checked", "task_contract": None,
+            "findings": [r.finding("observed", "checked")],
+            "assessments": [], "evidence_ids": [],
+        }
+        for path in (".", "docs/valid file.md", "docs/évidence.md"):
+            response["findings"][0]["path"] = path
+            self.assertEqual(r.validate_agent_response(response, schema, expected), [])
+        for path in UNSAFE_PATHS:
+            with self.subTest(path=path):
+                response["findings"][0]["path"] = path
+                self.assertIn(
+                    "invalid finding path",
+                    r.validate_agent_response(response, schema, expected),
+                )
+
+    def test_artifact_records_reject_unsafe_refs_even_when_files_exist(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "dir").mkdir()
+            for path in ("file", "dir/file", "dir\\file", "valid file", "évidence"):
+                (root / path).write_bytes(b"evidence")
+            record = {
+                "artifact_id": "proof", "kind": "test-result", "ref": "file",
+                "sha256": hashlib.sha256(b"evidence").hexdigest(),
+                "size_bytes": 8, "subject_sha": SHA, "check_id": None,
+            }
+            for path in ("file", "dir/file", "valid file", "évidence"):
+                record["ref"] = path
+                self.assertEqual(r.validate_artifact(record, root, SHA), [])
+            for path in (*UNSAFE_PATHS, ".", str(root / "file")):
+                with self.subTest(path=path):
+                    record["ref"] = path
+                    self.assertIn(
+                        "unsafe artifact path", r.validate_artifact(record, root, SHA)
+                    )
+
+    def test_command_records_reject_unsafe_cwd_and_allow_root(self):
+        record = {
+            "schema_version": 2, "check_id": "check", "subject_sha": SHA,
+            "argv": ["python3", "-c", "pass"], "executable": "/usr/bin/python3",
+            "cwd": ".", "started_at": "2026-11-03T00:00:00Z",
+            "finished_at": "2026-11-03T00:00:01Z", "status": "completed",
+            "exit_code": 0, "stdout_id": "check:stdout",
+            "stderr_id": "check:stderr", "output_ids": [],
+        }
+        for path in (".", "scripts/autonomy", "valid directory"):
+            record["cwd"] = path
+            self.assertEqual(r._command_errors(record), [])
+        for path in UNSAFE_PATHS:
+            with self.subTest(path=path):
+                record["cwd"] = path
+                self.assertIn("invalid command argv/cwd", r._command_errors(record))
+
+    def test_verification_rejects_unsafe_check_output_and_population_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            task, _ = make_trusted_repository(Path(directory))
+            verification = task["verification"]
+            output = next(
+                check["outputs"][0]
+                for check in verification["checks"] if check["outputs"]
+            )
+            for location, key, error, permits_root in (
+                (
+                    verification["checks"][0], "cwd",
+                    "invalid check execution definition", True,
+                ),
+                (output, "relative_path", "invalid output definition", False),
+                (
+                    verification["provenance"], "population_ref",
+                    "invalid provenance definition", False,
+                ),
+            ):
+                original = location[key]
+                valid_paths = ("valid/path", "valid file", "évidence")
+                if permits_root:
+                    valid_paths += (".",)
+                for path in valid_paths:
+                    location[key] = path
+                    self.assertEqual(r.validate_verification(verification), [])
+                for path in UNSAFE_PATHS + (() if permits_root else (".",)):
+                    with self.subTest(field=key, path=path):
+                        location[key] = path
+                        self.assertIn(error, r.validate_verification(verification))
+                location[key] = original
 
 
 class EvidenceExecutionTests(unittest.TestCase):
@@ -811,6 +950,72 @@ class TrustBoundaryTests(unittest.TestCase):
                 r.load_trusted_inputs(root, base, "docs/agents/tasks/missing.json")
             with self.assertRaises(r.RunnerError):
                 r.load_trusted_inputs(root, base, "../task.json")
+
+    def test_planning_refs_are_loaded_safely_and_frozen_in_architect_response(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            task, base = make_trusted_repository(root)
+            original = task["pre_implementation"]["plan_ref"]
+            plan_text = (root / original).read_text()
+            # Backslashes are legal Git filenames. Their committed existence must
+            # not let the planning-record existence check replace _blob safety.
+            unusual = "docs/superpowers/plans/real\\plan.md"
+            valid = "docs/superpowers/plans/évidence plan.md"
+            for path in (unusual, valid):
+                (root / path).write_text(plan_text)
+            r._run_git(root, ["add", "."])
+            r._run_git(root, ["commit", "-m", "real unusual planning files"])
+
+            def commit_ref(path):
+                task["pre_implementation"]["plan_ref"] = path
+                (root / task["task_ref"]).write_text(json.dumps(task))
+                r._run_git(root, ["add", task["task_ref"]])
+                r._run_git(root, ["commit", "-m", "planning reference fixture"])
+                return r._run_git(root, ["rev-parse", "HEAD"]).strip()
+
+            base = commit_ref(valid)
+            trusted = r.load_trusted_inputs(root, base, task["task_ref"])
+            self.assertEqual(trusted["artifacts"][valid], plan_text.encode())
+            contract = {key: trusted["task"][key] for key in r.CONTRACT_FIELDS}
+            expected = {
+                "run_id": "r", "task_id": task["task_id"], "agent_name": "architect",
+                "subject_sha": base, "role": "architecture", "task_contract": contract,
+                "check_ids": [], "artifact_ids": [],
+            }
+            response = {
+                "schema_version": 2, "run_id": "r", "task_id": task["task_id"],
+                "agent_name": "architect", "subject_sha": base, "decision": "pass",
+                "summary": "planned", "task_contract": copy.deepcopy(contract),
+                "findings": [], "assessments": [], "evidence_ids": [],
+            }
+            self.assertEqual(
+                r.validate_agent_response(response, trusted["schema"], expected), []
+            )
+            for path in (*UNSAFE_PATHS, ".", unusual):
+                with self.subTest(architect_plan_ref=path):
+                    response["task_contract"]["pre_implementation"]["plan_ref"] = path
+                    self.assertIn(
+                        "architect changed frozen task_contract",
+                        r.validate_agent_response(response, trusted["schema"], expected),
+                    )
+            for path, error in (
+                (unusual, "unsafe trusted input path"),
+                ("./" + original, "unsafe trusted input path"),
+                ("/" + original, "outside the configured plan paths"),
+                ("docs/superpowers/plans/../plan.md", "outside the configured plan paths"),
+                ("docs/superpowers/plans/nul\x00.md", "outside the configured plan paths"),
+                (".", "outside the configured plan paths"),
+            ):
+                with self.subTest(committed_plan_ref=path):
+                    base = commit_ref(path)
+                    # The unusual filename and ./ alias both resolve to real
+                    # committed blobs before the authoritative safe_ref boundary.
+                    if error == "unsafe trusted input path":
+                        self.assertEqual(
+                            r._run_git(root, ["show", f"{base}:{path}"]), plan_text
+                        )
+                    with self.assertRaisesRegex(r.RunnerError, error):
+                        r.load_trusted_inputs(root, base, task["task_ref"])
 
     def test_loaded_evaluator_cannot_self_certify_candidate_version(self):
         with tempfile.TemporaryDirectory() as d:

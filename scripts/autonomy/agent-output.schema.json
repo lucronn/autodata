@@ -118,8 +118,7 @@
         },
         "path": {
           "type": "string",
-          "minLength": 1,
-          "pattern": "^(?!/)(?!.*\\\\)(?!.*\\u0000)(?!.*//)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          "minLength": 1
         },
         "line": {
           "type": "integer",
@@ -229,8 +228,7 @@
         },
         "ref": {
           "type": "string",
-          "minLength": 1,
-          "pattern": "^(?!/)(?!.*\\\\)(?!.*\\u0000)(?!.*//)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          "minLength": 1
         },
         "sha256": {
           "type": "string",
@@ -298,8 +296,7 @@
         },
         "cwd": {
           "type": "string",
-          "minLength": 1,
-          "pattern": "^(?!/)(?!.*\\\\)(?!.*\\u0000)(?!.*//)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          "minLength": 1
         },
         "started_at": {
           "type": "string",
@@ -517,8 +514,7 @@
         },
         "cwd": {
           "type": "string",
-          "minLength": 1,
-          "pattern": "^(?!/)(?!.*\\\\)(?!.*\\u0000)(?!.*//)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          "minLength": 1
         },
         "timeout_seconds": {
           "type": "integer",
@@ -570,8 +566,7 @@
         },
         "relative_path": {
           "type": "string",
-          "minLength": 1,
-          "pattern": "^(?!/)(?!.*\\\\)(?!.*\\u0000)(?!.*//)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          "minLength": 1
         },
         "format": {
           "enum": [
@@ -625,8 +620,7 @@
         },
         "population_ref": {
           "type": "string",
-          "minLength": 1,
-          "pattern": "^(?!/)(?!.*\\\\)(?!.*\\u0000)(?!.*//)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          "minLength": 1
         },
         "report_artifact_id": {
           "type": "string",
@@ -791,8 +785,7 @@
         },
         "plan_ref": {
           "type": "string",
-          "minLength": 1,
-          "pattern": "^(?!/)(?!.*\\\\)(?!.*\\u0000)(?!.*//)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          "minLength": 1
         },
         "issue_ref": {
           "type": "string",
