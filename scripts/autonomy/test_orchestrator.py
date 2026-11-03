@@ -1,191 +1,299 @@
-import unittest
+import copy
+import hashlib
 import json
+import os
 import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-
-from orchestrator import GATE_AGENTS, aggregate_gate_reports, orchestrate_task, validate_task_contract
+import runner as r
+import orchestrator as o
+from test_runner import PROFILE, SHA
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def valid_pre_implementation_record():
-    return {
-        "goal": "Enforce an agent-agnostic planning gate before implementation",
-        "plan_ref": "docs/superpowers/plans/2026-09-11-pre-implementation-gate.md",
-        "issue_ref": "https://github.com/lucronn/autodata/issues/86",
-        "project_ref": "https://github.com/users/lucronn/projects/8",
-        "repository_doc_refs": ["docs/github/operating-model.md"],
-        "todo": ["Add policy enforcement", "Run the gate tests"],
-        "status": "synchronized",
-        "updated_at": "2026-09-11T00:00:00Z",
-    }
+class EvidenceAggregationTests(unittest.TestCase):
+    def test_summary_only_gate_cannot_receive_candidate_sha(self):
+        reports = o.aggregate_gate_reports(
+            "run", SHA, {"security": {"decision": "pass"}}
+        )
+        self.assertEqual(reports["security"]["decision"], "blocked")
+        self.assertIsNone(reports["security"]["implementation_sha"])
+        self.assertEqual(reports["source_provenance"]["decision"], "blocked")
 
-
-class OrchestratorTests(unittest.TestCase):
-    def test_orchestrator_does_not_call_builder_without_pre_implementation_record(self):
-        task = {
-            "task_id": "issue-86",
-            "goal": "Enforce the planning gate",
-            "builder_agent": "autodata-go-builder",
-            "allowed_paths": ["apps/api-go/**"],
-            "bounded_contexts": ["developer infrastructure"],
-            "inputs": ["docs/agents/pre-implementation-gate.md"],
-            "outputs": ["scripts/autonomy/"],
-            "acceptance_tests": ["A builder is blocked without a synchronized record"],
-            "forbidden_scope": ["runtime behavior"],
-            "compatibility": {"api": "preserve", "events": "preserve", "schema": "none"},
-        }
-        contract = {
-            "task_id": task["task_id"],
-            "goal": task["goal"],
-            "bounded_contexts": task["bounded_contexts"],
-            "inputs": task["inputs"],
-            "outputs": task["outputs"],
-            "acceptance_tests": task["acceptance_tests"],
-            "forbidden_scope": task["forbidden_scope"],
-            "compatibility": task["compatibility"],
-        }
-        calls = []
-
-        def fake_run_agent(repo_root, envelope, provider, output_root, timeout_seconds):
-            calls.append(envelope["agent_name"])
-            if envelope["agent_name"] != "autodata-architect":
-                raise AssertionError("builder was invoked before pre-implementation validation")
-            output_root.mkdir(parents=True)
-            evidence = output_root / "evidence"
-            evidence.mkdir()
-            (evidence / "provider-output.json").write_text(
-                json.dumps({"decision": "pass", "summary": "plan returned", "task_contract": contract}),
-                encoding="utf-8",
+    def test_coverage_reopens_files_and_nonempty_denominator(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            a = r._save_artifact(b"one", root, "one", "test-result", SHA, None)
+            p = {"ratio": 0.5, "eligible_count": 2, "covered_count": 1}
+            measured = o.calculate_coverage({"one", "two"}, [a], p, root)
+            self.assertEqual(measured["evidence_completeness"], 0.5)
+            self.assertEqual(measured["evidence"]["missing_ids"], ["two"])
+            (root / a["ref"]).write_bytes(b"tampered")
+            self.assertEqual(
+                o.calculate_coverage({"one"}, [a], p, root)["evidence_completeness"], 0
             )
-            manifest_path = output_root / "run-manifest.json"
-            manifest_path.write_text(
-                json.dumps({"implementation_sha": "a" * 40, "changed_paths": [], "findings": [], "commands_run": []}),
-                encoding="utf-8",
+            self.assertTrue(
+                o.calculate_coverage(set(), [a], p, root)["evidence"]["errors"]
             )
-            return 0, manifest_path
-
-        with tempfile.TemporaryDirectory() as directory, patch(
-            "orchestrator.run_agent", fake_run_agent
-        ):
-            code, decision_path = orchestrate_task(
-                REPO_ROOT, task, "local-cli", Path(directory) / "run", 1
+            self.assertTrue(
+                o.calculate_coverage({"one"}, [a, a], p, root)["evidence"]["errors"]
             )
-            decision = json.loads(decision_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(calls, ["autodata-architect"])
-        self.assertEqual(code, 20)
-        self.assertEqual(decision["phase"], "planning")
-        self.assertIn("task contract missing field: pre_implementation", decision["contract_errors"])
-        self.assertIn("pre_implementation record is required", decision["pre_implementation_errors"])
+    def test_configuration_blocks_before_provider_or_output_creation(self):
+        with tempfile.TemporaryDirectory() as d, patch(
+            "orchestrator.run_agent"
+        ) as provider:
+            root = Path(d) / "run"
+            with self.assertRaises(r.RunnerError):
+                o.orchestrate_task(
+                    REPO_ROOT, {"task_id": "legacy"}, "local-cli", root, 1
+                )
+            provider.assert_not_called()
+            self.assertFalse(root.exists())
 
-    def test_all_policy_gates_have_independent_agents(self):
-        required = {
-            "deterministic_ci",
-            "contract_compatibility",
-            "schema_integrity",
-            "source_provenance",
-            "data_quality",
-            "security",
-            "reliability",
-            "independent_review",
-        }
-
-        self.assertEqual(set(GATE_AGENTS), required)
-        self.assertEqual(len(set(GATE_AGENTS.values())), len(required))
-
-    def test_task_contract_requires_measurable_scope(self):
-        contract = {
-            "task_id": "task-1",
-            "goal": "Add a deterministic endpoint",
-            "bounded_contexts": ["api"],
-            "inputs": ["docs/architecture/contracts.md"],
-            "outputs": ["apps/api-go/"],
-            "acceptance_tests": ["GET returns 200 for an entitled caller"],
-            "forbidden_scope": ["web UI"],
-            "compatibility": {"api": "preserve-or-version", "events": "preserve", "schema": "none"},
-            "pre_implementation": valid_pre_implementation_record(),
-        }
-
-        self.assertEqual(validate_task_contract(contract), [])
-        self.assertIn("goal must be a non-empty string", validate_task_contract({**contract, "goal": ""}))
-
-    def test_aggregate_gate_reports_preserves_sha_and_fails_missing_gate(self):
-        reports = aggregate_gate_reports(
-            run_id="run-1",
-            implementation_sha="b" * 40,
-            provider_runs={
-                "deterministic_ci": {
+    def test_agent_usable_reads_runner_state_and_blocking_medium(self):
+        self.assertFalse(
+            o._agent_usable(
+                {"response": {"decision": "pass"}, "decision": "blocked"}, False, SHA
+            )
+        )
+        self.assertFalse(
+            o._agent_usable(
+                {
                     "decision": "pass",
-                    "evidence": {"ref": "evidence/test.json", "sha256": "c" * 64},
-                }
-            },
+                    "findings": [{"severity": "medium", "blocking": True}],
+                },
+                False,
+                SHA,
+            )
         )
 
-        self.assertEqual(reports["deterministic_ci"]["implementation_sha"], "b" * 40)
-        self.assertEqual(reports["deterministic_ci"]["decision"], "pass")
-        self.assertEqual(reports["security"]["decision"], "blocked")
-        self.assertEqual(reports["security"]["implementation_sha"], "b" * 40)
-
-    def test_orchestration_assembles_a_complete_policy_manifest(self):
-        task = {
-            "task_id": "task-1",
-            "goal": "Add a deterministic endpoint",
-            "builder_agent": "autodata-go-builder",
-            "allowed_paths": ["apps/api-go/**"],
-            "bounded_contexts": ["api"],
-            "inputs": ["docs/architecture/contracts.md"],
-            "outputs": ["apps/api-go/"],
-            "acceptance_tests": ["GET returns 200 for an entitled caller"],
-            "forbidden_scope": ["web UI"],
-            "compatibility": {"api": "preserve-or-version", "events": "preserve", "schema": "none"},
-            "pre_implementation": valid_pre_implementation_record(),
+    def test_bundle_rejects_fabricated_legacy_metrics_and_missing_required_slots(self):
+        trusted = {
+            "trusted_base_sha": SHA,
+            "task": {
+                "task_id": "t",
+                "execution": PROFILE,
+                "verification": {
+                    "checks": [],
+                    "required_agent_evidence": [],
+                    "provenance": {
+                        "check_id": "source-fixture",
+                        "population_ref": "fixture/population.json",
+                        "report_artifact_id": "source",
+                    },
+                },
+            },
+            "policy": json.loads(
+                (REPO_ROOT / ".autodata-autonomy-policy.json").read_text()
+            ),
+            "artifacts": {},
+            "population": {
+                "population_id": "x",
+                "scope": "synthetic-regression",
+                "records": [],
+            },
+            "provenance_inputs": {},
         }
-        contract = {
-            "task_id": "task-1",
-            "goal": "Add a deterministic endpoint",
-            "bounded_contexts": ["api"],
-            "inputs": ["docs/architecture/contracts.md"],
-            "outputs": ["apps/api-go/"],
-            "acceptance_tests": ["GET returns 200 for an entitled caller"],
-            "forbidden_scope": ["web UI"],
-            "compatibility": {"api": "preserve-or-version", "events": "preserve", "schema": "none"},
-            "pre_implementation": valid_pre_implementation_record(),
-        }
-        implementation_sha = "b" * 40
-
-        def fake_run_agent(repo_root, envelope, provider, output_root, timeout_seconds):
-            output_root.mkdir(parents=True)
-            evidence = output_root / "evidence"
-            evidence.mkdir()
-            response = {
-                "decision": "pass",
-                "summary": "fixture agent pass",
-                "task_contract": contract if envelope["agent_name"] == "autodata-architect" else None,
-            }
-            (evidence / "provider-output.json").write_text(json.dumps(response), encoding="utf-8")
-            manifest = {
-                "implementation_sha": implementation_sha if envelope["agent_name"] == "autodata-go-builder" else envelope["base_sha"],
-                "changed_paths": ["apps/api-go/main.go"] if envelope["agent_name"] == "autodata-go-builder" else [],
-                "findings": [],
-                "commands_run": [{"exit_code": 0}],
-            }
-            manifest_path = output_root / "run-manifest.json"
-            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            return 20, manifest_path
-
-        with tempfile.TemporaryDirectory() as directory, patch("orchestrator.run_agent", fake_run_agent):
-            code, manifest_path = orchestrate_task(
-                REPO_ROOT, task, "local-cli", Path(directory) / "run", 1
+        with tempfile.TemporaryDirectory() as d:
+            result = o.validate_evidence_bundle(
+                {
+                    "evidence_completeness": 1.0,
+                    "fast_lane_provenance_coverage": 1.0,
+                    "implementation_sha": SHA,
+                },
+                trusted,
+                Path(d),
             )
-            final = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertFalse(result["passed"])
+            self.assertTrue(result["failures"])
 
-        self.assertEqual(code, 0)
-        self.assertEqual(final["implementation_sha"], implementation_sha)
-        self.assertEqual(final["decision"], "pass")
-        self.assertEqual(set(final["gate_decisions"]), set(GATE_AGENTS))
+
+class FullChainV2Tests(unittest.TestCase):
+    def run_fixture(self, directory, fail_check=False, unavailable=False):
+        from test_runner import make_trusted_repository
+
+        root = directory / "repo"
+        root.mkdir()
+        task, base = make_trusted_repository(root)
+        trusted = r.load_trusted_inputs(root, base, task["task_ref"])
+        original = r.bounded_process
+        if fail_check:
+            # Commit a failed command as a frozen requirement, never modify it after trust resolution.
+            task["verification"]["checks"][0]["argv"] = [
+                "python3",
+                "-c",
+                "raise SystemExit(7)",
+            ]
+            (root / task["task_ref"]).write_text(json.dumps(task))
+            import subprocess
+
+            subprocess.run(
+                ["git", "add", "."], cwd=root, check=True, capture_output=True
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "failed fixture requirement"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+            )
+            base = r._run_git(root, ["rev-parse", "HEAD"]).strip()
+            trusted = r.load_trusted_inputs(root, base, task["task_ref"])
+        envelopes = []
+
+        def process(argv, cwd, env, timeout, stdin=b""):
+            if argv[0] != "codex":
+                return original(argv, cwd, env, timeout, stdin)
+            envelope = json.loads((cwd.parent / "task-envelope.json").read_text())
+            envelopes.append(envelope)
+            if unavailable and envelope.get("gate") == "security":
+                return {
+                    "started_at": r.utc_now(),
+                    "finished_at": r.utc_now(),
+                    "status": "unavailable",
+                    "exit_code": None,
+                    "stdout": b"",
+                    "stderr": b"fixture unavailable",
+                    "output_budget_exhausted": False,
+                }
+            if envelope["agent_name"] == task["builder_agent"]:
+                import subprocess
+
+                (cwd / "app.txt").write_text("after")
+                subprocess.run(
+                    ["git", "add", "app.txt"], cwd=cwd, check=True, capture_output=True
+                )
+                subprocess.run(
+                    ["git", "commit", "-m", "fixture implementation"],
+                    cwd=cwd,
+                    check=True,
+                    capture_output=True,
+                )
+            subject = r._run_git(cwd, ["rev-parse", "HEAD"]).strip()
+            checks = [
+                c
+                for c in task["verification"]["checks"]
+                if c["gate"] == envelope.get("gate")
+            ]
+            assessments = [
+                {
+                    "check_id": c["check_id"],
+                    "decision": "pass",
+                    "evidence_ids": [c["check_id"] + ":command"],
+                    "explanation": "assessed retained actual report",
+                }
+                for c in checks
+            ]
+            response = {
+                "schema_version": 2,
+                "run_id": envelope["run_id"],
+                "task_id": task["task_id"],
+                "agent_name": envelope["agent_name"],
+                "subject_sha": subject,
+                "decision": "pass",
+                "summary": "test-only fake provider",
+                "task_contract": (
+                    envelope["task_contract"]
+                    if envelope["agent_name"] == "autodata-architect"
+                    else None
+                ),
+                "findings": [],
+                "assessments": assessments,
+                "evidence_ids": [],
+            }
+            Path(argv[argv.index("-o") + 1]).write_text(json.dumps(response))
+            return {
+                "started_at": r.utc_now(),
+                "finished_at": r.utc_now(),
+                "status": "completed",
+                "exit_code": 0,
+                "stdout": b'{"type":"session_config","model":"gpt-6.1-sol","reasoning_effort":"medium","service_tier":"priority"}\n',
+                "stderr": b"",
+                "output_budget_exhausted": False,
+            }
+
+        output = directory / "bundle"
+        with patch("runner.bounded_process", process):
+            code, path = o.orchestrate_task(root, task, "local-cli", output, 5)
+        return code, path, trusted, envelopes
+
+    def test_real_checks_fake_provider_complete_bundle_and_replay_tampering(self):
+        with tempfile.TemporaryDirectory() as d:
+            code, path, trusted, envelopes = self.run_fixture(Path(d))
+            final = json.loads(path.read_text())
+            self.assertEqual(code, 0, (path.parent / "decision.json").read_text())
+            self.assertEqual(len(envelopes), 10)
+            self.assertEqual(
+                final["agent_runs"]["architect"]["provider_command"]["exit_code"], 0
+            )
+            self.assertTrue(
+                any(
+                    a["artifact_id"] == "architect:invocation"
+                    for a in final["artifacts"]
+                )
+            )
+            self.assertTrue(all(e["execution"] == PROFILE for e in envelopes))
+            self.assertEqual(final["measurements"]["provenance"]["eligible_count"], 2)
+            self.assertTrue(
+                o.validate_evidence_bundle(final, trusted, path.parent)["passed"]
+            )
+            for mutate in (
+                "metric",
+                "count",
+                "slots",
+                "missing-gate",
+                "stale",
+                "blocking-medium",
+            ):
+                bad = copy.deepcopy(final)
+                if mutate == "metric":
+                    bad["fast_lane_provenance_coverage"] = 0.5
+                elif mutate == "count":
+                    bad["measurements"]["provenance"]["covered_count"] = 1
+                elif mutate == "slots":
+                    bad["measurements"]["evidence"]["required_ids"] = []
+                elif mutate == "missing-gate":
+                    del bad["agent_runs"]["security"]
+                elif mutate == "stale":
+                    bad["agent_runs"]["security"]["subject_sha"] = "b" * 40
+                else:
+                    bad["agent_runs"]["security"]["findings"] = [
+                        {**r.finding("medium", "blocked"), "severity": "medium"}
+                    ]
+                self.assertFalse(
+                    o.validate_evidence_bundle(bad, trusted, path.parent)["passed"],
+                    mutate,
+                )
+            artifact = final["artifacts"][0]
+            (path.parent / artifact["ref"]).write_bytes(b"tampered")
+            self.assertFalse(
+                o.validate_evidence_bundle(final, trusted, path.parent)["passed"]
+            )
+
+    def test_real_failed_check_cannot_be_overridden_by_fake_provider_pass(self):
+        with tempfile.TemporaryDirectory() as d:
+            code, path, trusted, _ = self.run_fixture(Path(d), fail_check=True)
+            self.assertEqual(code, 20)
+            final = json.loads(path.read_text())
+            self.assertEqual(final["commands_run"][0]["exit_code"], 7)
+            self.assertFalse(
+                o.validate_evidence_bundle(final, trusted, path.parent)["passed"]
+            )
+
+    def test_unavailable_provider_keeps_successful_actual_command_records(self):
+        with tempfile.TemporaryDirectory() as d:
+            code, path, trusted, _ = self.run_fixture(Path(d), unavailable=True)
+            self.assertEqual(code, 20)
+            final = json.loads(path.read_text())
+            security = final["agent_runs"]["security"]
+            self.assertEqual(security["commands_run"][0]["exit_code"], 0)
+            self.assertEqual(security["agent_decision"], "blocked")
+            self.assertFalse(
+                o.validate_evidence_bundle(final, trusted, path.parent)["passed"]
+            )
 
 
 if __name__ == "__main__":

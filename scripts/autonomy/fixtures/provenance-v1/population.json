@@ -1,0 +1,8 @@
+{
+  "population_id": "r0-provenance-v1",
+  "scope": "synthetic-regression",
+  "records": [
+    {"fact_id":"fixture:engine","source_ref":"source.json","source_pointer":"/facts/0/value","extraction_ref":"extraction.json","extraction_pointer":"/facts/0/value"},
+    {"fact_id":"fixture:drive","source_ref":"source.json","source_pointer":"/facts/1/value","extraction_ref":"extraction.json","extraction_pointer":"/facts/1/value"}
+  ]
+}
