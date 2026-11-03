@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -190,6 +191,166 @@ class EnvelopeTests(unittest.TestCase):
         with self.assertRaises(assembler.ContractError): assembler.parse_envelope(raw.encode())
 
 
+class ArtifactStoreTests(unittest.TestCase):
+    """Synthetic local transport tests; no raw producer profile is promoted."""
+    def artifact(self, ref='proof.json', raw=b'{}', artifact_id='proof'):
+        return dict(artifact_id=artifact_id, kind='manifest', ref=ref,
+                    sha256=hashlib.sha256(raw).hexdigest(), bytes=len(raw), visibility='private')
+
+    def test_confined_file_reads_are_fresh_and_json_identity_is_data_only(self):
+        raw = json.dumps(dict(candidate_sha=BASE, trusted_base_sha=TRUSTED_BASE,
+                              profile_sha256='1'*64, command=['never-execute'])).encode()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root/'proof.json').write_bytes(raw)
+            with assembler.ArtifactStore(root, [self.artifact(raw=raw)]) as store:
+                self.assertEqual(store.read('proof'), raw)
+                value = store.read_identity_json('proof', candidate_sha=BASE,
+                    trusted_base_sha=TRUSTED_BASE, profile_sha256='1'*64)
+                self.assertEqual(value['command'], ['never-execute'])
+                self.assertEqual(store.read('proof'), raw)
+
+    def test_symlink_leaf_directory_root_and_root_ancestor_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory); root = parent/'root'; root.mkdir()
+            outside = parent/'outside'; outside.mkdir(); (outside/'proof.json').write_bytes(b'{}')
+            (root/'proof.json').symlink_to(outside/'proof.json')
+            with self.assertRaises(assembler.ContractError): assembler.ArtifactStore(root, [self.artifact()])
+            with self.assertRaises(assembler.ContractError):
+                assembler.ArtifactStore(str(root)+'/../outside', [self.artifact()])
+            (root/'proof.json').unlink(); (root/'child').symlink_to(outside, target_is_directory=True)
+            with self.assertRaises(assembler.ContractError): assembler.ArtifactStore(root, [self.artifact('child/proof.json')])
+            linked = parent/'linked'; linked.symlink_to(outside, target_is_directory=True)
+            with self.assertRaises(assembler.ContractError): assembler.ArtifactStore(linked, [self.artifact()])
+            (outside/'nested').mkdir(); (outside/'nested'/'proof.json').write_bytes(b'{}')
+            with self.assertRaises(assembler.ContractError): assembler.ArtifactStore(linked/'nested', [self.artifact()])
+
+    def test_special_missing_extra_and_hardlinked_inventory_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); path = root/'proof.json'
+            with self.assertRaises(assembler.ContractError): assembler.ArtifactStore(root, [self.artifact()])
+            os.mkfifo(path)
+            with self.assertRaises(assembler.ContractError): assembler.ArtifactStore(root, [self.artifact()])
+            path.unlink(); path.write_bytes(b'{}'); (root/'extra').write_bytes(b'private')
+            with self.assertRaises(assembler.ContractError): assembler.ArtifactStore(root, [self.artifact()])
+            (root/'extra').unlink(); os.link(path, root/'alias.json')
+            with self.assertRaises(assembler.ContractError):
+                assembler.ArtifactStore(root, [self.artifact(), self.artifact('alias.json', artifact_id='alias')])
+
+    def test_duplicate_ids_refs_and_unsafe_refs_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root/'proof.json').write_bytes(b'{}')
+            for records in ([self.artifact(), self.artifact('other.json')],
+                            [self.artifact(), self.artifact(artifact_id='other')],
+                            [self.artifact('../proof.json')], [self.artifact('/proof.json')],
+                            [self.artifact('child\\proof.json')], [self.artifact('a/./proof.json')]):
+                with self.subTest(records=records), self.assertRaises(assembler.ContractError):
+                    assembler.ArtifactStore(root, records)
+
+    def test_size_hash_and_declared_limits_fail_before_unbounded_reads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root/'proof.json').write_bytes(b'{}')
+            for artifact in (self.artifact(raw=b'x'), dict(self.artifact(), sha256='0'*64)):
+                with self.subTest(artifact=artifact), self.assertRaises(assembler.ContractError):
+                    with assembler.ArtifactStore(root, [artifact]) as store: store.read('proof')
+            with patch.object(assembler.os, 'read', side_effect=AssertionError('must not read')):
+                with self.assertRaises(assembler.ContractError):
+                    assembler.ArtifactStore(root, [self.artifact()], max_file_bytes=1)
+                (root/'second.json').write_bytes(b'{}')
+                with self.assertRaises(assembler.ContractError):
+                    assembler.ArtifactStore(root, [self.artifact(), self.artifact('second.json', artifact_id='second')],
+                                            max_file_bytes=2, max_total_bytes=3)
+
+    def test_inode_content_inventory_and_root_drift_fail_on_reread(self):
+        for mutation in ('inode', 'content', 'extra', 'root'):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                parent = Path(directory); root = parent/'root'; root.mkdir()
+                path = root/'proof.json'; path.write_bytes(b'{}')
+                with assembler.ArtifactStore(root, [self.artifact()]) as store:
+                    self.assertEqual(store.read('proof'), b'{}')
+                    if mutation == 'inode':
+                        replacement = parent/'replacement'; replacement.write_bytes(b'{}'); replacement.replace(path)
+                    elif mutation == 'content': path.write_bytes(b'[]')
+                    elif mutation == 'extra': (root/'extra').write_bytes(b'private')
+                    else:
+                        root.rename(parent/'old'); root.mkdir(); (root/'proof.json').write_bytes(b'{}')
+                    with self.assertRaises(assembler.ContractError): store.read('proof')
+
+    def test_mutation_during_read_and_between_read_and_parse_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); path = root/'proof.json'; path.write_bytes(b'{}')
+            original_read = assembler.os.read
+            with assembler.ArtifactStore(root, [self.artifact()]) as store:
+                changed = False
+                def read(fd, count):
+                    nonlocal changed
+                    result = original_read(fd, count)
+                    if not changed:
+                        changed = True; path.write_bytes(b'[]')
+                    return result
+                with patch.object(assembler.os, 'read', side_effect=read):
+                    with self.assertRaises(assembler.ContractError): store.read('proof')
+            path.write_bytes(b'{}')
+            original_parse = assembler.strict_json
+            with assembler.ArtifactStore(root, [self.artifact()]) as store:
+                def parse(raw):
+                    value = original_parse(raw); path.write_bytes(b'[]'); return value
+                with patch.object(assembler, 'strict_json', side_effect=parse):
+                    with self.assertRaises(assembler.ContractError):
+                        store.read_identity_json('proof', candidate_sha=BASE, trusted_base_sha=TRUSTED_BASE)
+
+    def test_declared_raw_candidate_base_and_profile_ids_must_match(self):
+        expected = dict(candidate_sha=BASE, trusted_base_sha=TRUSTED_BASE, profile_sha256='1'*64)
+        for field in expected:
+            for wrong in ('2'*len(expected[field]), None, True, []):
+                raw = json.dumps(dict(expected, **{field: wrong})).encode()
+                with self.subTest(field=field, wrong=wrong), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory); (root/'proof.json').write_bytes(raw)
+                    with assembler.ArtifactStore(root, [self.artifact(raw=raw)]) as store:
+                        with self.assertRaises(assembler.ContractError): store.read_identity_json('proof', **expected)
+
+    def test_nested_regular_files_and_immutable_declaration_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root/'nested').mkdir(); (root/'nested'/'proof.json').write_bytes(b'{}')
+            declaration = self.artifact('nested/proof.json')
+            with assembler.ArtifactStore(root, [declaration]) as store:
+                declaration.update(ref='../outside', bytes=100, sha256='0'*64)
+                self.assertEqual(store.read('proof'), b'{}')
+                value = store.read_identity_json('proof', candidate_sha=BASE, trusted_base_sha=TRUSTED_BASE)
+                self.assertEqual(value, {})  # Missing identities remain missing.
+            (root/'empty-undeclared').mkdir()
+            with self.assertRaises(assembler.ContractError):
+                assembler.ArtifactStore(root, [self.artifact('nested/proof.json')])
+
+    def test_nested_declared_identity_and_malformed_raw_json_are_rejected(self):
+        for raw in (b'{"nested":[{"candidate_sha":"'+b'2'*40+b'"}]}',
+                    b'{"candidate_sha":"'+BASE.encode()+b'","candidate_sha":"'+BASE.encode()+b'"}',
+                    b'{"x":NaN}', b'\xff'):
+            with self.subTest(raw=raw), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory); (root/'proof.json').write_bytes(raw)
+                with assembler.ArtifactStore(root, [self.artifact(raw=raw)]) as store:
+                    with self.assertRaises(assembler.ContractError):
+                        store.read_identity_json('proof', candidate_sha=BASE, trusted_base_sha=TRUSTED_BASE)
+
+    def test_read_permission_error_is_a_static_transport_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root/'proof.json').write_bytes(b'{}')
+            with assembler.ArtifactStore(root, [self.artifact()]) as store:
+                original_open = assembler.os.open
+                def denied(path, flags, **kwargs):
+                    if path == 'proof.json': raise PermissionError('PRIVATE_PATH')
+                    return original_open(path, flags, **kwargs)
+                with patch.object(assembler.os, 'open', side_effect=denied):
+                    with self.assertRaisesRegex(assembler.ContractError, '^evidence_unavailable$'):
+                        store.read('proof')
+
+    def test_undeclared_reads_and_closed_store_fail_without_leaking_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); (root/'proof.json').write_bytes(b'{}')
+            with assembler.ArtifactStore(root, [self.artifact()]) as store:
+                with self.assertRaises(assembler.ContractError): store.read('not-declared')
+            with self.assertRaises(assembler.ContractError): store.read('proof')
+
+
 class TrustedBoundaryTests(unittest.TestCase):
     def test_actual_unpromoted_task_is_diagnostic_only(self):
         trust = assembler.load_trusted(TRUSTED_BASE, TASK, 'fixture')
@@ -244,11 +405,46 @@ class TrustedBoundaryTests(unittest.TestCase):
             self.assertTrue(all(value == 0 for value in result['derived_counts'].values()))
 
 
+    def test_disabled_slot_profile_hash_must_match_committed_profile(self):
+        item = EnvelopeTests().with_slot(); item['trusted_base_sha'] = TRUSTED_BASE
+        trusted = assembler.load_trusted(TRUSTED_BASE, TASK, 'fixture')
+        parsed = assembler.parse_envelope(json.dumps(item).encode())
+        with self.assertRaises(assembler.ContractError): assembler.assemble(parsed, trusted, 'plan')
+        item['slots'][0]['profile_sha256'] = hashlib.sha256(
+            b'{"enabled":false,"expected_cases":5,"slot_id":"fixture.identity"}').hexdigest()
+        result, code = assembler.assemble(assembler.parse_envelope(json.dumps(item).encode()), trusted, 'validate')
+        self.assertEqual((code, result['status']), (3, 'unavailable'))
+
+    def test_plan_performs_no_evidence_root_io_and_integrity_does_not_promote(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory); manifest = parent/'envelope.json'
+            manifest.write_text(json.dumps(committed_envelope()))
+            root = parent/'raw'
+            command = [sys.executable, str(Path(__file__).with_name('release_acceptance.py')), 'plan',
+                       '--manifest', str(manifest), '--evidence-root', str(root),
+                       '--trusted-base-sha', TRUSTED_BASE, '--task-ref', TASK, '--requested-tier', 'fixture']
+            run = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(json.loads(run.stdout)['status'], 'planned')
+            command[2] = 'validate'
+            run = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 2)
+            root.mkdir(); (root/'proof.json').write_bytes(b'{}')
+            run = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 3)
+            self.assertFalse(json.loads(run.stdout)['fixture_verified'])
+            (root/'PRIVATE_EXTRA_FILE').write_bytes(b'SECRET_PRIVATE_CONTENT')
+            run = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 2)
+            self.assertNotIn('PRIVATE_EXTRA_FILE', run.stdout+run.stderr)
+            self.assertNotIn('SECRET_PRIVATE_CONTENT', run.stdout+run.stderr)
+
     def test_cli_actual_planning_task_returns_unavailable_and_redacts_bad_input(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'envelope.json'; path.write_text(json.dumps(committed_envelope()))
+            root = Path(directory)/'raw'; root.mkdir(); (root/'proof.json').write_bytes(b'{}')
             command = [sys.executable, str(Path(__file__).with_name('release_acceptance.py')), 'validate',
-                       '--manifest', str(path), '--evidence-root', directory,
+                       '--manifest', str(path), '--evidence-root', str(root),
                        '--trusted-base-sha', TRUSTED_BASE, '--task-ref', TASK, '--requested-tier', 'fixture']
             run = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(run.returncode, 3, run.stderr)
