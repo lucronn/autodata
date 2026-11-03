@@ -45,25 +45,10 @@ func TestWorkshopBrowserFixtureHTTP(t *testing.T) {
 		paid = paidSetup(t)
 	}
 	firebase := newWorkshopFirebaseSDKFixture(t)
-	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
-	var customer *customerAuthService
-	if paid != nil {
-		var err error
-		customer, err = newConfiguredCustomerAuth(context.Background(), customerAuthConfig{Environment: "test", Mode: "firebase", Origin: "https://fixture.invalid", ProjectID: "fixture-project", APIKey: "fixture-key", AuthDomain: "fixture-project.firebaseapp.com", AppID: "1:123456:web:abcdef"}, &postgresCustomerSessions{pool: paid.pool}, firebase.verifier)
-		if err != nil {
-			t.Fatal(err)
-		}
-		server = NewServerWithCatalogStore(staticReadiness{}, customer, newMemoryRequestStore(), newPostgresCatalogStore(paid.pool))
-		server.customerAuth = customer
-		server.commerceClient = paid.applications[0].commerceClient
-		server.ingestionClient = paid.applications[0].ingestionClient
-		server.catalogImageKey = paid.applications[0].catalogImageKey
-		server.catalogImageReader = paid.reader
-		if err = server.validatePaidCatalogDependencies(); err != nil {
-			t.Fatal(err)
-		}
-	}
+	server, customer := newWorkshopBrowserApplication(t, paid, firebase, "https://fixture.invalid")
 	stopped := make(chan struct{})
+	restart := make(chan struct{}, 1)
+	generation := 1
 	var once sync.Once
 	var tlsServer *httptest.Server
 	mux := http.NewServeMux()
@@ -82,6 +67,23 @@ func TestWorkshopBrowserFixtureHTTP(t *testing.T) {
 		writeJSON(w, 200, map[string]any{"idToken": token, "refreshToken": "synthetic-refresh-never-persist", "expiresIn": "3600", "localId": uid, "email": "fixture@example.invalid", "providerId": "google.com"})
 	})
 	mux.HandleFunc("POST /__fixture/stop", func(w http.ResponseWriter, r *http.Request) { once.Do(func() { close(stopped) }); w.WriteHeader(204) })
+	mux.HandleFunc("GET /__fixture/runtime", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"application_generation": generation})
+	})
+	mux.HandleFunc("POST /__fixture/restart", func(w http.ResponseWriter, r *http.Request) {
+		if paid == nil {
+			http.Error(w, "actual fixture required", 400)
+			return
+		}
+		w.WriteHeader(204)
+		if flush, ok := w.(http.Flusher); ok {
+			flush.Flush()
+		}
+		select {
+		case restart <- struct{}{}:
+		default:
+		}
+	})
 	mux.HandleFunc("GET /__fixture/policy/{kind}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		io.WriteString(w, "Synthetic browser fixture policy. No merchant or live payment.")
@@ -93,9 +95,10 @@ func TestWorkshopBrowserFixtureHTTP(t *testing.T) {
 			writeJSON(w, 200, map[string]any{"enabled": true, "terms_version": "workshop-v1", "terms_url": origin + "/__fixture/policy/terms", "privacy_url": origin + "/__fixture/policy/privacy", "refund_url": origin + "/__fixture/policy/refund", "contact_url": origin + "/__fixture/policy/contact", "tax_notice": "Synthetic fixture tax included."})
 		})
 	}
-	mux.Handle("/", server.Handler())
+	application := server.Handler()
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { application.ServeHTTP(w, r) }))
 	tlsServer = httptest.NewTLSServer(mux)
-	defer tlsServer.Close()
+	defer func() { tlsServer.Close() }()
 	if customer != nil {
 		customer.config.Origin = tlsServer.URL
 	}
@@ -114,10 +117,27 @@ func TestWorkshopBrowserFixtureHTTP(t *testing.T) {
 	if err = os.WriteFile(output, body, 0600); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-stopped:
-	case <-time.After(4400 * time.Second):
-		t.Fatal("browser fixture hard deadline exceeded")
+	deadline := time.NewTimer(4400 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case <-stopped:
+			return
+		case <-deadline.C:
+			t.Fatal("browser fixture hard deadline exceeded")
+		case <-restart:
+			origin := tlsServer.URL
+			// Close waits for every prior handler before replacing application state.
+			tlsServer.Close()
+			server, customer = newWorkshopBrowserApplication(t, paid, firebase, origin)
+			application = server.Handler()
+			generation++
+			var err error
+			tlsServer, err = restartWorkshopTLSFixture(tlsServer, mux)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }
 
@@ -258,6 +278,19 @@ func mountWorkshopPaidControls(t *testing.T, mux *http.ServeMux, paid *paidFixtu
 		result["image_reads"] = paid.reader.calls.Load()
 		writeJSON(w, 200, result)
 	})
+	mux.HandleFunc("GET /__fixture/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		req, _ := http.NewRequestWithContext(r.Context(), "GET", paid.control.control+"/r3-fixture/snapshot", nil)
+		req.Header.Set("X-R3-Fixture-Token", paid.control.token)
+		response, err := (&http.Client{Timeout: 3 * time.Second}).Do(req)
+		if err != nil {
+			http.Error(w, "fixture snapshot unavailable", 500)
+			return
+		}
+		defer response.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(response.StatusCode)
+		io.Copy(w, io.LimitReader(response.Body, 8<<20))
+	})
 	mux.HandleFunc("POST /__fixture/disable", func(w http.ResponseWriter, r *http.Request) {
 		identity.mu.Lock()
 		identity.disabled = true
@@ -336,4 +369,76 @@ func TestWorkshopBrowserOfficialIdentityAccounts(t *testing.T) {
 	if identity.certCalls.Load() == 0 || identity.userCalls.Load() < 4 || identity.unexpected.Load() != 0 {
 		t.Fatal("official signature and current-user fixture calls missing")
 	}
+}
+
+func TestWorkshopBrowserRestartPreservesOriginAndReplacesHandler(t *testing.T) {
+	first := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "first application") }))
+	defer first.Close()
+	origin := first.URL
+	response, err := first.Client().Get(origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if string(body) != "first application" {
+		t.Fatal("initial application missing")
+	}
+	second, err := restartWorkshopTLSFixture(first, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "fresh application") }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if second.URL != origin {
+		t.Fatal("restart changed cookie origin")
+	}
+	response, err = second.Client().Get(origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(response.Body)
+	response.Body.Close()
+	if string(body) != "fresh application" {
+		t.Fatal("restart retained old handler")
+	}
+}
+
+func newWorkshopBrowserApplication(t *testing.T, paid *paidFixture, firebase *firebaseSDKFixture, origin string) (*Server, *customerAuthService) {
+	t.Helper()
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	var customer *customerAuthService
+	if paid != nil {
+		var err error
+		customer, err = newConfiguredCustomerAuth(context.Background(), customerAuthConfig{Environment: "test", Mode: "firebase", Origin: origin, ProjectID: "fixture-project", APIKey: "fixture-key", AuthDomain: "fixture-project.firebaseapp.com", AppID: "1:123456:web:abcdef"}, &postgresCustomerSessions{pool: paid.pool}, firebase.verifier)
+		if err != nil {
+			t.Fatal(err)
+		}
+		server = NewServerWithCatalogStore(staticReadiness{}, customer, newMemoryRequestStore(), newPostgresCatalogStore(paid.pool))
+		server.customerAuth = customer
+		server.commerceClient = paid.applications[0].commerceClient
+		server.ingestionClient = paid.applications[0].ingestionClient
+		server.catalogImageKey = paid.applications[0].catalogImageKey
+		server.catalogImageReader = paid.reader
+		if err = server.validatePaidCatalogDependencies(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return server, customer
+}
+
+// Rebind the exact HTTPS origin after terminating the prior HTTP server. The
+// caller constructs fresh production application/store/auth instances over PG.
+func restartWorkshopTLSFixture(previous *httptest.Server, handler http.Handler) (*httptest.Server, error) {
+	address := previous.Listener.Addr().String()
+	previous.Close()
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return nil, err
+	}
+	next := httptest.NewUnstartedServer(handler)
+	next.Listener.Close()
+	next.Listener = listener
+	next.TLS = previous.TLS.Clone()
+	next.StartTLS()
+	return next, nil
 }

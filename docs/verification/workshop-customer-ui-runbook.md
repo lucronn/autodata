@@ -222,3 +222,33 @@ JSON records candidate/SDK/input/asset hashes, engine revisions/version, safe
 route templates and explicit assertions. Failure screenshots contain only
 synthetic fixture content. No credentials, raw tokens or signed image paths are
 recorded by the API browser request log.
+
+The existing21 API cases now also stop the actual TLS HTTP server, construct
+fresh production application/auth/store instances over the same PG database and
+rebind the same HTTPS origin. Each case records application generations and
+observed order/grant/session counts before and after, then reloads the owner
+library without another purchase. This resets application memory; it does not
+restart PostgreSQL or claim a production deployment restart.
+
+The18 content cases retain raw bridge snapshots around warm canonical reload,
+pinned source read and an explicit approved image request. Provider/source/asset
+fetch counters, model calls, immutable row hash and source/rewrite/publication
+counts must remain unchanged. The actual S3 reader must increase for approved
+image delivery; zero S3 reads is not a warm-read contract. Focused regression
+checks reject new external work while permitting that image delivery.
+
+The DTO CI readiness wait uses a literal multiline Python heredoc, a120-second
+deadline and fixture-parent liveness checks. Its EXIT trap terminates the owned
+process group, waits at most two seconds before KILL, then reaps the parent.
+Exact120+21 execution remains pending the independently reviewed frozen
+candidate and coordinator-owned runtime capacity.
+
+The first container DTO author run at d849c29 stopped before any browser case:
+Git rejected the mounted checkout's different owner, and root-owned0600 fixture
+artifacts prevented the host inventory from reading them. Browser provenance now
+uses an explicit safe.directory for the already verified owned checkout and
+requires actual Git HEAD; an environment SHA cannot replace that observation.
+The external reviewed runner uses the invoking host UID/GID so owned artifacts
+remain readable even after forced termination. Task-specific XDG cache/config
+and temporary paths stay under /tmp; HOME is retained unchanged. Retain the failed
+receipt as harness diagnosis; it does not count toward120 DTO or21 API passes.

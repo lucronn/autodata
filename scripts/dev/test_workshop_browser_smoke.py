@@ -29,6 +29,16 @@ class BrowserEvidenceContract(unittest.TestCase):
             with self.assertRaises(ValueError): smoke.validate_results(altered, expected)
         with self.assertRaises(ValueError): smoke.candidate_identity('short')
 
+    def test_warm_runtime_rejects_new_external_work_but_allows_image_delivery(self):
+        before = dict(provider_calls={'bankone': 2, 'banktwo': 0}, source_calls={'bankone': 1, 'banktwo': 0}, asset_calls={'bankone': 1, 'banktwo': 0}, model_calls=1, counts={'article_jobs': 1, 'source_revisions': 1, 'canonical_revisions': 1, 'published_revisions': 1, 'publication_events': 1}, immutable_sha256='a'*64)
+        smoke.validate_warm_runtime(before, before, 2, 3)
+        for field in ('provider_calls', 'source_calls', 'asset_calls', 'model_calls', 'counts', 'immutable_sha256'):
+            changed = dict(before)
+            changed[field] = 'changed'
+            with self.subTest(field=field), self.assertRaises(AssertionError):
+                smoke.validate_warm_runtime(before, changed, 2, 3)
+        with self.assertRaises(AssertionError): smoke.validate_warm_runtime(before, before, 2, 2)
+
     def test_external_transport_allowlist_is_exact(self):
         self.assertTrue(smoke.allowed_external('https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=fixture-key'))
         for value in ['https://identitytoolkit.googleapis.com.evil/v1/accounts:signInWithIdp', 'https://evil.invalid/pixel', 'https://checkout.stripe.com.evil/c/pay/fixture']:

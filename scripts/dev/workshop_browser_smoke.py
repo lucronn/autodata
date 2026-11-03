@@ -64,10 +64,7 @@ def validate_results(rows, expected):
 
 
 def verify_provenance(args):
-    try:
-        head=subprocess.run(['git','rev-parse','HEAD'],cwd=ROOT,text=True,capture_output=True,check=True,timeout=5).stdout.strip()
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        head=os.environ.get('CANDIDATE_SHA')
+    head=subprocess.run(['git','--no-optional-locks','-c',f'safe.directory={ROOT}','rev-parse','HEAD'],cwd=ROOT,text=True,capture_output=True,check=True,timeout=5).stdout.strip()
     if head!=args.candidate_sha: raise ValueError('candidate SHA does not match the actual checkout/image input')
     host=urlsplit(args.base_url)
     certificate=ssl.get_server_certificate((host.hostname,host.port),timeout=5)
@@ -405,13 +402,26 @@ async def api_signin(page):
     await page.locator('#signin').click()
     await expect(page.locator('#account-status')).to_have_text('Signed in.',timeout=10000)
 
+def validate_warm_runtime(before,after,reader_before,reader_after):
+    for field in ('provider_calls','source_calls','asset_calls','model_calls','counts','immutable_sha256'):
+        assert before[field]==after[field], 'warm canonical read changed '+field
+    assert before['model_calls']>0 and before['counts']['published_revisions']==1
+    assert reader_after>reader_before, 'explicit approved image delivery did not reach actual S3 reader'
+
+
+async def api_snapshot(context,origin):
+    response=await context.request.get(origin+'/__fixture/snapshot')
+    assert response.status==200
+    return await response.json()
+
+
 async def api_case(browser,origin,name,output):
     from playwright.async_api import expect
     context=await browser.new_context(ignore_https_errors=True,viewport={'width':1280,'height':900})
     transport=APIFixture(origin,name)
     await context.route('**/*',transport.route)
     page=await context.new_page();page.on('pageerror',lambda error:transport.errors.append(str(error)))
-    assertions={}
+    assertions={};restart_receipt={};warm_receipt={}
     try:
         response=await context.request.get(origin+'/__fixture/metadata');metadata=await response.json()
         assert metadata['kind']=='api-fixture'
@@ -452,6 +462,24 @@ async def api_case(browser,origin,name,output):
         await page.reload();await expect(page.locator('#library-items > li')).to_have_count(1)
         assert (await api_measure(context,origin))['workshop_orders']==1
         assertions['permanent_owner_library_reload']=True
+        restart_before=await api_measure(context,origin)
+        runtime_before=await (await context.request.get(origin+'/__fixture/runtime')).json()
+        await api_control(context,origin,'restart')
+        deadline=time.monotonic()+5
+        while True:
+            try:
+                runtime_after=await (await context.request.get(origin+'/__fixture/runtime',timeout=1000)).json()
+                if runtime_after['application_generation']==runtime_before['application_generation']+1:break
+            except Exception:
+                if time.monotonic()>=deadline:raise
+            assert time.monotonic()<deadline,'actual application restart did not finish'
+            await asyncio.sleep(.05)
+        await page.reload();await expect(page.locator('#library-items > li')).to_have_count(1)
+        restart_after=await api_measure(context,origin)
+        durable=('workshop_orders','workshop_checkout_requests','entitlements','dataset_requests','dataset_projections','payment_events','orders','auth_sessions','hashed_sessions')
+        assert {key:restart_before[key] for key in durable}=={key:restart_after[key] for key in durable}
+        restart_receipt={'runtime_before':runtime_before,'runtime_after':runtime_after,'before':restart_before,'after':restart_after}
+        assertions['permanent_owner_library_server_restart']=True
         if name==API_CASES[0]:
             assert await page.evaluate('Object.keys(localStorage).filter(k=>/firebase:authUser|token|csrf/i.test(k))')==[]
         else:
@@ -472,10 +500,21 @@ async def api_case(browser,origin,name,output):
             await api_control(context,origin,'control/release-model')
             await expect(page.locator('#article-kind')).to_have_text('Workshop article',timeout=15000)
             await expect(page.locator('#article-content')).not_to_be_empty()
+            warm_before=await api_snapshot(context,origin)
+            reader_before=(await api_measure(context,origin))['image_reads']
             await page.reload();await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+            await expect(page.locator('#article-content img')).not_to_have_count(0)
+            warm_image=await page.locator('#article-content img').first.get_attribute('src')
+            delivered=await context.request.get(warm_image);assert delivered.status==200 and len(await delivered.body())>0
+            pinned=await context.request.get(origin+source_path);assert pinned.status==200
+            warm_after=await api_snapshot(context,origin)
+            reader_after=(await api_measure(context,origin))['image_reads']
+            validate_warm_runtime(warm_before,warm_after,reader_before,reader_after)
+            warm_receipt={'before':warm_before,'after':warm_after,'reader_before':reader_before,'reader_after':reader_after}
             assertions['source_to_canonical_and_warm_reuse']=True
+            assertions['warm_raw_runtime_unchanged_with_approved_s3_delivery']=True
             if name==API_CASES[2]:
-                for denied in (f'/v1/catalog/vehicles/{scope["adjacent"]}/articles',f'/v1/catalog/vehicles/{configuration}/articles/{scope["unscoped"]}',f'/v1/catalog/vehicles/{scope["vehicle"]}/articles'):
+                for denied in (f'/v1/catalog/vehicles/{scope["adjacent"]}/articles',f'/v1/catalog/vehicles/{scope["other_region"]}/articles',f'/v1/catalog/vehicles/{configuration}/articles/{scope["unscoped"]}',f'/v1/catalog/vehicles/{scope["vehicle"]}/articles'):
                     denied_response=await context.request.get(origin+denied)
                     assert denied_response.status in (403,404), f'adjacent/legacy route exposed status{denied_response.status}'
                 other=await browser.new_context(ignore_https_errors=True)
@@ -508,7 +547,7 @@ async def api_case(browser,origin,name,output):
                 assertions['signed_full_refund_denies_old_content_and_media']=True
         assert not transport.unexpected and not transport.errors, {'unexpected':transport.unexpected,'errors':transport.errors}
         final=await api_measure(context,origin);assert final['sdk_unexpected']==0
-        return {'status':'passed','assertions':assertions,'provider':scope['provider'],'requests':transport.requests,'measurement':final}
+        return {'status':'passed','assertions':assertions,'provider':scope['provider'],'requests':transport.requests,'measurement':final,'restart':restart_receipt,'warm':warm_receipt}
     except BaseException:
         output.mkdir(mode=0o700,parents=True,exist_ok=True)
         try:await page.screenshot(path=str(output/(name+'-failure.png')),timeout=1500)
