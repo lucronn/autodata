@@ -1,0 +1,63 @@
+{
+  "goal": "Bound verified-worker revalidation by the original operation deadline and cancellation ownership, and prohibit child spawn after expiry or cancellation while preserving dormant publisher execution.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-artifact-revalidation-deadline.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/workshop-gcp.md",
+    "docs/superpowers/plans/2026-11-03-workshop-artifact-boundary-corrections.md"
+  ],
+  "todo": [
+    "Synchronize the single revalidation finding, exact two-file scope and retained red probe across Issue186, Project8 and canonical docs; preserve the current PG adoption index/detail, commit and pass full-SHA pinned preflight for independent review before implementation.",
+    "Add verified-descriptor-path deadline, abort and pending-inspection regressions that prove zero spawn and zero readback after the cutoff, using only a synthetic local toolchain and harmless OS child boundary.",
+    "Thread one original-budget inspection scope through loader and file/tree awaits, own cancellation before revalidation, drain or fail cleanup for outstanding inspection work, and recheck deadline and cancellation immediately before the fixed spawn without resetting any budget.",
+    "Run all existing Node and Python cloud/host/workflow suites plus syntax, exact-scope and pinned-gate checks; push the bounded candidate for independent exact-SHA review while retaining every owner, immutable-toolchain, advisory, licensing and activation blocker."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T03:42:43.246780+00:00",
+  "source_integration_base_sha": "bf7bb67bfbdca3b8186bb56d603cf4dee7e4116b",
+  "implementation_allowlist": [
+    "infra/deploy/gce/publisher_artifact.mjs",
+    "infra/deploy/gce/test_publisher_artifact.mjs"
+  ],
+  "independent_checkpoint_review": "pending",
+  "runtime_execution_authorized": false,
+  "staging_activation_authorized": false,
+  "production_publication_authorized": false,
+  "deployment_authorized": false,
+  "retained_review": {
+    "review_path": "/tmp/autodata-artifact-bf7bb67-review.md",
+    "probe_path": "/tmp/autodata-artifact-bf7bb67-deadline-probe.mjs",
+    "probe_result": {
+      "mountReads": 2,
+      "spawned": 1,
+      "spawnedAfterDeadline": true,
+      "error": "cleanup_failed"
+    },
+    "original_three_findings": "closed by independent review; new candidate approval withheld for the single P2 revalidation finding"
+  },
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621946752",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_note_field": "Source or dependency reference",
+    "verified_at": "2026-11-04T03:43:20.394934+00:00",
+    "issue_comment_sha256": "f7f42d03cdd473674828c3d12f3fb7baebcf4283b67e55db1c750f9c70696669",
+    "project_text_sha256": "18cb29e9df58881ba2e10584a80a4394ea5346ff5a9493e2eb4967c5592a8ea7",
+    "prior_project_index_sha256": "c121a0b063631ceaccfbbe7cc0cbd9cd6dad5826f4d769a4f8db1feffe102358",
+    "full_prior_project_index_preserved_in_issue_comment": true,
+    "preserved_pg_details": [
+      {
+        "ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621879747",
+        "sha256": "b7b2ffe33f786ba36c42d0c04bb281c0e7409d87fa63d841b3b6e9d4c1e28cfc",
+        "preserved_verbatim": true
+      },
+      {
+        "ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621883014",
+        "sha256": "6c58b07b7975c8318be7e0f0b37aad9a925282a97717e38dff27e7e79ab494a5",
+        "preserved_verbatim": true
+      }
+    ],
+    "closure_index_at_sync": "none posted; coordinator and PG agent confirmed"
+  }
+}

@@ -334,3 +334,17 @@ Concrete todo:
 - [ ] Replace in-process SDK callbacks and Promise-only cancellation with one fixed verified child process, private result pipe, bounded log pipes, termination and reap proof before any cancellation or upload result returns.
 - [ ] Open release.zip nonblocking and no-follow, reject nonregular or replaced files, and put filesystem preflight under the same deadline and cleanup reserve.
 - [ ] Run real local tamper, late-output, process-group, cancellation, deadline, overflow and FIFO red/green regressions plus existing focused suites; push exact candidates for independent review with every activation denial and audit limitation intact.
+
+
+## Artifact verified-worker deadline correction: planning only
+
+Bound verified-worker revalidation by the original operation deadline and cancellation ownership, and prohibit child spawn after expiry or cancellation while preserving dormant publisher execution.
+
+Candidate `bf7bb67bfbdca3b8186bb56d603cf4dee7e4116b` closed the original installed-tree/process/FIFO review findings (92 Node and143 Python tests), but approval is withheld for one P2: selected-worker revalidation is outside deadline/cancel bounds and may start a child after expiry. Retained synthetic probe shows spawnedAfterDeadline=true and cleanup_failed; it establishes no live/owner/immutable-toolchain evidence. Plan `docs/superpowers/plans/2026-11-04-workshop-artifact-revalidation-deadline.md`; record `docs/agents/records/2026-11-04-workshop-artifact-revalidation-deadline.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-artifact-revalidation-deadline.json`. Only publisher_artifact.mjs and its Node test may change after synchronized pinned gate, independent review and dispatch. Bind inspection waits/traversal/handle cleanup to one original-budget cancellation scope, preserve the cleanup reserve, and recheck deadline/abort immediately before fixed spawn. No live SDK or workflow action follows. Both CLI modes stay unconditional exit3 without stdin/ambient-token reads; owner trust, immutable-toolchain and seven moderate advisory/buffers-license blockers remain. Preserve CURRENT PG adoption index/detail verbatim/hash; any later closure index follows its independent audit and tracking-slot release.
+
+Concrete todo:
+
+- [ ] Synchronize the single revalidation finding, exact two-file scope and retained red probe across Issue186, Project8 and canonical docs; preserve the current PG adoption index/detail, commit and pass full-SHA pinned preflight for independent review before implementation.
+- [ ] Add verified-descriptor-path deadline, abort and pending-inspection regressions that prove zero spawn and zero readback after the cutoff, using only a synthetic local toolchain and harmless OS child boundary.
+- [ ] Thread one original-budget inspection scope through loader and file/tree awaits, own cancellation before revalidation, drain or fail cleanup for outstanding inspection work, and recheck deadline and cancellation immediately before the fixed spawn without resetting any budget.
+- [ ] Run all existing Node and Python cloud/host/workflow suites plus syntax, exact-scope and pinned-gate checks; push the bounded candidate for independent exact-SHA review while retaining every owner, immutable-toolchain, advisory, licensing and activation blocker.
