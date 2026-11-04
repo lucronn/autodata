@@ -1440,7 +1440,8 @@ def _paid_scope_binding(snapshot, bank):
     configurations = set()
     for row in canonical_rows:
         require(row.get('vehicle_id') == vehicle, code)
-        config = row.get('vehicle_configuration_id')
+        require('vehicle_configuration_id' in row, code)
+        config = row['vehicle_configuration_id']
         if config is not None: _paid_http_uuid(config, code); configurations.add(config)
     require(len(configurations) == 3 and set(scopes) <= configurations and vehicle not in configurations, code)
     other = next(iter(configurations-set(scopes)))

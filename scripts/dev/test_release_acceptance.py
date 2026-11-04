@@ -2618,4 +2618,9 @@ class PaidScopeReceiptTests(unittest.TestCase):
              ('owner-b revoked',lambda s:s['paid_rows']['entitlements'][1].update(status='revoked'))]],'paid_scope_binding')
 
 
+    def test_canonical_unscoped_configuration_is_explicit_null(self):
+        self.check_mutations([('missing scope '+str(i),lambda m,i=i:self.terminal(m,
+            lambda s:s['immutable_rows']['canonical_articles'][i].pop('vehicle_configuration_id')))
+            for i in range(8)],'paid_scope_binding')
+
 if __name__ == '__main__': unittest.main()
