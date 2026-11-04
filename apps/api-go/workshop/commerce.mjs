@@ -96,6 +96,7 @@ export function purchaseConfiguration(config, quote) {
   const keys = ["terms_url", "privacy_url", "refund_url", "contact_url"];
   return Boolean(
     config?.enabled === true &&
+      config.terms_version === "workshop-v1" &&
       config.terms_version === quote?.purchase_terms_version &&
       typeof config.tax_notice === "string" &&
       config.tax_notice.trim() &&

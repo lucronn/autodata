@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { NavigationGeneration } from './workshop/article-read.mjs';
-import { uuid, validScope } from './workshop/commerce.mjs';
+import { purchaseConfiguration, uuid, validScope } from './workshop/commerce.mjs';
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
@@ -940,4 +940,47 @@ test('generation changes without abort suppress in-flight article index renderin
   assert.equal(h.$('articles').children.length, 0);
   assert.equal(h.$('completion-status').textContent, '');
   assert.equal(h.statuses.some(s => s.complete === true), false);
+});
+
+const merchantFixture = () => ({
+  enabled: true,
+  terms_version: 'workshop-v1',
+  terms_url: 'https://merchant.example/terms',
+  privacy_url: 'https://merchant.example/privacy',
+  refund_url: 'https://merchant.example/refunds',
+  contact_url: 'https://merchant.example/contact',
+  tax_notice: 'Synthetic fixture notice.',
+});
+const quoteTermsFixture = () => ({ purchase_terms_version: 'workshop-v1' });
+
+test('purchase readiness requires the supported terms contract', async t => {
+  assert.equal(purchaseConfiguration(merchantFixture(), quoteTermsFixture()), true);
+  for (const [label, version] of [
+    ['missing', undefined], ['null', null], ['empty', ''], ['unsupported', 'workshop-v2'],
+  ]) {
+    await t.test(`matching ${label} terms remain unavailable`, () => {
+      const config = { ...merchantFixture(), terms_version: version };
+      const quote = { purchase_terms_version: version };
+      assert.equal(purchaseConfiguration(config, quote), false);
+    });
+  }
+  assert.equal(purchaseConfiguration(merchantFixture(), { purchase_terms_version: 'workshop-v2' }), false);
+  assert.equal(purchaseConfiguration(merchantFixture(), {}), false);
+  assert.equal(purchaseConfiguration(merchantFixture(), null), false);
+  assert.equal(purchaseConfiguration(null, quoteTermsFixture()), false);
+});
+
+test('purchase readiness fails closed for unavailable merchant fields', () => {
+  for (const enabled of [false, null, undefined, 'true', 1])
+    assert.equal(purchaseConfiguration({ ...merchantFixture(), enabled }, quoteTermsFixture()), false);
+  for (const tax_notice of [null, undefined, '', ' \n\t', 0])
+    assert.equal(purchaseConfiguration({ ...merchantFixture(), tax_notice }, quoteTermsFixture()), false);
+  for (const key of ['terms_url', 'privacy_url', 'refund_url', 'contact_url']) {
+    for (const value of [null, undefined, '', '/terms', '//merchant.example/terms',
+      'http://merchant.example/terms', 'javascript:alert(1)', 'data:text/plain,x',
+      'https://user:pass@merchant.example/terms', 'https://merchant.example/has space',
+      'https://merchant.example/line\nfeed', 'https://']) {
+      assert.equal(purchaseConfiguration({ ...merchantFixture(), [key]: value }, quoteTermsFixture()), false, `${key}: ${String(value)}`);
+    }
+  }
 });
