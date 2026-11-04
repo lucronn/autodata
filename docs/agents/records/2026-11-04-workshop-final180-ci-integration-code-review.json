@@ -1,0 +1,135 @@
+{
+  "accepted_case_credit": 0,
+  "authority": {
+    "cutover_verified": false,
+    "deployment_authorized": false,
+    "fixture_verified": false,
+    "implementation_authorized": false,
+    "merge_authorized": false,
+    "product_candidate_verified": false,
+    "profile_promotion_authorized": false,
+    "runtime_execution_authorized": false,
+    "staging_verified": false
+  },
+  "authorizing_checkpoint_sha": "8bc9371a2715f34f06f261c8abae4194be2e1ea0",
+  "builder_branch": "codex/workshop-final180-ci-integration-build",
+  "builder_local_validation": {
+    "diff_check": "PASS",
+    "provenance": "Hash-verified builder handoff and complete saved logs; these results were not rerun by the documentation agent.",
+    "scope_check": "PASS",
+    "source_pins": "PASS",
+    "syntax_check": "PASS",
+    "tests": {
+      "autonomy": {
+        "duration_seconds": 46.363,
+        "passed": true,
+        "path": "/home/corp/autodata-evidence/final180-ci-integration-builder/autonomy.log",
+        "sha256": "3cd70bbc712951cff5d5bd537a9d1ab6c034d6a57c4817387396af1180bd721f",
+        "tests": 146
+      },
+      "developer": {
+        "duration_seconds": 494.258,
+        "passed": true,
+        "path": "/home/corp/autodata-evidence/final180-ci-integration-builder/developer.log",
+        "sha256": "448c00d20b4c1ffd67786f0f40af3f29996d0c5cb06ab7dc0750aec8b821330d",
+        "tests": 360
+      },
+      "regression-green": {
+        "duration_seconds": 0.114,
+        "passed": true,
+        "path": "/home/corp/autodata-evidence/final180-ci-integration-builder/regression-green.log",
+        "sha256": "1e9501e994cba63c6a278b7ef94030af41d173c02d7bb691891ce27059de6294",
+        "tests": 10
+      },
+      "regression-red": {
+        "duration_seconds": 0.078,
+        "passed": false,
+        "path": "/home/corp/autodata-evidence/final180-ci-integration-builder/regression-red.log",
+        "sha256": "3c4c72a192e2aa24e7f326f03eb8b2ecf08330e34e4e484ebd40624b5c00f837",
+        "tests": 10
+      },
+      "stage-a": {
+        "duration_seconds": 1.105,
+        "passed": true,
+        "path": "/home/corp/autodata-evidence/final180-ci-integration-builder/stage-a.log",
+        "sha256": "2a5cc28fc789b15651d42fefc14d4320bdd376c828531f55b61c29611696319d",
+        "tests": 52
+      },
+      "stage-b1": {
+        "duration_seconds": 3.747,
+        "passed": true,
+        "path": "/home/corp/autodata-evidence/final180-ci-integration-builder/stage-b1.log",
+        "sha256": "0dce09c6674c1538dc3ef4bde2a3a92c350120d7be4d4322dc9eb65d1c7019b5",
+        "tests": 25
+      },
+      "stage-b2": {
+        "duration_seconds": 3.911,
+        "passed": true,
+        "path": "/home/corp/autodata-evidence/final180-ci-integration-builder/stage-b2.log",
+        "sha256": "a3a841e48341b05c6744be8f8be54d5d05a22583520870fdd95c15b4ad01f4db",
+        "tests": 23
+      }
+    }
+  },
+  "ci": {
+    "conclusion": null,
+    "head_sha": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+    "jobs": [
+      {
+        "conclusion": null,
+        "name": "Validate autonomy policy and evidence contract",
+        "status": "in_progress"
+      },
+      {
+        "conclusion": null,
+        "name": "Workshop DTO browser inventory (not real API acceptance)",
+        "status": "in_progress"
+      }
+    ],
+    "observed_at": "2026-11-04T18:31:51.896055+00:00",
+    "provenance": "Hash-verified saved builder readback; no later run state or CI success is asserted.",
+    "run_id": 41888010250,
+    "status": "in_progress",
+    "url": "https://github.com/lucronn/autodata/actions/runs/41888010250"
+  },
+  "documentation_scope": {
+    "github_issue_project_pr_writes": false,
+    "implementation_modified": false,
+    "original_gate_record_task_spec_assembler_preserved": true
+  },
+  "draft_pr_ref": "https://github.com/lucronn/autodata/pull/232",
+  "enabled_tiers": [],
+  "evidence": {
+    "all_manifest_members_hash_verified": true,
+    "handoff_ref": "/home/corp/autodata-evidence/final180-ci-integration-builder/handoff.json",
+    "handoff_sha256": "73787f9197e6c4e1d99d230e422fdbf4816e8a7d75b607ae43ea0cd423d50f7b",
+    "manifest_ref": "/home/corp/autodata-evidence/final180-ci-integration-builder/sha256-manifest.json",
+    "manifest_sha256": "8ccfd2983968131df5f33ed3b07d66b6883fe8e5ca61e7cc75a421d4ae4d750b"
+  },
+  "exact_patch_sha256": "c4567a3b03db9d8bb56af43a701f56ebaf15d68149ff6cadd326c93ecfb921eb",
+  "implementation_allowlist": [
+    "scripts/dev/test_workshop_final180_runner.py",
+    "docs/verification/workshop-final180-runbook.md"
+  ],
+  "independent_exact_head_review": {
+    "findings": [],
+    "provenance": "Coordinator-reported independent exact-head code review at the reviewed_code_head_sha; independently reproduced red10 to green10 and focused Stage A52/B1 25/B2 23. This documentation agent did not rerun those tests.",
+    "status": "PASS"
+  },
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "original_synchronized_record_ref": "docs/agents/records/2026-11-04-workshop-final180-ci-integration.json",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-ci-integration.md",
+  "profiles_enabled": false,
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "remaining_work": [
+    "Coordinator must obtain later exact-head CI readback and synchronize Issue186/Project8 completion tracking; pending CI remains pending.",
+    "Genuine raw validators, full same-head180, supervisor provenance, profile promotion, staging, live and release gates remain open."
+  ],
+  "reviewed_code_head_sha": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+  "run_record": null,
+  "runtime_lock": null,
+  "scope": "Code-only CI fixture isolation completion; no runtime acceptance or release authority.",
+  "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "status": "code_review_passed_local_validation_passed_ci_pending",
+  "updated_at": "2026-11-04T18:33:59.150260+00:00"
+}
