@@ -1,8 +1,8 @@
 # R3 immutable supervisor adaptation Implementation Plan
 
-> **For agentic workers:** Implement only after a later synchronized committed checkpoint and explicit implementation dispatch. Use executing-plans task by task; this draft authorizes documentation only.
+> **For agentic workers:** Implement only after a later synchronized committed checkpoint and explicit implementation dispatch. Use executing-plans task by task; this synchronized checkpoint authorizes code-only editing only after exact-base preflight, independent committed-gate review and explicit external-path dispatch.
 
-**Goal:** Adapt the historical external R3 supervisor to immutable local-image reuse and offline provenance for exact candidate `4d82e413e04fb2401ac7bc28dc828375ac662180`, without changing candidate source or executing Docker.
+**Goal:** Prepare reviewed offline external supervisor, probe payload and fake unit tests for exact candidate 4d82e413e04fb2401ac7bc28dc828375ac662180; no Docker or probe/runtime execution.
 
 **Architecture:** Preserve the historical validator and fixture semantics in a new external supervisor. Separate pure admission/command construction, network-none compatibility-probe payload, and focused offline tests. A later execution gate admits fresh manifests and probe evidence before services; historical success cannot supply fresh candidate acceptance.
 
@@ -12,13 +12,13 @@
 
 ## Status, binding and authority
 
-BLOCKED / pending independent review and synchronization. Planning base: `d94543e6ec75e788b42421b0e4cfeca6f5cb3e9c`; branch `codex/workshop-r3-immutable-supervisor-gate`. Source candidate/tree remain `4d82e413e04fb2401ac7bc28dc828375ac662180` / `d9fb2a8f49beacd009374a76327d0736c1fc9b0a`. The future committed planning checkpoint is a separate SHA and is not yet available. Any candidate change stops this task and requires a revised binding.
+Tracking synchronized; independent docs-only correction review PASS. Code-only implementation remains pending exact committed-gate review and dispatch. Correction base: `aafaaf93089b009baae3d68011cd74365b8de18e`; predecessor planning base: `d94543e6ec75e788b42421b0e4cfeca6f5cb3e9c`; branch `codex/workshop-r3-immutable-supervisor-gate`. Source candidate/tree remain `4d82e413e04fb2401ac7bc28dc828375ac662180` / `d9fb2a8f49beacd009374a76327d0736c1fc9b0a`. The committed planning checkpoint full SHA is an external invocation input; do not self-reference it in this document. Any candidate change stops this task and requires a revised binding.
 
 Issue reference: https://github.com/lucronn/autodata/issues/186
 Project reference: https://github.com/users/lucronn/projects/8
-These are intended existing tracking references, not a claim of live synchronization for this adaptation. Record: `docs/agents/records/2026-11-04-workshop-r3-immutable-supervisor.json`; task: `docs/agents/tasks/2026-11-03-production-release/workshop-r3-immutable-supervisor.json`. No GitHub write, commit, push, implementation or Docker mutation is authorized in this draft.
+Live coordinator tracking was synchronized and read back at https://github.com/lucronn/autodata/issues/186#issuecomment-6636602964; the predecessor Project Source is archived verbatim there. Record: `docs/agents/records/2026-11-04-workshop-r3-immutable-supervisor.json`; task: `docs/agents/tasks/2026-11-03-production-release/workshop-r3-immutable-supervisor.json`. The coordinator completed the tracking write; implementation and Docker mutation still require their separately stated gates. This checkpoint does not authorize a Docker command.
 
-The later implementation gate may authorize external code editing and offline mocked tests only. Creating/starting even a network-none, read-only compatibility container is Docker mutation and belongs to a separate explicit execution gate. No build, pull, retag, import/export, package install, download, service startup, cloud, provider/payment, merge, deployment or production authority follows from implementation completion. Keep final180 open and release unverified.
+This synchronized gate permits only the named external code and offline mocked tests after exact-base preflight, independent committed-gate review and explicit dispatch. Creating/starting even a network-none, read-only compatibility container is Docker mutation and belongs to a separate explicit execution gate. No build, pull, retag, import/export, package install, download, service startup, cloud, provider/payment, merge, deployment or production authority follows from implementation completion. Keep final180 open and release unverified.
 
 ## Inspected evidence and fixed identities
 
@@ -39,26 +39,37 @@ The audit compared candidate/leaf Go modules, worker pyprojects, Dockerfile, Com
 
 ## Exact file allowlist
 
-Current draft may change exactly five documentation paths: docs/superpowers/plans/2026-11-04-workshop-r3-immutable-supervisor.md, docs/agents/records/2026-11-04-workshop-r3-immutable-supervisor.json, docs/agents/tasks/2026-11-03-production-release/workshop-r3-immutable-supervisor.json, docs/agents/tasks/2026-11-03-production-release/queue.json and docs/verification/2026-11-03-canonical-article-lifecycle.md. Append only this separate blocked adaptation task to the queue; preserve every predecessor entry and all other queue fields. The parent runtime plan is contextual and consumes the completed adaptation; this adaptation has no dependency on parent runtime execution.
+This gate checkpoint changes exactly five documentation paths: docs/superpowers/plans/2026-11-04-workshop-r3-immutable-supervisor.md, docs/agents/records/2026-11-04-workshop-r3-immutable-supervisor.json, docs/agents/tasks/2026-11-03-production-release/workshop-r3-immutable-supervisor.json, docs/agents/tasks/2026-11-03-production-release/queue.json and docs/verification/2026-11-03-canonical-article-lifecycle.md. The queue indexes this separate adaptation task; preserve every predecessor entry and all other queue fields; preserve every predecessor entry and all other queue fields. The parent runtime plan is contextual and consumes the completed adaptation; this adaptation has no dependency on parent runtime execution.
 
-Future implementation may create exactly:
+After explicit code-only dispatch, implementation may create exactly:
 
 - `/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/supervisor.py`: adapted bounded runner, admission and command construction, inherited validator, owned cleanup.
 - `/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/offline_probe.py`: deterministic image-filesystem manifests and offline compatibility checks; no acquisition code.
 - `/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/test_supervisor.py`: standard-library unittest with fake command executor, temporary fixtures and historical artifact copies in memory.
 
-External output receipts from offline tests may live only under `/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/test-artifacts/`; they are evidence, not executable source. No repository implementation file is allowlisted. No changes to candidate tests, Go/JS/worker source, Compose, Dockerfile, migrations, autonomy tooling or historical artifacts. The implementation gate must explicitly authorize absolute external paths as well as its repository checkpoint; repository machine preflight alone is not external filesystem authorization. If tooling cannot represent that boundary, stop for coordinator resolution rather than modifying gate tooling.
+All offline temporary fixtures, copied historical receipt fixtures, red/green logs, syntax-check bytecode and output receipts must live only under `/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/test-artifacts/`; they are test evidence/fixtures, not an additional executable source allowlist. TemporaryDirectory and similar helpers must receive an owned directory below test-artifacts; do not use default host temporary directories. Imports allocate no files. No package install or host-side real tool/import/Go probe is allowed; verification may run Python standard-library tests/syntax checks and read-only source/hash/allowlist checks. No repository implementation file is allowlisted. No changes to candidate tests, Go/JS/worker source, Compose, Dockerfile, migrations, autonomy tooling or historical artifacts. The implementation gate must explicitly authorize absolute external paths as well as its repository checkpoint; repository machine preflight alone is not external filesystem authorization. If tooling cannot represent that boundary, stop for coordinator resolution rather than modifying gate tooling.
 
 ## Concrete todo
-- [ ] Independently review this blocked implementation draft; coordinator synchronizes Issue186/Project8, canonical document and concrete todo, commits the checkpoint, pins its full SHA and passes canonical machine preflight before implementation dispatch.
-- [ ] Create only the named external supervisor, offline probe and focused standard-library tests; preserve historical supervisor byte-for-byte and demonstrate failing-first admission, manifest, command and cleanup tests without Docker.
-- [ ] Implement immutable image/config admission, deterministic executable/package/cache manifests and network-none compatibility probe command generation; retain original eight-root/42-tuple validator and bounded cleanup.
-- [ ] Run focused offline tests and source/allowlist checks; independently review exact adaptation source hashes and provide a non-executable handoff for a separate probe/runtime gate.
-- [ ] Keep probe execution, service startup, acquisition/build/pull and all release authorities false; record unresolved current provenance facts for the execution owner.
+- [ ] Independently review this docs-only correction; coordinator synchronizes Issue186/Project8, canonical document and this concrete todo, commits the checkpoint, pins its full SHA and passes canonical preflight before explicit external-code implementation dispatch.
+- [ ] Create only the three named external Python sources and test-artifacts; preserve historical evidence byte-for-byte and use synthetic observations, temporary fixtures and fake executor calls only, with no Docker invocation.
+- [ ] Implement distinct synthetic, initial-probe and fixture admission interfaces, deterministic manifests and immutable command generation; retain eight-root/42-tuple semantics and add only the explicitly frozen 24-name artifact completeness check.
+- [ ] Run failing-first then green standard-library tests for admission, manifests, validator and bounded owned cleanup; retain offline receipts/source hashes and obtain independent exact-source review.
+- [ ] Handoff reviewed source and offline-test evidence only; keep current image/tool/package/cache/Compose/probe facts as execution blockers under separate later gates, all runtime/release authorities false and release unverified.
 
 ## Manifest and admission contract
 
-`admission.json` (a future execution-owner reviewed input, not manufactured as trusted by the implementer) binds schema version1, candidate SHA/tree, committed implementation gate SHA, supervisor/probe source SHA-256, historical supervisor hash, audit report hash, all four image IDs/platforms/config/RootFS fingerprints, resolved Compose canonical hash/delta, executable/package/cache expected manifest digests, accepted probe receipt hash and literal command policy. Missing/null/duplicate/extra roles, stale candidate/source hash or changed config fails closed before fixture resources exist. Admission records carry provenance/origin and distinguish historical observations from current measurements; a newly computed manifest cannot self-authorize its own acceptance.
+`fixture-admission.json` (a future execution-owner reviewed input, not manufactured as trusted by the implementer) binds schema version1, candidate SHA/tree, committed implementation gate SHA, supervisor/probe source SHA-256, historical supervisor hash, audit report hash, all four image IDs/platforms/config/RootFS fingerprints, resolved Compose canonical hash/delta, executable/package/cache expected manifest digests, accepted probe receipt hash and literal command policy. Missing/null/duplicate/extra roles, stale candidate/source hash or changed config fails closed before fixture resources exist. Admission records carry provenance/origin and distinguish historical observations from current measurements; a newly computed manifest cannot self-authorize its own acceptance.
+
+### Frozen admission stages and offline completion
+
+The code-only milestone produces source, synthetic/fake-test receipts and exact source hashes. It does not produce accepted current manifests, compatibility success or R3 acceptance. No current executable/distribution/cache measurement is required to implement these pure interfaces; those facts continue to block execution. No real Docker command, including inspect/config/help, runs during this slice.
+
+- `simulate(stage, admission, observation, fake_executor)` accepts only `stage` equal to `initial_probe` or `fixture` and inputs marked `origin: synthetic_code_only`; it returns `mode: synthetic_code_only`, `trusted: false`, generated argv and fake results. Tests use in-memory inputs or owned test-artifacts fixtures. Simulation runs the same stage-specific binding/content/command-policy checks in an explicitly synthetic validation mode, returning a non-executable test context and fake receipts; the real admission wrappers still reject synthetic origins. Simulation never issues an executable dispatch/context, trusted manifest or current PASS receipt.
+- `admit_probe(admission, observation)` is pure and returns an immutable `stage: initial_probe` context or raises. The later independently reviewed `probe-admission.json` binds schema version1, candidate SHA/tree, committed probe execution-gate SHA, supervisor/probe/historical/audit hashes, four immutable image/platform/config/RootFS identities, exact planned probe argv/mount/env/deadline policy and observation origin. Its purpose is initial measurement, so it requires neither accepted package/cache/tool digests nor a probe receipt that has not yet been produced. It rejects synthetic origins, missing bindings, unauthorized operations and identity mismatches. The later execution owner must supply that separate gate and fresh image/CLI observations before any Docker mutation.
+- `admit_fixture(admission, observation)` is pure and returns an immutable `stage: fixture` context or raises. It requires all fixture-admission fields above, fresh independently accepted tool/package/cache digests and probe receipt hash, exact effective Compose delta, and the separately committed parent runtime gate. Probe-collected observations cannot self-approve; historical or synthetic observations cannot satisfy fixture admission.
+- `commands_for(context)` returns argv arrays and finite command budgets only; it performs no execution/allocation. `execute(context, dispatch, executor)` refuses before allocation or executor call unless a separately supplied execution-owner reviewed dispatch binds the matching stage, committed execution-gate SHA, candidate/tree, exact supervisor/probe hashes and literal allowed operations. No default dispatch or fake/synthetic input may reach the real executor. During code-only tests every executor is fake, including cleanup/failure paths; real execution is outside this implementation authorization.
+
+No circular admission: initial probe collects unaccepted manifests; the execution owner reviews their bytes/digests and receipt under the later gate; fixture admission then consumes that independent acceptance. Initial-probe context cannot start fixture services. The code-only review tests these stages with synthetic data and makes no statement that a later owner has supplied or accepted real input.
 
 Every manifest uses sorted unique POSIX paths and canonical JSON UTF-8 serialization (`sort_keys=True`, separators comma/colon, terminal newline), SHA-256 of raw bytes, schema version, candidate/source/image IDs and phase. Record symlink path/target, verified resolved path, file kind/mode/size/hash; reject escaping symlinks, unreadable paths, duplicate paths, incomplete enumeration or missing expected roots. Do not include mtime in equality. Preserve individual entries and aggregate digest, no secret env dump.
 
@@ -70,7 +81,7 @@ Every manifest uses sorted unique POSIX paths and canonical JSON UTF-8 serializa
 
 ## Task 1: Failing-first admission and immutable command tests
 
-**Files:** future external `test_supervisor.py`, then `supervisor.py`. Interface: pure `admit(admission, observation)` raises on mismatch; `commands_for(admitted_context)` returns argv lists without execution; injected executor is the only subprocess boundary. Importing either code file performs no command, path allocation or Docker operation.
+**Files:** future external `test_supervisor.py`, then `supervisor.py`. Interfaces are the frozen `simulate`, `admit_probe`, `admit_fixture`, `commands_for` and guarded `execute` boundaries above; injected executor is the only subprocess boundary, always fake for this milestone. Importing either code file performs no command, path allocation or Docker operation.
 
 - [ ] Write unittest cases for missing/wrong image, platform mismatch, changed Config/RootFS, registry/config-ID confusion, mutable tag, stale candidate/supervisor/probe hash, absent/untrusted manifest, extra service and config delta. Tests call pure functions and prove no executor call on rejection.
 - [ ] Run `python3 -B -m unittest discover -s /home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation -p test_supervisor.py -v`; retain the failing output before implementation. The expected failure is missing adaptation API, not a Docker failure.
@@ -90,19 +101,56 @@ Every manifest uses sorted unique POSIX paths and canonical JSON UTF-8 serializa
 
 ## Task 3: Preserve validator, deadlines and cleanup; review handoff
 
-**Files:** external supervisor/tests only. Keep original `validate()` checks except mechanically moving pure validation for offline testability; any changed acceptance rule requires a revised gate.
+**Files:** external supervisor/tests only. Keep original `validate()` checks except mechanically moving pure validation for offline testability and the one explicitly authorized fail-closed artifact completeness assertion below. No other changed acceptance rule is authorized by this correction.
+
+### Frozen per-case artifact inventory
+
+Read-only inspection of all eight retained `index-readiness-green-68fd8e922a26/artifacts/r3/<provider>/<GoRoot>/result.json` receipts found exactly the same 24 `artifact_sha256` keys. The historical validator hashes only entries present in that mapping; this correction explicitly permits one stronger completeness assertion: require its exact key set to equal the following inventory, require each value to be a lowercase 64-hex SHA-256, and verify every named regular artifact file's bytes. Reject missing/extra keys, missing referenced files and hash mismatches. Preserve all other historical acceptance semantics. Historical receipt values/PASS remain historical test fixtures only.
+
+```text
+go-command.json
+go-events.jsonl
+go-measurement.json
+go-stderr.log
+measured-runtime.json
+migration-driver.sql
+migration-driver.stderr
+migration-fresh.json
+migration-fresh.rows.json
+migration-fresh.schema.sql
+migration-fresh.stderr
+migration-fresh.stdout
+migration-replay-empty.json
+migration-replay-empty.rows.json
+migration-replay-empty.schema.sql
+migration-replay-empty.stderr
+migration-replay-empty.stdout
+migration-replay-populated.json
+migration-replay-populated.rows.json
+migration-replay-populated.schema.sql
+migration-replay-populated.stderr
+migration-replay-populated.stdout
+populated-before.rows.json
+populated-before.schema.sql
+```
 
 - [ ] Add failing-first negative tests by mutating copied historical receipt structures: missing/extra/skipped Go/JUnit root, changed candidate, missing artifact hash, duplicate database, one false readiness tuple, bad counters/projection/migration/source identity. Require rejection before calling any cleanup command in these pure tests.
 - [ ] Preserve exactly four roots for both bankone/banktwo, eight unique DBs, zero skips/fail/errors, 42 full expected/observed readiness tuples, 20 cold ensures/one job/no external cold work, held model/source readability, atomic publication and 100 warm cycles/unchanged rows. Keep migrations001–040 and input/git equality, original per-case artifacts and failure receipts. Never copy historical PASS into a current receipt.
 - [ ] Preserve 1320s monotonic runner deadline from launch, Go90s/bridge120s, startup150s/command180s, ordinary30s, inspect/log10s and cleanup30s bounds. Record timeout separately and always retain failed attempt evidence. Probe compile180s is separately bounded and cannot extend runner acceptance.
 - [ ] Test cleanup with fake inspect records: full immutable container IDs, UUID owner token, exact name/image/project/service labels and allowed mounts must all match immediately before stop/kill/remove. Unknown/colliding resources fail closed. Cleanup container explicitly uses `/usr/local/bin/python`, immutable runner ID, network none/read-only root, and sole writable mount `/owned-data` from the fresh owned Seaweed path.
 - [ ] Before fixture data deletion require owner marker exact token/path, resolved non-symlink path directly below run root, project containers absent and no container mounting the data path; never follow symlinks. Preserve at least12GiB capacity check before fixture startup. Remove only recorded owned container IDs/volumes/network; do not use global prune or remove-orphans. Verify each volume/network name/project label and actual attachments before removal. Preserve all cleanup receipts; failure keeps overall result failed and reports remaining resource identities, no blind broad fallback.
-- [ ] Run focused tests, `python3 -X pycache_prefix=/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/test-artifacts/pycache -m py_compile /home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/supervisor.py /home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/offline_probe.py /home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/test_supervisor.py`, source SHA-256 and allowlist diff checks; independently review exact adaptation/probe/tests. Later coordinator may commit/push validated repository documentation milestones under its authorized cadence; external source is bound by retained bytes/hashes, not assumed present in Git. No commit or push in this draft task.
-- [ ] Handoff reviewed immutable source paths/hashes, offline red/green results, exact planned expanded-argv schema and remaining blockers. Before any real probe, require a separately synchronized committed execution gate with explicit Docker mutation ownership/bounds. Before fixture services, require admitted current probe manifests plus the parent runtime gate's exact reviewed supervisor command/hash and independent review/preflight.
+- [ ] Run focused tests, `python3 -X pycache_prefix=/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/test-artifacts/pycache -m py_compile /home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/supervisor.py /home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/offline_probe.py /home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/test_supervisor.py`, source SHA-256 and allowlist diff checks; independently review exact adaptation/probe/tests. Later coordinator may commit/push validated repository documentation milestones under its authorized cadence; external source is bound by retained bytes/hashes, not assumed present in Git. External source is not committed to this repository by the code-only task; the coordinator commits/pushes this gate checkpoint separately.
+- [ ] Handoff reviewed immutable source paths/hashes, offline red/green results, exact planned expanded-argv schema and remaining blockers. Before any real probe, require a separately synchronized committed execution gate with explicit Docker mutation ownership/bounds. Before fixture services, require fixture admission with independently accepted current probe manifests plus the parent runtime gate's exact reviewed supervisor command/hash and independent review/preflight.
 
-## Unresolved owner/execution facts
+## Synchronized implementation gate and deliverables
 
-1. Current executable/file-level package/cache manifest and fresh import/compile probe evidence do not exist. Generating them requires separately authorized container execution because direct layer reads are denied. No code review or offline mock test closes this fact.
-2. The execution owner must review/accept expected manifest digests and exact probe receipt, then populate admission; implementation cannot trust self-generated observations automatically. Missing dependency/image requires a separate acquisition gate, never a build/pull fallback.
-3. Fresh Issue186/Project8 readback, serialized tracking update, checkpoint commit/full SHA, machine preflight and independent implementation dispatch are absent. Future external-code authorization must be explicit. Runtime/probe dispatch remains a distinct later gate, even after adaptation tests pass.
-4. The effective Compose model must prove removal of inherited build fields and unused service with the host's installed Compose version. Offline unit tests can check the intended model; actual `compose config` compatibility must be recorded read-only under the later gate before create/start. Unsupported merge behavior returns blocked, never edits candidate Compose.
+1. Draft correction review and Issue186/Project8 synchronization passed. The committed checkpoint/full SHA, canonical preflight, independent exact-gate review and explicit absolute external-path code-only dispatch are required before external source edits.
+2. External adaptation/probe/tests, offline red/green receipts, source hashes and independent exact-source review are deliverables of the later code-only slice, not claims of current completion.
+
+## Unresolved execution facts (not code-only prerequisites)
+
+1. Fresh executable/distribution/cache manifests, independently accepted manifest digests and current offline import/compile/cleanup-interpreter probe evidence remain absent; code-only work cannot close these facts.
+2. Installed Docker/Compose CLI support and actual resolved Compose compatibility remain unmeasured for this adaptation; no image availability/config observation substitutes for the later pre-mutation check.
+3. Separately synchronized committed probe gate/dispatch is required for any container; fixture execution additionally requires independently accepted fresh probe evidence and the parent runtime gate with reviewed exact source hashes/command.
+4. Direct host layer reads were denied. Collecting fresh image-filesystem manifests therefore requires a separately authorized container probe, never widened privileges, image export, build/pull or package acquisition under this code-only slice.
+5. The effective Compose model must prove removal of inherited build fields and unused service with the installed Compose version. Offline tests check intended structure only; later read-only compose-config compatibility must be retained before create/start. Unsupported behavior blocks execution and cannot authorize candidate Compose edits.
