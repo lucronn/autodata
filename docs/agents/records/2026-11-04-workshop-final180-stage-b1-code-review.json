@@ -1,0 +1,34 @@
+{
+  "contract": "workshop-final180-stage-b1-code-only-review-v1",
+  "candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "gate_sha": "006fab0d1380c2506330bbc0b48397a32294b6cc",
+  "implementation_sha": "54a7ca32eab80654310d862f0ac6957375d16e8b",
+  "implementation_branch": "codex/workshop-final180-stage-b1-build",
+  "pull_request": "https://github.com/lucronn/autodata/pull/228",
+  "review": {
+    "result": "PASS",
+    "kind": "independent_read_only_exact_head",
+    "actionable_findings": [],
+    "preflight_status": "synchronized",
+    "preflight_errors": [],
+    "scope_exact_three_paths": true,
+    "stage_a_unchanged": true,
+    "independently_rerun_tests_passed": {
+      "adapter": 25,
+      "stage_a": 52,
+      "autonomy": 146
+    },
+    "builder_developer_tests_inspected": 335,
+    "builder_developer_tests_rerun_by_reviewer": false,
+    "syntax_passed": true,
+    "diff_check_passed": true
+  },
+  "builder_evidence_report": "/home/corp/autodata-evidence/final180-stage-b1-builder/report.json",
+  "builder_evidence_report_sha256": "011549c357d18fb7ec3563ad1d8d0c19247fc68e1cfb4758a730a03c81fa4676",
+  "real_runtime_executed": false,
+  "accepted_case_credit": 0,
+  "profiles_enabled": false,
+  "runtime_lock": null,
+  "run_record": null,
+  "production_ready": false
+}
