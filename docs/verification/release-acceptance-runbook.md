@@ -324,3 +324,46 @@ Tests use inline synthetic envelopes/files and the actual disabled committed tas
 at the locally available HEAD, including a depth-one clone.
 They are parser/tooling tests, never actual product acceptance receipts. Do not
 run providers, browsers, Docker or cloud commands as part of this milestone.
+
+## Internal DTO120 receipt consistency
+
+The explicit internal `inspect_dto_receipts` API interprets only the declared
+`raw` artifact `dto-artifact.zip`; disabled CLI plan/validate never invoke it.
+It uses the existing in-memory three-member ZIP parser without extraction and
+strict duplicate-free UTF-8 JSON with exact Decimal number tokens. Expanded
+limits remain 4 MiB each for `browser/evidence.json` and `ready.json`, and 8 MiB
+for the opaque `go-fixture.log`; transport limits remain unchanged.
+
+The closed v1 DTO evidence requires exactly forty frozen scenarios crossed with
+Chromium, Firefox and WebKit, all 120 unique rows reporting passed. Failed,
+unavailable, skipped, extra or missing rows cannot become partial success.
+The inspector checks the fixed Playwright/browser/revision metadata and the
+source-derived six-input and eleven-asset hash/length inventories frozen at
+`99df69caaeb4d5ccf6d0ffbf0377fe6d5d872a3d`. These expected values are literal
+reviewed constants, never copied from supplied receipts or mutable checkout
+contents. SDK hashes must match the frozen bundle hash. A source-content or
+metadata inventory change needs a separately reviewed successor contract.
+
+Each row has a finite exact numeric elapsed time in inclusive 0–120 seconds,
+excluding bool/string/null. **120 seconds is a diagnostic receipt ceiling; it is
+not a producer timeout or independently observed execution duration.** Request
+lists allow retries, arbitrary order and empty lists, with at most 256 entries
+per row and 8,192 total. Closed method/path/query inventories, bounded string
+arrays and a re-derived SDK-request count reject substitutions and contradictory
+counts. Query values remain opaque and are never included in diagnostics.
+Readiness requires the closed DTO schema, a canonical HTTPS 127.0.0.1 port,
+matching SDK hash and matching certificate digest. Matching certificate copies
+are consistency observations, not independent TLS capture evidence.
+
+The result always stays unavailable/incomplete, with no verified IDs and all five
+verification/deployment/cutover flags false. The 120 normalized observed pairs,
+request total and eleven asset observations are diagnostics only. Source hash
+equality does not establish candidate execution, authenticated CI capture or
+collector authorship. Request rows omit network origin and response bodies;
+passed strings cannot independently reproduce DOM assertions. Browser binary
+installation/process identity, TLS capture, reproducible SDK builds, host/input
+provenance, supervisor commands/cleanup, authenticated CI/archive provenance and
+registered supervisor/reviewer authority all remain explicitly missing. The Go
+log and SDK provenance JSON contents are not interpreted as proof. DTO transport
+mocks cannot satisfy API21 or real Firebase/Stripe/bank acceptance. Existing paid
+inspectors and every disabled profile remain unchanged.
