@@ -1,0 +1,166 @@
+{
+  "task_id": "workshop-publisher-stage0-integration",
+  "goal": "Integrate the exact corrected dormant Python and Actions artifact publisher candidates while preserving reviewed implementation bytes and every activation blocker, then verify the combined offline contracts.",
+  "source_candidate_sha": "101f7d6e2a2795206f16b4419fe561cad531071e",
+  "artifact_candidate_sha": "bba43a0675628db3ac90ca7c72bc47eb8c381cb0",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-publisher-stage0-integration.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-publisher-stage0-integration.json",
+  "allowed_paths": [
+    ".github/workflows/release-workshop.yml",
+    "infra/deploy/gce/publisher-toolkit/package-lock.json",
+    "infra/deploy/gce/publisher-toolkit/package.json",
+    "infra/deploy/gce/publisher_artifact.mjs",
+    "infra/deploy/gce/test_cloud_ops.py",
+    "infra/deploy/gce/test_publisher_artifact.mjs",
+    "infra/deploy/gce/test_release_workshop_contract.py",
+    "docs/operations/workshop-gcp.md",
+    "docs/agents/records/2026-11-03-workshop-artifact-boundary-corrections.json",
+    "docs/agents/records/2026-11-03-workshop-staging-workflow-regression.json",
+    "docs/agents/records/2026-11-04-workshop-artifact-inspection-close-failure-preflight.json",
+    "docs/agents/records/2026-11-04-workshop-artifact-inspection-close-failure.json",
+    "docs/agents/records/2026-11-04-workshop-artifact-revalidation-deadline.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-artifact-boundary-corrections.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-artifact-inspection-close-failure.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-artifact-revalidation-deadline.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-staging-workflow-regression.json",
+    "docs/superpowers/plans/2026-11-03-workshop-artifact-boundary-corrections.md",
+    "docs/superpowers/plans/2026-11-03-workshop-staging-workflow-regression-amendment.md",
+    "docs/superpowers/plans/2026-11-04-workshop-artifact-inspection-close-failure.md",
+    "docs/superpowers/plans/2026-11-04-workshop-artifact-revalidation-deadline.md"
+  ],
+  "pre_implementation": {
+    "goal": "Integrate the exact corrected dormant Python and Actions artifact publisher candidates while preserving reviewed implementation bytes and every activation blocker, then verify the combined offline contracts.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-publisher-stage0-integration.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/operations/workshop-gcp.md"
+    ],
+    "todo": [
+      "After the coordinator releases the serialized tracking slot, synchronize this Stage0-only goal, exact source tuple, allowlists and todo across Issue186/Project8/canonical operations notes; preserve the immediately current full PG index/details verbatim with hashes; commit the synchronized checkpoint and pass full-SHA preflight for independent review and coordinator dispatch.",
+      "After independent exact-checkpoint review and dispatch, merge only artifact bba43a0675628db3ac90ca7c72bc47eb8c381cb0 into the checkpoint descended from Python 101f7d6e2a2795206f16b4419fe561cad531071e; resolve only docs/operations/workshop-gcp.md by retaining both source histories and the new Stage0 note.",
+      "Prove every integrated implementation blob equals its selected source, cloud-ops.py and all other implementation files remain unchanged, production jobs and staging blockers retain their reviewed definitions, and all historical gate files retain their original bytes.",
+      "Run the combined offline Python publisher, cloud/host/workflow and reviewed Node artifact suites plus syntax, exact-scope, diff and pinned-gate checks; record actual results without adding or modifying tests.",
+      "Commit and push the validated dormant integration milestone for independent exact-SHA review, retaining missing dependency, owner trust, authenticated worker, dependency factory, toolkit advisory/license and staging/production activation blockers."
+    ],
+    "status": "unsynchronized",
+    "updated_at": "2026-11-04T04:04:14.814973+00:00",
+    "source_candidate_sha": "101f7d6e2a2795206f16b4419fe561cad531071e",
+    "artifact_candidate_sha": "bba43a0675628db3ac90ca7c72bc47eb8c381cb0",
+    "merge_base_sha": "b431e548df4f379f6752e021c6fb42e8837a5311",
+    "implementation_allowlist": [
+      ".github/workflows/release-workshop.yml",
+      "infra/deploy/gce/publisher-toolkit/package-lock.json",
+      "infra/deploy/gce/publisher-toolkit/package.json",
+      "infra/deploy/gce/publisher_artifact.mjs",
+      "infra/deploy/gce/test_cloud_ops.py",
+      "infra/deploy/gce/test_publisher_artifact.mjs",
+      "infra/deploy/gce/test_release_workshop_contract.py"
+    ],
+    "selected_implementation_blobs": {
+      ".github/workflows/release-workshop.yml": {
+        "source_sha": "bba43a0675628db3ac90ca7c72bc47eb8c381cb0",
+        "git_blob": "a8f5ef0fc4ab79ee7a42afb58662a3fbe81766e9",
+        "sha256": "d74d596e6f4e2650d028afa4639c35a0da5a6fb71040ff3b58d1747fcd297975"
+      },
+      "infra/deploy/gce/publisher-toolkit/package-lock.json": {
+        "source_sha": "bba43a0675628db3ac90ca7c72bc47eb8c381cb0",
+        "git_blob": "ae1c96e2703ca55ce440706d93b559c158c8c3f0",
+        "sha256": "3e697f78715f0ef89dfd4f60c1ed9902e21dbfd3fadb2cbd7c39776192611bf5"
+      },
+      "infra/deploy/gce/publisher-toolkit/package.json": {
+        "source_sha": "bba43a0675628db3ac90ca7c72bc47eb8c381cb0",
+        "git_blob": "54ec1370e156229936d252e9d634c7fa1d14e160",
+        "sha256": "4b9b05fd07b88abd417a2cd863071d501553b34d6c0d9b0b2762380af813d5da"
+      },
+      "infra/deploy/gce/publisher_artifact.mjs": {
+        "source_sha": "bba43a0675628db3ac90ca7c72bc47eb8c381cb0",
+        "git_blob": "8d72f191b9228f8a19ec1ba145755a8cfd7a93e6",
+        "sha256": "c75bb4580007934a91a1f3b6d0f2f4d53b0e5eb785fc1dbbeb99480b1e85a1ad"
+      },
+      "infra/deploy/gce/test_cloud_ops.py": {
+        "source_sha": "bba43a0675628db3ac90ca7c72bc47eb8c381cb0",
+        "git_blob": "4cdc9f05c671bfdd75a7b2775ee292bc254c1129",
+        "sha256": "c78b3529ecb769433cb5425dcbdec9ca5c6f8f9a0440fad778bf662007cdcfc5"
+      },
+      "infra/deploy/gce/test_publisher_artifact.mjs": {
+        "source_sha": "bba43a0675628db3ac90ca7c72bc47eb8c381cb0",
+        "git_blob": "ae92b91ab5015ec4ca7e268d2712fcd0f06a9a9a",
+        "sha256": "39e38d1d2c597cafad39b1c5764ee1f81ce57a94fdad587bd38ad508fcb4d597"
+      },
+      "infra/deploy/gce/test_release_workshop_contract.py": {
+        "source_sha": "bba43a0675628db3ac90ca7c72bc47eb8c381cb0",
+        "git_blob": "a7c3555187681e52339e18c3d6933edf216f5009",
+        "sha256": "b46cfeb4dcd049236895be2e5383182b80ee53d3b154e6bf1042719a62992994"
+      },
+      "infra/deploy/gce/publisher_adapters.py": {
+        "source_sha": "101f7d6e2a2795206f16b4419fe561cad531071e",
+        "git_blob": "33c478264c48685615a8d4d338b5ad5c8a63169b",
+        "sha256": "ee8d19abde07f27516527e6456db8a7f1f155592cb9159e7fc608309f1c5d552"
+      },
+      "infra/deploy/gce/test_publisher_adapters.py": {
+        "source_sha": "101f7d6e2a2795206f16b4419fe561cad531071e",
+        "git_blob": "8cea6954a8fbb80dadcdee20f4fe8246414e49d5",
+        "sha256": "d885c8b0c7702d0602c124b27184f56f2959a29abac69e9b98393a9719dfe44b"
+      },
+      "infra/deploy/gce/cloud-ops.py": {
+        "source_sha": "101f7d6e2a2795206f16b4419fe561cad531071e",
+        "git_blob": "ea5facecf4285b7d3366a08e714c1f2137a82623",
+        "sha256": "abb5190f6ff94c93065403e0863851cc3eea26aaf539d71466d57726ea015ee0"
+      }
+    },
+    "historical_document_additions": [
+      "docs/agents/records/2026-11-03-workshop-artifact-boundary-corrections.json",
+      "docs/agents/records/2026-11-03-workshop-staging-workflow-regression.json",
+      "docs/agents/records/2026-11-04-workshop-artifact-inspection-close-failure-preflight.json",
+      "docs/agents/records/2026-11-04-workshop-artifact-inspection-close-failure.json",
+      "docs/agents/records/2026-11-04-workshop-artifact-revalidation-deadline.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-artifact-boundary-corrections.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-artifact-inspection-close-failure.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-artifact-revalidation-deadline.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-staging-workflow-regression.json",
+      "docs/superpowers/plans/2026-11-03-workshop-artifact-boundary-corrections.md",
+      "docs/superpowers/plans/2026-11-03-workshop-staging-workflow-regression-amendment.md",
+      "docs/superpowers/plans/2026-11-04-workshop-artifact-inspection-close-failure.md",
+      "docs/superpowers/plans/2026-11-04-workshop-artifact-revalidation-deadline.md"
+    ],
+    "conflict_resolution_allowlist": [
+      "docs/operations/workshop-gcp.md"
+    ],
+    "draft_document_allowlist": [
+      "docs/superpowers/plans/2026-11-04-workshop-publisher-stage0-integration.md",
+      "docs/agents/records/2026-11-04-workshop-publisher-stage0-integration.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-publisher-stage0-integration.json",
+      "docs/operations/workshop-gcp.md"
+    ],
+    "tracking_sync": {
+      "state": "not_performed_staging_m1_owns_tracking",
+      "issue_project_modified": false
+    },
+    "independent_source_review": {
+      "python": "coordinator confirms accepted source; attach exact review evidence before synchronization",
+      "artifact": "exact bba43a0 acceptance evidence required before implementation dispatch"
+    },
+    "independent_checkpoint_review": "pending",
+    "builder_dispatch": "blocked_unsynchronized",
+    "runtime_execution_authorized": false,
+    "staging_activation_authorized": false,
+    "production_publication_authorized": false,
+    "production_ready": false,
+    "deployment_authorized": false
+  },
+  "todo": [
+    "After the coordinator releases the serialized tracking slot, synchronize this Stage0-only goal, exact source tuple, allowlists and todo across Issue186/Project8/canonical operations notes; preserve the immediately current full PG index/details verbatim with hashes; commit the synchronized checkpoint and pass full-SHA preflight for independent review and coordinator dispatch.",
+    "After independent exact-checkpoint review and dispatch, merge only artifact bba43a0675628db3ac90ca7c72bc47eb8c381cb0 into the checkpoint descended from Python 101f7d6e2a2795206f16b4419fe561cad531071e; resolve only docs/operations/workshop-gcp.md by retaining both source histories and the new Stage0 note.",
+    "Prove every integrated implementation blob equals its selected source, cloud-ops.py and all other implementation files remain unchanged, production jobs and staging blockers retain their reviewed definitions, and all historical gate files retain their original bytes.",
+    "Run the combined offline Python publisher, cloud/host/workflow and reviewed Node artifact suites plus syntax, exact-scope, diff and pinned-gate checks; record actual results without adding or modifying tests.",
+    "Commit and push the validated dormant integration milestone for independent exact-SHA review, retaining missing dependency, owner trust, authenticated worker, dependency factory, toolkit advisory/license and staging/production activation blockers."
+  ],
+  "status": "unsynchronized",
+  "execution": {
+    "mode": "plan_only",
+    "builder_dispatch": "blocked_unsynchronized",
+    "runtime_execution": "none",
+    "later_scope": "Exact dormant integration and existing combined offline checks only after synchronized pinned gate, independent review and coordinator dispatch; no repairs, executable dependency factory/worker, SDK import/upload, credentials, cloud, activation, deployment or tracking changes by builder."
+  }
+}
