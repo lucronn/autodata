@@ -137,3 +137,71 @@ Add a bytes-only restricted synthetic paid12 Go-event adapter with twelve litera
 ## Live tracking receipt
 
 Coordinator synchronization is recorded at https://github.com/lucronn/autodata/issues/186#issuecomment-6639038727; saved receipt `/home/corp/autodata-evidence/final180-paid-gate-tracking/receipt.json` SHA256 `fcc31f428c6f49f41d4a523d2c62b071ff74c7515a25c5cf4751943913298761` has status `synchronized_live_readback`. Issue before/after SHA256 are `46a8b5e3fda4f6efc54ce390e3ab93b1ec16ad662cc289b62f67a078fdeeeb35` / `17cd1425c2300b4c68b321ef99a06291a0a3e68dea85d237620a32c0d5bd73fd`; Project before/after SHA256 are `8900b3a8fd1ca381c66e4c22763e313ece3ba15e745a0380cb76ad0cd6c3cf18` / `87454561a76fae5f08b45b3ce94af847a4963d11fcb37872275e2e479700f5fd`. All 166 prior comments are preserved (167 total), Issue body and unrelated Project fields are unchanged, and previous Source is archived verbatim. Previous/current Project Source SHA256 are `52904c974a884f2e8c3da217e954118cb02aac28c4914df44c54b05604c8a3f3` / `bd9b9e55ec29d898de6e8fb2c56b3834abf44ab4b08658dbcee18e28b603fcc7`; Project remains In Progress. Standalone and nested records retain the full receipt. Independent five-file pre-sync review PASS/no findings is coordinator-reported. This receipt does not assert checkpoint preflight, committed-checkpoint review or implementation dispatch.
+
+## Historical code-only completion — repaired paid12 head, CI pending
+
+This additive historical update records the implementation and review outcome at
+`2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7` on
+`codex/workshop-final180-stage-d-paid-build`, draft
+[PR236](https://github.com/lucronn/autodata/pull/236), authorized by checkpoint
+`70c9a6ebb2cec338f938122c8c570fd5b22a6f28` and coordinator
+[dispatch](https://github.com/lucronn/autodata/issues/186#issuecomment-6639114586).
+The original planning text, unchecked historical task list, synchronized record,
+task and normative spec remain historical checkpoint evidence. The separate
+`docs/agents/records/2026-11-04-workshop-final180-stage-d-paid-completion.json`
+records this successor outcome; it is not a new synchronized implementation gate.
+
+The original independent exact-head review at
+`f476ba63068c7fc6a5be2d994874f4907b6daea5` returned **FINDINGS/P2**:
+caller-constructible incomplete exact-type dataclasses leaked `AttributeError`
+instead of stable `AdapterError` codes. Its report is preserved at
+`/home/corp/autodata-evidence/final180-paid-exact-head-review/REVIEW.md`, SHA256
+`bb582445c4efbf6c96d042f4a1c975a571a2bf52b02bc2213b9897affb61af42`.
+Six regression methods produced 37 AttributeErrors before the repair. The repair
+milestone `894f49b85dbabdf8f07c82074bc960f13d6910c1` adds required-field admission
+before dereference, preserving the specified error-stage precedence. The final
+head adds only the runbook after that repaired code milestone.
+
+The independent final exact-head review is **PASS/no remaining findings** at
+`2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7`; original five malformed-instance
+probes and all omitted-field regressions pass. Review receipt
+`/home/corp/autodata-evidence/final180-paid-final-repaired-review/receipt.json`
+has full SHA256
+`29091141c2a5968c61de46f83d752e163b7549e486aa2fb4e1135af6250727b8`;
+report SHA256 is
+`e8e158a340b2f0abdc3432bab611affaf5aa50615a92404018100e8964181d8d`.
+This supersedes the P2 only for the final reviewed successor head and preserves
+the original finding as history.
+
+Builder evidence is sealed in
+`/home/corp/autodata-evidence/final180-paid-build/receipt.json`, SHA256
+`26e3a861b000e496d55482398a3203def9705b0de79d8982ca033b26b350be69`,
+and `checks.json`, SHA256
+`53509f17198ff9f02645eff97e7d43d6d108f632faae5b8d61ffe13078257a1d`.
+The repaired results were paid **38/4.065s**, focused **138/21.373s**, developer
+**398/521.229s**, and autonomy **146/49.044s**, all OK. The independent reviewer
+reran **138 focused tests/21.645s**, OK, and inspected and hashed the builder's broad
+suite evidence without independently rerunning those broad suites. This docs
+worker verifies the sealed receipts/log summaries rather than rerunning tests.
+
+Fresh docs verification confirms all receipt-indexed hashes, three final code
+file hashes, all **40 Git-object source-pin records**, eight unchanged
+code/test/workflow/inventory preservation pins, append-only runbook baseline,
+exact three-path implementation scope, and original standalone/nested
+`validate_record` results `status:synchronized`, `errors:[]` at the authorizing
+checkpoint. The original record/task/spec bytes are unchanged. Evidence is
+retained at `/home/corp/autodata-evidence/final180-paid-completion-docs/`.
+
+Exact-head [CI run41894466041](https://github.com/lucronn/autodata/actions/runs/41894466041)
+was **in progress at coordinator readback**; no successful CI conclusion is
+asserted. Coordinator-only Issue186/Project8 completion synchronization remains
+pending and is not performed by this docs worker.
+
+Credit remains exact int0; profiles/tiers stay disabled, runtime lock/run record
+null, and all nine authority values false. The adapter accepts constructed
+bytes/receipts only. Bank labels remain caller-selected. Direct seeded grants
+and `payment_calls == 0` prove no real Stripe charge or settlement. Full raw paid
+344-reference/nested/JUnit/process/manifest semantics, real bank/payment/runtime,
+actual Go compatibility, complete final180 and staging/release acceptance remain
+separately blocked. This code review grants no merge, runtime, profile promotion,
+deployment, cutover or accepted-case credit.

@@ -1,0 +1,162 @@
+{
+  "accepted_case_credit": 0,
+  "authority": {
+    "cutover_verified": false,
+    "deployment_authorized": false,
+    "fixture_verified": false,
+    "implementation_authorized": false,
+    "merge_authorized": false,
+    "product_candidate_verified": false,
+    "profile_promotion_authorized": false,
+    "runtime_execution_authorized": false,
+    "staging_verified": false
+  },
+  "authorizing_checkpoint_sha": "70c9a6ebb2cec338f938122c8c570fd5b22a6f28",
+  "builder_checks": {
+    "bytes": 3998,
+    "historical_locator": "/home/corp/autodata-evidence/final180-paid-build/checks.json",
+    "sha256": "53509f17198ff9f02645eff97e7d43d6d108f632faae5b8d61ffe13078257a1d"
+  },
+  "builder_receipt": {
+    "bytes": 2068,
+    "historical_locator": "/home/corp/autodata-evidence/final180-paid-build/receipt.json",
+    "sha256": "26e3a861b000e496d55482398a3203def9705b0de79d8982ca033b26b350be69"
+  },
+  "builder_tests": {
+    "repair-focused.log": {
+      "bytes": 24556,
+      "exit_code": 0,
+      "path": "/home/corp/autodata-evidence/final180-paid-build/repair-focused.log",
+      "result": "OK",
+      "seconds": "21.373",
+      "sha256": "5f134855d70b4c5426eab46b5aa1b6b119d662e95b159b47d57e3cb103b47435",
+      "tests": 138
+    },
+    "repair-full-autonomy.log": {
+      "bytes": 1084,
+      "exit_code": 0,
+      "path": "/home/corp/autodata-evidence/final180-paid-build/repair-full-autonomy.log",
+      "result": "OK",
+      "seconds": "49.044",
+      "sha256": "ac2426ead791e09a7906bde3debbf7d679a79a0fe1a9334b55b8bd6dbddb6cb2",
+      "tests": 146
+    },
+    "repair-full-dev.log": {
+      "bytes": 1968,
+      "exit_code": 0,
+      "path": "/home/corp/autodata-evidence/final180-paid-build/repair-full-dev.log",
+      "result": "OK",
+      "seconds": "521.229",
+      "sha256": "307cba8518bbab6e89f1dd9c7bf89681483b8ef1b17960f0f1b098369bac1369",
+      "tests": 398
+    },
+    "repair-paid.log": {
+      "bytes": 6621,
+      "exit_code": 0,
+      "path": "/home/corp/autodata-evidence/final180-paid-build/repair-paid.log",
+      "result": "OK",
+      "seconds": "4.065",
+      "sha256": "0b027ccb466ba0fc5b7e7682eaa50bd7e0fa3b3a5c71c1a7461814a61007b507",
+      "tests": 38
+    }
+  },
+  "code_branch": "codex/workshop-final180-stage-d-paid-build",
+  "code_head_sha": "2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7",
+  "documentation_verification": {
+    "append_only_code_runbook": true,
+    "final_review_sha256": "e8e158a340b2f0abdc3432bab611affaf5aa50615a92404018100e8964181d8d",
+    "gate_sha": "70c9a6ebb2cec338f938122c8c570fd5b22a6f28",
+    "head_sha": "2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7",
+    "original_review_sha256": "bb582445c4efbf6c96d042f4a1c975a571a2bf52b02bc2213b9897affb61af42",
+    "pinned_git_object_records_verified": 40,
+    "preflight": [
+      {
+        "errors": [],
+        "record": "standalone",
+        "status": "synchronized"
+      },
+      {
+        "errors": [],
+        "record": "nested",
+        "status": "synchronized"
+      }
+    ],
+    "receipt_hashes_verified": true,
+    "record_task_spec_unchanged": true,
+    "source_pins_verified": true,
+    "status": "PASS",
+    "unchanged_preservation_pins": 8
+  },
+  "enabled_tiers": [],
+  "exact_head_ci": {
+    "conclusion": null,
+    "head_sha": "2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7",
+    "provenance": "Coordinator dispatch; not independently queried by this docs-only worker; no CI PASS asserted.",
+    "run_id": 41894466041,
+    "status": "in_progress_at_coordinator_readback",
+    "url": "https://github.com/lucronn/autodata/actions/runs/41894466041"
+  },
+  "final_independent_review": {
+    "broad_suites_independently_repeated": false,
+    "findings": [],
+    "focused_tests": 138,
+    "head_sha": "2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7",
+    "original_five_probes": "PASS",
+    "receipt": {
+      "bytes": 1796,
+      "historical_locator": "/home/corp/autodata-evidence/final180-paid-final-repaired-review/receipt.json",
+      "sha256": "29091141c2a5968c61de46f83d752e163b7549e486aa2fb4e1135af6250727b8"
+    },
+    "report": {
+      "bytes": 5913,
+      "historical_locator": "/home/corp/autodata-evidence/final180-paid-final-repaired-review/REVIEW.md",
+      "sha256": "e8e158a340b2f0abdc3432bab611affaf5aa50615a92404018100e8964181d8d"
+    },
+    "seconds": "21.645",
+    "status": "PASS"
+  },
+  "goal": "Record the final repaired Stage D paid12 synthetic adapter code review without changing the original planning checkpoint or granting runtime/release authority.",
+  "implementation_paths": [
+    "docs/verification/workshop-final180-runbook.md",
+    "scripts/dev/test_workshop_final180_paid_adapter.py",
+    "scripts/dev/workshop_final180_paid_adapter.py"
+  ],
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "original_independent_review": {
+    "artifact": {
+      "bytes": 5570,
+      "historical_locator": "/home/corp/autodata-evidence/final180-paid-exact-head-review/REVIEW.md",
+      "sha256": "bb582445c4efbf6c96d042f4a1c975a571a2bf52b02bc2213b9897affb61af42"
+    },
+    "finding": "Incomplete exact-type dataclasses leaked AttributeError rather than the required stable AdapterError code.",
+    "head_sha": "f476ba63068c7fc6a5be2d994874f4907b6daea5",
+    "priority": "P2",
+    "status": "FINDINGS"
+  },
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-stage-d-paid.md",
+  "profiles_enabled": false,
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "pull_request": "https://github.com/lucronn/autodata/pull/236",
+  "pull_request_state_at_review": "draft",
+  "remaining_blockers": [
+    "Exact-head CI conclusion and coordinator Issue186/Project8 completion readback remain pending.",
+    "Full raw paid 344-reference/nested/JUnit/process/manifest semantics remain unverified.",
+    "Caller-selected bank labels do not authenticate bank identity; real bank/payment/runtime and actual Go compatibility evidence remain absent.",
+    "Direct seeded fixture grants and payment_calls==0 establish no Stripe charge or settlement acceptance.",
+    "Complete final180, staging, release, merge, deployment, profile promotion and cutover remain separately gated."
+  ],
+  "repair": {
+    "code_milestone_sha": "894f49b85dbabdf8f07c82074bc960f13d6910c1",
+    "failing_regression_methods": 6,
+    "pre_repair_attribute_errors": 37,
+    "result": "Required-field presence admission preserves context/identity/event/stderr/receipt precedence and validates diagnostic/outcome fields before dereference; no catch-all conversion."
+  },
+  "run_record": null,
+  "runtime_lock": null,
+  "status": "historical_code_only_completion_ci_pending",
+  "tracking": {
+    "github_writes_by_docs_worker": false,
+    "status": "coordinator_completion_sync_pending",
+    "writer": "coordinator only"
+  }
+}
