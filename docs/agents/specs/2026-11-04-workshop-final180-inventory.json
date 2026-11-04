@@ -1547,6 +1547,8 @@
     "Coordinator-selected integrated source tuple and final clean candidate SHA; inspected df52326b is not selected final acceptance head.",
     "Committed reviewed final180 supervisor, execution image build recipe/digest, offline dependency/cache inventories and exact Docker invocation.",
     "Complete raw/support inventory including lifecycle runtime evidence, failure diagnostics, per-file format and size ceilings, aggregate sizing and immutable private storage locator.",
+    "DTO failure traces may reach 16MiB while the current assembler permits only 8MiB per artifact; preserve full private raw evidence and separately decide transport/envelope bounds before profile promotion.",
+    "Browser runtime image digest/build provenance, Playwright package and browser cache file manifest, run-owned service/container/storage identities and sufficient /home plus Docker-filesystem headroom.",
     "Authoritative executable paths and runtime-resolved argv for every host/container phase; proposed strings are contract decisions, not observed executions.",
     "DTO nested Go fixture launcher exact argv/environment/ownership/readiness/stop contract, including its existing 4400-second source timer within browser 4440-second and phase 4560-second budgets; assert ready.kind=dto-fixture and omit paid/API selectors.",
     "Supervisor identities/approval authority, real registered author/reviewer identities, canonical profile hashes and reviewed assembler pin.",
