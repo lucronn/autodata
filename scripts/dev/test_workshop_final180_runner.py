@@ -264,7 +264,7 @@ class ProductionGitTests(unittest.TestCase):
             self.assertEqual(self.git.read_blob(CANDIDATE,'safe/file'),b'blob')
         argv=capture.call_args.args[0]
         self.assertEqual(argv,(identity.path,'--no-optional-locks','-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false','-c','protocol.file.allow=never','-C',str(ROOT),'cat-file','blob',CANDIDATE+':safe/file'))
-        self.assertEqual(set(self.git.env),{'PATH','HOME','GIT_CONFIG_NOSYSTEM','GIT_CONFIG_GLOBAL','GIT_TERMINAL_PROMPT','GIT_NO_REPLACE_OBJECTS'})
+        self.assertEqual(set(self.git.env),{'PATH','HOME','GIT_CONFIG_NOSYSTEM','GIT_CONFIG_GLOBAL','GIT_TERMINAL_PROMPT','GIT_NO_REPLACE_OBJECTS','GIT_NO_LAZY_FETCH'})
         self.assertEqual(self.git.env['PATH'],r.FIXED_PATH)
         self.assertEqual(list(Path(self.git.env['HOME']).iterdir()),[])
         with mock.patch.object(r.shutil,'which',return_value=None) as which:
@@ -331,6 +331,33 @@ class ProductionGitTests(unittest.TestCase):
                 (gitdir/'config.worktree').write_text(config)
                 with self.subTest(config=config),self.assertRaises(r.ContractError):self.git.observe_checkout(self.root)
 
+    def test_config_syntax_variants_deny_helpers_before_any_git_command(self):
+        gitdir=self.metadata()
+        bad=('[core] hooksPath = /tmp/untrusted\n',
+             '[extensions] partialClone = origin\n',
+             '[remote "origin"] promisor = true\n',
+             '[remote "origin"]\n promisor\n',
+             '[core]\n hooksPath\n',
+             '[core] hooks'+'\\'+'\nPath = /tmp/untrusted\n',
+             '[filter.review] clean = "touch ../filter-ran; cat"\n',
+             '[filter "review"] clean = "touch ../filter-ran; cat"\n',
+             '[filter "review"]\n process = "touch ../filter-ran; cat"\n',
+             '[include] path = /tmp/config\n')
+        for config in bad:
+            (gitdir/'config').write_text(config)
+            with self.subTest(config=config),mock.patch.object(self.git,'_git',side_effect=AssertionError('Git before metadata admission')) as command:
+                with self.assertRaises(r.ContractError) as ctx:self.git.observe_checkout(self.root)
+                self.assertEqual(str(ctx.exception),'git_config');command.assert_not_called()
+            self.assertFalse((self.root.parent/'filter-ran').exists())
+
+    def test_info_attributes_rejected_before_status_and_without_helper_execution(self):
+        gitdir=self.metadata();(gitdir/'info').mkdir()
+        (gitdir/'info/attributes').write_text('* filter=review\n')
+        with mock.patch.object(self.git,'_git',side_effect=AssertionError('Git before metadata admission')) as command:
+            with self.assertRaises(r.ContractError) as ctx:self.git.observe_checkout(self.root)
+            self.assertEqual(str(ctx.exception),'git_attributes');command.assert_not_called()
+        self.assertFalse((self.root.parent/'filter-ran').exists())
+
     def test_alternates_detached_and_remote_constraints(self):
         gitdir=self.metadata();p=gitdir/'objects/info/alternates';p.write_bytes(b'')
         with mock.patch.object(self.git,'_git',side_effect=self.checkout_git):self.assertRaises(r.ContractError,self.git.observe_checkout,self.root)
@@ -372,6 +399,17 @@ class AdditionalBoundaryTests(FixtureBase):
     def test_source_limit_and_timeout(self):
         with mock.patch.object(r.time,'monotonic',side_effect=[0,301]):
             self.error('inspection_timeout',r.inspect_candidate,self.contract,self.root,self.git)
+
+    def test_directory_enumeration_checks_deadline_during_walk(self):
+        with mock.patch.object(r.time,'monotonic',side_effect=[0,0,301]):
+            with self.assertRaises(r.ContractError) as ctx:r._source_paths(self.root,deadline=300)
+        self.assertEqual(str(ctx.exception),'inspection_timeout')
+
+    def test_directory_count_is_bounded_even_without_files(self):
+        for n in range(3):(self.root/('empty-'+str(n))).mkdir()
+        with mock.patch.object(r,'MAX_SOURCE_DIRECTORIES',1,create=True):
+            with self.assertRaises(r.ContractError) as ctx:r._source_paths(self.root,deadline=float('inf'))
+        self.assertEqual(str(ctx.exception),'source_directory_limit')
 
     def test_api_families_missing_in_expected_order(self):
         result=r.reconcile((),self.contract)
@@ -440,6 +478,29 @@ class WriteAndClaimBoundaryTests(CLIFixture):
         args=['inspect','--check',BASE,'--candidate-root',str(self.root),'--output-root',str(self.output)]
         with self.assertRaises(SystemExit) as ctx:r.main(args)
         self.assertEqual(ctx.exception.code,2);self.assertFalse(self.output.exists())
+
+    def test_candidate_aliases_rejected_before_output_creation(self):
+        alias=self.root.parent/'alias';alias.symlink_to(self.root,target_is_directory=True)
+        for candidate in (self.root/'..'/self.root.name,alias):
+            output=self.root/'output'
+            args=['inspect','--checkpoint-sha',BASE,'--candidate-root',str(candidate),'--output-root',str(output)]
+            with mock.patch.object(r,'ProductionGitReader',side_effect=r.ContractError('git_tool_discovery')):
+                self.assertEqual(r.main(args),2)
+            self.assertFalse(output.exists())
+
+    def test_prewrite_inode_overlap_in_source_or_git_metadata(self):
+        (self.root/'.git/objects').mkdir(parents=True)
+        for directory in (self.root,self.root/'.git',self.root/'.git/objects'):
+            identity=(directory.stat().st_dev,directory.stat().st_ino)
+            with mock.patch.object(r,'_ancestor_identities',return_value=({identity},(1,2)),create=True):
+                with self.assertRaises(r.ContractError) as ctx:r._validate_output_location(self.root,self.output,deadline=float('inf'))
+                self.assertEqual(str(ctx.exception),'unsafe_output')
+            self.assertFalse(self.output.exists())
+
+    def test_prewrite_scan_deadline_before_any_output(self):
+        with mock.patch.object(r.time,'monotonic',return_value=301):
+            with self.assertRaises(r.ContractError) as ctx:r._validate_output_location(self.root,self.output,deadline=300)
+        self.assertEqual(str(ctx.exception),'inspection_timeout');self.assertFalse(self.output.exists())
 
     def test_task_authority_and_scope_cannot_drift(self):
         for mutate in (lambda t:t['authority'].update(runtime_execution_authorized=True),lambda t:t['allowed_paths'].append('application.py')):

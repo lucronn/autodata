@@ -35,6 +35,7 @@ AUTHORITY = ('fixture_verified', 'product_candidate_verified', 'staging_verified
              'runtime_execution_authorized', 'profile_promotion_authorized', 'merge_authorized')
 MAX_DIAGNOSTIC = 4 * 1024 * 1024
 MAX_MANIFEST = 64 * 1024 * 1024
+MAX_SOURCE_DIRECTORIES = 100000
 FIXED_PATH = '/usr/local/bin:/usr/bin:/bin'
 SHA40 = re.compile(r'[0-9a-f]{40}\Z')
 SHA64 = re.compile(r'[0-9a-f]{64}\Z')
@@ -314,7 +315,7 @@ def _snapshot(root, path):
         os.close(fd)
 
 
-def _hash_regular(root, relative, limit):
+def _hash_regular(root, relative, limit, *, deadline):
     """Stream source bytes; the manifest never needs an in-memory source copy."""
     _require(_safe_path(relative), 'unsafe_input')
     directory = _open_dir(root, owned=True)
@@ -332,6 +333,7 @@ def _hash_regular(root, relative, limit):
             _require(before.st_size <= limit, 'source_limit')
             digest, length = hashlib.sha256(), 0
             while chunk := os.read(fd, 1024*1024):
+                _require(time.monotonic() < deadline, 'inspection_timeout')
                 length += len(chunk)
                 _require(length <= limit, 'source_limit')
                 digest.update(chunk)
@@ -345,35 +347,87 @@ def _hash_regular(root, relative, limit):
         os.close(directory)
 
 
-def _source_paths(root):
-    """Independently enumerate the full source, excluding only the root Git metadata."""
-    paths = set()
-    rootfd = _open_dir(root, owned=True)
-    pending = [(rootfd, '')]
-    try:
-        while pending:
-            fd, prefix = pending.pop()
-            try:
-                for name in os.listdir(fd):
-                    if not prefix and name == '.git':
+def _walk_entries(root, *, deadline, include_git):
+    """Stream a bounded no-follow tree with only the current directory open."""
+    pending = ['']
+    directories = 1
+    while pending:
+        _require(time.monotonic() < deadline, 'inspection_timeout')
+        prefix = pending.pop()
+        fd = _open_dir(root / prefix, owned=True)
+        try:
+            yield True, prefix, os.fstat(fd)
+            # scandir streams names; only the current directory holds descriptors.
+            with os.scandir(fd) as entries:
+                for entry in entries:
+                    _require(time.monotonic() < deadline, 'inspection_timeout')
+                    name = entry.name
+                    if not include_git and not prefix and name == '.git':
                         continue
                     path = prefix + name
                     _require(_safe_path(path), 'source_path')
                     st = os.stat(name, dir_fd=fd, follow_symlinks=False)
                     if stat.S_ISDIR(st.st_mode):
-                        child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
-                        pending.append((child, path + '/'))
+                        directories += 1
+                        _require(directories <= MAX_SOURCE_DIRECTORIES, 'source_directory_limit')
+                        pending.append(path + '/')
                     else:
-                        _require(stat.S_ISREG(st.st_mode) and st.st_nlink == 1
-                                 and st.st_uid == os.getuid(), 'unsafe_input')
-                        paths.add(path)
-                        _require(len(paths) <= 100000, 'source_limit')
-            finally:
-                os.close(fd)
-        return paths
-    finally:
-        for fd, _ in pending:
+                        yield False, path, st
+        finally:
             os.close(fd)
+
+
+def _source_paths(root, *, deadline):
+    """Independently enumerate source files, excluding root Git metadata."""
+    paths = set()
+    for directory, path, st in _walk_entries(root, deadline=deadline, include_git=False):
+        if not directory:
+            _require(stat.S_ISREG(st.st_mode) and st.st_nlink == 1
+                     and st.st_uid == os.getuid(), 'unsafe_input')
+            paths.add(path)
+            _require(len(paths) <= 100000, 'source_limit')
+    return paths
+
+
+def _ancestor_identities(parent, *, deadline):
+    """Pin the output parent and collect its real inode ancestry, including mounts."""
+    fd = _open_dir(parent, owned=True, protected=True)
+    initial = os.fstat(fd)
+    initial_identity = (initial.st_dev, initial.st_ino)
+    ancestors = set()
+    try:
+        for _ in range(4096):
+            _require(time.monotonic() < deadline, 'inspection_timeout')
+            st = os.fstat(fd)
+            identity = (st.st_dev, st.st_ino)
+            if identity in ancestors:
+                return ancestors, initial_identity
+            ancestors.add(identity)
+            child = os.open('..', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        raise ContractError('unsafe_output')
+    finally:
+        os.close(fd)
+
+
+def _validate_output_location(candidate, output, *, deadline):
+    """Reject any source/Git directory inode in the output parent's ancestry.
+
+    This also catches a preexisting bind alias of a candidate descendant, where
+    lexical paths and the candidate root inode alone cannot establish exclusion.
+    No source files are opened and no directory is created by this pre-write scan.
+    """
+    _require(output.is_absolute() and output.name not in ('', '.', '..'), 'unsafe_output')
+    ancestors, parent_identity = _ancestor_identities(output.parent, deadline=deadline)
+    entries = _walk_entries(candidate, deadline=deadline, include_git=True)
+    try:
+        for directory, _, st in entries:
+            if directory:
+                _require((st.st_dev, st.st_ino) not in ancestors, 'unsafe_output')
+    finally:
+        entries.close()
+    return parent_identity
 
 
 def manifest_document(inspection):
@@ -421,12 +475,12 @@ def inspect_candidate(contract: Contract, candidate_root: Path, git: GitReader) 
             _require(total <= 4*1024**3, 'source_limit')
             # Git object identity is checked as well as the complete SHA256 manifest.
             _require(hashlib.sha1(b'blob ' + str(len(immutable)).encode() + b'\0' + immutable).hexdigest() == oid, 'git_object_mismatch')
-            length, digest, snapshot = _hash_regular(candidate_root, path, 4*1024**3-total+len(immutable))
+            length, digest, snapshot = _hash_regular(candidate_root, path, 4*1024**3-total+len(immutable), deadline=deadline)
             _require(bool(snapshot[5] & 0o111) == (mode == '100755'), 'source_mode')
             _require(length == len(immutable) and digest == hashlib.sha256(immutable).hexdigest(), 'source_mismatch')
             snapshots[path] = snapshot
             members.append(SourceMember(path, mode, length, digest))
-        _require(_source_paths(candidate_root) == seen, 'source_members')
+        _require(_source_paths(candidate_root, deadline=deadline) == seen, 'source_members')
         manifest = tuple(sorted(members, key=lambda m: m.path))
         lookup = {m.path: m for m in manifest}
         for pin in contract.source_pins:
@@ -444,6 +498,7 @@ def inspect_candidate(contract: Contract, candidate_root: Path, git: GitReader) 
         result = SourceInspection(contract.candidate_sha, '', manifest)
         raw = canonical(manifest_document(result))
         _require(len(raw) <= MAX_MANIFEST, 'source_manifest_size')
+        _require(time.monotonic() < deadline, 'inspection_timeout')
         return SourceInspection(contract.candidate_sha, hashlib.sha256(raw).hexdigest(), manifest)
     except OSError:
         raise ContractError('unsafe_input') from None
@@ -504,7 +559,8 @@ class ProductionGitReader:
         self.deadline = time.monotonic() + 300
         self.home = tempfile.TemporaryDirectory(prefix='final180-git-home-')
         self.env = dict(PATH=FIXED_PATH, HOME=self.home.name, GIT_CONFIG_NOSYSTEM='1',
-                        GIT_CONFIG_GLOBAL='/dev/null', GIT_TERMINAL_PROMPT='0', GIT_NO_REPLACE_OBJECTS='1')
+                        GIT_CONFIG_GLOBAL='/dev/null', GIT_TERMINAL_PROMPT='0', GIT_NO_REPLACE_OBJECTS='1',
+                        GIT_NO_LAZY_FETCH='1')
         self.identity = None
         try:
             path = shutil.which('git', path=FIXED_PATH)
@@ -556,8 +612,37 @@ class ProductionGitReader:
             text = config.decode('utf-8')
         except UnicodeError:
             raise ContractError('git_config') from None
-        # Missing objects must never trigger promisor fetches, even from tooling.
-        _require(not re.search(r'(?im)^\s*(?:hooksPath|worktree|partialClone|promisor)\s*=|^\s*\[\s*include(?:If)?\b', text), 'git_config')
+        # Accept only the passive grammar emitted by ordinary clones/worktrees.
+        # Git also supports same-line assignments, implicit booleans, legacy
+        # dotted sections and continuations; reject those forms rather than
+        # accidentally overlooking a helper or lazy-fetch configuration.
+        allowed = {
+            'core': {'repositoryformatversion', 'filemode', 'bare', 'logallrefupdates',
+                     'ignorecase', 'precomposeunicode', 'symlinks', 'quotepath',
+                     'protecthfs', 'protectntfs', 'warnambiguousrefs', 'abbrev',
+                     'sparsecheckout', 'sparsecheckoutcone'},
+            'extensions': {'worktreeconfig', 'objectformat', 'refstorage', 'relativeworktrees'},
+            'remote': {'url', 'fetch'},
+            'branch': {'remote', 'merge', 'description'},
+            'user': {'name', 'email'},
+            'codex': {'bookkeeping', 'localenvironmentconfigpath'},
+        }
+        text = text.replace('\r\n', '\n')
+        _require('\\' not in text and all(ord(c) >= 32 or c in '\n\t' for c in text), 'git_config')
+        section = None
+        for line in text.split('\n'):
+            line = line.strip(' \t')
+            if not line or line.startswith(('#', ';')):
+                continue
+            if line.startswith('['):
+                header = re.fullmatch(r'\[([A-Za-z][A-Za-z0-9-]*)(?:[ \t]+"[^"\\]*")?\][ \t]*(?:[#;].*)?', line)
+                _require(header is not None, 'git_config')
+                section = header.group(1).lower()
+                _require(section in allowed, 'git_config')
+            else:
+                assignment = re.fullmatch(r'([A-Za-z][A-Za-z0-9-]*)[ \t]*=[ \t]*(.*)', line)
+                _require(section is not None and assignment is not None, 'git_config')
+                _require(assignment.group(1).lower() in allowed[section], 'git_config')
 
     @classmethod
     def _validate_worktree_config(cls, gitdir):
@@ -573,6 +658,18 @@ class ProductionGitReader:
         config, _ = _read_regular(gitdir, 'config', limit=1024*1024)
         cls._validate_config(config)
         cls._validate_worktree_config(gitdir)
+        info = gitdir / 'info'
+        if info.exists() or info.is_symlink():
+            fd = _open_dir(info, owned=True)
+            try:
+                try:
+                    os.stat('attributes', dir_fd=fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    pass
+                else:
+                    raise ContractError('git_attributes')
+            finally:
+                os.close(fd)
         objects = _open_dir(gitdir / 'objects', owned=True)
         try:
             try:
@@ -725,12 +822,14 @@ class ProductionGitReader:
 
 
 class _PrivateOutput:
-    def __init__(self, root):
+    def __init__(self, root, *, expected_parent):
         self.root = root
         _require(root.is_absolute() and root.name not in ('', '.', '..'), 'unsafe_output')
         self.parent = _open_dir(root.parent, owned=True, protected=True)
         self.fd = None
         try:
+            st = os.fstat(self.parent)
+            _require((st.st_dev, st.st_ino) == expected_parent, 'output_drift')
             os.mkdir(root.name, mode=0o700, dir_fd=self.parent)
             self.fd = os.open(root.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=self.parent)
             self.snapshot = _identity(os.fstat(self.fd))
@@ -796,8 +895,12 @@ def main(argv: list[str] | None = None) -> int:
             handlers[sig] = signal.signal(sig, _interrupted)
         try:
             _require(args.candidate_root.is_absolute(), 'unsafe_input')
+            candidate_fd = _open_dir(args.candidate_root, owned=True)
+            os.close(candidate_fd)
             _require(not args.output_root.is_relative_to(args.candidate_root), 'unsafe_output')
-            output = _PrivateOutput(args.output_root)
+            parent_identity = _validate_output_location(args.candidate_root, args.output_root,
+                                                        deadline=time.monotonic() + 300)
+            output = _PrivateOutput(args.output_root, expected_parent=parent_identity)
             git = ProductionGitReader(Path(__file__).resolve().parents[2])
             tool = asdict(git.tool_identity())
             runner_sha = git.runner_sha()
