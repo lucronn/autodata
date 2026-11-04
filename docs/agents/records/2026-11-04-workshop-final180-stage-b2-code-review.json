@@ -1,7 +1,7 @@
 {
   "record_kind": "code_only_verification",
-  "status": "code_review_pass_broad_developer_suite_unverified",
-  "updated_at": "2026-11-04T18:15:23Z",
+  "status": "code_review_and_local_developer_validation_pass",
+  "updated_at": "2026-11-04T18:23:15Z",
   "goal": "Add a bytes-only synthetic catalog8 Go-root adapter, with eight literal provider/root slots, no execution, zero accepted-case credit and every authority false.",
   "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-stage-b2-catalog-go.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/186",
@@ -77,12 +77,26 @@
       }
     },
     "broad_developer_suite": {
-      "status": "pending_unverified",
-      "log_ref": "/home/corp/autodata-evidence/final180-stage-b2-builder/dev-suite.log",
-      "pending_snapshot_ref": "/home/corp/autodata-evidence/final180-stage-b2-builder/dev-suite-pending-snapshot.log",
-      "pending_snapshot_sha256": "42cf0c20b4f380a0813a0ece67e3ea6e2810b1895bcb36a81f14d298c8430144",
-      "historical_pid": 906630,
-      "note": "The builder snapshot was pending; the coordinator subsequently reported that PID906630 exited without a captured completion summary. No broad-suite pass is claimed. The original discovery began before three additional grammar/schema tests; current-source focused coverage includes all 23 catalog tests."
+      "status": "PASS",
+      "count": 360,
+      "verified_head_sha": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/dev -p 'test_*.py'",
+      "exit_code": 0,
+      "duration_seconds": 441.53,
+      "observed_at": "2026-11-04T18:23:15Z",
+      "receipt_ref": "/home/corp/autodata-evidence/final180-b2-coordinator-broad/receipt.json",
+      "receipt_sha256": "cdf5153bf57e8064c5021122056726261dc9d18943d36c05d1e7bd6a73f032aa",
+      "full_stdout_persisted": false,
+      "provenance": "Coordinator-observed command and tool output from the exact clean B2 code head; external receipt records the result. This docs worker verified the receipt hash and fields, without rerunning the suite.",
+      "limitation": "Tool output in the coordinator conversation is the primary receipt; no complete console log was saved. This is local offline developer validation, not CI or real runtime acceptance.",
+      "historical_builder_attempt": {
+        "status": "pending_unverified",
+        "log_ref": "/home/corp/autodata-evidence/final180-stage-b2-builder/dev-suite.log",
+        "pending_snapshot_ref": "/home/corp/autodata-evidence/final180-stage-b2-builder/dev-suite-pending-snapshot.log",
+        "pending_snapshot_sha256": "42cf0c20b4f380a0813a0ece67e3ea6e2810b1895bcb36a81f14d298c8430144",
+        "historical_pid": 906630,
+        "note": "The builder snapshot was pending; the coordinator subsequently reported that PID906630 exited without a captured completion summary. No broad-suite pass is claimed. The original discovery began before three additional grammar/schema tests; current-source focused coverage includes all 23 catalog tests."
+      }
     }
   },
   "evidence": {
