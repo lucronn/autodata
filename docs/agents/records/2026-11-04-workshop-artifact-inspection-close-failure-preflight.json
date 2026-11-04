@@ -49,5 +49,13 @@
   "runtime_execution_authorized": false,
   "staging_activation_authorized": false,
   "production_publication_authorized": false,
-  "deployment_authorized": false
+  "deployment_authorized": false,
+  "exact_pin_readback": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622126651",
+    "issue_comment_sha256": "4df25e25e1fb1d373c14102d1de2ce6ce32c9f22f7dff2b40cbee068ac1a6e99",
+    "project_text_sha256": "22bacb1d3d279c34ff7b1cfc4ca977ebf65755c24a98fefa0874a5106c746be9",
+    "prior_project_text_sha256": "482b45c905f220e9ea587b5b0e84e196ea912eeefaee4d1809aa2e949b44a071",
+    "full_gate_sha_in_project": true,
+    "verified_at": "2026-11-04T03:56:54.385905+00:00"
+  }
 }
