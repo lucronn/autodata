@@ -983,8 +983,11 @@ async def run_dto_inventory(args, *, clock, lifecycle, persist, timing, bounded=
                 browser=await operation(lambda:lifecycle.launch(engine,timeout=15000),
                     timing['engine_launch_seconds'],late_result_cleanup=late_browser)
             except Exception as error:
-                # A returned ordinary exception owns no browser. Timeout is uncertain.
-                if isinstance(error,TimeoutError): raise
+                # Both watchdog and Playwright timeouts leave ownership uncertain.
+                # Playwright's native timeout does not inherit built-in TimeoutError.
+                try:from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+                except ImportError:PlaywrightTimeoutError=TimeoutError
+                if isinstance(error,(TimeoutError,PlaywrightTimeoutError)): raise
                 rows.extend(dict(browser=engine,scenario=name,status='failed',error=str(error)) for name in inventory())
                 await snapshot();continue
             try:

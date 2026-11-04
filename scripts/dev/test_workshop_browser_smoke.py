@@ -812,6 +812,23 @@ class DTOLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len([x for x in self.actions if isinstance(x,tuple) and x[0]=='launch']),1)
         self.assertEqual(evidence['results'][0]['failure_kind'],'not_started_after_lifecycle_failure')
         self.assertEqual(evidence['cleanup_status'],'unverified')
+    async def test_native_playwright_launch_timeout_stops_engine_admission(self):
+        # Playwright's timeout derives from its own Error, not built-in TimeoutError.
+        class NativeTimeoutError(Exception): pass
+        async def launch(engine,timeout):
+            self.actions.append(('launch',engine,timeout))
+            raise NativeTimeoutError('BrowserType.launch: Timeout 15000ms exceeded')
+        self.lifecycle.launch=launch
+        with patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(TimeoutError=NativeTimeoutError)}):
+            evidence=await self.execute()
+        self.assertEqual([a for a in self.actions if isinstance(a,tuple) and a[0]=='launch'],
+            [('launch','chromium',15000)])
+        self.assertEqual(len(evidence['results']),120)
+        self.assertTrue(all(row['status']=='failed' for row in evidence['results']))
+        self.assertEqual(evidence['failure_stage'],'engine.launch')
+        self.assertEqual(evidence['error'],'BrowserType.launch: Timeout 15000ms exceeded')
+        self.assertEqual(evidence['cleanup_status'],'unverified')
+        self.assertEqual(self.actions[-1],'stop')
     async def test_late_launch_closes_returned_browser_without_new_engine(self):
         release=asyncio.Event();closed=asyncio.Event()
         async def close():closed.set()
