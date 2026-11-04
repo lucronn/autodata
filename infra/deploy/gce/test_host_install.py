@@ -425,6 +425,37 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(self.install()[0], 3)
         self.assert_no_material()
 
+    def test_restrictive_inherited_umask_does_not_change_created_modes(self):
+        original = os.umask(0o777)
+        try:
+            self.assertEqual(self.install()[0], 0)
+        finally:
+            os.umask(original)
+        lock = self.root / 'run/autodata/state/operation.lock'
+        self.assertEqual(stat.S_IMODE(lock.stat().st_mode), 0o600)
+
+    def test_existing_release_changed_during_final_mount_probe_denied(self):
+        self.assertEqual(self.install()[0], 0)
+        self.probe_count = 0
+        def drift(target):
+            if self.probe_count == 3:
+                (self.root / ('opt/autodata/releases/' + SHA + '/release.json')).write_bytes(b'drift')
+        self.before_probe = drift
+        code, receipt = self.install()
+        self.assertNotEqual(code, 0)
+        self.assertFalse(receipt['release_material_committed'])
+
+    def test_wrong_owner_group_and_private_directory_modes_denied(self):
+        with patch.object(self.module, '_owned', return_value=False):
+            self.assertEqual(self.install()[0], 3)
+        self.assert_no_material()
+        for name in ('scripts', 'scripts/dev', 'db', 'db/migrations'):
+            directory = self.inbox / name
+            directory.chmod(0o755)
+            self.assertEqual(self.install()[0], 3)
+            self.assert_no_material()
+            directory.chmod(0o700)
+
 
 class ProbeAndLauncherTests(unittest.TestCase):
     def setUp(self):

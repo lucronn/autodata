@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """Owner-accepted, local-only inert staging material installation.
 
 No network, activation, credential delivery, package management or disk setup.
@@ -480,6 +480,7 @@ def install_cli(source_sha):
     with ExitStack() as stack:
         try:
             require(os.geteuid() == 0)
+            stack.callback(os.umask, os.umask(0o077))
             fs = Filesystem(stack, deadline)
             config_file = fs.file('/etc/autodata/host.json', 0o600)
             config_data = config_file.read()
@@ -518,6 +519,7 @@ def install_cli(source_sha):
                 binary.read()
                 runtime.validate_mount_observations(config, runtime.strict_json(_probe(binary.fd, DATA, deadline)),
                                                      runtime.strict_json(_probe(binary.fd, RUN, deadline)))
+                binary.read()
                 fs.recheck()
                 require((identity(os.fstat(data_fd)), identity(os.fstat(run_fd))) == pinned_mounts)
 
@@ -564,6 +566,7 @@ def install_cli(source_sha):
                         require(previous[key] == receipt[key])
             if not _absent(releases, '.install-' + approval['authorization_id']):
                 raise Denied()
+            final_inputs = []
             if _absent(releases, source_sha):
                 transaction = Transaction(fs, releases, '.install-' + approval['authorization_id'])
                 writing = True
@@ -578,6 +581,7 @@ def install_cli(source_sha):
                     existing = PinnedFile(stack, deadline, final_dirs[parent], name, 0o600 if path == 'release.json' else 0o444)
                     require(existing.meta[6] == item['bytes'])
                     existing.bind(item['sha256'])
+                    final_inputs.append(existing)
             deadline.check()
             validate_expiry(approval)
             config_file.read(); approval_file.read(); evidence.read(); helper.read(); schema.read()
@@ -590,6 +594,8 @@ def install_cli(source_sha):
             mounts()
             for _, source in inputs:
                 source.read()
+            for existing in final_inputs:
+                existing.read()
             config_file.read(); approval_file.read(); evidence.read(); helper.read(); schema.read()
             require(_absent(opt, 'current'))
             validate_expiry(approval)
@@ -605,6 +611,7 @@ def install_cli(source_sha):
             receipt['commit_state'] = 'material_committed'
             mounts()
             validate_expiry(approval)
+            require(_absent(opt, 'current'))
             operations = fs.directory(DATA + '/operations', 0o700, create=True)
             receipt['commit_state'] = 'receipt_committed'
             _finish(receipt, 0)
@@ -627,6 +634,8 @@ def install_cli(source_sha):
 
 
 def main(argv):
+    os.environ.clear()
+    os.chdir('/')
     if len(argv) != 1:
         return _finish(_receipt(None), 2)
     return install_cli(argv[0])
