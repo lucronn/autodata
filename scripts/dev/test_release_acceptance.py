@@ -613,7 +613,7 @@ class RawPrimitiveTests(unittest.TestCase):
                         paid_case_identities=DEFAULT, dto_case_identities=DEFAULT,
                         inspect_paid_common=DEFAULT, inspect_paid_pg_snapshots=DEFAULT,
                         inspect_paid_migration_receipts=DEFAULT, inspect_paid_selector_work=DEFAULT,
-                        inspect_paid_http_receipts=DEFAULT,
+                        inspect_paid_http_receipts=DEFAULT, inspect_paid_scope_receipts=DEFAULT,
                         inspect_dto_receipts=DEFAULT) as mocks:
                     for mock in mocks.values(): mock.side_effect = AssertionError('raw dispatch forbidden')
                     with patch.object(assembler, 'ArtifactStore', side_effect=AssertionError('plan root I/O')):
@@ -2255,6 +2255,110 @@ class DTOReceiptTests(unittest.TestCase):
                         store.read=changed
                     with self.subTest(mutation=mutation),self.assertRaises(assembler.ContractError):
                         assembler.inspect_dto_receipts(store,**self.invocation())
+
+
+
+class PaidScopeReceiptTests(unittest.TestCase):
+    """Closed producer projections, built independently from the new inspector."""
+    root = 'TestPostgresPaidCatalogExactScopeAndOwnerIsolation'
+    configuration = PaidHTTPReceiptTests.configuration
+    vehicle = PaidHTTPReceiptTests.vehicle
+    invocation = PaidSelectorWorkTests.invocation
+    real_store = PaidSelectorWorkTests.real_store
+    alter = classmethod(PaidHTTPReceiptTests.alter.__func__)
+
+    @staticmethod
+    def uid(n): return '00000000-0000-0000-0000-'+format(n,'012x')
+
+    @classmethod
+    def setUpClass(cls):
+        PaidHTTPReceiptTests.setUpClass()
+        cls.baseline = dict(PaidHTTPReceiptTests.baseline)
+        for bank in ('bankone','banktwo'):
+            def populate(m):
+                s=m['snapshots']['isolated'];paid=s['paid_rows']
+                for i,a in enumerate(paid['customer_accounts']):a['firebase_uid']='paid-owner-'+('a' if i==0 else 'b')
+                orders=[];requests=[];projections=[];entitlements=[]
+                # Literal producer row schemas; do not import validator contracts.
+                fields={
+                    'o':'amount_minor checkout_session_id checkout_url configuration_id created_at currency customer_account_id dataset_product_id dataset_request_id entitlement_id expected_price_id first_create_attempt_at last_reconciled_at livemode order_id organization_id paid_at payment_intent_id preparation_attempts preparation_index_job_ids preparation_last_error_code preparation_lease_expires_at preparation_lease_owner preparation_next_attempt_at preparation_state provider_expires_at provider_idempotency_key region revocation_reason_code revoked_at status stripe_account_id terms_version updated_at',
+                    'r':'correlation_id created_at dataset_product_id dataset_request_id idempotency_key lane organization_id processing_version region source_snapshot_id status updated_at vehicle_id vehicle_key',
+                    'p':'created_at dataset_product_id dataset_projection_id dataset_request_id entitlement_id',
+                    'e':'commerce_order_id configuration_id customer_account_id dataset_request_id entitlement_id granted_at organization_id payment_event_id provider_event_id region revoke_reason revoked_at status'}
+                for i,a in enumerate(paid['customer_accounts']):
+                    oid,rid,eid,pid=[cls.uid(100+i*10+j) for j in range(4)]
+                    config=cls.uid(48+i); org=a['personal_organization_id'];account=a['customer_account_id']
+                    o={k:'fixture' for k in fields['o'].split()};o.update(order_id=oid,configuration_id=config,
+                        customer_account_id=account,organization_id=org,dataset_request_id=rid,entitlement_id=eid,
+                        dataset_product_id=cls.uid(200),amount_minor=2000,currency='USD',livemode=False,status='paid',region='US',
+                        stripe_account_id='acct_fixture',expected_price_id='price_fixture',preparation_attempts=0,preparation_index_job_ids=[])
+                    r={k:'fixture' for k in fields['r'].split()};r.update(dataset_request_id=rid,correlation_id=oid,
+                        organization_id=org,dataset_product_id=cls.uid(200),vehicle_key=config,region='US')
+                    p={k:'fixture' for k in fields['p'].split()};p.update(dataset_projection_id=pid,dataset_request_id=rid,
+                        entitlement_id=eid,dataset_product_id=cls.uid(200))
+                    e={k:'fixture' for k in fields['e'].split()};e.update(entitlement_id=eid,dataset_request_id=rid,
+                        organization_id=org,status='active',revoked_at=None,granted_at='2026-11-03T00:00:00Z',
+                        customer_account_id=None if i==0 else account,configuration_id=None if i==0 else config,
+                        commerce_order_id=None if i==0 else oid,region=None if i==0 else 'US',revoke_reason='fixture' if i==0 else None)
+                    orders.append(o);requests.append(r);projections.append(p);entitlements.append(e)
+                paid.update(workshop_orders=orders,dataset_requests=requests,dataset_projections=projections,entitlements=entitlements)
+                canonical=[]
+                for i,config in enumerate((cls.uid(48),cls.uid(49),cls.uid(50),None)):
+                    for j,provider in enumerate(('bankone','banktwo')):
+                        canonical.append(dict(canonical_article_id=cls.uid(300+i*2+j),provider_slug=provider,
+                            vehicle_configuration_id=config,vehicle_id=cls.vehicle,title='Pump '+str(i*2+j),
+                            current_source_revision_id=None,current_canonical_revision_id=None,current_job_id=None))
+                s['article']=copy.deepcopy(canonical[0 if bank=='bankone' else 1])
+                s['article']['producer_extra']='retained view field'
+                s['immutable_rows']['canonical_articles']=canonical
+                for table in ('customer_accounts','auth_sessions','workshop_orders'):s['immutable_rows'][table]=copy.deepcopy(paid[table])
+                s.update(reader_calls=0,identity_checks=11,grant_calls=9)
+                m['final_snapshot']=copy.deepcopy(s)
+                del m['final_snapshot']['reader_calls'];del m['final_snapshot']['identity_checks']
+                m.update(reader_calls=0,identity_checks=11,http_observations=cls.observations(bank))
+            cls.alter(cls.baseline,populate,bank=bank)
+
+    @classmethod
+    def observations(cls,bank):
+        c=cls.configuration;l='/v1/catalog/vehicles/'+c+'/articles';j=0 if bank=='bankone' else 1
+        paths=[l,l,'/v1/catalog/vehicles/'+cls.vehicle+'/articles','/v1/catalog/vehicles/'+cls.uid(49)+'/articles',
+            '/v1/catalog/vehicles/'+cls.uid(50)+'/articles',l+'?region=CA',l+'/'+cls.uid(302+j),l+'/'+cls.uid(306+j),l+'/legacy',l,l]
+        items=[dict(availability='unavailable',canonical_article_id=cls.uid(300+k),canonical_revision_id=None,
+            complete=False,content_origin=None,content_status='list_only',id=cls.uid(300+k),images=[],processing=None,
+            review_status='UNREVIEWED',source_revision_id=None,title='Pump '+str(k),vehicle_id=c,view_revision=None) for k in range(2)]
+        bodies=[dict(complete=True,hydrating=False,items=items,progress=dict(complete=True,percent=100,phase='indexing',
+            processed=2,retryable=False,status='completed',total=2),version='v1')]
+        for i in range(1,11):
+            code,message=('ENTITLEMENT_REQUIRED','Purchase access to this vehicle configuration.') if i in (1,3,4,10) else (
+                ('ENTITLEMENT_REVOKED','Access to this vehicle configuration was revoked.') if i==9 else
+                ('CATALOG_NOT_FOUND','Catalog resource was not found.'))
+            bodies.append(dict(error=dict(code=code,details={},message=message,request_id=cls.uid(400+i),retryable=False)))
+        return [dict(method='GET',path=path,owner_index=1 if i==1 else 0,status=200 if i==0 else 403 if i in (1,3,4,9,10) else 404,
+            headers={'Content-Type':'application/json','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'},
+            body=bodies[i],body_sha256='a'*64,body_size=1,body_truncated=False,reader_before=0,reader_after=0,
+            identity_before=i,identity_after=i+1) for i,path in enumerate(paths)]
+
+    def inspect(self,raw,**overrides):
+        class Store:
+            by_ref={ref:dict(artifact_id=ref) for ref in raw}
+            def read(self,artifact_id):return raw[artifact_id]
+            def read_raw_json(self,artifact_id,**_):return assembler.strict_raw_json(raw[artifact_id])
+            def recheck(self):pass
+        self.assertTrue(callable(getattr(assembler,'inspect_paid_scope_receipts',None)), 'scope inspector is missing')
+        return assembler.inspect_paid_scope_receipts(Store(),**self.invocation(**overrides))
+
+    def assert_unavailable(self,result,raw):
+        previous=PaidHTTPReceiptTests().inspect(raw)
+        self.assertEqual(set(result)-set(previous),{'observed_scope_case_ids','observed_scope_http_observation_count','observed_scope_snapshot_count'})
+        for key,value in previous.items():self.assertEqual(result[key],value if key!='missing_validation_families' else value+['paid_scope_temporal_entitlement_provenance'])
+        self.assertEqual(result['observed_scope_case_ids'],[self.root+'-bankone',self.root+'-banktwo'])
+        self.assertEqual(result['observed_scope_http_observation_count'],22);self.assertEqual(result['observed_scope_snapshot_count'],4)
+        self.assertEqual(result['status'],'unavailable');self.assertIs(result['complete'],False);self.assertEqual(result['verified_case_ids'],[])
+        self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+
+    def test_closed_receipts_add_only_unavailable_diagnostics(self):
+        self.assert_unavailable(self.inspect(self.baseline),self.baseline)
+
 
 
 if __name__ == '__main__': unittest.main()
