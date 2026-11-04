@@ -6,6 +6,10 @@ import json
 import os
 from pathlib import Path
 import socket
+import tempfile
+import io
+import signal
+from urllib.error import HTTPError
 import unittest
 from unittest.mock import patch
 import uuid
@@ -60,6 +64,13 @@ class BootstrapTests(unittest.TestCase):
         self.config['environment'] = 'staging'
         self.config['public_origin'] = 'https://cars.tk'
         with self.assertRaises(self.m.Denied): self.validate()
+
+    def test_production_apply_keeps_exit_three_without_token(self):
+        self.config['environment'] = 'production'
+        with patch.object(self.m, 'read_inputs', return_value=(self.config, self.approval)), patch.object(self.m, 'read_token', side_effect=AssertionError('token read')):
+            code, receipt = self.m.main(self.rt, persist=lambda value: None)
+        self.assertEqual(code, 3)
+        self.assertEqual(receipt['failure_code'], 'missing_dependency')
 
     def test_unknown_duplicate_or_expired_approval_denied(self):
         self.validate()
@@ -172,6 +183,134 @@ class BootstrapTests(unittest.TestCase):
         receipt = self.engine().run()
         self.assertLessEqual(len(json.dumps(receipt)), 65536)
         self.assertNotIn('private-token', json.dumps(receipt))
+
+    def test_effective_firewall_and_resource_drift_after_create_denied(self):
+        for target, change in ((self.z + '/instances/workshop-stage', {'deletionProtection': False}),
+                               (self.z + '/disks/workshop-stage-boot', {'sourceImageId': '999'}),
+                               (self.z + '/disks/workshop-data', {'id': '999'}),
+                               (self.z + '/instances/workshop-stage/getEffectiveFirewalls?networkInterface=nic0', {'firewallPolicys': [{}]})):
+            fake = self.fake()
+            def wrapped(method, path, body, timeout):
+                result = fake(method, path, body, timeout)
+                if method == 'POST' and '/instances?' in path: fake.objects[target].update(change)
+                return result
+            with self.subTest(target=target), self.assertRaises(self.m.Denied): self.engine(wrapped).run()
+            self.assertEqual(sum(m == 'POST' for m, _, _ in fake.calls), 3)
+
+    def test_approval_expiry_between_mutations_stops_new_post(self):
+        fake = self.fake(); current = [NOW]
+        def wrapped(method, path, body, timeout):
+            result = fake(method, path, body, timeout)
+            if method == 'POST': current[0] = datetime(2026, 11, 4, 14, tzinfo=timezone.utc)
+            return result
+        engine = self.m.Bootstrap(self.config, self.approval, self.rt, wrapped, now=lambda: current[0], sleep=lambda _: None)
+        with self.assertRaises(self.m.Denied): engine.run()
+        self.assertEqual(sum(m == 'POST' for m, _, _ in fake.calls), 1)
+
+    def test_cancelled_or_foreign_operation_stops_new_mutation(self):
+        for change in ({'status': 'CANCELLED'}, {'selfLink': self.p + '/zones/other-zone/operations/op-bad'}, {'error': {'errors': [{'message': 'private-token'}]}}):
+            fake = self.fake()
+            def wrapped(method, path, body, timeout):
+                status, value = fake(method, path, body, timeout)
+                if method == 'POST': value.update(change)
+                return status, value
+            with self.subTest(change=change), self.assertRaises((self.m.Denied, self.m.OperationFailed)):
+                self.engine(wrapped).run()
+            self.assertEqual(sum(m == 'POST' for m, _, _ in fake.calls), 1)
+
+    def test_response_and_pagination_bounds_and_unknown_requests(self):
+        engine = self.engine()
+        with self.assertRaises(self.m.Denied): engine.get(self.p + '/global/secret')
+        for mode in ('size', 'count', 'pages', 'repeat'):
+            calls = []
+            def fake(method, path, body, timeout):
+                calls.append(path)
+                if mode == 'size': return 200, {'x': 'a' * 1048576}
+                if mode == 'count': return 200, {'items': [{}] * 1001}
+                return 200, {'items': [], 'nextPageToken': 'same' if mode == 'repeat' else str(len(calls))}
+            engine = self.engine(fake)
+            with self.subTest(mode=mode), self.assertRaises(self.m.Denied): engine.listing(self.p + '/global/routes')
+            self.assertLessEqual(len(calls), 10)
+
+    def test_malformed_or_extra_firewall_rule_denied(self):
+        for extra in (None, {}, {'network': self.network, 'direction': 'EGRESS'}):
+            fake = self.fake(); fake.objects[self.p + '/global/firewalls']['items'].append(extra)
+            with self.subTest(extra=extra), self.assertRaises(self.m.Denied): self.engine(fake).run()
+
+    def test_http_request_has_wall_clock_alarm_and_restores_handler(self):
+        previous = signal.getsignal(signal.SIGALRM)
+        def opener(*args, **kwargs):
+            self.assertGreater(signal.getitimer(signal.ITIMER_REAL)[0], 0)
+            self.assertLessEqual(signal.getitimer(signal.ITIMER_REAL)[0], 30)
+            class Response(io.BytesIO): status = 200
+            return Response(b'{}')
+        transport = self.m.ComputeTransport('private-token', opener=opener)
+        self.assertEqual(transport('GET', self.m.API + '/projects/autodata-host', None, 30), (200, {}))
+        self.assertEqual(signal.getitimer(signal.ITIMER_REAL), (0.0, 0.0))
+        self.assertEqual(signal.getsignal(signal.SIGALRM), previous)
+
+    def test_http_redirect_status_and_response_size_are_rejected(self):
+        class Response(io.BytesIO):
+            status = 200
+        for response in (Response(b'{' + b' ' * 1048576 + b'}'),):
+            transport = self.m.ComputeTransport('private-token', opener=lambda *a, **k: response)
+            with self.assertRaises(self.m.Denied): transport('GET', self.m.API + '/projects/autodata-host', None, 30)
+        error = HTTPError(self.m.API + '/projects/autodata-host', 302, 'redirect', {}, io.BytesIO(b'private-token'))
+        transport = self.m.ComputeTransport('private-token', opener=lambda *a, **k: (_ for _ in ()).throw(error))
+        with self.assertRaises(self.m.OperationFailed): transport('GET', self.m.API + '/projects/autodata-host', None, 30)
+        with self.assertRaises(self.m.Denied): self.m.NoRedirect().redirect_request(None, None, None, None, None, None)
+
+    def test_private_pipe_descriptor_and_token_frames(self):
+        read_fd, write_fd = os.pipe()
+        os.write(write_fd, b'private-token'); os.close(write_fd)
+        original_fstat, original_read, original_close = os.fstat, os.read, os.close
+        original_fcntl, original_select = self.m.fcntl.fcntl, self.m.select.select
+        try:
+            with patch.object(self.m.os, 'fstat', side_effect=lambda fd: original_fstat(read_fd)), \
+                 patch.object(self.m.os, 'read', side_effect=lambda fd, n: original_read(read_fd, n)), \
+                 patch.object(self.m.os, 'close'), \
+                 patch.object(self.m.fcntl, 'fcntl', side_effect=lambda fd, cmd: original_fcntl(read_fd, cmd)), \
+                 patch.object(self.m.select, 'select', return_value=([3], [], [])):
+                self.assertEqual(self.m.read_token(), 'private-token')
+        finally: original_close(read_fd)
+        with tempfile.TemporaryFile() as stream, patch.object(self.m.os, 'fstat', return_value=os.fstat(stream.fileno())), patch.object(self.m.os, 'close'):
+            with self.assertRaises(self.m.Denied): self.m.read_token()
+
+    def test_main_preserves_partial_receipt_and_redacts_errors(self):
+        fake = self.fake(); saved = []
+        def broken(method, path, body, timeout):
+            if method == 'POST' and '/disks?' in path: raise RuntimeError('private-token')
+            return fake(method, path, body, timeout)
+        with patch.object(self.m, 'read_inputs', return_value=(self.config, self.approval)), patch.object(self.m, 'read_token', return_value='private-token'), patch.object(self.m.time, 'sleep'):
+            code, receipt = self.m.main(self.rt, transport=broken, now=lambda: NOW, persist=lambda value: saved.append(copy.deepcopy(value)))
+        self.assertEqual(code, 4); self.assertEqual(receipt['status'], 'failed')
+        self.assertIn('address', receipt['resources']); self.assertEqual(receipt['cleanup'], 'resources-retained')
+        self.assertNotIn('private-token', json.dumps(receipt)); self.assertTrue(saved)
+
+    def test_receipt_store_is_atomic_private_and_rejects_symlinks(self):
+        # Simulate root ownership of disposable files; no operator paths are accessed.
+        real_stat, real_fstat = os.stat, os.fstat
+        def root_info(info):
+            fields = list(info); fields[4] = fields[5] = 0
+            return os.stat_result(fields)
+        with tempfile.TemporaryDirectory() as directory:
+            original = self.rt._owned_directory
+            def redirect(component, **kwargs):
+                return original(directory if component == '/' else component, **kwargs)
+            Path(directory, 'var/lib').mkdir(parents=True)
+            Path(directory, 'var').chmod(0o755); Path(directory, 'var/lib').chmod(0o755)
+            with patch.object(self.rt, '_owned_directory', side_effect=redirect), \
+                 patch.object(self.m.os, 'fstat', side_effect=lambda *a, **k: root_info(real_fstat(*a, **k))), \
+                 patch.object(self.m.os, 'stat', side_effect=lambda *a, **k: root_info(real_stat(*a, **k))):
+                with self.m.ReceiptStore(self.rt) as store:
+                    receipt = self.engine().run(); store.write(receipt)
+                    self.assertEqual(store.read(self.approval['authorization_id']), receipt)
+                    target = Path(directory, 'var/lib/autodata-bootstrap/receipts', self.approval['authorization_id'] + '.json')
+                    self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+                    self.assertEqual(target.parent.stat().st_mode & 0o777, 0o700)
+                    target.unlink(); target.symlink_to(Path(directory, 'outside'))
+                    with self.assertRaises(self.m.Denied): store.write(receipt)
+                    self.assertFalse(Path(directory, 'outside').exists())
 
     def launcher(self):
         body = (HERE / 'cloud-bootstrap.sh').read_text().split("<<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]

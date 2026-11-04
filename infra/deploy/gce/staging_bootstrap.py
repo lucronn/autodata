@@ -4,7 +4,7 @@ All network requests pass through a finite request inventory. Public methods acc
 injected clocks/transport only for offline tests; the installed launcher has no
 configuration, endpoint, credential or receipt-path arguments.
 """
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 import fcntl
 import ipaddress
@@ -13,6 +13,7 @@ import math
 import os
 import re
 import select
+import signal
 import stat
 import time
 import uuid
@@ -137,7 +138,8 @@ def validate_routes(routes, network, cidr, project):
     found = []
     for route in routes:
         require(type(route) is dict)
-        if route.get('network') != network: continue
+        require(type(route.get('network')) is str)
+        if route['network'] != network: continue
         destination = route.get('destRange')
         hops = {key: value for key, value in route.items() if key.startswith('nextHop')}
         require(not route.get('tags') and not route.get('routeType') in ('DYNAMIC', 'PEERING_DYNAMIC', 'PEERING_STATIC'))
@@ -202,6 +204,21 @@ class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs): raise Denied()
 
 
+@contextmanager
+def request_deadline(seconds):
+    # urllib socket timeouts alone allow a slow response to extend indefinitely.
+    # This fixed single-threaded operator process also bounds total wall time.
+    require(signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0))
+    previous = signal.getsignal(signal.SIGALRM)
+    def expired(signum, frame): raise TimedOut()
+    signal.signal(signal.SIGALRM, expired)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try: yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
 class ComputeTransport:
     def __init__(self, token, opener=None):
         self._token = validate_token(token.encode('ascii'))
@@ -214,17 +231,18 @@ class ComputeTransport:
         data = None if body is None else canonical(body)
         if data is not None: headers['Content-Type'] = 'application/json'
         request = Request(url, data=data, headers=headers, method=method)
-        try:
-            try: response = self._opener(request, timeout=timeout)
-            except HTTPError as error:
-                if error.code == 404:
-                    error.close(); return 404, {}
-                error.close(); raise OperationFailed() from None
-            with response:
-                require(response.status == 200)
-                raw = response.read(MAX_RESPONSE + 1)
-                return 200, strict_json(raw)
-        except (TimeoutError, URLError, ConnectionError, OSError): raise TransportLoss() from None
+        with request_deadline(timeout):
+            try:
+                try: response = self._opener(request, timeout=timeout)
+                except HTTPError as error:
+                    if error.code == 404:
+                        error.close(); return 404, {}
+                    error.close(); raise OperationFailed() from None
+                with response:
+                    require(response.status == 200)
+                    raw = response.read(MAX_RESPONSE + 1)
+                    return 200, strict_json(raw)
+            except (TimeoutError, URLError, ConnectionError, OSError): raise TransportLoss() from None
 
 
 def read_inputs(runtime):
@@ -388,7 +406,8 @@ class Bootstrap:
         validate_routes(self.listing(self.p + '/global/routes'), self.network, subnet['ipCidrRange'], self.p)
         rules = self.listing(self.p + '/global/firewalls')
         # Cap the whole list before filtering by exact network.
-        rules = [rule for rule in rules if type(rule) is dict and rule.get('network') == self.network]
+        require(all(type(rule) is dict and type(rule.get('network')) is str for rule in rules))
+        rules = [rule for rule in rules if rule['network'] == self.network]
         normalized = normalized_firewalls(rules, self.network, self.config['resources']['instance_name'])
         effective = self.get(self.network + '/getEffectiveFirewalls')
         require(effective.get('firewallPolicys') == [])
@@ -540,6 +559,9 @@ def main(runtime, transport=None, now=None, persist=None):
     result = receipt_base(now()); engine = None
     try:
         config, approval = read_inputs(runtime)
+        # Preserve the existing unavailable production-apply exit contract.
+        if config.get('environment') != 'staging' or config.get('public_origin', '').split('/')[2].split(':')[0].lower().rstrip('.') in ('cars.tk', 'www.cars.tk'):
+            raise Dependency()
         validate_approval(config, approval, runtime, now())
         if persist is None:
             with ReceiptStore(runtime) as store:
