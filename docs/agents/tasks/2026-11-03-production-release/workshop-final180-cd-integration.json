@@ -1,0 +1,264 @@
+{
+  "task_id": "production-release-workshop-final180-cd-integration",
+  "repository": "lucronn/autodata",
+  "status": "blocked",
+  "goal": "Consolidate the independently gated restricted synthetic commerce14 and paid12 libraries while preserving predecessor bytes, original receipts and zero real accepted-case credit.",
+  "dispatch_mode": "coordinator-direct-after-source-ci-tracking-preflight-review-and-explicit-dispatch",
+  "allowed_paths": [
+    "scripts/dev/workshop_final180_paid_adapter.py",
+    "scripts/dev/test_workshop_final180_paid_adapter.py",
+    "docs/verification/workshop-final180-runbook.md"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-04-workshop-final180-cd-integration.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-cd-integration.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-stage-c-commerce.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-stage-d-paid.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+    "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+    "docs/agents/records/2026-11-04-workshop-final180-cd-integration.json"
+  ],
+  "outputs": [
+    "scripts/dev/workshop_final180_paid_adapter.py",
+    "scripts/dev/test_workshop_final180_paid_adapter.py",
+    "docs/verification/workshop-final180-runbook.md"
+  ],
+  "pre_implementation": {
+    "goal": "Consolidate the independently gated restricted synthetic commerce14 and paid12 libraries while preserving predecessor bytes, original receipts and zero real accepted-case credit.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-cd-integration.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-04-workshop-final180-cd-integration.md",
+      "docs/agents/specs/2026-11-04-workshop-final180-stage-c-commerce.md",
+      "docs/agents/specs/2026-11-04-workshop-final180-stage-d-paid.md",
+      "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+      "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md"
+    ],
+    "todo": [
+      "Freeze independently verified C/D source SHAs, source/append pins and historical receipts; synchronize this integration plan/spec/task/record and allowlist with Issue186/Project8, commit checkpoint, pass standalone/nested exact-base preflight and independent checkpoint review before explicit dispatch.",
+      "Adopt only the exact reviewed D adapter and constructed-byte tests onto the pinned C checkpoint; preserve C and every A/B1/B2/CI/inventory/historical gate byte.",
+      "Append the exact pinned D runbook section after the untouched C runbook and add a combined synthetic-only note preserving source/checkpoint identities, limitations and measured checks.",
+      "Run combined C/D and predecessor focused suites, full developer/autonomy discovery, no-bytecode compile, AST/import boundary, exact-diff and all source/prefix/suffix checks; commit/push coherent validated milestone and obtain independent exact-code-head review.",
+      "Read back exact integration-head CI and synchronize code-only receipts without overwriting history; retain integer0 credit, disabled profiles/tiers, null runtime records, all nine false authorities and separate real fixture/runtime/payment/final180/release blockers."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T19:17:32.109531+00:00",
+    "planning_parent_sha": "c4dd59b3ac6a1afb74f7ad1d4f54ef1eb6e7fdad",
+    "adoption_source_sha": "2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7",
+    "historical_d_bundle_source_sha": "70c9a6ebb2cec338f938122c8c570fd5b22a6f28",
+    "authorizing_checkpoint_sha": null,
+    "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "inventory_sha256": "c4e9293875d22e04469c6a3fb4cdab27889328d6519243cee3862f9ecf490b39",
+    "implementation_allowlist": [
+      "scripts/dev/workshop_final180_paid_adapter.py",
+      "scripts/dev/test_workshop_final180_paid_adapter.py",
+      "docs/verification/workshop-final180-runbook.md"
+    ],
+    "planning_only_paths": [
+      "docs/superpowers/plans/2026-11-04-workshop-final180-cd-integration.md",
+      "docs/agents/specs/2026-11-04-workshop-final180-cd-integration.md",
+      "docs/agents/records/2026-11-04-workshop-final180-cd-integration.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-final180-cd-integration.json",
+      "docs/superpowers/plans/2026-11-04-workshop-final180-stage-d-paid.md",
+      "docs/agents/specs/2026-11-04-workshop-final180-stage-d-paid.md",
+      "docs/agents/records/2026-11-04-workshop-final180-stage-d-paid.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-final180-stage-d-paid.json",
+      "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md"
+    ],
+    "tracking_receipts": {
+      "adoption_source_sha": "2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7",
+      "current_comment_count": 172,
+      "implementation_allowlist": [
+        "scripts/dev/workshop_final180_paid_adapter.py",
+        "scripts/dev/test_workshop_final180_paid_adapter.py",
+        "docs/verification/workshop-final180-runbook.md"
+      ],
+      "issue_after_sha256": "8605fb900faeeca5d42474c9f88e0cb0bef08e8ae823a6e6f36d5b36e28c20e2",
+      "issue_before_sha256": "16e77d8ebeefedd01c06326ebf24582221592e720f289e63c2bed2446c04287e",
+      "issue_body_unchanged": true,
+      "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6639755403",
+      "other_project_fields_unchanged": true,
+      "planning_only_paths": [
+        "docs/superpowers/plans/2026-11-04-workshop-final180-cd-integration.md",
+        "docs/agents/specs/2026-11-04-workshop-final180-cd-integration.md",
+        "docs/agents/records/2026-11-04-workshop-final180-cd-integration.json",
+        "docs/agents/tasks/2026-11-03-production-release/workshop-final180-cd-integration.json",
+        "docs/superpowers/plans/2026-11-04-workshop-final180-stage-d-paid.md",
+        "docs/agents/specs/2026-11-04-workshop-final180-stage-d-paid.md",
+        "docs/agents/records/2026-11-04-workshop-final180-stage-d-paid.json",
+        "docs/agents/tasks/2026-11-03-production-release/workshop-final180-stage-d-paid.json",
+        "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md"
+      ],
+      "planning_parent_sha": "c4dd59b3ac6a1afb74f7ad1d4f54ef1eb6e7fdad",
+      "previous_source_archived_verbatim": true,
+      "prior_comment_count": 171,
+      "prior_comments_preserved": true,
+      "prior_project_source_sha256": "aaf88c58ea0760f0377ab01c07fbd80a4c8bf758f4ec1001ff07f617a6dea571",
+      "project_after_sha256": "9399f1fe5d37ec2369b0f8b20e8d11f96f65c3961dbc5cfe4ea0da9c57d5e6bf",
+      "project_before_sha256": "209c603589b0b0f789d87420f6867d8a643312bd040f68c9c00b1dff5b84f67c",
+      "project_source_sha256": "000eefd9c69d56a0426bb1844e890eeeb28250c541c20d5f8c57599927e98eaa",
+      "project_status": "In Progress",
+      "status": "synchronized_live_readback",
+      "todo": [
+        "Freeze independently verified C/D source SHAs, source/append pins and historical receipts; synchronize this integration plan/spec/task/record and allowlist with Issue186/Project8, commit checkpoint, pass standalone/nested exact-base preflight and independent checkpoint review before explicit dispatch.",
+        "Adopt only the exact reviewed D adapter and constructed-byte tests onto the pinned C checkpoint; preserve C and every A/B1/B2/CI/inventory/historical gate byte.",
+        "Append the exact pinned D runbook section after the untouched C runbook and add a combined synthetic-only note preserving source/checkpoint identities, limitations and measured checks.",
+        "Run combined C/D and predecessor focused suites, full developer/autonomy discovery, no-bytecode compile, AST/import boundary, exact-diff and all source/prefix/suffix checks; commit/push coherent validated milestone and obtain independent exact-code-head review.",
+        "Read back exact integration-head CI and synchronize code-only receipts without overwriting history; retain integer0 credit, disabled profiles/tiers, null runtime records, all nine false authorities and separate real fixture/runtime/payment/final180/release blockers."
+      ],
+      "writer": "coordinator sole serialized writer",
+      "receipt_ref": "/home/corp/autodata-evidence/final180-cd-integration-gate-tracking/receipt.json",
+      "receipt_sha256": "cff205865bfc29f993fd860ea770d3185deb9c406684484854af055878ecd398",
+      "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6639755403",
+      "issue_readback_ref": "/home/corp/autodata-evidence/final180-cd-integration-gate-tracking/issue-after.json",
+      "project_readback_ref": "/home/corp/autodata-evidence/final180-cd-integration-gate-tracking/project-after.json",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_field_name": "Source or dependency reference"
+    },
+    "source_reviews": {
+      "c": "PASS from pinned existing independent receipt",
+      "d": "PASS/no findings from SHA256-verified exact-head independent receipt",
+      "scope": "Exact source heads only; no integration checkpoint/code review inferred."
+    },
+    "source_ci": {
+      "c": "IN PROGRESS per coordinator; no live query in this task",
+      "d": "IN PROGRESS per coordinator; no live query in this task",
+      "adoption_dispatch_requires": "Both exact frozen source CI results recorded PASS by coordinator; pending/failure blocks adoption."
+    },
+    "committed_gate_review": {
+      "status": "pending",
+      "checkpoint_sha": null
+    },
+    "exact_base_preflight": {
+      "status": "pending",
+      "checkpoint_sha": null,
+      "scope": "Standalone and nested committed-record validation; external seal after checkpoint commit."
+    },
+    "external_evidence_pins": [
+      {
+        "path": "/home/corp/autodata-evidence/final180-commerce-independent-review/review.json",
+        "bytes": 3227,
+        "sha256": "45667ebb99371465e8c0e56547b917092ed1a214d8a76815b4996a9bef696ae2"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/final180-cd-integration-plan/PLAN.md",
+        "bytes": 20181,
+        "sha256": "4f5920762c539f1a139d7c459479d06940e1658336c0af66ca1be1cbfe588fc6"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/final180-commerce-gate-dispatch/receipt.json",
+        "bytes": 945,
+        "sha256": "2d3e35d4968b35cc8728fb15b2c0b5c2654c62d697352c39faa8019d19e75d9a"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/final180-paid-gate-dispatch/receipt.json",
+        "bytes": 945,
+        "sha256": "cf2bf2e1dd9fde669420d2812368122042f09efeaddd6069ab237f083d001555"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/final180-paid-final-repaired-review/receipt.json",
+        "bytes": 1796,
+        "sha256": "29091141c2a5968c61de46f83d752e163b7549e486aa2fb4e1135af6250727b8"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/final180-cd-integration-freeze/REPORT.md",
+        "bytes": 6392,
+        "sha256": "b53e247a944fc80499146a818e10f96ceea16e9e7921b5846885651044bed379"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/final180-cd-integration-freeze/freeze.json",
+        "bytes": 134933,
+        "sha256": "be77ff20139bb42c88cf813792d9e36ee57cdcd7a2566d3255dabde413a7412b"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/final180-cd-integration-freeze/all-common-parent-protected-tree.json",
+        "bytes": 159671,
+        "sha256": "d02f8d538a26405adcd3239e4b41fb4b7bc7ca4abaa29566cf45c7993ac9f498"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/final180-cd-integration-gate-tracking/receipt.json",
+        "bytes": 3138,
+        "sha256": "cff205865bfc29f993fd860ea770d3185deb9c406684484854af055878ecd398"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/final180-cd-code-completion-tracking/receipt.json",
+        "bytes": 1054,
+        "sha256": "70c96732aa40f3a681c3d970af08398c004b428755b10b82c67fd1483b8be180"
+      }
+    ],
+    "historical_tracking": [
+      {
+        "stage": "c",
+        "comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6638920703",
+        "receipt_sha256": "5e44e24272d77ce2402026ddea783dcb544af9f6de3b173374abc47dda55dc99"
+      },
+      {
+        "stage": "d",
+        "comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6639038727",
+        "receipt_sha256": "fcc31f428c6f49f41d4a523d2c62b071ff74c7515a25c5cf4751943913298761"
+      }
+    ],
+    "accepted_case_credit": 0,
+    "profiles_enabled": false,
+    "enabled_tiers": [],
+    "runtime_lock": null,
+    "run_record": null,
+    "authority": {
+      "fixture_verified": false,
+      "product_candidate_verified": false,
+      "staging_verified": false,
+      "deployment_authorized": false,
+      "cutover_verified": false,
+      "implementation_authorized": false,
+      "runtime_execution_authorized": false,
+      "profile_promotion_authorized": false,
+      "merge_authorized": false
+    }
+  },
+  "planning_parent_sha": "c4dd59b3ac6a1afb74f7ad1d4f54ef1eb6e7fdad",
+  "adoption_source_sha": "2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7",
+  "authorizing_checkpoint_sha": null,
+  "todo": [
+    "Freeze independently verified C/D source SHAs, source/append pins and historical receipts; synchronize this integration plan/spec/task/record and allowlist with Issue186/Project8, commit checkpoint, pass standalone/nested exact-base preflight and independent checkpoint review before explicit dispatch.",
+    "Adopt only the exact reviewed D adapter and constructed-byte tests onto the pinned C checkpoint; preserve C and every A/B1/B2/CI/inventory/historical gate byte.",
+    "Append the exact pinned D runbook section after the untouched C runbook and add a combined synthetic-only note preserving source/checkpoint identities, limitations and measured checks.",
+    "Run combined C/D and predecessor focused suites, full developer/autonomy discovery, no-bytecode compile, AST/import boundary, exact-diff and all source/prefix/suffix checks; commit/push coherent validated milestone and obtain independent exact-code-head review.",
+    "Read back exact integration-head CI and synchronize code-only receipts without overwriting history; retain integer0 credit, disabled profiles/tiers, null runtime records, all nine false authorities and separate real fixture/runtime/payment/final180/release blockers."
+  ],
+  "runtime_lock": null,
+  "run_record": null,
+  "authority": {
+    "fixture_verified": false,
+    "product_candidate_verified": false,
+    "staging_verified": false,
+    "deployment_authorized": false,
+    "cutover_verified": false,
+    "implementation_authorized": false,
+    "runtime_execution_authorized": false,
+    "profile_promotion_authorized": false,
+    "merge_authorized": false
+  },
+  "product_evidence": {
+    "accepted_case_credit": 0,
+    "profiles_enabled": false,
+    "enabled_tiers": []
+  },
+  "blockers": [
+    "Live integration tracking synchronization complete at comment6639755403; exact checkpoint/preflight/review/dispatch seals remain required.",
+    "Both exact source-head CI results must be recorded PASS before adoption dispatch.",
+    "Committed checkpoint, standalone/nested exact-base preflight, independent exact-checkpoint review and explicit coordinator dispatch remain required.",
+    "Combined adopted-tree suites, independent exact integration code-head review and exact-head CI remain future gated verification."
+  ],
+  "scope": "Exact D adapter/test byte adoption onto preserved C; prefix-preserving D runbook append and synthetic-only measured note.",
+  "forbidden_scope": [
+    "Any path outside the exact three-file implementation allowlist; any planning file edit by builder.",
+    "C/A/B1/B2/policy/profile/workflow/inventory/application/schema/producer/SQL/Compose/dependency changes.",
+    "Rebase/cherry-pick/whole-branch merge, automatic conflict resolution or source code repair.",
+    "Runtime/provider/payment/network/secret access, actual fixtures, nonzero accepted credit, enabled profiles or any true diagnostic authority."
+  ],
+  "acceptance_tests": [
+    "Integration spec immutable-object/prefix/suffix/mode/full-tree verifier, combined focused suites, full developer/autonomy discovery and in-memory compile.",
+    "Unchanged C/D semantic regression suites and import boundary; independent exact-head review and exact-head Autonomous Verification."
+  ]
+}

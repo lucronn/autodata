@@ -442,3 +442,53 @@ Current concrete Stage C todo (same exact text as plan/task/record):
 5. Synchronize exact-code-head local and CI evidence while preserving integer0 credit, disabled profiles/tiers, null runtime lock/run record and all nine false authority flags; retain full financial/raw, actual JUnit compatibility, runtime, final180 and release blockers.
 
 Live tracking receipt SHA256 `5e44e24272d77ce2402026ddea783dcb544af9f6de3b173374abc47dda55dc99`; Issue after `5e1789d6c595508c2fc22257eb461da52b51bcb6ba7704d51565fddbba47935b`; Project after `8b36b7fe8a54b4fe6a700ee8a33401496855b6c9af3bb53a4337f3e9094a2e37`; prior/current Source `a1a9e1f920c1c344076ec77d998af8d085b0cd15bad92a80c1589be495d6e62c` / `ad0b1d9d0c93ce3171a428c7ea6be9d783fb2a7554e9309f57851bd0b447d67e`. Full receipts in identical standalone/nested records. Coordinator delegated commit/push and post-commit exact-base preflight; independent committed-checkpoint review and dispatch remain pending.
+
+
+### Synchronized Stage D restricted synthetic paid12 planning successor (2026-11-04)
+
+**Status: Issue186/Project8 planning synchronized** at https://github.com/lucronn/autodata/issues/186#issuecomment-6639038727. Independent five-file pre-sync review PASS/no findings is coordinator-reported. Committed-checkpoint preflight, independent exact-checkpoint review and explicit dispatch remain required; tracking alone does not assert them. Prior successor entries remain historical.
+
+**Goal:** Add a bytes-only restricted synthetic paid12 Go-event adapter with twelve literal caller-selected slots, zero accepted-case credit and all authority false.
+
+**Issue:** https://github.com/lucronn/autodata/issues/186
+**Project:** https://github.com/users/lucronn/projects/8
+
+**Exact planning parent:** `fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc`, independently reviewed CI integration PR https://github.com/lucronn/autodata/pull/232; review PASS is coordinator-reported and exact-head CI remained pending at coordinator readback. **Application candidate:** `4d82e413e04fb2401ac7bc28dc828375ac662180`. Parallel Stage C commerce planning grants no dependency or authority.
+
+The [Stage D plan](2026-11-04-workshop-final180-stage-d-paid.md), [self-contained spec](../../agents/specs/2026-11-04-workshop-final180-stage-d-paid.md), record `docs/agents/records/2026-11-04-workshop-final180-stage-d-paid.json` and task `docs/agents/tasks/2026-11-03-production-release/workshop-final180-stage-d-paid.json` embed the twelve literal root/provider IDs and Go refs, source pins, B1 public-parser first-raised precedence, lifecycle/status/bounds/serializer contract and fake-only tests. The standalone and nested records are equal and synchronized; task implementation remains blocked pending exact-checkpoint preflight/review/dispatch. External DRAFT SHA256 `1853c07976970b6a22931687548f4c740c87649fab9c1e14f5c8f79a56e3cc73` and SPEC SHA256 `01ef4b2c0405a53b43e16b9ed5a2ecc0ee7627ef048610afb2c5348dceb6e71c` have coordinator-reported independent PASS restricted-scope reviews; the separate five-file pre-sync review passed, while exact committed-checkpoint review remains pending.
+
+Future implementation allowlist is exactly `scripts/dev/workshop_final180_paid_adapter.py`, `scripts/dev/test_workshop_final180_paid_adapter.py`, `docs/verification/workshop-final180-runbook.md`. Preserve Stage A/B1/B2/CI/inventory bytes. Shared runbook integration remains coordinator-owned. No I/O/CLI/JUnit/SQL/HTTP/S3/payment/process supervisor or real fixture execution. Bank slots are caller-selected; identical byte pairs are valid synthetic inputs. Source Go fixtures seed paid grants directly and assert `payment_calls == 0`; no real Stripe settlement or charge acceptance follows. Credit0, profiles disabled, enabled tiers empty, runtime_lock/run_record null and all nine authority false. Complete paid raw semantics, authenticated bindings, genuine runtime/full180/profile/staging/live/release gates stay blocked.
+
+Current concrete Stage D todo (same text as plan/task/record):
+
+1. Synchronize the Stage D paid plan/spec/record/task and exact three-path implementation allowlist with Issue186 and Project8, preserving history; commit/push the checkpoint descending from reviewed CI integration fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc and pass exact-checkpoint standalone/nested preflight plus independent gate review before explicit coordinator dispatch.
+2. Implement bounded bytes-only twelve-slot paid translation using only the pinned B1 public parser/types; preserve first-raised parser precedence, full outer admission, per-slot lifecycle, receipt/status order, literal refs and caller-selected bank limitations.
+3. Add failing-first constructed fake-byte tests and strict serializer mutation checks for every literal slot, grammar/bounds/conflicts, lifecycle, receipts, hashes, code ordering, zero credit and all nine false authority flags; preserve Stage A/B1/B2/CI bytes.
+4. Append the coordinator-reconciled synthetic-only runbook note; run focused paid and Stage A/B1/B2, developer/autonomy, syntax/AST, exact allowlist and unchanged-source checks; commit/push validated milestones and obtain independent exact-code-head review.
+5. Synchronize code-only verification and exact-head CI readback with Issue186/Project8 while retaining pending/failing states, disabled profiles/tiers, null runtime lock/run record and all false authority; keep complete raw paid semantics, real payment/runtime and final180 acceptance separately blocked.
+
+Coordinator synchronization is recorded at https://github.com/lucronn/autodata/issues/186#issuecomment-6639038727; saved receipt `/home/corp/autodata-evidence/final180-paid-gate-tracking/receipt.json` SHA256 `fcc31f428c6f49f41d4a523d2c62b071ff74c7515a25c5cf4751943913298761` has status `synchronized_live_readback`. Issue before/after SHA256 are `46a8b5e3fda4f6efc54ce390e3ab93b1ec16ad662cc289b62f67a078fdeeeb35` / `17cd1425c2300b4c68b321ef99a06291a0a3e68dea85d237620a32c0d5bd73fd`; Project before/after SHA256 are `8900b3a8fd1ca381c66e4c22763e313ece3ba15e745a0380cb76ad0cd6c3cf18` / `87454561a76fae5f08b45b3ce94af847a4963d11fcb37872275e2e479700f5fd`. All 166 prior comments are preserved (167 total), Issue body and unrelated Project fields are unchanged, and previous Source is archived verbatim. Previous/current Project Source SHA256 are `52904c974a884f2e8c3da217e954118cb02aac28c4914df44c54b05604c8a3f3` / `bd9b9e55ec29d898de6e8fb2c56b3834abf44ab4b08658dbcee18e28b603fcc7`; Project remains In Progress. Standalone and nested records retain the full receipt. Independent five-file pre-sync review PASS/no findings is coordinator-reported. This receipt does not assert checkpoint preflight, committed-checkpoint review or implementation dispatch.
+
+
+## Stage C/D exact-adoption integration checkpoint (2026-11-04)
+
+This separate integration entry governs only the new consolidation checkpoint. The preceding Stage C and adopted Stage D index entries are exact historical bytes and retain their original parent, checkpoint, review and dispatch meanings. Their old synchronized records do not authorize this integration.
+
+- Goal: Consolidate the independently gated restricted synthetic commerce14 and paid12 libraries while preserving predecessor bytes, original receipts and zero real accepted-case credit.
+- Plan: `docs/superpowers/plans/2026-11-04-workshop-final180-cd-integration.md`.
+- Technical contract and immutable source/append manifest: `docs/agents/specs/2026-11-04-workshop-final180-cd-integration.md`.
+- Standalone record: `docs/agents/records/2026-11-04-workshop-final180-cd-integration.json`; nested equal record: `docs/agents/tasks/2026-11-03-production-release/workshop-final180-cd-integration.json`.
+- Issue: https://github.com/lucronn/autodata/issues/186 ; Project: https://github.com/users/lucronn/projects/8 . The coordinator alone writes and reads back live tracking; the new record carries its receipt.
+- Planning parent C_FINAL `c4dd59b3ac6a1afb74f7ad1d4f54ef1eb6e7fdad`; exact adoption source D_FINAL `2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7`; historical D bundle source D_GATE `70c9a6ebb2cec338f938122c8c570fd5b22a6f28`. Source code reviews PASS; source exact-head CI was still in progress at freeze and must be resolved before adoption dispatch.
+- Future builder allowlist is exactly the new D adapter, its constructed-byte test, and append-only `docs/verification/workshop-final180-runbook.md`. C and all predecessor/planning/workflow/inventory bytes stay protected.
+- This nine-path planning checkpoint adds the four integration files, exactly adopts the four historical D gate files, and appends this index. Its exact committed SHA, passing standalone/nested preflights, independent checkpoint review and explicit coordinator dispatch are external seals; no self-referential or future commit SHA is fabricated.
+
+Concrete todo (identical to the new plan and records):
+
+1. Freeze independently verified C/D source SHAs, source/append pins and historical receipts; synchronize this integration plan/spec/task/record and allowlist with Issue186/Project8, commit checkpoint, pass standalone/nested exact-base preflight and independent checkpoint review before explicit dispatch.
+2. Adopt only the exact reviewed D adapter and constructed-byte tests onto the pinned C checkpoint; preserve C and every A/B1/B2/CI/inventory/historical gate byte.
+3. Append the exact pinned D runbook section after the untouched C runbook and add a combined synthetic-only note preserving source/checkpoint identities, limitations and measured checks.
+4. Run combined C/D and predecessor focused suites, full developer/autonomy discovery, no-bytecode compile, AST/import boundary, exact-diff and all source/prefix/suffix checks; commit/push coherent validated milestone and obtain independent exact-code-head review.
+5. Read back exact integration-head CI and synchronize code-only receipts without overwriting history; retain integer0 credit, disabled profiles/tiers, null runtime records, all nine false authorities and separate real fixture/runtime/payment/final180/release blockers.
+
+No implementation or runtime authority follows from this entry. Integer accepted-case credit remains 0; profiles remain disabled, tiers empty, runtime lock/run record null and all nine authority flags false. Full raw financial/JUnit/Go/authenticated bank provenance, actual fixtures, payment, runtime, browser120/API21, genuine final180, staging, merge, release and promotion remain separate blockers.

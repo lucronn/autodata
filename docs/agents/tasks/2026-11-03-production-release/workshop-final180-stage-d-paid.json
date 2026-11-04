@@ -1,0 +1,241 @@
+{
+  "acceptance_tests": [
+    "Twelve literal slots and strict outer precedence; delegated B1 parser including overlapping delimiter/line-size conflict.",
+    "Per-slot lifecycle/additive receipt/status/byte-bound matrix with independent fake-only expectations.",
+    "Strict bounded serializer tamper tests and all nine false authority invariants.",
+    "Preserved Stage A/B1/B2/CI bytes, exact three-path allowlist, focused/developer/autonomy and independent exact-code-head review/CI."
+  ],
+  "accepted_case_credit": 0,
+  "allowed_paths": [
+    "scripts/dev/workshop_final180_paid_adapter.py",
+    "scripts/dev/test_workshop_final180_paid_adapter.py",
+    "docs/verification/workshop-final180-runbook.md"
+  ],
+  "authority": {
+    "cutover_verified": false,
+    "deployment_authorized": false,
+    "fixture_verified": false,
+    "implementation_authorized": false,
+    "merge_authorized": false,
+    "product_candidate_verified": false,
+    "profile_promotion_authorized": false,
+    "runtime_execution_authorized": false,
+    "staging_verified": false
+  },
+  "authorizing_checkpoint_sha": null,
+  "blockers": [
+    "Issue186/Project8 planning synchronized with live readback; independent five-file pre-sync review PASS. Committed exact-checkpoint preflight, independent checkpoint review and explicit dispatch remain required.",
+    "Committed exact-checkpoint standalone/nested preflight, independent checkpoint review and explicit coordinator dispatch pending.",
+    "Parent exact-head CI pending at coordinator readback; no pass claimed.",
+    "Complete raw paid semantics, real payment/runtime and final180/profile/release acceptance remain separately blocked."
+  ],
+  "dispatch_mode": "coordinator-direct-after-tracking-preflight-review-and-explicit-dispatch",
+  "enabled_tiers": [],
+  "forbidden_scope": [
+    "Application/producer/SQL/Compose/workflow/dependency/inventory/profile/policy/assembler/evaluator/autonomy implementation changes.",
+    "B1 parser extraction/refactor, B2/commerce/private/application imports, I/O/CLI/process/network/clock/callback/runtime/payment execution.",
+    "Accepted-case credit, true authority, profile promotion, nonnull runtime records, merge/deploy/cutover."
+  ],
+  "goal": "Add a bytes-only restricted synthetic paid12 Go-event adapter with twelve literal caller-selected slots, zero accepted-case credit and all authority false.",
+  "inputs": [
+    "docs/superpowers/plans/2026-11-04-workshop-final180-stage-d-paid.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-stage-d-paid.md"
+  ],
+  "outputs": [
+    "scripts/dev/workshop_final180_paid_adapter.py",
+    "scripts/dev/test_workshop_final180_paid_adapter.py",
+    "docs/verification/workshop-final180-runbook.md"
+  ],
+  "planning_parent_sha": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+  "pre_implementation": {
+    "accepted_case_credit": 0,
+    "authority": {
+      "cutover_verified": false,
+      "deployment_authorized": false,
+      "fixture_verified": false,
+      "implementation_authorized": false,
+      "merge_authorized": false,
+      "product_candidate_verified": false,
+      "profile_promotion_authorized": false,
+      "runtime_execution_authorized": false,
+      "staging_verified": false
+    },
+    "authorizing_checkpoint_sha": null,
+    "committed_gate_review": {
+      "checkpoint_sha": null,
+      "status": "pending"
+    },
+    "draft_review": {
+      "findings": [],
+      "provenance": "Coordinator-reported independent five-file pre-sync draft review PASS with no findings; committed-checkpoint review and dispatch remain pending.",
+      "status": "PASS"
+    },
+    "enabled_tiers": [],
+    "external_design_review": {
+      "findings": [],
+      "provenance": "Coordinator-reported independent external DRAFT/SPEC reviews PASS for restricted synthetic scope; this is distinct from the subsequent five-file pre-sync review and is not committed-checkpoint review.",
+      "status": "PASS"
+    },
+    "external_draft_artifacts": {
+      "DRAFT.md": {
+        "bytes": 24927,
+        "historical_locator": "/home/corp/autodata-evidence/final180-paid-planning/DRAFT.md",
+        "sha256": "1853c07976970b6a22931687548f4c740c87649fab9c1e14f5c8f79a56e3cc73"
+      },
+      "SPEC.draft.md": {
+        "bytes": 104105,
+        "historical_locator": "/home/corp/autodata-evidence/final180-paid-planning/SPEC.draft.md",
+        "sha256": "01ef4b2c0405a53b43e16b9ed5a2ecc0ee7627ef048610afb2c5348dceb6e71c"
+      }
+    },
+    "goal": "Add a bytes-only restricted synthetic paid12 Go-event adapter with twelve literal caller-selected slots, zero accepted-case credit and all authority false.",
+    "implementation_allowlist": [
+      "scripts/dev/workshop_final180_paid_adapter.py",
+      "scripts/dev/test_workshop_final180_paid_adapter.py",
+      "docs/verification/workshop-final180-runbook.md"
+    ],
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "parent_ci": {
+      "exact_head_ci": "pending_at_coordinator_readback_not_pass",
+      "independent_code_review": "coordinator-reported PASS",
+      "pr_ref": "https://github.com/lucronn/autodata/pull/232",
+      "sha": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc"
+    },
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-stage-d-paid.md",
+    "planning_parent_sha": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+    "planning_validation": {
+      "append_only_baseline_bytes": 83750,
+      "committed": false,
+      "github_writes": false,
+      "implementation_modified": false,
+      "implementation_preflight_run": false,
+      "nested_record_equal": true,
+      "provenance": "Historical pre-sync draft checks only; committed checkpoint/preflight/push are sealed externally after commit and are not represented by these draft-time booleans.",
+      "pushed": false,
+      "status": "draft_checks_not_implementation_preflight"
+    },
+    "profiles_enabled": false,
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-04-workshop-final180-stage-d-paid.md",
+      "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md"
+    ],
+    "run_record": null,
+    "runtime_lock": null,
+    "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "source_pins": [
+      {
+        "bytes": 47124,
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "ca48cd988c5579a7d385dc1844b84306eae0861e",
+        "path": "scripts/dev/workshop_final180_runner.py",
+        "sha256": "693a408a73f3ccd37bf945bfc94d427f742878580932dab382ea9a244a141c91"
+      },
+      {
+        "bytes": 33237,
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "f4db092e0d1a83fce47b51f7c68021b6dc2053bd",
+        "path": "scripts/dev/test_workshop_final180_runner.py",
+        "sha256": "c0bac62eb756d84593191e82b2b240fdd77bd5128242f212e9b508e15c1740c1"
+      },
+      {
+        "bytes": 22290,
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "8c7fa87bab906955c145d7cc965be641aea48c5f",
+        "path": "scripts/dev/workshop_final180_identity_adapter.py",
+        "sha256": "0474a85c33d4f2722ad01d6e55e69a8080dc0f1983c856ca7caa1b94510a767d"
+      },
+      {
+        "bytes": 29838,
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "7391263cb874e2505f4f110df6343c8b466fc692",
+        "path": "scripts/dev/test_workshop_final180_identity_adapter.py",
+        "sha256": "a3f3017b1d7a85da9ae4d1883758f2494d722fb321d45c1ff758994ab6d2653c"
+      },
+      {
+        "bytes": 15467,
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "060d1407ee5e71880cf7e441195cac4274f04937",
+        "path": "scripts/dev/workshop_final180_catalog_adapter.py",
+        "sha256": "88f481104d66d9bda8bdf6c1a8038e8514b69d63db813b85c5ec13e40f0c6ddf"
+      },
+      {
+        "bytes": 26977,
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "86e78aef564c216ede5780dccadd56366d4d0a63",
+        "path": "scripts/dev/test_workshop_final180_catalog_adapter.py",
+        "sha256": "978cbb594d9bc42f0cb02b3447e2afed6bb6764c155b657db6e5b3676cc319a9"
+      },
+      {
+        "bytes": 9521,
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "08384431f5c6795eb83cae0ad4e8b8759d5e6fa9",
+        "path": ".github/workflows/autonomous-verification.yml",
+        "sha256": "d38f4b1a5f414775b494ee801c83ebbc0473a7ab7e970cbf573529d08f1010aa"
+      },
+      {
+        "bytes": 22069,
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "05c38499f47d8960e9d6ae8c0497f5866cec200c",
+        "path": "docs/verification/workshop-final180-runbook.md",
+        "sha256": "0a36f9e46ffa767feacc3a49ead622ce3d424b5eec155300c3df58dde8da89d6"
+      },
+      {
+        "bytes": 122350,
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "24ac3e9264b85eb914daa7805d183e15f58d374a",
+        "path": "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+        "sha256": "c4e9293875d22e04469c6a3fb4cdab27889328d6519243cee3862f9ecf490b39"
+      }
+    ],
+    "status": "synchronized",
+    "todo": [
+      "Synchronize the Stage D paid plan/spec/record/task and exact three-path implementation allowlist with Issue186 and Project8, preserving history; commit/push the checkpoint descending from reviewed CI integration fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc and pass exact-checkpoint standalone/nested preflight plus independent gate review before explicit coordinator dispatch.",
+      "Implement bounded bytes-only twelve-slot paid translation using only the pinned B1 public parser/types; preserve first-raised parser precedence, full outer admission, per-slot lifecycle, receipt/status order, literal refs and caller-selected bank limitations.",
+      "Add failing-first constructed fake-byte tests and strict serializer mutation checks for every literal slot, grammar/bounds/conflicts, lifecycle, receipts, hashes, code ordering, zero credit and all nine false authority flags; preserve Stage A/B1/B2/CI bytes.",
+      "Append the coordinator-reconciled synthetic-only runbook note; run focused paid and Stage A/B1/B2, developer/autonomy, syntax/AST, exact allowlist and unchanged-source checks; commit/push validated milestones and obtain independent exact-code-head review.",
+      "Synchronize code-only verification and exact-head CI readback with Issue186/Project8 while retaining pending/failing states, disabled profiles/tiers, null runtime lock/run record and all false authority; keep complete raw paid semantics, real payment/runtime and final180 acceptance separately blocked."
+    ],
+    "tracking_receipts": {
+      "current_comment_count": 167,
+      "issue_after_sha256": "17cd1425c2300b4c68b321ef99a06291a0a3e68dea85d237620a32c0d5bd73fd",
+      "issue_before_sha256": "46a8b5e3fda4f6efc54ce390e3ab93b1ec16ad662cc289b62f67a078fdeeeb35",
+      "issue_body_unchanged": true,
+      "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6639038727",
+      "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6639038727",
+      "issue_readback_ref": "/home/corp/autodata-evidence/final180-paid-gate-tracking/issue-after.json",
+      "issue_readback_sha256": "17cd1425c2300b4c68b321ef99a06291a0a3e68dea85d237620a32c0d5bd73fd",
+      "other_project_fields_unchanged": true,
+      "previous_source_archived_verbatim": true,
+      "prior_comment_count": 166,
+      "prior_comments_preserved": true,
+      "prior_project_source_sha256": "52904c974a884f2e8c3da217e954118cb02aac28c4914df44c54b05604c8a3f3",
+      "project_after_sha256": "87454561a76fae5f08b45b3ce94af847a4963d11fcb37872275e2e479700f5fd",
+      "project_before_sha256": "8900b3a8fd1ca381c66e4c22763e313ece3ba15e745a0380cb76ad0cd6c3cf18",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_readback_ref": "/home/corp/autodata-evidence/final180-paid-gate-tracking/project-after.json",
+      "project_readback_sha256": "87454561a76fae5f08b45b3ce94af847a4963d11fcb37872275e2e479700f5fd",
+      "project_source_sha256": "bd9b9e55ec29d898de6e8fb2c56b3834abf44ab4b08658dbcee18e28b603fcc7",
+      "project_status": "In Progress",
+      "receipt_ref": "/home/corp/autodata-evidence/final180-paid-gate-tracking/receipt.json",
+      "receipt_sha256": "fcc31f428c6f49f41d4a523d2c62b071ff74c7515a25c5cf4751943913298761",
+      "status": "synchronized_live_readback",
+      "writer": "coordinator sole serialized writer"
+    },
+    "updated_at": "2026-11-04T18:44:42.235613+00:00"
+  },
+  "profiles_enabled": false,
+  "role": "implementation",
+  "run_record": null,
+  "runtime_lock": null,
+  "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "status": "blocked_pending_checkpoint_review_and_dispatch",
+  "task_id": "workshop-final180-stage-d-paid",
+  "todo": [
+    "Synchronize the Stage D paid plan/spec/record/task and exact three-path implementation allowlist with Issue186 and Project8, preserving history; commit/push the checkpoint descending from reviewed CI integration fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc and pass exact-checkpoint standalone/nested preflight plus independent gate review before explicit coordinator dispatch.",
+    "Implement bounded bytes-only twelve-slot paid translation using only the pinned B1 public parser/types; preserve first-raised parser precedence, full outer admission, per-slot lifecycle, receipt/status order, literal refs and caller-selected bank limitations.",
+    "Add failing-first constructed fake-byte tests and strict serializer mutation checks for every literal slot, grammar/bounds/conflicts, lifecycle, receipts, hashes, code ordering, zero credit and all nine false authority flags; preserve Stage A/B1/B2/CI bytes.",
+    "Append the coordinator-reconciled synthetic-only runbook note; run focused paid and Stage A/B1/B2, developer/autonomy, syntax/AST, exact allowlist and unchanged-source checks; commit/push validated milestones and obtain independent exact-code-head review.",
+    "Synchronize code-only verification and exact-head CI readback with Issue186/Project8 while retaining pending/failing states, disabled profiles/tiers, null runtime lock/run record and all false authority; keep complete raw paid semantics, real payment/runtime and final180 acceptance separately blocked."
+  ]
+}
