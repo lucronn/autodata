@@ -277,7 +277,7 @@ def private_read(parent, name, maximum):
     require(re.fullmatch(r'[a-zA-Z0-9._-]+', name) is not None)
     directory=_private_parent(parent)
     try:
-        fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=directory)
+        fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
         try:
             st=os.fstat(fd)
             require(stat.S_ISREG(st.st_mode) and st.st_uid==os.getuid() and st.st_nlink==1)

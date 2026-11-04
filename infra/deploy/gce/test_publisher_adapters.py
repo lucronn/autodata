@@ -498,3 +498,34 @@ class PrivateDirectoryTests(unittest.TestCase):
             with self.assertRaises((p.AdapterError,OSError)): p.private_read(alias,'data',100)
             parent.chmod(0o755)
             with self.assertRaises((p.AdapterError,OSError)): p.private_read(parent,'data',100)
+
+    def test_fifo_private_output_is_rejected_without_waiting_for_writer(self):
+        import os
+        import signal
+        import subprocess
+        import sys
+        import tempfile
+        probe='''import os,sys
+from pathlib import Path
+sys.path.insert(0,sys.argv[1])
+import publisher_adapters as p
+parent=Path(sys.argv[2])
+os.mkfifo(parent/'output',0o600)
+try:
+    p.private_read(parent,'output',100)
+except p.AdapterError:
+    print('rejected nonregular output')
+else:
+    raise AssertionError('FIFO accepted')
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            child=subprocess.Popen([sys.executable,'-c',probe,str(HERE),directory],stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+            try:
+                try: out,err=child.communicate(timeout=3)
+                except subprocess.TimeoutExpired: self.fail('private_read blocked while opening FIFO')
+                self.assertEqual(child.returncode,0,err.decode())
+                self.assertEqual(out,b'rejected nonregular output\n')
+            finally:
+                try: os.killpg(child.pid,signal.SIGKILL)
+                except ProcessLookupError: pass
+                child.communicate(timeout=3)
