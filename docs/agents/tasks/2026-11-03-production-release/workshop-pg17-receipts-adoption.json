@@ -1,0 +1,75 @@
+{
+  "task_id": "workshop-pg17-receipts-adoption",
+  "goal": "Adopt independently re-reviewed Cc-safe PG17 acquisition receipts with complete bounded structured volume metadata, all predecessor guards and both33APK quarantines unchanged.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-control-filter.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-pg17-receipts-adoption.json",
+  "allowed_paths": [],
+  "status": "synchronized",
+  "pre_implementation": {
+    "goal": "Adopt independently re-reviewed Cc-safe PG17 acquisition receipts with complete bounded structured volume metadata, all predecessor guards and both33APK quarantines unchanged.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-control-filter.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-acquisition-receipts.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-acquisition-overlay.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-inspected-preparation.md",
+      "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+      "docs/operations/workshop-gcp.md",
+      "docs/architecture/infrastructure-and-dev.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/verification/2026-11-04-pg17-runner-preparation.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-bind-targets.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-mount-order.md"
+    ],
+    "todo": [
+      "Synchronize exact corrected independent approval/plan hash and full Task1A guard chain in Issue186/Project8/canonical docs while preserving CURRENT prior Project index/detail verbatim/hash; commit/push and pin full-SHA passing preflight.",
+      "Require root independent adopted-gate verification and FRESH Task1A dispatch before any Docker/retry; use a new private exact-owned run and never historical failed containers/APKs.",
+      "Use the fixed anchored diagnostic/status classifier rejecting all UnicodeCc except LF/tab, empty stderr and successful supervised/stopped status; retain complete raw outputs/hashes and all original source/index/signature/hash checks.",
+      "Collect complete structured volume inspect objects for exact boundedls names before create/after owned removal:32names/60s inventory/10s perinspect/512KiBstdout64KiBstderr perinspect/16MiB totalstdout2MiBstderr; compare complete objects by uniqueName, all fields/values preserved and only JSON key order ignored.",
+      "Keep all inherited image/payload/network/caps/resources/private mount guards,27 prestart copies BEFORE first export/diff, complete Mounts comparison, bounded empty underlying target exports, full stopped diff/context/baseline/exit and owned cleanup/absence checks; both33APK sets remain quarantined NEVER reusable.",
+      "No adoption Docker/retry/download/install/image commit/PG startup/harness/implementation/integration/production/provider/cloud action; offline stages/Task2 separate and all readiness remains unverified."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T03:38:22.919883+00:00",
+    "source_integration_base_sha": "eee037dd1857cec1d0817b1b3421c7280c9284f6",
+    "implementation_allowlist": [],
+    "independent_review": {
+      "status": "approved_after_P2_correction",
+      "reviewed_gate_sha": "b96a68e59a370314a207e67b98d67a9949584432",
+      "reviewed_plan_sha256": "ad2a433f532e1b7b8000588d126d9789392f6e593a5c460681b900bff403420e",
+      "source": "coordinator_direct_relay_of_independent_re_review",
+      "pure_evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-control-filter-evidence.json",
+      "pure_cases_passed": 148
+    },
+    "preparation_retry_authorized": false,
+    "adoption_container_operation_executed": false,
+    "runtime_verified": false,
+    "production_ready": false,
+    "tracking_sync": {
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621879747",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+      "project_note_field": "Source or dependency reference",
+      "verified_at": "2026-11-04T03:38:22.919883+00:00",
+      "issue_body_sha256": "318715162bd1ccaacc4950577382a013be69de934f6d1e67a5363cea0da87350",
+      "issue_comment_sha256": "b7b2ffe33f786ba36c42d0c04bb281c0e7409d87fa63d841b3b6e9d4c1e28cfc",
+      "project_text_sha256": "2b49a210ac01c5080fdf8ee12f8922f2f84891e993eb5e5cee7c50b643cfe1e7",
+      "prior_project_text_sha256": "39c91a10594d8ce434422786b311bdb583e54578ea348227d04da13bdd591690",
+      "full_prior_project_index_preserved_in_issue_comment": true
+    }
+  },
+  "todo": [
+    "Synchronize exact corrected independent approval/plan hash and full Task1A guard chain in Issue186/Project8/canonical docs while preserving CURRENT prior Project index/detail verbatim/hash; commit/push and pin full-SHA passing preflight.",
+    "Require root independent adopted-gate verification and FRESH Task1A dispatch before any Docker/retry; use a new private exact-owned run and never historical failed containers/APKs.",
+    "Use the fixed anchored diagnostic/status classifier rejecting all UnicodeCc except LF/tab, empty stderr and successful supervised/stopped status; retain complete raw outputs/hashes and all original source/index/signature/hash checks.",
+    "Collect complete structured volume inspect objects for exact boundedls names before create/after owned removal:32names/60s inventory/10s perinspect/512KiBstdout64KiBstderr perinspect/16MiB totalstdout2MiBstderr; compare complete objects by uniqueName, all fields/values preserved and only JSON key order ignored.",
+    "Keep all inherited image/payload/network/caps/resources/private mount guards,27 prestart copies BEFORE first export/diff, complete Mounts comparison, bounded empty underlying target exports, full stopped diff/context/baseline/exit and owned cleanup/absence checks; both33APK sets remain quarantined NEVER reusable.",
+    "No adoption Docker/retry/download/install/image commit/PG startup/harness/implementation/integration/production/provider/cloud action; offline stages/Task2 separate and all readiness remains unverified."
+  ],
+  "execution": {
+    "mode": "adoption_only_no_docker",
+    "retry": "requires_root_independent_adopted_gate_verification_and_fresh_dispatch",
+    "offline_task2": "unchanged_separate_authority"
+  }
+}

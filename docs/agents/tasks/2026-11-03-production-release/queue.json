@@ -651,6 +651,17 @@
       "release_state": "unverified",
       "implementation_changes_allowed": false,
       "runtime_verified": false
+    },
+    {
+      "id": "workshop-pg17-receipts-adoption",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-pg17-receipts-adoption.json",
+      "depends_on": [
+        "workshop-pg17-control-filter"
+      ],
+      "state": "reviewed_corrected_plan_adoption_pending_pinned_preflight_and_root_dispatch",
+      "release_state": "unverified",
+      "implementation_changes_allowed": false,
+      "runtime_verified": false
     }
   ],
   "execution": {
