@@ -80,11 +80,29 @@
     "id": 6622268742,
     "body_sha256": "c1a2e1db8b772c3e6ff27f0f2140a9ddbdd768a0f201ea48abdd9cb85e805c93"
   },
-  "project_after": {
+  "issue_body_unchanged": true,
+  "implementation_changed": false,
+  "runtime_execution_authorized": false,
+  "initial_synchronized_project_index": {
     "text": "Stage0 dormant publisher integration docs-only detail6622268742: exact Python101f7d6e2a2795206f16b4419fe561cad531071e + artifactbba43a0675628db3ac90ca7c72bc47eb8c381cb0; preserve reviewed implementation bytes; sole ops-note conflict. Existing offline suites only (Node from repo root, Python infra/deploy/gce); no repairs/new tests/factory/worker/SDK/cloud/activation. Full CURRENT staging M1 index/detail6622232881+pin6622247097, PG detail6622201950+pin6622210398 and artifact detail6622115738+pin6622126651 preserved verbatim/hash in linked preservation comments and canonical evidence. M1 gate52653dee/receipt5bd9b82, PG gatecde9652 and JS gated105f8a retain separate review/dispatch/denials. Committed full-SHA passing preflight, independent exact checkpoint review and root dispatch REQUIRED before dormant merge. All runtime/production readiness false; exact pin receipt pending.",
     "sha256": "cc28ab97ee9d02b678552c2303171b73b6e528c88d8ed5ed79d1ffc049649b07"
   },
-  "issue_body_unchanged": true,
-  "implementation_changed": false,
-  "runtime_execution_authorized": false
+  "project_after": {
+    "text": "Stage0 dormant publisher integration docs-only detail6622268742: exact Python101f7d6e2a2795206f16b4419fe561cad531071e + artifactbba43a0675628db3ac90ca7c72bc47eb8c381cb0; preserve reviewed implementation bytes; sole ops-note conflict. Existing offline suites only (Node from repo root, Python infra/deploy/gce); no repairs/new tests/factory/worker/SDK/cloud/activation. Full CURRENT staging M1 index/detail6622232881+pin6622247097, PG detail6622201950+pin6622210398 and artifact detail6622115738+pin6622126651 preserved verbatim/hash in linked preservation comments and canonical evidence. M1 gate52653dee/receipt5bd9b82, PG gatecde9652 and JS gated105f8a retain separate review/dispatch/denials. Committed full-SHA passing preflight, independent exact checkpoint review and root dispatch REQUIRED before dormant merge. All runtime/production readiness false; Gate dc1ba895d5761ca8ed5d3ff19f645b654655ae3c preflight synchronized/errors[]; pin6622281057. Independent exact review/root dispatch still required.",
+    "sha256": "2d8c4a31f378c74200ec22a5ebc0f44876c1e02b287a9ddcb5c48d15a7413e24"
+  },
+  "checkpoint_pin": {
+    "url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622281057",
+    "body": "## Stage0 dormant publisher integration exact checkpoint pin\n\nGate: `dc1ba895d5761ca8ed5d3ff19f645b654655ae3c` on `codex/workshop-publisher-stage0-plan`, committed and pushed. Corrected draft `c2ebdbc10780523ce486ed293a92f88674abdfff` passed independent scoped review.\n\nFull-SHA preflight: `python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026-11-04-workshop-publisher-stage0-integration.json --base-sha dc1ba895d5761ca8ed5d3ff19f645b654655ae3c` returned exit0 and `{\"status\":\"synchronized\",\"errors\":[]}`. Five documentation files only, including canonical full-text preservation evidence; implementation remains byte-identical to Python101f7d6, and artifactbba43a0 is not yet merged.\n\nDetail: https://github.com/lucronn/autodata/issues/186#issuecomment-6622268742 . Full then-current index and staging M1/PG/artifact details+pins preserved verbatim/hash in comments6622267949/6622268220/6622268519 and canonical `docs/agents/records/2026-11-04-workshop-publisher-stage0-integration-evidence.json`.\n\nIndependent exact synchronized-checkpoint review and fresh root dispatch are REQUIRED before the dormant implementation merge. No new code/tests, SDK/cloud, secrets, activation or deployment was performed or authorized. Production/runtime readiness stays false and all prior gates/denials remain. Tracking slot will be released after final receipt push and readback.",
+    "sha256": "25c4ce03605d104957e8bf79d1f92861af97c6c32972bd5937010a8b160ab799",
+    "verified_at": "2026-11-04T04:08:26.452850+00:00"
+  },
+  "preflight": {
+    "base_sha": "dc1ba895d5761ca8ed5d3ff19f645b654655ae3c",
+    "exit_code": 0,
+    "result": {
+      "status": "synchronized",
+      "errors": []
+    }
+  }
 }

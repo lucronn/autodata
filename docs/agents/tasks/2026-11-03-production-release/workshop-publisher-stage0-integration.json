@@ -44,7 +44,7 @@
       "Commit and push the validated dormant integration milestone for independent exact-SHA review, retaining missing dependency, owner trust, authenticated worker, dependency factory, toolkit advisory/license and staging/production activation blockers."
     ],
     "status": "synchronized",
-    "updated_at": "2026-11-04T04:07:54.663787+00:00",
+    "updated_at": "2026-11-04T04:08:26.452850+00:00",
     "source_candidate_sha": "101f7d6e2a2795206f16b4419fe561cad531071e",
     "artifact_candidate_sha": "bba43a0675628db3ac90ca7c72bc47eb8c381cb0",
     "merge_base_sha": "b431e548df4f379f6752e021c6fb42e8837a5311",
@@ -143,7 +143,7 @@
       "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
       "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
       "project_note_field": "Source or dependency reference",
-      "project_text_sha256": "cc28ab97ee9d02b678552c2303171b73b6e528c88d8ed5ed79d1ffc049649b07",
+      "project_text_sha256": "2d8c4a31f378c74200ec22a5ebc0f44876c1e02b287a9ddcb5c48d15a7413e24",
       "prior_project_index_sha256": "acfd6664aec1798bf581fed620f185faf4155896ddb77674664ea7d1b2a9b33a",
       "preservation_comments": [
         {
@@ -178,9 +178,20 @@
         }
       ],
       "evidence_ref": "docs/agents/records/2026-11-04-workshop-publisher-stage0-integration-evidence.json",
-      "verified_at": "2026-11-04T04:07:54.663787+00:00",
+      "verified_at": "2026-11-04T04:08:26.452850+00:00",
       "full_prior_index_and_staging_pg_artifact_details_pins_preserved_verbatim": true,
-      "slot_release_receipt": "5bd9b82aa71b68938c130c58062b8664596c6758"
+      "slot_release_receipt": "5bd9b82aa71b68938c130c58062b8664596c6758",
+      "checkpoint_pin_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622281057",
+      "checkpoint_pin_sha256": "25c4ce03605d104957e8bf79d1f92861af97c6c32972bd5937010a8b160ab799",
+      "synchronized_checkpoint_sha": "dc1ba895d5761ca8ed5d3ff19f645b654655ae3c",
+      "preflight": {
+        "base_sha": "dc1ba895d5761ca8ed5d3ff19f645b654655ae3c",
+        "exit_code": 0,
+        "result": {
+          "status": "synchronized",
+          "errors": []
+        }
+      }
     },
     "independent_source_review": {
       "python": "coordinator confirms accepted source; attach exact review evidence before synchronization",
