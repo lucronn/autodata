@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -95,6 +96,7 @@ type paidHTTPStore struct {
 	protected int
 	identity  PaidArticleIdentity
 	view      *CatalogArticleView
+	progress  *CatalogArticleProgress
 }
 
 func (c *paidHTTPStore) ConfigurationByVehicle(_ context.Context, _ Principal, id string) (CatalogConfiguration, error) {
@@ -123,7 +125,7 @@ func (c *paidHTTPStore) ArticleView(ctx context.Context, p Principal, v, id stri
 }
 func (c *paidHTTPStore) CatalogArticleProgress(context.Context, Principal, string) (*CatalogArticleProgress, error) {
 	c.protected++
-	return nil, nil
+	return c.progress, nil
 }
 func (c *paidHTTPStore) PaidArticleIdentity(context.Context, string, string) (PaidArticleIdentity, error) {
 	return c.identity, nil
@@ -201,6 +203,73 @@ func TestPaidCatalogColdReadsDoNotScheduleAndDescriptorsHaveNoBodies(t *testing.
 		t.Fatal("observational GET scheduled work")
 	}
 }
+func TestPaidCatalogIndexReadinessHydration(t *testing.T) {
+	for _, tc := range []struct {
+		name                string
+		progress            *CatalogArticleProgress
+		complete, hydrating bool
+	}{
+		{"pending", &CatalogArticleProgress{Status: "pending"}, false, true},
+		{"running", &CatalogArticleProgress{Status: "running"}, false, true},
+		{"retryable failed", &CatalogArticleProgress{Status: "failed", Retryable: true}, false, true},
+		{"terminal failed", &CatalogArticleProgress{Status: "failed"}, false, false},
+		{"completed", &CatalogArticleProgress{Status: "completed", Complete: true}, true, false},
+		{"nil", nil, false, false},
+		{"complete overrides running", &CatalogArticleProgress{Status: "running", Complete: true}, true, false},
+	} {
+		for _, nonempty := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/nonempty=%t", tc.name, nonempty), func(t *testing.T) {
+				s, c, g := paidHTTPServer()
+				g.err = nil
+				c.progress = tc.progress
+				id := "55555555-5555-4555-8555-555555555555"
+				if nonempty {
+					c.PutArticle(CatalogArticle{ID: id, VehicleID: paidTestConfiguration, CanonicalArticleID: &id, Title: "Available descriptor", Body: "private body", Document: &CatalogDocument{Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "private document"}}}, Images: []CatalogImage{{ID: "private-image"}}, SourceReview: &CatalogSourceReview{URL: "private-source"}})
+				}
+				ensure := &fakeIngestionClient{}
+				s.ingestionClient = ensure
+				w := httptest.NewRecorder()
+				s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles", nil))
+				if w.Code != http.StatusOK || w.Header().Get("Cache-Control") != "private, no-store" {
+					t.Fatal(w.Code, w.Header(), w.Body.String())
+				}
+				var response CatalogArticlesResponse
+				if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+					t.Fatal(err)
+				}
+				if response.Complete != tc.complete || response.Hydrating != tc.hydrating {
+					t.Fatalf("complete=%t hydrating=%t, want complete=%t hydrating=%t: %s", response.Complete, response.Hydrating, tc.complete, tc.hydrating, w.Body.String())
+				}
+				wantCount := 0
+				if nonempty {
+					wantCount = 1
+				}
+				if len(response.Items) != wantCount {
+					t.Fatal("partial descriptors lost", w.Body.String())
+				}
+				var wire map[string]json.RawMessage
+				if err := json.Unmarshal(w.Body.Bytes(), &wire); err != nil {
+					t.Fatal(err)
+				}
+				if _, exists := wire["complete"]; !exists {
+					t.Fatal("missing explicit complete flag")
+				}
+				for _, item := range response.Items {
+					if item.ID != id || item.Body != "" || item.Document != nil || len(item.Steps) != 0 || len(item.Images) != 0 || item.SourceReview != nil {
+						t.Fatal("protected content in descriptor", w.Body.String())
+					}
+				}
+				if strings.Contains(w.Body.String(), "private") || strings.Contains(w.Body.String(), "source_snapshot") || strings.Contains(w.Body.String(), "source_uri") {
+					t.Fatal("protected source metadata", w.Body.String())
+				}
+				if ensure.path != "" {
+					t.Fatal("paid collection GET scheduled ingestion")
+				}
+			})
+		}
+	}
+}
+
 func TestPaidCatalogPrepareBodyOriginAndNoAcknowledgement(t *testing.T) {
 	s, c, g := paidHTTPServer()
 	g.err = nil
