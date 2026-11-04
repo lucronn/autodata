@@ -306,3 +306,50 @@ Concrete todo:
 
 
 Tracking readback: [issuecomment-6621425159](https://github.com/lucronn/autodata/issues/186#issuecomment-6621425159), Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference`, verified `2026-11-04T03:06:38.051955+00:00`. Exact body/comment/Project/prior-index hashes are in the dedicated synchronized record. Full predecessor Project index SHA256 `4e26f3831956fb10f26a64e5b791e27f502a35e3ead19015622e118d22dfec20` is preserved verbatim in that comment. This synchronizes planning only; committed full-SHA preflight, independent exact-checkpoint review and coordinator dispatch still precede implementation. No staging or production activation.
+
+### Authenticated-v3 Python library delivery boundary
+
+`infra/deploy/gce/publisher_adapters.py` adds separate candidate, finalization,
+independent verification and fixed host-check library entry points. None has an
+executable activation path or obtains ambient credentials. An absent owner
+policy or installed dependency implementation raises the fixed
+`missing_dependency` error before credential/transport callbacks. Dependencies
+are trusted Python adapter implementations supplied by reviewed control code;
+they are not wire JSON, approval booleans, v2 receipts, or caller-selectable
+providers. Their `prepare` operation must perform offline policy/tool/trust
+checks only. No credential acquisition belongs in `prepare`.
+
+The current delivery contains actual bounded child-process/private-file and
+HTTPS download primitives, strict run/context projections, OCI byte/digest-chain
+verification, the stored/deflate ZIP32 outer decoder, a pinned detached Cosign
+approval-verifier contract and phase orchestration tested with local transports.
+The default WIF exchange, OCI push, Syft/Sigstore signing and keyless certificate
+extension/transparency verification composition is **not installed**. The
+orchestration's signing and evidence operations therefore require separately
+reviewed implementations; passing offline tests is not evidence that these real
+provider operations are implemented, activated or accepted. Real binary/CA/root
+pins, independent approval public keys, upstream evidence policy, verified
+Actions origins/digest/size semantics and remote host deadline/cleanup proof
+remain dependencies. No live Cosign, cloud, registry, toolkit, host, credential
+or provider operation was run for this Python delivery.
+
+Finalization constructs the source and post-upload statements itself, compares
+the complete independent v1 approval, and exposes no build/copy/retag/evidence
+regeneration method. It returns `uploaded_unaccepted`. Only a later verifier
+with installed authenticated signature/transport adapters can return
+`publication_verified`; deployment and schema/services/runtime-evidence remain
+false. Test-only keyed signature fixtures exercise older-attempt rejection and
+fresh-attempt acceptance; they do not authenticate GitHub or Fulcio. The pinned
+Cosign command contract is separately tested against a local executable fixture
+that verifies actual generated RSA signatures with OpenSSL, not a live Cosign
+installation.
+
+The outer artifact SHA256 always covers the original downloaded Actions ZIP.
+The inner SHA256 covers its sole `release.zip` member, and the two member hashes
+cover unchanged `release.json`/`images.json`. No extraction or independently
+supplied inner bytes substitute for that envelope. A fresh official-helper
+upload observation commits run ID, attempt, fixed filename/options and inner
+hash/length; the signed post-upload core commits the returned artifact ID and
+outer bytes. A valid old-attempt signature is rejected even when source and
+inner bytes match. The separately supplied rollback manifest remains outside
+the two-member archive and must match the independent canonical approval hash.
