@@ -2103,6 +2103,62 @@
         "receipt_sha256": "3d2937b91770feaffaa4bfd4a5df18b3fda15f13910654650ecbbb5d19d44be1",
         "draft_review": "PASS, coordinator reported independent draft review with no actionable issues; exact committed gate review remains required."
       }
+    },
+    {
+      "id": "workshop-r3-process-transport",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-r3-process-transport.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-r3-process-transport.md",
+      "spec_ref": "docs/agents/specs/2026-11-04-workshop-r3-process-transport.md",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-r3-process-transport.json",
+      "goal": "Add a real Linux subprocess primitive that bounds retained output, accounts a nonrenewable shared budget and cancels/reaps only its owned local observation child/process group, providing the first enforcing building block for a later real R3 preparation adapter.",
+      "todo": [
+        "Freeze the e414e853 parent, real-child-only verification contract, exact two-file scope and false authorities; synchronize dedicated plan/spec/task/record, canonical index and Issue186/Project8; pass committed exact-base standalone/nested preflight and independent checkpoint review before dispatch.",
+        "Implement and test exact admission, nonrenewable shared capture accounting and bounded binary stdout/stderr retention using only owned synthetic Python children.",
+        "Implement and test monotonic cancellation/deadline handling, identity-safe owned group termination, direct-child reap and conservative cleanup_unconfirmed outcomes without host/tool/provider discovery.",
+        "Run the focused real-child suite, memory syntax/static checks and exhaustive two-file/predecessor preservation checks; commit/push coherent validated milestones and obtain independent exact-code-head review and normal CI readback.",
+        "Synchronize code-only measured receipts and explicit unresolved production containment/startup/file/owner/host/runtime/product/payment/final180/staging blockers; grant no runtime, promotion, merge, deployment or cutover authority."
+      ],
+      "depends_on": [],
+      "state": "blocked",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "dispatch_mode": "coordinator_direct",
+      "planning_base_sha": "e414e8537c8a6f0bc99747f6db09782b7743a949",
+      "implementation_base_sha": null,
+      "allowed_implementation_paths": [
+        "scripts/r3_preparation/process_transport.py",
+        "scripts/r3_preparation/test_process_transport.py"
+      ],
+      "dispatch_prerequisite": "Commit/push the actual six-path checkpoint and externally pin its full SHA; pass standalone/nested canonical preflight at that SHA, independent exact-checkpoint review and explicit two-file dispatch before implementation.",
+      "trusted": false,
+      "runtime_accepted": false,
+      "host_observed": false,
+      "accepted_case_credit": 0,
+      "profiles_enabled": false,
+      "enabled_tiers": [],
+      "runtime_lock": null,
+      "run_record": null,
+      "authority": false,
+      "fixture_verified": false,
+      "product_candidate_verified": false,
+      "staging_verified": false,
+      "deployment_authorized": false,
+      "cutover_verified": false,
+      "implementation_authorized": false,
+      "runtime_execution_authorized": false,
+      "profile_promotion_authorized": false,
+      "merge_authorized": false,
+      "authorities": {
+        "fixture_verified": false,
+        "product_candidate_verified": false,
+        "staging_verified": false,
+        "deployment_authorized": false,
+        "cutover_verified": false,
+        "implementation_authorized": false,
+        "runtime_execution_authorized": false,
+        "profile_promotion_authorized": false,
+        "merge_authorized": false
+      }
     }
   ],
   "execution": {

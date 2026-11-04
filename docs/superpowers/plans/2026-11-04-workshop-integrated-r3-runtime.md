@@ -149,3 +149,140 @@ Angle-bracket values above are the fresh UUID-owned paths/names deterministicall
 - Fresh Issue186/Project8 synchronization, independent planning checkpoint review, committed checkpoint SHA, exact-base machine preflight and runtime handoff do not exist for this separate gate.
 
 The draft is intentionally not dispatchable. Closing those facts requires reviewed evidence and a new synchronized committed checkpoint; natural-language approval alone cannot convert this record to a passing gate.
+
+
+<!-- BEGIN 2026-11-04 independent R3 owned subprocess transport successor -->
+
+## Independent R3 owned subprocess transport successor
+
+This append-only successor preserves the integrated-runtime and fake-only histories. It plans the independent two-file process primitive and grants no execution or release authority. Real-child tests can run only under a later explicit two-file code dispatch after exact-checkpoint review.
+
+## Canonical synchronized planning record
+
+This is the dedicated successor checkpoint for the owned subprocess primitive. The parent fake-only collector spec is immutable historical policy, not execution authorization. The actual resulting checkpoint SHA must be sealed externally; no self-referential SHA is invented here. Independent exact-checkpoint review and explicit dispatch remain required after committed preflight.
+
+```json
+{
+  "schema_version": 1,
+  "goal": "Add a real Linux subprocess primitive that bounds retained output, accounts a nonrenewable shared budget and cancels/reaps only its owned local observation child/process group, providing the first enforcing building block for a later real R3 preparation adapter.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-r3-process-transport.md",
+  "spec_ref": "docs/agents/specs/2026-11-04-workshop-r3-process-transport.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-r3-process-transport.json",
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-r3-process-transport.json",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-04-workshop-r3-process-transport.md",
+    "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md"
+  ],
+  "todo": [
+    "Freeze the e414e853 parent, real-child-only verification contract, exact two-file scope and false authorities; synchronize dedicated plan/spec/task/record, canonical index and Issue186/Project8; pass committed exact-base standalone/nested preflight and independent checkpoint review before dispatch.",
+    "Implement and test exact admission, nonrenewable shared capture accounting and bounded binary stdout/stderr retention using only owned synthetic Python children.",
+    "Implement and test monotonic cancellation/deadline handling, identity-safe owned group termination, direct-child reap and conservative cleanup_unconfirmed outcomes without host/tool/provider discovery.",
+    "Run the focused real-child suite, memory syntax/static checks and exhaustive two-file/predecessor preservation checks; commit/push coherent validated milestones and obtain independent exact-code-head review and normal CI readback.",
+    "Synchronize code-only measured receipts and explicit unresolved production containment/startup/file/owner/host/runtime/product/payment/final180/staging blockers; grant no runtime, promotion, merge, deployment or cutover authority."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T19:35:00.908451+00:00",
+  "planning_status": "tracking_synchronized_pending_checkpoint_review",
+  "planning_base_sha": "e414e8537c8a6f0bc99747f6db09782b7743a949",
+  "implementation_base_sha": null,
+  "execution_gate_sha": null,
+  "scope": "owned_subprocess_transport_primitive_only",
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-r3-process-transport.md",
+    "docs/agents/specs/2026-11-04-workshop-r3-process-transport.md",
+    "docs/agents/records/2026-11-04-workshop-r3-process-transport.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-r3-process-transport.json",
+    "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_implementation_paths": [
+    "scripts/r3_preparation/process_transport.py",
+    "scripts/r3_preparation/test_process_transport.py"
+  ],
+  "source_document_sha256": {
+    "/home/corp/autodata-evidence/next-release-gate-analysis/PLAN.md": "a80cb38985ed5b42d0f3020bd9903f10ce75371c289c633bac0980df59fdab30"
+  },
+  "external_plan_review_ref": "/home/corp/autodata-evidence/next-release-gate-review/verdict.json",
+  "tracking_sync": {
+    "accepted_case_credit": 0,
+    "current_comment_count": 177,
+    "future_implementation_paths": [
+      "scripts/r3_preparation/process_transport.py",
+      "scripts/r3_preparation/test_process_transport.py"
+    ],
+    "goal": "Add a real Linux subprocess primitive that bounds retained output, accounts a nonrenewable shared budget and cancels/reaps only its owned local observation child/process group, providing the first enforcing building block for a later real R3 preparation adapter.",
+    "issue_after_sha256": "982000b290b2ebb0cb447620f1a3065a647898be8828f5f82dc2d05b2bf3c17b",
+    "issue_before_sha256": "5a651a9cddf2e01ed3ab3b17c984914d44469cf69567877d0c734703baf7997b",
+    "issue_body_unchanged": true,
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6640162652",
+    "other_project_fields_unchanged": true,
+    "planning_parent_sha": "e414e8537c8a6f0bc99747f6db09782b7743a949",
+    "planning_paths": [
+      "docs/superpowers/plans/2026-11-04-workshop-r3-process-transport.md",
+      "docs/agents/specs/2026-11-04-workshop-r3-process-transport.md",
+      "docs/agents/records/2026-11-04-workshop-r3-process-transport.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-r3-process-transport.json",
+      "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json"
+    ],
+    "previous_source_archived_verbatim": true,
+    "prior_comment_count": 176,
+    "prior_comments_preserved": true,
+    "project_after_sha256": "bff82971b35007013586fd80d2012b1fd4cb34de6d9a8f485ede169183d2eddf",
+    "project_before_sha256": "6c5b27b6a65662fa337c53168c7c0bbc6c255dc0157e1ee60080b47c45d23654",
+    "status": "synchronized_live_readback",
+    "todo": [
+      "Freeze the e414e853 parent, real-child-only verification contract, exact two-file scope and false authorities; synchronize dedicated plan/spec/task/record, canonical index and Issue186/Project8; pass committed exact-base standalone/nested preflight and independent checkpoint review before dispatch.",
+      "Implement and test exact admission, nonrenewable shared capture accounting and bounded binary stdout/stderr retention using only owned synthetic Python children.",
+      "Implement and test monotonic cancellation/deadline handling, identity-safe owned group termination, direct-child reap and conservative cleanup_unconfirmed outcomes without host/tool/provider discovery.",
+      "Run the focused real-child suite, memory syntax/static checks and exhaustive two-file/predecessor preservation checks; commit/push coherent validated milestones and obtain independent exact-code-head review and normal CI readback.",
+      "Synchronize code-only measured receipts and explicit unresolved production containment/startup/file/owner/host/runtime/product/payment/final180/staging blockers; grant no runtime, promotion, merge, deployment or cutover authority."
+    ],
+    "receipt_ref": "/home/corp/autodata-evidence/r3-process-transport-planning-tracking/receipt.json",
+    "receipt_sha256": "0318d50bcd8777658834495559b3820a0609a6b5faa508808d151b38754f9c76",
+    "writer": "coordinator sole serialized writer"
+  },
+  "implementation_blockers": [
+    "Commit/push the actual six-path checkpoint and externally pin its full SHA; pass standalone/nested canonical preflight at that SHA, independent exact-checkpoint review and explicit two-file dispatch before implementation."
+  ],
+  "execution_blockers": [
+    "Production containment/startup supervision, descriptor-anchored FilePort/output I/O and bounded JSON remain separate.",
+    "Named owner/reviewer/cancellation identities, approved host/tool/plugin/config/env/image/clone/output contracts and separately authorized preparation observations remain unresolved.",
+    "Real CommandPort binding, compatible kernel supervision, runtime attempt/review, authenticated product/provider/payment/browser evidence, final180, profile promotion, staging, publisher/recovery and production/cars.tk cutover gates remain separate."
+  ],
+  "trusted": false,
+  "runtime_accepted": false,
+  "host_observed": false,
+  "accepted_case_credit": 0,
+  "profiles_enabled": false,
+  "enabled_tiers": [],
+  "runtime_lock": null,
+  "run_record": null,
+  "authority": false,
+  "fixture_verified": false,
+  "product_candidate_verified": false,
+  "staging_verified": false,
+  "deployment_authorized": false,
+  "cutover_verified": false,
+  "implementation_authorized": false,
+  "runtime_execution_authorized": false,
+  "profile_promotion_authorized": false,
+  "merge_authorized": false,
+  "authorities": {
+    "fixture_verified": false,
+    "product_candidate_verified": false,
+    "staging_verified": false,
+    "deployment_authorized": false,
+    "cutover_verified": false,
+    "implementation_authorized": false,
+    "runtime_execution_authorized": false,
+    "profile_promotion_authorized": false,
+    "merge_authorized": false
+  },
+  "release_state": "unverified"
+}
+```
+
+<!-- END 2026-11-04 independent R3 owned subprocess transport successor -->
