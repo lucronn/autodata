@@ -348,3 +348,21 @@ Concrete todo:
 - [ ] Add verified-descriptor-path deadline, abort and pending-inspection regressions that prove zero spawn and zero readback after the cutoff, using only a synthetic local toolchain and harmless OS child boundary.
 - [ ] Thread one original-budget inspection scope through loader and file/tree awaits, own cancellation before revalidation, drain or fail cleanup for outstanding inspection work, and recheck deadline and cancellation immediately before the fixed spawn without resetting any budget.
 - [ ] Run all existing Node and Python cloud/host/workflow suites plus syntax, exact-scope and pinned-gate checks; push the bounded candidate for independent exact-SHA review while retaining every owner, immutable-toolchain, advisory, licensing and activation blocker.
+
+
+## Workshop artifact inspection close-failure correction: docs-only planning
+
+Goal: Preserve cleanup_failed when an owned inspection handle fails to close, and never treat rejected inspection settlement as proof of successful cleanup.
+
+Docs-only planning on candidate `220d9c3099e190c3a3dc60fde11c43b7300bda7c`; PG Task1B released tracking at receipt c16f40a2730e7bc8a5fb3afd3ac2d10abf551637. Plan: `docs/superpowers/plans/2026-11-04-workshop-artifact-inspection-close-failure.md`. Record: `docs/agents/records/2026-11-04-workshop-artifact-inspection-close-failure.json`. Task: `docs/agents/tasks/2026-11-03-production-release/workshop-artifact-inspection-close-failure.json`. Issue/Project tracking is synchronized; committed full-SHA preflight, independent exact-checkpoint review and coordinator dispatch remain required before implementation. No live action is authorized.
+
+Independent review `/tmp/autodata-artifact-220d9c3-review.md` retains the earlier boundary/deadline fixes but withholds approval for failed handle close being mistaken for drained inspection. A real-FD offline probe returned operation_cancelled while its late-opened descriptor remained open. The proposed two-file-only correction retains explicit handle ownership and sticky cleanup_failed precedence across task settlement, cancellation, timeout and loader redaction. Real-FD red/green cases must independently close fixture descriptors after observing the public failure. Original shared cleanup budgets, zero late spawn, process-group/pipe closure and both unconditional CLI exit3 denials remain required. Owner/immutable-toolchain/authenticator/readback, seven moderate advisory and buffers license blockers remain.
+
+Concrete todo:
+
+- [ ] Synchronize the single close-failure finding and exact two-file scope across Issue186, Project8 and canonical docs after the coordinator releases the tracking slot; preserve the then-CURRENT PG index/details verbatim with hashes, commit and pass full-SHA pinned preflight for independent review before implementation.
+- [ ] Add actual-file-descriptor regressions for cancelled late-open and ordinary inspection close failure, plus timeout and successful-close controls; prove cleanup_failed precedence, zero spawn/readback and bounded independent fixture cleanup.
+- [ ] Retain explicit inspection handle ownership and sticky closure failure, distinguish task settlement from proved closure, and propagate fixed cleanup_failed through loader and operation cleanup without resetting budgets or weakening earlier guards.
+- [ ] Run the full existing 103 Node and 143 Python tests plus new regressions, syntax, exact-scope and pinned-gate checks; push the candidate for independent exact-SHA review with all owner, immutable-toolchain, advisory, license and activation blockers retained.
+
+Close-failure gate tracking: https://github.com/lucronn/autodata/issues/186#issuecomment-6622115738, verified 2026-11-04T03:56:17.962371+00:00. CURRENT PG Task1B full index and details6622084338/6622103154 preserved verbatim/SHA256. Separate PG review/adoption/root verification/dispatch and all quarantine/Task2 denials remain.
