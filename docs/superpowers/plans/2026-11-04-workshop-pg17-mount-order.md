@@ -183,3 +183,20 @@ Concrete todo:
 Frozen-input closure acceptance synchronized by live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6621963547 and Project8 readback at `2026-11-04T03:44:34.583302+00:00`; exact hashes in dedicated record. Full prior Project index preserved verbatim. Input closure independent approval recorded; NEW Task1B synchronized gate/review/root dispatch required; no Docker/install/image/PG/harness actions.
 
 Pinned frozen-input closure acceptance index checkpoint: `04093a5e176499e7d8de18e9573f9fea3abe9d3a`; full-SHA preflight `status: synchronized`, `errors: []`, exit0. Receipt `docs/agents/records/2026-11-04-workshop-pg17-closure-acceptance-preflight.json`; exact-pin Issue186/Project8 readback https://github.com/lucronn/autodata/issues/186#issuecomment-6621970383. Frozen input independently accepted only; NEW Task1B gate/review/root dispatch required. No container/image/package/harness action or readiness claim.
+
+
+## PG17 Task1B offline simulation-only successor
+
+Gate one bounded offline Task1B simulation of the immutable independently accepted33APK closure using exact20 new-package inputs, unchanged baseline and complete cleanup; installation/image/Task2 remain separately unauthorized.
+
+Plan `docs/superpowers/plans/2026-11-04-workshop-pg17-task1b-simulation.md`; record `docs/agents/records/2026-11-04-workshop-pg17-task1b-simulation.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-pg17-task1b-simulation.json`; evidence `docs/agents/records/2026-11-04-workshop-pg17-task1b-simulation-evidence.json`. Independent feasibility report SHA256e82b42d46639d0149b7cf644cb0bbdd29f86bb020cf5410fcdfcea007779ab88. Accepted33APK manifest SHAcfdcb2b2c2fd4d4c449397a8c7c3c38f1cc8247d891d8aa89effb6039ca31238 remains immutable; exact20 add operands/all33 verification, created/stopped empty bind targets, exact inherited0600zero lock, deterministic Cc-safe parser/unchanged45+27 baseline, pinned BusyBox trigger.58 metadata dependencies (36base/22new) and 95 pure parser fixtures are NOT solver success. Docs only; simulation denied until independent review/adoption/root verification/fresh dispatch. Installation/image/Task2/production remain unauthorized/unverified, both prior33APK quarantines NEVER reusable.
+
+Concrete todo:
+
+- [ ] Synchronize this docs-only simulation successor in Issue186/Project8/canonical notes, preserving CURRENT full prior index/detail verbatim and SHA256; commit/push and pin full-SHA passing preflight.
+- [ ] Obtain independent review of this exact simulation-only checkpoint; require coordinator adoption/root verification and fresh one-attempt dispatch before any Docker command.
+- [ ] On authorized fresh simulation only, reverify all33 immutable APK hashes/signatures, use exact20 literal apk-add paths, inspect complete offline resources/mounts and mandatory prestart27 copies before created export/diff.
+- [ ] Require deterministic bounded parser with exactly20 additions and no baseline actions, complete unchanged27/package45/world/keys/PG/scripts/trigger/lock state and created/stopped empty bind-target proof; fail closed/quarantine/no retry.
+- [ ] After exact-owned removal/absence/complete-volume equality, independently review simulation receipts; a NEW installation gate must pin same20 APK argv and audit BusyBox-trigger effects. No installation/image commit/PG/harness/readiness is authorized now.
+
+Task1B simulation-only successor synchronized by exact live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6622084338 and Project8 readback at `2026-11-04T03:53:46.055147+00:00`; full prior closure index/detail preserved verbatim/hash in comment and dedicated record. Independent exact-checkpoint review/adoption/root verification/fresh dispatch required; no Docker/retry/install/image/harness operation or solver success.

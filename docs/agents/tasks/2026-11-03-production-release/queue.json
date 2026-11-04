@@ -674,6 +674,20 @@
       "implementation_changes_allowed": false,
       "task1b_authorized": false,
       "runtime_verified": false
+    },
+    {
+      "id": "workshop-pg17-task1b-simulation",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-pg17-task1b-simulation.json",
+      "depends_on": [
+        "workshop-pg17-closure-acceptance"
+      ],
+      "state": "simulation_only_plan_pending_independent_review_adoption_dispatch",
+      "release_state": "unverified",
+      "implementation_changes_allowed": false,
+      "simulation_dispatch_authorized": false,
+      "install_authorized": false,
+      "image_commit_authorized": false,
+      "task2_authorized": false
     }
   ],
   "execution": {
