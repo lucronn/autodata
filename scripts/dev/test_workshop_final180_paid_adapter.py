@@ -77,6 +77,16 @@ def fake_stream(root, terminal='pass'):
                      event(terminal, root), event(terminal)))
 
 
+def incomplete(value, missing=None):
+    """Construct exact instances without trusting frozen initialization."""
+    result = object.__new__(type(value))
+    if missing is not None:
+        for name, item in value.__dict__.items():
+            if name != missing:
+                object.__setattr__(result, name, item)
+    return result
+
+
 class TranslationTests(unittest.TestCase):
     def setUp(self):
         self.assertIsNotNone(adapter, 'paid adapter implementation is absent')
@@ -412,6 +422,42 @@ class TranslationTests(unittest.TestCase):
         self.assertEqual(adapter.translate_paid(cases,self.context).status,'interrupted')
 
 
+    def test_incomplete_exact_context_returns_context_invalid(self):
+        for field in (None, 'candidate_sha', 'inventory_sha256', 'source_manifest_sha256'):
+            with self.subTest(field=field):
+                self.rejects('context_invalid', context=incomplete(self.context, field))
+
+    def test_incomplete_exact_case_uses_field_stage_error(self):
+        for field, code in ((None,'case_identity'), ('provider','case_identity'),
+                            ('go_test_name','case_identity'), ('events_raw','input_type'),
+                            ('stderr_raw','stderr_type'), ('receipt','receipt_invalid')):
+            with self.subTest(field=field):
+                cases=(incomplete(self.cases[0],field),)+self.cases[1:]
+                self.rejects(code,cases=cases)
+
+    def test_incomplete_exact_receipt_returns_receipt_invalid(self):
+        for field in (None,'exit_code','timed_out','interrupted','ownership_lost','cleanup_complete'):
+            with self.subTest(field=field):
+                cases=(replace(self.cases[0],receipt=incomplete(NORMAL,field)),)+self.cases[1:]
+                self.rejects('receipt_invalid',cases=cases)
+
+    def test_missing_fields_preserve_ordered_admission(self):
+        missing_receipt=incomplete(self.cases[0],'receipt')
+        missing_bytes=incomplete(self.cases[-1],'events_raw')
+        # All byte admission precedes any receipt access, even an absent receipt.
+        self.rejects('input_type',cases=(missing_receipt,)+self.cases[1:-1]+(missing_bytes,))
+        duplicate=(self.cases[1],)+self.cases[1:-1]+(missing_bytes,)
+        self.rejects('case_set',cases=duplicate)
+        missing_identity=incomplete(self.cases[-1],'provider')
+        self.rejects('case_identity',cases=(self.cases[1],)+self.cases[1:-1]+(missing_identity,))
+        self.rejects('context_invalid',context=incomplete(self.context),cases=())
+        # Within bytes, event type/size still precedes an absent stderr field.
+        bad=incomplete(replace(self.cases[0],events_raw='bad'),'stderr_raw')
+        self.rejects('input_type',cases=(bad,)+self.cases[1:])
+        bad=incomplete(replace(self.cases[0],events_raw=b'x'*67108865),'stderr_raw')
+        self.rejects('events_size',cases=(bad,)+self.cases[1:])
+
+
 
 class SerializationTests(unittest.TestCase):
     setUp = TranslationTests.setUp
@@ -614,6 +660,22 @@ class SerializationTests(unittest.TestCase):
         self.assertEqual(value.status,'consistent')
         self.assertEqual(value.accepted_case_credit,0)
         self.assertTrue(all(flag is False for _,flag in value.authority))
+
+
+    def test_incomplete_exact_diagnostic_returns_diagnostic_invalid(self):
+        value=self.diagnostic()
+        for field in (None,'contract','observation_kind','candidate_sha','inventory_sha256',
+                      'source_manifest_sha256','status','observations','accepted_case_credit',
+                      'profiles_enabled','enabled_tiers','authority'):
+            with self.subTest(field=field):
+                self.assert_invalid(incomplete(value,field))
+
+    def test_incomplete_exact_outcome_returns_diagnostic_invalid(self):
+        value=self.diagnostic();row=value.observations[0]
+        for field in (None,'family','logical_id','status','raw_refs','events_sha256','stderr_sha256','failures'):
+            with self.subTest(field=field):
+                bad=incomplete(row,field)
+                self.assert_invalid(replace(value,observations=(bad,)+value.observations[1:]))
 
 
 

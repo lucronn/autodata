@@ -135,12 +135,19 @@ def _require(condition, code):
         raise AdapterError(code)
 
 
+def _require_fields(value, names, code):
+    # Exact frozen dataclasses can still be allocated without initialization.
+    _require(all(name in value.__dict__ for name in names), code)
+
+
 def _digest(value):
     return type(value) is str and re.fullmatch('[0-9a-f]{64}', value) is not None
 
 
 def _admit(cases, context):
     _require(type(context) is PaidContext, 'context_invalid')
+    _require_fields(context, ('candidate_sha', 'inventory_sha256', 'source_manifest_sha256'),
+                    'context_invalid')
     _require(type(context.candidate_sha) is str and context.candidate_sha == CANDIDATE
              and type(context.inventory_sha256) is str and context.inventory_sha256 == INVENTORY
              and _digest(context.source_manifest_sha256), 'context_invalid')
@@ -148,19 +155,25 @@ def _admit(cases, context):
     pairs = []
     for case in cases:
         _require(type(case) is PaidCase, 'cases_invalid')
+        _require_fields(case, ('provider', 'go_test_name'), 'case_identity')
         _require(type(case.provider) is str and type(case.go_test_name) is str
                  and (case.provider, case.go_test_name) in tuple(slot[:2] for slot in SLOTS),
                  'case_identity')
         pairs.append((case.provider, case.go_test_name))
     _require(len(set(pairs)) == 12, 'case_set')
     for case in cases:
+        _require_fields(case, ('events_raw',), 'input_type')
         _require(type(case.events_raw) is bytes, 'input_type')
         _require(len(case.events_raw) <= 67108864, 'events_size')
+        _require_fields(case, ('stderr_raw',), 'stderr_type')
         _require(type(case.stderr_raw) is bytes, 'stderr_type')
         _require(len(case.stderr_raw) <= 1048576, 'stderr_size')
     for case in cases:
+        _require_fields(case, ('receipt',), 'receipt_invalid')
         receipt = case.receipt
         _require(type(receipt) is SimulatedExit, 'receipt_invalid')
+        _require_fields(receipt, ('exit_code', 'timed_out', 'interrupted', 'ownership_lost',
+                                 'cleanup_complete'), 'receipt_invalid')
         _require(all(type(flag) is bool for flag in (receipt.timed_out, receipt.interrupted,
                  receipt.ownership_lost, receipt.cleanup_complete)), 'receipt_invalid')
         _require(receipt.exit_code is None or (type(receipt.exit_code) is int
@@ -273,6 +286,10 @@ def _validate_failures(failures):
 def serialize_paid_diagnostic(value: PaidDiagnostic) -> bytes:
     """Revalidate synthetic claims and emit bounded canonical JSON, never raw text."""
     _require(type(value) is PaidDiagnostic, 'diagnostic_invalid')
+    _require_fields(value, ('contract', 'observation_kind', 'candidate_sha', 'inventory_sha256',
+                           'source_manifest_sha256', 'status', 'observations',
+                           'accepted_case_credit', 'profiles_enabled', 'enabled_tiers',
+                           'authority'), 'diagnostic_invalid')
     _require(type(value.contract) is str and value.contract == 'workshop-final180-paid-go-synthetic-v1'
              and type(value.observation_kind) is str
              and value.observation_kind == 'simulated-source-profile-validation', 'diagnostic_invalid')
@@ -291,6 +308,8 @@ def serialize_paid_diagnostic(value: PaidDiagnostic) -> bytes:
     observations = []
     for row, slot in zip(value.observations, SLOTS):
         _require(type(row) is PaidOutcome, 'diagnostic_invalid')
+        _require_fields(row, ('family', 'logical_id', 'status', 'raw_refs', 'events_sha256',
+                              'stderr_sha256', 'failures'), 'diagnostic_invalid')
         _require(type(row.family) is str and row.family == 'paid'
                  and type(row.logical_id) is str and row.logical_id == slot[2]
                  and type(row.raw_refs) is tuple and len(row.raw_refs) == 2
