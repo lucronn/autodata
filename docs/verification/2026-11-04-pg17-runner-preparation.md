@@ -103,3 +103,16 @@ APK-log correction adoption: independently approved checkpoint `bd59558a78a11448
 
 
 Pinned APK-log adoption receipt: checkpoint `00aa840e84428a7205314299b4be97c7dd2267d0`, exact record SHA256 `6d830033cc4bc91a3f4870790776f3e5ea06762bbb245e19f37175973a562f51`; machine preflight exit0, `{"status": "synchronized", "errors": []}`. Exact record bytes checked against Git at that full SHA. Raw pinned receipt and tracking readbacks: `/home/corp/autodata-evidence/pg17-log-adoption-20261104`. Prior source/blocker hashes preserved; retry/create/start/download remain unexecuted pending root verification and new Task1A dispatch.
+
+## APK-log retry attempt 01: database lock blocked
+
+Coordinator verified adopted log correction gate `00aa840e84428a7205314299b4be97c7dd2267d0` and dispatched only a fresh Task1A acquisition retry. Private directory `/home/corp/autodata-evidence/pg17-apk-log-prep-20261104-01` was newly created owner1000:1000 mode0700; RUN_ID `apk-log-20261104-01`. Earlier failed evidence was not reused or altered.
+
+Created container `c3ee9e673c030fc6bf2c47bb8f3932d9f397d089bb77b3aa9dac0440ca056961` from exact cached base with `--pull=never`. Full before-start image/config/network/capability/mount validation and the exact approved log guard passed: two approved binds, four bounded tmpfs including PGDATA and private4MiB `/var/log`, read-only root, unchanged capabilities and payload. The unchanged fixed acquisition script SHA256 remains `323d24180ae395abbfeb495a70678428336f8902cb00cf25e5d92654f321bdb7`. `apk update` exited99 with `Unable to lock database: Read-only file system` and `Failed to open apk database: Read-only file system`. No APK files were fetched.
+
+- Blocker receipt SHA256: `76b0b24692aa3e62a317437cd87451a23d63ca296accfbe2f6de78aa6689b18f` (`evidence/task1a-blocker.json` in the private directory).
+- Before-start inspect SHA256: `0aa3f5883caa8e68b38bb2ff246d7aab3511bfb089512b9ca291baf8099c2db6`.
+- Attach stdout/stderr:3229/112 bytes, streamed4096-byte chunks with1MiB cap per stream; no overflow or timeout. SHA256 `8af31dc9a5b085b1c523524fda391d6c7f71bd57f5ae3603a0bfdfe27aad41dc` / `3f97af8a9d79eec50e6291b7ea859fbcfd97160b3701badf1f61797b966780f4`.
+- Independent stopped state: exit99, OOMKilled=false, State.Error empty. Exact `docker rm --volumes` succeeded and ID absence verified. Complete volume inventories match after normalizing row/label order; no owned container/volume resources remain.
+
+Task1A is blocked; no simulation/install/image commit/compilation/PostgreSQL/harness action occurred. No flags, mounts, commands or capabilities were changed after failure. Raw failure and cleanup receipts are preserved; a reviewed successor correction is required before retry. All production/runtime/Task2/readiness denials remain in force.
