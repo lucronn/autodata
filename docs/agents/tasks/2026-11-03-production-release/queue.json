@@ -564,6 +564,45 @@
         "project_text_sha256": "0a1d7564da5b9e26b365fc471272c5fc0c092e409abe53efbbf8fe185cb7089d",
         "project_index_note": "921-character index retains prior reference IDs; full original 994-character field is preserved verbatim in the scoped Issue comment."
       }
+    },
+    {
+      "id": "workshop-staging-bootstrap",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-staging-bootstrap.json",
+      "depends_on": [],
+      "state": "planning_synchronized_pending_exact_checkpoint_review",
+      "release_state": "unverified",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-staging-lifecycle.md",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-staging-bootstrap.json",
+      "source_integration_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+      "implementation_allowlist": [
+        "infra/deploy/gce/cloud-bootstrap.sh",
+        "infra/deploy/gce/staging_bootstrap.py",
+        "infra/deploy/gce/staging-bootstrap.schema.json",
+        "infra/deploy/gce/test_staging_bootstrap.py"
+      ],
+      "dispatch_mode": "coordinator_direct_after_independent_review",
+      "implementation_dispatch_authorized": false,
+      "cloud_execution_authorized": false,
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622232881",
+        "issue_comment_id": 6622232881,
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-04T04:04:56.410962+00:00",
+        "issue_body_sha256": "af4fbd5d45bf59b0aba93f143eb4ef7a4a24625895d567d1cf4935e80e37a6c5",
+        "issue_comment_sha256": "f8d4597b64751adcee924bc7de3ce021e7b01fa23937e077ad54c12d95d1749a",
+        "project_text_sha256": "2fa555492464869ef0bf12025404e5c059ae013c4f0f52c05ec3f88189be48ed",
+        "prior_issue_body_sha256": "a3979e47fe13c8e149252526ea3e0774c4ab8b631b06eae6596c94db902e1383",
+        "prior_issue_body_preserved_as_exact_prefix": true,
+        "prior_project_text_sha256": "a67fb47f7973811904663fd8bba35a5c8ce6ad6164eb896adae83ea4dd39100d",
+        "full_prior_pg_and_js_text_preserved_verbatim": true
+      },
+      "successor_dependencies": [
+        "authenticated publisher before real release install",
+        "native PG17/schema before readiness",
+        "separate host/recovery gates before staging application data"
+      ]
     }
   ],
   "execution": {

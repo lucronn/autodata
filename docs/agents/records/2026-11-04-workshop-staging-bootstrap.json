@@ -1,0 +1,50 @@
+{
+  "goal": "Create and read back only owner-approved isolated staging IPv4 address, empty persistent data disk and bare VM; preserve all application, deployment and production denials.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-staging-lifecycle.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+    "docs/operations/workshop-gcp.md",
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "Synchronize the exact bare-resource goal, four-file allowlist, approval/request/network/receipt contract and concrete todo across Issue186/Project8 and canonical documents; preserve current PG/JS index/detail/pins verbatim with hashes, commit/push and pass full-SHA pinned preflight before independent checkpoint review.",
+    "After independent exact-checkpoint review and fresh coordinator dispatch, add offline failing tests for strict approval/token boundaries, exact request inventory, default-route exception and disjoint-subnet acceptance, overlapping-subnet/custom-next-hop rejection, ownership/idempotency, timeout/cancellation and redaction.",
+    "Implement only the four allowlisted bootstrap files for the fixed staging-only Compute GET and three POST operations, approved resource identity readback and bounded retained-resource failure receipts; keep production apply, IAM mutation, installation, formatting, secrets, application startup and readiness unavailable.",
+    "Run offline staging-bootstrap and existing host/cloud regression suites, syntax/scope/diff checks and pinned preflight; commit/push a coherent candidate and obtain independent exact-SHA review before integration or live use.",
+    "Keep all cloud execution blocked pending separate owner authorization of selected GCP projects/billing/region/VPC/IAM/pins/staging origin and concrete reviewed scripts; keep host install/readiness/recovery behind separate publisher/schema-dependent gates and preserve cars.tk/production blockers."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T04:04:56.410962+00:00",
+  "source_integration_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+  "reviewed_draft_sha": "fb0c6f7a92b2580ae7bc993f827cfc2596a32743",
+  "implementation_allowlist": [
+    "infra/deploy/gce/cloud-bootstrap.sh",
+    "infra/deploy/gce/staging_bootstrap.py",
+    "infra/deploy/gce/staging-bootstrap.schema.json",
+    "infra/deploy/gce/test_staging_bootstrap.py"
+  ],
+  "evidence_ref": "docs/agents/records/2026-11-04-workshop-staging-bootstrap-evidence.json",
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622232881",
+    "issue_comment_id": 6622232881,
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_note_field": "Source or dependency reference",
+    "verified_at": "2026-11-04T04:04:56.410962+00:00",
+    "issue_body_sha256": "af4fbd5d45bf59b0aba93f143eb4ef7a4a24625895d567d1cf4935e80e37a6c5",
+    "issue_comment_sha256": "f8d4597b64751adcee924bc7de3ce021e7b01fa23937e077ad54c12d95d1749a",
+    "project_text_sha256": "2fa555492464869ef0bf12025404e5c059ae013c4f0f52c05ec3f88189be48ed",
+    "prior_issue_body_sha256": "a3979e47fe13c8e149252526ea3e0774c4ab8b631b06eae6596c94db902e1383",
+    "prior_issue_body_preserved_as_exact_prefix": true,
+    "prior_project_text_sha256": "a67fb47f7973811904663fd8bba35a5c8ce6ad6164eb896adae83ea4dd39100d",
+    "full_prior_pg_and_js_text_preserved_verbatim": true
+  },
+  "independent_review": "pending_exact_checkpoint_review",
+  "implementation_dispatch_authorized": false,
+  "cloud_execution_authorized": false,
+  "runtime_verified": false,
+  "production_ready": false
+}

@@ -1,6 +1,6 @@
 # Isolated Workshop GCE staging lifecycle implementation plan
 
-> **For agentic workers:** Execute only a coordinator-released milestone after its own synchronized checkpoint and pinned preflight. Use superpowers:executing-plans. This document is a planning draft, not implementation or live-operation authority.
+> **For agentic workers:** Execute only a coordinator-released milestone after its own synchronized checkpoint and pinned preflight. Use superpowers:executing-plans. This document is a synchronized planning checkpoint, not implementation or live-operation authority.
 
 **Goal:** Make the existing GCE staging topology executable through fixed bootstrap, private installation, controlled startup, no-work readiness and isolated recovery operations.
 
@@ -14,9 +14,9 @@
 
 Inspected source: `eddcf724028683dbb083191e4f8c42064b866bf0`, root branch `codex/production-release-orchestration`. Read-only staging-path review: `/tmp/autodata-workshop-staging-path-review.md`, dated 2026-11-04 UTC. That temporary review is supporting context, not a gate artifact.
 
-Status: **draft; unsynchronized; implementation blocked**. Tracking references are [Issue186](https://github.com/lucronn/autodata/issues/186) and [Project8](https://github.com/users/lucronn/projects/8). The PG17 correction gate currently owns the serialized tracking-write slot; coordinator approval and release of that slot are required before this draft changes tracking. This plan does not change those records, the hosting record, or the coordinator queue. No new implementation preflight passes at the inspected base because this plan is absent there and no matching synchronized lifecycle record exists.
+Status: **synchronized planning checkpoint; implementation dispatch blocked pending independent exact-checkpoint review and fresh root dispatch**. Tracking references are [Issue186](https://github.com/lucronn/autodata/issues/186) and [Project8](https://github.com/users/lucronn/projects/8), read back at `2026-11-04T04:04:56.410962+00:00` after PG released the serialized slot. [M1 detail6622232881](https://github.com/lucronn/autodata/issues/186#issuecomment-6622232881) preserves the then-current complete PG CapAdd index/detail/pin and prior JS text verbatim with hashes. The dedicated lifecycle record/task and canonical notes now match the exact M1 goal, four-file scope and concrete todo below. The earlier draft was intentionally blocked at inspected base eddcf724; the new checkpoint must be committed/pushed and machine checked at its full SHA before review/dispatch. No implementation, credentials, resources or cloud operation occurs during this synchronization.
 
-The coordinator must review the proposed boundaries, release the tracking slot, synchronize each next milestone's goal/exact allowlist/concrete todo across Issue186/Project8 and canonical documentation, commit/push that checkpoint, pin its full SHA, run machine preflight and obtain independent gate review before dispatch. Historical hosting, catalog-only and publisher synchronization does not authorize these milestones. Changing an interface below requires a plan amendment before implementation.
+The coordinator must independently review the committed exact M1 checkpoint and verify full-SHA preflight before fresh dispatch. Each successor milestone separately requires synchronized goal/exact allowlist/concrete todo across Issue186/Project8 and canonical documentation, committed/pushed checkpoint, pinned full SHA and independent gate review. Historical hosting, catalog-only and publisher synchronization does not authorize these milestones. Changing an interface below requires a plan amendment before implementation.
 
 ## Global constraints and fixed decisions
 
@@ -154,6 +154,34 @@ These are dependency/cost decisions, not implementation allowlists or permission
 
 ## Verification and handoff record
 
-Planning validation is text/scope review and an intentionally failing draft gate, not execution of the future tests above. The canonical machine record must eventually contain goal, this plan_ref, Issue186/Project8 URLs, repository_doc_refs, the selected milestone's concrete todo, `status:synchronized` and UTC updated_at. Until live tracking readback and canonical updates exist, retain **draft**; never set synchronized merely to make the validator pass.
+Planning validation is text/scope review, live tracking readback and exact committed full-SHA preflight, not execution of the future tests above. The earlier draft gate intentionally failed at eddcf724; that historical failure is not the new checkpoint result. The canonical machine record must eventually contain goal, this plan_ref, Issue186/Project8 URLs, repository_doc_refs, the selected milestone's concrete todo, `status:synchronized` and UTC updated_at. Live tracking readback and canonical updates now exist; independent exact-checkpoint review and root dispatch remain pending.
 
-Publisher approval is neither host readiness nor permission to provision. Host readiness is neither paid-product acceptance nor production authorization. Minimum staging restore evidence does not replace production backup/snapshot/export/monitoring acceptance. No cloud, credential, deployment, DNS or runtime-readiness action is performed by this planning draft.
+Publisher approval is neither host readiness nor permission to provision. Host readiness is neither paid-product acceptance nor production authorization. Minimum staging restore evidence does not replace production backup/snapshot/export/monitoring acceptance. No cloud, credential, deployment, DNS or runtime-readiness action is performed by this planning checkpoint.
+
+
+## Isolated staging bare-resource bootstrap M1: synchronized planning checkpoint
+
+Goal: Create and read back only owner-approved isolated staging IPv4 address, empty persistent data disk and bare VM; preserve all application, deployment and production denials.
+
+Canonical plan: `docs/superpowers/plans/2026-11-04-workshop-staging-lifecycle.md`; task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-bootstrap.json`; record `docs/agents/records/2026-11-04-workshop-staging-bootstrap.json`; preservation/evidence `docs/agents/records/2026-11-04-workshop-staging-bootstrap-evidence.json`. Source root `eddcf724028683dbb083191e4f8c42064b866bf0`; independently reviewed corrected draft `fb0c6f7a92b2580ae7bc993f827cfc2596a32743`.
+
+Status: `synchronized` after live [Issue186 detail6622232881](https://github.com/lucronn/autodata/issues/186#issuecomment-6622232881) and [Project8](https://github.com/users/lucronn/projects/8) readback at `2026-11-04T04:04:56.410962+00:00`. Commit/push, full-SHA pinned preflight, independent exact-checkpoint review and fresh coordinator dispatch still precede implementation. Synchronization does not authorize cloud or host operations.
+
+Exact prospective implementation allowlist:
+
+- `infra/deploy/gce/cloud-bootstrap.sh`
+- `infra/deploy/gce/staging_bootstrap.py`
+- `infra/deploy/gce/staging-bootstrap.schema.json`
+- `infra/deploy/gce/test_staging_bootstrap.py`
+
+Only dedicated staging address+empty data disk+bare VM against approved preexisting VPC/IAM/APIs/registry. Strict owner approval, inherited metadata/image/network/effective-policy readback, fixed Compute GET/three POST bodies, deterministic requestId, ownership/idempotency, bounds and redacted receipts are defined in the plan. Only exact default0.0.0.0/0 via default-internet-gateway is exempt from Docker overlap checking; selected subnet/additional destinations must be disjoint, and extra routes remain denied. No IAM mutation, package install, disk format, secret delivery, application startup, production apply or readiness authority. Actual owner-selected GCP/billing/region/pins/staging-origin inputs and separate live authorization remain mandatory. Publisher/schema contracts and separately reviewed installation/startup/recovery gates are still required.
+
+Concrete todo:
+
+- [ ] Synchronize the exact bare-resource goal, four-file allowlist, approval/request/network/receipt contract and concrete todo across Issue186/Project8 and canonical documents; preserve current PG/JS index/detail/pins verbatim with hashes, commit/push and pass full-SHA pinned preflight before independent checkpoint review.
+- [ ] After independent exact-checkpoint review and fresh coordinator dispatch, add offline failing tests for strict approval/token boundaries, exact request inventory, default-route exception and disjoint-subnet acceptance, overlapping-subnet/custom-next-hop rejection, ownership/idempotency, timeout/cancellation and redaction.
+- [ ] Implement only the four allowlisted bootstrap files for the fixed staging-only Compute GET and three POST operations, approved resource identity readback and bounded retained-resource failure receipts; keep production apply, IAM mutation, installation, formatting, secrets, application startup and readiness unavailable.
+- [ ] Run offline staging-bootstrap and existing host/cloud regression suites, syntax/scope/diff checks and pinned preflight; commit/push a coherent candidate and obtain independent exact-SHA review before integration or live use.
+- [ ] Keep all cloud execution blocked pending separate owner authorization of selected GCP projects/billing/region/VPC/IAM/pins/staging origin and concrete reviewed scripts; keep host install/readiness/recovery behind separate publisher/schema-dependent gates and preserve cars.tk/production blockers.
+
+Preservation: then-current full PG CapAdd Project index SHA256 `a67fb47f7973811904663fd8bba35a5c8ce6ad6164eb896adae83ea4dd39100d`, detail6622201950/pin6622210398, and prior JS Project index/detail6622115738/pin6622126651 remain verbatim with individual hashes in canonical evidence and the full synchronization comment. PG gate `cde9652c0e3dce9a9083540d15cb25b3682f144d` and JS gate `d105f8ae0747faa4bf4c6254e2dd1cd45ad0a830` retain their own review/dispatch/denial boundaries; no prior status is superseded.
