@@ -273,3 +273,83 @@ test('private cwd cannot use a symlink ancestor before any credential call',asyn
  const {deps,cwd}=await fixture(t);const alias=path.join(tmpdir(),`artifact-alias-${process.pid}`);await symlink(path.dirname(cwd),alias);t.after(()=>rm(alias,{force:true}));deps.cwd=path.join(alias,path.basename(cwd));let credentials=0;deps.authenticateRuntime=()=>{credentials++;throw Error('credential hook');};
  await assert.rejects(helper.uploadRelease(request(),deps),/invalid authenticated publication input/);assert.equal(credentials,0);
 });
+
+// The copied helper selects a real opaque descriptor; mocked mount text is pure
+// fixture evidence only, never an installed owner policy or immutable toolchain.
+async function descriptorDeadlineProbe({mode,source,context:c,runtime}) {
+ const fs=(await import('node:fs/promises')).default,{syncBuiltinESMExports}=await import('node:module'),{spawn}=await import('node:child_process'),path=await import('node:path'),{createHash}=await import('node:crypto');
+ const hash=b=>createHash('sha256').update(b).digest('hex');
+ const root=await fs.mkdtemp('/tmp/artifact-deadline-contract-'),tree=path.join(root,'publisher-toolkit'),self=path.join(root,'publisher_artifact.mjs');
+ await fs.mkdir(tree);await fs.copyFile(source,self);
+ const packages={'node_modules/@actions/artifact':{version:'6.3.1',resolved:'https://registry.npmjs.org/@actions/artifact/-/artifact-6.3.1.tgz',integrity:'sha512-DBXgdB9T4yj2KSe0tFg+MTi9T5se+16bdrFQh+3Y6Nq1lZ3gYQk1BjHoTof+7Zf36bEAlfVMf+8ifRKeyGJugQ=='}};
+ const lock=Buffer.from(JSON.stringify({packages:{'':{},...packages}}));
+ const contents={'package.json':JSON.stringify({dependencies:{'@actions/artifact':'6.3.1'},engines:{node:'22.23.4'}}),'package-lock.json':lock,'node_modules/@actions/artifact/package.json':JSON.stringify({name:'@actions/artifact',version:'6.3.1'}),'node_modules/@actions/artifact/index.js':`throw Error('fixture must never import');`};
+ const files=[];
+ for(const [name,bytes] of Object.entries(contents)){const file=path.join(tree,name);await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,bytes,{mode:0o444});files.push({path:name,bytes:Buffer.byteLength(bytes),sha256:hash(bytes),mode:0o444});}
+ const manifest=Buffer.from(JSON.stringify({protocol_version:1,toolkit_lock_sha256:hash(lock),packages,files:files.sort((a,b)=>a.path<b.path?-1:1)}));await fs.writeFile(path.join(tree,'installed-tree.json'),manifest,{mode:0o444});
+ async function dirs(file,mode){for(const e of await fs.readdir(file,{withFileTypes:true}))if(e.isDirectory())await dirs(path.join(file,e.name),mode);await fs.chmod(file,mode);}
+ await dirs(tree,0o555);
+ const originalRead=fs.readFile,originalOpen=fs.open,originalLstat=fs.lstat,ctrl=new AbortController(),deadline=601000;
+ let now=1000,mountReads=0,opens=0,spawned=0,readbacks=0,cleanups=0,auth=0,transitioned=false,lateOperations=0,released=false,closedHandle=false,closedHandleAtReturn=false,returnedBeforeRelease=false;
+ const mount='1 0 0:1 / / ro - overlay overlay ro';
+ function transition(){transitioned=true;if(mode.includes('deadline'))now=301001;else if(mode==='pending-exhaustion')now=deadline+1;else if(mode.includes('sigterm'))process.kill(process.pid,'SIGTERM');else ctrl.abort();}
+ fs.readFile=async(filename,...args)=>{
+  if(filename==='/proc/self/mountinfo'){
+   mountReads++;
+   if(mountReads===2 && !mode.startsWith('final-') && mode!=='valid' && mode!=='pending-open'){
+    if(mode.startsWith('pending-'))return new Promise(resolve=>{setTimeout(transition,10);setTimeout(()=>{released=true;resolve(mount)},100);});
+    transition();
+   }
+   return mount;
+  }
+  return originalRead(filename,...args);
+ };
+ fs.open=async(filename,...args)=>{
+  if(transitioned)lateOperations++;
+  const handle=await originalOpen(filename,...args);
+  if(filename===path.join(tree,'package-lock.json') && ++opens===4 && mode==='pending-open'){
+   const close=handle.close.bind(handle);handle.close=async()=>{await close();closedHandle=true;};
+   return new Promise(resolve=>{setTimeout(transition,10);setTimeout(()=>{released=true;resolve(handle)},100);});
+  }
+  return handle;
+ };
+ fs.lstat=async(...args)=>{if(transitioned)lateOperations++;return originalLstat(...args);};syncBuiltinESMExports();
+ let child,error=null,result;
+ try {
+  const helper=await import(self),policy={activation_sha256:c.activation_sha256,toolchain_sha256:c.toolchain_sha256,trust_policy_sha256:c.trust_policy_sha256,toolkit_lock_sha256:hash(lock),helper_sha256:hash(await originalRead(self)),control_workflow_sha:c.workflow_sha,runtime_origins:['https://results.example.invalid'],dependency_review_sha256:'1'.repeat(64),toolkit_tree_sha256:hash(manifest)};
+  const worker=await helper.loadOfficialToolkit(c,policy),cwd=path.join(root,'archive');await fs.mkdir(cwd,{mode:0o700});
+  const inner=Buffer.from('descriptor fixture inner'),outer=Buffer.from('descriptor fixture original outer');await fs.writeFile(path.join(cwd,'release.zip'),inner,{mode:0o600});
+  if(mode.startsWith('final-')){let reads=0;const token=runtime.ACTIONS_RUNTIME_TOKEN;Object.defineProperty(runtime,'ACTIONS_RUNTIME_TOKEN',{get(){if(++reads===4)transition();return token;}});}
+  const request={protocol_version:3,operation:'upload',context:c,archive_sha256:hash(inner),archive_bytes:inner.length,artifact_name:`workshop-release-${c.source_sha}-run-${c.run_id}-attempt-${c.run_attempt}`};
+  try{result=await helper.uploadRelease(request,{worker,cwd,policy:{runtime_origins:policy.runtime_origins,toolkit_lock_sha256:policy.toolkit_lock_sha256,control_workflow_sha:c.workflow_sha},runtime,deadline,monotonic:()=>now,now:()=>new Date('2026-11-03T12:00:00Z'),signal:ctrl.signal,
+   authenticateRuntime:async()=>{auth++;return {repository_id:c.repository_id,repository_owner_id:c.repository_owner_id,run_id:c.run_id,run_attempt:c.run_attempt,runtime_service_origin:policy.runtime_origins[0]};},
+   cleanup:async()=>{cleanups++;},
+   readback:async()=>{readbacks++;return {artifact_id:'987',artifact_name:request.artifact_name,digest:'sha256:'+hash(outer),outer_bytes:outer,archive_bytes:inner,metadata_sha256:'2'.repeat(64),created_at:'2026-11-03T11:59:00Z',expires_at:'2026-11-10T11:59:00Z',expired:false};},
+   spawn:(exe,_args,options)=>{spawned++;child=spawn(exe,['-e',`process.stdin.resume();require('node:fs').writeSync(3,${JSON.stringify(JSON.stringify({id:987,size:outer.length,digest:hash(outer)}))});`],options);return child;}
+  });}catch(e){error=e.message;}
+  closedHandleAtReturn=closedHandle;returnedBeforeRelease=!released;
+  await new Promise(resolve=>setTimeout(resolve,150));
+  console.log(JSON.stringify({error,success:!!result,mountReads,spawned,readbacks,cleanups,auth,transitioned,lateOperations,released,closedHandle,closedHandleAtReturn,returnedBeforeRelease}));
+ }finally{
+  fs.readFile=originalRead;fs.open=originalOpen;fs.lstat=originalLstat;syncBuiltinESMExports();
+  if(child && child.exitCode===null && child.signalCode===null){try{process.kill(-child.pid,'SIGKILL')}catch{}await new Promise(resolve=>child.once('close',resolve));}
+  await dirs(tree,0o755);await fs.rm(root,{recursive:true,force:true});
+ }
+}
+function runDescriptorProbe(mode,runtime){
+ const source=`(${descriptorDeadlineProbe.toString()})(${JSON.stringify({mode,source:new URL('./publisher_artifact.mjs',import.meta.url).pathname,context:context(),runtime})})`;
+ const result=spawnSync(process.execPath,['--input-type=module','-e',source],{encoding:'utf8',timeout:2500});
+ assert.equal(result.error,undefined,'bounded descriptor probe must finish before its supervisor');assert.equal(result.signal,null);assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout);
+}
+for(const mode of ['deadline','abort','pending-deadline','pending-abort','pending-open','pending-exhaustion','final-deadline','final-abort','sigterm','final-sigterm'])test(`verified descriptor ${mode} prevents new spawn and readback`,async t=>{
+ const {deps}=await fixture(t),r=runDescriptorProbe(mode,deps.runtime);
+ assert.equal(r.transitioned,true);assert.equal(r.spawned,0);assert.equal(r.mountReads,mode==='pending-open'?1:2);assert.equal(r.readbacks,0);assert.equal(r.success,false);assert.equal(r.auth,1);
+ assert.equal(r.error,mode==='pending-exhaustion'?'cleanup_failed':mode.includes('deadline')?'operation_timed_out':'operation_cancelled');
+ assert.equal(r.lateOperations,0,'cancelled inspection cannot start another file operation');
+ if(mode!=='pending-exhaustion')assert.equal(r.cleanups,1);
+ if(mode==='pending-open')assert.equal(r.closedHandleAtReturn,true,'late acquired descriptor must close before return');
+ if(mode.startsWith('pending-')){assert.equal(r.released,true);assert.equal(r.returnedBeforeRelease,mode==='pending-exhaustion');}
+});
+test('verified descriptor positive fixture retains fixed process and readback contract',async t=>{
+ const {deps}=await fixture(t),r=runDescriptorProbe('valid',deps.runtime);assert.equal(r.error,null);assert.equal(r.success,true);assert.equal(r.mountReads,2);assert.equal(r.spawned,1);assert.equal(r.readbacks,1);assert.equal(r.cleanups,1);
+});
