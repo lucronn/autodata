@@ -12,10 +12,86 @@ INVENTORY = 'c4e9293875d22e04469c6a3fb4cdab27889328d6519243cee3862f9ecf490b39'
 CLASSNAME = 'tests.test_commerce_postgres'
 PACKAGE = 'github.com/lucronn/autodata/apps/api-go'
 ROOT = 'TestWorkshopCommercePythonIntegration'
-COMMERCE_IDS = ('test_orders_create_and_owner_scope', 'test_same_key_replay_and_conflict', 'test_concurrent_keys_share_one_checkout', 'test_scope_races_single_active_grant', 'test_lost_create_response_and_retention_boundary', 'test_expiry_requires_remote_nonchargeable_proof', 'test_completion_races_expiry_without_recharge', 'test_webhook_before_create_response', 'test_settlement_binds_financial_owner_scope', 'test_duplicate_and_distinct_events_grant_once', 'test_refund_chargeback_ordering_and_monotonic_revocation', 'test_payment_survives_source_unavailable_and_restart', 'test_library_is_owner_only_and_paginated', 'test_grant_check_exact_scope_legacy_and_revoked')
-SUPPORT_NAMES = ('test_migrations_are_numeric_and_ordered', 'test_customer_identity_migration_and_all_four_driver_boundaries', 'test_commerce_migration_has_structured_owner_and_financial_guards', 'test_dataset_request_ownership_is_backfilled_without_overwriting_existing_values', 'test_schema_migrations_cover_platform_spine_and_vector', 'test_foundation_fixture_is_separate_from_schema_migrations', 'test_chat_quote_revision_publication_state_and_immutability_are_database_enforced', 'test_price_snapshots_are_immutable_and_refresh_failures_are_separate', 'test_visual_artifacts_require_and_preserve_source_artifact_linkage', 'test_quote_arithmetic_and_overlap_bounds_are_database_enforced', 'test_quote_persists_required_and_recommended_operation_collections', 'test_quote_operation_categories_upgrade_existing_025_table', 'test_worker_events_persist_the_complete_event_envelope', 'test_reusable_derived_article_key_prevents_query_uniqueness_collisions', 'test_markup_is_structurally_prohibited', 'test_psql_command_includes_host_and_port_when_address_provided', 'test_resolve_database_address_respects_explicit_and_environment', 'test_emit_is_embedded_and_uses_one_session_lock', 'test_manifest_rejects_holes_unsafe_names_symlinks_and_wrong_stems', 'test_fixture_prefix_accepts_only_contiguous_canonical_prefix', 'test_default_refuses_truncated_manifest_before_sql_output', 'test_default_invocation_executes_identical_emit_output_and_cleans_tempfile', 'test_fixed_transaction_contract_is_audited', 'test_adapter_streams_one_driver_and_returns_only_actual_applications', 'test_adapter_propagates_generator_and_psql_failure', 'test_full_chain_restart_preserves_every_marker_and_schema', 'test_partial_catalog_row_survives_full_restart', 'test_empty_bootstrap_and_untracked_application_rejection[False]', 'test_empty_bootstrap_and_untracked_application_rejection[True]', 'test_invalid_ledger_fails_before_pending_application_ddl[unknown]', 'test_invalid_ledger_fails_before_pending_application_ddl[wrong_stem]', 'test_invalid_ledger_fails_before_pending_application_ddl[gap]', 'test_invalid_ledger_fails_before_pending_application_ddl[duplicate_shape]', 'test_invalid_ledger_fails_before_pending_application_ddl[wrong_timestamp]', 'test_original_038_adoption_and_markerless_033_effects_are_once_only', 'test_genuine_036_upgrade_preserves_jobs_and_matches_fresh_schema', 'test_migration_failure_rolls_back_only_active_file_then_retry[2]', 'test_migration_failure_rolls_back_only_active_file_then_retry[33]', 'test_migration_failure_rolls_back_only_active_file_then_retry[36]', 'test_migration_failure_rolls_back_only_active_file_then_retry[37]', 'test_migration_failure_rolls_back_only_active_file_then_retry[38]', 'test_migration_failure_rolls_back_only_active_file_then_retry[39]', 'test_migration_failure_rolls_back_only_active_file_then_retry[40]', 'test_recorded_001_and_partial_unmarked_next_file_remain_retryable', 'test_two_full_runners_serialize_and_apply_each_version_once[False]', 'test_two_full_runners_serialize_and_apply_each_version_once[True]', 'test_connection_death_releases_lock_and_rolls_back_active_file', 'test_restart_after_committed_037_only_applies_038_and_039', 'test_native_python_adapter_applies_then_skips_in_one_session', 'test_markerless_033_failure_rolls_back_reviewer_effects_and_marker', 'test_populated_publication_and_all_lifecycle_records_survive_restart', 'test_populated_038_upgrade_only_adds_identity_schema', 'test_populated_customer_identity_restart_preserves_rows_and_ledger')
-COMMON_REFS = ('workshop-commerce-tests.xml', 'workshop-commerce-pytest.stdout.log', 'workshop-commerce-pytest.stderr.log')
-GO_REFS = ('workshop-commerce-go-events.jsonl', 'workshop-commerce-go-stderr.log')
+COMMERCE_IDS = (
+    'test_orders_create_and_owner_scope',
+    'test_same_key_replay_and_conflict',
+    'test_concurrent_keys_share_one_checkout',
+    'test_scope_races_single_active_grant',
+    'test_lost_create_response_and_retention_boundary',
+    'test_expiry_requires_remote_nonchargeable_proof',
+    'test_completion_races_expiry_without_recharge',
+    'test_webhook_before_create_response',
+    'test_settlement_binds_financial_owner_scope',
+    'test_duplicate_and_distinct_events_grant_once',
+    'test_refund_chargeback_ordering_and_monotonic_revocation',
+    'test_payment_survives_source_unavailable_and_restart',
+    'test_library_is_owner_only_and_paginated',
+    'test_grant_check_exact_scope_legacy_and_revoked',
+)
+SUPPORT_NAMES = (
+    'test_migrations_are_numeric_and_ordered',
+    'test_customer_identity_migration_and_all_four_driver_boundaries',
+    'test_commerce_migration_has_structured_owner_and_financial_guards',
+    'test_dataset_request_ownership_is_backfilled_without_overwriting_existing_values',
+    'test_schema_migrations_cover_platform_spine_and_vector',
+    'test_foundation_fixture_is_separate_from_schema_migrations',
+    'test_chat_quote_revision_publication_state_and_immutability_are_database_enforced',
+    'test_price_snapshots_are_immutable_and_refresh_failures_are_separate',
+    'test_visual_artifacts_require_and_preserve_source_artifact_linkage',
+    'test_quote_arithmetic_and_overlap_bounds_are_database_enforced',
+    'test_quote_persists_required_and_recommended_operation_collections',
+    'test_quote_operation_categories_upgrade_existing_025_table',
+    'test_worker_events_persist_the_complete_event_envelope',
+    'test_reusable_derived_article_key_prevents_query_uniqueness_collisions',
+    'test_markup_is_structurally_prohibited',
+    'test_psql_command_includes_host_and_port_when_address_provided',
+    'test_resolve_database_address_respects_explicit_and_environment',
+    'test_emit_is_embedded_and_uses_one_session_lock',
+    'test_manifest_rejects_holes_unsafe_names_symlinks_and_wrong_stems',
+    'test_fixture_prefix_accepts_only_contiguous_canonical_prefix',
+    'test_default_refuses_truncated_manifest_before_sql_output',
+    'test_default_invocation_executes_identical_emit_output_and_cleans_tempfile',
+    'test_fixed_transaction_contract_is_audited',
+    'test_adapter_streams_one_driver_and_returns_only_actual_applications',
+    'test_adapter_propagates_generator_and_psql_failure',
+    'test_full_chain_restart_preserves_every_marker_and_schema',
+    'test_partial_catalog_row_survives_full_restart',
+    'test_empty_bootstrap_and_untracked_application_rejection[False]',
+    'test_empty_bootstrap_and_untracked_application_rejection[True]',
+    'test_invalid_ledger_fails_before_pending_application_ddl[unknown]',
+    'test_invalid_ledger_fails_before_pending_application_ddl[wrong_stem]',
+    'test_invalid_ledger_fails_before_pending_application_ddl[gap]',
+    'test_invalid_ledger_fails_before_pending_application_ddl[duplicate_shape]',
+    'test_invalid_ledger_fails_before_pending_application_ddl[wrong_timestamp]',
+    'test_original_038_adoption_and_markerless_033_effects_are_once_only',
+    'test_genuine_036_upgrade_preserves_jobs_and_matches_fresh_schema',
+    'test_migration_failure_rolls_back_only_active_file_then_retry[2]',
+    'test_migration_failure_rolls_back_only_active_file_then_retry[33]',
+    'test_migration_failure_rolls_back_only_active_file_then_retry[36]',
+    'test_migration_failure_rolls_back_only_active_file_then_retry[37]',
+    'test_migration_failure_rolls_back_only_active_file_then_retry[38]',
+    'test_migration_failure_rolls_back_only_active_file_then_retry[39]',
+    'test_migration_failure_rolls_back_only_active_file_then_retry[40]',
+    'test_recorded_001_and_partial_unmarked_next_file_remain_retryable',
+    'test_two_full_runners_serialize_and_apply_each_version_once[False]',
+    'test_two_full_runners_serialize_and_apply_each_version_once[True]',
+    'test_connection_death_releases_lock_and_rolls_back_active_file',
+    'test_restart_after_committed_037_only_applies_038_and_039',
+    'test_native_python_adapter_applies_then_skips_in_one_session',
+    'test_markerless_033_failure_rolls_back_reviewer_effects_and_marker',
+    'test_populated_publication_and_all_lifecycle_records_survive_restart',
+    'test_populated_038_upgrade_only_adds_identity_schema',
+    'test_populated_customer_identity_restart_preserves_rows_and_ledger',
+)
+COMMON_REFS = (
+    'workshop-commerce-tests.xml',
+    'workshop-commerce-pytest.stdout.log',
+    'workshop-commerce-pytest.stderr.log',
+)
+GO_REFS = (
+    'workshop-commerce-go-events.jsonl',
+    'workshop-commerce-go-stderr.log',
+)
 AUTHORITY = tuple((name, False) for name in (
     'fixture_verified', 'product_candidate_verified', 'staging_verified',
     'deployment_authorized', 'cutover_verified', 'implementation_authorized',
@@ -112,6 +188,8 @@ def _digest(value):
 
 def _context(value):
     _require(type(value) is CommerceContext, 'context_invalid')
+    _require(all(hasattr(value, key) for key in ('candidate_sha', 'inventory_sha256',
+                 'source_manifest_sha256')), 'context_invalid')
     _require(type(value.candidate_sha) is str and value.candidate_sha == CANDIDATE
              and type(value.inventory_sha256) is str and value.inventory_sha256 == INVENTORY
              and _digest(value.source_manifest_sha256), 'context_invalid')
@@ -119,6 +197,8 @@ def _context(value):
 
 def _receipt(value):
     _require(type(value) is SimulatedExit, 'receipt_invalid')
+    _require(all(hasattr(value, key) for key in ('exit_code', 'timed_out', 'interrupted',
+                 'ownership_lost', 'cleanup_complete')), 'receipt_invalid')
     _require(value.exit_code is None or (type(value.exit_code) is int
              and -255 <= value.exit_code <= 255), 'receipt_invalid')
     _require(all(type(v) is bool for v in (value.timed_out, value.interrupted,
@@ -130,21 +210,24 @@ def _receipt(value):
 def _outer(value, context):
     _context(context)
     _require(type(value) is CommerceInput, 'input_invalid')
-    streams = (value.junit_raw, value.pytest_stdout_raw, value.pytest_stderr_raw)
+    streams = tuple(getattr(value, key, None) for key in
+                    ('junit_raw', 'pytest_stdout_raw', 'pytest_stderr_raw'))
     for raw in streams:
         _require(type(raw) is bytes, 'input_type')
+    _require(hasattr(value, 'go_support'), 'go_support_invalid')
     support = value.go_support
     _require(support is None or type(support) is CommerceGoSupport, 'go_support_invalid')
     if support is not None:
-        for raw in (support.events_raw, support.stderr_raw):
+        go_streams = tuple(getattr(support, key, None) for key in ('events_raw', 'stderr_raw'))
+        for raw in go_streams:
             _require(type(raw) is bytes, 'input_type')
-        streams += (support.events_raw, support.stderr_raw)
+        streams += go_streams
     for raw, limit, code in zip(streams, (4194304, 1048576, 1048576, 67108864, 1048576),
                                 ('junit_size', 'pytest_stdout_size', 'pytest_stderr_size', 'events_size', 'stderr_size')):
         _require(len(raw) <= limit, code)
-    _receipt(value.pytest_receipt)
+    _receipt(getattr(value, 'pytest_receipt', None))
     if support is not None:
-        _receipt(support.receipt)
+        _receipt(getattr(support, 'receipt', None))
     _require(sum(len(raw) for raw in streams) <= 74448896, 'aggregate_size')
 
 
@@ -153,6 +236,17 @@ class _CharacterData:
     def __init__(self):
         self.total = 0
         self.terminal = None
+        self.outside_cr = False
+
+    def outside(self, text):
+        # Expat reports prolog/epilog whitespace to DefaultHandler without
+        # XML newline normalization. Preserve XML1.0 semantics across chunks.
+        for char in text:
+            previous_cr = self.outside_cr
+            self.outside_cr = char == "\r"
+            if char == "\n" and previous_cr:
+                continue
+            self.check("\n" if char == "\r" else char)
 
     def check(self, text):
         for char in text:
@@ -188,6 +282,7 @@ def parse_commerce_junit(raw: bytes) -> tuple[JUnitCase, ...]:
 
     def start(tag, attrs):
         nonlocal nodes, current
+        characters.outside_cr = False
         nodes += 1
         depth = len(stack) + 1
         _require(nodes <= 256, 'xml_nodes')
@@ -209,6 +304,7 @@ def parse_commerce_junit(raw: bytes) -> tuple[JUnitCase, ...]:
 
     def end(tag):
         nonlocal current
+        characters.outside_cr = False
         if len(stack) == 3:
             characters.terminal = None
         elif len(stack) == 2:
@@ -219,6 +315,7 @@ def parse_commerce_junit(raw: bytes) -> tuple[JUnitCase, ...]:
     parser.StartElementHandler = start
     parser.EndElementHandler = end
     parser.CharacterDataHandler = characters.check
+    parser.DefaultHandler = characters.outside
     parser.StartDoctypeDeclHandler = _forbidden
     parser.EntityDeclHandler = _forbidden
     parser.ExternalEntityRefHandler = _forbidden
@@ -348,3 +445,96 @@ def translate_commerce(value: CommerceInput, context: CommerceContext) -> Commer
         None if support is None else hashlib.sha256(support.stderr_raw).hexdigest(),
         value.pytest_receipt, None if support is None else support.receipt,
         top, rows, reasons, 0, False, (), AUTHORITY, None, None)
+
+
+def _valid_diagnostic(value):
+    code = 'diagnostic_invalid'
+    _require(type(value) is CommerceDiagnostic, code)
+    for actual, expected in ((value.contract, 'workshop-final180-commerce-synthetic-v1'),
+                             (value.observation_kind, 'simulated-source-profile-validation'),
+                             (value.candidate_sha, CANDIDATE), (value.inventory_sha256, INVENTORY)):
+        _require(type(actual) is str and actual == expected, code)
+    for digest in (value.source_manifest_sha256, value.junit_sha256,
+                   value.pytest_stdout_sha256, value.pytest_stderr_sha256):
+        _require(_digest(digest), code)
+    _require(type(value.go_support_present) is bool, code)
+    if value.go_support_present:
+        _require(_digest(value.go_events_sha256) and _digest(value.go_stderr_sha256)
+                 and value.go_receipt is not None, code)
+    else:
+        _require(value.go_events_sha256 is None and value.go_stderr_sha256 is None
+                 and value.go_receipt is None, code)
+    try:
+        _receipt(value.pytest_receipt)
+        if value.go_support_present:
+            _receipt(value.go_receipt)
+    except AdapterError:
+        raise AdapterError(code) from None
+    _require(type(value.authority) is tuple and len(value.authority) == len(AUTHORITY), code)
+    for pair, expected in zip(value.authority, AUTHORITY):
+        _require(type(pair) is tuple and len(pair) == 2
+                 and type(pair[0]) is str and pair[0] == expected[0] and pair[1] is False, code)
+    _require(type(value.accepted_case_credit) is int and value.accepted_case_credit == 0
+             and value.profiles_enabled is False and type(value.enabled_tiers) is tuple
+             and value.enabled_tiers == () and value.runtime_lock is None
+             and value.run_record is None, code)
+    reasons = value.reasons
+    _require(type(reasons) is tuple and len(reasons) <= len(REASONS)
+             and all(type(r) is str and r in REASONS for r in reasons), code)
+    _require(reasons == tuple(r for r in REASONS if r in reasons), code)
+    for prefix, parser, semantic in (('xml:', XML_PARSER, XML_SEMANTIC),
+                                     ('go:', GO_PARSER, GO_SEMANTIC)):
+        found = sum(prefix + c in reasons for c in parser)
+        _require(found <= 1 and not (found and any(prefix + c in reasons for c in semantic)), code)
+    if value.go_support_present:
+        _require('go:support_absent' not in reasons, code)
+    else:
+        _require(tuple(r for r in reasons if r.startswith('go:')) == ('go:support_absent',), code)
+    for prefix, receipt in (('pytest', value.pytest_receipt), ('go', value.go_receipt)):
+        expected = set() if receipt is None else _receipt_facts(receipt, prefix)
+        actual = {prefix + ':' + c for c in RECEIPT_CODES if prefix + ':' + c in reasons}
+        _require(actual == expected, code)
+    rows, top = _statuses(reasons)
+    _require(type(value.observations) is tuple and len(value.observations) == 14, code)
+    for index, (row, name, status) in enumerate(zip(value.observations, COMMERCE_IDS, rows)):
+        _require(type(row) is CommerceOutcome, code)
+        refs = COMMON_REFS + GO_REFS if index == 0 and value.go_support_present else COMMON_REFS
+        _require(type(row.family) is str and row.family == 'commerce'
+                 and type(row.logical_id) is str and row.logical_id == name
+                 and type(row.raw_refs) is tuple and all(type(r) is str for r in row.raw_refs)
+                 and row.raw_refs == refs and type(row.status) is str and row.status == status, code)
+    _require(type(value.status) is str and value.status == top, code)
+
+
+def _receipt_object(receipt):
+    if receipt is None:
+        return None
+    return dict(exit_code=receipt.exit_code, timed_out=receipt.timed_out,
+                interrupted=receipt.interrupted, ownership_lost=receipt.ownership_lost,
+                cleanup_complete=receipt.cleanup_complete)
+
+
+def serialize_commerce_diagnostic(value: CommerceDiagnostic) -> bytes:
+    try:
+        _valid_diagnostic(value)
+    except AttributeError:
+        # An exact dataclass can still be constructed without its required
+        # fields through object.__new__; missing metadata is invalid.
+        raise AdapterError('diagnostic_invalid') from None
+    obj = dict(
+        contract=value.contract, observation_kind=value.observation_kind,
+        candidate_sha=value.candidate_sha, inventory_sha256=value.inventory_sha256,
+        source_manifest_sha256=value.source_manifest_sha256, junit_sha256=value.junit_sha256,
+        pytest_stdout_sha256=value.pytest_stdout_sha256,
+        pytest_stderr_sha256=value.pytest_stderr_sha256, go_support_present=value.go_support_present,
+        go_events_sha256=value.go_events_sha256, go_stderr_sha256=value.go_stderr_sha256,
+        pytest_receipt=_receipt_object(value.pytest_receipt), go_receipt=_receipt_object(value.go_receipt),
+        status=value.status, observations=[dict(family=r.family, logical_id=r.logical_id,
+            status=r.status, raw_refs=r.raw_refs) for r in value.observations],
+        reasons=value.reasons, accepted_case_credit=value.accepted_case_credit,
+        profiles_enabled=value.profiles_enabled, enabled_tiers=value.enabled_tiers,
+        authority=dict(value.authority), runtime_lock=value.runtime_lock, run_record=value.run_record)
+    raw = (json.dumps(obj, sort_keys=True, separators=(',', ':'),
+                      ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+    _require(len(raw) <= 65536, 'diagnostic_size')
+    return raw
