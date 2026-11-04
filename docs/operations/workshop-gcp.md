@@ -353,3 +353,22 @@ hash/length; the signed post-upload core commits the returned artifact ID and
 outer bytes. A valid old-attempt signature is rejected even when source and
 inner bytes match. The separately supplied rollback manifest remains outside
 the two-member archive and must match the independent canonical approval hash.
+
+
+## Dormant publisher Python review correction checkpoint
+
+Goal: Correct the dormant Python publisher library's missing upload-pin acceptance, FIFO open hang and SIGTERM child leak without adding live publication or activation authority.
+
+Source candidate `d94b2a4a77aad1cd7f3d62514e4c20729ba4cd39` has three independently reproduced findings: P1 missing/null toolkit-lock and runtime-origin pins can yield accepted publication; P2 private_read blocks opening an owned0600 FIFO; P2 owner SIGTERM bypasses cleanup and leaves its isolated child alive. This checkpoint is docs/tracking only. Plan `docs/superpowers/plans/2026-11-04-workshop-publisher-python-review-corrections.md`; record `docs/agents/records/2026-11-04-workshop-publisher-python-review-corrections.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-publisher-python-review-corrections.json`; canonical operations notes `docs/operations/workshop-gcp.md`. Implementation allowlist is only publisher_adapters.py/test_publisher_adapters.py under infra/deploy/gce and additive operations notes. No implementation correction precedes committed full-SHA passing preflight, independent checkpoint review and fresh coordinator dispatch.
+
+Concrete todo:
+
+- [ ] Synchronize this three-defect correction goal, exact source/allowlist and todo across Issue186/Project8/canonical operations notes; preserve the previous Project index verbatim/hash; commit/push, pin full-SHA preflight, and stop for independent checkpoint review and fresh coordinator dispatch.
+- [ ] After dispatch, add red/green regressions for missing/null/empty/malformed upload owner pins and observations; require typed canonical HTTPS origin and lowercase64 toolkit SHA before finalize/verify callbacks, preserving a valid fresh signed positive control.
+- [ ] Add a subprocess-isolated FIFO red/green regression with an external test deadline; open private outputs nonblocking/no-follow and reject every nonregular output before reading, retaining existing ownership/mode/link/size/digest guards.
+- [ ] Add owner-boundary SIGTERM red/green regressions for an ordinary child and a SIGTERM-ignoring child; install and restore bounded main-thread cancellation ownership around process creation through cleanup, reject unsupported thread/mask ownership before spawning, and prove owned child termination/reaping.
+- [ ] Run focused and existing Python regressions, syntax, exact-scope/diff and pinned preflight; commit/push coherent verified corrections for independent exact-SHA review, retaining every no-live/default-dependency/readiness limitation.
+
+Default WIF/OCI push/Syft/keyless Sigstore certificate/transparency composition remains uninstalled. No workflow, toolkit, cloud, registry, provider, host, Docker, credentials, activation, integration or deployment is authorized. Source/workflow/run-attempt separation, original outer/inner/archive/member identity, independent full-manifest approval and separate rollback input remain intact; all production/runtime readiness remains false. Prior Project index SHA256 `b8bca1611e3ed2563fb5ce71bfacbde542ee1f069e7ffd4c08f131fc30e4d26b` is preserved verbatim in the synchronization comment; every unrelated PG17/DTO/R6/activation history remains unchanged.
+
+Correction tracking readback: https://github.com/lucronn/autodata/issues/186#issuecomment-6621647909; prior Project index SHA256 `b8bca1611e3ed2563fb5ce71bfacbde542ee1f069e7ffd4c08f131fc30e4d26b` preserved verbatim. Dedicated record stores verified Issue/comment/Project hashes. No implementation changes or activation occurred during this correction checkpoint.
