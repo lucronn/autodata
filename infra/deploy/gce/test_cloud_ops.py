@@ -953,4 +953,277 @@ class PublisherProducerTests(unittest.TestCase):
             self.ops.produce_release_archive(manifest,self.config,self.producer_images())
 
 
+
+class PublisherV2Tests(unittest.TestCase):
+    setUp = PublisherProducerTests.setUp
+    producer_images = PublisherProducerTests.producer_images
+
+    def fixtures(self):
+        provider='projects/123456/locations/global/workloadIdentityPools/workshop/providers/github'
+        workflow='lucronn/autodata/.github/workflows/release-workshop.yml@refs/heads/master'
+        self.trust={'repository':'lucronn/autodata','repository_id':'123456','repository_owner_id':'987654',
+            'environment':'staging','ref':'refs/heads/master','workflow_ref':workflow,
+            'oidc_issuer':'https://token.actions.githubusercontent.com',
+            'oidc_audience':'https://iam.googleapis.com/'+provider,'wif_provider':provider,
+            'publish_service_account':'workshop-publish@autodata-host.iam.gserviceaccount.com',
+            'deploy_service_account':'workshop-deploy@autodata-host.iam.gserviceaccount.com',
+            'builder_id':'https://github.com/'+workflow}
+        self.archive,self.envelope=self.ops.produce_release_archive(self.manifest,self.config,self.producer_images())
+        outer=io.BytesIO()
+        with zipfile.ZipFile(outer,'w') as z:z.writestr('release.zip',self.archive)
+        self.outer=outer.getvalue()
+        self.binding=dict(self.envelope,published_run_id='1234',artifact_id='5678',
+            artifact_name='workshop-release-'+self.manifest['source_sha'],
+            artifact_digest='sha256:'+hashlib.sha256(self.outer).hexdigest(),artifact_bytes=len(self.outer))
+        self.metadata={'id':'5678','run_id':'1234','name':self.binding['artifact_name'],
+            'expired':False,'digest':self.binding['artifact_digest'],'bytes':len(self.outer)}
+        identity={k:v for k,v in self.trust.items() if k not in ('publish_service_account','deploy_service_account','wif_provider')}
+        identity.update(signer_workflow_ref=workflow,source_sha=self.manifest['source_sha'])
+        self.subjects={role:self.subject(role) for role in ('api','ingestion','migration')}
+        self.transcript={
+            'run':{'id':'1234','repository':'lucronn/autodata','repository_id':'123456',
+                'repository_owner_id':'987654','source_sha':self.manifest['source_sha'],'workflow_ref':workflow,
+                'event':'workflow_dispatch','status':'completed','conclusion':'success'},
+            'artifact':self.metadata,'archive':{'transport_archive':self.outer,'release_archive':self.archive},
+            'images':self.producer_images(),'provenance':{'protocol_version':2,'simulation':True,
+                'identity':identity,'subjects':self.subjects}}
+        self.execution={'run_id':'1234','source_epoch':1700000000,
+            'tool_sha256':{'git':'1'*64,'docker':'2'*64,'syft':'3'*64}}
+        self.sbom=b'{"spdxVersion":"SPDX-2.3","documentNamespace":"https://sbom.example/doc","name":"synthetic","packages":[]}'
+
+    def subject(self,role):
+        image=self.manifest['images'][role]
+        return {'image_digest':image['reference'].split('@')[1],'image_id':image['image_id'],
+            'source_sha':self.manifest['source_sha'],'service_config_sha256':self.manifest['service_config_sha256'],
+            'platform':'linux/amd64','provenance_uri':image['provenance_uri'],'sbom_uri':image['sbom_uri'],
+            'signature_valid':True,'sbom_digest_valid':True}
+
+    def evaluate(self,transcript=None,binding=None,trust=None):
+        calls=[]; events=self.transcript if transcript is None else transcript
+        def transport(request):
+            calls.append(request)
+            value=events[request['name']]
+            if isinstance(value,Exception):raise value
+            return copy.deepcopy(value)
+        result=self.ops.evaluate_publication_v2(self.manifest,self.config,
+            self.binding if binding is None else binding,self.trust if trust is None else trust,transport)
+        return result,calls
+
+    def test_publication_binds_independent_wrapper_inner_and_provenance(self):
+        self.assertTrue(hasattr(self.ops,'evaluate_publication_v2'),'v2 evaluator missing')
+        self.fixtures();result,calls=self.evaluate()
+        self.assertEqual(result['status'],'transcript_consistent')
+        self.assertTrue(result['simulation']);self.assertFalse(result['provenance_authenticated'])
+        self.assertFalse(result['deployment_authorized'])
+        self.assertEqual(result['binding_sha256'],hashlib.sha256(self.rt.canonical_bytes(self.binding)).hexdigest())
+        self.assertEqual([r['name'] for r in calls],['run','artifact','archive','images','provenance'])
+        self.assertNotEqual(self.binding['artifact_digest'],'sha256:'+self.binding['archive_sha256'])
+        self.assertEqual(calls[0],{'name':'run','method':'GET','url':'https://api.github.com/repos/lucronn/autodata/actions/runs/1234',
+            'argv':[],'body':None,'timeout_seconds':30,'max_output_bytes':65536})
+        self.assertEqual(calls[2]['max_output_bytes'],16777216)
+        for call in calls[3:]:self.assertIsNone(call['url']);self.assertEqual(call['argv'],[])
+
+    def test_publication_rejects_unbound_inputs_before_observation(self):
+        self.assertTrue(hasattr(self.ops,'evaluate_publication_v2'),'v2 evaluator missing')
+        self.fixtures()
+        mutations=[('protocol_version',True),('archive_bytes',True),('artifact_bytes',1.0),
+            ('member_bytes',{'release.json':True,'images.json':1}),('artifact_name','latest'),
+            ('manifest_sha256','0'*64),('service_config_sha256','0'*64),('source_sha','0'*40),('extra',1)]
+        for key,value in mutations:
+            binding=copy.deepcopy(self.binding);binding[key]=value
+            with self.subTest(key=key),self.assertRaises(self.ops.ContractError):self.evaluate(binding=binding)
+        for key,value in [('repository','evil/autodata'),('repository_id','0'),('repository_owner_id',True),
+            ('environment','production'),('ref','refs/heads/other'),('oidc_issuer','https://evil.example'),
+            ('oidc_audience','evil'),('builder_id','evil'),('wif_provider','evil'),
+            ('publish_service_account',self.trust['deploy_service_account']),('extra',True)]:
+            trust=dict(self.trust);trust[key]=value
+            with self.subTest(key=key),self.assertRaises(self.ops.ContractError):self.evaluate(trust=trust)
+
+    def test_publication_rejects_each_observation_before_later_calls(self):
+        self.assertTrue(hasattr(self.ops,'evaluate_publication_v2'),'v2 evaluator missing')
+        self.fixtures()
+        mutations=[('run',lambda x:x.update(repository_owner_id='1')),('run',lambda x:x.update(conclusion='failure')),
+            ('run',lambda x:x.update(extra=True)),('artifact',lambda x:x.update(expired=True)),
+            ('artifact',lambda x:x.update(bytes=True)),('artifact',lambda x:x.update(run_id='1')),
+            ('archive',lambda x:x.update(transport_archive=b'changed')),('archive',lambda x:x.update(release_archive=b'changed')),
+            ('images',lambda x:x['api'].update(platform='linux/arm64')),
+            ('provenance',lambda x:x.update(simulation=False)),
+            ('provenance',lambda x:x['identity'].update(oidc_issuer='https://evil.example'))]
+        for key,value in [('source_sha','0'*40),('image_digest','sha256:'+'0'*64),('image_id','sha256:'+'0'*64),
+            ('signature_valid',False),('signature_valid',1),('sbom_digest_valid',False),('sbom_uri','https://evil.example/latest')]:
+            mutations.append(('provenance',lambda x,k=key,v=value:x['subjects']['api'].update({k:v})))
+        for stage,mutate in mutations:
+            transcript=copy.deepcopy(self.transcript);mutate(transcript[stage])
+            result,calls=self.evaluate(transcript)
+            with self.subTest(stage=stage):
+                self.assertEqual(result['status'],'failed');self.assertEqual(calls[-1]['name'],stage)
+                self.assertNotIn('evil',str(result));self.assertIsNone(result.get('binding'))
+
+    def test_publication_timeouts_oversize_and_exception_are_redacted(self):
+        self.assertTrue(hasattr(self.ops,'evaluate_publication_v2'),'v2 evaluator missing')
+        self.fixtures()
+        for stage in self.transcript:
+            for error in [TimeoutError('secret-token'),RuntimeError('secret-token')]:
+                transcript=copy.deepcopy(self.transcript);transcript[stage]=error
+                result,calls=self.evaluate(transcript)
+                self.assertEqual(result['status'],'timed_out' if isinstance(error,TimeoutError) else 'failed')
+                self.assertEqual(calls[-1]['name'],stage);self.assertNotIn('secret-token',str(result))
+        transcript=copy.deepcopy(self.transcript);transcript['run']['extra']='X'*65536
+        self.assertEqual(self.evaluate(transcript)[0]['status'],'failed')
+
+    def orchestrate(self,alter=None):
+        calls=[]
+        def fake(kind):
+            def call(request):
+                calls.append((kind,copy.deepcopy(request)));name=request['name']
+                if kind=='executor':
+                    stdout=b''
+                    if name=='verify_tools':stdout=self.rt.canonical_bytes(self.execution['tool_sha256'])
+                    elif name=='checkout_identity':stdout=(self.manifest['source_sha']+'\n1700000000\n').encode()
+                    elif name.startswith('sbom_'):stdout=self.sbom
+                    elif name not in ('checkout_init','checkout_fetch','checkout_select','build_api','build_ingestion','build_migration'):
+                        raise AssertionError('unknown executable operation')
+                    response={'exit_code':0,'stdout':stdout}
+                elif kind=='registry':
+                    role=request['role'];image=self.manifest['images'][role]
+                    response={'reference':image['reference'],'image_id':image['image_id'],'platform':'linux/amd64',
+                        'build_source_sha':self.manifest['source_sha'],'build_config_sha256':self.manifest['service_config_sha256']}
+                elif kind=='evidence':
+                    response=dict(self.subjects[request['role']],simulation=True,
+                        sbom_sha256=hashlib.sha256(self.sbom).hexdigest(),oidc_issuer=self.trust['oidc_issuer'],
+                        oidc_audience=self.trust['oidc_audience'],signer_workflow_ref=self.trust['workflow_ref'],builder_id=self.trust['builder_id'])
+                elif kind=='artifact' and name=='upload':
+                    response=dict(self.metadata);response['artifact_id']=response.pop('id');response['simulation']=True
+                elif kind=='artifact' and name=='readback':
+                    response={'metadata':dict(self.metadata),'transport_archive':self.outer,'release_archive':self.archive}
+                    response['metadata']['artifact_id']=response['metadata'].pop('id')
+                else:raise AssertionError('unknown transport operation')
+                if alter is not None:response=alter(kind,request,response)
+                if isinstance(response,Exception):raise response
+                return response
+            return call
+        result=self.ops.orchestrate_publication(self.manifest,self.config,self.trust,self.execution,
+            executor=fake('executor'),registry_transport=fake('registry'),evidence_transport=fake('evidence'),artifact_transport=fake('artifact'))
+        return result,calls
+
+    def test_concrete_orchestration_drives_build_evidence_upload_and_separate_check(self):
+        self.assertTrue(hasattr(self.ops,'orchestrate_publication'),'orchestrator missing')
+        self.fixtures();result,calls=self.orchestrate()
+        self.assertEqual(result['status'],'transcript_consistent');self.assertEqual(result['binding'],self.binding)
+        self.assertFalse(result['provenance_authenticated']);self.assertFalse(result['deployment_authorized'])
+        self.assertEqual([x[1]['name'] for x in calls],['verify_tools','checkout_init','checkout_fetch','checkout_select','checkout_identity',
+            'build_api','image','build_ingestion','image','build_migration','image',
+            'sbom_api','publish_and_verify','sbom_ingestion','publish_and_verify','sbom_migration','publish_and_verify','upload','readback'])
+        self.assertEqual(calls[2][1]['argv'],['/usr/bin/git','-C','/work/workshop-release/source','-c','core.hooksPath=/dev/null',
+            'fetch','--no-tags','--depth=1','https://github.com/lucronn/autodata.git',self.manifest['source_sha']])
+        for role,dockerfile in [('api','apps/api-go/Dockerfile'),('ingestion','workers/ingestion-python/Dockerfile'),('migration','infra/deploy/gce/migration.Dockerfile')]:
+            command=next(r for k,r in calls if r['name']=='build_'+role)
+            self.assertEqual(command['argv'],['/usr/bin/docker','buildx','build','--platform','linux/amd64','--provenance=mode=max',
+                '--sbom=true','--push','--build-arg','SOURCE_DATE_EPOCH=1700000000','--file',dockerfile,'--tag',
+                self.config['resources']['artifact_repository']+'/'+role+':source-'+self.manifest['source_sha'],
+                '--metadata-file','/work/workshop-release/'+role+'-build.json','.'])
+            self.assertEqual(command['timeout_seconds'],1800)
+        upload=next(r for k,r in calls if r['name']=='upload')
+        self.assertEqual(upload['members'],{'release.zip':self.archive})
+        host,calls=self.host(result)
+        self.assertEqual(host['status'],'unavailable');self.assertEqual(len(calls),1)
+
+    def test_orchestrator_failures_at_every_stage_never_publish_success(self):
+        self.assertTrue(hasattr(self.ops,'orchestrate_publication'),'orchestrator missing')
+        self.fixtures();_,reference=self.orchestrate()
+        for position in range(len(reference)):
+            for error in [RuntimeError('sensitive'),TimeoutError('sensitive')]:
+                count=[0]
+                def alter(kind,request,response):
+                    index=count[0];count[0]+=1
+                    return error if index==position else response
+                result,calls=self.orchestrate(alter)
+                with self.subTest(position=position,error=type(error)):
+                    self.assertEqual(len(calls),position+1)
+                    self.assertEqual(result['status'],'timed_out' if isinstance(error,TimeoutError) else 'failed')
+                    self.assertIsNone(result['binding']);self.assertNotIn('sensitive',str(result))
+
+    def test_orchestrator_rejects_checkout_build_sbom_evidence_and_artifact_drift(self):
+        self.assertTrue(hasattr(self.ops,'orchestrate_publication'),'orchestrator missing')
+        self.fixtures()
+        cases=[('verify_tools',lambda x:x.update(stdout=b'{}')),
+            ('checkout_identity',lambda x:x.update(stdout=(self.manifest['source_sha']+'\n1\n').encode())),
+            ('build_ingestion',lambda x:x.update(exit_code=1)),('build_api',lambda x:x.update(exit_code=True)),
+            ('build_api',lambda x:x.update(stdout=b'X'*65537)),
+            ('image',lambda x:x.update(image_id='sha256:'+'0'*64)),('image',lambda x:x.update(build_config_sha256='0'*64)),
+            ('image',lambda x:x.update(build_source_sha='0'*40)),
+            ('sbom_api',lambda x:x.update(stdout=b'{"spdxVersion":"SPDX-2.3","spdxVersion":"SPDX-2.3"}')),
+            ('sbom_api',lambda x:x.update(stdout=b'X'*4194305)),
+            ('publish_and_verify',lambda x:x.update(signature_valid=False)),
+            ('publish_and_verify',lambda x:x.update(oidc_audience='evil')),
+            ('publish_and_verify',lambda x:x.update(sbom_sha256='0'*64)),
+            ('upload',lambda x:x.update(bytes=True)),('upload',lambda x:x.update(run_id='9')),
+            ('readback',lambda x:x.update(release_archive=b'changed')),
+            ('readback',lambda x:x.update(transport_archive=b'changed'))]
+        for name,mutate in cases:
+            def alter(kind,request,response):
+                if request['name']==name:mutate(response)
+                return response
+            result,calls=self.orchestrate(alter)
+            with self.subTest(name=name):self.assertEqual(result['status'],'failed');self.assertIsNone(result['binding'])
+
+    def test_orchestrator_invalid_policy_causes_no_operations(self):
+        self.assertTrue(hasattr(self.ops,'orchestrate_publication'),'orchestrator missing')
+        self.fixtures()
+        for key,value in [('source_epoch',True),('run_id','0'),('extra',1),('tool_sha256',{'git':'1'*64})]:
+            execution=dict(self.execution);execution[key]=value
+            def forbidden(*args):self.fail('operation on invalid input')
+            with self.subTest(key=key),self.assertRaises(self.ops.ContractError):
+                self.ops.orchestrate_publication(self.manifest,self.config,self.trust,execution,
+                    executor=forbidden,registry_transport=forbidden,evidence_transport=forbidden,artifact_transport=forbidden)
+
+    def host(self,publication=None,response=None):
+        if publication is None:publication=self.evaluate()[0]
+        checks={k:True for k in ('config','manifest','disk_uuid','metadata_guard','storage_guard','secrets','cached_images','migration_tree')}
+        checks.update(schema=False,services=False,runtime_evidence=False)
+        receipt={'schema_version':1,'operation':'deploy.sh check','run_id':None,'source_sha':self.manifest['source_sha'],
+            'status':'failed','started_at':'2026-11-03T12:00:00Z','finished_at':'2026-11-03T12:00:01Z','checks':checks,'failure_code':'missing_dependency'}
+        value={'exit_code':3,'receipt':receipt} if response is None else response
+        calls=[]
+        def transport(request):
+            calls.append(request)
+            if isinstance(value,Exception):raise value
+            return copy.deepcopy(value)
+        result=self.ops.evaluate_host_check(self.manifest,self.config,self.binding,self.trust,publication,transport)
+        return result,calls
+
+    def test_host_check_fixed_argv_cannot_promote_catalog_readiness(self):
+        self.assertTrue(hasattr(self.ops,'evaluate_host_check'),'host check missing')
+        self.fixtures();result,calls=self.host()
+        self.assertEqual(result['status'],'unavailable');self.assertEqual(result['failure_code'],'missing_dependency')
+        self.assertEqual(result['checks'],{'publication_consistent':True,'host_reply_valid':True,'schema':False,'services':False,'runtime_evidence':False})
+        self.assertEqual(calls[0],{'name':'host_check','method':None,'url':None,'body':None,'timeout_seconds':30,'max_output_bytes':65536,
+            'argv':['/usr/bin/gcloud','compute','ssh','workshop-stage','--project','autodata-host','--zone','us-central1-a',
+                '--tunnel-through-iap','--quiet','--command','sudo -n /opt/autodata/bin/deploy.sh check '+self.manifest['source_sha']]})
+        self.assertFalse(result['deployment_authorized'])
+
+    def test_host_rejects_success_unknown_fields_readiness_and_wrong_source(self):
+        self.assertTrue(hasattr(self.ops,'evaluate_host_check'),'host check missing')
+        self.fixtures();_,calls=self.host()
+        # Obtain fixture by independently defining the deployed reply contract.
+        checks={k:False for k in ('config','manifest','disk_uuid','metadata_guard','storage_guard','secrets','cached_images','migration_tree','schema','services','runtime_evidence')}
+        base={'exit_code':3,'receipt':{'schema_version':1,'operation':'deploy.sh check','run_id':None,'source_sha':self.manifest['source_sha'],
+            'status':'failed','started_at':'2026-11-03T12:00:00Z','finished_at':'2026-11-03T12:00:01Z','checks':checks,'failure_code':'missing_dependency'}}
+        cases=[lambda x:x.update(exit_code=0),lambda x:x.update(exit_code=True),lambda x:x.update(extra=True),
+            lambda x:x['receipt'].update(source_sha='0'*40),lambda x:x['receipt'].update(schema_version=True),
+            lambda x:x['receipt'].update(finished_at='2026-11-03T11:59:59Z'),lambda x:x['receipt']['checks'].update(schema=True),
+            lambda x:x['receipt']['checks'].update(services=True),lambda x:x['receipt']['checks'].update(runtime_evidence=True),
+            lambda x:x['receipt']['checks'].update(unknown=False),lambda x:x['receipt']['checks'].update(config=1)]
+        for mutate in cases:
+            response=copy.deepcopy(base);mutate(response)
+            self.assertEqual(self.host(response=response)[0]['status'],'failed')
+        response=copy.deepcopy(base);response['exit_code']=5;response['receipt']['failure_code']='operation_timed_out'
+        self.assertEqual(self.host(response=response)[0]['status'],'timed_out')
+        self.assertEqual(self.host(response=TimeoutError('hidden'))[0]['status'],'timed_out')
+        publication=self.evaluate()[0]
+        for key,value in [('provenance_authenticated',True),('simulation',False),('deployment_authorized',True),('binding_sha256','0'*64)]:
+            altered=dict(publication);altered[key]=value
+            with self.subTest(key=key),self.assertRaises(self.ops.ContractError):self.host(altered)
+
+
 if __name__ == '__main__': unittest.main()

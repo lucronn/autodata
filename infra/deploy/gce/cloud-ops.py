@@ -544,6 +544,366 @@ def produce_release_archive(manifest: dict, config: dict, images: dict, *,
     return archive, envelope
 
 
+
+_MAX_TRANSPORT_ARCHIVE = 16777216
+_TRUST_FIELDS = IDENTITY_FIELDS + ('oidc_issuer', 'oidc_audience', 'wif_provider',
+                                  'publish_service_account', 'deploy_service_account', 'builder_id')
+_BINDING_FIELDS = _ENVELOPE_FIELDS + ('published_run_id', 'artifact_id', 'artifact_name', 'artifact_digest', 'artifact_bytes')
+_PUBLICATION_CHECKS = ('run', 'artifact', 'archive', 'images', 'provenance')
+_PUBLISHER_CHECKS = ('tools', 'checkout', 'images', 'evidence', 'archive', 'upload', 'readback')
+_HOST_CHECKS = ('config', 'manifest', 'disk_uuid', 'metadata_guard', 'storage_guard', 'secrets',
+                'cached_images', 'migration_tree', 'schema', 'services', 'runtime_evidence')
+_RESULT_COMMON = ('protocol_version', 'operation', 'status', 'simulation', 'provenance_authenticated',
+                  'deployment_authorized', 'source_sha', 'checks', 'failure_code')
+_PUBLISH_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C', 'GIT_CONFIG_NOSYSTEM': '1',
+                'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_TERMINAL_PROMPT': '0',
+                'DOCKER_CONFIG': '/run/workshop-publisher/docker'}
+_PUBLISH_ROOT = '/work/workshop-release'
+
+
+def _integer(value, low, high):
+    require(type(value) is int and low <= value <= high)
+
+
+def _digest(value):
+    rt.match(value, r'[0-9a-f]{64}')
+
+
+def _numeric_id(value):
+    rt.match(value, r'[1-9][0-9]{0,19}')
+
+
+def _bounded_json(value, maximum=MAX_RECEIPT):
+    """Bound supplied fake DTOs before canonical encoding, including nesting."""
+    remaining = [maximum]
+    def visit(item, depth):
+        require(depth <= 32)
+        remaining[0] -= 1
+        require(remaining[0] >= 0)
+        if type(item) is str:
+            require(len(item) <= remaining[0])
+            remaining[0] -= len(item.encode('utf-8'))
+            require(remaining[0] >= 0)
+        elif type(item) in (dict, list):
+            require(len(item) <= remaining[0])
+            for key in item:
+                if type(item) is dict:
+                    require(type(key) is str)
+                    visit(key, depth + 1); visit(item[key], depth + 1)
+                else:
+                    visit(key, depth + 1)
+        else:
+            require(item is None or type(item) in (int, float, bool))
+            if type(item) is int: require(item.bit_length() <= 256)
+    visit(value, 0)
+    require(len(rt.canonical_bytes(value)) <= maximum)
+    return value
+
+
+def _validate_trust(trust, config):
+    rt.exact_object(trust, _TRUST_FIELDS)
+    identity = {key: trust[key] for key in IDENTITY_FIELDS}
+    validate_identity('publish', identity, identity, config['environment'])
+    require(trust['repository'] == 'lucronn/autodata' and trust['ref'] == 'refs/heads/master')
+    require(trust['oidc_issuer'] == 'https://token.actions.githubusercontent.com')
+    rt.match(trust['wif_provider'], r'projects/[1-9][0-9]*/locations/global/workloadIdentityPools/[a-z][a-z0-9-]{3,62}/providers/[a-z][a-z0-9-]{3,62}')
+    require(trust['oidc_audience'] == 'https://iam.googleapis.com/' + trust['wif_provider'])
+    for key in ('publish_service_account', 'deploy_service_account'):
+        rt.match(trust[key], r'[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]{4,28}[a-z0-9]\.iam\.gserviceaccount\.com')
+    require(trust['publish_service_account'] != trust['deploy_service_account'])
+    require(trust['builder_id'] == 'https://github.com/' + trust['workflow_ref'])
+    _bounded_json(trust)
+
+
+def _validate_binding(binding, manifest):
+    rt.exact_object(binding, _BINDING_FIELDS)
+    _same(binding['protocol_version'], 2)
+    require(binding['source_sha'] == manifest['source_sha'])
+    require(binding['service_config_sha256'] == manifest['service_config_sha256'])
+    require(binding['manifest_sha256'] == rt.sha256(manifest))
+    _digest(binding['archive_sha256'])
+    _integer(binding['archive_bytes'], 1, _MAX_RELEASE_ARCHIVE)
+    _integer(binding['artifact_bytes'], 1, _MAX_TRANSPORT_ARCHIVE)
+    rt.match(binding['artifact_digest'], r'sha256:[0-9a-f]{64}')
+    for key in ('published_run_id', 'artifact_id'): _numeric_id(binding[key])
+    require(binding['artifact_name'] == 'workshop-release-' + manifest['source_sha'])
+    for key in ('member_sha256', 'member_bytes'):
+        rt.exact_object(binding[key], ('release.json', 'images.json'))
+    for value in binding['member_sha256'].values(): _digest(value)
+    for value in binding['member_bytes'].values(): _integer(value, 1, rt.MAX_JSON_BYTES)
+    _bounded_json(binding)
+
+
+def _subject(manifest, role):
+    image = manifest['images'][role]
+    return {'image_digest': image['reference'].split('@')[1], 'image_id': image['image_id'],
+            'source_sha': manifest['source_sha'], 'service_config_sha256': manifest['service_config_sha256'],
+            'platform': manifest['platform'], 'provenance_uri': image['provenance_uri'],
+            'sbom_uri': image['sbom_uri'], 'signature_valid': True, 'sbom_digest_valid': True}
+
+
+def _simulated_result(operation, source_sha, checks, **extra):
+    return dict(protocol_version=2, operation=operation, status='failed', simulation=True,
+                provenance_authenticated=False, deployment_authorized=False, source_sha=source_sha,
+                checks={name: False for name in checks}, failure_code='operation_failed', **extra)
+
+
+def _failed_result(result, error):
+    timeout = isinstance(error, TimeoutError)
+    result.update(status='timed_out' if timeout else 'failed',
+                  failure_code='operation_timed_out' if timeout else 'operation_failed')
+
+
+def _request(name, seconds=300, maximum=MAX_RECEIPT, *, url=None, argv=None):
+    return {'name': name, 'method': 'GET' if url else None, 'url': url,
+            'argv': [] if argv is None else argv, 'body': None,
+            'timeout_seconds': seconds, 'max_output_bytes': maximum}
+
+
+def _archive_pair(value, binding, manifest):
+    rt.exact_object(value, ('transport_archive', 'release_archive'))
+    for key, size, digest in (('transport_archive', binding['artifact_bytes'], binding['artifact_digest'][7:]),
+                              ('release_archive', binding['archive_bytes'], binding['archive_sha256'])):
+        require(type(value[key]) is bytes and len(value[key]) == size)
+        require(hashlib.sha256(value[key]).hexdigest() == digest)
+    verified = verify_release_archive(value['release_archive'], manifest,
+        expected_archive_sha256=binding['archive_sha256'], expected_member_sha256=binding['member_sha256'])
+    _same(verified['member_bytes'], binding['member_bytes'])
+
+
+def evaluate_publication_v2(manifest: dict, config: dict, binding: dict,
+                            trust: dict, fake_transport, *, rollback_manifest: dict | None = None) -> dict:
+    """Versioned fake observations only; no token/signature/transport authority."""
+    try:
+        rt.validate_manifest(manifest, config, rollback_manifest)
+        _validate_trust(trust, config); _validate_binding(binding, manifest)
+        require(callable(fake_transport))
+    except (ValueError, TypeError, KeyError, RecursionError, OverflowError):
+        raise ContractError('invalid publication input') from None
+    result = _simulated_result('publication-transcript-v2', manifest['source_sha'], _PUBLICATION_CHECKS,
+                               binding_sha256=rt.sha256(binding))
+    def observe(request, binary=False):
+        value = fake_transport(copy.deepcopy(request))
+        return value if binary else _bounded_json(value, request['max_output_bytes'])
+    api = 'https://api.github.com/repos/lucronn/autodata/actions/'
+    try:
+        run = observe(_request('run', 30, url=api + 'runs/' + binding['published_run_id']))
+        _same(run, {'id': binding['published_run_id'], 'repository': trust['repository'],
+                    'repository_id': trust['repository_id'], 'repository_owner_id': trust['repository_owner_id'],
+                    'source_sha': manifest['source_sha'], 'workflow_ref': trust['workflow_ref'],
+                    'event': 'workflow_dispatch', 'status': 'completed', 'conclusion': 'success'})
+        result['checks']['run'] = True
+        artifact = observe(_request('artifact', 30, url=api + 'artifacts/' + binding['artifact_id']))
+        _same(artifact, {'id': binding['artifact_id'], 'run_id': binding['published_run_id'],
+                         'name': binding['artifact_name'], 'expired': False,
+                         'digest': binding['artifact_digest'], 'bytes': binding['artifact_bytes']})
+        result['checks']['artifact'] = True
+        pair = observe(_request('archive', maximum=_MAX_TRANSPORT_ARCHIVE,
+                               url=api + 'artifacts/' + binding['artifact_id'] + '/zip'), binary=True)
+        _archive_pair(pair, binding, manifest); result['checks']['archive'] = True
+        _same(observe(_request('images')), _image_observations(manifest))
+        result['checks']['images'] = True
+        provenance = observe(_request('provenance'))
+        identity = {key: value for key, value in trust.items()
+                    if key not in ('publish_service_account', 'deploy_service_account', 'wif_provider')}
+        identity.update(signer_workflow_ref=trust['workflow_ref'], source_sha=manifest['source_sha'])
+        _same(provenance, {'protocol_version': 2, 'simulation': True, 'identity': identity,
+                          'subjects': {role: _subject(manifest, role) for role in _OWNED_IMAGES}})
+        result['checks']['provenance'] = True
+        result.update(status='transcript_consistent', failure_code=None)
+    except Exception as error:
+        _failed_result(result, error)
+    return _bounded_json(result)
+
+
+def _validate_execution(execution):
+    rt.exact_object(execution, ('run_id', 'source_epoch', 'tool_sha256'))
+    _numeric_id(execution['run_id']); _integer(execution['source_epoch'], 0, 4102444800)
+    rt.exact_object(execution['tool_sha256'], ('git', 'docker', 'syft'))
+    for digest in execution['tool_sha256'].values(): _digest(digest)
+
+
+def _sbom_bytes(data):
+    require(type(data) is bytes and 0 < len(data) <= 4194304)
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            require(key not in result)
+            result[key] = value
+        return result
+    def invalid(value):
+        raise ContractError('invalid SBOM JSON')
+    # SPDX has a separate 4MiB bound; the runtime's general JSON reader is 1MiB.
+    value = rt.json.loads(data.decode('utf-8'), object_pairs_hook=pairs, parse_constant=invalid)
+    _bounded_json(value, 4194304)
+    require(type(value) is dict and value.get('spdxVersion') == 'SPDX-2.3')
+    for key in ('documentNamespace', 'name'):
+        require(type(value.get(key)) is str and 0 < len(value[key]) <= 4096)
+    rt._https(value['documentNamespace'])
+    require(type(value.get('packages')) is list and len(value['packages']) <= 10000)
+    return hashlib.sha256(data).hexdigest()
+
+
+def orchestrate_publication(manifest: dict, config: dict, trust: dict,
+                            execution_policy: dict, *, executor, registry_transport,
+                            evidence_transport, artifact_transport, rollback_manifest: dict | None = None) -> dict:
+    """Concrete publisher sequence through required injected fake interfaces.
+
+    No real adapter is installed or selected here. Even a complete sequence
+    returns only simulated consistency. A partial push is never deleted/rolled
+    back, and publication never calls a host operation.
+    """
+    try:
+        rt.validate_manifest(manifest, config, rollback_manifest)
+        _validate_trust(trust, config); _validate_execution(execution_policy)
+        require(all(callable(fn) for fn in (executor, registry_transport, evidence_transport, artifact_transport)))
+    except (ValueError, TypeError, KeyError, RecursionError, OverflowError):
+        raise ContractError('invalid publisher input') from None
+    result = _simulated_result('publisher-orchestration-v2', manifest['source_sha'], _PUBLISHER_CHECKS, binding=None)
+    source = manifest['source_sha']; repository = config['resources']['artifact_repository']
+    def execute(name, argv, seconds, maximum=MAX_RECEIPT, cwd=_PUBLISH_ROOT):
+        response = executor({'name': name, 'argv': argv, 'cwd': cwd, 'env': dict(_PUBLISH_ENV),
+                             'timeout_seconds': seconds, 'max_output_bytes': maximum})
+        rt.exact_object(response, ('exit_code', 'stdout'))
+        _integer(response['exit_code'], 0, 255)
+        require(type(response['stdout']) is bytes and len(response['stdout']) <= maximum)
+        require(response['exit_code'] == 0)
+        return response['stdout']
+    def transport(fn, request, binary=False):
+        value = fn(copy.deepcopy(request))
+        return value if binary else _bounded_json(value, request['max_output_bytes'])
+    try:
+        _same(rt.strict_json(execute('verify_tools', [], 10)), execution_policy['tool_sha256'])
+        result['checks']['tools'] = True
+        git = ['/usr/bin/git', '-C', _PUBLISH_ROOT + '/source']
+        execute('checkout_init', ['/usr/bin/git', '-c', 'core.hooksPath=/dev/null', 'init', _PUBLISH_ROOT + '/source'], 10)
+        execute('checkout_fetch', git + ['-c', 'core.hooksPath=/dev/null', 'fetch', '--no-tags', '--depth=1',
+                                        'https://github.com/lucronn/autodata.git', source], 120)
+        execute('checkout_select', git + ['-c', 'core.hooksPath=/dev/null', 'checkout', '--detach', source], 30)
+        identity = execute('checkout_identity', git + ['show', '--no-patch', '--format=%H%n%ct', 'HEAD'], 10, 128)
+        require(identity == (source + '\n' + str(execution_policy['source_epoch']) + '\n').encode())
+        result['checks']['checkout'] = True
+        for role, dockerfile in zip(_OWNED_IMAGES, ('apps/api-go/Dockerfile', 'workers/ingestion-python/Dockerfile',
+                                                  'infra/deploy/gce/migration.Dockerfile')):
+            tag = repository + '/' + role + ':source-' + source
+            execute('build_' + role, ['/usr/bin/docker', 'buildx', 'build', '--platform', 'linux/amd64',
+                '--provenance=mode=max', '--sbom=true', '--push', '--build-arg',
+                'SOURCE_DATE_EPOCH=' + str(execution_policy['source_epoch']), '--file', dockerfile, '--tag', tag,
+                '--metadata-file', _PUBLISH_ROOT + '/' + role + '-build.json', '.'], 1800, cwd=_PUBLISH_ROOT + '/source')
+            image = manifest['images'][role]
+            observation = transport(registry_transport, {'name': 'image', 'repository': repository, 'role': role,
+                'source_tag': tag, 'expected_reference': image['reference'], 'platform': 'linux/amd64',
+                'timeout_seconds': 60, 'max_output_bytes': MAX_RECEIPT})
+            _same(observation, {'reference': image['reference'], 'image_id': image['image_id'], 'platform': 'linux/amd64',
+                               'build_source_sha': source, 'build_config_sha256': manifest['service_config_sha256']})
+        result['checks']['images'] = True
+        for role in _OWNED_IMAGES:
+            image = manifest['images'][role]
+            sbom = execute('sbom_' + role, ['/usr/bin/syft', image['reference'], '-o', 'spdx-json'],
+                           300, 4194304, cwd=_PUBLISH_ROOT + '/source')
+            sbom_hash = _sbom_bytes(sbom)
+            evidence = transport(evidence_transport, {'name': 'publish_and_verify', 'role': role,
+                'image_reference': image['reference'], 'image_id': image['image_id'], 'source_sha': source,
+                'service_config_sha256': manifest['service_config_sha256'], 'workflow_ref': trust['workflow_ref'],
+                'builder_id': trust['builder_id'], 'oidc_issuer': trust['oidc_issuer'], 'oidc_audience': trust['oidc_audience'],
+                'sbom_bytes': sbom, 'sbom_sha256': sbom_hash, 'expected_provenance_uri': image['provenance_uri'],
+                'expected_sbom_uri': image['sbom_uri'], 'timeout_seconds': 300, 'max_output_bytes': MAX_RECEIPT})
+            _same(evidence, dict(_subject(manifest, role), simulation=True, sbom_sha256=sbom_hash,
+                oidc_issuer=trust['oidc_issuer'], oidc_audience=trust['oidc_audience'],
+                signer_workflow_ref=trust['workflow_ref'], builder_id=trust['builder_id']))
+        result['checks']['evidence'] = True
+        archive, envelope = produce_release_archive(manifest, config, _image_observations(manifest), rollback_manifest=rollback_manifest)
+        result['checks']['archive'] = True
+        artifact_name = 'workshop-release-' + source
+        upload = transport(artifact_transport, {'name': 'upload', 'artifact_name': artifact_name,
+            'run_id': execution_policy['run_id'], 'source_sha': source, 'members': {'release.zip': archive},
+            'payload_sha256': envelope['archive_sha256'], 'timeout_seconds': 300, 'max_output_bytes': MAX_RECEIPT})
+        rt.exact_object(upload, ('artifact_id', 'run_id', 'name', 'expired', 'digest', 'bytes', 'simulation'))
+        _numeric_id(upload['artifact_id'])
+        _integer(upload['bytes'], 1, _MAX_TRANSPORT_ARCHIVE)
+        rt.match(upload['digest'], r'sha256:[0-9a-f]{64}')
+        _same({key: upload[key] for key in ('run_id', 'name', 'expired', 'simulation')},
+              {'run_id': execution_policy['run_id'], 'name': artifact_name, 'expired': False, 'simulation': True})
+        result['checks']['upload'] = True
+        binding = dict(envelope, published_run_id=execution_policy['run_id'], artifact_id=upload['artifact_id'],
+                       artifact_name=artifact_name, artifact_digest=upload['digest'], artifact_bytes=upload['bytes'])
+        _validate_binding(binding, manifest)
+        readback = transport(artifact_transport, {'name': 'readback', 'artifact_id': upload['artifact_id'],
+            'run_id': execution_policy['run_id'], 'artifact_name': artifact_name,
+            'timeout_seconds': 300, 'max_output_bytes': _MAX_TRANSPORT_ARCHIVE}, binary=True)
+        rt.exact_object(readback, ('metadata', 'transport_archive', 'release_archive'))
+        _same(_bounded_json(readback['metadata']), {key: value for key, value in upload.items() if key != 'simulation'})
+        _archive_pair({key: readback[key] for key in ('transport_archive', 'release_archive')}, binding, manifest)
+        require(readback['release_archive'] == archive)
+        result['checks']['readback'] = True
+        result.update(status='transcript_consistent', failure_code=None, binding=binding)
+    except Exception as error:
+        _failed_result(result, error)
+    return _bounded_json(result)
+
+
+def _validate_publication_result(publication, binding, manifest):
+    _bounded_json(publication)
+    require(type(publication) is dict)
+    operation = publication.get('operation')
+    if operation == 'publication-transcript-v2':
+        rt.exact_object(publication, _RESULT_COMMON + ('binding_sha256',))
+        require(publication['binding_sha256'] == rt.sha256(binding))
+        names = _PUBLICATION_CHECKS
+    else:
+        require(operation == 'publisher-orchestration-v2')
+        rt.exact_object(publication, _RESULT_COMMON + ('binding',))
+        _same(publication['binding'], binding)
+        names = _PUBLISHER_CHECKS
+    _same(publication['checks'], {key: True for key in names})
+    _same({key: publication[key] for key in ('protocol_version', 'status', 'simulation', 'provenance_authenticated',
+                                            'deployment_authorized', 'source_sha', 'failure_code')},
+          {'protocol_version': 2, 'status': 'transcript_consistent', 'simulation': True,
+           'provenance_authenticated': False, 'deployment_authorized': False,
+           'source_sha': manifest['source_sha'], 'failure_code': None})
+
+
+def evaluate_host_check(manifest: dict, config: dict, binding: dict,
+                        trust: dict, publication: dict, fake_transport) -> dict:
+    """Request one simulated fixed host check; there is no success/readiness path."""
+    try:
+        rt.validate_manifest(manifest, config)
+        _validate_trust(trust, config); _validate_binding(binding, manifest)
+        _validate_publication_result(publication, binding, manifest)
+        require(callable(fake_transport))
+    except (ValueError, TypeError, KeyError, RecursionError, OverflowError):
+        raise ContractError('invalid host check input') from None
+    result = _simulated_result('host-check-transcript-v2', manifest['source_sha'],
+                               ('publication_consistent', 'host_reply_valid', 'schema', 'services', 'runtime_evidence'),
+                               binding_sha256=rt.sha256(binding))
+    result['checks']['publication_consistent'] = True
+    resources = config['resources']
+    argv = ['/usr/bin/gcloud', 'compute', 'ssh', resources['instance_name'], '--project', resources['host_project_id'],
+            '--zone', resources['zone'], '--tunnel-through-iap', '--quiet', '--command',
+            'sudo -n /opt/autodata/bin/deploy.sh check ' + manifest['source_sha']]
+    try:
+        response = _bounded_json(fake_transport(_request('host_check', 30, argv=argv)))
+        rt.exact_object(response, ('exit_code', 'receipt'))
+        _integer(response['exit_code'], 2, 5)
+        require(response['exit_code'] in (3, 5))
+        receipt = response['receipt']
+        rt.exact_object(receipt, COMMON_RECEIPT)
+        _same({key: receipt[key] for key in ('schema_version', 'operation', 'run_id', 'source_sha', 'status')},
+              {'schema_version': 1, 'operation': 'deploy.sh check', 'run_id': None,
+               'source_sha': manifest['source_sha'], 'status': 'failed'})
+        require(timestamp(receipt['started_at']) <= timestamp(receipt['finished_at']))
+        rt.exact_object(receipt['checks'], _HOST_CHECKS)
+        require(all(type(value) is bool for value in receipt['checks'].values()))
+        require(all(receipt['checks'][key] is False for key in ('schema', 'services', 'runtime_evidence')))
+        expected = 'missing_dependency' if response['exit_code'] == 3 else 'operation_timed_out'
+        require(receipt['failure_code'] == expected)
+        result['checks']['host_reply_valid'] = True
+        result.update(status='unavailable' if response['exit_code'] == 3 else 'timed_out', failure_code=expected)
+    except Exception as error:
+        _failed_result(result, error)
+    return _bounded_json(result)
+
+
 if __name__ == '__main__':
     code, receipt = cli(sys.argv[1:])
     sys.stdout.buffer.write(rt.canonical_bytes(receipt) + b'\n')
