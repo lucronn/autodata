@@ -148,3 +148,32 @@ Exact live receipt (verbatim field values):
 ```
 
 The coordinator authorized committing/pushing exactly this six-document checkpoint. Actual checkpoint SHA is externally pinned after commit; then standalone/nested canonical preflight and independent exact-committed-gate review remain required before fresh code-only dispatch. No implementation or observation dispatch is supplied by this receipt; all authorities remain false.
+
+
+### R3 fake-only collector code completion addendum — 2026-11-04
+
+The fake-only four-file collector has an independent revision-2 exact-code review PASS at `0da0be85b864ab829200d170a656ad6ea87651dd` ([PR #240](https://github.com/lucronn/autodata/pull/240)). The planning checkpoint remains `e414e8537c8a6f0bc99747f6db09782b7743a949`; saved standalone/nested canonical preflight and independent committed-gate review passed at that checkpoint before the separately recorded code-only dispatch. The original goal, todo, gate, source pins, pending-checkpoint fields and historical evidence above remain planning history. This addendum records later code-only completion and grants no execution authority.
+
+The original review at `4da785974a302556855f02995b6221e13f8953a0` remains FINDINGS: F1 unbounded fabricated-contract serialization, F2 missing socket/default-context prerequisites before daemon-dependent starts, and F3 incomplete attempts classified as preparation complete. The repair bounds serialization and validates FrozenMap entries before re-admission, requires and revalidates socket/default-context eligibility, and uses `collection_incomplete` / `collection_blocked` classifications. The revision-2 reviewer closed F1–F3 with no remaining findings at the exact repaired code SHA.
+
+Saved independent verification reports 48 fake-only tests OK (exit 0), all 3 original probes and 19 fresh adversarial checks passed, `git diff --check` exit 0, and canonical preflight `status:synchronized`, `errors:[]`, exit 0. These are saved exact-code reviewer/builder results; this documentation update does not rerun or extend that certification. The builder repair receipt retains its earlier pending-independent-recheck status; the later revision-2 reviewer receipt supplies that recheck.
+
+Exact source SHA256 pins at the reviewed code SHA:
+
+- `scripts/r3_preparation/policy.py`: `36d8eb70f27277faefc831c1ca3ace18695509e97e4e65352ce0f3cb01120507`.
+- `scripts/r3_preparation/collector.py`: `3fddb096d25ca7f1281a41469d1ca846e2ae776f986390e6479fe9df5d573599`.
+- `scripts/r3_preparation/test_policy.py`: `3980f876f3d93197ec70d4281c1693051f7d1eaea33c28076a2502ecde7996d2`.
+- `scripts/r3_preparation/test_collector.py`: `20557de448cd3a51fcf780627c2a016a6605b91b3f485e3590d4d41cb59863af`.
+
+Preserved external receipts (SHA256):
+
+- original_review: `/home/corp/autodata-evidence/r3-preparation-collector-code-review/receipt.json`, `ed47d6c19f43e2eeaef1def05ac95a6827e577afd9b859e47319cd33ad79fa70`.
+- independent_revision2_review: `/home/corp/autodata-evidence/r3-preparation-collector-code-review-revision2/receipt.json`, `90160c9864e18abbbf62204a7e9e78d548a45806539c6ee54e59e320d0eff304`.
+- builder_repair: `/home/corp/autodata-evidence/r3-preparation-collector-build/review-repair-receipt.json`, `2a32c50e566cde87d68ea44d0e792b24fba32899e5765d994fd327c355c88b7a`.
+- final_code_tracking: `/home/corp/autodata-evidence/r3-preparation-collector-final-code-tracking/receipt.json`, `4ed2bd8361e9cb8f1561d242d86e92bd99796ebd05ec49027793679d28deadc5`.
+- committed_gate_review: `/home/corp/autodata-evidence/r3-preparation-collector-committed-gate-review/receipt.json`, `691c7c656234dd3fcb8dde6dfd342b53016d9d0ba78eee3bd1ef5c610b8f2454`.
+- code_only_dispatch_tracking: `/home/corp/autodata-evidence/r3-preparation-collector-dispatch-tracking/receipt.json`, `5f2cb4f186dff820bdeedd941845006b2c66adaaebfb1614ee4a9bdf71eef1c5`.
+
+The coordinator synchronized the code-only result to [Issue #186](https://github.com/lucronn/autodata/issues/186#issuecomment-6640328810) and [Project #8](https://github.com/users/lucronn/projects/8); the final tracking receipt records unchanged Issue body, preserved prior comments, verbatim archived previous Project Source and unchanged other Project fields. This documentation writer makes no Issue/Project edits.
+
+All authority flags remain false: `trusted:false`, `runtime_accepted:false`, `host_observed:false`, `evidence_kind:synthetic`, release `unverified`, accepted-case credit `0`. No real preparation or product acceptance is claimed. Production adapters, real owner/session/tool/config/clone/model/daemon observations, bounded descriptor-relative and blocking I/O/process capture, no-follow/cancellation/crash/storage enforcement, initial probe, PR219 fixtures/eight-root/42-tuple, final180, and runtime/provider/payment/cloud/release acceptance remain behind separate gates.
