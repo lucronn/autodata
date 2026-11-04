@@ -624,3 +624,16 @@ Full literal citation text and all180 expected IDs are embedded in the canonical
   }
 ]
 ```
+
+
+## Code-only implementation verification (2026-11-04)
+
+This appended delivery snapshot supplements the historical planning text above; it does not rewrite the synchronized gate record or grant new authority. The authorizing checkpoint is `3cd99224eae7012f8c6cc0bfc15a1053a8e7762f`. Draft [PR #230](https://github.com/lucronn/autodata/pull/230) contains the two validated, pushed implementation milestones `7ea63d77acb5a0972dd86b2b138017fe9b6f288b` and `0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471` on `codex/workshop-final180-stage-b2-build`. The latter is the exact reviewed code head; this docs branch does not contain those implementation changes.
+
+Captured builder verification at that head reports 100 focused tests passing, including all 23 catalog tests, and 146 autonomy tests passing. Standalone/nested preflight, the exact three-path implementation allowlist, unchanged Stage A/B1 predecessor hashes, static AST restrictions, syntax and diff checks passed. Every evidence-manifest entry, exact implementation Git-object hash and predecessor hash was rechecked for this documentation milestone. The independent `/root/final180_b2_code_review` session reported PASS with no findings at the exact head and reran the 100 focused tests, as relayed by the coordinator; no separate saved reviewer receipt exists.
+
+The broad developer suite remains **pending/unverified**. The builder snapshot had no final summary, and the coordinator subsequently reported that PID906630 exited without a captured completion summary. No broad-suite pass is claimed. Its historical log is `/home/corp/autodata-evidence/final180-stage-b2-builder/dev-suite.log`; discovery started before three additional grammar/schema tests were added, while current-source focused coverage includes all 23 catalog tests.
+
+The code-only audit record is `docs/agents/records/2026-11-04-workshop-final180-stage-b2-code-review.json`. Builder handoff SHA256 is `a0e548105d7f69e708c5c6d19a78ef338009880285cce6b2de7ab53f2e67428f`; the evidence manifest SHA256 is `6cbf2eee14127926a0bb8f397b6908488cefffca71051e7298ca242da9c52a36`. Both refer to local audit artifacts under `/home/corp/autodata-evidence/final180-stage-b2-builder/`. GitHub completion tracking remains coordinator-owned and is not asserted here.
+
+B2 translates eight synthetic caller-selected slots. Go bytes cannot authenticate bank attribution; identical bytes across bank slots remain permitted. Complete catalog raw semantics, cross-artifact identity/JUnit/result bindings, nested document/JSONB validation, retained runtime/migration support and an admitted runtime lock/profile remain blockers for real evidence. Accepted-case credit stays exactly zero, profiles stay disabled, enabled tiers stay empty, runtime lock and run record stay null, and all nine authorities stay false. Code review establishes no real-case, runtime, merge, deployment or profile-promotion authority.

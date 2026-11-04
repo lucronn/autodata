@@ -1,0 +1,117 @@
+{
+  "record_kind": "code_only_verification",
+  "status": "code_review_pass_broad_developer_suite_unverified",
+  "updated_at": "2026-11-04T18:15:23Z",
+  "goal": "Add a bytes-only synthetic catalog8 Go-root adapter, with eight literal provider/root slots, no execution, zero accepted-case credit and every authority false.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-stage-b2-catalog-go.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "authorizing_checkpoint_sha": "3cd99224eae7012f8c6cc0bfc15a1053a8e7762f",
+  "implementation_head_sha": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+  "implementation_branch": "codex/workshop-final180-stage-b2-build",
+  "implementation_pr_ref": "https://github.com/lucronn/autodata/pull/230",
+  "milestones": [
+    {
+      "sha": "7ea63d77acb5a0972dd86b2b138017fe9b6f288b",
+      "subject": "feat: add synthetic catalog Go-event translation",
+      "pushed": true
+    },
+    {
+      "sha": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+      "subject": "test: verify synthetic catalog boundary and document limitations",
+      "pushed": true
+    }
+  ],
+  "review": {
+    "status": "PASS",
+    "findings": [],
+    "reviewed_head_sha": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+    "provenance": "Coordinator/session report from independent /root/final180_b2_code_review; exact-head review reported PASS with no findings and reran 100 focused tests. No separate saved reviewer receipt exists."
+  },
+  "verification": {
+    "standalone_preflight": "PASS",
+    "nested_preflight": "PASS",
+    "focused_tests": {
+      "status": "PASS",
+      "count": 100,
+      "catalog_test_count": 23,
+      "log_ref": "/home/corp/autodata-evidence/final180-stage-b2-builder/final-focused.log",
+      "log_sha256": "fcde7d942da225b46b0301aaf251ebcb36401d1ebef4a731dd4d6be0e34c82a6"
+    },
+    "autonomy_tests": {
+      "status": "PASS",
+      "count": 146,
+      "log_ref": "/home/corp/autodata-evidence/final180-stage-b2-builder/autonomy-suite.log",
+      "log_sha256": "4d0a094da673c870973947416d3dcfbe9efda471b88f97722a25856ce690007a"
+    },
+    "scope_and_syntax": {
+      "base": "3cd99224eae7012f8c6cc0bfc15a1053a8e7762f",
+      "changed_paths": [
+        "docs/verification/workshop-final180-runbook.md",
+        "scripts/dev/test_workshop_final180_catalog_adapter.py",
+        "scripts/dev/workshop_final180_catalog_adapter.py"
+      ],
+      "diff_check": "PASS",
+      "diff_sha256": "f8bee212c79ca9ecf8fa8d6bd2c6b653b0edd3a56ab75ff561093945b2ad8005",
+      "exact_allowlist": "PASS",
+      "files": {
+        "docs/verification/workshop-final180-runbook.md": {
+          "bytes": 18423,
+          "sha256": "23023c638cd94dd46ff7722d80a5f28a1e3e6ad2c82f417ac6485d46cabeef03"
+        },
+        "scripts/dev/test_workshop_final180_catalog_adapter.py": {
+          "bytes": 26977,
+          "sha256": "978cbb594d9bc42f0cb02b3447e2afed6bb6764c155b657db6e5b3676cc319a9"
+        },
+        "scripts/dev/workshop_final180_catalog_adapter.py": {
+          "bytes": 15467,
+          "sha256": "88f481104d66d9bda8bdf6c1a8038e8514b69d63db813b85c5ec13e40f0c6ddf"
+        }
+      },
+      "no_bytecode_compile": "PASS",
+      "preserved_sha256": {
+        "scripts/dev/test_workshop_final180_identity_adapter.py": "a3f3017b1d7a85da9ae4d1883758f2494d722fb321d45c1ff758994ab6d2653c",
+        "scripts/dev/test_workshop_final180_runner.py": "2f92614e937b5b3d6a17da7ab9f4b758b34a4a542fbe5564b29ddefd4f7b148a",
+        "scripts/dev/workshop_final180_identity_adapter.py": "0474a85c33d4f2722ad01d6e55e69a8080dc0f1983c856ca7caa1b94510a767d",
+        "scripts/dev/workshop_final180_runner.py": "693a408a73f3ccd37bf945bfc94d427f742878580932dab382ea9a244a141c91"
+      }
+    },
+    "broad_developer_suite": {
+      "status": "pending_unverified",
+      "log_ref": "/home/corp/autodata-evidence/final180-stage-b2-builder/dev-suite.log",
+      "pending_snapshot_ref": "/home/corp/autodata-evidence/final180-stage-b2-builder/dev-suite-pending-snapshot.log",
+      "pending_snapshot_sha256": "42cf0c20b4f380a0813a0ece67e3ea6e2810b1895bcb36a81f14d298c8430144",
+      "historical_pid": 906630,
+      "note": "The builder snapshot was pending; the coordinator subsequently reported that PID906630 exited without a captured completion summary. No broad-suite pass is claimed. The original discovery began before three additional grammar/schema tests; current-source focused coverage includes all 23 catalog tests."
+    }
+  },
+  "evidence": {
+    "handoff_ref": "/home/corp/autodata-evidence/final180-stage-b2-builder/handoff.json",
+    "handoff_sha256": "a0e548105d7f69e708c5c6d19a78ef338009880285cce6b2de7ab53f2e67428f",
+    "manifest_ref": "/home/corp/autodata-evidence/final180-stage-b2-builder/evidence-sha256.json",
+    "manifest_sha256": "6cbf2eee14127926a0bb8f397b6908488cefffca71051e7298ca242da9c52a36",
+    "provenance": "Local audit locators; all manifest entries and exact implementation Git-object hashes were rechecked while preparing this record. Test counts are captured builder evidence; independent review is separately attributed above."
+  },
+  "limitations": [
+    "Synthetic caller-selected catalog slots only; raw Go bytes do not authenticate bank attribution and identical bytes in both bank slots are permitted.",
+    "No complete catalog raw validator: cross-artifact identity, JUnit/result bindings, nested document/JSONB semantics and retained runtime/migration support remain unpromoted.",
+    "No runtime compatibility, execution, real case acceptance, deployment, merge, profile promotion or broader final180 completion is established.",
+    "GitHub completion synchronization is coordinator-owned and is not asserted by this documentation milestone."
+  ],
+  "authority": {
+    "cutover_verified": false,
+    "deployment_authorized": false,
+    "fixture_verified": false,
+    "implementation_authorized": false,
+    "merge_authorized": false,
+    "product_candidate_verified": false,
+    "profile_promotion_authorized": false,
+    "runtime_execution_authorized": false,
+    "staging_verified": false
+  },
+  "accepted_case_credit": 0,
+  "profiles_enabled": false,
+  "enabled_tiers": [],
+  "runtime_lock": null,
+  "run_record": null
+}
