@@ -1,0 +1,110 @@
+# DTO timing planning synchronization verification
+
+Status: planning and literal tracking synchronized; committed-checkpoint preflight and independent exact-B review are pending. No application/implementation test or CI PASS is claimed.
+
+Goal: Repair DTO browser fixture lifetime and finite lifecycle scheduling without acceptance or release authority
+
+Concrete todo:
+- [ ] Freeze exact integrated source e3ffba5037cea484ad0b12bcf594d726ad6b0311, seven source blob/mode/hash pins,44-task queue and all120 ordered DTO IDs; obtain independent differential review of the integrated-base refresh and six-path gate draft before canonical adoption.
+- [ ] Synchronize this literal goal, six canonical checkpoint paths, six implementation paths and concrete todo in Issue186, existing Project8 item and repository records; preserve prior comments/Project Source and all44 queue objects/root fields, append only DTO task45, and retain actual readback timestamp and hashes.
+- [ ] Commit and push only the reviewed six-document checkpoint on codex/workshop-dto-timing-repair-gate from exact e3ffba50 after coordinator adoption authorization; pin actual full checkpoint B externally, run standalone/extracted nested preflight at B and obtain independent committed-gate review before explicit implementation dispatch.
+- [ ] On a separately dispatched six-path implementation branch, add the strict shared timing contract and pure Go/Python timing tests; preserve API4400, all120 IDs and diagnostics while implementing DTO bounded lifecycle and4430<4440 conditional schedule.
+- [ ] Implement DTO-only parent/worker supervision and stage-only I/O helpers with cumulative phase budgets, terminal attempt/epoch fencing, exact ACK validation, parent-only canonical commit and same-attempt receipt+exit0 consumption; retain all10 revision2 deterministic failure schedules and separate watchdog/containment/trace gates.
+- [ ] Modify only the existing DTO workflow job within the pinned integrated baseline, preserving R3 filters/job and every other workflow byte; run only approved offline checks, independently review the exact code head, collect honest exact-head CI readback and synchronize measured code-only evidence with all authorities false and credit0.
+
+
+```json
+{
+  "source_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+  "source_tree": "ea2c1507fdef8db698938fb6165b4d7bf2d77d2e",
+  "checkpoint_sha": null,
+  "tracking_sync": {
+    "status": "synchronized_live_literal_readback_planning_only",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6642607851",
+    "observed_at": "2026-11-04T21:30:28Z",
+    "receipt_ref": "/home/corp/autodata-evidence/dto-timing-literal-tracking/receipt.json",
+    "receipt_sha256": "147cb3e93ba41231f511c39614a9791a386392867c43756ecc64c024c60acaa7",
+    "issue_before_sha256": "ede951c341b11ac6c2969534526d3fe2be98dfb3f33d7fcd18b01d4f485c9913",
+    "issue_after_sha256": "af80c22897a32ab4d9f79fc7772a3ddb1a50e4bcaf264428bb231f0eb6cda609",
+    "project_before_sha256": "7073d1f6c448bbdaec0cf52fc360c75dd5d9f16eb4113f5e803c00d0ff0aafff",
+    "project_after_sha256": "371a26c967ba6fd003a74bb0330b7238e4664e798fe490711cc5f51cb95c4c6a",
+    "readback_verified": true,
+    "literal_gate_readback_verified": true,
+    "issue_body_prior_comments_preserved": true,
+    "prior_project_source_archived_verbatim": true,
+    "other_project_fields_unchanged": true,
+    "implementation_dispatched": false,
+    "checkpoint_B": null,
+    "prior_summary_readback": {
+      "status": "synchronized_live_readback_planning_only",
+      "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6642533877",
+      "observed_at": "2026-11-04T21:26:49Z",
+      "receipt_ref": "/home/corp/autodata-evidence/dto-timing-gate-tracking/receipt.json",
+      "receipt_sha256": "0cd9e5ccdd5dfadbbca947f2b4c52ff6791b0c48d0bf062e582214063211ceb7",
+      "issue_after_sha256": "ede951c341b11ac6c2969534526d3fe2be98dfb3f33d7fcd18b01d4f485c9913",
+      "project_after_sha256": "7073d1f6c448bbdaec0cf52fc360c75dd5d9f16eb4113f5e803c00d0ff0aafff",
+      "summary_readback_verified": true,
+      "literal_goal_todo_paths_in_comment": false
+    }
+  },
+  "independent_review": {
+    "status": "PASS_EXTERNAL_SIX_PATH_DTO_GATE_DRAFT_exact_checkpoint_review_pending",
+    "original_revision2_PASS_receipt": {
+      "receipt": "/home/corp/autodata-evidence/dto-timing-repair-plan-review/revision2/verdict.json",
+      "sha256": "75d24ce4e28c94be4e35f768c4d477b53f47526a6d4f5104088a6842a6f066db",
+      "verdict": "PASS_EXTERNAL_DTO_TIMING_DESIGN",
+      "scope": "original revision2 design at prior base; does not automatically approve refreshed gate"
+    },
+    "refresh_ref": "/home/corp/autodata-evidence/dto-timing-repair-plan/integrated-base-refresh",
+    "refresh_manifest_sha256": "eb17b2f0c7990f496cff06f1bc9a678609eadb786e7df94d654aefb842fdceb6",
+    "review_cannot_infer_canonical_sync": true,
+    "integrated_base_review": {
+      "status": "PASS_EXTERNAL_INTEGRATED_BASE_DTO_TIMING_REFRESH",
+      "receipt": "/home/corp/autodata-evidence/dto-timing-repair-plan-review/integrated-base-refresh/verdict.json",
+      "sha256": "526b72d5a3115936baa6766902f40c61766702df3cb479bc6d8362026bcb51bd",
+      "checks": 100,
+      "author_checks_reproduced": 26,
+      "findings": [],
+      "scope": "external integrated-base design covered prior five-path routing; separate six-path draft PASS is also recorded"
+    },
+    "six_path_draft_review": {
+      "status": "PASS_EXTERNAL_SIX_PATH_DTO_GATE_DRAFT",
+      "receipt": "/home/corp/autodata-evidence/dto-timing-gate-draft-review/verdict.json",
+      "sha256": "71baf8ccb9bfcaae356b0f042c31b0bc74aca4e91f6d8fbc9b73d2df7f9209c6",
+      "independent_checks": 92,
+      "author_checks_reproduced": 27,
+      "findings": [],
+      "scope": "external exact six-path draft; exact committed checkpoint review remains pending"
+    }
+  },
+  "record_status": "synchronized",
+  "authorities": {
+    "implementation_dispatch": false,
+    "github_write": false,
+    "host_execution": false,
+    "browser_execution": false,
+    "runtime_acceptance": false,
+    "fixture_acceptance": false,
+    "provider": false,
+    "bank": false,
+    "payment": false,
+    "account_mutation": false,
+    "secrets": false,
+    "docker_execution": false,
+    "image_acquisition": false,
+    "service_start": false,
+    "cleanup_admission": false,
+    "staging": false,
+    "trust_promotion": false,
+    "merge_to_master": false,
+    "release": false,
+    "deployment": false,
+    "cutover": false
+  },
+  "accepted_case_credit": 0
+}
+```
+
+Review evidence: original revision2 PASS, integrated-base differential PASS (100 checks/26 reproduced) and six-path external draft PASS (92/27). These are planning reviews, not code approval or runtime acceptance. The stale earlier review-pending label is superseded by these measured receipts. Actual full checkpoint B, exact-B standalone/extracted nested preflights and independent exact-B review will be pinned externally after commit. No implementation dispatch, host/browser/provider/payment/Docker/staging/master-merge/release follows.
+
+The six implementation paths,120 ordered IDs,4430<4440 schedule, stage-only helpers, parent terminal attempt/epoch fencing, exact ACK and same-attempt receipt+exit0 rule remain. All44 historical queue entries/root fields are unchanged; task45 alone is added. R3 filters/job and all non-DTO workflow bytes remain immutable baseline. Separate watchdog/containment/trace/runtime gates remain closed.

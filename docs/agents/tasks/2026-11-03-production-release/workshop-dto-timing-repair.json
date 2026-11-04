@@ -1,0 +1,519 @@
+{
+  "schema_version": 1,
+  "task_id": "workshop-dto-timing-repair",
+  "goal": "Repair DTO browser fixture lifetime and finite lifecycle scheduling without acceptance or release authority",
+  "todo": [
+    "Freeze exact integrated source e3ffba5037cea484ad0b12bcf594d726ad6b0311, seven source blob/mode/hash pins,44-task queue and all120 ordered DTO IDs; obtain independent differential review of the integrated-base refresh and six-path gate draft before canonical adoption.",
+    "Synchronize this literal goal, six canonical checkpoint paths, six implementation paths and concrete todo in Issue186, existing Project8 item and repository records; preserve prior comments/Project Source and all44 queue objects/root fields, append only DTO task45, and retain actual readback timestamp and hashes.",
+    "Commit and push only the reviewed six-document checkpoint on codex/workshop-dto-timing-repair-gate from exact e3ffba50 after coordinator adoption authorization; pin actual full checkpoint B externally, run standalone/extracted nested preflight at B and obtain independent committed-gate review before explicit implementation dispatch.",
+    "On a separately dispatched six-path implementation branch, add the strict shared timing contract and pure Go/Python timing tests; preserve API4400, all120 IDs and diagnostics while implementing DTO bounded lifecycle and4430<4440 conditional schedule.",
+    "Implement DTO-only parent/worker supervision and stage-only I/O helpers with cumulative phase budgets, terminal attempt/epoch fencing, exact ACK validation, parent-only canonical commit and same-attempt receipt+exit0 consumption; retain all10 revision2 deterministic failure schedules and separate watchdog/containment/trace gates.",
+    "Modify only the existing DTO workflow job within the pinned integrated baseline, preserving R3 filters/job and every other workflow byte; run only approved offline checks, independently review the exact code head, collect honest exact-head CI readback and synchronize measured code-only evidence with all authorities false and credit0."
+  ],
+  "status": "planning_synchronized_pending_exact_checkpoint_review",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-dto-timing-repair.md",
+  "spec_ref": "docs/agents/specs/2026-11-04-workshop-dto-timing-repair.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-dto-timing-repair.json",
+  "verification_ref": "docs/verification/2026-11-04-workshop-dto-timing-repair.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "pre_implementation": {
+    "goal": "Repair DTO browser fixture lifetime and finite lifecycle scheduling without acceptance or release authority",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-dto-timing-repair.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-04-workshop-dto-timing-repair.md",
+      "docs/verification/2026-11-04-workshop-dto-timing-repair.md"
+    ],
+    "todo": [
+      "Freeze exact integrated source e3ffba5037cea484ad0b12bcf594d726ad6b0311, seven source blob/mode/hash pins,44-task queue and all120 ordered DTO IDs; obtain independent differential review of the integrated-base refresh and six-path gate draft before canonical adoption.",
+      "Synchronize this literal goal, six canonical checkpoint paths, six implementation paths and concrete todo in Issue186, existing Project8 item and repository records; preserve prior comments/Project Source and all44 queue objects/root fields, append only DTO task45, and retain actual readback timestamp and hashes.",
+      "Commit and push only the reviewed six-document checkpoint on codex/workshop-dto-timing-repair-gate from exact e3ffba50 after coordinator adoption authorization; pin actual full checkpoint B externally, run standalone/extracted nested preflight at B and obtain independent committed-gate review before explicit implementation dispatch.",
+      "On a separately dispatched six-path implementation branch, add the strict shared timing contract and pure Go/Python timing tests; preserve API4400, all120 IDs and diagnostics while implementing DTO bounded lifecycle and4430<4440 conditional schedule.",
+      "Implement DTO-only parent/worker supervision and stage-only I/O helpers with cumulative phase budgets, terminal attempt/epoch fencing, exact ACK validation, parent-only canonical commit and same-attempt receipt+exit0 consumption; retain all10 revision2 deterministic failure schedules and separate watchdog/containment/trace gates.",
+      "Modify only the existing DTO workflow job within the pinned integrated baseline, preserving R3 filters/job and every other workflow byte; run only approved offline checks, independently review the exact code head, collect honest exact-head CI readback and synchronize measured code-only evidence with all authorities false and credit0."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T21:30:28Z",
+    "source_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+    "source_tree": "ea2c1507fdef8db698938fb6165b4d7bf2d77d2e",
+    "proposed_gate_branch": "codex/workshop-dto-timing-repair-gate",
+    "branch_created": true,
+    "checkpoint_sha": null,
+    "implementation_base_sha": null,
+    "spec_ref": "docs/agents/specs/2026-11-04-workshop-dto-timing-repair.md",
+    "record_ref": "docs/agents/records/2026-11-04-workshop-dto-timing-repair.json",
+    "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-dto-timing-repair.json",
+    "allowed_checkpoint_paths": [
+      "docs/superpowers/plans/2026-11-04-workshop-dto-timing-repair.md",
+      "docs/agents/specs/2026-11-04-workshop-dto-timing-repair.md",
+      "docs/agents/records/2026-11-04-workshop-dto-timing-repair.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-dto-timing-repair.json",
+      "docs/verification/2026-11-04-workshop-dto-timing-repair.md",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json"
+    ],
+    "allowed_implementation_paths": [
+      "scripts/dev/workshop_browser_smoke.py",
+      "scripts/dev/test_workshop_browser_smoke.py",
+      "apps/api-go/workshop_browser_fixture_test.go",
+      "apps/api-go/workshop_browser_fixture_deadline_test.go",
+      "scripts/dev/fixtures/workshop_customer/timing.json",
+      ".github/workflows/autonomous-verification.yml"
+    ],
+    "tracking_sync": {
+      "status": "synchronized_live_literal_readback_planning_only",
+      "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6642607851",
+      "observed_at": "2026-11-04T21:30:28Z",
+      "receipt_ref": "/home/corp/autodata-evidence/dto-timing-literal-tracking/receipt.json",
+      "receipt_sha256": "147cb3e93ba41231f511c39614a9791a386392867c43756ecc64c024c60acaa7",
+      "issue_before_sha256": "ede951c341b11ac6c2969534526d3fe2be98dfb3f33d7fcd18b01d4f485c9913",
+      "issue_after_sha256": "af80c22897a32ab4d9f79fc7772a3ddb1a50e4bcaf264428bb231f0eb6cda609",
+      "project_before_sha256": "7073d1f6c448bbdaec0cf52fc360c75dd5d9f16eb4113f5e803c00d0ff0aafff",
+      "project_after_sha256": "371a26c967ba6fd003a74bb0330b7238e4664e798fe490711cc5f51cb95c4c6a",
+      "readback_verified": true,
+      "literal_gate_readback_verified": true,
+      "issue_body_prior_comments_preserved": true,
+      "prior_project_source_archived_verbatim": true,
+      "other_project_fields_unchanged": true,
+      "implementation_dispatched": false,
+      "checkpoint_B": null,
+      "prior_summary_readback": {
+        "status": "synchronized_live_readback_planning_only",
+        "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6642533877",
+        "observed_at": "2026-11-04T21:26:49Z",
+        "receipt_ref": "/home/corp/autodata-evidence/dto-timing-gate-tracking/receipt.json",
+        "receipt_sha256": "0cd9e5ccdd5dfadbbca947f2b4c52ff6791b0c48d0bf062e582214063211ceb7",
+        "issue_after_sha256": "ede951c341b11ac6c2969534526d3fe2be98dfb3f33d7fcd18b01d4f485c9913",
+        "project_after_sha256": "7073d1f6c448bbdaec0cf52fc360c75dd5d9f16eb4113f5e803c00d0ff0aafff",
+        "summary_readback_verified": true,
+        "literal_goal_todo_paths_in_comment": false
+      }
+    },
+    "independent_review": {
+      "status": "PASS_EXTERNAL_SIX_PATH_DTO_GATE_DRAFT_exact_checkpoint_review_pending",
+      "original_revision2_PASS_receipt": {
+        "receipt": "/home/corp/autodata-evidence/dto-timing-repair-plan-review/revision2/verdict.json",
+        "sha256": "75d24ce4e28c94be4e35f768c4d477b53f47526a6d4f5104088a6842a6f066db",
+        "verdict": "PASS_EXTERNAL_DTO_TIMING_DESIGN",
+        "scope": "original revision2 design at prior base; does not automatically approve refreshed gate"
+      },
+      "refresh_ref": "/home/corp/autodata-evidence/dto-timing-repair-plan/integrated-base-refresh",
+      "refresh_manifest_sha256": "eb17b2f0c7990f496cff06f1bc9a678609eadb786e7df94d654aefb842fdceb6",
+      "review_cannot_infer_canonical_sync": true,
+      "integrated_base_review": {
+        "status": "PASS_EXTERNAL_INTEGRATED_BASE_DTO_TIMING_REFRESH",
+        "receipt": "/home/corp/autodata-evidence/dto-timing-repair-plan-review/integrated-base-refresh/verdict.json",
+        "sha256": "526b72d5a3115936baa6766902f40c61766702df3cb479bc6d8362026bcb51bd",
+        "checks": 100,
+        "author_checks_reproduced": 26,
+        "findings": [],
+        "scope": "external integrated-base design covered prior five-path routing; separate six-path draft PASS is also recorded"
+      },
+      "six_path_draft_review": {
+        "status": "PASS_EXTERNAL_SIX_PATH_DTO_GATE_DRAFT",
+        "receipt": "/home/corp/autodata-evidence/dto-timing-gate-draft-review/verdict.json",
+        "sha256": "71baf8ccb9bfcaae356b0f042c31b0bc74aca4e91f6d8fbc9b73d2df7f9209c6",
+        "independent_checks": 92,
+        "author_checks_reproduced": 27,
+        "findings": [],
+        "scope": "external exact six-path draft; exact committed checkpoint review remains pending"
+      }
+    },
+    "authorities": {
+      "implementation_dispatch": false,
+      "github_write": false,
+      "host_execution": false,
+      "browser_execution": false,
+      "runtime_acceptance": false,
+      "fixture_acceptance": false,
+      "provider": false,
+      "bank": false,
+      "payment": false,
+      "account_mutation": false,
+      "secrets": false,
+      "docker_execution": false,
+      "image_acquisition": false,
+      "service_start": false,
+      "cleanup_admission": false,
+      "staging": false,
+      "trust_promotion": false,
+      "merge_to_master": false,
+      "release": false,
+      "deployment": false,
+      "cutover": false
+    },
+    "accepted_case_credit": 0
+  },
+  "source_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+  "source_tree": "ea2c1507fdef8db698938fb6165b4d7bf2d77d2e",
+  "proposed_gate_branch": "codex/workshop-dto-timing-repair-gate",
+  "branch_created": true,
+  "checkpoint_sha": null,
+  "implementation_base_sha": null,
+  "allowed_implementation_paths": [
+    "scripts/dev/workshop_browser_smoke.py",
+    "scripts/dev/test_workshop_browser_smoke.py",
+    "apps/api-go/workshop_browser_fixture_test.go",
+    "apps/api-go/workshop_browser_fixture_deadline_test.go",
+    "scripts/dev/fixtures/workshop_customer/timing.json",
+    ".github/workflows/autonomous-verification.yml"
+  ],
+  "source_manifest": {
+    "base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+    "prior_base_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "files": [
+      {
+        "path": "scripts/dev/workshop_browser_smoke.py",
+        "blob": "4206692d38c476ebbd750d15a620716072ce1932",
+        "mode": "100644",
+        "sha256": "45299888e56a78679148f575ac071856f0a3c1941faf059cd586ff2980069de8",
+        "bytes": 61845,
+        "prior_blob": "4206692d38c476ebbd750d15a620716072ce1932",
+        "prior_sha256": "45299888e56a78679148f575ac071856f0a3c1941faf059cd586ff2980069de8",
+        "changed": false
+      },
+      {
+        "path": "scripts/dev/test_workshop_browser_smoke.py",
+        "blob": "b89d5530397b686a4046a7754d96bf08215f8427",
+        "mode": "100644",
+        "sha256": "61f5b46ad04d4f921c2f4c897408d642256e0b418094ca88a7268df81c4cdf41",
+        "bytes": 37350,
+        "prior_blob": "b89d5530397b686a4046a7754d96bf08215f8427",
+        "prior_sha256": "61f5b46ad04d4f921c2f4c897408d642256e0b418094ca88a7268df81c4cdf41",
+        "changed": false
+      },
+      {
+        "path": "apps/api-go/workshop_browser_fixture_test.go",
+        "blob": "9617877cabcda64a34edba8d34492c0aa05eb497",
+        "mode": "100644",
+        "sha256": "7cf50daeb190686dc55c33c90056b87a62eece96640759b180f1282a0a1a6dd2",
+        "bytes": 18240,
+        "prior_blob": "9617877cabcda64a34edba8d34492c0aa05eb497",
+        "prior_sha256": "7cf50daeb190686dc55c33c90056b87a62eece96640759b180f1282a0a1a6dd2",
+        "changed": false
+      },
+      {
+        "path": ".github/workflows/autonomous-verification.yml",
+        "blob": "fef85365277fc53c06c2cd0b46189e36fa6cf139",
+        "mode": "100644",
+        "sha256": "99b68b40c7bcad1647bd0bf22f37aa4381c156f1c4f37bd4424454c659b38a89",
+        "bytes": 10474,
+        "prior_blob": "08384431f5c6795eb83cae0ad4e8b8759d5e6fa9",
+        "prior_sha256": "d38f4b1a5f414775b494ee801c83ebbc0473a7ab7e970cbf573529d08f1010aa",
+        "changed": true
+      },
+      {
+        "path": "scripts/dev/release_acceptance.py",
+        "blob": "02f7dd277ad5563b1e244ff3c18400aef703727a",
+        "mode": "100644",
+        "sha256": "8aa4ee2997f0d522a55905cb229b8b8ca1203a98d12bf78cccd56bbc22456d70",
+        "bytes": 124540,
+        "prior_blob": "02f7dd277ad5563b1e244ff3c18400aef703727a",
+        "prior_sha256": "8aa4ee2997f0d522a55905cb229b8b8ca1203a98d12bf78cccd56bbc22456d70",
+        "changed": false
+      },
+      {
+        "path": "scripts/dev/fixtures/workshop_customer/scenarios.json",
+        "blob": "bff0b0a52aa900e144ad8e3062632e8859a87c30",
+        "mode": "100644",
+        "sha256": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+        "bytes": 1027,
+        "prior_blob": "bff0b0a52aa900e144ad8e3062632e8859a87c30",
+        "prior_sha256": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+        "changed": false
+      },
+      {
+        "path": "docs/agents/pre-implementation-gate.md",
+        "blob": "41076af1db25f0cff8ca41d0203c050af9b772df",
+        "mode": "100644",
+        "sha256": "fa6e9c95c2674164c90d78e046a0427f6b406c313fb82ff627a2a2facb560ad0",
+        "bytes": 5659,
+        "prior_blob": "41076af1db25f0cff8ca41d0203c050af9b772df",
+        "prior_sha256": "fa6e9c95c2674164c90d78e046a0427f6b406c313fb82ff627a2a2facb560ad0",
+        "changed": false
+      }
+    ]
+  },
+  "budget_proof": {
+    "source_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+    "status": "proposed_not_implemented",
+    "budget": {
+      "version": "v1",
+      "engines": 3,
+      "scenarios_per_engine": 40,
+      "case_execution_seconds": 20,
+      "case_cleanup_seconds": 3,
+      "provenance_seconds": 150,
+      "playwright_start_seconds": 10,
+      "engine_launch_seconds": 15,
+      "engine_close_seconds": 3,
+      "playwright_stop_seconds": 10,
+      "evidence_persistence_seconds": 10,
+      "worker_hard_seconds": 4380,
+      "producer_hard_seconds": 4440,
+      "worker_term_seconds": 2,
+      "worker_kill_seconds": 2,
+      "worker_reap_seconds": 2,
+      "readiness_seconds": 120,
+      "handoff_seconds": 10,
+      "fixture_stop_seconds": 10,
+      "safety_seconds": 60,
+      "dto_fixture_seconds": 4800,
+      "api_fixture_seconds": 4400,
+      "go_test_seconds": 5040,
+      "fixture_startup_seconds": 120,
+      "fixture_teardown_seconds": 60,
+      "ci_exercise_seconds": 5100,
+      "ci_job_minutes": 100,
+      "parent_initialization_seconds": 10,
+      "parent_progress_read_parse_seconds": 10,
+      "parent_final_read_parse_stage_seconds": 10,
+      "parent_commit_seconds": 2,
+      "io_helper_term_seconds": 2,
+      "io_helper_kill_seconds": 2,
+      "io_helper_reap_seconds": 2,
+      "max_io_helper_cleanup_episodes": 2,
+      "parent_scheduling_reserve_seconds": 10,
+      "worker_deadline_reserve_seconds": 50
+    },
+    "arithmetic_checks": {
+      "complete_120_serial_phase_sum": 2994,
+      "phase_sum_lt_worker_hard": true,
+      "ready_handoff_producer_fixture_stop_margin": 4640,
+      "fixture_exceeds_envelope": true,
+      "startup_fixture_teardown": 4980,
+      "go_exceeds_fixture_envelope": true,
+      "exercise_exceeds_go_reap_write": true,
+      "all_120_ids": true,
+      "parent_initialization_worker_and_all_cleanup": 4430,
+      "complete_parent_schedule_lt_producer": true,
+      "worker_shutdown_reserve": 40,
+      "worker_reserve_fits": true,
+      "progress_io_seconds_charged_inside_worker_interval": 10,
+      "io_helper_cleanup_total": 12
+    },
+    "runtime_measurements": false,
+    "revision": 2,
+    "claim_scope": "Conditional finite DTO-main schedule from first main action; interpreter startup and stalled parent publication/process syscalls require separate independent watchdog. Regular-file ownership does not establish responsive parent I/O.",
+    "publication_fence": "Parent-only terminal attempt/epoch commit receipt plus same-attempt exit0; helpers stage only; revoked/uncertain/old attempt never admissible."
+  },
+  "required_fake_schedules": {
+    "revision": 2,
+    "status": "required_future_implementation_tests_not_executed",
+    "vectors": [
+      {
+        "id": "F1-timeout-before-commit",
+        "events": [
+          "init_ack",
+          "worker_success_reaped",
+          "stage_ack",
+          "timeout",
+          "late_stage_rename",
+          "late_stage_ack"
+        ],
+        "expected_terminal": "REVOKED",
+        "expected_publish_success": false
+      },
+      {
+        "id": "F1-cancel-before-fence",
+        "events": [
+          "init_ack",
+          "worker_success_reaped",
+          "stage_ack",
+          "cancel",
+          "commit_request"
+        ],
+        "expected_terminal": "REVOKED",
+        "expected_publish_success": false
+      },
+      {
+        "id": "F1-old-attempt",
+        "events": [
+          "init_ack",
+          "old_attempt_stage_ack",
+          "old_epoch_stage_ack",
+          "timeout"
+        ],
+        "expected_terminal": "REVOKED",
+        "expected_publish_success": false
+      },
+      {
+        "id": "F1-ambiguous-commit",
+        "events": [
+          "init_ack",
+          "worker_success_reaped",
+          "stage_ack",
+          "commit_syscall_exceeds_2s"
+        ],
+        "expected_terminal": "REVOKED",
+        "expected_invocation_exit": 1,
+        "expected_consumer_acceptance": false
+      },
+      {
+        "id": "F1-receipt-without-exit-zero",
+        "events": [
+          "receipt_bytes_present",
+          "parent_crash_before_exit0"
+        ],
+        "expected_consumer_acceptance": false
+      },
+      {
+        "id": "F2-init-read-blocked",
+        "events": [
+          "main_clock_start",
+          "config_read_blocked",
+          "init_deadline_10",
+          "late_read_ack"
+        ],
+        "expected_worker_starts": 0,
+        "expected_terminal": "REVOKED",
+        "claim_initial_evidence_written": false
+      },
+      {
+        "id": "F2-init-write-blocked",
+        "events": [
+          "main_clock_start",
+          "inventory_verified",
+          "initial_stage_write_blocked",
+          "init_deadline_10",
+          "late_write_ack"
+        ],
+        "expected_worker_starts": 0,
+        "expected_terminal": "REVOKED",
+        "claim_initial_evidence_written": false
+      },
+      {
+        "id": "F2-progress-parse-blocked",
+        "events": [
+          "main_clock_start",
+          "init_ack",
+          "worker_started",
+          "progress_parse_blocked",
+          "worker_deadline",
+          "worker_term",
+          "worker_kill",
+          "worker_reap",
+          "reader_term",
+          "reader_kill",
+          "reader_reap"
+        ],
+        "expected_terminal": "REVOKED",
+        "expected_worker_deadline_delay": 0
+      },
+      {
+        "id": "F2-two-helper-cleanups",
+        "events": [
+          "main_clock_start",
+          "init_ack",
+          "worker_started",
+          "reader_timeout",
+          "reader_term2_kill2_reap2",
+          "nonpass_writer_timeout",
+          "writer_term2_kill2_reap2"
+        ],
+        "expected_helper_cleanup_seconds": 12,
+        "expected_terminal": "REVOKED"
+      },
+      {
+        "id": "F2-parent-syscall-stalled",
+        "events": [
+          "parent_commit_syscall_stalled"
+        ],
+        "finite_lifetime_claim": false,
+        "required_blocker": "independent_watchdog_not_admitted",
+        "expected_consumer_acceptance": false
+      }
+    ]
+  },
+  "frozen120_ids_sha256": "8cc01115d078b8b84cc4a6c7a6d99998c991d6c03d2c90967927c5704d2d507e",
+  "queue_contract": {
+    "base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+    "base_queue_sha256": "b85de9c94abbd189bf2a8c05a50151eeff24ccff22faa5fbab967a99ab239275",
+    "existing_task_count": 44,
+    "proposed_task_count": 45,
+    "preserve_all44_objects_order_and_root_fields": true,
+    "append_only_task_id": "workshop-dto-timing-repair",
+    "historical_integration_task_preserved": true
+  },
+  "ci_assumptions": {
+    "source_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+    "source_workflow_sha256": "99b68b40c7bcad1647bd0bf22f37aa4381c156f1c4f37bd4424454c659b38a89",
+    "DTO_job_unchanged_vs_original": true,
+    "source_changes_only": [
+      "both scripts/r3_preparation/** trigger filters",
+      "appended r3-preparation-unit job"
+    ],
+    "preserve_all_trigger_filters": true,
+    "preserve_all_non_DTO_jobs_byte_for_byte": true,
+    "preserve_r3_job_exact_text": true,
+    "r3_job_sha256": "a5912660a8635a267d97180839d241feb32c7fb06a9e57ff4846900411f804b5",
+    "repair_modifies_only_existing_DTO_job": true,
+    "normal_future_exact_head_CI_required": true,
+    "source_integration_CI_inherited_as_DTO_repair_PASS": false,
+    "live_CI_fetched": false,
+    "ci_success_claimed": false
+  },
+  "tracking_sync": {
+    "status": "synchronized_live_literal_readback_planning_only",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6642607851",
+    "observed_at": "2026-11-04T21:30:28Z",
+    "receipt_ref": "/home/corp/autodata-evidence/dto-timing-literal-tracking/receipt.json",
+    "receipt_sha256": "147cb3e93ba41231f511c39614a9791a386392867c43756ecc64c024c60acaa7",
+    "issue_before_sha256": "ede951c341b11ac6c2969534526d3fe2be98dfb3f33d7fcd18b01d4f485c9913",
+    "issue_after_sha256": "af80c22897a32ab4d9f79fc7772a3ddb1a50e4bcaf264428bb231f0eb6cda609",
+    "project_before_sha256": "7073d1f6c448bbdaec0cf52fc360c75dd5d9f16eb4113f5e803c00d0ff0aafff",
+    "project_after_sha256": "371a26c967ba6fd003a74bb0330b7238e4664e798fe490711cc5f51cb95c4c6a",
+    "readback_verified": true,
+    "literal_gate_readback_verified": true,
+    "issue_body_prior_comments_preserved": true,
+    "prior_project_source_archived_verbatim": true,
+    "other_project_fields_unchanged": true,
+    "implementation_dispatched": false,
+    "checkpoint_B": null,
+    "prior_summary_readback": {
+      "status": "synchronized_live_readback_planning_only",
+      "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6642533877",
+      "observed_at": "2026-11-04T21:26:49Z",
+      "receipt_ref": "/home/corp/autodata-evidence/dto-timing-gate-tracking/receipt.json",
+      "receipt_sha256": "0cd9e5ccdd5dfadbbca947f2b4c52ff6791b0c48d0bf062e582214063211ceb7",
+      "issue_after_sha256": "ede951c341b11ac6c2969534526d3fe2be98dfb3f33d7fcd18b01d4f485c9913",
+      "project_after_sha256": "7073d1f6c448bbdaec0cf52fc360c75dd5d9f16eb4113f5e803c00d0ff0aafff",
+      "summary_readback_verified": true,
+      "literal_goal_todo_paths_in_comment": false
+    }
+  },
+  "authorities": {
+    "implementation_dispatch": false,
+    "github_write": false,
+    "host_execution": false,
+    "browser_execution": false,
+    "runtime_acceptance": false,
+    "fixture_acceptance": false,
+    "provider": false,
+    "bank": false,
+    "payment": false,
+    "account_mutation": false,
+    "secrets": false,
+    "docker_execution": false,
+    "image_acquisition": false,
+    "service_start": false,
+    "cleanup_admission": false,
+    "staging": false,
+    "trust_promotion": false,
+    "merge_to_master": false,
+    "release": false,
+    "deployment": false,
+    "cutover": false
+  },
+  "accepted_case_credit": 0,
+  "release_state": "unverified",
+  "trusted": false,
+  "runtime_accepted": false,
+  "host_observed": false,
+  "profiles_enabled": false,
+  "runtime_lock": null,
+  "run_record": null,
+  "implementation_dispatched": false,
+  "implementation_dispatch": null
+}
