@@ -1,0 +1,35 @@
+{
+  "checkpoint_sha": "bd59558a78a11448f89e35ef34f910bbb64cedbe",
+  "branch": "codex/workshop-pg17-apk-log-plan",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-pg17-apk-log.json",
+  "record_sha256": "6ac6986edc8748705d79841db0e383aaf1bfa7fd2a6b62bff59ca0f8a544622f",
+  "command": [
+    "python3",
+    "scripts/autonomy/pre_implementation.py",
+    "--record",
+    "docs/agents/records/2026-11-04-workshop-pg17-apk-log.json",
+    "--base-sha",
+    "bd59558a78a11448f89e35ef34f910bbb64cedbe"
+  ],
+  "exit_code": 0,
+  "stdout": {
+    "status": "synchronized",
+    "errors": []
+  },
+  "stderr": "",
+  "verified_at": "2026-11-04T02:57:50.577203+00:00",
+  "tracking_readback": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621306675",
+    "issue_body_sha256": "a3ce7439915989de7d84f7a44900ac35be0f23b8566a8a667f4ac3d929d29ba3",
+    "issue_comment_sha256": "99001bf9c62dd44e2a1c55b3e58783e21ca42218ab7e2a7ff3cf8a8770ce14ca",
+    "project_text_sha256": "45ae6a38f2a0a0b717a663b7cd66fc3ff0e19210ce1b9b3a621995faa019fe6e",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4"
+  },
+  "independent_checkpoint_review": "pending",
+  "implementation_modified": false,
+  "preparation_executed": false,
+  "runtime_executed": false,
+  "runtime_verified": false,
+  "production_ready": false,
+  "integration_authorized": false
+}
