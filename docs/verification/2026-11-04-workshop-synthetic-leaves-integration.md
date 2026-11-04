@@ -55,3 +55,121 @@ Issue186/Project8 planning readback: https://github.com/lucronn/autodata/issues/
   }
 }
 ```
+
+
+## Integrated synthetic-only candidate verification
+
+The five frozen source histories are integrated in order, with only semantic queue resolutions. All101 nonqueue source files retain their exact pinned blobs/modes; the44-task queue preserves checkpoint34 and source10, and its source43-task projection matches the reviewed oracle. Application, worker, infrastructure, shared contract and migration bytes remain identical to product217. The only workflow change adds the two R3 path filters and frozen130-test CI job.
+
+At committed source/workflow head `fe2597588177dbce0244ced2edca1b810b4516b6`, the combined15-file suite passed443 tests and1101 subtests; autonomy passed146 tests and297 subtests; the exact extracted R3 job body passed130 tests with no skips. Local checks used Python3.14.7; configured CI uses3.12. The135 structural/hash/mode/ancestry/queue/product-preservation checks and standalone/extracted nested exact-B preflights passed. No source repair was needed.
+
+At the retained readback, both named R3 CI jobs for this code head succeeded; full push41914795122 and PR41914800902 workflows remained in progress. This later documentation commit requires its own CI readback and independent whole-head review. Historical pending statements in imported source documents are preserved as committed observations. All results are synthetic/owned-child diagnostics: accepted-case credit0; runtime, real host preparation, final180/API21/DTO120 acceptance, authentic staging, trust promotion, master merge, release, deployment and cutover remain separately gated.
+
+```json
+{
+  "status": "local_synthetic_integration_verified_independent_whole_head_review_pending",
+  "observed_at": "2026-11-04T21:21:18.225060+00:00",
+  "checkpoint_B": "b8371e305066574b5845c58ac70fca4b5ed197ea",
+  "tested_source_and_workflow_head": "fe2597588177dbce0244ced2edca1b810b4516b6",
+  "source_heads": {
+    "217": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "242": "7db388c70abf41f10bfccd1132e48de4554995d9",
+    "246": "a9156c4c90b843c54742c0c068763ca52d0aac1b",
+    "247": "e88f8a9602ea9dcb67b1de31b281a8f0eb0faa4a",
+    "248": "6d6e20565ccee4245f3514de82dc1e4af00f9158",
+    "249": "a0ecc5d50c82ed66a6b1c5c773289b1edc8bef0a"
+  },
+  "history_preserving_merge_milestones": [
+    "a2c35a9bcf3908f502aaab562b296fd5e4bcd4fc",
+    "9dc3123025f456109e1ec00653b9e7ec9d54dfa8",
+    "ce7e3466020db17efa318d8c081af48684422d41",
+    "26f3eac5f345d00cc0bd9f9cf8dc2b844506b3e7",
+    "d2b8cb535505409d76c0be7d0a7082f7ba43ef49"
+  ],
+  "queue_tasks": 44,
+  "immutable_import_paths": 102,
+  "implementation_allowlist_paths": 104,
+  "local_tests": {
+    "focused15files": {
+      "passed": 443,
+      "subtests_passed": 1101,
+      "seconds": 89.86,
+      "skipped": 0
+    },
+    "autonomy": {
+      "passed": 146,
+      "subtests_passed": 297,
+      "seconds": 69.03,
+      "skipped": 0
+    },
+    "exact_R3_workflow_body": {
+      "passed": 130,
+      "seconds": 61.5,
+      "skipped": 0
+    }
+  },
+  "local_runtime": "Python3.14.7, pytest9.0.2, PyYAML6.0.3; filtered HOME/TMPDIR/PATH and no ambient credentials; plugin autoload disabled",
+  "github_workflow_runtime": "Python3.12, ubuntu-24.04; requires separate exact-head job observation",
+  "structural_checks": 135,
+  "standalone_and_nested_preflight": "synchronized/errors[] against exactB",
+  "product_source": "apps/workers/infra/packages/db byte-identical to product217",
+  "workflow_change": "only two R3 event path filters and exact deterministic130-test job; baseline workflow reconstructed byte-for-byte after their removal",
+  "CI_at_tested_code_head": {
+    "push": 41914795122,
+    "pull_request": 41914800902,
+    "R3_named_job": "completed/success on both",
+    "whole_workflows": "in_progress; validator and DTO jobs in_progress at retained readback"
+  },
+  "final_documentation_head_CI": "requires new readback after this append; no success inferred",
+  "evidence_root": "/home/corp/autodata-evidence/release-integration-build",
+  "test_log_hashes": [
+    {
+      "label": "pr242-tests",
+      "metadata_sha256": "1fe48adbccda0756f9d798f265b92ca28a710208acbcb96d217a9057043f8922",
+      "stdout_sha256": "a8541ef76822be12aa50bb3eb7612817fdb451f95c8a4daa2b7f1b739732889f",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "pr246-tests",
+      "metadata_sha256": "212f68c921bb1e3e5a590d7574215bcc2070fd64c72f509e76c15e73effb1e5e",
+      "stdout_sha256": "ab5d38515e601e03e9d1f908adfabdd74752cf613333d5fd2d0ee913351905b0",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "pr247-tests",
+      "metadata_sha256": "19d71b4f64cb3518df77145589c6df8a86292d7db90f756114971f852d6461e0",
+      "stdout_sha256": "228080a80c2e86c592dee46e3f206c2ce007c945021fa76e4ba0ede15c9a488e",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "workflow-r3-130",
+      "metadata_sha256": "71e9906568bcf6dfd17f14b80ee56d0d7d11653ba2287dd6238d5fbb7dda08fc",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "317485020bb829ad93d5ce39186b14f0b205de5e3b0495e0cf502e30127944b3"
+    },
+    {
+      "label": "combined-focused-tests",
+      "metadata_sha256": "2f33155e6ab4f7f38cd97f331764a420497d8518bb93b60c0144ec094130befb",
+      "stdout_sha256": "c5c799033232c61aa8d0f875a0641a9b6d4686453030d9fbff04e15f592603a9",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "autonomy-tests",
+      "metadata_sha256": "ba47a554d36d4a2c2ed43f0aa0110f9dabc8898f44cb1ea5aa7e95ae7c8926a4",
+      "stdout_sha256": "e97e7e61f99370e6a979b9b57b5846e27f2afb17c0b096ee865e99b1f4274e20",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "preservation": "all predecessor source pins, original33 tasks, gate task, source10 additions and249 conditional/tracking payloads retained; PR240 four collector blobs adopted exactly",
+  "accepted_new_case_credit": 0,
+  "runtime_preparation_authorized": false,
+  "fixture_acceptance": false,
+  "authentic_staging": false,
+  "trust_profile_promotion": false,
+  "merge_to_master_authorized": false,
+  "release_authorized": false,
+  "deployment_authorized": false,
+  "cutover_authorized": false,
+  "independent_whole_candidate_review": "pending coordinator dispatch"
+}
+```
