@@ -660,3 +660,152 @@ test('login route awaits restoration completion before signIn resolves', async (
   assert.equal(completed, true);
   assert.equal(h.calls.checkouts, 0);
 });
+
+function articleIndexHarness(responses) {
+  const navigation = new NavigationGeneration();
+  const nodes = new Map();
+  function element(tag, text = '', className = '') {
+    return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, children: [], events: {},
+      append(child) { this.children.push(child); },
+      replaceChildren(...children) { this.children = children; },
+      addEventListener(name, callback) { this.events[name] = callback; },
+      removeAttribute() {},
+    };
+  }
+  const $ = id => {
+    if (!nodes.has(id)) nodes.set(id, element('div'));
+    return nodes.get(id);
+  };
+  const statuses = [], updates = [], opened = [], requests = [], results = [];
+  const context = {
+    $, element, URL, location: { href: 'https://cars.example/workshop?vehicle=B' },
+    document: { body: { dataset: {} } },
+    quote: null, articles: [], access: '', retryAction: null, filterArticles,
+    stage() {}, renderPurchase() {}, show() {},
+    articlePath: () => '/v1/catalog/vehicles/B/articles',
+    requestJSON(path, options) {
+      requests.push({ path, signal: options.signal });
+      const response = responses[Math.min(requests.length - 1, responses.length - 1)];
+      return typeof response === 'function' ? response() : Promise.resolve(response);
+    },
+    async readCollection(read, options) {
+      const result = await readCollection(read, {
+        ...options, attempts: 3, wait: async () => {},
+        onUpdate(data, meta) {
+          options.onUpdate(data, meta);
+          updates.push({ complete: data.complete, count: $('articles').children[0]?.children.length ?? 0,
+            completion: $('completion-status').textContent,
+            link: $('articles').children[0]?.children[0]?.children[0] });
+        },
+      });
+      results.push(result);
+      return result;
+    },
+    loadArticle: async (id, generation) => opened.push({ id, generation }),
+    openArticle: id => opened.push({ id }),
+    operation: callback => callback(navigation.next()),
+    recordStatus: (text, options) => statuses.push({ text, ...options }),
+  };
+  runInNewContext(
+    appSection('function status(', 'function stage(') +
+    appSection('async function loadArticles(', 'const assetID =') +
+    '\nconst actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',
+    context,
+  );
+  return { context, $, navigation, statuses, updates, opened, requests, results,
+    load: (article = '', generation = navigation.next()) => context.loadArticles(generation, article) };
+}
+
+const indexResponse = (status, { complete = false, retryable = false, hydrating = false, items = [] } = {}) =>
+  ({ items, complete, hydrating, progress: status ? { status, retryable } : null });
+
+test('actual article index flow polls until explicit current completion', async () => {
+  for (const responses of [
+    [indexResponse('pending', { hydrating: true }), indexResponse('running', { hydrating: true }), indexResponse('completed', { complete: true })],
+    [indexResponse('failed', { retryable: true, hydrating: true }), indexResponse('completed', { complete: true })],
+  ]) {
+    const h = articleIndexHarness(responses);
+    await h.load();
+    assert.equal(h.requests.length, responses.length);
+    assert.equal(h.statuses.filter(s => s.complete === true).length, 1);
+    assert.equal(h.updates.slice(0, -1).every(u => u.completion === ''), true);
+    assert.equal(h.$('completion-status').textContent, 'Article index ready. No articles are currently available.');
+  }
+});
+
+test('actual article index flow keeps terminal, timed out, and nonhydrating outcomes incomplete', async () => {
+  for (const [response, reads, text] of [
+    [indexResponse('failed'), 1, /could not be prepared/],
+    [indexResponse('pending', { hydrating: true }), 3, /still being prepared/],
+    [indexResponse('pending'), 1, /still being prepared/],
+    [indexResponse(null), 1, /still being prepared/],
+  ]) {
+    const h = articleIndexHarness([response]);
+    await h.load();
+    assert.equal(h.requests.length, reads);
+    assert.equal(h.statuses.some(s => s.complete === true), false);
+    assert.match(h.$('activity-text').textContent, text);
+    assert.equal(h.$('completion-status').textContent, '');
+    assert.equal(h.results[0].timedOut === true, reads === 3);
+    assert.equal(typeof h.context.retryAction, response.progress?.status === 'failed' ? 'object' : 'function');
+  }
+});
+
+test('partial index rows remain clickable during preparation and saved articles open immediately', async () => {
+  const partial = indexResponse('running', { hydrating: true, items: [{ id: 'saved/article', title: 'Pump' }] });
+  const h = articleIndexHarness([partial]);
+  await h.load();
+  assert.equal(h.requests.length, 3);
+  assert.equal(h.updates[0].count, 1);
+  const link = h.updates[0].link;
+  assert.equal(new URL(link.href, 'https://cars.example').searchParams.get('article'), 'saved/article');
+  let prevented = false;
+  link.events.click({ preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(h.opened[0].id, 'saved/article');
+  const saved = articleIndexHarness([partial]);
+  await saved.load('saved/article');
+  assert.equal(saved.requests.length, 1);
+  assert.equal(saved.opened[0].id, 'saved/article');
+  assert.equal(saved.statuses.some(s => s.complete === true), false);
+});
+
+test('nonempty explicit completed article index is ready after one read', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [{ id: 'saved', title: 'Pump' }] })]);
+  await h.load();
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.$('completion-status').textContent, 'Article index ready.');
+});
+
+test('actual status DOM clears vehicle A completion immediately before vehicle B pending or terminal read resolves', async () => {
+  for (const result of [indexResponse('pending', { hydrating: true }), indexResponse('failed')]) {
+    let resolve;
+    const h = articleIndexHarness([() => new Promise(done => { resolve = done; }), result]);
+    h.context.status('Article index ready for vehicle A.', { complete: true });
+    const loading = h.load();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.$('completion-status').textContent, '', 'clear A completion before awaiting B');
+    resolve(result);
+    await loading;
+    assert.equal(h.$('completion-status').textContent, '');
+  }
+});
+
+test('obsolete article index loads cannot clear or publish current navigation state', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true })]);
+  const stale = h.navigation.next();
+  h.navigation.next();
+  h.context.status('Current vehicle is ready.', { complete: true });
+  await h.load('', stale);
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.$('completion-status').textContent, 'Current vehicle is ready.');
+
+  let resolve;
+  const inFlight = articleIndexHarness([() => new Promise(done => { resolve = done; })]);
+  const loading = inFlight.load();
+  inFlight.navigation.next();
+  resolve(indexResponse('completed', { complete: true, items: [{ id: 'obsolete' }] }));
+  await assert.rejects(loading, { name: 'AbortError' });
+  assert.equal(inFlight.updates.length, 0);
+  assert.equal(inFlight.statuses.some(s => s.complete === true), false);
+});
