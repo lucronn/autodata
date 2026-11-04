@@ -21,13 +21,13 @@
     ],
     "todo": [
       "Synchronize the PG17 route decision, exact source/base pins, staged authority and concrete todo in Issue186/Project8 and canonical documentation; commit/push and pass exact-checkpoint preflight for independent review.",
-      "After coordinator approval only, prepare the cached-digest Alpine derivative with Python3 and a C compiler; retain package versions, APK hashes, build inputs, base identity and immutable image identity without starting PostgreSQL.",
+      "After coordinator approval only, prepare the cached-digest Alpine derivative with Python3 and a C compiler; retain package versions, APK hashes, build inputs, base identity and immutable image identity with private tmpfs covering inherited PGDATA, verified mount inventory and exact-owned cleanup; do not start PostgreSQL.",
       "Independently inspect the frozen runner artifact and exact harness54ab source archive, verify matching PG17 tools/headers, ICU and non-root identity, then obtain separate exact-image execution authorization and re-pin the adopted gate.",
-      "Only after the execution boundary is approved, run the unchanged complete PG17 adversarial harness in one network-disabled disposable container; retain every failure, sentinel control, case inventory and server/session/lock/container cleanup receipt.",
+      "Only after the execution boundary is approved, run the unchanged complete PG17 adversarial harness in one network-disabled disposable container with private PGDATA tmpfs and verified mount inventory; retain every failure, sentinel control, case inventory and server/session/lock/container cleanup receipt.",
       "Independently review exact source/image/raw evidence before accepting any disposable-harness result; fail closed on missing prerequisites or cases and keep production grants, runtime integration, services, deployment and readiness unavailable."
     ],
     "status": "synchronized",
-    "updated_at": "2026-11-04T00:44:26.593707+00:00",
+    "updated_at": "2026-11-04T02:36:36.976288+00:00",
     "source_integration_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
     "harness_source_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
     "implementation_allowlist": [],
@@ -37,23 +37,29 @@
     "runtime_verified": false,
     "production_ready": false,
     "tracking_sync": {
-      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6619358812",
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621014641",
       "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
       "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
       "project_note_field": "Source or dependency reference",
-      "verified_at": "2026-11-04T00:44:26.593707+00:00",
-      "issue_body_sha256": "98700fd8e02ee50e643174337ce9a9895736c809fd60a0720fcf0e4b8faee833",
-      "issue_comment_sha256": "f3de73a13d8b33b9719bdf5d397ae6ae723d225ccbd2c521f93f818da1ac6373",
-      "project_text_sha256": "e7c1f502d4549d7accefc10c5f1f41ddfb31fa1c02b7b32405a3db0db2d6a250",
-      "prior_project_text_sha256": "293ca347ec9b6848b5e8e339b8dce6a0c5bdbe02019ef5feae45e0cbc5db4f93",
+      "verified_at": "2026-11-04T02:36:36.976288+00:00",
+      "issue_body_sha256": "5a5fe01ab2f7da7aa75bd6bebb9a9f06807e34b15b337cd0a0de6bb9d46e11c6",
+      "issue_comment_sha256": "6828c689501b8f9c57e253ab9a45eed5da405a4340ce1fb6e85731450f5a9ad3",
+      "project_text_sha256": "c590544b30070e44623996b2e726d683fd5241c02e5e04de547e27b59bb946e4",
+      "prior_project_text_sha256": "e7c1f502d4549d7accefc10c5f1f41ddfb31fa1c02b7b32405a3db0db2d6a250",
       "full_prior_project_index_preserved_in_issue_comment": true
+    },
+    "review_correction": {
+      "source_checkpoint_sha": "111e9c0324f9b89f36a3558911dc0708528ada5b",
+      "finding": "P2 inherited PostgreSQL image VOLUME could allocate anonymous writable PGDATA and survive plain container removal",
+      "resolution": "Every preparation/acquisition/inspection/execution launch requires bounded private tmpfs at /var/lib/postgresql/data, exact mount inventory, no anonymous/named volume and exact-owned cleanup proof",
+      "review_status": "pending_corrected_checkpoint_review"
     }
   },
   "todo": [
     "Synchronize the PG17 route decision, exact source/base pins, staged authority and concrete todo in Issue186/Project8 and canonical documentation; commit/push and pass exact-checkpoint preflight for independent review.",
-    "After coordinator approval only, prepare the cached-digest Alpine derivative with Python3 and a C compiler; retain package versions, APK hashes, build inputs, base identity and immutable image identity without starting PostgreSQL.",
+    "After coordinator approval only, prepare the cached-digest Alpine derivative with Python3 and a C compiler; retain package versions, APK hashes, build inputs, base identity and immutable image identity with private tmpfs covering inherited PGDATA, verified mount inventory and exact-owned cleanup; do not start PostgreSQL.",
     "Independently inspect the frozen runner artifact and exact harness54ab source archive, verify matching PG17 tools/headers, ICU and non-root identity, then obtain separate exact-image execution authorization and re-pin the adopted gate.",
-    "Only after the execution boundary is approved, run the unchanged complete PG17 adversarial harness in one network-disabled disposable container; retain every failure, sentinel control, case inventory and server/session/lock/container cleanup receipt.",
+    "Only after the execution boundary is approved, run the unchanged complete PG17 adversarial harness in one network-disabled disposable container with private PGDATA tmpfs and verified mount inventory; retain every failure, sentinel control, case inventory and server/session/lock/container cleanup receipt.",
     "Independently review exact source/image/raw evidence before accepting any disposable-harness result; fail closed on missing prerequisites or cases and keep production grants, runtime integration, services, deployment and readiness unavailable."
   ],
   "execution": {
