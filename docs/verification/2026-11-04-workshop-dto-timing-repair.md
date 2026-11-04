@@ -101,10 +101,39 @@ Concrete todo:
     "deployment": false,
     "cutover": false
   },
-  "accepted_case_credit": 0
+  "accepted_case_credit": 0,
+  "source_ci": {
+    "source_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+    "pull_request": "https://github.com/lucronn/autodata/pull/251",
+    "actions_run": "https://github.com/lucronn/autodata/actions/runs/41915336349",
+    "conclusion": "failure",
+    "evidence_provenance": "coordinator report; no independent live CI readback performed by this planning agent",
+    "reported_results": {
+      "validator_dev_adapter_tests": {
+        "failures": 3,
+        "errors": 4
+      },
+      "browser_DTO_job": "success",
+      "R3_job": "success"
+    },
+    "suspected_cause": "R6 trusted workflow hash mismatch after integrated R3 workflow change",
+    "cause_confirmed": false,
+    "forensic_review": "pending coordinator investigation",
+    "integrated_base_CI_PASS": false,
+    "DTO_repair_PASS": false,
+    "implementation_dispatch_blocked": true,
+    "dispatch_prerequisites": [
+      "separately gated correction of source CI failure",
+      "independent exact committed planning checkpoint review",
+      "explicit coordinator implementation dispatch"
+    ],
+    "scope_expansion_authorized": false
+  }
 }
 ```
 
 Review evidence: original revision2 PASS, integrated-base differential PASS (100 checks/26 reproduced) and six-path external draft PASS (92/27). These are planning reviews, not code approval or runtime acceptance. The stale earlier review-pending label is superseded by these measured receipts. Actual full checkpoint B, exact-B standalone/extracted nested preflights and independent exact-B review will be pinned externally after commit. No implementation dispatch, host/browser/provider/payment/Docker/staging/master-merge/release follows.
 
 The six implementation paths,120 ordered IDs,4430<4440 schedule, stage-only helpers, parent terminal attempt/epoch fencing, exact ACK and same-attempt receipt+exit0 rule remain. All44 historical queue entries/root fields are unchanged; task45 alone is added. R3 filters/job and all non-DTO workflow bytes remain immutable baseline. Separate watchdog/containment/trace/runtime gates remain closed.
+
+Source integration CI update: the coordinator reports PR251 Actions run [41915336349](https://github.com/lucronn/autodata/actions/runs/41915336349) FAILED, with validator dev adapter tests reporting 3 failures and 4 errors; the browser DTO and R3 jobs succeeded. A mismatch in the R6 trusted workflow hash after the integrated R3 workflow change is suspected; its cause remains unconfirmed pending coordinator forensic review. This planning agent has not independently fetched the live run. Neither integrated-base CI PASS nor DTO repair PASS is inferred. DTO implementation dispatch remains blocked pending a separately gated source CI correction, independent exact-checkpoint review and explicit coordinator dispatch. The correction is outside this six-path DTO implementation scope.

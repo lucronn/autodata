@@ -143,7 +143,34 @@
       "deployment": false,
       "cutover": false
     },
-    "accepted_case_credit": 0
+    "accepted_case_credit": 0,
+    "source_ci": {
+      "source_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+      "pull_request": "https://github.com/lucronn/autodata/pull/251",
+      "actions_run": "https://github.com/lucronn/autodata/actions/runs/41915336349",
+      "conclusion": "failure",
+      "evidence_provenance": "coordinator report; no independent live CI readback performed by this planning agent",
+      "reported_results": {
+        "validator_dev_adapter_tests": {
+          "failures": 3,
+          "errors": 4
+        },
+        "browser_DTO_job": "success",
+        "R3_job": "success"
+      },
+      "suspected_cause": "R6 trusted workflow hash mismatch after integrated R3 workflow change",
+      "cause_confirmed": false,
+      "forensic_review": "pending coordinator investigation",
+      "integrated_base_CI_PASS": false,
+      "DTO_repair_PASS": false,
+      "implementation_dispatch_blocked": true,
+      "dispatch_prerequisites": [
+        "separately gated correction of source CI failure",
+        "independent exact committed planning checkpoint review",
+        "explicit coordinator implementation dispatch"
+      ],
+      "scope_expansion_authorized": false
+    }
   },
   "source_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
   "source_tree": "ea2c1507fdef8db698938fb6165b4d7bf2d77d2e",
@@ -452,7 +479,34 @@
     "normal_future_exact_head_CI_required": true,
     "source_integration_CI_inherited_as_DTO_repair_PASS": false,
     "live_CI_fetched": false,
-    "ci_success_claimed": false
+    "ci_success_claimed": false,
+    "reported_source_ci": {
+      "source_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+      "pull_request": "https://github.com/lucronn/autodata/pull/251",
+      "actions_run": "https://github.com/lucronn/autodata/actions/runs/41915336349",
+      "conclusion": "failure",
+      "evidence_provenance": "coordinator report; no independent live CI readback performed by this planning agent",
+      "reported_results": {
+        "validator_dev_adapter_tests": {
+          "failures": 3,
+          "errors": 4
+        },
+        "browser_DTO_job": "success",
+        "R3_job": "success"
+      },
+      "suspected_cause": "R6 trusted workflow hash mismatch after integrated R3 workflow change",
+      "cause_confirmed": false,
+      "forensic_review": "pending coordinator investigation",
+      "integrated_base_CI_PASS": false,
+      "DTO_repair_PASS": false,
+      "implementation_dispatch_blocked": true,
+      "dispatch_prerequisites": [
+        "separately gated correction of source CI failure",
+        "independent exact committed planning checkpoint review",
+        "explicit coordinator implementation dispatch"
+      ],
+      "scope_expansion_authorized": false
+    }
   },
   "tracking_sync": {
     "status": "synchronized_live_literal_readback_planning_only",
@@ -515,5 +569,32 @@
   "runtime_lock": null,
   "run_record": null,
   "implementation_dispatched": false,
-  "implementation_dispatch": null
+  "implementation_dispatch": null,
+  "source_ci": {
+    "source_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+    "pull_request": "https://github.com/lucronn/autodata/pull/251",
+    "actions_run": "https://github.com/lucronn/autodata/actions/runs/41915336349",
+    "conclusion": "failure",
+    "evidence_provenance": "coordinator report; no independent live CI readback performed by this planning agent",
+    "reported_results": {
+      "validator_dev_adapter_tests": {
+        "failures": 3,
+        "errors": 4
+      },
+      "browser_DTO_job": "success",
+      "R3_job": "success"
+    },
+    "suspected_cause": "R6 trusted workflow hash mismatch after integrated R3 workflow change",
+    "cause_confirmed": false,
+    "forensic_review": "pending coordinator investigation",
+    "integrated_base_CI_PASS": false,
+    "DTO_repair_PASS": false,
+    "implementation_dispatch_blocked": true,
+    "dispatch_prerequisites": [
+      "separately gated correction of source CI failure",
+      "independent exact committed planning checkpoint review",
+      "explicit coordinator implementation dispatch"
+    ],
+    "scope_expansion_authorized": false
+  }
 }

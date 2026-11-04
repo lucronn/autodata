@@ -120,7 +120,34 @@ Status: planning and literal Issue186/Project8 tracking synchronized; exact comm
     "deployment": false,
     "cutover": false
   },
-  "accepted_case_credit": 0
+  "accepted_case_credit": 0,
+  "source_ci": {
+    "source_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+    "pull_request": "https://github.com/lucronn/autodata/pull/251",
+    "actions_run": "https://github.com/lucronn/autodata/actions/runs/41915336349",
+    "conclusion": "failure",
+    "evidence_provenance": "coordinator report; no independent live CI readback performed by this planning agent",
+    "reported_results": {
+      "validator_dev_adapter_tests": {
+        "failures": 3,
+        "errors": 4
+      },
+      "browser_DTO_job": "success",
+      "R3_job": "success"
+    },
+    "suspected_cause": "R6 trusted workflow hash mismatch after integrated R3 workflow change",
+    "cause_confirmed": false,
+    "forensic_review": "pending coordinator investigation",
+    "integrated_base_CI_PASS": false,
+    "DTO_repair_PASS": false,
+    "implementation_dispatch_blocked": true,
+    "dispatch_prerequisites": [
+      "separately gated correction of source CI failure",
+      "independent exact committed planning checkpoint review",
+      "explicit coordinator implementation dispatch"
+    ],
+    "scope_expansion_authorized": false
+  }
 }
 ```
 
@@ -515,7 +542,36 @@ F2 vectors: blocked config read, inventory parse/hash, directory allocation, ini
     "normal_future_exact_head_CI_required": true,
     "source_integration_CI_inherited_as_DTO_repair_PASS": false,
     "live_CI_fetched": false,
-    "ci_success_claimed": false
+    "ci_success_claimed": false,
+    "reported_source_ci": {
+      "source_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+      "pull_request": "https://github.com/lucronn/autodata/pull/251",
+      "actions_run": "https://github.com/lucronn/autodata/actions/runs/41915336349",
+      "conclusion": "failure",
+      "evidence_provenance": "coordinator report; no independent live CI readback performed by this planning agent",
+      "reported_results": {
+        "validator_dev_adapter_tests": {
+          "failures": 3,
+          "errors": 4
+        },
+        "browser_DTO_job": "success",
+        "R3_job": "success"
+      },
+      "suspected_cause": "R6 trusted workflow hash mismatch after integrated R3 workflow change",
+      "cause_confirmed": false,
+      "forensic_review": "pending coordinator investigation",
+      "integrated_base_CI_PASS": false,
+      "DTO_repair_PASS": false,
+      "implementation_dispatch_blocked": true,
+      "dispatch_prerequisites": [
+        "separately gated correction of source CI failure",
+        "independent exact committed planning checkpoint review",
+        "explicit coordinator implementation dispatch"
+      ],
+      "scope_expansion_authorized": false
+    }
   }
 }
 ```
+
+Source integration CI update: the coordinator reports PR251 Actions run [41915336349](https://github.com/lucronn/autodata/actions/runs/41915336349) FAILED, with validator dev adapter tests reporting 3 failures and 4 errors; the browser DTO and R3 jobs succeeded. A mismatch in the R6 trusted workflow hash after the integrated R3 workflow change is suspected; its cause remains unconfirmed pending coordinator forensic review. This planning agent has not independently fetched the live run. Neither integrated-base CI PASS nor DTO repair PASS is inferred. DTO implementation dispatch remains blocked pending a separately gated source CI correction, independent exact-checkpoint review and explicit coordinator dispatch. The correction is outside this six-path DTO implementation scope.
