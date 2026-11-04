@@ -252,3 +252,23 @@ Commit/push, pinned preflight, independent exact-plan review and coordinator dis
 
 
 Migration-only correction tracking: [Issue186 comment6621206696](https://github.com/lucronn/autodata/issues/186#issuecomment-6621206696), Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference`, verified `2026-11-04T02:50:39.563760+00:00`. The dedicated correction record stores exact body/comment/index hashes; the comment preserves the prior index verbatim/hash. This is plan-only synchronization; committed pinned preflight, independent exact-plan review and coordinator dispatch still precede implementation. No code or live execution is authorized by this checkpoint alone.
+
+### Disconnected migration build argument correction
+
+The injected publisher now supplies migration's required base explicitly as
+`--build-arg POSTGRES_IMAGE=<manifest.images.postgres.reference>` immediately
+before `--file`. The value comes only from the already validated immutable
+manifest reference. API and ingestion keep their previous complete command
+vectors. Ambient `POSTGRES_IMAGE`, Dockerfile defaults and caller build-argument
+maps cannot select or replace this base; invalid reviewed input is rejected
+before any executor or transport callback.
+
+Fake-executor regressions verify exact placement, digest propagation, ignored
+ambient values and rejection with zero callbacks. They prove the requested base
+identity, not the contents of an observed image. No Docker build was run, and
+PostgreSQL17 client/runtime compatibility, PG17/pgvector ABI, authenticated
+publication and deployment remain unproved. CLI/workflow `missing_dependency`,
+`simulation:true`, `provenance_authenticated:false`,
+`deployment_authorized:false` and schema/services/runtime-evidence denials stay
+unchanged. This correction follows the dedicated migration build-argument plan
+at checkpoint `d1c0969b30966a75d9e08714e231d9d87cd12087`.

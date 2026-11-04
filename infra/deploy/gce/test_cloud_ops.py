@@ -1129,7 +1129,9 @@ class PublisherV2Tests(unittest.TestCase):
         for role,dockerfile in [('api','apps/api-go/Dockerfile'),('ingestion','workers/ingestion-python/Dockerfile'),('migration','infra/deploy/gce/migration.Dockerfile')]:
             command=next(r for k,r in calls if r['name']=='build_'+role)
             self.assertEqual(command['argv'],['/usr/bin/docker','buildx','build','--platform','linux/amd64','--provenance=mode=max',
-                '--sbom=true','--push','--build-arg','SOURCE_DATE_EPOCH=1700000000','--file',dockerfile,'--tag',
+                '--sbom=true','--push','--build-arg','SOURCE_DATE_EPOCH=1700000000'] +
+                (['--build-arg','POSTGRES_IMAGE='+self.manifest['images']['postgres']['reference']] if role=='migration' else []) +
+                ['--file',dockerfile,'--tag',
                 self.config['resources']['artifact_repository']+'/'+role+':source-'+self.manifest['source_sha'],
                 '--metadata-file','/work/workshop-release/'+role+'-build.json','.'])
             self.assertEqual(command['timeout_seconds'],1800)
@@ -1137,6 +1139,68 @@ class PublisherV2Tests(unittest.TestCase):
         self.assertEqual(upload['members'],{'release.zip':self.archive})
         host,calls=self.host(result)
         self.assertEqual(host['status'],'unavailable');self.assertEqual(len(calls),1)
+
+    def test_migration_base_is_manifest_bound_and_only_precedes_its_dockerfile(self):
+        # Omitting, duplicating or leaking the migration base argument breaks this boundary.
+        self.fixtures();result,calls=self.orchestrate()
+        self.assertEqual(result['status'],'transcript_consistent')
+        for role in ('api','ingestion','migration'):
+            argv=next(r['argv'] for k,r in calls if r['name']=='build_'+role)
+            base=[arg for arg in argv if arg.startswith('POSTGRES_IMAGE=')]
+            if role=='migration':
+                expected='POSTGRES_IMAGE='+self.manifest['images']['postgres']['reference']
+                self.assertEqual(base,[expected])
+                position=argv.index('--file')
+                self.assertEqual(argv[position-2:position],['--build-arg',expected])
+            else:self.assertEqual(base,[])
+
+    def test_migration_base_tracks_independently_changed_reviewed_digest(self):
+        original=self.manifest['images']['postgres']['reference']
+        changed=original.split('@')[0]+'@sha256:'+'e'*64
+        self.assertNotEqual(original,changed)
+        self.manifest['images']['postgres']['reference']=changed
+        # Rebuild all archive/wrapper/binding fixtures, without bypassing validation.
+        self.fixtures();result,calls=self.orchestrate()
+        self.assertEqual(result['status'],'transcript_consistent')
+        self.assertEqual(result['binding'],self.binding)
+        argv=next(r['argv'] for k,r in calls if r['name']=='build_migration')
+        self.assertIn('POSTGRES_IMAGE='+changed,argv)
+        self.assertNotIn('POSTGRES_IMAGE='+original,argv)
+
+    def test_ambient_postgres_image_cannot_change_any_emitted_request(self):
+        self.fixtures();baseline,expected=self.orchestrate()
+        self.assertEqual(baseline['status'],'transcript_consistent')
+        for ambient in ('postgres:17','postgres@sha256:'+'d'*64,'$(touch /forbidden); postgres:latest'):
+            with self.subTest(ambient=ambient),patch.dict(os.environ,{'POSTGRES_IMAGE':ambient}):
+                result,calls=self.orchestrate()
+                self.assertEqual(result,baseline)
+                self.assertEqual(calls,expected)
+                argv=next(r['argv'] for k,r in calls if r['name']=='build_migration')
+                self.assertIn('POSTGRES_IMAGE='+self.manifest['images']['postgres']['reference'],argv)
+
+    def test_invalid_reviewed_postgres_reference_has_no_fallback_or_callbacks(self):
+        self.fixtures();original=copy.deepcopy(self.manifest)
+        calls=[]
+        def forbidden(*args):
+            calls.append(args)
+            raise AssertionError('operation on invalid input')
+        for reference in (None,'','postgres:17','postgres:latest',
+                          'postgres@sha256:'+'A'*64,'postgres@sha256:'+'g'*64,'postgres@sha256:'+'a'*63):
+            manifest=copy.deepcopy(original)
+            if reference is None:del manifest['images']['postgres']['reference']
+            else:manifest['images']['postgres']['reference']=reference
+            with self.subTest(reference=reference),patch.dict(os.environ,{'POSTGRES_IMAGE':original['images']['postgres']['reference']}):
+                with self.assertRaisesRegex(self.ops.ContractError,'^invalid publisher input$'):
+                    self.ops.orchestrate_publication(manifest,self.config,self.trust,self.execution,
+                        executor=forbidden,registry_transport=forbidden,evidence_transport=forbidden,artifact_transport=forbidden)
+                self.assertEqual(calls,[])
+        for key,value in [('build_args',{'POSTGRES_IMAGE':original['images']['postgres']['reference']}),
+                          ('POSTGRES_IMAGE',original['images']['postgres']['reference'])]:
+            execution=dict(self.execution);execution[key]=value
+            with self.subTest(override=key),self.assertRaisesRegex(self.ops.ContractError,'^invalid publisher input$'):
+                self.ops.orchestrate_publication(original,self.config,self.trust,execution,
+                    executor=forbidden,registry_transport=forbidden,evidence_transport=forbidden,artifact_transport=forbidden)
+            self.assertEqual(calls,[])
 
     def test_orchestrator_failures_at_every_stage_never_publish_success(self):
         self.assertTrue(hasattr(self.ops,'orchestrate_publication'),'orchestrator missing')

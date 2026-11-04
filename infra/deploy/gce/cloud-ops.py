@@ -796,9 +796,11 @@ def orchestrate_publication(manifest: dict, config: dict, trust: dict,
         for role, dockerfile in zip(_OWNED_IMAGES, ('apps/api-go/Dockerfile', 'workers/ingestion-python/Dockerfile',
                                                   'infra/deploy/gce/migration.Dockerfile')):
             tag = repository + '/' + role + ':source-' + source
+            build_args = ['--build-arg', 'SOURCE_DATE_EPOCH=' + str(execution_policy['source_epoch'])]
+            if role == 'migration':
+                build_args += ['--build-arg', 'POSTGRES_IMAGE=' + manifest['images']['postgres']['reference']]
             execute('build_' + role, ['/usr/bin/docker', 'buildx', 'build', '--platform', 'linux/amd64',
-                '--provenance=mode=max', '--sbom=true', '--push', '--build-arg',
-                'SOURCE_DATE_EPOCH=' + str(execution_policy['source_epoch']), '--file', dockerfile, '--tag', tag,
+                '--provenance=mode=max', '--sbom=true', '--push'] + build_args + ['--file', dockerfile, '--tag', tag,
                 '--metadata-file', _PUBLISH_ROOT + '/' + role + '-build.json', '.'], 1800, cwd=_PUBLISH_ROOT + '/source')
             image = manifest['images'][role]
             observation = transport(registry_transport, {'name': 'image', 'repository': repository, 'role': role,
