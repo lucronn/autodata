@@ -596,6 +596,17 @@
       "release_state": "unverified",
       "implementation_changes_allowed": false,
       "runtime_verified": false
+    },
+    {
+      "id": "workshop-pg17-bind-target-adoption",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-pg17-bind-target-adoption.json",
+      "depends_on": [
+        "workshop-pg17-bind-targets"
+      ],
+      "state": "reviewed_plan_adoption_pending_pinned_preflight",
+      "release_state": "unverified",
+      "implementation_changes_allowed": false,
+      "runtime_verified": false
     }
   ],
   "execution": {
