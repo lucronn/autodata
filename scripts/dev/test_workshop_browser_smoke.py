@@ -717,4 +717,70 @@ class DTOTimingContract(unittest.TestCase):
             with self.assertRaises(ValueError): smoke.load_dto_timing(path)
 
 
+class DTOLifecycleTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.timing=smoke.load_dto_timing(smoke.FIXTURES/'timing.json')
+        self.now=0.; self.actions=[]; self.snapshots=[]; self.failure=None
+        owner=self
+        class Lifecycle:
+            evidence={'candidate_sha':'a'*40, 'input_sha256':{'timing':'b'*64}}
+            async def start(self): owner.actions.append('start'); return self
+            async def launch(self,engine,timeout):
+                owner.actions.append(('launch',engine,timeout))
+                if owner.failure=='launch': raise TimeoutError('uncertain launch')
+                return SimpleNamespace(version='fake')
+            async def case(self,browser,name,output):
+                owner.actions.append(('case',name)); return {'status':'passed'}
+            async def close(self,browser):owner.actions.append('close')
+            async def stop(self):
+                owner.actions.append('stop')
+                if owner.failure=='stop':raise TimeoutError('stop held')
+        self.lifecycle=Lifecycle()
+        self.args=SimpleNamespace(browser='all',output='/unused',candidate_sha='a'*40,mode='dto-fixture')
+    async def phase(self,awaitable,seconds,**kwargs):
+        return await awaitable
+    async def persist(self,evidence):self.snapshots.append(copy.deepcopy(evidence));return True
+    async def execute(self):
+        return await smoke.run_dto_inventory(self.args,clock=lambda:self.now,lifecycle=self.lifecycle,
+            persist=self.persist,timing=self.timing,bounded=self.phase)
+    async def test_full_inventory_and_explicit_lifecycle(self):
+        evidence=await self.execute()
+        self.assertEqual(len(evidence['results']),120)
+        self.assertTrue(all(row['status']=='passed' for row in evidence['results']))
+        self.assertEqual(self.actions[0],'start');self.assertEqual(self.actions[-1],'stop')
+        self.assertEqual([x for x in self.actions if isinstance(x,tuple) and x[0]=='launch'],
+            [('launch','chromium',15000),('launch','firefox',15000),('launch','webkit',15000)])
+        self.assertGreaterEqual(len(self.snapshots),120)
+        self.assertEqual(evidence['cleanup_status'],'verified')
+    async def test_global_stop_failure_preserves_observations(self):
+        self.failure='stop';evidence=await self.execute()
+        self.assertEqual(len(evidence['results']),120)
+        self.assertTrue(all(row['status']=='failed' for row in evidence['results']))
+        self.assertEqual(evidence['results'][0]['observed_case_result']['status'],'passed')
+        with self.assertRaises(ValueError):smoke.validate_results(evidence['results'],[(e,n) for e in smoke.ENGINES for n in smoke.inventory()])
+    async def test_uncertain_launch_stops_engine_admission(self):
+        self.failure='launch';evidence=await self.execute()
+        self.assertEqual(len([x for x in self.actions if isinstance(x,tuple) and x[0]=='launch']),1)
+        self.assertEqual(evidence['results'][0]['failure_kind'],'not_started_after_lifecycle_failure')
+        self.assertEqual(evidence['cleanup_status'],'unverified')
+    async def test_cumulative_persistence_and_backward_clock(self):
+        async def slow(evidence): self.now+=6;return True
+        self.persist=slow;evidence=await self.execute()
+        self.assertEqual(evidence['failure_stage'],'persistence')
+        self.assertTrue(all(row['status']=='failed' for row in evidence['results']))
+        self.now=0
+        async def backwards(evidence):self.now-=1;return True
+        self.persist=backwards;evidence=await self.execute()
+        self.assertEqual(evidence['failure_kind'],'clock_or_lifecycle_failure')
+    def test_failure_rows_preserve_original_diagnostics_and_order(self):
+        ids=[(e,n) for e in smoke.ENGINES for n in smoke.inventory()]
+        observed=[dict(browser=ids[0][0],scenario=ids[0][1],status='failed',error='primary',
+            diagnostics={'requests':[{'path':'/original'}],'trace_path':'raw.zip'})]
+        rows=smoke.complete_dto_failure(ids,observed,stage='stop',kind='timeout',cleanup='unverified')
+        self.assertEqual([(r['browser'],r['scenario']) for r in rows],ids)
+        self.assertEqual(rows[0]['observed_case_result'],observed[0]);self.assertEqual(rows[0]['error'],'primary')
+        self.assertEqual(rows[0]['diagnostics'],observed[0]['diagnostics'])
+        self.assertNotIn('elapsed_seconds',rows[1]);self.assertNotIn('requests',rows[1])
+
+
 if __name__ == '__main__': unittest.main()

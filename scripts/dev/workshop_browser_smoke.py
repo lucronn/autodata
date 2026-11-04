@@ -306,7 +306,7 @@ def _dto_task(coroutine):
     return task
 
 
-async def _dto_bounded(coroutine, timeout, *, late_cleanup=None):
+async def _dto_bounded(coroutine, timeout, *, late_cleanup=None, late_result_cleanup=None):
     task = _dto_task(coroutine)
     try:
         done, _ = await asyncio.wait({task}, timeout=max(0, timeout))
@@ -315,6 +315,8 @@ async def _dto_bounded(coroutine, timeout, *, late_cleanup=None):
     except BaseException:
         if late_cleanup is not None:
             task.add_done_callback(lambda done: late_cleanup())
+        if late_result_cleanup is not None:
+            task.add_done_callback(late_result_cleanup)
         if not task.done(): task.cancel()
         raise
 
@@ -508,7 +510,10 @@ async def dto_case(browser, origin, name, output, *, diagnostics=None):
     owns_diagnostics = diagnostics is None
     diagnostics = diagnostics or DTODiagnostics(output, name)
     try:
-        context=await browser.new_context(ignore_https_errors=True,viewport={'width':390 if name=='keyboard-print-mobile' else 1280,'height':900})
+        def late_context(done):
+            if not done.cancelled() and done.exception() is None:
+                _dto_task(_dto_bounded(done.result().close(),3))
+        context=await _dto_bounded(browser.new_context(ignore_https_errors=True,viewport={'width':390 if name=='keyboard-print-mobile' else 1280,'height':900}),20,late_result_cleanup=late_context)
         diagnostics.context = context
         context.set_default_timeout(10000)
         context.set_default_navigation_timeout(10000)
@@ -896,6 +901,127 @@ async def api_case(browser,origin,name,output):
         except Exception:pass
         raise
     finally:await context.close()
+
+
+def complete_dto_failure(expected, observations, *, stage, kind, cleanup):
+    """Terminal failures retain original observations without promoting prior passes."""
+    observed = {(row['browser'],row['scenario']):row for row in observations}
+    rows = []
+    for engine,name in expected:
+        original = observed.get((engine,name))
+        row = dict(original or {}, browser=engine, scenario=name, status='failed')
+        if original is not None:
+            row['observed_case_result'] = dict(original)
+        else:
+            row['failure_kind'] = 'not_started_after_lifecycle_failure'
+        row['lifecycle_failure'] = dict(stage=stage,kind=kind,cleanup_status=cleanup)
+        rows.append(row)
+    return rows
+
+
+class DTOClock:
+    def __init__(self, clock): self.clock, self.last = clock, None
+    def __call__(self):
+        now = self.clock()
+        remaining(now,now)  # Reject NaN/infinite/bool timestamps.
+        if self.last is not None and now < self.last: raise ValueError('monotonic clock moved backward')
+        self.last = now
+        return now
+
+
+async def run_dto_inventory(args, *, clock, lifecycle, persist, timing, bounded=_dto_bounded):
+    validate_dto_schedule(timing,120)
+    clock = DTOClock(clock)
+    engines = ENGINES if args.browser == 'all' else (args.browser,)
+    expected = [(engine,name) for engine in engines for name in inventory()]
+    evidence = dict(lifecycle.evidence, version='v1', mode='dto-fixture', results=[],
+        configured_budgets=dict(timing), cleanup_status='unverified')
+    rows = evidence['results']; browser = None; started = False
+    stage = 'playwright.start'; failure = None; persistence_left = timing['evidence_persistence_seconds']
+    async def operation(factory, seconds, *, late_result_cleanup=None):
+        deadline = clock()+seconds
+        allowance = remaining(deadline,clock())
+        if allowance <= 0: raise TimeoutError('phase deadline exceeded before admission')
+        result = await bounded(factory(), allowance, late_result_cleanup=late_result_cleanup)
+        if clock() >= deadline: raise TimeoutError('phase deadline exceeded')
+        return result
+    async def snapshot():
+        nonlocal persistence_left, stage
+        previous = stage; stage = 'persistence'; begin = clock()
+        if persistence_left <= 0: raise TimeoutError('cumulative persistence budget exhausted')
+        if not await operation(lambda:persist(evidence),persistence_left):
+            raise OSError('persistence acknowledgement missing')
+        persistence_left -= clock()-begin; stage = previous
+    def fail(error, where):
+        nonlocal failure
+        if failure is None: failure = (where, 'cancelled' if isinstance(error,asyncio.CancelledError) else
+            'clock_or_lifecycle_failure', str(error) or type(error).__name__)
+    # Late resource cleanup is tracked by the same registry as case operations.
+    def late_browser(done):
+        if not done.cancelled() and done.exception() is None:
+            _dto_task(close_dto_browser(done.result(), timeout=timing['engine_close_seconds']))
+    try:
+        await snapshot()
+        await operation(lifecycle.start,timing['playwright_start_seconds']); started=True
+        await snapshot()
+        for engine in engines:
+            stage='engine.launch'
+            try:
+                browser=await operation(lambda:lifecycle.launch(engine,timeout=15000),
+                    timing['engine_launch_seconds'],late_result_cleanup=late_browser)
+            except Exception as error:
+                # A returned ordinary exception owns no browser. Timeout is uncertain.
+                if isinstance(error,TimeoutError): raise
+                rows.extend(dict(browser=engine,scenario=name,status='failed',error=str(error)) for name in inventory())
+                await snapshot();continue
+            try:
+                for name in inventory():
+                    stage='case';begin=clock()
+                    result=await lifecycle.case(browser,name,Path(args.output)/engine)
+                    rows.append(dict(browser=engine,scenario=name,elapsed_seconds=round(clock()-begin,3),**result))
+                    evidence.setdefault('browser_versions',{})[engine]=browser.version
+                    await snapshot()
+            finally:
+                stage='engine.close'
+                owned,browser=browser,None
+                await operation(lambda:lifecycle.close(owned),timing['engine_close_seconds'])
+            await snapshot()
+    except BaseException as error:
+        fail(error,stage)
+    finally:
+        stage='playwright.stop'
+        # start may have allocated resources even if its ACK never arrived.
+        try:
+            await operation(lifecycle.stop,timing['playwright_stop_seconds'])
+        except BaseException as error: fail(error,stage)
+        unresolved=[task for task in _DTO_PENDING_TASKS if not task.done()]
+        if unresolved: fail(RuntimeError('unresolved tracked operations'),stage)
+        for task in unresolved: task.cancel()
+        evidence['cleanup_status']='verified' if failure is None else 'unverified'
+        if failure is not None:
+            evidence.update(failure_stage=failure[0],failure_kind=failure[1],error=failure[2])
+            evidence['results']=complete_dto_failure(expected,rows,stage=failure[0],kind=failure[1],cleanup='unverified')
+        try: await snapshot()
+        except BaseException as error:
+            fail(error,'persistence')
+            evidence.update(failure_stage=failure[0],failure_kind=failure[1],error=failure[2],persistence_status='unverified',cleanup_status='unverified')
+            evidence['results']=complete_dto_failure(expected,rows,stage=failure[0],kind=failure[1],cleanup='unverified')
+    return evidence
+
+
+class DTOPlaywrightLifecycle:
+    def __init__(self, args, evidence):
+        self.args, self.evidence = args,evidence
+        self.manager = self.playwright = None
+    async def start(self):
+        from playwright.async_api import async_playwright
+        self.manager=async_playwright()
+        self.playwright=await self.manager.start()
+    async def launch(self,engine,timeout):return await getattr(self.playwright,engine).launch(timeout=timeout)
+    async def case(self,browser,name,output):return await run_dto_case(browser,self.args.base_url,name,output)
+    async def close(self,browser):await browser.close()
+    async def stop(self):
+        if self.manager is not None:await self.manager.stop()
 
 
 async def run(args):
