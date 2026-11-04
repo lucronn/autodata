@@ -6805,11 +6805,386 @@
     "deployment_authorized": false,
     "cutover_verified": false
   },
-  "checkpoint_verification": "pending exact committed completion SHA and pin",
+  "checkpoint_verification": {
+    "checkpoint_sha": "94a5809ae7ac37656c9f586d971f48eb21c74be6",
+    "checkpoint_branch": "codex/workshop-r6-paid-http-completion",
+    "remote_checkpoint_sha": "94a5809ae7ac37656c9f586d971f48eb21c74be6",
+    "preflight": {
+      "command": "python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026-11-04-r6-paid-http-completion.json --base-sha 94a5809ae7ac37656c9f586d971f48eb21c74be6",
+      "exit_code": 0,
+      "stdout": "{\"status\": \"synchronized\", \"errors\": []}\n",
+      "stderr": ""
+    },
+    "pin_comment_id": 6624284510,
+    "pin_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6624284510",
+    "pin_comment_sha256": "ea6f7c1c525251c9ac5adbd8b1a2880cd91aebf4e6564019648cb0d127b59a1e",
+    "readback_at": "2026-11-04T06:30:41.003669+00:00",
+    "issue_body_unchanged": true,
+    "all_129_predecessor_comment_bodies_unchanged": true,
+    "detail_comment_unchanged": true,
+    "pin_comment_exact": true,
+    "all_other_project_fields_unchanged": true,
+    "project_status": "In Progress",
+    "project_source_index": "R6 HTTP code66781084 PR200 D6624255418: independent exact-SHA PASS; tests92/244/146. Two-bank18x2 diagnostics only; no CLI/profile/cases/runtime/merge/deploy authority. Gatea899eac8/plan receipt2ea5b696 D6623187020/P6623199160. PG17 PASS D6623105546/P6623119656; failed124e43a9 quarantined. Integration D6623150233/checkpointd2e2270/P6623168382 gate2728ac/R507e3d. API21 D6623222525 gatee0e50dee/P6623235715/Rb1ac3c7c. Recovery D6624161772 gate5087d33d/P6624174482/R2e55ccc; old full interrupted/incomplete, no acceptance. Current Issue body/all129 comments/full item+Source preserved verbatim+SHA256 in completion tracking evidence. Canonical plan/task/record and completion proof carry goal/todo/refs. Status In Progress; all other fields unchanged. Completion checkpoint94a5809 P6624284510: full-SHA preflight PASS; final readback retained. Integration/release separately gated.",
+    "project_source_index_characters": 881,
+    "project_source_index_sha256": "acc4ba3f04cce508fbf8aca1ded86023dc053d9d8bbcf30d75ba1543fc9d124d",
+    "writer_slot": "released_after_final_live_readback",
+    "independent_docs_completion_review": "pending separate exact-receipt review",
+    "implementation_dispatch_authorized": false,
+    "runtime_execution_authorized": false,
+    "cloud_execution_authorized": false,
+    "profile_promotion_authorized": false,
+    "merge_authorized": false,
+    "deployment_authorized": false
+  },
   "initial_precommit_preflight": {
     "base_sha": "66781084bde3ea382b35b4e33cdeace713f1096a",
     "exit_code": 1,
     "error": "pre_implementation.repository_doc_refs[0] is absent at base_sha",
     "explanation": "New completion proof did not exist at the older code commit; required exact committed docs-checkpoint preflight remains pending. No implementation action."
-  }
+  },
+  "pin_comment": {
+    "id": 6624284510,
+    "url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6624284510",
+    "body": "## R6 paid HTTP implementation completion exact checkpoint pin\n\nDocs-only completion checkpoint `94a5809ae7ac37656c9f586d971f48eb21c74be6` is pushed on `codex/workshop-r6-paid-http-completion`, based exactly on independently reviewed code `66781084bde3ea382b35b4e33cdeace713f1096a`. Draft PR https://github.com/lucronn/autodata/pull/200 remains open/draft at that code SHA. Implementation gate `a899eac8c66674bf7b9d75741e51401cb45c0ffd`; final plan receipt `2ea5b696`; completion detail https://github.com/lucronn/autodata/issues/186#issuecomment-6624255418.\n\nFull-SHA machine preflight at `94a5809ae7ac37656c9f586d971f48eb21c74be6` exited0, empty stderr, `status: synchronized`, `errors: []`. Remote branch SHA readback equals that checkpoint. Nine-path docs-only scope/JSON/whitespace passed; no implementation bytes changed. Completion record: `docs/agents/records/2026-11-04-r6-paid-http-completion.json`; proof: `docs/verification/2026-11-04-r6-paid-http-completion.md`; tracking evidence: `docs/agents/records/2026-11-04-r6-paid-http-completion-tracking-evidence.json`. Final receipt will retain this pin and full readback.\n\nFresh code tests: focused92, developer244, autonomy146 PASS. Coordinator-relayed independent exact-code review `/root/paid_http_code_review` PASS, including rerun11 HTTP tests and disabled-CLI regression; no saved review file/hash is asserted. Only two diagnostic IDs/36 projected observations are added, with all inherited gaps and explicit wire/transport gaps preserved. No CLI dispatch/profile promotion/verified cases/runtime acceptance/merge/deployment/cutover authority.\n\nComplete CURRENT Issue body/all129 predecessor comment bodies and full Project item/Source are preserved verbatim plus SHA256; all predecessor bodies and completion detail remain unchanged. Project Status remains In Progress; only Source changes. PG/integration/API21/recovery pointers remain indexed, including recovery gate5087d33d/pin6624174482/receipt2e55ccc; old full API21 remains interrupted/incomplete.\n\nThis task makes only additive completion documentation/tracking changes. Coordinator integration and every runtime, profile, staging, product, release, deployment or cutover decision remain separately gated. Independent review of this docs-only completion checkpoint/receipt may be performed separately; exact code review does not silently certify later documentation bytes.\n",
+    "body_sha256": "ea6f7c1c525251c9ac5adbd8b1a2880cd91aebf4e6564019648cb0d127b59a1e"
+  },
+  "final_project_readback": {
+    "id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project": {
+      "id": "PVT_kwHOCSJ8cc4BiQ2B",
+      "number": 8,
+      "title": "AutoData Portfolio"
+    },
+    "fieldValues": {
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": "OA"
+      },
+      "nodes": [
+        {
+          "__typename": "ProjectV2ItemFieldUserValue",
+          "users": {
+            "nodes": [
+              {
+                "login": "lucronn"
+              }
+            ]
+          },
+          "field": {
+            "id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhZI",
+            "name": "Assignees"
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldRepositoryValue",
+          "repository": {
+            "id": "R_kgDOULgSQg",
+            "nameWithOwner": "lucronn/autodata"
+          },
+          "field": {
+            "id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhZc",
+            "name": "Repository"
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldTextValue",
+          "text": "Launch the paid Workshop with permanent vehicle access and dual-bank canonical content",
+          "field": {
+            "id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhZE",
+            "name": "Title"
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldSingleSelectValue",
+          "name": "In Progress",
+          "optionId": "c30fd112",
+          "field": {
+            "id": "PVTSSF_lAHOCSJ8cc4BiQ2BzhhJhZM",
+            "name": "Status",
+            "options": [
+              {
+                "id": "315fff77",
+                "name": "Backlog"
+              },
+              {
+                "id": "25a3faee",
+                "name": "Ready"
+              },
+              {
+                "id": "c30fd112",
+                "name": "In Progress"
+              },
+              {
+                "id": "ccfee95f",
+                "name": "Blocked"
+              },
+              {
+                "id": "ca00ea4d",
+                "name": "Review"
+              },
+              {
+                "id": "4daa91f5",
+                "name": "Done"
+              },
+              {
+                "id": "4eed210d",
+                "name": "Canceled"
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldSingleSelectValue",
+          "name": "P1",
+          "optionId": "c69538a9",
+          "field": {
+            "id": "PVTSSF_lAHOCSJ8cc4BiQ2BzhhJhwQ",
+            "name": "Priority",
+            "options": [
+              {
+                "id": "781cd5f6",
+                "name": "P0"
+              },
+              {
+                "id": "c69538a9",
+                "name": "P1"
+              },
+              {
+                "id": "78f3fa27",
+                "name": "P2"
+              },
+              {
+                "id": "9cca821c",
+                "name": "P3"
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldSingleSelectValue",
+          "name": "Platform",
+          "optionId": "031775c0",
+          "field": {
+            "id": "PVTSSF_lAHOCSJ8cc4BiQ2BzhhJhwU",
+            "name": "Area",
+            "options": [
+              {
+                "id": "effec121",
+                "name": "Product"
+              },
+              {
+                "id": "14eac552",
+                "name": "API"
+              },
+              {
+                "id": "85bcb89c",
+                "name": "Data Model"
+              },
+              {
+                "id": "b9116f89",
+                "name": "Fast Lane"
+              },
+              {
+                "id": "ac372cd4",
+                "name": "Deep Lane"
+              },
+              {
+                "id": "acf6fde1",
+                "name": "Search"
+              },
+              {
+                "id": "1865cea1",
+                "name": "Billing"
+              },
+              {
+                "id": "a56d755d",
+                "name": "Dev Infra"
+              },
+              {
+                "id": "031775c0",
+                "name": "Platform"
+              },
+              {
+                "id": "51a0cf13",
+                "name": "Security"
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldSingleSelectValue",
+          "name": "High",
+          "optionId": "0db4ceae",
+          "field": {
+            "id": "PVTSSF_lAHOCSJ8cc4BiQ2BzhhJhwg",
+            "name": "Risk",
+            "options": [
+              {
+                "id": "879e6243",
+                "name": "Low"
+              },
+              {
+                "id": "94610eff",
+                "name": "Medium"
+              },
+              {
+                "id": "0db4ceae",
+                "name": "High"
+              },
+              {
+                "id": "c0be6314",
+                "name": "Critical"
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldTextValue",
+          "text": "R6 HTTP code66781084 PR200 D6624255418: independent exact-SHA PASS; tests92/244/146. Two-bank18x2 diagnostics only; no CLI/profile/cases/runtime/merge/deploy authority. Gatea899eac8/plan receipt2ea5b696 D6623187020/P6623199160. PG17 PASS D6623105546/P6623119656; failed124e43a9 quarantined. Integration D6623150233/checkpointd2e2270/P6623168382 gate2728ac/R507e3d. API21 D6623222525 gatee0e50dee/P6623235715/Rb1ac3c7c. Recovery D6624161772 gate5087d33d/P6624174482/R2e55ccc; old full interrupted/incomplete, no acceptance. Current Issue body/all129 comments/full item+Source preserved verbatim+SHA256 in completion tracking evidence. Canonical plan/task/record and completion proof carry goal/todo/refs. Status In Progress; all other fields unchanged. Completion checkpoint94a5809 P6624284510: full-SHA preflight PASS; final readback retained. Integration/release separately gated.",
+          "field": {
+            "id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+            "name": "Source or dependency reference"
+          }
+        }
+      ]
+    }
+  },
+  "final_project_readback_canonical_json_sha256": "7fe1555534d2a2d4bc268eac1706fa31b6f32427bae126c61999af5cf0230084",
+  "final_comment_body_sha256": {
+    "6615892741": "b07519a3978677f6852b0d3734270125385ea485abe73f3236a62c7c7dd04981",
+    "6616031638": "28b407fa350f887699ed8422ff47281501a8d68917eb39069ffacd9f6f2d2770",
+    "6616063717": "fb8173c0785b3c67d67d95e4fbafb47166cdc6fb1cc90cb0c46a5b8e271917a1",
+    "6616088057": "2b22d5f1e2a316c3057470bf2e27f1e992f42babb320edbf79bf3c035c8cf820",
+    "6616116165": "d50672a9bc19477ccc30495a221e51ae51d2870608598cc961b268c8b3a64a62",
+    "6616175227": "7c20ffbcc63f156d76ef6894d412d0ec1915574a90f9fc209ec6c2b882538af6",
+    "6616653461": "e4c4c8cee948bbf2013d9e902fe11a8edb664e1cec9596f166db8e2520cc64ab",
+    "6616750128": "02f19e8580d9207bc832e8c7ce2a996b3afaa06b01cd357b45a8a061ad93ed9c",
+    "6616793284": "c3755fba6ff47ce9c60cdd255de17efa0b56980836f2a8d0cc1a98bb1cfda752",
+    "6616892250": "703533d9981b6fec461bc295b3713dce01b8af747a9b55349e4c340d7a6a3d0a",
+    "6616936132": "a36bab42dc7e67c4b6d8ac26627d93e8975839cc30187974637783f2ffef7fd2",
+    "6617024444": "db2863eb76b45fbb34aa9e278f957f90fb55a1646e91a2bdf5d3f534626e07a5",
+    "6617079986": "1978e60ae9bfcbeacdf2d049b337e0c19306ceefe380470695cc5a977b767324",
+    "6617239424": "4d2faacb41760534808c07ba785a302731abc946cd4449875dcacaa19b0f4238",
+    "6617248033": "7e4318270e5c72717d13cb49b090da721f0fe507197959edc96420fb7794c438",
+    "6617257413": "6ead6bb0479ae55df282ae830f3ec8a595cdb0773cd5d635d7bc1b6f55d974f4",
+    "6617360191": "d8a0c748f3c3f53c4189fcf97540db74815c29a1aa72fe31c7963f8a3c1dfcbd",
+    "6617383871": "93f81c68ca4a0d4fc0ea1380d3dd63db11037a2761abdeb8dccf4bf89211669f",
+    "6617490673": "2705f18f1748da41ee4d80d3726fd1303a7531be49681e99655f69176346b370",
+    "6617521783": "a4164a5bf2dc5edf986ed95aed7b26e8ace7419f3e576fbb8e49bae3dd319df1",
+    "6617577291": "1818a092a98cb40bf172284ed9450488965a7dd25d73e714430b737fb65ecc17",
+    "6617590554": "50f28bd586782b325ade3d7d8000daa24ccbbda07e153293cd5fbdd43b5d152a",
+    "6617902111": "28bf8f178facef692d3354b6b5c2a37251f90e4b481dac43661459e16eb06198",
+    "6618084753": "8e7a7077322a98f7451f8742920410e7accb560506b7dc062fb20b4cbe0f2f28",
+    "6618111784": "e2a9399fa5560514bde90401c93734783e091e7d1e30f61777e3af3dedbeab41",
+    "6618124676": "a2bfdf53f3085d92607bf7598413c1b55ed2a89084424be7ff195bff6fdd5f9c",
+    "6618597888": "bdcf4f4fb7bdb74f3c65ba6a9bbccd5a0e166469c6f2fbfd1ecf723efc64e060",
+    "6618613759": "19a77c81f119b89f0f4e8ab3615a092b28450260b8b06c1989598703a3422184",
+    "6619139974": "1149c8c6bacccad6fe9079a444eb8adff56095dabea535a939b92443728a1765",
+    "6619164328": "02829f35c348a6466e0d64f0afac56427aa4b1e9815bfe902edec6a0cef45b18",
+    "6619194720": "7aa718e316d14718354e2206242f8470fc945bdcbfa1edf20c794c02e4de6db3",
+    "6619208212": "cc3e076a7b1f3a0f1d521b04023392f76fbb48b1328a39ed691ad7f1ccd70bf5",
+    "6619286051": "208aeec75246ae3308d3c578cb5f24823bdc4f33e6f56cf646cbe0d50b9bc409",
+    "6619358812": "f3de73a13d8b33b9719bdf5d397ae6ae723d225ccbd2c521f93f818da1ac6373",
+    "6621014641": "6828c689501b8f9c57e253ab9a45eed5da405a4340ce1fb6e85731450f5a9ad3",
+    "6621020636": "b29064eb0acc4a4a2d94f28838c4a247929d67c20ef453eea3d731252c23e21f",
+    "6621071257": "9ae4e9238132c5bc9dfe24def6d0b7b4759d9cb01d8a87db280e9965b2d329c5",
+    "6621078714": "097fc2baab6d00f8a9b3973ba512e5a4fe96824ccf2b8da1c1f78f45590a70e0",
+    "6621086102": "90147a218e907068fccb97c8aaa79df3330707fa9f44f529845ae9442b3eccab",
+    "6621102242": "9c7251167de52b3b9d3bdcdd2ac071dc795930fdde8edd8058fed3ab18ce98f3",
+    "6621116647": "e1945a73acea3bc03bdd2ac546902b9b54035e6da97bc325a52db04381294484",
+    "6621173398": "cd8019166a924845fc71495323b4dfadcd5a26e200b0421c87ab25ace305e0a1",
+    "6621179539": "7f6040761913361d120e62d20b18e5ca4876e4736ff7f8b35d32b7f62ba2ce0e",
+    "6621206696": "495a8fa36d7f65c6c74a048c4199372abf3748649e523dc4f3e34d8c23a8da93",
+    "6621211145": "d151e3368b7cce028b5b655bfc6d8897eac1be326f9b40b81e6873da300cf315",
+    "6621225616": "91ee58cd5ed85ed5bb78c4721567cdc5256f7458bc7620431049da44ea80cb9d",
+    "6621229238": "9adc63701485920c4e17ce57a868ac109ca5238280958f68ff70182e334c2b29",
+    "6621303386": "a0ab29cda6bc554b827829e07cf390a45f8f27b085a8c6b18364f7e0daf009f6",
+    "6621306675": "99001bf9c62dd44e2a1c55b3e58783e21ca42218ab7e2a7ff3cf8a8770ce14ca",
+    "6621339347": "c763ac57e275b4431d7f79570ae4c9be7a7c1343c80561e8472d151b856a15b3",
+    "6621400986": "f8d8bac47bb5a2437f57d6799d6d1246654bbc4ea90662d11cb1cd91bf2496e8",
+    "6621404413": "b3ac59c771158c81169c62508ded07fb947014c081ad56f9722e0c0c96af1f19",
+    "6621425159": "ea8ee6cabae61f67284e6db8d503bf7eb4d6b1ca23b99059f2cbcbd125bb7ca1",
+    "6621440377": "5747f2e78a3f38990a1f45ff6395485474cd06df898d9963b92c6b185c3ceb8e",
+    "6621449880": "7b47fceb43dfca2b7bf28fa99aae910ea29aee94b2e25f78573309155b6eefb7",
+    "6621533357": "52309fe23c02790bf84dacaf406b1cf90e32000f798f8ca72a652509285c77a5",
+    "6621541625": "d3fcd1e60ab1d74979eafaed74c530a6aa4303b2552abe3613529efda7fc9ae2",
+    "6621594414": "1d1e1169b12281aef724f00385403e9dec1b9fc125dc293efb9e8b869b2b9bbf",
+    "6621597936": "4f00da8d9fc6dfb1821bd66b943aa4f6ca5350dbfdd8bf2faf64919f20e90745",
+    "6621607141": "8ceae3d1263f6e1029cbef57b0ce4a86f758e291be7d413a2f90d1efb7e94bc3",
+    "6621647909": "3616898fcc322a4767800b96d8ce809549bbcd0873cea8831917748b9931391e",
+    "6621665171": "59ac14db18e6983ec63778d4a69592728918b44ac8d9f9e08e94f24e8564598e",
+    "6621669759": "ee2d3b38c7052ce131420d77f17abe84763c6d3b4b7e8450d22ec36d79126b62",
+    "6621724515": "f70951466ec2db56e3500dee142cc2fd7e06435c7f9a22cc7490a7e9f3d5cb2c",
+    "6621749496": "c30cea4816f7ae6f78edf7ab2770caf9d081e7267fa71bb635f966ab3a3f674c",
+    "6621754534": "b8574c35397fb7235b8370fccab8fefe2153d9c0b715dde3860bd6bea2339f82",
+    "6621768448": "e1ccb379425bcfcd082d383cc30787f6e1eab20fdbc8e9f34968f0de3570e57f",
+    "6621817348": "342b3a99a585c6693a847a4a5d3b784f4817be1ca13e9f0725b5ffd6e0d98c7b",
+    "6621820832": "86206293bc6c401c5b39451d03ab02ea2f68c3cba5fde46bb73058483f7eb893",
+    "6621857074": "7deb668285977d435eed503db65c92709439401bca81460fcdfc4be26665346c",
+    "6621859742": "6bd10af90ba87f749d940afb87e37fda2b8826cdce60769c7abf64f8db8b6807",
+    "6621879747": "b7b2ffe33f786ba36c42d0c04bb281c0e7409d87fa63d841b3b6e9d4c1e28cfc",
+    "6621883014": "6c58b07b7975c8318be7e0f0b37aad9a925282a97717e38dff27e7e79ab494a5",
+    "6621946752": "f7f42d03cdd473674828c3d12f3fb7baebcf4283b67e55db1c750f9c70696669",
+    "6621963547": "c9f9adecc3b4f7ae164d62823aaa90af5d9a777f8200654f899d37e2167da8be",
+    "6621970383": "9a5430dce11719e1f56278105855173047c8835960cadcc0fe8a9d7033efa714",
+    "6622084338": "c4041847f4cc28d87c02845af6a412f145dc463855d98134d55c58d2f67ef543",
+    "6622095482": "8b1e7a09df78461697b53e4309c8f04073407250956818e2176f6f2f05b88241",
+    "6622103154": "a181a454e5dea24737d4c2bd9587ced6097742c2bc1ae072bfaec8f64cc11bd2",
+    "6622115738": "affd26968bac339f3c9f21612a53b1cf6373b40c4eeff797474c02720e838431",
+    "6622126651": "4df25e25e1fb1d373c14102d1de2ce6ce32c9f22f7dff2b40cbee068ac1a6e99",
+    "6622201950": "af708e9a6ab99236a4bdea3c2f49af0a20b916b9bafc611d32a0b4ac46d4e8ad",
+    "6622210398": "e751715c9b32718eb4f2b613a2da922ba970973c6add35f5f4a254a71613dbdc",
+    "6622232881": "f8d4597b64751adcee924bc7de3ce021e7b01fa23937e077ad54c12d95d1749a",
+    "6622247097": "94b222b2cfbfb6608213c262a5ef31257ffd0e6a713b70bbdc65f0604da80a0a",
+    "6622267949": "70fa8d8fddcdf0c27620f497c716e1e6f09ffdcc50a26f98fbce0d33efed2312",
+    "6622268220": "4979bf359981c4337e39bcebbd28c24b10519bd80be3b20b5105fb14263c01de",
+    "6622268519": "b24eb30c548d605db236d359fe4f4bb89d8fb6c4f75fe41a7a9f1a99c5184b2e",
+    "6622268742": "c1a2e1db8b772c3e6ff27f0f2140a9ddbdd768a0f201ea48abdd9cb85e805c93",
+    "6622281057": "25c4ce03605d104957e8bf79d1f92861af97c6c32972bd5937010a8b160ab799",
+    "6622349131": "d1cf5b533f73a4fb73bfc5bd0c5bab53c54d5a06fc2836622e7d196f22bd3b6b",
+    "6622349413": "67f24cb5dd3b0f699146a2df08fd6782d2c2d0b2299d75f22c775b57b1ec562c",
+    "6622349691": "cb1db4428f0cb081c9057e7757bb1a762feed37e046a59503715f72ecfabd0f5",
+    "6622350002": "3a736ae01169cd9b282f3688b5d8af33aa5c8b44b6c956b9a6a88d7b1e30925c",
+    "6622350296": "3bcb66c5af778c234d57a44b04fe327fec097737b512291f9c7c1fd2bb2e1028",
+    "6622350631": "af32811ec4134ce86a808cc390837187458c201bb68e77585b158b09d29ec656",
+    "6622350940": "e012d48576ce1aae0bf1e0fc350a6dcbd311a0829bca95e7650416ab844e5317",
+    "6622351212": "b20ef5eff3df54e5d853f6b10cd4327dad82904c7b82a908f3c93973a8a1171d",
+    "6622351516": "60674e6d1a8bea6f181afc8505f9ee9e58f418623f4dc2da5f9ad5212392be84",
+    "6622351785": "2dc9ff6192b6d73843f477fd85608574d0358ca01bbd954b5ac3c4f5c025e77d",
+    "6622361427": "f0d67613ce1ca488b4315e144f7ee7da73e5240c3c1e297a196a345059c173eb",
+    "6622382607": "de667b344474c03a1dc79a08188a8da11fc28dab0c33b9097b384d3f65808344",
+    "6622394314": "8b7b30a48746316226163f31012cdf03bc74864de478475b5375f03a7390c762",
+    "6622543814": "09fb09b7ccc61c22d191400f3c9d070ca97ba2146ffd3fb42853e007e1ea71e2",
+    "6622544095": "ff10eac30a21e1ad080cd0690c130ec0b7019eabef7ee82760ace63f195f450d",
+    "6622544407": "62edf87ae267c3561b9422f139d2d44e1160b03ba169c920e488be4c3e75ed1e",
+    "6622544734": "0b56b0bccfeb98075fa1fbc5f0a100b29d795ca7907b8c3b1167cb9644ac2339",
+    "6622545017": "502dff78d2d1a5ec0f326d10a2385f5b7da4b78ccfacb9d5a53f5e0fd4cb48e8",
+    "6622545263": "d96f7fbf804f4e7eed7834e51c8c0b2ecc2fe733a4c3f27811bbd11e420e6b6c",
+    "6622550358": "98319ab650b113531ad70fa79bafc5703656b94f4e1b3fc23b11cbecfba0777e",
+    "6622560758": "074c935d78de2a3f49471248dd786f02ab98ea0b2abd2afac2e7a24be0f4db40",
+    "6622589651": "622f40c2b76f7ac5648f86fc983983712a10d7e4629ca1a27c56b90e76d252ea",
+    "6622599898": "c52ed9eb717d51c626cbd148af524e61323c96432f94f0ba452792a9be6bb9ad",
+    "6622859754": "edebf74747d5b8fbcadb3918c29cce2d6a6f3136349148eecfe467445ee5c13e",
+    "6622872548": "e6b0ff5844eaef2027e10dcbaa1f382776b0ff124de07fd30f95c3403c074292",
+    "6622915925": "5c127a30683381c84c68f969556e1caff5249d54e758a82cc4f106082b621666",
+    "6622928529": "f7e39a876fcfb339b7919f1cbc75f3ce0c5aceba8f732a70d154c36a722f06d1",
+    "6623016400": "8940037b5702335edaa22c0a729054470461d3c55dd030634bbe761ecb247152",
+    "6623026632": "6fb2b2f96f577a4551677f18ecaa2c2c950cd38b4c0af5b84b0f04091c97334d",
+    "6623105546": "f9025d58d769c7d40a831b5407f29172daa987dd58ec591604619b068c417ca6",
+    "6623119656": "1997bf64f1926ea30fdd0f106f4636eba10a7d17271bfe4e27f1e5c8c90f265f",
+    "6623150233": "bdaf049f00736014baa749affe9e262958db69ac103129051c3456463a2c9f15",
+    "6623168382": "f7ac253d87279efb7a7786bb6770aed45f53fe0890e376b0a9cbd27152361754",
+    "6623187020": "c6d3fa5f4888a469ae0b4703c04ebd3c609f5e91d0dc2c29423633fe69ee85e7",
+    "6623199160": "e54240e229edc8d13f4c113d1ff05dc4a1ecb6921a3daf0d23dfb96d3c534960",
+    "6623222525": "982d1fd09ac60de966c68fdfcf8c27ea0ab6fd5a74bf403298ae342778c6d3a1",
+    "6623235715": "d7d4e31888f1ac1b1aca74254feaa2d337b5eee819097717685cb869dc3f05ea",
+    "6624161772": "3f07b2a0ce2c191dfa1c0b39c2265567c735c7aef65c0150c5bc62038c42e9f5",
+    "6624174482": "4bb66bcdc433ca89d9ac62ce6923b1e8d416abcdc44f417fb5af5d7f534cbd51",
+    "6624255418": "69c48f17449748ee1a5cea06f3acc3197b7dddb15986ba0d08a98e6466727143",
+    "6624284510": "ea6f7c1c525251c9ac5adbd8b1a2880cd91aebf4e6564019648cb0d127b59a1e"
+  },
+  "final_issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+  "final_issue_comment_count": 131,
+  "final_readback_verified": true
 }
