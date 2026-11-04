@@ -66,7 +66,7 @@ Preserve network none, root0:0, exact3caps/dropALL/no-new-privileges,128pids/1Gi
 
 Even a future PASS is simulation-only and requires independent simulation receipt review. Installation needs NEW reviewed gate/root dispatch with identical selected20 operands (only `--simulate` removed), explicit BusyBox trigger/file/symlink/capability audit; image commit/runner inspection/PG startup/harness/original Task2 remain separately unauthorized. No source/application/production runtime/grant/provider/cloud/DNS/service/deployment or readiness authority.
 
-## Pure verification and work items
+## Pure verification and concrete todo
 
 New fixed-predicate fixtures: 123 passed. All6 CapAdd permutations accept; duplicates/missing/extra/non-list/member type/casing/membership and mutations to every other HostConfig field, unrelated list order, Config fields and complete Mounts fields reject. Complete retained failed-run replay is diagnostic only. All95 unchanged simulation parser fixtures and148 predecessor pure/replay/Cc checks freshly reran successfully; total 366 pure checks, no Docker invoked while preparing this gate. Full cases/results/fragment/raw hashes in `docs/agents/records/2026-11-04-workshop-pg17-cap-order-evidence.json`.
 
