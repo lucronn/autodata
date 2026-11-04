@@ -983,7 +983,7 @@
       "input_manifest_ref": "docs/agents/records/2026-11-04-workshop-api21-inputs.json",
       "state": "pending_tracking",
       "tracking_status": "pending",
-      "tracking_writer": "integration_status_audit",
+      "tracking_writer": "paid_evidence_plan",
       "source_integration_base_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
       "acceptance_candidate_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
       "release_state": "unverified",
@@ -1002,7 +1002,7 @@
       "implementation_authorized": false,
       "goal": "Collect and independently assess exactly 21 real-API browser cases at immutable PR #198 head e5fed171bb36fdb759c592cbcd0e15aea5490c97 without changing implementation or claiming final release acceptance.",
       "todo": [
-        "Sole tracking writer integration_status_audit synchronizes this exact goal, six todos, docs-only scope, candidate and runtime limits in Issue186/Project8 with readback hashes, preserving historical indexes; coordinator commits the synchronized successor checkpoint, pins its full SHA, passes exact-base preflight and obtains independent checkpoint review before dispatch.",
+        "Sole tracking writer paid_evidence_plan synchronizes this exact goal, six todos, docs-only scope, candidate and runtime limits in Issue186/Project8 with readback hashes, preserving historical indexes; coordinator commits the synchronized successor checkpoint, pins its full SHA, passes exact-base preflight and obtains independent checkpoint review before dispatch.",
         "Coordinator verifies a clean exact-e5fed17 source clone, approved v2 supervisor a06bea8 and inherited base, immutable runtime image and six inputs, retained successful historical probe, actual service image identities and available serial host capacity; missing preconditions remain blocked.",
         "After separate coordinator runtime authorization, execute one Chromium checkout/library pilot in a fresh private owned root; retain all raw outcomes, provenance and cleanup, and count zero acceptance cases from the pilot.",
         "If pilot passes raw verification, execute the unchanged complete 3+6+6+6 API inventory once in a different fresh root at the same immutable SHA using the approved v2 supervisor, 3300-second total and 180-second finalization reserve; no retries, skips, missing engines or combined partial runs.",

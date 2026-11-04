@@ -12,7 +12,7 @@
 
 ## 1. Status, authority, and exact identities
 
-This docs-only checkpoint adopts independently approved draft SHA256 `0b88f7cacdd073984f5cad809f72be9c818d5de2d22b29afba3850c8a08db1d9` and input-manifest SHA256 `ee87deb865c06a84df92c1a8b0481f5ebc35cfdbd051bf32d9e1bf264ec67f13`. Its status is **pending_tracking**: only integration_status_audit may write Issue186/Project8; no synchronization, preflight, checkpoint review, implementation dispatch or runtime authorization is claimed. Original research performed no application/service runtime or GitHub writes; this adoption changes only the eight named documentation paths below.
+This docs-only checkpoint adopts independently approved draft SHA256 `0b88f7cacdd073984f5cad809f72be9c818d5de2d22b29afba3850c8a08db1d9` and input-manifest SHA256 `ee87deb865c06a84df92c1a8b0481f5ebc35cfdbd051bf32d9e1bf264ec67f13`. Its status is **pending_tracking**: only paid_evidence_plan may write Issue186/Project8; no synchronization, preflight, checkpoint review, implementation dispatch or runtime authorization is claimed. Original research performed no application/service runtime or GitHub writes; this adoption changes only the eight named documentation paths below.
 
 Requested candidate is `e5fed171bb36fdb759c592cbcd0e15aea5490c97`. Research checkout HEAD was `eddcf724028683dbb083191e4f8c42064b866bf0`; it must not be passed directly as source to the frozen wrapper, whose prepare phase requires source HEAD equal requested candidate. Candidate files were inspected with `git show e5fed…:path`.
 
@@ -85,11 +85,11 @@ Canonical planning input manifest `docs/agents/records/2026-11-04-workshop-api21
 - [ ] Prepare a clean owned plain source clone at exact e5fed17 because the current checkout is ahead. Ensure destination absent; preserve source checkout and other agents' resources. Clone without hardlinks, remove remote, detach requested SHA and check clean status. The wrapper then creates its own separate plain clone.
 
 ```sh
-git -c core.hooksPath=/dev/null clone --no-hardlinks --no-checkout /home/corp/Documents/ChatGPT/autodata /tmp/autodata-api21-e5fed17-source
-git -C /tmp/autodata-api21-e5fed17-source remote remove origin
-git -C /tmp/autodata-api21-e5fed17-source checkout --detach e5fed171bb36fdb759c592cbcd0e15aea5490c97
-git -C /tmp/autodata-api21-e5fed17-source rev-parse HEAD
-git -C /tmp/autodata-api21-e5fed17-source status --porcelain=v1 --untracked-files=all
+git -c core.hooksPath=/dev/null clone --no-hardlinks --no-checkout /home/corp/Documents/ChatGPT/autodata /home/corp/autodata-evidence/api21-e5fed17-source
+git -C /home/corp/autodata-evidence/api21-e5fed17-source remote remove origin
+git -C /home/corp/autodata-evidence/api21-e5fed17-source checkout --detach e5fed171bb36fdb759c592cbcd0e15aea5490c97
+git -C /home/corp/autodata-evidence/api21-e5fed17-source rev-parse HEAD
+git -C /home/corp/autodata-evidence/api21-e5fed17-source status --porcelain=v1 --untracked-files=all
 sha256sum /tmp/autodata-workshop-browser-supervisor-v2.py /tmp/autodata-r3-040-acceptance-supervisor.py
 python3 /tmp/autodata-workshop-browser-supervisor-v2.py --self-test
 ```
@@ -99,9 +99,9 @@ python3 /tmp/autodata-workshop-browser-supervisor-v2.py --self-test
 
 ```sh
 python3 /tmp/autodata-workshop-browser-supervisor-v2.py \
-  --source-repo /tmp/autodata-api21-e5fed17-source \
+  --source-repo /home/corp/autodata-evidence/api21-e5fed17-source \
   --candidate-sha e5fed171bb36fdb759c592cbcd0e15aea5490c97 \
-  --run-root /tmp/autodata-api21-e5fed17-pilot-20261104 \
+  --run-root /home/corp/autodata-evidence/api21-e5fed17-pilot-20261104 \
   --mode first \
   --prepare-timeout-seconds 120 --build-timeout-seconds 120 \
   --start-timeout-seconds 180 --test-timeout-seconds 330 \
@@ -112,9 +112,9 @@ python3 /tmp/autodata-workshop-browser-supervisor-v2.py \
 
 ```sh
 python3 /tmp/autodata-workshop-browser-supervisor-v2.py \
-  --source-repo /tmp/autodata-api21-e5fed17-source \
+  --source-repo /home/corp/autodata-evidence/api21-e5fed17-source \
   --candidate-sha e5fed171bb36fdb759c592cbcd0e15aea5490c97 \
-  --run-root /tmp/autodata-api21-e5fed17-full-20261104 \
+  --run-root /home/corp/autodata-evidence/api21-e5fed17-full-20261104 \
   --mode api \
   --prepare-timeout-seconds 120 --build-timeout-seconds 120 \
   --start-timeout-seconds 180 --test-timeout-seconds 2350 \
@@ -137,6 +137,8 @@ python -m pytest -q -p no:cacheprovider \
 Compose supplies PYTHONPATH, lifecycle flags and GOFLAGS; wrapper sets `GOFLAGS=-mod=readonly -p=2`. Parent case whitelists env; no ambient cloud/merchant/DSN credentials enter. Runner uses host UID/GID; XDG_CACHE_HOME=/tmp/autodata-browser-cache, XDG_CONFIG_HOME=/tmp/autodata-browser-config, TMPDIR=/tmp/autodata-browser-tmp, GOCACHE=/var/tmp/autodata-browser-go-cache, GOTMPDIR=/var/tmp/autodata-browser-go-tmp (0700). Wrapper preserves its HOME. Each final browser subprocess separately receives a new owned0700 browser-home beneath its case directory, as required by the committed private-HOME repair.
 
 ## 6. Resource and time bounds
+
+Coordinator-reported read-only resource scout on 2026-11-04 observed approximately 2.36 GiB free on /tmp tmpfs and 17.24 GiB free under /home/corp/autodata-evidence; the source/pilot/full sibling roots below were absent and non-symlink at that observation. The reviewed wrapper permits those sibling roots. Use `/home/corp/autodata-evidence/api21-e5fed17-source`, `/home/corp/autodata-evidence/api21-e5fed17-pilot-20261104` and `/home/corp/autodata-evidence/api21-e5fed17-full-20261104` for the exact source/pilot/full commands. Free space is transient availability evidence, not a reserved quota, full host-capacity proof, a launch authorization or an API21 acceptance result; coordinator must recheck ownership, absence/non-symlink paths and disk headroom immediately before any separately authorized launch. No wrapper bytes, frozen manifest, image/input hashes, case inventory, deadlines or resource limits change.
 
 Fully serial execution, one lane at a time; no parallel paid/DTO/container build on the host during this lane. Host capacity is coordinator-owned and unverified by planning. Frozen wrapper updates only exact returned owned runner ID to2GiB RAM,2GiB total RAM+swap,2CPUs,512PIDs, then inspects exact limits and UID/GID into `owned-runner-limits.json`. These apply after startup; no pre-launch guarantee or limits on PG/NATS/S3 services are claimed. Current Compose has no explicit shm_size; do not borrow historical256MiB probe shared-memory claim for this acceptance runner. Record actual inspected ShmSize. Changing limits/shm/service resource bounds requires separately reviewed supervisor/fixture adaptation.
 
@@ -203,14 +205,14 @@ R6 profiles remain disabled; current assembler unavailable results and false aut
 
 ## 10. Hard blockers at handoff
 
-1. This docs-only checkpoint remains pending_tracking with no synchronized Issue/Project readback or machine preflight; it authorizes no fixture repair or runtime dispatch. integration_status_audit is the sole tracking writer; coordinator must commit/pin the synchronized successor and obtain preflight and independent exact-checkpoint review before any later dispatch.
+1. This docs-only checkpoint remains pending_tracking with no synchronized Issue/Project readback or machine preflight; it authorizes no fixture repair or runtime dispatch. paid_evidence_plan is the sole tracking writer; coordinator must commit/pin the synchronized successor and obtain preflight and independent exact-checkpoint review before any later dispatch.
 2. Source HEAD currently differs from requested candidate. Wrapper rejects direct use; an owned clean exact-e5fed17 source clone is required.
-3. Runtime capacity, Docker availability, current immutable image presence, actual service image identities and current engine launch were not checked (runtime execution forbidden during planning). Historical original build receipt remains failed; the later successful probe is now located, hashed and read back, but its different settings and earlier source do not prove current availability or exact-candidate acceptance. Preserve both. Do not silently replace image or versions if missing.
+3. The planner performed no runtime checks; the coordinator-reported read-only disk-space/path scout in section 6 supplies limited availability observations only. Broader runtime capacity, Docker availability, current immutable image presence, actual service image identities and current engine launch remain unverified by this planning task. Historical original build receipt remains failed; the later successful probe is now located, hashed and read back, but its different settings and earlier source do not prove current availability or exact-candidate acceptance. Preserve both. Do not silently replace image or versions if missing.
 4. No fresh full exact-e5fed17 API21 evidence, cleanup proof, independent acceptance review or final-candidate180/support/CI completeness was collected in this task. These remain unresolved acceptance obligations, not a code defect diagnosis.
 
 ## 11. Docs-only checkpoint and pending gate record
 
-This task edits only the following documentation paths; its allowed implementation path list is empty. The five contingent repair paths in section 8 are a maximum planning boundary, never an authorized allowlist for this checkpoint. Tracking synchronization belongs exclusively to integration_status_audit. Preserve all existing queue entries and top-level authority.
+This task edits only the following documentation paths; its allowed implementation path list is empty. The five contingent repair paths in section 8 are a maximum planning boundary, never an authorized allowlist for this checkpoint. Tracking synchronization belongs exclusively to paid_evidence_plan. Preserve all existing queue entries and top-level authority.
 
 - `docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md`
 - `docs/agents/records/2026-11-04-workshop-api21-acceptance.json`
@@ -223,7 +225,7 @@ This task edits only the following documentation paths; its allowed implementati
 
 ### Concrete todo
 
-- [ ] Sole tracking writer integration_status_audit synchronizes this exact goal, six todos, docs-only scope, candidate and runtime limits in Issue186/Project8 with readback hashes, preserving historical indexes; coordinator commits the synchronized successor checkpoint, pins its full SHA, passes exact-base preflight and obtains independent checkpoint review before dispatch.
+- [ ] Sole tracking writer paid_evidence_plan synchronizes this exact goal, six todos, docs-only scope, candidate and runtime limits in Issue186/Project8 with readback hashes, preserving historical indexes; coordinator commits the synchronized successor checkpoint, pins its full SHA, passes exact-base preflight and obtains independent checkpoint review before dispatch.
 - [ ] Coordinator verifies a clean exact-e5fed17 source clone, approved v2 supervisor a06bea8 and inherited base, immutable runtime image and six inputs, retained successful historical probe, actual service image identities and available serial host capacity; missing preconditions remain blocked.
 - [ ] After separate coordinator runtime authorization, execute one Chromium checkout/library pilot in a fresh private owned root; retain all raw outcomes, provenance and cleanup, and count zero acceptance cases from the pilot.
 - [ ] If pilot passes raw verification, execute the unchanged complete 3+6+6+6 API inventory once in a different fresh root at the same immutable SHA using the approved v2 supervisor, 3300-second total and 180-second finalization reserve; no retries, skips, missing engines or combined partial runs.
@@ -245,7 +247,7 @@ The required gate record is deliberately pending and must fail the canonical syn
     "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
   ],
   "todo": [
-    "Sole tracking writer integration_status_audit synchronizes this exact goal, six todos, docs-only scope, candidate and runtime limits in Issue186/Project8 with readback hashes, preserving historical indexes; coordinator commits the synchronized successor checkpoint, pins its full SHA, passes exact-base preflight and obtains independent checkpoint review before dispatch.",
+    "Sole tracking writer paid_evidence_plan synchronizes this exact goal, six todos, docs-only scope, candidate and runtime limits in Issue186/Project8 with readback hashes, preserving historical indexes; coordinator commits the synchronized successor checkpoint, pins its full SHA, passes exact-base preflight and obtains independent checkpoint review before dispatch.",
     "Coordinator verifies a clean exact-e5fed17 source clone, approved v2 supervisor a06bea8 and inherited base, immutable runtime image and six inputs, retained successful historical probe, actual service image identities and available serial host capacity; missing preconditions remain blocked.",
     "After separate coordinator runtime authorization, execute one Chromium checkout/library pilot in a fresh private owned root; retain all raw outcomes, provenance and cleanup, and count zero acceptance cases from the pilot.",
     "If pilot passes raw verification, execute the unchanged complete 3+6+6+6 API inventory once in a different fresh root at the same immutable SHA using the approved v2 supervisor, 3300-second total and 180-second finalization reserve; no retries, skips, missing engines or combined partial runs.",
@@ -253,6 +255,6 @@ The required gate record is deliberately pending and must fail the canonical syn
     "Keep final-candidate 5+8+14+12+120+21=180 logical cases, supporting scans/images/SDK/license/CI/reviewer authority and all live staging/release gates separate; support and pilot evidence add zero cases and no release profile or authority flag is promoted."
   ],
   "status": "pending_tracking",
-  "updated_at": "2026-11-04T05:13:06.081352+00:00"
+  "updated_at": "2026-11-04T05:15:15.952497+00:00"
 }
 ```
