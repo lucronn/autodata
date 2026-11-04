@@ -10,6 +10,10 @@
 
 **Spec:** docs/architecture/dataset-lifecycle.md (Workshop retryable reader amendment) and docs/agents/pre-implementation-gate.md.
 
+## Historical synchronized planning checkpoint
+
+The planning statements and unchecked execution checklist below are retained as the pre-implementation record. The completion addendum at the end gives the current result; their earlier pending status does not describe current implementation status.
+
 ## Global Constraints
 
 - Gate tracking status: **synchronized**, read back at `2026-11-04T14:54:42Z`. [Issue #186 detail comment](https://github.com/lucronn/autodata/issues/186#issuecomment-6624605837) records the exact goal, two-file allowlist, five todos and five canonical references. Project #8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` indexes that comment in Source or dependency reference; Status remains In Progress and all other fields are unchanged. Commit/push this checkpoint, pass full-SHA preflight and obtain independent gate handoff before implementation.
@@ -147,3 +151,19 @@ python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026
 ```
 
 Pass the exact full SHA and retained preflight output to independent review. Implementation dispatch additionally requires the coordinator's exact-base gate handoff and branch assignment. Old synchronized records, a draft plan, Node results or natural-language approval cannot substitute for this boundary. This work grants no release authority and does not change the existing release decision.
+
+## Reviewed implementation and completion checkpoint — 2026-11-04
+
+Implementation `4076ad3a197a6e520269f3dabd2a14f9b2e3d50f` is pushed on `codex/workshop-retryable-reader-build` ([draft PR #206](https://github.com/lucronn/autodata/pull/206)), based exactly on synchronized planning checkpoint `4f007d040da9834ead006d48aa2d641b3df412a7`. The builder reran full-SHA preflight successfully (`status: synchronized`, no errors) before implementation. Only the two implementation allowlist paths changed; production code changed only `processingArticle`. Failed jobs with a job ID remain active exactly when retryable is boolean true. The existing loop, source fallback, limits and scheduling boundaries are preserved.
+
+Before the fix, three regressions failed for the expected causes: recovery classified the source inactive (`false !== true`), budget time remained zero (`0 !== 5000`), and navigation abort never rejected. After the predicate fix, `node --test --test-name-pattern='reader|generation invalidation' apps/api-go/workshop-client.test.mjs` passed 8/8 and `node --test apps/api-go/workshop-client.test.mjs` passed 59/59. Both changed modules passed `node --check`; diff whitespace and exact two-file scope checks passed. The recovery test observes four sequential reads, waits `[3000, 2000, 4000]`, readable source through queued/rewriting and one canonical update. Terminal false/missing/string retryable flags, terminal completed/needs_review/withdrawn, missing job ID, retained source on budget exhaustion and navigation backoff cancellation are covered. No prepare POST or rewrite scheduling code changed.
+
+Independent exact-code review: **PASS**, reviewer `/root/reader_code_review`, coordinator-relayed in this chat. The reviewer reproduced the parent defect and independently reran focused 8/full 59 tests, syntax checks, pinned preflight and exact scope checks; no actionable findings. There is no saved review receipt or review artifact hash, and none is claimed.
+
+Todo disposition: items 1–4 are complete. Item 5's implementation verification, commit/push and independent code review are complete; this docs-only completion checkpoint still requires its full-SHA preflight and independent docs review. The five original todos, historical gate record and historical planning tracking evidence remain intact. `implementation_authorized: false` continues to deny any new implementation dispatch; it does not retract the completed coordinator-authorized historical dispatch.
+
+Completion tracking is synchronized in [Issue #186 completion comment](https://github.com/lucronn/autodata/issues/186#issuecomment-6633937350), body 1269 bytes / SHA256 `9e603d18026806d94df1f54acef01b10d4798057f86be4b840691293a68b5893`, and Project #8 Source (887 characters / SHA256 `941219fb79a17908c0afb6f60a7b76627802239fb249659e8d856d74153df8ec`). Status remains In Progress. The coordinator asserted all other Project fields unchanged; its retained Source readback is not a complete before/after item snapshot. Fresh read-only archive `/home/corp/autodata-evidence/reader-completion-live-tracking.json` (SHA256 `804cc9816b385b51e5c0356258ce023ce0bc87d7f49f3f98a171962dc1284aa7`) retains the complete Issue body, all 135 comments, the current full Project item and coordinator Source readback. Exact hashes, bytes and provenance are recorded under `completion.tracking_sync` in record/task/queue.
+
+Synthetic Node reader fix at the e5fed171bb36fdb759c592cbcd0e15aea5490c97 lineage only. Final integrated candidate acceptance for 180 distinct cases (identity 5, catalog 8, commerce 14, paid 12, DTO 120, API 21), support/CI/security/image/SDK/license checks, and real staging Firebase/Stripe TEST/both-bank/model/recovery/cars.tk remain unverified and separately gated. No merge, deployment or production-readiness claim.
+
+This checkpoint changes canonical documentation only. After commit/push, run the canonical preflight with its full SHA and retain the result under `/home/corp/autodata-evidence/`; no self-referential SHA is embedded here. Coordinator owns independent checkpoint review and further integration.

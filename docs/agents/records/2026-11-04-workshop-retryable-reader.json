@@ -44,5 +44,111 @@
     "issue_comments_hash_format": "UTF-8 JSON with sorted keys, compact separators and ensure_ascii=false",
     "project_preservation_provenance": "The original pre-update Project snapshot and earlier /tmp readback archive were lost across a turn interruption. Prior Source text/hash survive verbatim in the draft; the coordinator confirmed its original mutation asserted every other field unchanged. This fresh read-only archive contains complete current Issue body, all 134 comments and current Project item; it does not reconstruct a full before-item snapshot."
   },
-  "dispatch_prerequisite": "Commit and push this synchronized docs-only checkpoint, pin its full SHA, pass machine preflight and obtain independent exact-commit coordinator gate handoff plus branch assignment before implementation. No release authority."
+  "dispatch_prerequisite": "Commit and push this synchronized docs-only checkpoint, pin its full SHA, pass machine preflight and obtain independent exact-commit coordinator gate handoff plus branch assignment before implementation. No release authority.",
+  "completion": {
+    "status": "implemented_reviewed_awaiting_completion_checkpoint_review",
+    "planning_checkpoint_sha": "4f007d040da9834ead006d48aa2d641b3df412a7",
+    "implementation_sha": "4076ad3a197a6e520269f3dabd2a14f9b2e3d50f",
+    "implementation_branch": "codex/workshop-retryable-reader-build",
+    "implementation_pr_ref": "https://github.com/lucronn/autodata/pull/206",
+    "completion_branch": "codex/workshop-retryable-reader-completion",
+    "pre_implementation_preflight": {
+      "base_sha": "4f007d040da9834ead006d48aa2d641b3df412a7",
+      "status": "synchronized",
+      "errors": []
+    },
+    "verification": {
+      "baseline_workshop_node": {
+        "passed": 55,
+        "failed": 0
+      },
+      "tdd_red": "Before production edits, recovery failed false!==true, persistent retryable failure clock failed 0!==5000, navigation cancellation failed Missing expected rejection (AbortError).",
+      "focused_command": "node --test --test-name-pattern='reader|generation invalidation' apps/api-go/workshop-client.test.mjs",
+      "focused_result": {
+        "passed": 8,
+        "failed": 0
+      },
+      "full_command": "node --test apps/api-go/workshop-client.test.mjs",
+      "full_result": {
+        "passed": 59,
+        "failed": 0
+      },
+      "syntax_commands": [
+        "node --check apps/api-go/workshop/article-read.mjs",
+        "node --check apps/api-go/workshop-client.test.mjs"
+      ],
+      "syntax_exit_codes": [
+        0,
+        0
+      ],
+      "diff_check": "passed",
+      "implementation_changed_paths": [
+        "apps/api-go/workshop-client.test.mjs",
+        "apps/api-go/workshop/article-read.mjs"
+      ],
+      "production_delta": "processingArticle predicate only"
+    },
+    "independent_code_review": {
+      "status": "PASS",
+      "reviewed_sha": "4076ad3a197a6e520269f3dabd2a14f9b2e3d50f",
+      "reviewer": "/root/reader_code_review",
+      "provenance": "Coordinator-relayed review result in this chat; no saved review receipt or review artifact hash exists. Reviewer independently reproduced the parent defect and reran focused 8/full 59 Node tests, both syntax checks, pinned preflight and exact two-file scope; no actionable findings."
+    },
+    "todo_disposition": [
+      {
+        "item": 1,
+        "status": "completed",
+        "evidence": "Synchronized planning checkpoint, exact-base preflight and independent coordinator gate handoff preceded implementation."
+      },
+      {
+        "item": 2,
+        "status": "completed",
+        "evidence": "Deterministic recovery regression failed before the fix and passed afterward; sequential reads and delays [3000,2000,4000], retained source and one canonical update asserted."
+      },
+      {
+        "item": 3,
+        "status": "completed",
+        "evidence": "Predicate-only repair requires job_id and retryable===true for failed jobs; other terminal states preserved."
+      },
+      {
+        "item": 4,
+        "status": "completed",
+        "evidence": "Terminal false/missing/string retryable, missing job ID, absolute budget with retained source and navigation abort regressions pass."
+      },
+      {
+        "item": 5,
+        "status": "implementation_completed_documentation_review_pending",
+        "evidence": "Focused 8/full 59 tests, syntax/diff/scope checks passed; code committed/pushed and independently reviewed PASS. Completion docs checkpoint requires full-SHA preflight and independent docs review."
+      }
+    ],
+    "tracking_sync": {
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6633937350",
+      "issue_comment_body_sha256": "9e603d18026806d94df1f54acef01b10d4798057f86be4b840691293a68b5893",
+      "issue_comment_body_bytes": 1269,
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_source_after": "R6 HTTP code66781084 PR200 D6624255418: independent exact-SHA PASS; tests92/244/146. Two-bank18x2 diagnostics only; no CLI/profile/cases/runtime/merge/deploy authority. Gatea899eac8/plan receipt2ea5b696 D6623187020/P6623199160. PG17 PASS D6623105546/P6623119656; failed124e43a9 quarantined. Integration D6623150233/checkpointd2e2270/P6623168382 gate2728ac/R507e3d. API21 D6623222525 gatee0e50dee/P6623235715/Rb1ac3c7c. Recovery D6624161772/P6624174482/R2e55ccc; new API21 raw PASS D6624382132 audit8b809719; old run incomplete. No180/staging. R6HTTP completion C94a5809/P6624284510 PASS; history retained. #186 In Progress; release gated. R6scope D6624437136/G281ec742 PASS; builder active; 11x2 HTTP+4 snapshots, zero cases/allfalse. Reader D6624605837 goal/todo5/2file source\u2192canonical retry fix; gate pending. Reader C4076ad3/PR206 D6633937350 reviewed59/59; final180/live still open.",
+      "project_source_after_length": 887,
+      "project_source_after_sha256": "941219fb79a17908c0afb6f60a7b76627802239fb249659e8d856d74153df8ec",
+      "project_status": "In Progress",
+      "project_other_fields_unchanged": true,
+      "project_preservation_provenance": "Coordinator supplied before/after Source readback and asserted all other fields unchanged. The retained coordinator file stores Source strings/hashes, item ID, status and the assertion; it is not a complete before/after item snapshot. Fresh archive contains the complete current Project item.",
+      "coordinator_project_readback_ref": "/home/corp/autodata-evidence/reader-fix-project-readback.json",
+      "coordinator_project_readback_sha256": "4db8845ea1d7c7c9c37d90c602d1cdfaf4f1270a5f1a519a019b6b373286fe4f",
+      "live_tracking_archive_ref": "/home/corp/autodata-evidence/reader-completion-live-tracking.json",
+      "live_tracking_archive_sha256": "804cc9816b385b51e5c0356258ce023ce0bc87d7f49f3f98a171962dc1284aa7",
+      "verified_at": "2026-11-04T14:59:16.956064+00:00",
+      "issue_body_bytes": 143305,
+      "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+      "issue_comments_count": 135,
+      "issue_comments_sha256": "046ab77b80544c3a2a75d3dd1737b6cb0e4f3860d29ec9649d9c7e43d8c9d958",
+      "issue_comments_hash_format": "UTF-8 JSON with sorted keys, compact separators and ensure_ascii=false",
+      "history_retention": "Original planning tracking_sync remains verbatim. Fresh archive retains complete Issue body/all 135 comments/current full Project item and coordinator Source readback. This agent performed read-only GitHub access."
+    },
+    "historical_limits": "Synthetic Node reader fix at the e5fed171bb36fdb759c592cbcd0e15aea5490c97 lineage only. Final integrated candidate acceptance for 180 distinct cases (identity 5, catalog 8, commerce 14, paid 12, DTO 120, API 21), support/CI/security/image/SDK/license checks, and real staging Firebase/Stripe TEST/both-bank/model/recovery/cars.tk remain unverified and separately gated. No merge, deployment or production-readiness claim.",
+    "release_state": "unverified",
+    "implementation_authorized": false,
+    "future_implementation_dispatch_authorized": false,
+    "completion_checkpoint_independent_review": "pending",
+    "completion_checkpoint_preflight": "Run against the full committed completion checkpoint SHA; retain output externally to avoid a self-referential commit hash."
+  }
 }

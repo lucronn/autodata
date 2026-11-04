@@ -184,7 +184,15 @@ sequenceDiagram
     Reconcile->>DB: mark fulfillment scheduled
 ```
 
-## Workshop retryable reader amendment — tracking synchronized, 2026-11-04
+## Workshop retryable reader amendment — reviewed development fix, 2026-11-04
+
+Current result: the reader fix is implemented at `4076ad3a197a6e520269f3dabd2a14f9b2e3d50f` ([draft PR #206](https://github.com/lucronn/autodata/pull/206)) after the synchronized gate `4f007d040da9834ead006d48aa2d641b3df412a7` passed full-SHA preflight. Focused Node tests passed 8/8; full Workshop Node tests passed 59/59; both syntax and exact two-file diff checks passed. Independent exact-code review PASS was relayed by the coordinator from `/root/reader_code_review`; the reviewer reproduced the parent defect, reran the checks and found no actionable issues. No saved review receipt/hash exists.
+
+Completion tracking: [Issue #186 completion comment](https://github.com/lucronn/autodata/issues/186#issuecomment-6633937350), Project #8 still In Progress. Record/task/queue `completion` fields retain fresh complete Issue/all 135 comments/current Project evidence, exact hashes and todo disposition. Items 1–4 and implementation verification/review are complete; independent docs checkpoint review remains pending.
+
+Synthetic Node reader fix at the e5fed171bb36fdb759c592cbcd0e15aea5490c97 lineage only. Final integrated candidate acceptance for 180 distinct cases (identity 5, catalog 8, commerce 14, paid 12, DTO 120, API 21), support/CI/security/image/SDK/license checks, and real staging Firebase/Stripe TEST/both-bank/model/recovery/cars.tk remain unverified and separately gated. No merge, deployment or production-readiness claim.
+
+The original synchronized planning text below is retained as history; its proposed/pending status describes the gate before dispatch. The current result above supersedes that status only for this bounded development fix.
 
 **Goal:** Keep readable Workshop source visible and continue bounded sequential article GET polling through retryable job failures until canonical publication or a terminal outcome, without scheduling another rewrite.
 
