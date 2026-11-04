@@ -36,7 +36,30 @@ IDS = (
     'TestPostgresPaidCatalogCustomerLegacyRoutesDenied-bankone',
     'TestPostgresPaidCatalogCustomerLegacyRoutesDenied-banktwo',
 )
-REFS = (('paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/go-events.jsonl', 'paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/go-stderr.log'), ('paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/go-events.jsonl', 'paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/go-stderr.log'), ('paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-events.jsonl', 'paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-stderr.log'), ('paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-events.jsonl', 'paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-stderr.log'), ('paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-events.jsonl', 'paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-stderr.log'), ('paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-events.jsonl', 'paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-stderr.log'), ('paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/go-events.jsonl', 'paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/go-stderr.log'), ('paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/go-events.jsonl', 'paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/go-stderr.log'), ('paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/go-events.jsonl', 'paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/go-stderr.log'), ('paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/go-events.jsonl', 'paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/go-stderr.log'), ('paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-events.jsonl', 'paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-stderr.log'), ('paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-events.jsonl', 'paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-stderr.log'))
+REFS = (('paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/go-events.jsonl',
+  'paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/go-stderr.log'),
+ ('paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/go-events.jsonl',
+  'paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/go-stderr.log'),
+ ('paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-events.jsonl',
+  'paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-stderr.log'),
+ ('paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-events.jsonl',
+  'paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-stderr.log'),
+ ('paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-events.jsonl',
+  'paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-stderr.log'),
+ ('paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-events.jsonl',
+  'paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-stderr.log'),
+ ('paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/go-events.jsonl',
+  'paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/go-stderr.log'),
+ ('paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/go-events.jsonl',
+  'paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/go-stderr.log'),
+ ('paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/go-events.jsonl',
+  'paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/go-stderr.log'),
+ ('paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/go-events.jsonl',
+  'paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/go-stderr.log'),
+ ('paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-events.jsonl',
+  'paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-stderr.log'),
+ ('paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-events.jsonl',
+  'paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-stderr.log'))
 PACKAGE = 'github.com/lucronn/autodata/apps/api-go'
 NORMAL = SimulatedExit(0, False, False, False, True)
 

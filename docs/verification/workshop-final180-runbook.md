@@ -296,3 +296,97 @@ asserted. The coordinator records the immutable code SHA, review and exact-head
 CI job states externally after commit/push. Stage A predecessor CI success and
 B1 predecessor CI failures described in the pinned plan remain predecessor
 evidence, not successor results.
+
+## Stage D: restricted synthetic paid12 adapter
+
+Stage D was dispatched from exact synchronized checkpoint
+`70c9a6ebb2cec338f938122c8c570fd5b22a6f28`, descending from reviewed CI code
+`fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc`. Standalone and nested preflights
+both returned `status: synchronized` and `errors: []` before implementation;
+all nine baseline source pins matched. The adapter/test implementation milestone
+is `bff8e62c0e3aea0f99f3854152b70ec753e18122` on
+`codex/workshop-final180-stage-d-paid-build`. The selected application candidate
+remains `4d82e413e04fb2401ac7bc28dc828375ac662180`. This branch-local note requires
+coordinator reconciliation with parallel Stage C runbook changes under a new
+integration gate; Stage C supplies no predecessor code or authority here.
+
+`workshop_final180_paid_adapter.py` accepts twelve in-memory caller-selected
+bank/root slots: GrantBeforeWork, ExactScopeAndOwnerIsolation,
+PrepareSourceThenCanonicalReuse, ContextualMediaAndRevocation,
+HistoricalSourceAndRights and CustomerLegacyRoutesDenied, each with the literal
+`TestPostgresPaidCatalog` prefix and bankone/banktwo suffix. Each slot retains
+only the literal `paid-access/<bank>/<root>/go-events.jsonl` and
+`paid-access/<bank>/<root>/go-stderr.log` labels, byte hashes, ordered failure
+codes and synthetic status. The library opens no files and launches no runtime.
+Its only repository dependency is the unchanged B1 public parser/types. All
+outer input admission completes before any parse or hash, and slots translate
+independently in the twelve-slot canonical order.
+
+The constructed tests establish first-raised parser control flow, including
+`b' ' * 1048576 + b'\r'` yielding only `line_delimiter` with a clean receipt;
+the CR-free oversized line yields `line_size`. Parser errors plus receipt flags
+retain only that parser code and applicable receipt codes. Interruption takes
+top-status precedence; a skip combined with poison fails. Strict serialization
+revalidates caller-created diagnostics, exact primitive/container types, every
+literal row/ref/code/status and all nine false authority claims before emitting
+compact sorted ASCII JSON with one LF and the 65536-byte bound. Output/stderr
+text never becomes evidence or appears in the diagnostic.
+
+The inputs are constructed fake bytes and simulated receipts only. Identical
+bytes across both bank slots are admitted because bank attribution is caller
+context. Hash syntax and canonical serialization authenticate no manifest,
+process, candidate, bank, real Go execution or payment. The source fixture seeds
+paid orders/entitlements directly, and `payment_grants_persist` asserts
+`payment_calls == 0`; these grants establish no real Stripe charge, settlement,
+TEST/LIVE transaction, webhook or funds movement. Commerce remains separate.
+
+Initial paid tests failed because the module was absent; the strict serializer
+existence check then failed before its implementation. Four deliberate temporary
+mutations were detected for parser precedence, outer admission, top interruption
+precedence and exact primitive validation, after which the correct source was
+restored. The expanded focused suite passed 132 tests: paid 32, unchanged
+Stage A 52, B1 25 and B2 23. Negative CLI usage messages in unchanged Stage A
+are expected test output, not runtime execution.
+
+Full raw paid acceptance still needs independently admitted result/JUnit/
+manifest/process/environment/receipt binding, the complete minimum 344-ref raw
+inventory and dynamic support, migrations/SQL/HTTP/media/nested semantic
+validation, actual Go compatibility and authorized owned runtime execution.
+Genuine bank/payment evidence, trusted profile promotion, complete final180,
+staging and release acceptance remain separate blockers.
+`accepted_case_credit=0`, `profiles_enabled=false`, `enabled_tiers=[]`,
+`runtime_lock=null` and `run_record=null` remain invariant. All nine authority
+flags remain false: fixture_verified, product_candidate_verified,
+staging_verified, deployment_authorized, cutover_verified,
+implementation_authorized, runtime_execution_authorized,
+profile_promotion_authorized and merge_authorized. Runtime lock/run record are
+planning/report metadata and are absent from the diagnostic schema.
+
+Independent exact-successor-head review and CI readback remain pending at this
+branch-local documentation point. Parent CI was pending at the gate's recorded
+readback; this note asserts no parent or successor CI success. The coordinator
+records exact final SHA, independent review and CI job states externally.
+
+Final offline verification passed: paid 32 tests in 4.111s; combined paid and
+unchanged Stage A/B1/B2 132 tests in 13.186s; complete developer discovery 392
+tests in 499.409s; complete autonomy discovery 146 tests in 48.258s. All exited
+zero with no failures/errors. Twelve additional literal status-overlap checks
+also passed. The exact import/call AST boundary and public field/type checks,
+in-memory compile of both new modules, eight unchanged source pins,
+append-only runbook baseline, exact three-path checkpoint diff and
+`git diff --check` passed. Commands used were:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/dev/test_workshop_final180_paid_adapter.py -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/dev/test_workshop_final180_paid_adapter.py scripts/dev/test_workshop_final180_runner.py scripts/dev/test_workshop_final180_identity_adapter.py scripts/dev/test_workshop_final180_catalog_adapter.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/dev -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/autonomy -p 'test_*.py'
+git diff --check
+```
+
+These are offline code/constructed-profile checks. No producer fixture,
+application, provider, payment, browser, Docker/VM/cloud or secret-bearing
+runtime was executed for Stage D evidence. The coordinator subsequently
+reported parent PR232 exact-head CI success; this does not report successor
+CI or review success. Final immutable documentation/code head is sealed
+externally after this commit to avoid a self-referential SHA.
