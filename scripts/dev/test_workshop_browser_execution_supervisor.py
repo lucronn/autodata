@@ -292,3 +292,42 @@ def test_offline_render_writes_fresh_external_file_and_rejects_symlink_parent(tm
     linked.symlink_to(outdir)
     with pytest.raises(ValueError):
         s.main(["render", "--bindings", str(binding_path), "--output", str(linked / "new.json")])
+
+
+@pytest.mark.parametrize("mutation", ["valid", "malformed_nested", "linked_nested", "unknown_nested"])
+def test_offline_cli_validates_complete_bounded_nested_bundle(tmp_path, mutation):
+    import workshop_browser_execution_evidence as evidence
+    from test_workshop_browser_execution_evidence import event as journal_event, seal_documents
+
+    port = evidence.MemoryEvidencePort()
+    last = evidence.journal_event(journal_event(action="seal_intent", state="sealing"))
+    port.append_fsync("journal.jsonl", c.canonical_json(last))
+    port.write_exclusive("api/pytest.stdout.log", b"retained source log\n")
+    m, terminal = seal_documents(port)
+    evidence.seal_evidence(port, (last,), m, terminal, "now")
+    root = tmp_path / "attempt"
+    root.mkdir()
+    for name, raw in port.files.items():
+        destination = root / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(raw)
+    if mutation == "malformed_nested":
+        (root / "api/pytest.stdout.log").write_bytes(b"modified bytes\n")
+    elif mutation == "linked_nested":
+        (root / "api/pytest.stdout.log").unlink()
+        (root / "api/pytest.stdout.log").symlink_to(root / "journal.jsonl")
+    elif mutation == "unknown_nested":
+        (root / "unknown").mkdir()
+        (root / "unknown/file.json").write_bytes(b"{}\n")
+    binding_path = tmp_path / "bindings.json"
+    binding_path.write_bytes(c.canonical_json(dataclasses.asdict(bindings())))
+    outdir = tmp_path / "reports"
+    outdir.mkdir()
+    output = outdir / "validation.json"
+    assert s.main(["validate", "--bindings", str(binding_path), "--attempt-root", str(root), "--output", str(output)]) == 0
+    report = c.strict_json(output.read_bytes())
+    assert report["status"] == "unadmitted" and report["pass"] is False
+    if mutation == "valid":
+        assert report["errors"] == []
+    else:
+        assert report["errors"]

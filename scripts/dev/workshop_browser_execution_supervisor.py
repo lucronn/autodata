@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import copy
 from pathlib import Path
+import stat
 import sys
 
 import workshop_browser_execution_contract as c
@@ -341,6 +342,45 @@ def reconcile(journal: tuple[dict, ...], observed_resources: tuple[dict, ...]) -
                 reasons=errors or (["empty_journal"] if not journal else []), actions=[], **{"pass": False}, new_case_credit=0)
 
 
+def _read_offline_bundle(root: Path) -> tuple[dict, list[str]]:
+    """Bounded, read-only collection for the offline validator, with no links."""
+    files, errors = {}, []
+    pending = [root]
+    entries, total = 0, 0
+    if root.is_symlink() or not root.is_dir():
+        return {}, ["attempt root must be an existing nonlinked directory"]
+    while pending:
+        directory = pending.pop()
+        for entry in sorted(directory.iterdir()):
+            entries += 1
+            if entries > 10000:
+                return files, errors + ["evidence entry limit exceeded"]
+            name = entry.relative_to(root).as_posix()
+            metadata = entry.lstat()
+            if stat.S_ISDIR(metadata.st_mode):
+                if evidence.known_artifact_directory(name):
+                    pending.append(entry)
+                else:
+                    errors.append("unknown evidence directory: " + name)
+            elif not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                errors.append("nonregular or linked evidence entry: " + name)
+            elif not evidence.known_artifact(name):
+                errors.append("unknown evidence artifact: " + name)
+            elif metadata.st_size > 33554432 or total + metadata.st_size > 1073741824:
+                errors.append("evidence byte limit exceeded: " + name)
+            else:
+                with entry.open("rb") as stream:
+                    raw = stream.read(min(metadata.st_size + 1, 33554433))
+                after = entry.lstat()
+                identity = lambda observed: (observed.st_dev, observed.st_ino, observed.st_mode, observed.st_nlink, observed.st_size, observed.st_mtime_ns)
+                if identity(metadata) != identity(after) or len(raw) != metadata.st_size:
+                    errors.append("evidence changed while read: " + name)
+                else:
+                    files[name] = raw
+                    total += len(raw)
+    return files, errors
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in LIVE_MODES:
@@ -366,12 +406,12 @@ def main(argv=None):
                       blockers=c.graph_blockers(bindings, args.lane), **{"pass": False}, new_case_credit=0)
     elif args.mode == "validate":
         root = Path(c.absolute_path(args.attempt_root))
-        errors = []
-        for entry in sorted(root.iterdir()):
-            if entry.is_symlink() or not entry.is_file():
-                errors.append("nonregular evidence entry: " + entry.name)
-            else:
-                errors.extend(evidence.validate_artifact(entry.name, entry.read_bytes(), {}))
+        files, errors = _read_offline_bundle(root)
+        if "seal.json" in files:
+            errors.extend(evidence.validate_artifact("seal.json", files["seal.json"], {"files": files}))
+        else:
+            errors.append("seal.json missing; incomplete evidence bundle")
+            errors.extend(evidence.validate_bundle(files))
         result = dict(status="unadmitted", errors=errors, **{"pass": False}, new_case_credit=0)
     else:
         events = c.strict_json(Path(c.absolute_path(args.events)).read_bytes())

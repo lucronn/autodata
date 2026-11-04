@@ -66,6 +66,22 @@ def _known_raw(name: str) -> bool:
     return False
 
 
+def known_artifact(name: str) -> bool:
+    return name in c.specification()["support_schemas"]["artifact_contracts"] or name == "journal.jsonl" or _dynamic_contract(name) is not None or _known_raw(name)
+
+
+def known_artifact_directory(name: str) -> bool:
+    """Finite accepted directory namespace; empty unknown directories reject."""
+    names = required_artifacts()
+    names.update(("commands/placeholder", "preparation/placeholder", "readiness/dto/fixture.json",
+                  "readiness/api/postgres.json", "readiness/api/nats.json", "readiness/api/s3.json"))
+    for case in c.inventory()["api_cases"]:
+        names.add("readiness/api/" + case["id"] + "/fixture.json")
+        names.add(case["case_dir"].removeprefix("/artifacts/") + "/browser/" + case["browser"] + "/placeholder")
+    names.update("browser/" + engine + "/placeholder" for engine in c.inventory()["engines"])
+    return any(path.startswith(name + "/") for path in names)
+
+
 def _same(a, b):
     return type(a) is type(b) and a == b
 
@@ -73,6 +89,8 @@ def _same(a, b):
 def _schema(value, schema, root, path, errors, context):
     if "$ref" in schema:
         name = schema["$ref"].split("/")[-1]
+        if name == "LocalReadResult":
+            context = {**context, "local_root_metadata": True}
         before = len(errors)
         _schema(value, root["$defs"][name], root, path, errors, context)
         if len(errors) == before:
@@ -333,6 +351,17 @@ def _semantic(name, value, path, errors, context):
                     if (row["affinity_cpus"] < floors["affinity_cpus"] or row["physical_memory_bytes"] < floors["physical_memory_bytes"]
                             or row["fd_soft_limit"] < floors["fd_soft_limit"] or row["available_disk_bytes"] < floors["evidence_available_bytes"]):
                         reject("capacity floor not met")
+        if context.get("artifact_name"):
+            try:
+                import workshop_browser_preparation_probe as preparation
+
+                bindings = context["preparation_inputs"]
+                operation = next(op for op in preparation.plan_preparation(bindings)[7:] if op.id == value["operation_id"])
+                if context["artifact_name"] != "preparation/" + operation.id + ".result.json":
+                    reject("local result artifact path does not match operation")
+                errors.extend(preparation.validate_local_result(operation, value, bindings, context["local_declared_roots"]))
+            except (KeyError, ValueError, TypeError, StopIteration):
+                reject("local result input/root declarations missing or invalid")
     elif name == "VersionResult":
         # Re-run the fixed parser against retained raw bytes and independently
         # supplied input declarations. A normalized document cannot nominate
@@ -346,6 +375,8 @@ def _semantic(name, value, path, errors, context):
             operation = next((op for op in operations[:7] if op.id == value["operation_id"]), None)
             if operation is None or not isinstance(raw["stdout"], bytes) or not isinstance(raw["stderr"], bytes):
                 raise ValueError("version raw output or operation unavailable")
+            if context.get("artifact_name") and context["artifact_name"] != "preparation/" + operation.id + ".result.json":
+                reject("version artifact path does not match fixed operation")
             normalized = preparation.parse_command_output(operation, raw["stdout"], raw["stderr"], bindings,
                                                            raw["executable_sha256"], value["outcome"],
                                                            runtime_exports=context.get("version_runtime_exports"),
@@ -431,9 +462,25 @@ def validate_artifact(name: str, data: bytes, context: dict) -> tuple[str, ...]:
         return ("invalid JSON",)
     errors = []
     ctx = {**context, "raw_data": data, "artifact_name": name}
+    for operation in c.specification()["preparation_schedule"][7:]:
+        if name in ("preparation/" + operation["id"] + ".before.json", "preparation/" + operation["id"] + ".after.json"):
+            ctx["local_root_metadata"] = True
     _schema(value, contract["schema"], root, name, errors, ctx)
     if errors:
         return tuple(errors)
+    for operation in c.specification()["preparation_schedule"][7:]:
+        prefix = "preparation/" + operation["id"]
+        for phase in ("before", "after"):
+            if name == prefix + "." + phase + ".json":
+                try:
+                    result_name = prefix + ".result.json"
+                    result_bytes = context["files"][result_name]
+                    result = c.strict_json(result_bytes)
+                    if value != result[phase] or c.digest_bytes(data) != result[phase + "_sha256"]:
+                        errors.append("local snapshot sidecar differs from bound result: " + phase)
+                    errors.extend(validate_artifact(result_name, result_bytes, context))
+                except (KeyError, ValueError, TypeError):
+                    errors.append("local snapshot result/input declarations unavailable")
     if name == "migrations.json":
         cases = [case["id"] for case in c.inventory()["api_cases"]] if context.get("lane", "api") == "api" else []
         expected = [(case, version) for case in cases for version in range(1, 41)]

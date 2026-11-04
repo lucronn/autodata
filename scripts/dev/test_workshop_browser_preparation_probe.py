@@ -252,3 +252,41 @@ def test_normalized_versions_are_bound_to_exact_raw_parser_output(mutation):
     else:
         changed["raw_stdout_sha256"] = "0" * 64
     assert e.validate_value("VersionResult", changed, context)
+
+
+def test_version_artifact_filename_must_match_its_fixed_operation():
+    inp = probe_input()
+    op = p.plan_preparation(inp)[6]
+    raw = b"go version go1.24.3 linux/amd64\n"
+    result = p.parse_command_output(op, raw, b"", inp, "4" * 64, outcome())
+    context = dict(version_inputs=inp, version_raw_outputs={op.id: {"stdout": raw, "stderr": b"", "executable_sha256": "4" * 64}})
+    assert e.validate_artifact("preparation/" + op.id + ".result.json", c.canonical_json(result), context) == ()
+    assert e.validate_artifact("preparation/prep.05.python-version.result.json", c.canonical_json(result), context)
+
+
+@pytest.mark.parametrize("index", range(7, 13))
+def test_valid_local_results_integrate_with_artifact_validation_and_sealing(index):
+    from test_workshop_browser_execution_evidence import event, seal_documents
+
+    inp = probe_input()
+    op = p.plan_preparation(inp)[index]
+    result = local_result(op)
+    roots = {row["path"]: row for row in result["before"]}
+    context = dict(preparation_inputs=inp, local_declared_roots=roots)
+    name = "preparation/" + op.id + ".result.json"
+    assert p.validate_local_result(op, result, inp, roots) == ()
+    assert e.validate_artifact(name, c.canonical_json(result), context) == ()
+    port = e.MemoryEvidencePort()
+    last = e.journal_event(event(action="seal_intent", state="sealing"))
+    port.append_fsync("journal.jsonl", c.canonical_json(last))
+    port.write_exclusive(name, c.canonical_json(result))
+    for phase in ("before", "after"):
+        port.write_exclusive("preparation/" + op.id + "." + phase + ".json", c.canonical_json(result[phase]))
+    m, terminal = seal_documents(port)
+    e.seal_evidence(port, (last,), m, terminal, "now", context)
+    assert e.validate_artifact("seal.json", port.files["seal.json"], {**context, "files": port.files}) == ()
+    other = p.plan_preparation(inp)[7 if index != 7 else 8]
+    assert e.validate_artifact("preparation/" + other.id + ".result.json", c.canonical_json(result), context)
+    changed = copy.deepcopy(result["before"])
+    changed[0]["inode"] += 1
+    assert e.validate_artifact("preparation/" + op.id + ".before.json", c.canonical_json(changed), {**context, "files": port.files})
