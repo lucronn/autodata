@@ -974,6 +974,59 @@
         "implementation_dispatch_authorized": false,
         "runtime_execution_authorized": false
       }
+    },
+    {
+      "id": "workshop-retryable-reader",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-retryable-reader.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-retryable-reader.md",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-retryable-reader.json",
+      "goal": "Keep readable Workshop source visible and continue bounded sequential article GET polling through retryable job failures until canonical publication or a terminal outcome, without scheduling another rewrite.",
+      "todo": [
+        "Synchronize this reader-only goal, exact two-file scope, five todos, plan/task/record/queue and dataset lifecycle document in existing Issue #186 and Project #8; read back live tracking, commit and push the planning checkpoint, pin its full SHA and pass machine preflight before implementation.",
+        "Add a failing deterministic Node regression for readable source with failed/retryable=true and retry_after_seconds transitioning through queued and rewriting to completed canonical; assert source updates, sequential GET reads, honored delay and one terminal canonical update.",
+        "Change processingArticle only so failed is active exactly when retryable===true and job_id exists; preserve completed, needs_review, withdrawn and nonretryable failure as terminal, with no additional prepare POST or rewrite scheduling.",
+        "Add deterministic boundary tests for failed with false or missing retryable, persistent retryable failure reaching the existing absolute budget with source retained, and navigation abort during backoff preventing a later read or update.",
+        "Run focused red/green tests, the full Workshop Node suite, syntax and diff/scope checks; commit and promptly push the coherent validated fix to the coordinator-assigned branch, obtain independent exact-commit review and record evidence without merge, deployment or live-payment authority."
+      ],
+      "allowed_paths": [
+        "apps/api-go/workshop/article-read.mjs",
+        "apps/api-go/workshop-client.test.mjs"
+      ],
+      "state": "planning_synchronized_awaiting_gate_handoff",
+      "planning_status": "synchronized",
+      "tracking_status": "synchronized",
+      "source_integration_base_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "depends_on": [],
+      "dispatch_mode": "coordinator_direct",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "implementation_authorized": false,
+      "dispatch_prerequisite": "Commit and push this synchronized docs-only checkpoint, pin its full SHA, pass machine preflight and obtain independent exact-commit coordinator gate handoff plus branch assignment before implementation. No release authority.",
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6624605837",
+        "issue_comment_body_sha256": "1682662386e574c6dd775c56aa8817e0883b4ee2c86e7850630936004ed3a763",
+        "issue_comment_body_bytes": 3674,
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_note_field": "Source or dependency reference",
+        "project_source_before": "R6 HTTP code66781084 PR200 D6624255418: independent exact-SHA PASS; tests92/244/146. Two-bank18x2 diagnostics only; no CLI/profile/cases/runtime/merge/deploy authority. Gatea899eac8/plan receipt2ea5b696 D6623187020/P6623199160. PG17 PASS D6623105546/P6623119656; failed124e43a9 quarantined. Integration D6623150233/checkpointd2e2270/P6623168382 gate2728ac/R507e3d. API21 D6623222525 gatee0e50dee/P6623235715/Rb1ac3c7c. Recovery D6624161772/P6624174482/R2e55ccc; new API21 raw PASS D6624382132 audit8b809719; old run incomplete. No180/staging. Current Issue body/all129 comments/full item+Source preserved verbatim+SHA256 in completion tracking evidence. Canonical plan/task/record and completion proof carry goal/todo/refs. Status In Progress; all other fields unchanged. Completion checkpoint94a5809 P6624284510: full-SHA preflight PASS; final readback retained. Integration/release separately gated. R6scope D6624437136 goal/todo5/refs; 11x2 HTTP+4 snapshots, zero cases/allfalse; gate pending.",
+        "project_source_before_sha256": "7dc2f3e86b4b2d7aa8ff225b19be9e4c3eac9ebe580e3d632f1d15700df4d2f9",
+        "project_source_after": "R6 HTTP code66781084 PR200 D6624255418: independent exact-SHA PASS; tests92/244/146. Two-bank18x2 diagnostics only; no CLI/profile/cases/runtime/merge/deploy authority. Gatea899eac8/plan receipt2ea5b696 D6623187020/P6623199160. PG17 PASS D6623105546/P6623119656; failed124e43a9 quarantined. Integration D6623150233/checkpointd2e2270/P6623168382 gate2728ac/R507e3d. API21 D6623222525 gatee0e50dee/P6623235715/Rb1ac3c7c. Recovery D6624161772/P6624174482/R2e55ccc; new API21 raw PASS D6624382132 audit8b809719; old run incomplete. No180/staging. R6HTTP completion C94a5809/P6624284510 PASS; history retained. #186 In Progress; release gated. R6scope D6624437136/G281ec742 PASS; builder active; 11x2 HTTP+4 snapshots, zero cases/allfalse. Reader D6624605837 goal/todo5/2file source\u2192canonical retry fix; gate pending.",
+        "project_source_after_sha256": "a3bd593ab8933a2bac46f4cf09daed0dcfdeb0a7401af3c2fc4320500dae9f22",
+        "project_source_after_length": 812,
+        "project_status": "In Progress",
+        "project_other_fields_unchanged": true,
+        "verified_at": "2026-11-04T14:54:42Z",
+        "live_tracking_archive_ref": "/home/corp/.codex/worktrees/workshop-retryable-reader-plan/reader-gate-live-tracking.json",
+        "live_tracking_archive_sha256": "1b2e1bc9012b6fbc1e500f2cb85a1c053e5a13c261fba3571e52f8b8dbeead98",
+        "issue_body_bytes": 143305,
+        "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+        "issue_comments_count": 134,
+        "issue_comments_sha256": "a8fe6272732c79b4a090051b538b59da71bbf6251789fad016acd92a35b0f060",
+        "history_retention": "Full current Issue body/all 134 comments, reader comment and current Project item are retained in the hashed persistent readback archive. Prior Project Source text/hash are retained from the draft. Other-field preservation is the coordinator-confirmed original assertion, not a newly compared before/after snapshot. Existing Issue body/comments were read only; queue historical entries/root metadata are unchanged.",
+        "issue_comments_hash_format": "UTF-8 JSON with sorted keys, compact separators and ensure_ascii=false",
+        "project_preservation_provenance": "The original pre-update Project snapshot and earlier /tmp readback archive were lost across a turn interruption. Prior Source text/hash survive verbatim in the draft; the coordinator confirmed its original mutation asserted every other field unchanged. This fresh read-only archive contains complete current Issue body, all 134 comments and current Project item; it does not reconstruct a full before-item snapshot."
+      }
     }
   ],
   "execution": {
