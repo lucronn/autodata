@@ -1318,6 +1318,14 @@
     {
       "kind": "update_project_source_index",
       "sha256": "37db77872fa6791b28289e9d52b9d26c0a7c62c1a219721d048b304060c8f959"
+    },
+    {
+      "kind": "add_pin_comment",
+      "id": 6623199160
+    },
+    {
+      "kind": "append_gate_pin_to_project_source_index",
+      "sha256": "d4352f6ce57b9370bdb75f05953922073dab764dcaa2a0953cbcc78032fda66b"
     }
   ],
   "implementation_dispatch_authorized": false,
@@ -1521,5 +1529,223 @@
     "all_other_project_fields_unchanged": true,
     "readback_at": "2026-11-04T05:14:43.079569+00:00"
   },
-  "readback_verified": true
+  "readback_verified": true,
+  "checkpoint_verification": {
+    "gate_sha": "a899eac8c66674bf7b9d75741e51401cb45c0ffd",
+    "branch": "codex/workshop-r6-paid-http-plan",
+    "remote_gate_sha": "a899eac8c66674bf7b9d75741e51401cb45c0ffd",
+    "preflight": {
+      "command": [
+        "python3",
+        "scripts/autonomy/pre_implementation.py",
+        "--record",
+        "docs/agents/records/2026-11-04-r6-paid-http-receipts.json",
+        "--base-sha",
+        "a899eac8c66674bf7b9d75741e51401cb45c0ffd",
+        "--repo-root",
+        "/home/corp/.codex/worktrees/workshop-r6-http-plan/autodata"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"status\": \"synchronized\", \"errors\": []}\n"
+    },
+    "pin_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6623199160",
+    "pin_comment_sha256": "e54240e229edc8d13f4c113d1ff05dc4a1ecb6921a3daf0d23dfb96d3c534960",
+    "project_source_index": "R6 paid HTTP receipt plan detail6623187020: docs checkpoint444a701 (independent PASS coordinator-relayed), source PR198 e5fed171bb36fdb759c592cbcd0e15aea5490c97; 18x2 projected HTTP rows only, three implementation paths, goal/five todos/refs in detail+canonical docs. Tracking sync now; full-SHA preflight+independent exact gate review required; NO builder/runtime/profile/acceptance authority. PG17 retrospective PASS detail6623105546/pin6623119656; failed install124e43a9 unchanged/quarantined, no retry/image/PG/harness authority. Offline integration completion detail6623150233 checkpointd2e2270/pin6623168382; gate2728ac/receipt507e3d,23 implementation+59 historical pins preserved. Complete prior Issue body/all123 comments/Source index preserved verbatim+SHA256 in R6 HTTP tracking evidence; all other Project fields/Status In Progress unchanged. No activation/deployment/readiness/cutover; future work separately gated. Gate a899eac8c66674bf7b9d75741e51401cb45c0ffd pin6623199160.",
+    "project_source_index_sha256": "d4352f6ce57b9370bdb75f05953922073dab764dcaa2a0953cbcc78032fda66b",
+    "project_source_index_characters": 988,
+    "readback_at": "2026-11-04T05:15:31.375639+00:00",
+    "issue_body_unchanged": true,
+    "all_123_predecessor_comments_unchanged": true,
+    "detail_comment_unchanged": true,
+    "project_status": "In Progress",
+    "all_other_project_fields_unchanged": true,
+    "independent_exact_synchronized_gate_review": "required",
+    "implementation_dispatch_authorized": false,
+    "runtime_execution_authorized": false,
+    "cloud_execution_authorized": false,
+    "profile_promotion_authorized": false
+  },
+  "pin_comment": {
+    "id": 6623199160,
+    "url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6623199160",
+    "body": "R6 paid HTTP receipt gate pin \u2014 synchronized planning only\n\nGate/checkpoint SHA: `a899eac8c66674bf7b9d75741e51401cb45c0ffd`, branch `codex/workshop-r6-paid-http-plan`; remote branch read back at that exact SHA. Full-SHA preflight executed:\n\n```text\npython3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026-11-04-r6-paid-http-receipts.json --base-sha a899eac8c66674bf7b9d75741e51401cb45c0ffd --repo-root /home/corp/.codex/worktrees/workshop-r6-http-plan/autodata\nexit_code=0\n{\"status\": \"synchronized\", \"errors\": []}\n```\n\nDetail: https://github.com/lucronn/autodata/issues/186#issuecomment-6623187020 (SHA256 `c6d3fa5f4888a469ae0b4703c04ebd3c609f5e91d0dc2c29423633fe69ee85e7`). The gate contains complete verbatim predecessor Issue body/all123 comments/Project Source-index snapshots with SHA256 and verified readback evidence in `docs/agents/records/2026-11-04-r6-paid-http-tracking-evidence.json`; Source index927chars SHA256 `37db77872fa6791b28289e9d52b9d26c0a7c62c1a219721d048b304060c8f959`. Issue body and all predecessor comments unchanged; Project Status In Progress and every other field unchanged. Latest PG/integration pointers retained.\n\nOnly a docs/tracking checkpoint: exact three-file implementation scope and five todos are in the synchronized plan/task/record/queue. Independent exact synchronized-gate review and fresh coordinator dispatch remain required before implementation. No builder dispatch, implementation edit, profile/trust/reviewer promotion, acceptance verification, runtime/provider/Docker/browser/cloud/activation/readiness/deployment/cutover authority. A separate docs receipt commit will retain this pin/readback without altering the immutable gate SHA or authorizing execution.\n",
+    "body_sha256": "e54240e229edc8d13f4c113d1ff05dc4a1ecb6921a3daf0d23dfb96d3c534960"
+  },
+  "final_project_readback": {
+    "id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "fieldValues": {
+      "nodes": [
+        {
+          "__typename": "ProjectV2ItemFieldUserValue"
+        },
+        {
+          "__typename": "ProjectV2ItemFieldRepositoryValue"
+        },
+        {
+          "__typename": "ProjectV2ItemFieldTextValue",
+          "text": "Launch the paid Workshop with permanent vehicle access and dual-bank canonical content",
+          "field": {
+            "id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhZE",
+            "name": "Title"
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldSingleSelectValue",
+          "name": "In Progress",
+          "optionId": "c30fd112",
+          "field": {
+            "id": "PVTSSF_lAHOCSJ8cc4BiQ2BzhhJhZM",
+            "name": "Status",
+            "options": [
+              {
+                "id": "315fff77",
+                "name": "Backlog"
+              },
+              {
+                "id": "25a3faee",
+                "name": "Ready"
+              },
+              {
+                "id": "c30fd112",
+                "name": "In Progress"
+              },
+              {
+                "id": "ccfee95f",
+                "name": "Blocked"
+              },
+              {
+                "id": "ca00ea4d",
+                "name": "Review"
+              },
+              {
+                "id": "4daa91f5",
+                "name": "Done"
+              },
+              {
+                "id": "4eed210d",
+                "name": "Canceled"
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldSingleSelectValue",
+          "name": "P1",
+          "optionId": "c69538a9",
+          "field": {
+            "id": "PVTSSF_lAHOCSJ8cc4BiQ2BzhhJhwQ",
+            "name": "Priority",
+            "options": [
+              {
+                "id": "781cd5f6",
+                "name": "P0"
+              },
+              {
+                "id": "c69538a9",
+                "name": "P1"
+              },
+              {
+                "id": "78f3fa27",
+                "name": "P2"
+              },
+              {
+                "id": "9cca821c",
+                "name": "P3"
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldSingleSelectValue",
+          "name": "Platform",
+          "optionId": "031775c0",
+          "field": {
+            "id": "PVTSSF_lAHOCSJ8cc4BiQ2BzhhJhwU",
+            "name": "Area",
+            "options": [
+              {
+                "id": "effec121",
+                "name": "Product"
+              },
+              {
+                "id": "14eac552",
+                "name": "API"
+              },
+              {
+                "id": "85bcb89c",
+                "name": "Data Model"
+              },
+              {
+                "id": "b9116f89",
+                "name": "Fast Lane"
+              },
+              {
+                "id": "ac372cd4",
+                "name": "Deep Lane"
+              },
+              {
+                "id": "acf6fde1",
+                "name": "Search"
+              },
+              {
+                "id": "1865cea1",
+                "name": "Billing"
+              },
+              {
+                "id": "a56d755d",
+                "name": "Dev Infra"
+              },
+              {
+                "id": "031775c0",
+                "name": "Platform"
+              },
+              {
+                "id": "51a0cf13",
+                "name": "Security"
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldSingleSelectValue",
+          "name": "High",
+          "optionId": "0db4ceae",
+          "field": {
+            "id": "PVTSSF_lAHOCSJ8cc4BiQ2BzhhJhwg",
+            "name": "Risk",
+            "options": [
+              {
+                "id": "879e6243",
+                "name": "Low"
+              },
+              {
+                "id": "94610eff",
+                "name": "Medium"
+              },
+              {
+                "id": "0db4ceae",
+                "name": "High"
+              },
+              {
+                "id": "c0be6314",
+                "name": "Critical"
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldTextValue",
+          "text": "R6 paid HTTP receipt plan detail6623187020: docs checkpoint444a701 (independent PASS coordinator-relayed), source PR198 e5fed171bb36fdb759c592cbcd0e15aea5490c97; 18x2 projected HTTP rows only, three implementation paths, goal/five todos/refs in detail+canonical docs. Tracking sync now; full-SHA preflight+independent exact gate review required; NO builder/runtime/profile/acceptance authority. PG17 retrospective PASS detail6623105546/pin6623119656; failed install124e43a9 unchanged/quarantined, no retry/image/PG/harness authority. Offline integration completion detail6623150233 checkpointd2e2270/pin6623168382; gate2728ac/receipt507e3d,23 implementation+59 historical pins preserved. Complete prior Issue body/all123 comments/Source index preserved verbatim+SHA256 in R6 HTTP tracking evidence; all other Project fields/Status In Progress unchanged. No activation/deployment/readiness/cutover; future work separately gated. Gate a899eac8c66674bf7b9d75741e51401cb45c0ffd pin6623199160.",
+          "field": {
+            "id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+            "name": "Source or dependency reference"
+          }
+        }
+      ]
+    },
+    "project": {
+      "id": "PVT_kwHOCSJ8cc4BiQ2B",
+      "number": 8
+    }
+  }
 }

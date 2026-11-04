@@ -16,7 +16,7 @@
     "Update runbook, run focused/developer/autonomy/syntax/confinement/allowlist checks, commit/push the coherent candidate and obtain independent exact-SHA review before any coordinator integration decision."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-04T05:14:43.079569+00:00",
+  "updated_at": "2026-11-04T05:15:31.375639+00:00",
   "source_inspection_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
   "tracking_status": "synchronized_pending_exact_gate_review",
   "tracking_writer": "paid_evidence_plan",
@@ -45,5 +45,40 @@
     "all_other_project_fields_unchanged": true,
     "readback_at": "2026-11-04T05:14:43.079569+00:00"
   },
-  "tracking_evidence_ref": "docs/agents/records/2026-11-04-r6-paid-http-tracking-evidence.json"
+  "tracking_evidence_ref": "docs/agents/records/2026-11-04-r6-paid-http-tracking-evidence.json",
+  "checkpoint_verification": {
+    "gate_sha": "a899eac8c66674bf7b9d75741e51401cb45c0ffd",
+    "branch": "codex/workshop-r6-paid-http-plan",
+    "remote_gate_sha": "a899eac8c66674bf7b9d75741e51401cb45c0ffd",
+    "preflight": {
+      "command": [
+        "python3",
+        "scripts/autonomy/pre_implementation.py",
+        "--record",
+        "docs/agents/records/2026-11-04-r6-paid-http-receipts.json",
+        "--base-sha",
+        "a899eac8c66674bf7b9d75741e51401cb45c0ffd",
+        "--repo-root",
+        "/home/corp/.codex/worktrees/workshop-r6-http-plan/autodata"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"status\": \"synchronized\", \"errors\": []}\n"
+    },
+    "pin_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6623199160",
+    "pin_comment_sha256": "e54240e229edc8d13f4c113d1ff05dc4a1ecb6921a3daf0d23dfb96d3c534960",
+    "project_source_index": "R6 paid HTTP receipt plan detail6623187020: docs checkpoint444a701 (independent PASS coordinator-relayed), source PR198 e5fed171bb36fdb759c592cbcd0e15aea5490c97; 18x2 projected HTTP rows only, three implementation paths, goal/five todos/refs in detail+canonical docs. Tracking sync now; full-SHA preflight+independent exact gate review required; NO builder/runtime/profile/acceptance authority. PG17 retrospective PASS detail6623105546/pin6623119656; failed install124e43a9 unchanged/quarantined, no retry/image/PG/harness authority. Offline integration completion detail6623150233 checkpointd2e2270/pin6623168382; gate2728ac/receipt507e3d,23 implementation+59 historical pins preserved. Complete prior Issue body/all123 comments/Source index preserved verbatim+SHA256 in R6 HTTP tracking evidence; all other Project fields/Status In Progress unchanged. No activation/deployment/readiness/cutover; future work separately gated. Gate a899eac8c66674bf7b9d75741e51401cb45c0ffd pin6623199160.",
+    "project_source_index_sha256": "d4352f6ce57b9370bdb75f05953922073dab764dcaa2a0953cbcc78032fda66b",
+    "project_source_index_characters": 988,
+    "readback_at": "2026-11-04T05:15:31.375639+00:00",
+    "issue_body_unchanged": true,
+    "all_123_predecessor_comments_unchanged": true,
+    "detail_comment_unchanged": true,
+    "project_status": "In Progress",
+    "all_other_project_fields_unchanged": true,
+    "independent_exact_synchronized_gate_review": "required",
+    "implementation_dispatch_authorized": false,
+    "runtime_execution_authorized": false,
+    "cloud_execution_authorized": false,
+    "profile_promotion_authorized": false
+  }
 }
