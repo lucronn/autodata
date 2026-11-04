@@ -1,0 +1,103 @@
+{
+  "goal": "Close API21/DTO120 static supervisor command graph and support/probe schemas with deterministic offline code; preserve all runtime and acceptance blocks.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-browser-static-supervisor.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-04-workshop-browser-static-supervisor.json",
+    "docs/verification/2026-11-04-workshop-browser-static-supervisor.md"
+  ],
+  "todo": [
+    "Freeze exact command templates, bounded substitution types, environments, graph and full support/probe schemas; preserve source inventories and all authority=false flags.",
+    "Implement only deterministic rendering, strict validation, replayable supervisor/watchdog state reduction, journal serialization and preparation operation planning; concrete process, Docker and network adapters remain unavailable.",
+    "Use fake clock, fake process/resource ports and static malformed evidence fixtures to verify command, ownership, deadline, interruption, recovery and failure-preservation contracts without service/provider execution.",
+    "Synchronize Issue186, Project8 and six exact canonical documentation paths; commit checkpoint, pin its actual SHA externally and pass canonical preflight before implementation.",
+    "Independently review exact code SHA and fake-only evidence; keep runtime, fixture acceptance, timer repair, transport and authentic staging gates blocked."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T20:27:02Z",
+  "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "source_candidate_tree": "d9fb2a8f49beacd009374a76327d0736c1fc9b0a",
+  "documentation_checkpoint_sha": "d082d394ec7b64ae34f0f4db8cc22189a700c687",
+  "implementation_base_sha": null,
+  "checkpoint_sha": null,
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-browser-static-supervisor.md",
+    "docs/agents/specs/2026-11-04-workshop-browser-static-supervisor.json",
+    "docs/agents/records/2026-11-04-workshop-browser-static-supervisor.json",
+    "docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-static-supervisor.json",
+    "docs/verification/2026-11-04-workshop-browser-static-supervisor.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_implementation_paths": [
+    "scripts/dev/workshop_browser_execution_contract.py",
+    "scripts/dev/workshop_browser_execution_evidence.py",
+    "scripts/dev/workshop_browser_execution_supervisor.py",
+    "scripts/dev/workshop_browser_preparation_probe.py",
+    "scripts/dev/test_workshop_browser_execution_contract.py",
+    "scripts/dev/test_workshop_browser_execution_evidence.py",
+    "scripts/dev/test_workshop_browser_execution_supervisor.py",
+    "scripts/dev/test_workshop_browser_preparation_probe.py"
+  ],
+  "current_implementation_allowlist": [],
+  "authorities": {
+    "implementation_dispatch": false,
+    "host_execution": false,
+    "runtime_preparation_probe": false,
+    "image_build_pull_install": false,
+    "service_start": false,
+    "fixture_execution": false,
+    "network": false,
+    "provider": false,
+    "payment": false,
+    "account_mutation": false,
+    "cloud": false,
+    "trust_profile_promotion": false,
+    "merge": false,
+    "release": false,
+    "deployment": false,
+    "cutover": false,
+    "repository_edit": false,
+    "github_write": false,
+    "host_process_execution": false,
+    "docker_execution": false,
+    "secrets": false,
+    "probe_output_admission": false
+  },
+  "accepted_new_case_credit": 0,
+  "verification_state": {
+    "current_source_browser_acceptance": false,
+    "fixture_api21": false,
+    "fixture_dto120": false,
+    "final180": false,
+    "staging": false,
+    "all_trust_profiles_enabled": false
+  },
+  "tracking_sync": {
+    "status": "synchronized_live_readback",
+    "coordinator_only": true,
+    "observed_this_task": true,
+    "receipt_path": "/home/corp/autodata-evidence/browser-static-supervisor-gate-tracking/receipt.json",
+    "receipt_sha256": "f9a790c55352ccbadb3a12aaa50ebbb559444be779cb7f3fe12df2a9713682e3",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6641258089",
+    "issue_before_sha256": "3991749ccdb6c793781ffb990297cb18a45bc35a371c74c4052a687d8baa67e4",
+    "issue_after_sha256": "00b4c0aeb6adee71feedd07b6db3fe400d0f0959efc4015bea7678e6cbdce518",
+    "project_before_sha256": "3d24847c5b7780794396ff819274ef54aed896b355b1272d8966e1f470ca11e4",
+    "project_after_sha256": "8e60c769a618d5fa73a18475de85ea7a0e6ad43822d6442bbef24b8c034e9348",
+    "prior_comments_preserved": true,
+    "other_project_fields_unchanged": true,
+    "previous_source_archived_verbatim": true
+  },
+  "independent_revision3_review": {
+    "status": "PASS_EXTERNAL_STATIC_DESIGN",
+    "approved_scope": "external static design only",
+    "path": "/home/corp/autodata-evidence/browser-supervisor-plan-independent-review/revision3/verdict.json",
+    "sha256": "c0818addc1544e6922a056c52476a60a2079df6a899104f2683576a3470d8feb",
+    "canonical_gate_approved": false,
+    "source_artifact_sha256": {
+      "PLAN.md": "a1091c6a820472506a4cf86872a8dbd9bba5ddc0476144aa0086eba863a35af2",
+      "payload.json": "1d7f34218885aa66593e322588c01cc8acf44f3f2b8601e0c5027d7ce78adfd6",
+      "support-schemas.json": "b371b196ee802addf55e768b8f2e261a5116862ef6474df14725606dbe1e03d9"
+    }
+  }
+}

@@ -1817,6 +1817,94 @@
       "runtime_execution_authorized": false,
       "accepted_new_case_credit": 0,
       "dispatch_prerequisite": "Documentation-only authoring and serialized coordinator tracking; no implementation or runtime dispatch. Fresh separate synchronized exact-path gates are required after independent exact-checkpoint review."
+    },
+    {
+      "id": "2026-11-04-workshop-browser-static-supervisor",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-static-supervisor.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-browser-static-supervisor.md",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-browser-static-supervisor.json",
+      "spec_ref": "docs/agents/specs/2026-11-04-workshop-browser-static-supervisor.json",
+      "verification_ref": "docs/verification/2026-11-04-workshop-browser-static-supervisor.md",
+      "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+      "project_ref": "https://github.com/users/lucronn/projects/8",
+      "repository_doc_refs": [
+        "docs/agents/specs/2026-11-04-workshop-browser-static-supervisor.json",
+        "docs/verification/2026-11-04-workshop-browser-static-supervisor.md"
+      ],
+      "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+      "source_candidate_tree": "d9fb2a8f49beacd009374a76327d0736c1fc9b0a",
+      "documentation_checkpoint_sha": "d082d394ec7b64ae34f0f4db8cc22189a700c687",
+      "depends_on": [
+        "2026-11-04-workshop-browser-execution-contract"
+      ],
+      "state": "blocked",
+      "planning_status": "tracking_synchronized_checkpoint_review_pending",
+      "tracking_status": "synchronized",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "goal": "Close API21/DTO120 static supervisor command graph and support/probe schemas with deterministic offline code; preserve all runtime and acceptance blocks.",
+      "todo": [
+        "Freeze exact command templates, bounded substitution types, environments, graph and full support/probe schemas; preserve source inventories and all authority=false flags.",
+        "Implement only deterministic rendering, strict validation, replayable supervisor/watchdog state reduction, journal serialization and preparation operation planning; concrete process, Docker and network adapters remain unavailable.",
+        "Use fake clock, fake process/resource ports and static malformed evidence fixtures to verify command, ownership, deadline, interruption, recovery and failure-preservation contracts without service/provider execution.",
+        "Synchronize Issue186, Project8 and six exact canonical documentation paths; commit checkpoint, pin its actual SHA externally and pass canonical preflight before implementation.",
+        "Independently review exact code SHA and fake-only evidence; keep runtime, fixture acceptance, timer repair, transport and authentic staging gates blocked."
+      ],
+      "allowed_gate_document_paths": [
+        "docs/superpowers/plans/2026-11-04-workshop-browser-static-supervisor.md",
+        "docs/agents/specs/2026-11-04-workshop-browser-static-supervisor.json",
+        "docs/agents/records/2026-11-04-workshop-browser-static-supervisor.json",
+        "docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-static-supervisor.json",
+        "docs/verification/2026-11-04-workshop-browser-static-supervisor.md",
+        "docs/agents/tasks/2026-11-03-production-release/queue.json"
+      ],
+      "allowed_implementation_paths": [
+        "scripts/dev/workshop_browser_execution_contract.py",
+        "scripts/dev/workshop_browser_execution_evidence.py",
+        "scripts/dev/workshop_browser_execution_supervisor.py",
+        "scripts/dev/workshop_browser_preparation_probe.py",
+        "scripts/dev/test_workshop_browser_execution_contract.py",
+        "scripts/dev/test_workshop_browser_execution_evidence.py",
+        "scripts/dev/test_workshop_browser_execution_supervisor.py",
+        "scripts/dev/test_workshop_browser_preparation_probe.py"
+      ],
+      "current_implementation_allowlist": [],
+      "authorities": {
+        "implementation_dispatch": false,
+        "host_execution": false,
+        "runtime_preparation_probe": false,
+        "image_build_pull_install": false,
+        "service_start": false,
+        "fixture_execution": false,
+        "network": false,
+        "provider": false,
+        "payment": false,
+        "account_mutation": false,
+        "cloud": false,
+        "trust_profile_promotion": false,
+        "merge": false,
+        "release": false,
+        "deployment": false,
+        "cutover": false,
+        "repository_edit": false,
+        "github_write": false,
+        "host_process_execution": false,
+        "docker_execution": false,
+        "secrets": false,
+        "probe_output_admission": false
+      },
+      "verification_state": {
+        "current_source_browser_acceptance": false,
+        "fixture_api21": false,
+        "fixture_dto120": false,
+        "final180": false,
+        "staging": false,
+        "all_trust_profiles_enabled": false
+      },
+      "accepted_new_case_credit": 0,
+      "implementation_dispatch_authorized": false,
+      "runtime_execution_authorized": false,
+      "dispatch_prerequisite": "Conditional draft only. Bound independent revision3 static review, current tracking readback, committed synchronized six-document checkpoint, exact-SHA preflight and coordinator handoff remain required; offline eight-path scope only after that gate. No runtime authority."
     }
   ],
   "execution": {
