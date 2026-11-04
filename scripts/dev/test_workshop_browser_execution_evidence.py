@@ -141,3 +141,76 @@ def test_sealing_rejects_omitted_failed_log_and_mismatched_identity():
         with pytest.raises(ValueError):
             e.seal_evidence(port, (last,), m, {**terminal, **terminal_change}, "now")
         assert "seal.json" not in port.files
+
+
+def test_sealing_rejects_laundered_terminal_file_hash():
+    port = e.MemoryEvidencePort()
+    last = e.journal_event(event(action="seal_intent", state="sealing"))
+    port.append_fsync("journal.jsonl", c.canonical_json(last))
+    m, terminal = seal_documents(port)
+    terminal["artifacts"][0]["sha256"] = "0" * 64
+    with pytest.raises(ValueError):
+        e.seal_evidence(port, (last,), m, terminal, "now")
+
+
+def migration_rows():
+    return [dict(case_id=case["id"], database_resource_key="db:" + case["id"], path=f"migrations/{version:03}.sql",
+                 version=version, source_sha256="1" * 64, applied_sha256="1" * 64,
+                 state="applied", command_id="source-migration:" + case["id"], reason=None)
+            for case in c.inventory()["api_cases"] for version in range(1, 41)]
+
+
+@pytest.mark.parametrize("mutation", ["39", "41", "duplicate", "checksum", "database", "unknown_case"])
+def test_exact_per_case_migrations_cannot_be_reduced_to_one_global_receipt(mutation):
+    rows = migration_rows()
+    context = dict(lane="api", migration_source_sha256={row["path"]: row["source_sha256"] for row in rows})
+    assert e.validate_artifact("migrations.json", c.canonical_json(rows), context) == ()
+    if mutation == "39":
+        del rows[0]
+    elif mutation == "41":
+        rows.insert(40, {**rows[39], "version": 41})
+    elif mutation == "duplicate":
+        rows[1] = rows[0]
+    elif mutation == "checksum":
+        rows[0]["applied_sha256"] = "0" * 64
+    elif mutation == "database":
+        rows[40]["database_resource_key"] = rows[0]["database_resource_key"]
+    else:
+        rows[0]["case_id"] = "unknown"
+    assert e.validate_artifact("migrations.json", c.canonical_json(rows), context)
+    assert e.validate_artifact("migrations.json", c.canonical_json(rows), {**context, "lane": "dto"})
+
+
+def test_worker_integer_exit_lists_cannot_replace_creation_identity():
+    worker = dict(case_id="case", worker_ordinal=0, spawn_command_id="spawn", process=process(),
+                  log_path="case/worker.log", log_sha256="1" * 64, exit=outcome(), observation="direct", reason=None)
+    assert e.validate_value("Worker", worker) == ()
+    assert e.validate_value("Worker", {**worker, "process": None})
+    assert e.validate_value("Worker", {**worker, "exit": {**outcome(), "state": "running", "end_ns": None, "exit_code": None}})
+    assert e.validate_artifact("workers.json", b"[0,0]\n", {})
+
+
+@pytest.mark.parametrize("field", ["pid", "start_ticks", "labels", "filesystem", "created_at", "inspect_sha256"])
+def test_complete_ownership_changes_never_match(field):
+    proc = process()
+    obj = dict(resource_key="api.runner", generation="api", kind="container", attempt_id="a" * 32,
+               candidate_sha=c.CANDIDATE_SHA, supervisor_sha256="1" * 64, name="owned", immutable_id="2" * 64,
+               created_at="2026-11-04T00:00:00Z", labels={"autodata.attempt": "a" * 32, "autodata.candidate": c.CANDIDATE_SHA,
+               "autodata.supervisor": "1" * 64, "autodata.generation": "api", "autodata.contract": "api21-dto120-v1"},
+               inspect_sha256="3" * 64, process=proc, filesystem=None, owner_resource_key=None, status="verified", reason=None)
+    assert e.ownership_matches(obj, copy.deepcopy(obj))
+    changed = copy.deepcopy(obj)
+    if field in ("pid", "start_ticks"):
+        changed["process"][field] += 1
+    elif field == "labels":
+        changed["labels"]["autodata.attempt"] = "b" * 32
+    elif field == "filesystem":
+        changed["filesystem"] = {}
+    else:
+        changed[field] = "changed"
+    assert not e.ownership_matches(obj, changed)
+
+
+def test_immutable_before_after_and_raw_stream_caps_are_not_truncation_permissions():
+    assert e.validate_artifact("source.after.json", b"[]\n", {"counterpart": [{"different": True}]})
+    assert e.validate_artifact("seal.json", b"x" * 65537, {})

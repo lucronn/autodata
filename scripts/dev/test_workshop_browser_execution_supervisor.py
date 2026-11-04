@@ -191,3 +191,63 @@ def test_live_cli_rejects_before_opening_anything(monkeypatch):
 
 def test_reconcile_never_retries_unknown_create():
     assert s.reconcile((), ({"name": "unowned"},))["status"] == "recovery_blocked"
+
+
+@pytest.mark.parametrize("failure", ["broker_dead", "broker_lock_lost"])
+def test_delayed_intent_ack_after_broker_failure_cannot_mutate(failure):
+    st, _ = s.reduce(state(), request(state()))
+    st, _ = s.reduce(st, event(failure, 102, reason="broker unavailable"))
+    st, actions = s.reduce(st, event("intent_fsynced", 103, action_id="act", sequence=1, parent_fsynced=True))
+    assert st["status"] == "recovery_blocked"
+    assert not any(a["kind"] in ("create", "signal", "stop", "remove") for a in actions)
+
+
+def test_delayed_intent_ack_after_fence_cannot_use_new_watchdog_lease():
+    st, _ = s.reduce(state(), request(state()))
+    st, _ = s.reduce(st, event("takeover", 1100, expected_epoch=1))
+    st, _ = s.reduce(st, event("fence_fsynced", 1101, epoch=2, sequence=1))
+    st, actions = s.reduce(st, event("intent_fsynced", 1102, action_id="act", sequence=2, parent_fsynced=True))
+    assert not any(a["kind"] == "create" for a in actions)
+    assert st["status"] == "recovery_blocked"
+
+
+def test_action_completion_at_its_deadline_is_uncertain_and_never_claims_success():
+    st, _ = s.reduce(state(), request(state()))
+    st, _ = s.reduce(st, event("intent_fsynced", 102, action_id="act", sequence=1, parent_fsynced=True))
+    st, actions = s.reduce(st, event("action_completed", 151, action_id="act", success=True, observation={"id": "1" * 64}))
+    assert st["status"] == "recovery_blocked"
+    assert "act" not in st["completed_actions"]
+    assert all(a["kind"] not in ("create", "remove", "signal", "stop") for a in actions)
+
+
+def test_cleanup_phases_share_one_deadline_and_never_reset_it():
+    st = state()
+    st.update(status="api_running", receipts={"producer_exited": "x", "owned_stop_complete": "y", "all_children_reaped": "z", "all_logs_flushed": "f", "inventory_accounted": "i"})
+    st, _ = s.reduce(st, event("advance", 101, target="stopping"))
+    deadline = st["phase_deadline_ns"]
+    st, _ = s.reduce(st, event("advance", 102, target="reaping"))
+    assert st["phase_deadline_ns"] == deadline
+    st, _ = s.reduce(st, event("advance", 103, target="sealing"))
+    assert st["phase_deadline_ns"] == deadline
+
+
+def test_sealed_state_cannot_emit_new_mutation_or_be_changed_by_late_case():
+    st = state()
+    st["status"] = "sealed_unreviewed"
+    unchanged, actions = s.reduce(st, request(st))
+    assert not actions and unchanged["pending"] is None
+    with pytest.raises(ValueError):
+        s.reduce(st, event("case_result", lane="api", case_id=next(iter(st["cases"]["api"])), result="exited"))
+
+
+def test_stop_reap_failures_cannot_clear_original_failure_and_artifact_caps_preserve_hash():
+    st, _ = s.reduce(state(), event("source_failed", reason="original"))
+    st, _ = s.reduce(st, event("reap_failed", 102, reason="unreaped child"))
+    st, _ = s.reduce(st, event("cleanup_finished", 103, residual_resource_keys=["api.runner"]))
+    assert st["failure_reasons"][0] == "original"
+    assert st["status"] == "recovery_blocked"
+    raw = b"x" * 33554433
+    st, _ = s.reduce(state(), event("artifact", path="api/pytest.stdout.log", data=raw))
+    assert st["artifacts"]["api/pytest.stdout.log"]["bytes"] == len(raw)
+    assert st["artifacts"]["api/pytest.stdout.log"]["sha256"] == c.digest_bytes(raw)
+    assert st["status"] == "failed"

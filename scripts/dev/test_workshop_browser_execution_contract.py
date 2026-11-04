@@ -1,6 +1,8 @@
 """Offline contract tests: none of these tests starts a child or a service."""
 import dataclasses
 import json
+import ast
+from pathlib import Path
 
 import pytest
 
@@ -119,3 +121,33 @@ def test_canonical_bytes_and_inventory_equality():
     inv["dto_cases"] = inv["dto_cases"][:-1]
     with pytest.raises(ValueError):
         c.validate_inventory(inv)
+
+
+@pytest.mark.parametrize("extra", ["HTTP_PROXY", "INCEPTION_API_KEY", "DOCKER_HOST", "GOOGLE_APPLICATION_CREDENTIALS"])
+def test_commands_reject_ambient_environment_keys(extra):
+    b = bindings()
+    env = c.environment("host", b.attempt_root)
+    with pytest.raises(ValueError):
+        c.make_command("offline", "host", [b.docker, "version"], b.tools_root, {**env, extra: "bad"},
+                       10000, b.attempt_root + "/out", b.attempt_root + "/err")
+
+
+def test_runner_does_not_add_undeclared_alias_and_full_docker_verbs_are_closed():
+    b = bindings()
+    assert "--network-alias" not in c.resource_command(b, "api", "runner", "create", network_id="1" * 64).argv
+    for verb, suffix in (("start", ["start", "2" * 64]), ("inspect", ["inspect", "--type", "container", "2" * 64]),
+                         ("stop", ["stop", "--time", "2", "2" * 64]), ("kill", ["kill", "--signal", "KILL", "2" * 64]),
+                         ("logs", ["logs", "--timestamps", "2" * 64]), ("rm", ["rm", "2" * 64])):
+        assert c.resource_command(b, "api", "runner", verb, resource_id="2" * 64).argv[5:] == tuple(suffix)
+    for verb in ("exec", "prune", "restart", "pull", "build"):
+        with pytest.raises(ValueError):
+            c.resource_command(b, "api", "runner", verb, resource_id="2" * 64)
+
+
+def test_modules_import_no_process_or_network_clients():
+    for filename in ("workshop_browser_execution_contract.py", "workshop_browser_execution_evidence.py",
+                     "workshop_browser_execution_supervisor.py", "workshop_browser_preparation_probe.py"):
+        tree = ast.parse(Path(c.__file__).with_name(filename).read_text())
+        imports = {node.module.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module}
+        imports.update(alias.name.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names)
+        assert not imports & {"subprocess", "socket", "docker", "requests", "http", "signal", "multiprocessing", "ctypes"}

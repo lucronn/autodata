@@ -58,6 +58,8 @@ def initial_state(bindings: c.RuntimeBindings, now_ns: int, *, broker_process=No
 
 def _fail(state, status, reason):
     # A cleanup acknowledgement never upgrades a previous failure to success.
+    if state["status"] not in NONPASS:
+        state["phase_deadline_ns"] = min(state["deadline_ns"], state["now_ns"] + 120000000000)
     if state["status"] != "recovery_blocked" or status == "recovery_blocked":
         state["status"] = status
     if reason not in state["failure_reasons"]:
@@ -94,6 +96,8 @@ def _ticket_valid(state, ticket):
 def _cleanup_actions(state):
     # Request read-only reconciliation first. No mutation without a fresh exact
     # ownership observation and separately persisted mutation intent.
+    if not state["broker_alive"] or not state["lock_held"]:
+        return ()
     return tuple(_action(state, "inspect", "cleanup-inspect:" + key, key) for key in sorted(state["resources"]))
 
 
@@ -105,7 +109,11 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
         _fail(next_state, "failed", "backward_monotonic_clock")
         return next_state, ()
     next_state["now_ns"] = event.monotonic_ns
-    if event.monotonic_ns >= min(state["deadline_ns"], state["phase_deadline_ns"]) and event.kind not in ("cleanup_finished", "broker_dead", "broker_lock_lost"):
+    if state["status"] == "sealed_unreviewed" and event.kind not in ("dto_requested", "tick", "request"):
+        raise ValueError("sealed replay cannot be rewritten")
+    if state["status"] == "sealed_unreviewed" and event.kind == "request":
+        return next_state, ()
+    if event.monotonic_ns >= min(state["deadline_ns"], state["phase_deadline_ns"]) and event.kind not in ("cleanup_finished", "broker_dead", "broker_lock_lost", "takeover", "fence_fsynced"):
         _fail(next_state, "interrupted", "absolute_deadline_reached")
         return next_state, _cleanup_actions(next_state)
     p = event.payload
@@ -182,9 +190,14 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
     elif event.kind == "intent_fsynced":
         p = _payload(event, ("action_id", "sequence", "parent_fsynced"))
         pending = state["pending"]
-        if (pending is None or pending["stage"] != "intent_wait" or pending["action_id"] != p["action_id"]
+        if not state["broker_alive"] or not state["lock_held"]:
+            _fail(next_state, "recovery_blocked", "broker_unavailable_before_mutation")
+        elif (pending is None or pending["stage"] != "intent_wait" or pending["action_id"] != p["action_id"]
                 or p["sequence"] != state["journal_sequence"] + 1 or p["parent_fsynced"] is not True):
             _fail(next_state, "recovery_blocked", "intent_fsync_receipt_mismatch")
+        elif (pending["ticket"]["epoch"] != state["epoch"] or pending["ticket"]["holder"] != state["holder"]
+              or pending["ticket"]["broker_process"] != state["broker_process"] or state["status"] == "recovery_blocked"):
+            _fail(next_state, "recovery_blocked", "revoked_intent_cannot_mutate")
         elif event.monotonic_ns >= min(pending["deadline_ns"], state["lease_until_ns"]) or state["fence_pending"] is not None:
             _fail(next_state, "recovery_blocked", "intent_expired_before_mutation")
         else:
@@ -198,6 +211,11 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
         pending = state["pending"]
         if pending is None or pending["stage"] != "executing" or pending["action_id"] != p["action_id"]:
             _fail(next_state, "recovery_blocked", "unknown_action_completion")
+        elif (event.monotonic_ns >= pending["deadline_ns"] or not state["broker_alive"] or not state["lock_held"]
+              or pending["ticket"]["epoch"] != state["epoch"]):
+            _fail(next_state, "recovery_blocked", "late_or_revoked_action_requires_reconcile")
+            if state["broker_alive"] and state["lock_held"]:
+                actions = (_action(next_state, "inspect", "reconcile:" + p["action_id"], pending["resource_key"]),)
         elif p["success"] is not True:
             _fail(next_state, "failed", "adapter_action_failed")
         else:
@@ -242,7 +260,10 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
         else:
             next_state["status"] = target
             if target in PHASE_NS:
-                next_state["phase_deadline_ns"] = min(state["deadline_ns"], event.monotonic_ns + PHASE_NS[target] * 1000000000)
+                if target in ("reaping", "sealing"):
+                    next_state["phase_deadline_ns"] = state["phase_deadline_ns"]
+                else:
+                    next_state["phase_deadline_ns"] = min(state["deadline_ns"], event.monotonic_ns + PHASE_NS[target] * 1000000000)
     elif event.kind == "dto_requested":
         _payload(event)
         # Static success-shaped API replay confers no timer/runtime admission.

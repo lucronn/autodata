@@ -104,6 +104,7 @@ def _semantic(name, value, path, errors, context):
             c.absolute_path(value["cwd"])
             c.absolute_path(value["stdout_path"])
             c.absolute_path(value["stderr_path"])
+            c.validate_environment(value["role"], value["environment"])
         except ValueError as exc:
             reject(str(exc))
         if value["binding_sha256"] != c.digest({k: v for k, v in value.items() if k != "binding_sha256"}):
@@ -472,6 +473,14 @@ def seal_evidence(port, journal: tuple[dict, ...], manifest: dict, terminal: dic
         if any(terminal[k] != attempt[k] for k in ("attempt_id", "candidate_sha", "supervisor_sha256")):
             raise ValueError("terminal differs from initialized attempt identity")
     manifest_bytes = c.canonical_json(manifest)
+    terminal_data = {**port.files, "manifest.json": manifest_bytes}
+    for row in terminal["artifacts"]:
+        if row["path"] in terminal_data:
+            data = terminal_data[row["path"]]
+            if row["state"] != "produced" or row["bytes"] != len(data) or row["sha256"] != c.digest_bytes(data):
+                raise ValueError("terminal map does not bind exact preserved artifact bytes")
+        elif row["state"] == "produced" or row["sha256"] is not None or row["bytes"] != 0:
+            raise ValueError("terminal missing map invents artifact bytes")
     port.write_exclusive("manifest.json", manifest_bytes)
     port.fsync_parent("manifest.json")
     terminal = {**copy.deepcopy(terminal), "manifest_sha256": c.digest_bytes(manifest_bytes), "journal_sha256": c.digest_bytes(journal_bytes)}

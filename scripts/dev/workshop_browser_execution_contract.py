@@ -208,6 +208,20 @@ def command_dict(command: CommandSpec, include_hash: bool = True) -> dict:
     return result
 
 
+def validate_environment(role: str, env: dict) -> None:
+    if not isinstance(env, dict) or any(not isinstance(k, str) or not isinstance(v, str) or "\0" in v for k, v in env.items()):
+        raise ValueError("invalid complete command environment")
+    if role in ("host", "probe", "cleanup"):
+        home = env.get("HOME", "")
+        suffix = "/scratch/host-home"
+        if not home.endswith(suffix) or env != environment("host", home[:-len(suffix)]):
+            raise ValueError("host environment differs from frozen replacement")
+    else:
+        choices = {"runner": ("runner",), "api": ("api_pytest",), "dto": ("dto_go", "dto_browser")}.get(role)
+        if choices is None or not any(env == environment(choice, "/unused") for choice in choices):
+            raise ValueError("command environment differs from frozen replacement")
+
+
 def operation_dict(operation: OperationSpec) -> dict:
     result = asdict(operation)
     result["depends_on"] = list(operation.depends_on)
@@ -218,6 +232,7 @@ def operation_dict(operation: OperationSpec) -> dict:
 def make_command(id: str, role: str, argv, cwd: str, env: dict, timeout_ms: int,
                  stdout_path: str, stderr_path: str, depends_on=()) -> CommandSpec:
     absolute_path(cwd)
+    validate_environment(role, env)
     absolute_path(argv[0])
     for p in (stdout_path, stderr_path):
         absolute_path(p)
@@ -271,7 +286,8 @@ def resource_command(b: RuntimeBindings, lane: str, role: str, verb: str, *,
             hex_value(network_id, 64)
             runner = role == "runner"
             suffix = ["create", "--name", name, "--pull", "never", "--network", network_id]
-            suffix += ["--network-alias", {"postgres": "postgres", "nats": "nats", "s3": "minio", "runner": "runner"}[role]]
+            if not runner:
+                suffix += ["--network-alias", {"postgres": "postgres", "nats": "nats", "s3": "minio"}[role]]
             suffix += labels(b, lane) + ["--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                 "--pids-limit", "2048" if runner else "256", "--memory",
                 {"runner": "8589934592", "postgres": "2147483648", "nats": "536870912", "s3": "1073741824"}[role],
