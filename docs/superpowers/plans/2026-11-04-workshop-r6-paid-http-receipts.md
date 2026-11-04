@@ -1,4 +1,4 @@
-# Paid GrantBeforeWork HTTP receipt consistency implementation plan — pending tracking
+# Paid GrantBeforeWork HTTP receipt consistency implementation plan — synchronized tracking
 
 > **For agentic workers:** Use superpowers:executing-plans only after the coordinator completes the canonical gate, commits/pushes the synchronized checkpoint, runs pinned preflight successfully, and obtains independent exact-checkpoint review. This pending documentation checkpoint grants no implementation authority.
 
@@ -12,7 +12,7 @@
 **Issue:** https://github.com/lucronn/autodata/issues/186
 **Project:** https://github.com/users/lucronn/projects/8
 **Inspected source:** integrated PR #198 exact head `e5fed171bb36fdb759c592cbcd0e15aea5490c97`.
-**Status:** Docs-only planning checkpoint; GitHub tracking synchronization and independent exact-checkpoint review are pending. No live tracking readback or passing preflight is implied. `integration_status_audit` is the sole authorized Issue186/Project8 writer for this milestone; other agents must not write those records. Preserve all prior tracking references and correction history. The coordinator reported independent local-draft review PASS for SHA256 `783f16baf8a3a97458841094e9dc9075785da32c8f4340d0854796c950e75fdd`; that draft review does not approve this committed gate or authorize implementation.
+**Status:** Tracking synchronized by readback of Issue186 detail comment6623187020 and Project8 Source index; passing exact committed preflight and independent exact synchronized-checkpoint review remain required before any implementation. The designated sole writer for this milestone is now `paid_evidence_plan` (superseding the prior checkpoint writer assignment). Independent local draft review PASS at SHA256 `783f16baf8a3a97458841094e9dc9075785da32c8f4340d0854796c950e75fdd` and docs-only checkpoint review PASS at `444a70138fcfdc63a7fbe40eb8c72ac445cfebb1` were coordinator-relayed; neither grants builder or runtime authority.
 
 ## Global constraints and bounded files
 
@@ -179,7 +179,7 @@ git diff --check
 
 Compare `git diff --name-only B...candidate` against the three-path implementation allowlist; review actual bytes and required suite outcomes. Check `r6-release.json`, policy, profile bytes, CLI behavior and transport ceilings unchanged. Synthetic regression tests prove parser behavior only; they do not supply actual fixture180, staging or provider acceptance. If any broad suite fails for a pre-existing dependency/environment reason, retain the failure and report it; do not claim a pass or expand implementation scope.
 
-## Concrete todo — tracking synchronization pending
+## Concrete synchronized todo
 
 1. Synchronize this HTTP-only family, exact producer-derived schema, three-path implementation allowlist and todo in Issue186/Project8/canonical plan/task/record/queue; commit/push B, pass pinned preflight and obtain independent exact-B review.
 2. Independently construct failing synthetic 18×2 HTTP observations and adversarial tests that repair enclosing copies/hashes to reach semantic validation.
@@ -190,3 +190,8 @@ Compare `git diff --name-only B...candidate` against the three-path implementati
 ## Self-review and limits
 
 The plan binds implementation to a single real retained schema and two fixed cases; exact raw field names and absent seams were checked against producer and retained files. Config/list ordering exceptions match the two banks. Raw response bytes, full wire headers/timestamps and authenticated capture/reviewer authority are unavailable in this family; hashes and consistent copies never replace them. Media-content/rights, actual model lifecycle, other ten HTTP case semantics, source/PG semantics beyond specified ID projections, runtime/image inputs, complete migrations, CI/support/security, final candidate180, licensed enrollment and all live/staging/release claims remain outside this bounded successor. No planning checkpoint content is implementation authorization or proof of current external tracking.
+
+
+### Paid HTTP tracking readback (2026-11-04)
+
+Issue186 detail [comment6623187020](https://github.com/lucronn/autodata/issues/186#issuecomment-6623187020) has body SHA256 `c6d3fa5f4888a469ae0b4703c04ebd3c609f5e91d0dc2c29423633fe69ee85e7`. Authorized sole writer `paid_evidence_plan` reread the complete unchanged Issue body and all123 predecessor comment bodies, plus the exact new detail. Complete preserved bytes/hashes and before/after Project field values are in `docs/agents/records/2026-11-04-r6-paid-http-tracking-evidence.json`. Source index is927 characters, SHA256 `37db77872fa6791b28289e9d52b9d26c0a7c62c1a219721d048b304060c8f959`; Status remains In Progress and every other Project field is unchanged. Latest PG retrospective detail6623105546/pin6623119656 and integration completion detail6623150233/checkpointd2e2270/pin6623168382/gate2728ac/receipt507e3d remain indexed. Record/task/queue are synchronized after readback at `2026-11-04T05:14:43.079569+00:00`; independent exact committed gate review and full-SHA passing preflight remain required. No implementation, profile/trust promotion, runtime, cloud, activation or acceptance authority is granted. The five concrete todos above remain unchanged.

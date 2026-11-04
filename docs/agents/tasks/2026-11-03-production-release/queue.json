@@ -991,10 +991,10 @@
       "depends_on": [],
       "source_inspection_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
       "source_integration_pr": "https://github.com/lucronn/autodata/pull/198",
-      "state": "planning_pending_tracking_and_exact_gate_review",
-      "planning_status": "pending",
-      "tracking_status": "pending_authorized_writer_readback",
-      "tracking_writer": "integration_status_audit",
+      "state": "planning_synchronized_pending_exact_gate_review",
+      "planning_status": "synchronized",
+      "tracking_status": "synchronized_pending_exact_gate_review",
+      "tracking_writer": "paid_evidence_plan",
       "release_state": "unverified",
       "needs_scope_refinement": false,
       "implementation_scope": "existing_first3_internal_two_case_projected_http_receipts_only",
@@ -1008,7 +1008,23 @@
       "implementation_dispatch_authorized": false,
       "runtime_execution_authorized": false,
       "cloud_execution_authorized": false,
-      "profile_promotion_authorized": false
+      "profile_promotion_authorized": false,
+      "tracking_sync": {
+        "detail_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6623187020",
+        "detail_comment_id": 6623187020,
+        "detail_comment_sha256": "c6d3fa5f4888a469ae0b4703c04ebd3c609f5e91d0dc2c29423633fe69ee85e7",
+        "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+        "preserved_predecessor_comment_count": 123,
+        "all_predecessor_bodies_unchanged": true,
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_source_index_sha256": "37db77872fa6791b28289e9d52b9d26c0a7c62c1a219721d048b304060c8f959",
+        "project_source_index_characters": 927,
+        "project_status": "In Progress",
+        "all_other_project_fields_unchanged": true,
+        "readback_at": "2026-11-04T05:14:43.079569+00:00"
+      },
+      "tracking_evidence_ref": "docs/agents/records/2026-11-04-r6-paid-http-tracking-evidence.json"
     }
   ],
   "execution": {
