@@ -570,11 +570,23 @@
       "id": "workshop-pg17-acquisition-overlay",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-pg17-acquisition-overlay.json",
       "depends_on": [],
-      "state": "plan_only_pending_independent_review",
+      "state": "adopted_tracking_synchronized_retry_held",
       "release_state": "unverified",
       "implementation_changes_allowed": false,
       "preparation_retry_executed": false,
-      "runtime_verified": false
+      "runtime_verified": false,
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621449880",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-04T03:08:28.641173+00:00",
+        "issue_body_sha256": "f47c2d7325efdb4797961bd5fe85946b98356cbc2a21f858f1d4d749c55c9768",
+        "issue_comment_sha256": "7b47fceb43dfca2b7bf28fa99aae910ea29aee94b2e25f78573309155b6eefb7",
+        "project_text_sha256": "a833390b924951f80d78dd74d404537196d4ce2fd9a690365c747180e0bfc69c",
+        "prior_project_text_sha256": "6111a5425e53d4820d2942475a3dac29bb76273f44c0b2b621aeaa67d9fc1d23",
+        "full_prior_project_index_preserved_in_issue_comment": true
+      }
     }
   ],
   "execution": {

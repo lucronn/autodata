@@ -28,27 +28,38 @@
       "Keep offline simulation/install/commit configuration and original Task2 separately authorized and unchanged; no image/toolchain/harness/runtime/production readiness follows from plan synchronization or synthetic guard fixtures."
     ],
     "status": "synchronized",
-    "updated_at": "2026-11-04T03:04:46.045770+00:00",
+    "updated_at": "2026-11-04T03:08:28.641173+00:00",
     "source_integration_base_sha": "226cb50fabfbc53c9f674dd72fae9b42aa3775d0",
     "harness_source_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
     "implementation_allowlist": [],
-    "independent_review": "pending",
+    "independent_review": "approved_checkpoint_26989e1_by_coordinator",
     "preparation_retry_authorized": false,
     "runtime_execution_authorized": false,
     "runtime_verified": false,
     "production_ready": false,
     "evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-acquisition-overlay-evidence.json",
     "tracking_sync": {
-      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621400986",
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621449880",
       "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
       "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
       "project_note_field": "Source or dependency reference",
-      "verified_at": "2026-11-04T03:04:46.045770+00:00",
-      "issue_body_sha256": "dfa1e1cfefab919035c100ac6dfae42a99527dd3cd6350fdd6d9782b20a1d0bd",
-      "issue_comment_sha256": "f8d8bac47bb5a2437f57d6799d6d1246654bbc4ea90662d11cb1cd91bf2496e8",
-      "project_text_sha256": "0e7e4e9fe723808c4587d12c85bc0486089d3d842db1ca158dd2667e4b49aecf",
-      "prior_project_text_sha256": "dc9aeef76060f53402c540740ae2a5aa7c41d862011d2d23d3f04649ebdf7ca4",
+      "verified_at": "2026-11-04T03:08:28.641173+00:00",
+      "issue_body_sha256": "f47c2d7325efdb4797961bd5fe85946b98356cbc2a21f858f1d4d749c55c9768",
+      "issue_comment_sha256": "7b47fceb43dfca2b7bf28fa99aae910ea29aee94b2e25f78573309155b6eefb7",
+      "project_text_sha256": "a833390b924951f80d78dd74d404537196d4ce2fd9a690365c747180e0bfc69c",
+      "prior_project_text_sha256": "6111a5425e53d4820d2942475a3dac29bb76273f44c0b2b621aeaa67d9fc1d23",
       "full_prior_project_index_preserved_in_issue_comment": true
+    },
+    "adoption": {
+      "reviewed_gate_sha": "26989e1de7a71ac4f7c23da043dd367548e2ba45",
+      "review_receipt_sha": "80d4a20dcd7603a81d1ef96307e94fafe32caafe",
+      "documentation_adoption_sha": "1fe22c943143d8955624ed75c0f378bdb2dc0439",
+      "parent_failed_evidence_sha": "226cb50fabfbc53c9f674dd72fae9b42aa3775d0",
+      "harness_paths_byte_identical": true,
+      "both_raw_blockers_unchanged": true,
+      "phase": "adopted_pinned_preflight_and_root_new_dispatch_pending",
+      "preparation_retry_executed": false,
+      "runtime_executed": false
     }
   },
   "todo": [
@@ -59,7 +70,7 @@
     "Keep offline simulation/install/commit configuration and original Task2 separately authorized and unchanged; no image/toolchain/harness/runtime/production readiness follows from plan synchronization or synthetic guard fixtures."
   ],
   "execution": {
-    "mode": "plan_only",
+    "mode": "adoption_only_no_retry",
     "retry": "blocked_pending_exact_gate_review_adoption_pinned_preflight_and_new_coordinator_dispatch",
     "runtime": "original_task2_unchanged_separately_unauthorized",
     "acquisition_commit_restart_reuse": "forbidden",
