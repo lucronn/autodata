@@ -579,7 +579,15 @@
       "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-r6-paid-selector-work.md",
       "implementation_scope": "existing_first3_internal_two_case_selector_work_only",
       "profile_status": "all_tiers_disabled",
-      "dispatch_prerequisite": "Commit/push synchronized gate; exact-base machine preflight and independent coordinator gate review. Existing paid common/PG/migration implementations are source dependencies already integrated at the inspection SHA; this queue item creates no trust promotion or acceptance dependency cycle."
+      "dispatch_prerequisite": "Commit/push synchronized gate; exact-base machine preflight and independent coordinator gate review. Existing paid common/PG/migration implementations are source dependencies already integrated at the inspection SHA; this queue item creates no trust promotion or acceptance dependency cycle.",
+      "tracking_correction": {
+        "prior_checkpoint_sha": "2222ce2123016f35a192fea312e9ff19749840b8",
+        "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6619194720",
+        "restored_reference_id": "6617902111",
+        "project_field_sha256": "293ca347ec9b6848b5e8e339b8dce6a0c5bdbe02019ef5feae45e0cbc5db4f93",
+        "readback_at": "2026-11-04T00:34:12.496441+00:00",
+        "independent_gate_review": "required"
+      }
     }
   ],
   "execution": {

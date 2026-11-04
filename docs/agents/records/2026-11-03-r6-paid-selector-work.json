@@ -16,16 +16,44 @@
     "Run focused/developer/autonomy, syntax, shallow-clone and three-path scope checks; update the runbook, commit/push the coherent candidate and obtain independent exact-SHA review before integration."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-04T00:30:56.950795+00:00",
+  "updated_at": "2026-11-04T00:34:12.496441+00:00",
   "tracking_receipts": {
     "source_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
-    "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6619139974",
-    "issue_comment_body_sha256": "1149c8c6bacccad6fe9079a444eb8adff56095dabea535a939b92443728a1765",
+    "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6619194720",
+    "issue_comment_body_sha256": "7aa718e316d14718354e2206242f8470fc945bdcbfa1edf20c794c02e4de6db3",
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_status": "In Progress",
     "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
-    "project_field_sha256": "9682bd24f8eb74c2c85bd3d3f8926544ea74ed5a9fbd7c0cc57ce2b7d536275d",
+    "project_field_sha256": "293ca347ec9b6848b5e8e339b8dce6a0c5bdbe02019ef5feae45e0cbc5db4f93",
     "prior_project_field_sha256": "0a1d7564da5b9e26b365fc471272c5fc0c092e409abe53efbbf8fe185cb7089d",
-    "readback_at": "2026-11-04T00:30:56.950795+00:00"
-  }
+    "readback_at": "2026-11-04T00:34:12.496441+00:00",
+    "project_field_characters": 816,
+    "restored_reference_id": "6617902111",
+    "pre_correction_project_field_sha256": "60cdeedf507f0f0f0b91cc08da08a357099f75dc08e9a6d1b1086e12b575ac65",
+    "prior_comment_ids_complete": true
+  },
+  "tracking_receipt_history": [
+    {
+      "kind": "original_planning_readback",
+      "receipt": {
+        "source_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+        "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6619139974",
+        "issue_comment_body_sha256": "1149c8c6bacccad6fe9079a444eb8adff56095dabea535a939b92443728a1765",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_status": "In Progress",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_field_sha256": "9682bd24f8eb74c2c85bd3d3f8926544ea74ed5a9fbd7c0cc57ce2b7d536275d",
+        "prior_project_field_sha256": "0a1d7564da5b9e26b365fc471272c5fc0c092e409abe53efbbf8fe185cb7089d",
+        "readback_at": "2026-11-04T00:30:56.950795+00:00"
+      }
+    },
+    {
+      "kind": "original_checkpoint_followup",
+      "checkpoint_sha": "2222ce2123016f35a192fea312e9ff19749840b8",
+      "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6619164328",
+      "issue_comment_body_sha256": "02829f35c348a6466e0d64f0afac56427aa4b1e9815bfe902edec6a0cef45b18",
+      "project_field_sha256": "60cdeedf507f0f0f0b91cc08da08a357099f75dc08e9a6d1b1086e12b575ac65",
+      "known_defect": "Compact index omitted prior DTO comment6617902111; all-ID-retained claims superseded by corrected readback."
+    }
+  ]
 }
