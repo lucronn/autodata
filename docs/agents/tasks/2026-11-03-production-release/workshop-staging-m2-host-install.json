@@ -29,8 +29,8 @@
       "Run focused host-install tests plus existing host/cloud/bootstrap regressions, syntax/diff/scope and pinned preflight; commit/push a coherent exact candidate for independent review, preserving all startup/readiness/cloud/secret/production denials.",
       "Require separate decision-complete gates for authenticated remote ingress/private secret delivery, host packages/guard/units, image pull, start/schema/readiness and minimum recovery; no one may treat M2A success as completion of full M2 or live-operation authorization."
     ],
-    "status": "draft",
-    "updated_at": "2026-11-04T04:26:20.071112+00:00",
+    "status": "synchronized",
+    "updated_at": "2026-11-04T04:30:30.706329+00:00",
     "source_candidate_sha": "ef536cc24478424efc3cc084425322cfb8056145",
     "source_integration_base_sha": "ef536cc24478424efc3cc084425322cfb8056145",
     "implementation_allowlist": [
@@ -38,16 +38,35 @@
       "infra/deploy/gce/host_install.py",
       "infra/deploy/gce/test_host_install.py"
     ],
-    "independent_review": "pending_corrected_draft_rereview",
+    "independent_review": "pending_exact_checkpoint_review",
     "implementation_dispatch_authorized": false,
     "cloud_execution_authorized": false,
     "runtime_verified": false,
-    "production_ready": false
+    "production_ready": false,
+    "reviewed_draft_sha": "f1558d526d87b9d48180f00be41835c65d9944fc",
+    "draft_review": "independent_scoped_PASS_via_coordinator",
+    "evidence_ref": "docs/agents/records/2026-11-04-workshop-staging-m2-host-install-evidence.json",
+    "tracking_sync": {
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622589651",
+      "issue_comment_id": 6622589651,
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+      "project_note_field": "Source or dependency reference",
+      "verified_at": "2026-11-04T04:30:30.706329+00:00",
+      "issue_body_sha256": "721e29e88c2439f9159c489a571bf18d2ce1273583836ebe401f6bdd4dd4645b",
+      "issue_comment_sha256": "622f40c2b76f7ac5648f86fc983983712a10d7e4629ca1a27c56b90e76d252ea",
+      "project_text_sha256": "a3acbb04722285cb59d3db4a79872d67dbde6b6940354ec65c9f4340db1d2f2d",
+      "prior_issue_body_sha256": "c51217881cd51b3ec44510aeff89a1e77a5763595f1dbe9da87fb6aa0cfb7831",
+      "prior_issue_body_preserved_as_exact_prefix": true,
+      "prior_project_text_sha256": "b37bb75e92fbb2bf448154464782067a88b2c97d2a26e376ed2fa856c95f4ec3",
+      "all_prior_comment_bodies_preserved_verbatim": true,
+      "prior_comment_count": 111
+    }
   },
-  "status": "draft",
+  "status": "synchronized",
   "execution": {
     "mode": "plan_only",
-    "builder_dispatch": "blocked_pending_tracking_synchronization_exact_checkpoint_review_and_fresh_root_dispatch",
+    "builder_dispatch": "blocked_pending_independent_exact_checkpoint_review_and_fresh_root_dispatch",
     "cloud_execution": "none",
     "runtime_execution": "none"
   },

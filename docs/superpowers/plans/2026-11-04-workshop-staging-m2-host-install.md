@@ -1,6 +1,6 @@
 # Staging M2A inert release-material installation plan
 
-> **For agentic workers:** Local planning draft only. A synchronized committed checkpoint, full-SHA preflight, independent exact-checkpoint review and fresh root dispatch must precede implementation. Use superpowers:executing-plans after that dispatch.
+> **For agentic workers:** Synchronized planning checkpoint only. A synchronized committed checkpoint, full-SHA preflight, independent exact-checkpoint review and fresh root dispatch must precede implementation. Use superpowers:executing-plans after that dispatch.
 
 **Goal:** Install only an owner-accepted authenticated release manifest and its exact migration runner/tree into a fixed root-owned staging release directory, without formatting disks, selecting a running release, delivering secrets or starting services.
 
@@ -14,7 +14,7 @@
 
 Source: independently reviewed M1 candidate `ef536cc24478424efc3cc084425322cfb8056145`, including explicit boot AttachedDisk.deviceName correction. Source pin identifies the inspected code, not a claim of coordinator integration, cloud execution or host readiness. No source merge/rebase is implicit in this draft.
 
-Status: **draft; unsynchronized; implementation blocked**. [Issue186](https://github.com/lucronn/autodata/issues/186) and [Project8](https://github.com/users/lucronn/projects/8) remain untouched by this local draft. The dedicated local [draft record](../../agents/records/2026-11-04-workshop-staging-m2-host-install.json) and [draft task](../../agents/tasks/2026-11-03-production-release/workshop-staging-m2-host-install.json) accompany this plan; both remain `status: draft`. No matching synchronized M2A record exists at the source SHA. The coordinator must independently review this scope and then synchronize the exact goal/allowlist/todo and canonical notes, preserving then-current full tracking history before any implementation boundary.
+Status: **synchronized planning checkpoint; implementation blocked pending independent exact-checkpoint review and fresh root dispatch**. [Issue186](https://github.com/lucronn/autodata/issues/186)/[Project8](https://github.com/users/lucronn/projects/8) were read back at `2026-11-04T04:30:30.706329+00:00`; [detail6622589651](https://github.com/lucronn/autodata/issues/186#issuecomment-6622589651) and canonical evidence preserve the complete then-current index/Issue/history verbatim with hashes. Dedicated record `docs/agents/records/2026-11-04-workshop-staging-m2-host-install.json` and task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-m2-host-install.json` state the exact goal, five todos and three-file prospective implementation scope. Independently approved corrected draft `f1558d526d87b9d48180f00be41835c65d9944fc`; this new checkpoint still requires committed full-SHA preflight, independent exact-checkpoint review and fresh root dispatch. No matching synchronized M2A record existed at source `ef536cc24478424efc3cc084425322cfb8056145`.
 
 The full earlier “host installation/private delivery” milestone combines unrelated authority: privileged package/unit installation, artifact authentication/remote transport, release byte installation and secret access. This plan narrows the first executable deliverable to **inert manifest+SQL installation only**. It does not claim a usable complete host, running images, secret delivery or a deployment. Exact source/package/image/secret references remain bound in the validated manifest, while their retrieval/use stays separately gated.
 
@@ -159,4 +159,31 @@ git diff --check
 
 **Host preparation/activation:** Needs separate owner-approved format/mount of M1 disk, pinned package installation without unintended daemon start, helper/guard/systemd installation and actual guard tables before Docker, exact image readback and startup secret rehydration barrier. Existing `restart:unless-stopped` containers must never restart writers after reboot without the new guard and current tmpfs secret proof; M2A creates no containers/units and cannot certify that future behavior. Actual namespace/IAP/metadata/S3 isolation, daemon restart/reboot, PG17/schema/provider startup and recovery are later separately authorized evidence.
 
-Open blockers for live use remain owner-selected GCP projects/billing/region/VPC/HTTPS origin, independent publisher authenticated output/owner acceptance workflow, separately accepted disk mapping+format+mount, installed reviewed helper/tool identities and minimum recovery. None blocks drafting or later authorized offline fixture implementation. The local record/task remain draft and the pinned preflight must reject that status; this checkpoint authorizes no implementation, credentials/cloud/Docker/secret operation or readiness claim.
+Open blockers for live use remain owner-selected GCP projects/billing/region/VPC/HTTPS origin, independent publisher authenticated output/owner acceptance workflow, separately accepted disk mapping+format+mount, installed reviewed helper/tool identities and minimum recovery. None blocks drafting or later authorized offline fixture implementation. The synchronized record/task reflect tracking readback only; full-SHA preflight, independent exact-checkpoint review and fresh root dispatch remain required. This checkpoint authorizes no implementation, credentials/cloud/Docker/secret operation or readiness claim.
+
+
+## Staging M2A inert-install synchronized planning checkpoint
+
+Goal: Install only an owner-accepted authenticated release manifest and its exact migration runner/tree into a fixed root-owned staging release directory, without formatting disks, selecting a running release, delivering secrets or starting services.
+
+Plan `docs/superpowers/plans/2026-11-04-workshop-staging-m2-host-install.md`; record `docs/agents/records/2026-11-04-workshop-staging-m2-host-install.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-m2-host-install.json`; evidence `docs/agents/records/2026-11-04-workshop-staging-m2-host-install-evidence.json`. Source independently reviewed M1 candidate `ef536cc24478424efc3cc084425322cfb8056145`; independently approved corrected draft `f1558d526d87b9d48180f00be41835c65d9944fc` PASS via coordinator. No source merge/rebase is implied.
+
+Exact prospective implementation allowlist:
+
+- `infra/deploy/gce/deploy.sh`
+- `infra/deploy/gce/host_install.py`
+- `infra/deploy/gce/test_host_install.py`
+
+Fixed root-admin approval + local accepted inbox only: validate exact manifest/runner/SQL bytes with unchanged runtime validator; protect standard root-owned non-group/other-writable parents (0755 accepted), exact private0700 subtree; require already-approved mounted disk and tmpfs; bounded descriptor copy/no-replace inert install and redacted receipt. No formatting/mounting, remote ingress, package/unit changes, current-release selection, image pull, secrets or service startup. Publisher authentication and owner acceptance workflow remain external live-use dependencies; hashes never manufacture publisher authority. No activation/readiness/cloud authorization.
+
+Concrete todo:
+
+- [ ] Independently review this M2A split, exact three-file scope, trusted owner-acceptance boundary, immutable file/input/receipt contract and no-replace/cleanup primitives; synchronize goal/todo/references in Issue186/Project8/canonical docs with full then-current history preservation, commit/push and full-SHA preflight before builder dispatch.
+- [ ] Obtain independent exact synchronized-checkpoint review and fresh root dispatch; establish actual authenticated publisher and separate mounted-disk/tool prerequisites before any later live installation, without inventing a verifier or owner/cloud values.
+- [ ] Add failing fake-probe and temporary-inode tests for approval/publisher/mount/lock/inventory/no-replace/fault/redaction and reboot fail-closed invariants; then implement only deploy.sh, host_install.py and test_host_install.py for inert release-material installation.
+- [ ] Run focused host-install tests plus existing host/cloud/bootstrap regressions, syntax/diff/scope and pinned preflight; commit/push a coherent exact candidate for independent review, preserving all startup/readiness/cloud/secret/production denials.
+- [ ] Require separate decision-complete gates for authenticated remote ingress/private secret delivery, host packages/guard/units, image pull, start/schema/readiness and minimum recovery; no one may treat M2A success as completion of full M2 or live-operation authorization.
+
+Independent exact synchronized-checkpoint review and fresh root dispatch REQUIRED before any implementation. No cloud/Docker/credential/secret/runtime action. All prior Stage1A/Stage0/staging/PG/JS authorities/statuses/denials unchanged.
+
+Status: `synchronized` after [Issue186 detail6622589651](https://github.com/lucronn/autodata/issues/186#issuecomment-6622589651) and Project8 exact readback at `2026-11-04T04:30:30.706329+00:00`. Full then-current Project index, entire prior Issue body and all111 historical comment bodies are retained verbatim with SHA256 in `docs/agents/records/2026-11-04-workshop-staging-m2-host-install-evidence.json` and verified unchanged. Independent exact-checkpoint review and fresh root dispatch remain pending. This docs-only checkpoint authorizes no implementation or live action.

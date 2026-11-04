@@ -654,6 +654,48 @@
         "prior_project_text_sha256": "8e678c075d383d11fa9a63e3df05040a3b8e721e068d0c38e590728b6d009aa1",
         "full_prior_pg_and_js_text_preserved_verbatim": true
       }
+    },
+    {
+      "id": "workshop-staging-m2-host-install",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-staging-m2-host-install.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-staging-m2-host-install.md",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-staging-m2-host-install.json",
+      "goal": "Install only an owner-accepted authenticated release manifest and its exact migration runner/tree into a fixed root-owned staging release directory, without formatting disks, selecting a running release, delivering secrets or starting services.",
+      "todo": [
+        "Independently review this M2A split, exact three-file scope, trusted owner-acceptance boundary, immutable file/input/receipt contract and no-replace/cleanup primitives; synchronize goal/todo/references in Issue186/Project8/canonical docs with full then-current history preservation, commit/push and full-SHA preflight before builder dispatch.",
+        "Obtain independent exact synchronized-checkpoint review and fresh root dispatch; establish actual authenticated publisher and separate mounted-disk/tool prerequisites before any later live installation, without inventing a verifier or owner/cloud values.",
+        "Add failing fake-probe and temporary-inode tests for approval/publisher/mount/lock/inventory/no-replace/fault/redaction and reboot fail-closed invariants; then implement only deploy.sh, host_install.py and test_host_install.py for inert release-material installation.",
+        "Run focused host-install tests plus existing host/cloud/bootstrap regressions, syntax/diff/scope and pinned preflight; commit/push a coherent exact candidate for independent review, preserving all startup/readiness/cloud/secret/production denials.",
+        "Require separate decision-complete gates for authenticated remote ingress/private secret delivery, host packages/guard/units, image pull, start/schema/readiness and minimum recovery; no one may treat M2A success as completion of full M2 or live-operation authorization."
+      ],
+      "implementation_allowlist": [
+        "infra/deploy/gce/deploy.sh",
+        "infra/deploy/gce/host_install.py",
+        "infra/deploy/gce/test_host_install.py"
+      ],
+      "source_candidate_sha": "ef536cc24478424efc3cc084425322cfb8056145",
+      "state": "planning_synchronized_pending_exact_checkpoint_review",
+      "depends_on": [],
+      "release_state": "unverified",
+      "dispatch_mode": "coordinator_direct_after_independent_review",
+      "implementation_dispatch_authorized": false,
+      "cloud_execution_authorized": false,
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622589651",
+        "issue_comment_id": 6622589651,
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-04T04:30:30.706329+00:00",
+        "issue_body_sha256": "721e29e88c2439f9159c489a571bf18d2ce1273583836ebe401f6bdd4dd4645b",
+        "issue_comment_sha256": "622f40c2b76f7ac5648f86fc983983712a10d7e4629ca1a27c56b90e76d252ea",
+        "project_text_sha256": "a3acbb04722285cb59d3db4a79872d67dbde6b6940354ec65c9f4340db1d2f2d",
+        "prior_issue_body_sha256": "c51217881cd51b3ec44510aeff89a1e77a5763595f1dbe9da87fb6aa0cfb7831",
+        "prior_issue_body_preserved_as_exact_prefix": true,
+        "prior_project_text_sha256": "b37bb75e92fbb2bf448154464782067a88b2c97d2a26e376ed2fa856c95f4ec3",
+        "all_prior_comment_bodies_preserved_verbatim": true,
+        "prior_comment_count": 111
+      }
     }
   ],
   "execution": {
