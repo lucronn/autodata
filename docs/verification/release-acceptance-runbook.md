@@ -367,3 +367,38 @@ registered supervisor/reviewer authority all remain explicitly missing. The Go
 log and SDK provenance JSON contents are not interpreted as proof. DTO transport
 mocks cannot satisfy API21 or real Firebase/Stripe/bank acceptance. Existing paid
 inspectors and every disabled profile remain unchanged.
+
+
+## Internal paid HTTP projections
+
+`inspect_paid_http_receipts` is an explicit internal successor to the common,
+PG, migration and selector-work inspectors. No raw kind, filename, profile or CLI
+command selects it. It checks exactly 18 retained HTTP observations for each of
+`TestPostgresPaidCatalogGrantBeforeWork-bankone` and `...-banktwo`: closed JSON
+bodies and header projections, configuration/article PG bindings, exact redacted
+routes and the declared reader/identity counter sequence. The two measurement
+copies and existing result/collector hashes remain required. Other paid cases
+retain their predecessor validation depth.
+
+The only new diagnostics are `observed_http_case_ids` (those two IDs in bank
+order) and `observed_http_observation_count: 36`. These are zero additional
+verified cases. Every inherited diagnostic and missing family stays present;
+`paid_http_wire_body_provenance` and `paid_http_transport_authority` are appended.
+The result remains unavailable/incomplete with no verified IDs and all authority
+flags false. CLI counts remain zero, tiers remain disabled, and `r6-release.json`
+is unchanged.
+
+`body_sha256` and `body_size` are typed retained declarations. Original response
+bytes are unavailable, so the inspector does not reconstruct their digest or
+length from projected JSON. Body key ordering, arbitrary valid declared digests
+and sizes 1 through 262144 do not establish wire provenance. The observer retained
+only selected headers; validating this projection does not establish the absence
+of unrecorded wire headers. Redacted media paths are not usable capabilities or
+proof of media rights. Counter relationships do not establish actual request
+timing, authenticated capture, supervisor authority, licensed enrollment, model
+execution, fixture/staging acceptance or release authority.
+
+Synthetic regression coverage constructs both banks independently of production
+helpers and private historical evidence. Semantic negatives repair measurement,
+phase, immutable-row, migration and result/collector seams to reach the closed
+checks; separate copy/hash and confined-store negatives preserve transport guards.
