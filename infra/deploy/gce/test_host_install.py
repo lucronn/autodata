@@ -433,6 +433,8 @@ class InstallTests(unittest.TestCase):
             os.umask(original)
         lock = self.root / 'run/autodata/state/operation.lock'
         self.assertEqual(stat.S_IMODE(lock.stat().st_mode), 0o600)
+        disk = self.root / ('var/lib/autodata/operations/' + AUTH + '.json')
+        self.assertEqual(stat.S_IMODE(disk.stat().st_mode), 0o600)
 
     def test_existing_release_changed_during_final_mount_probe_denied(self):
         self.assertEqual(self.install()[0], 0)
@@ -455,6 +457,64 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(self.install()[0], 3)
             self.assert_no_material()
             directory.chmod(0o700)
+
+    def test_owned_root_close_failure_after_commit_is_incomplete(self):
+        self.assert_close_failure('root', True)
+
+    def test_owned_root_close_failure_before_commit_is_incomplete(self):
+        (self.root / 'etc/autodata/install-approval.json').unlink()
+        self.assert_close_failure('root', False)
+
+    def test_owned_copy_close_failure_before_commit_is_incomplete(self):
+        self.assert_close_failure('copy', False)
+
+    def test_receipt_file_close_failure_is_incomplete_without_passed_receipt(self):
+        self.assert_close_failure('receipt_file', True)
+
+    def test_receipt_directory_close_failure_repairs_passed_receipt(self):
+        self.assert_close_failure('receipt_directory', True)
+
+    def test_lock_close_failure_repairs_passed_receipt(self):
+        self.assert_close_failure('lock', True)
+
+    def assert_close_failure(self, kind, committed):
+        real_close = os.close
+        injected = []
+        matching = []
+        def reject(fd):
+            value = os.fstat(fd)
+            path = os.readlink('/proc/self/fd/' + str(fd))
+            wanted = {'root': str(self.root),
+                      'copy': str(self.root / ('opt/autodata/releases/.install-' + AUTH + '/db/migrations/001_initial.sql')),
+                      'receipt_file': str(self.root / ('var/lib/autodata/operations/.receipt-' + AUTH)),
+                      'receipt_directory': str(self.root / 'var/lib/autodata/operations'),
+                      'lock': str(self.root / 'run/autodata/state/operation.lock')}[kind]
+            real_close(fd)
+            if path == wanted:
+                matching.append(fd)
+            target_close = len(matching) == (2 if kind == 'receipt_directory' else 1)
+            if not injected and path == wanted and target_close:
+                disk = self.root / ('var/lib/autodata/operations/' + AUTH + '.json')
+                passed = disk.exists() and json.loads(disk.read_bytes())['status'] == 'passed'
+                injected.append((value.st_dev, value.st_ino, passed))
+                raise OSError('PRIVATE_CLOSE_FAILURE')
+        with patch.object(self.module.os, 'close', reject):
+            code, receipt = self.install()
+        self.assertEqual(len(injected), 1)
+        if kind in ('root', 'copy', 'receipt_file'):
+            self.assertFalse(injected[0][2], 'passed receipt preceded owned descriptor cleanup')
+        self.assertEqual(code, 6, receipt)
+        self.assertEqual(receipt['failure_code'], 'recovery_incomplete')
+        self.assertEqual(receipt['commit_state'], 'incomplete')
+        self.assertEqual(receipt['release_material_committed'], committed)
+        self.assertNotIn('PRIVATE_CLOSE_FAILURE', str(receipt))
+        disk = self.root / ('var/lib/autodata/operations/' + AUTH + '.json')
+        if disk.exists():
+            persisted = json.loads(disk.read_bytes())
+            self.assertEqual(persisted['status'], 'incomplete')
+            self.assertEqual(persisted['release_material_committed'], committed)
+        if kind == 'root' and committed:
+            self.assertTrue(disk.exists(), 'post-commit cleanup failure should retain incomplete evidence')
 
 
 class ProbeAndLauncherTests(unittest.TestCase):

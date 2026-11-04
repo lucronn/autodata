@@ -51,6 +51,22 @@ class RecoveryIncomplete(Exception):
     pass
 
 
+def _close(fd):
+    # Never retry close: the kernel may already have released/reused the number.
+    try:
+        os.close(fd)
+    except BaseException:
+        raise RecoveryIncomplete() from None
+
+
+def _drain(stack):
+    # ExitStack still runs every callback when one fails; contain its final error.
+    try:
+        stack.close()
+    except BaseException:
+        raise RecoveryIncomplete() from None
+
+
 def require(value):
     if not value:
         raise Denied()
@@ -118,7 +134,7 @@ class Filesystem:
         self.stack = stack
         self.deadline = deadline
         root = _open_root()
-        stack.callback(os.close, root)
+        stack.callback(_close, root)
         self.dirs = {'/': root}
         self.modes = {'/': None}
         self.entries = []
@@ -145,7 +161,7 @@ class Filesystem:
             except FileExistsError:
                 pass
         fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent_fd)
-        self.stack.callback(os.close, fd)
+        self.stack.callback(_close, fd)
         self.check_dir(fd, mode)
         self.dirs[path] = fd
         self.modes[path] = mode
@@ -169,7 +185,7 @@ class PinnedFile:
     def __init__(self, stack, deadline, parent, name, mode, maximum=MIB):
         self.parent, self.name, self.deadline = parent, name, deadline
         self.fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=parent)
-        stack.callback(os.close, self.fd)
+        stack.callback(_close, self.fd)
         value = os.fstat(self.fd)
         require(stat.S_ISREG(value.st_mode) and _owned(value) and value.st_nlink == 1)
         require(0 < value.st_size <= maximum)
@@ -289,7 +305,10 @@ def _probe(binary_fd, target, deadline):
             except subprocess.TimeoutExpired:
                 if sig == signal.SIGKILL:
                     raise RecoveryIncomplete() from None
-        child.stdout.close()
+        try:
+            child.stdout.close()
+        except BaseException:
+            raise RecoveryIncomplete() from None
 
 
 def _write_all(fd, data, deadline):
@@ -350,7 +369,7 @@ class Transaction:
         self.created = True
         self.root_identity = identity(os.stat(name, dir_fd=parent, follow_symlinks=False))
         fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
-        fs.stack.callback(os.close, fd)
+        fs.stack.callback(_close, fd)
         self.dirs[''] = fd
         self.root_identity = identity(os.fstat(fd))
 
@@ -359,7 +378,7 @@ class Transaction:
             parent, leaf = name.rsplit('/', 1) if '/' in name else ('', name)
             os.mkdir(leaf, 0o700, dir_fd=self.dirs[parent])
             fd = os.open(leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=self.dirs[parent])
-            self.fs.stack.callback(os.close, fd)
+            self.fs.stack.callback(_close, fd)
             self.dirs[name] = fd
         for item, source in inputs:
             path = item['path']
@@ -372,7 +391,7 @@ class Transaction:
                 os.fchmod(fd, 0o600 if path == 'release.json' else 0o444)
                 os.fsync(fd)
             finally:
-                os.close(fd)
+                _close(fd)
         for name in sorted(self.dirs, key=lambda p: p.count('/') + bool(p), reverse=True):
             os.fchmod(self.dirs[name], 0o500)
             os.fsync(self.dirs[name])
@@ -434,18 +453,61 @@ def _persist_receipt(fs, directory, authorization, receipt):
                  0o600, dir_fd=directory)
     ident = identity(os.fstat(fd))
     try:
-        _write_all(fd, data, fs.deadline)
-        os.fsync(fd)
+        try:
+            _write_all(fd, data, fs.deadline)
+            os.fchmod(fd, 0o600)
+            os.fsync(fd)
+        finally:
+            # A passed receipt is never promoted with an unclosed writer FD.
+            _close(fd)
         require(identity(os.stat(temporary, dir_fd=directory, follow_symlinks=False)) == ident)
         os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
         os.fsync(directory)
     finally:
-        os.close(fd)
         if not _absent(directory, temporary):
             value = os.stat(temporary, dir_fd=directory, follow_symlinks=False)
             require(identity(value) == ident and stat.S_ISREG(value.st_mode) and value.st_nlink == 1 and _owned(value))
             os.unlink(temporary, dir_fd=directory)
             os.fsync(directory)
+
+
+def _repair_receipt(deadline, approval, config, runtime, pinned_mounts, operation_identity, lock_identity, receipt):
+    """Best-effort incomplete evidence after the receipt/lock close boundary.
+
+    Descriptor-relative promotion necessarily precedes the directory's last
+    fsync/close. If that close fails, reopen only the same protected mount and
+    operation directory, re-observe mounts, and replace the receipt with exit6.
+    Recovery never changes the already-sticky incomplete outcome.
+    """
+    recovery = ExitStack()
+    try:
+        fs = Filesystem(recovery, deadline)
+        data = fs.directory(DATA, 0o700)
+        run = fs.directory(RUN, 0o700)
+        state = fs.directory(RUN + '/state', 0o700)
+        lock = os.open('operation.lock', os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=state)
+        recovery.callback(_close, lock)
+        value = os.fstat(lock)
+        require(identity(value) == lock_identity and stat.S_ISREG(value.st_mode) and _owned(value)
+                and value.st_nlink == 1 and stat.S_IMODE(value.st_mode) == 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        directory = fs.directory(DATA + '/operations', 0o700)
+        require((identity(os.fstat(data)), identity(os.fstat(run))) == pinned_mounts)
+        require(identity(os.fstat(directory)) == operation_identity)
+        binary = fs.file('/usr/bin/findmnt', None)
+        binary.bind(approval['findmnt_binary_sha256'])
+        runtime.validate_mount_observations(config, runtime.strict_json(_probe(binary.fd, DATA, deadline)),
+                                            runtime.strict_json(_probe(binary.fd, RUN, deadline)))
+        binary.read()
+        fs.recheck()
+        _persist_receipt(fs, directory, approval['authorization_id'], receipt)
+    except BaseException:
+        pass
+    finally:
+        try:
+            _drain(recovery)
+        except BaseException:
+            pass
 
 
 def _receipt(source_sha):
@@ -477,160 +539,194 @@ def install_cli(source_sha):
     transaction = None
     committed = False
     writing = False
-    with ExitStack() as stack:
-        try:
-            require(os.geteuid() == 0)
-            stack.callback(os.umask, os.umask(0o077))
-            fs = Filesystem(stack, deadline)
-            config_file = fs.file('/etc/autodata/host.json', 0o600)
-            config_data = config_file.read()
-            config_file.expected = digest(config_data)
-            config = strict_json(config_data)
-            # Deny production before opening any approval/evidence/inbox bytes.
-            require(type(config) is dict and config.get('environment') == 'staging')
-            approval_file = fs.file('/etc/autodata/install-approval.json', 0o600, 65536)
-            approval_data = approval_file.read()
-            approval_file.expected = digest(approval_data)
-            approval = strict_json(approval_data)
-            validate_approval(approval, source_sha, digest(canonical(config)))
-            receipt['run_id'] = approval['authorization_id']
-            receipt['service_config_sha256'] = approval['service_config_sha256']
-            receipt['install_approval_sha256'] = approval_file.expected
-            for key in ('manifest_raw_sha256', 'manifest_canonical_sha256') + EVIDENCE:
-                receipt[key] = approval[key]
-            evidence = fs.file('/etc/autodata/publisher-accepted/' + source_sha + '.json', 0o600, 65536)
-            evidence.bind(approval['publisher_verification_receipt_sha256'])
-            helper = fs.file(HELPER, None)
-            runtime = _runtime(helper.bind(approval['runtime_helper_sha256']))
-            schema = fs.file(SCHEMA, None)
-            schema.bind(approval['release_schema_sha256'])
-            require(runtime.validate_config(config) == approval['service_config_sha256'])
-            receipt['checks']['config'] = True
-            opt = fs.directory('/opt/autodata', 0o700)
-            require(_absent(opt, 'current'))
-            releases = fs.directory(RELEASES, 0o700)
-            binary = fs.file('/usr/bin/findmnt', None)
-            binary.bind(approval['findmnt_binary_sha256'])
-            data_fd = fs.directory(DATA, 0o700)
-            run_fd = fs.directory(RUN, 0o700)
-            pinned_mounts = (identity(os.fstat(data_fd)), identity(os.fstat(run_fd)))
+    stack = ExitStack()
+    receipt_stack = ExitStack()
+    receipt_directory = None
+    operation_identity = None
+    receipt_resources_closed = False
+    try:
+        require(os.geteuid() == 0)
+        stack.callback(os.umask, os.umask(0o077))
+        fs = Filesystem(stack, deadline)
+        config_file = fs.file('/etc/autodata/host.json', 0o600)
+        config_data = config_file.read()
+        config_file.expected = digest(config_data)
+        config = strict_json(config_data)
+        # Deny production before opening any approval/evidence/inbox bytes.
+        require(type(config) is dict and config.get('environment') == 'staging')
+        approval_file = fs.file('/etc/autodata/install-approval.json', 0o600, 65536)
+        approval_data = approval_file.read()
+        approval_file.expected = digest(approval_data)
+        approval = strict_json(approval_data)
+        validate_approval(approval, source_sha, digest(canonical(config)))
+        receipt['run_id'] = approval['authorization_id']
+        receipt['service_config_sha256'] = approval['service_config_sha256']
+        receipt['install_approval_sha256'] = approval_file.expected
+        for key in ('manifest_raw_sha256', 'manifest_canonical_sha256') + EVIDENCE:
+            receipt[key] = approval[key]
+        evidence = fs.file('/etc/autodata/publisher-accepted/' + source_sha + '.json', 0o600, 65536)
+        evidence.bind(approval['publisher_verification_receipt_sha256'])
+        helper = fs.file(HELPER, None)
+        runtime = _runtime(helper.bind(approval['runtime_helper_sha256']))
+        schema = fs.file(SCHEMA, None)
+        schema.bind(approval['release_schema_sha256'])
+        require(runtime.validate_config(config) == approval['service_config_sha256'])
+        receipt['checks']['config'] = True
+        opt = fs.directory('/opt/autodata', 0o700)
+        require(_absent(opt, 'current'))
+        releases = fs.directory(RELEASES, 0o700)
+        binary = fs.file('/usr/bin/findmnt', None)
+        binary.bind(approval['findmnt_binary_sha256'])
+        data_fd = fs.directory(DATA, 0o700)
+        run_fd = fs.directory(RUN, 0o700)
+        pinned_mounts = (identity(os.fstat(data_fd)), identity(os.fstat(run_fd)))
 
-            def mounts():
-                binary.read()
-                runtime.validate_mount_observations(config, runtime.strict_json(_probe(binary.fd, DATA, deadline)),
-                                                     runtime.strict_json(_probe(binary.fd, RUN, deadline)))
-                binary.read()
-                fs.recheck()
-                require((identity(os.fstat(data_fd)), identity(os.fstat(run_fd))) == pinned_mounts)
+        def mounts():
+            binary.read()
+            runtime.validate_mount_observations(config, runtime.strict_json(_probe(binary.fd, DATA, deadline)),
+                                                 runtime.strict_json(_probe(binary.fd, RUN, deadline)))
+            binary.read()
+            fs.recheck()
+            require((identity(os.fstat(data_fd)), identity(os.fstat(run_fd))) == pinned_mounts)
 
-            mounts()
-            receipt['checks']['disk_uuid'] = True
-            state = fs.directory(RUN + '/state', 0o700, create=True)
-            lock = os.open('operation.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
-                           0o600, dir_fd=state)
-            stack.callback(os.close, lock)
-            lock_stat = os.fstat(lock)
-            require(stat.S_ISREG(lock_stat.st_mode) and _owned(lock_stat) and lock_stat.st_nlink == 1
-                    and stat.S_IMODE(lock_stat.st_mode) == 0o600)
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            inbox = DATA + '/incoming/' + source_sha
-            manifest_file = fs.file(inbox + '/release.json', 0o600)
-            manifest = runtime.strict_json(manifest_file.bind(approval['manifest_raw_sha256']))
-            require(runtime.validate_manifest(manifest, config, None) == approval['manifest_canonical_sha256'])
-            schema.read()
-            require(manifest['source_sha'] == source_sha and manifest['rollback_source_sha'] is None)
-            require(1 <= len(manifest['migrations']['files']) <= 256)
-            receipt['checks']['manifest'] = True
-            paths, _ = _inventory(fs, inbox, 0o700, manifest)
-            require(sorted(paths) == [item['path'] for item in approval['files']])
-            inputs = []
-            for item in approval['files']:
+        mounts()
+        receipt['checks']['disk_uuid'] = True
+        state = fs.directory(RUN + '/state', 0o700, create=True)
+        lock = os.open('operation.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                       0o600, dir_fd=state)
+        receipt_stack.callback(_close, lock)
+        lock_stat = os.fstat(lock)
+        require(stat.S_ISREG(lock_stat.st_mode) and _owned(lock_stat) and lock_stat.st_nlink == 1
+                and stat.S_IMODE(lock_stat.st_mode) == 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        inbox = DATA + '/incoming/' + source_sha
+        manifest_file = fs.file(inbox + '/release.json', 0o600)
+        manifest = runtime.strict_json(manifest_file.bind(approval['manifest_raw_sha256']))
+        require(runtime.validate_manifest(manifest, config, None) == approval['manifest_canonical_sha256'])
+        schema.read()
+        require(manifest['source_sha'] == source_sha and manifest['rollback_source_sha'] is None)
+        require(1 <= len(manifest['migrations']['files']) <= 256)
+        receipt['checks']['manifest'] = True
+        paths, _ = _inventory(fs, inbox, 0o700, manifest)
+        require(sorted(paths) == [item['path'] for item in approval['files']])
+        inputs = []
+        for item in approval['files']:
+            path = item['path']
+            source = manifest_file if path == 'release.json' else fs.file(inbox + '/' + path, 0o444)
+            require(source.meta[6] == item['bytes'])
+            source.bind(item['sha256'])
+            if path == 'scripts/dev/migrate_sql.sh':
+                require(item['sha256'] == manifest['migrations']['runner_sha256'])
+            elif path.startswith('db/migrations/'):
+                require(item['sha256'] == next(f['sha256'] for f in manifest['migrations']['files'] if path == 'db/migrations/' + f['name']))
+            inputs.append((item, source))
+        receipt['checks']['migration_tree'] = True
+        # Prior receipt is a replay binding only, never proof of installed bytes.
+        operations = None
+        if not _absent(data_fd, 'operations'):
+            operations = fs.directory(DATA + '/operations', 0o700)
+            name = approval['authorization_id'] + '.json'
+            if not _absent(operations, name):
+                previous = strict_json(fs.file(DATA + '/operations/' + name, 0o600, 65536).read())
+                for key in ('run_id', 'source_sha', 'manifest_raw_sha256', 'manifest_canonical_sha256', 'service_config_sha256', 'install_approval_sha256') + EVIDENCE:
+                    require(previous[key] == receipt[key])
+        if not _absent(releases, '.install-' + approval['authorization_id']):
+            raise Denied()
+        final_inputs = []
+        if _absent(releases, source_sha):
+            transaction = Transaction(fs, releases, '.install-' + approval['authorization_id'])
+            writing = True
+            receipt['commit_state'] = 'copying'
+            transaction.start()
+            transaction.build(inputs)
+        else:
+            paths, final_dirs = _inventory(fs, RELEASES + '/' + source_sha, 0o500, manifest)
+            for item, _ in inputs:
                 path = item['path']
-                source = manifest_file if path == 'release.json' else fs.file(inbox + '/' + path, 0o444)
-                require(source.meta[6] == item['bytes'])
-                source.bind(item['sha256'])
-                if path == 'scripts/dev/migrate_sql.sh':
-                    require(item['sha256'] == manifest['migrations']['runner_sha256'])
-                elif path.startswith('db/migrations/'):
-                    require(item['sha256'] == next(f['sha256'] for f in manifest['migrations']['files'] if path == 'db/migrations/' + f['name']))
-                inputs.append((item, source))
-            receipt['checks']['migration_tree'] = True
-            # Prior receipt is a replay binding only, never proof of installed bytes.
-            operations = None
-            if not _absent(data_fd, 'operations'):
-                operations = fs.directory(DATA + '/operations', 0o700)
-                name = approval['authorization_id'] + '.json'
-                if not _absent(operations, name):
-                    previous = strict_json(fs.file(DATA + '/operations/' + name, 0o600, 65536).read())
-                    for key in ('run_id', 'source_sha', 'manifest_raw_sha256', 'manifest_canonical_sha256', 'service_config_sha256', 'install_approval_sha256') + EVIDENCE:
-                        require(previous[key] == receipt[key])
-            if not _absent(releases, '.install-' + approval['authorization_id']):
-                raise Denied()
-            final_inputs = []
-            if _absent(releases, source_sha):
-                transaction = Transaction(fs, releases, '.install-' + approval['authorization_id'])
-                writing = True
-                receipt['commit_state'] = 'copying'
-                transaction.start()
-                transaction.build(inputs)
-            else:
-                paths, final_dirs = _inventory(fs, RELEASES + '/' + source_sha, 0o500, manifest)
-                for item, _ in inputs:
-                    path = item['path']
-                    parent, name = path.rsplit('/', 1) if '/' in path else ('', path)
-                    existing = PinnedFile(stack, deadline, final_dirs[parent], name, 0o600 if path == 'release.json' else 0o444)
-                    require(existing.meta[6] == item['bytes'])
-                    existing.bind(item['sha256'])
-                    final_inputs.append(existing)
-            deadline.check()
-            validate_expiry(approval)
-            config_file.read(); approval_file.read(); evidence.read(); helper.read(); schema.read()
-            for _, source in inputs:
-                source.read()
-            _inventory(fs, inbox, 0o700, manifest)
-            require(_absent(opt, 'current'))
-            require(identity(os.stat('operation.lock', dir_fd=state, follow_symlinks=False)) == identity(lock_stat))
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            mounts()
-            for _, source in inputs:
-                source.read()
-            for existing in final_inputs:
-                existing.read()
-            config_file.read(); approval_file.read(); evidence.read(); helper.read(); schema.read()
-            require(_absent(opt, 'current'))
-            validate_expiry(approval)
-            if transaction is not None:
-                transaction.verify(inputs)
-                _rename_noreplace(releases, transaction.name, source_sha)
-                committed = True
-                transaction = None
-                os.fsync(releases)
-            else:
-                committed = True
-            receipt['release_material_committed'] = True
-            receipt['commit_state'] = 'material_committed'
-            mounts()
-            validate_expiry(approval)
-            require(_absent(opt, 'current'))
-            operations = fs.directory(DATA + '/operations', 0o700, create=True)
-            receipt['commit_state'] = 'receipt_committed'
-            _finish(receipt, 0)
-            _persist_receipt(fs, operations, approval['authorization_id'], receipt)
-            return 0, receipt
-        except BaseException as error:
-            # Fixed public outcomes; no raw input, path, tool output or exception text.
-            code = (6 if committed or isinstance(error, RecoveryIncomplete) else
-                    5 if isinstance(error, Expired) else 3 if isinstance(error, Denied) else 4 if writing else 3)
-            if transaction is not None:
-                try:
-                    transaction.cleanup()
-                    receipt['commit_state'] = 'not_started'
-                except BaseException:
-                    code = 6
-            if code == 6:
-                receipt['commit_state'] = 'incomplete'
-            receipt['release_material_committed'] = committed
-            return _finish(receipt, code)
+                parent, name = path.rsplit('/', 1) if '/' in path else ('', path)
+                existing = PinnedFile(stack, deadline, final_dirs[parent], name, 0o600 if path == 'release.json' else 0o444)
+                require(existing.meta[6] == item['bytes'])
+                existing.bind(item['sha256'])
+                final_inputs.append(existing)
+        deadline.check()
+        validate_expiry(approval)
+        config_file.read(); approval_file.read(); evidence.read(); helper.read(); schema.read()
+        for _, source in inputs:
+            source.read()
+        _inventory(fs, inbox, 0o700, manifest)
+        require(_absent(opt, 'current'))
+        require(identity(os.stat('operation.lock', dir_fd=state, follow_symlinks=False)) == identity(lock_stat))
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        mounts()
+        for _, source in inputs:
+            source.read()
+        for existing in final_inputs:
+            existing.read()
+        config_file.read(); approval_file.read(); evidence.read(); helper.read(); schema.read()
+        require(_absent(opt, 'current'))
+        validate_expiry(approval)
+        if transaction is not None:
+            transaction.verify(inputs)
+            _rename_noreplace(releases, transaction.name, source_sha)
+            committed = True
+            transaction = None
+            os.fsync(releases)
+        else:
+            committed = True
+        receipt['release_material_committed'] = True
+        receipt['commit_state'] = 'material_committed'
+        mounts()
+        validate_expiry(approval)
+        require(_absent(opt, 'current'))
+        operations = fs.directory(DATA + '/operations', 0o700, create=True)
+        # Keep only the lock and one pinned receipt directory alive. All input,
+        # validation and copy descriptors must close before any passed receipt.
+        receipt_directory = os.dup(operations)
+        receipt_stack.callback(_close, receipt_directory)
+        operation_identity = identity(os.fstat(receipt_directory))
+        _drain(stack)
+        receipt['commit_state'] = 'receipt_committed'
+        _finish(receipt, 0)
+        _persist_receipt(fs, receipt_directory, approval['authorization_id'], receipt)
+        receipt_resources_closed = True
+        _drain(receipt_stack)
+        return 0, receipt
+    except BaseException as error:
+        # Fixed public outcomes; never allow cleanup exceptions to escape or
+        # turn a material commit into the launcher's missing-dependency result.
+        code = (6 if committed or isinstance(error, RecoveryIncomplete) else
+                5 if isinstance(error, Expired) else 3 if isinstance(error, Denied) else 4 if writing else 3)
+        if transaction is not None:
+            try:
+                transaction.cleanup()
+                receipt['commit_state'] = 'not_started'
+            except BaseException:
+                code = 6
+        try:
+            _drain(stack)
+        except BaseException:
+            code = 6
+        receipt['release_material_committed'] = committed
+        if code == 6:
+            receipt['commit_state'] = 'incomplete'
+        _finish(receipt, code)
+        if receipt_directory is not None and not receipt_resources_closed:
+            try:
+                _persist_receipt(fs, receipt_directory, approval['authorization_id'], receipt)
+            except BaseException:
+                code = 6
+        if not receipt_resources_closed:
+            receipt_resources_closed = True
+            try:
+                _drain(receipt_stack)
+            except BaseException:
+                code = 6
+        if code == 6:
+            receipt['commit_state'] = 'incomplete'
+            _finish(receipt, 6)
+            if operation_identity is not None:
+                _repair_receipt(deadline, approval, config, runtime, pinned_mounts, operation_identity, identity(lock_stat), receipt)
+        return _finish(receipt, code)
 
 
 def main(argv):
