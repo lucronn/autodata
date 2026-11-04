@@ -256,7 +256,7 @@ func testFirebaseExchangeAndUserRevocation(t *testing.T, persist customerSession
 	}
 	cookie := response.Cookies()[0]
 	protectedStatus := func(cookie *http.Cookie) int {
-		request, _ := http.NewRequest("GET", server.URL+"/v1/catalog/years", nil)
+		request, _ := http.NewRequest("GET", server.URL+"/auth/session", nil)
 		request.AddCookie(cookie)
 		response, err := http.DefaultClient.Do(request)
 		if err != nil {
