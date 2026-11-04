@@ -24,6 +24,7 @@ import stat
 import struct
 import subprocess
 import tempfile
+import threading
 import time
 from urllib.parse import urlsplit
 import zlib
@@ -291,21 +292,49 @@ def private_read(parent, name, maximum):
     finally: os.close(directory)
 
 
+_process_owner = False
+
+
 def bounded_process(argv, *, cwd, deadline, maximum=65536, input_bytes=None, env=None):
-    """No shell, inherited credentials, proxies, config or agent sockets."""
+    """Own one isolated child group; cancellation records a flag until cleanup."""
+    global _process_owner
     require(type(argv) is list and argv and Path(argv[0]).is_absolute())
     require(all(type(arg) is str and '\0' not in arg for arg in argv))
     safe_env = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C', 'HOME': str(cwd),
                 'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_TERMINAL_PROMPT': '0'}
     require(env is None or set(env) <= {'DOCKER_CONFIG', 'CLOUDSDK_CONFIG', 'GOOGLE_APPLICATION_CREDENTIALS'})
     safe_env.update(env or {})
-    process = subprocess.Popen(argv, cwd=cwd, env=safe_env, stdin=subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True, umask=0o077)
+    if input_bytes is not None:
+        require(type(input_bytes) is bytes and len(input_bytes) <= 65536)
+    require(threading.current_thread() is threading.main_thread() and
+            hasattr(signal, 'pthread_sigmask') and not _process_owner, 'missing_dependency')
+    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+    if signal.SIGTERM in previous_mask:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        raise AdapterError('missing_dependency')
+    previous_handler = signal.getsignal(signal.SIGTERM)
+    process = None
+    cancelled = False
     output = [bytearray(), bytearray()]
+    _process_owner = True
+
+    def cancel(signum, frame):
+        nonlocal cancelled
+        cancelled = True
+
+    def check():
+        require(not cancelled, 'operation_cancelled')
+        require(time.monotonic() < deadline, 'operation_timed_out')
+
     try:
-        if input_bytes is not None:
-            # IPC is deliberately <=64KiB; nonblocking writes share the deadline.
-            require(type(input_bytes) is bytes and len(input_bytes) <= 65536)
+        signal.signal(signal.SIGTERM, cancel)
+        # A pending signal now sets the flag. Never let this handler raise
+        # across Popen's return/assignment, and never pass a blocked mask down.
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        check()
+        process = subprocess.Popen(argv, cwd=cwd, env=safe_env, stdin=subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True, umask=0o077)
+        check()
         with selectors.DefaultSelector() as selector:
             for index, stream in enumerate((process.stdout, process.stderr)):
                 os.set_blocking(stream.fileno(), False); selector.register(stream, selectors.EVENT_READ, index)
@@ -315,7 +344,7 @@ def bounded_process(argv, *, cwd, deadline, maximum=65536, input_bytes=None, env
                 if pending: selector.register(process.stdin, selectors.EVENT_WRITE, 2)
                 else: process.stdin.close()
             while selector.get_map():
-                require(time.monotonic() < deadline, 'operation_timed_out')
+                check()
                 for key, _ in selector.select(min(.1, max(0, deadline - time.monotonic()))):
                     if key.data == 2:
                         try: count = os.write(key.fd, pending)
@@ -328,24 +357,46 @@ def bounded_process(argv, *, cwd, deadline, maximum=65536, input_bytes=None, env
                         if not chunk: selector.unregister(key.fileobj); continue
                         output[key.data].extend(chunk)
                         require(sum(map(len, output)) <= maximum, 'output_overflow')
-            code = process.wait(timeout=max(.001, deadline - time.monotonic()))
+            while True:
+                check()
+                try:
+                    code = process.wait(timeout=min(.1, max(.001, deadline - time.monotonic())))
+                    break
+                except subprocess.TimeoutExpired: pass
+        check()
         return code, bytes(output[0]), bytes(output[1])
-    except BaseException:
-        try: os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError: pass
-        try: process.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            try: os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError: pass
-            process.wait(timeout=2)
-        raise
     finally:
-        # The leader may have exited while a descendant retains this isolated
-        # group. Always terminate that group, including on normal leader exit.
-        try: os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError: pass
-        for stream in (process.stdin, process.stdout, process.stderr):
-            if stream is not None: stream.close()
+        # A second cancellation stays pending until all owned resources are
+        # gone and the caller's signal policy has been restored.
+        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+        cleanup_failed = False
+        try:
+            if process is not None:
+                try: os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError: pass
+                except OSError: cleanup_failed = True
+                try: process.wait(timeout=2)
+                except subprocess.TimeoutExpired: pass
+                except OSError: cleanup_failed = True
+                # Always kill the group, even after its leader exits: another
+                # group member may still own a pipe or ignore TERM.
+                try: os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError: pass
+                except OSError: cleanup_failed = True
+                try: process.wait(timeout=2)
+                except (OSError, subprocess.TimeoutExpired): cleanup_failed = True
+                for stream in (process.stdin, process.stdout, process.stderr):
+                    if stream is not None:
+                        try: stream.close()
+                        except OSError: cleanup_failed = True
+        finally:
+            try: signal.signal(signal.SIGTERM, previous_handler)
+            finally:
+                _process_owner = False
+                # Last ownership action: pending SIGTERM follows caller policy
+                # only after group cleanup, pipe closure and handler restore.
+                signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        require(not cleanup_failed, 'cleanup_failed')
 
 
 def _policy(policy, context):

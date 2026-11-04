@@ -529,3 +529,250 @@ else:
                 try: os.killpg(child.pid,signal.SIGKILL)
                 except ProcessLookupError: pass
                 child.communicate(timeout=3)
+
+class SignalOwnershipTests(unittest.TestCase):
+    def owner_probe(self, ignore_term, second_signal=False, final_wait=False):
+        import os
+        import signal
+        import subprocess
+        import sys
+        import tempfile
+        import time
+        child_code='''import os,signal,sys,time
+from pathlib import Path
+assert signal.SIGTERM not in signal.pthread_sigmask(signal.SIG_BLOCK,set()), 'child inherited blocked SIGTERM'
+if sys.argv[2]=='ignore':
+    signal.signal(signal.SIGTERM,lambda *_: Path(sys.argv[1]+'.cleanup').write_text('TERM received'))
+Path(sys.argv[1]).write_text(str(os.getpid()))
+if sys.argv[2]=='closed': os.close(1); os.close(2)
+time.sleep(30)
+'''
+        owner_code='''import signal,sys,time
+from pathlib import Path
+sys.path.insert(0,sys.argv[1])
+import publisher_adapters as p
+if sys.argv[3]=='closed':
+    real_wait=p.subprocess.Popen.wait
+    def marked_wait(child,*args,**kwargs):
+        if kwargs.get('timeout',1)<=.1: Path(sys.argv[2]+'.waiting').write_text('final wait')
+        return real_wait(child,*args,**kwargs)
+    p.subprocess.Popen.wait=marked_wait
+if sys.argv[5]=='second':
+    def caller_handler(*_):
+        pid=int(Path(sys.argv[2]).read_text())
+        try: __import__('os').kill(pid,0)
+        except ProcessLookupError: print('second signal after cleanup')
+        else: raise AssertionError('caller handler ran before child reap')
+    signal.signal(signal.SIGTERM,caller_handler)
+previous=signal.getsignal(signal.SIGTERM)
+previous_mask=signal.pthread_sigmask(signal.SIG_BLOCK,set())
+try:
+    p.bounded_process([sys.executable,'-c',sys.argv[4],sys.argv[2],sys.argv[3]],cwd=Path(sys.argv[2]).parent,deadline=time.monotonic()+30)
+except p.AdapterError as error:
+    assert str(error)=='operation_cancelled',str(error)
+    assert signal.getsignal(signal.SIGTERM)==previous
+    assert signal.pthread_sigmask(signal.SIG_BLOCK,set())==previous_mask
+    print('cancelled and restored')
+else:
+    raise AssertionError('cancellation not reported')
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            marker=Path(directory)/'child.pid'
+            owner=subprocess.Popen([sys.executable,'-c',owner_code,str(HERE),str(marker),'closed' if final_wait else 'ignore' if ignore_term else 'normal',child_code,'second' if second_signal else 'single'],
+                                   stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+            child_pid=None
+            try:
+                deadline=time.monotonic()+3
+                while not marker.exists() and time.monotonic()<deadline and owner.poll() is None: time.sleep(.01)
+                self.assertTrue(marker.exists(),'owned child did not reach ready marker')
+                child_pid=int(marker.read_text())
+                if final_wait:
+                    waiting_marker=Path(str(marker)+'.waiting')
+                    deadline=time.monotonic()+3
+                    while not waiting_marker.exists() and time.monotonic()<deadline and owner.poll() is None: time.sleep(.01)
+                    self.assertTrue(waiting_marker.exists(),'owner did not reach bounded final wait')
+                started=time.monotonic()
+                os.kill(owner.pid,signal.SIGTERM)
+                if second_signal:
+                    cleanup_marker=Path(str(marker)+'.cleanup')
+                    deadline=time.monotonic()+3
+                    while not cleanup_marker.exists() and time.monotonic()<deadline and owner.poll() is None: time.sleep(.01)
+                    self.assertTrue(cleanup_marker.exists(),'cleanup TERM not received by child')
+                    os.kill(owner.pid,signal.SIGTERM)
+                out,err=owner.communicate(timeout=6)
+                if ignore_term: self.assertGreaterEqual(time.monotonic()-started,1.9,'TERM grace skipped')
+                try: os.kill(child_pid,0)
+                except ProcessLookupError: child_exists=False
+                else: child_exists=True
+                self.assertFalse(child_exists,'isolated child survived owner SIGTERM or was not reaped')
+                self.assertEqual(owner.returncode,0,err.decode())
+                self.assertEqual(out,(b'second signal after cleanup\n' if second_signal else b'')+b'cancelled and restored\n')
+            finally:
+                if child_pid is not None:
+                    try: os.killpg(child_pid,signal.SIGKILL)
+                    except ProcessLookupError: pass
+                try: os.killpg(owner.pid,signal.SIGKILL)
+                except ProcessLookupError: pass
+                owner.communicate(timeout=3)
+
+    def test_owner_sigterm_terminates_and_reaps_child(self): self.owner_probe(False)
+
+    def test_owner_sigterm_kills_and_reaps_sigterm_ignoring_child(self): self.owner_probe(True)
+
+    def test_owner_sigterm_during_final_wait(self): self.owner_probe(False,final_wait=True)
+
+    def test_second_pending_signal_reaches_caller_only_after_cleanup(self): self.owner_probe(True,True)
+
+    def isolated_probe(self, code):
+        import os
+        import signal
+        import subprocess
+        import sys
+        import tempfile
+        prefix='''import os,signal,sys,time
+from pathlib import Path
+from unittest.mock import patch
+sys.path.insert(0,sys.argv[1])
+import publisher_adapters as p
+directory=Path(sys.argv[2]); pidfile=directory/'child.pid'
+previous=signal.getsignal(signal.SIGTERM)
+mask=signal.pthread_sigmask(signal.SIG_BLOCK,set())
+'''
+        suffix='''
+assert signal.getsignal(signal.SIGTERM)==previous
+assert signal.pthread_sigmask(signal.SIG_BLOCK,set())==mask
+if pidfile.exists():
+    try: os.kill(int(pidfile.read_text()),0)
+    except ProcessLookupError: pass
+    else: raise AssertionError('child survived or was not reaped')
+print('ok')
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            owner=subprocess.Popen([sys.executable,'-c',prefix+code+suffix,str(HERE),directory],stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+            try:
+                out,err=owner.communicate(timeout=8)
+                self.assertEqual(owner.returncode,0,err.decode())
+                self.assertEqual(out,b'ok\n')
+            finally:
+                pidfile=Path(directory)/'child.pid'
+                if pidfile.exists():
+                    try: os.killpg(int(pidfile.read_text()),signal.SIGKILL)
+                    except ProcessLookupError: pass
+                try: os.killpg(owner.pid,signal.SIGKILL)
+                except ProcessLookupError: pass
+                owner.communicate(timeout=3)
+
+    def test_pending_sigterm_before_spawn_cancels_without_child(self):
+        self.isolated_probe('''
+real_signal=signal.signal
+def install(sig,handler):
+    result=real_signal(sig,handler)
+    if handler is not previous:
+        assert signal.SIGTERM in signal.pthread_sigmask(signal.SIG_BLOCK,set())
+        os.kill(os.getpid(),signal.SIGTERM)
+    return result
+with patch.object(signal,'signal',side_effect=install), patch.object(p.subprocess,'Popen',side_effect=AssertionError('spawn forbidden')) as spawn:
+    try: p.bounded_process([sys.executable,'-c','pass'],cwd=directory,deadline=time.monotonic()+3)
+    except p.AdapterError as error: assert str(error)=='operation_cancelled',str(error)
+    else: raise AssertionError('pending cancellation ignored')
+    assert spawn.call_count==0
+''')
+
+    def test_sigterm_during_popen_and_before_handle_assignment(self):
+        for phase in ('inside','returned'):
+            with self.subTest(phase=phase):
+                self.isolated_probe('''
+phase=PHASE
+real_popen=p.subprocess.Popen
+real_execute=real_popen._execute_child
+def execute(instance,*args,**kwargs):
+    real_execute(instance,*args,**kwargs)
+    pidfile.write_text(str(instance.pid))
+    if phase=='inside': os.kill(os.getpid(),signal.SIGTERM)
+def spawn(*args,**kwargs):
+    with patch.object(real_popen,'_execute_child',execute): child=real_popen(*args,**kwargs)
+    pidfile.write_text(str(child.pid))
+    if phase=='returned': os.kill(os.getpid(),signal.SIGTERM)
+    return child
+with patch.object(p.subprocess,'Popen',side_effect=spawn):
+    try: p.bounded_process([sys.executable,'-c','import time; time.sleep(30)'],cwd=directory,deadline=time.monotonic()+3)
+    except p.AdapterError as error: assert str(error)=='operation_cancelled',str(error)
+    else: raise AssertionError('assignment cancellation ignored')
+'''.replace('PHASE',repr(phase)))
+
+    def test_nested_executor_rejected_without_replacing_owner(self):
+        self.isolated_probe('''
+real_popen=p.subprocess.Popen
+def spawn(*args,**kwargs):
+    handler=signal.getsignal(signal.SIGTERM)
+    try: p.bounded_process([sys.executable,'-c','pass'],cwd=directory,deadline=time.monotonic()+3)
+    except p.AdapterError as error: assert str(error)=='missing_dependency',str(error)
+    else: raise AssertionError('nested invocation permitted')
+    assert signal.getsignal(signal.SIGTERM)==handler
+    return real_popen(*args,**kwargs)
+with patch.object(p.subprocess,'Popen',side_effect=spawn):
+    assert p.bounded_process([sys.executable,'-c','pass'],cwd=directory,deadline=time.monotonic()+3)[0]==0
+''')
+
+    def test_child_sigterm_mask_is_unblocked(self):
+        import sys
+        import tempfile
+        import time
+        p=load()
+        with tempfile.TemporaryDirectory() as directory:
+            result=p.bounded_process([sys.executable,'-c','import signal; assert signal.SIGTERM not in signal.pthread_sigmask(signal.SIG_BLOCK,set()); print("unblocked")'],cwd=Path(directory),deadline=time.monotonic()+3)
+        self.assertEqual(result,(0,b'unblocked\n',b''))
+
+    def test_cleanup_failure_is_fixed_and_restores_ownership(self):
+        self.isolated_probe('''
+with patch.object(p.os,'killpg',side_effect=PermissionError('sensitive cleanup detail')):
+    try: p.bounded_process([sys.executable,'-c','pass'],cwd=directory,deadline=time.monotonic()+3)
+    except p.AdapterError as error: assert str(error)=='cleanup_failed',str(error)
+    else: raise AssertionError('cleanup failure became success')
+# A fresh invocation proves ownership was cleared even after cleanup failure.
+assert p.bounded_process([sys.executable,'-c','pass'],cwd=directory,deadline=time.monotonic()+3)[0]==0
+''')
+
+    def test_non_main_thread_and_blocked_sigterm_fail_before_spawn(self):
+        import signal
+        import tempfile
+        import threading
+        import time
+        from unittest.mock import patch
+        p=load(); errors=[]
+        with tempfile.TemporaryDirectory() as directory:
+            def call():
+                try: p.bounded_process(['/usr/bin/python3','-c','pass'],cwd=Path(directory),deadline=time.monotonic()+1)
+                except BaseException as error: errors.append(error)
+            with patch.object(p.subprocess,'Popen',side_effect=AssertionError('spawn forbidden')) as spawn:
+                thread=threading.Thread(target=call); thread.start(); thread.join(timeout=3)
+                self.assertFalse(thread.is_alive())
+                self.assertEqual(len(errors),1); self.assertIsInstance(errors.pop(),p.AdapterError)
+                self.assertEqual(spawn.call_count,0)
+                previous=signal.pthread_sigmask(signal.SIG_BLOCK,{signal.SIGTERM})
+                try: call()
+                finally: signal.pthread_sigmask(signal.SIG_SETMASK,previous)
+                self.assertEqual(len(errors),1); self.assertIsInstance(errors.pop(),p.AdapterError)
+                self.assertEqual(spawn.call_count,0)
+
+    def test_signal_handler_and_mask_restored_after_all_exit_paths(self):
+        import signal
+        import tempfile
+        import time
+        p=load(); previous=signal.getsignal(signal.SIGTERM)
+        previous_mask=signal.pthread_sigmask(signal.SIG_BLOCK,set())
+        def caller_handler(signum,frame): raise AssertionError('unexpected signal')
+        signal.signal(signal.SIGTERM,caller_handler)
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                p.bounded_process(['/usr/bin/python3','-c','print("ok")'],cwd=Path(directory),deadline=time.monotonic()+3)
+                for argv,limit,seconds in ((['/absent-publisher-test-binary'],100,3),
+                                           (['/usr/bin/python3','-c','print("x"*1000)'],100,3),
+                                           (['/usr/bin/python3','-c','import time; time.sleep(5)'],100,.05)):
+                    with self.assertRaises((p.AdapterError,OSError)):
+                        p.bounded_process(argv,cwd=Path(directory),deadline=time.monotonic()+seconds,maximum=limit)
+                    self.assertIs(signal.getsignal(signal.SIGTERM),caller_handler)
+                    self.assertEqual(signal.pthread_sigmask(signal.SIG_BLOCK,set()),previous_mask)
+        finally:
+            signal.signal(signal.SIGTERM,previous)
+            signal.pthread_sigmask(signal.SIG_SETMASK,previous_mask)
