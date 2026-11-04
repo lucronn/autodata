@@ -1074,7 +1074,7 @@ class Controller:
         self.pending("probe", [name])
         self.state["pending"].update(probe_name=name, command=command)
         self.save("probe_pending")
-        code, output = self.compose(["run", "--no-deps", "--pull", "never", "--name", name, "probe"] + command)
+        code, output = self.compose(["run", "--interactive=false", "--no-TTY", "--no-deps", "--pull", "never", "--name", name, "probe"] + command)
         self.reconcile()
         cid = self.state.get("probe_id")
         require(cid is not None, "probe_identity_unknown", 6)

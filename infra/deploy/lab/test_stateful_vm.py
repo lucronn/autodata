@@ -313,6 +313,57 @@ class LifecycleTests(unittest.TestCase):
                    "delivery_boot_id": RUN, "phase": "started", "seeded": True}
         return c
 
+    def test_all_probe_modes_disable_stdin_and_tty_in_exact_compose_argv(self):
+        # Removing either flag would leave Compose's interactive/TTY defaults active.
+        class Intercepted(Exception):
+            pass
+        project = "autodata-lab-12345678123442348234123456789abc"
+        for mode in ("ready", "seed", "check", "deny"):
+            with self.subTest(mode=mode):
+                c = self.controller()
+                c.profile = {"name": project}
+                observed = []
+                def intercept(tool, args, timeout=15):
+                    observed.append((tool, args))
+                    raise Intercepted
+                with patch.object(c, "inventory", return_value=([], [])), patch.object(c, "save"), patch.object(c, "tool", side_effect=intercept), self.assertRaises(Intercepted):
+                    c.probe(mode)
+                self.assertEqual(observed, [("docker_compose", [
+                    "--project-name", project, "--file",
+                    "/var/lib/autodata-lab/runs/12345678-1234-4234-8234-123456789abc/compose.json",
+                    "run", "--interactive=false", "--no-TTY", "--no-deps", "--pull", "never",
+                    "--name", project + "-probe-" + mode + "-87654321-1234-4234-8234-123456789abc",
+                    "probe", "python", "-I", "/lab/stateful_probe.py", mode,
+                    "12345678-1234-4234-8234-123456789abc"] )])
+
+    def test_probe_readback_rejects_stdin_and_tty_independently(self):
+        c = self.controller()
+        c.profile = {"name": "lab-project", "services": {"probe": {
+            "user": "1000:1000", "command": ["python", "-I", "/lab/stateful_probe.py", "ready", RUN],
+            "labels": {"autodata.run": RUN}, "tmpfs": [], "volumes": [],
+            "networks": {"lab": {"ipv4_address": "172.31.250.50"}}}}}
+        c.images = {"probe": {"Config": {}}}
+        c.resources["network"] = "network-id"
+        item = {"Image": "sha256:" + "e" * 64,
+                "Config": {"User": "1000:1000", "Cmd": ["python", "-I", "/lab/stateful_probe.py", "ready", RUN],
+                           "Labels": {"autodata.run": RUN, "com.docker.compose.project": "lab-project", "com.docker.compose.service": "probe"},
+                           "OpenStdin": False, "Tty": False},
+                "HostConfig": {"ReadonlyRootfs": True, "Privileged": False, "CapDrop": ["ALL"],
+                               "SecurityOpt": ["no-new-privileges:true"], "PidsLimit": 128,
+                               "LogConfig": {"Type": "none"}, "RestartPolicy": {"Name": "no"},
+                               "NetworkMode": "lab-project_lab"},
+                "State": {"Running": False}, "Mounts": [],
+                "NetworkSettings": {"Ports": {}, "Networks": {"lab-project_lab": {
+                    "IPAMConfig": {"IPv4Address": "172.31.250.50"}, "IPAddress": "", "NetworkID": ""}}}}
+        c.inspect_container(item, "probe", probe=True)
+        for field in ("OpenStdin", "Tty"):
+            with self.subTest(field=field):
+                changed = copy.deepcopy(item)
+                changed["Config"][field] = True
+                with self.assertRaises(vm.LabError) as caught:
+                    c.inspect_container(changed, "probe", probe=True)
+                self.assertEqual(caught.exception.code, "container_tty")
+
     def test_partial_delivery_cannot_start(self):
         c = self.controller()
         c.state["delivery_boot_id"] = None
