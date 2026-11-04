@@ -19,10 +19,10 @@
     "Obtain independent exact-head review, freeze the combined candidate SHA and retain results; obtain separate gates before fixture/CI reruns or any live activation."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-04T04:54:35.007640+00:00",
+  "updated_at": "2026-11-04T04:55:31.705727+00:00",
   "draft_state": "synchronized_pending_exact_checkpoint_review",
   "root_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
-  "synchronized_checkpoint_sha": null,
+  "synchronized_checkpoint_sha": "2728ac1acaf173d6f244e200e584dac7922fda1d",
   "source_leaves": {
     "r6": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
     "publisher": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
@@ -624,5 +624,36 @@
     "all_predecessor_bytes_preserved": true,
     "pg_gate_sha": "74dfe57e1d6601429774f7e44e1df17ba1c54144",
     "pg_receipt_sha": "d662cb01a35b07cfa0dc3788891248fc4c07d12f"
+  },
+  "checkpoint_verification": {
+    "gate_sha": "2728ac1acaf173d6f244e200e584dac7922fda1d",
+    "branch": "codex/workshop-reviewed-leaves-integration-plan",
+    "remote_gate_sha": "2728ac1acaf173d6f244e200e584dac7922fda1d",
+    "preflight": {
+      "command": [
+        "python3",
+        "scripts/autonomy/pre_implementation.py",
+        "--record",
+        "docs/agents/records/2026-11-04-workshop-reviewed-leaves-integration.json",
+        "--base-sha",
+        "2728ac1acaf173d6f244e200e584dac7922fda1d",
+        "--repo-root",
+        "/home/corp/.codex/worktrees/workshop-reviewed-leaves-integration/autodata"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"status\": \"synchronized\", \"errors\": []}\n",
+      "stderr": ""
+    },
+    "pin_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622928529",
+    "pin_body_sha256": "f7e39a876fcfb339b7919f1cbc75f3ce0c5aceba8f732a70d154c36a722f06d1",
+    "project_index": "Reviewed-leaf integration detail6622915925: root eddcf724; ordered R6 a4a0d7c, publisher12e6944, staging10a454a;23 implementation+59 historical-doc pins;five docs/queue resolutions preserve histories. Goal/todo/plan/spec/record/task in detail; independent local review PASS. Full CURRENT PG index gate74dfe57e1d6601429774f7e44e1df17ba1c54144/receiptd662cb0 detail6622859754+pin6622872548, Stage1A detail6622550358+pin6622560758, M2A gate9a2b57d0 detail6622589651+pin6622599898 and ALL115 prior comment bodies/Issue body preserved verbatim+SHA256/readback in detail/canonical evidence; prior statuses/authorities/denials unchanged. Exact committed preflight+independent checkpoint review+fresh coordinator dispatch required before ordered code-only merges. NO merges/runtime/providers/cloud/activation/readiness/production on this docs turn. Gate 2728ac1acaf173d6f244e200e584dac7922fda1d preflight synchronized/errors[]; pin6622928529.",
+    "project_index_sha256": "578438413fa8b6738efbf960c46e55ff7b6623772fac191b697af862d57bf0d2",
+    "readback_at": "2026-11-04T04:55:31.701617+00:00",
+    "issue_body_unchanged": true,
+    "all_115_prior_comment_bodies_unchanged": true,
+    "prior_index_reference_ids_retained": true,
+    "independent_exact_checkpoint_review": "required",
+    "implementation_dispatch_authorized": false,
+    "runtime_execution_authorized": false
   }
 }

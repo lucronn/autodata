@@ -217,3 +217,10 @@ Concrete todo:
 - [ ] Merge exact R6, publisher and staging leaf histories in that deterministic order, resolving only five approved documentation/tracking conflicts and preserving all 23 implementation blob pins and historical additions.
 - [ ] Run combined offline Python/Node/preflight/syntax/scope/authority checks after each milestone; commit and promptly push validated coherent merges to the assigned branch.
 - [ ] Obtain independent exact-head review, freeze the combined candidate SHA and retain results; obtain separate gates before fixture/CI reruns or any live activation.
+
+
+### Exact committed integration checkpoint pin
+
+Gate `2728ac1acaf173d6f244e200e584dac7922fda1d` pushed on `codex/workshop-reviewed-leaves-integration-plan`; canonical preflight at that full SHA exit0, `status: synchronized`, `errors: []`, stderr empty. Pin https://github.com/lucronn/autodata/issues/186#issuecomment-6622928529 read back 2026-11-04T04:55:31.706681+00:00. Final Project index SHA256 `578438413fa8b6738efbf960c46e55ff7b6623772fac191b697af862d57bf0d2` (934 characters), containing every explicit predecessor reference ID including full PG gate74dfe57, receiptd662cb0 and M2A gate9a2b57d0. Complete Issue body/all115 predecessor bodies unchanged on fresh paginated readback. Evidence retains exact prior/full current index, pin hash, command/stdout/stderr and readback.
+
+Independent exact-checkpoint review and fresh coordinator code-only dispatch remain required before any ordered integration. No code merge or activation occurred. Receipt commit records this gate without changing its pinned base.
