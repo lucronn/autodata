@@ -296,3 +296,128 @@ asserted. The coordinator records the immutable code SHA, review and exact-head
 CI job states externally after commit/push. Stage A predecessor CI success and
 B1 predecessor CI failures described in the pinned plan remain predecessor
 evidence, not successor results.
+
+## Stage C: restricted synthetic commerce14 adapter
+
+Gate checkpoint: `cd9e8355a0ccb055b4327bbbd1ecaf97e7cddbe9`, based on
+reviewed CI integration parent `fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc`.
+The builder independently passed both standalone and nested machine preflights at
+that exact clean checkpoint (`status: synchronized`, `errors: []`) after the
+coordinator's exact-checkpoint review and explicit dispatch. Initial translator
+milestone `b5b5e280f58ca1400537d7fb7d8426e94ed118d5` was validated and pushed;
+the final code head and external evidence hashes are returned to the coordinator
+after the final commit, avoiding a self-referential commit identity here.
+Application candidate remains `4d82e413e04fb2401ac7bc28dc828375ac662180`.
+
+This library accepts caller-owned bytes and simulated receipts. Its restricted
+flat synthetic XML contains exactly fourteen literal commerce names and 53
+nominal supporting names, with opaque bounded support classnames except the
+reserved commerce classname. It admits one attribute-free `testsuite`, direct
+`testcase` children and at most one `failure`, `error` or `skipped` child per case.
+It does not establish actual installed pytest/plugin XML compatibility. Expat
+uses UTF8, `buffer_text=False` and one final feed. The shared production checker
+counts decoded UTF8 bytes by code point, including normalized outside-root
+whitespace; mandatory 1MiB precedence fixtures and callback segmentations are
+covered. Raw hashes retain original bytes, including original CRLF forms.
+
+Optional Go support uses the unchanged public B1 parser. It affects only the
+first commerce ID; missing support makes that ID and the top diagnostic
+unavailable. Both present streams are attempted independently after all outer
+validation, preserving the union of parser, semantic and simulated receipt
+facts. Tests freeze all twelve clean-XML pytest/Go mixed-failure outcomes,
+including parser unavailability taking precedence over interruption. Shared
+JUnit/pytest failures affect all fourteen rows. Supporting pytest/Go cases add
+no logical IDs. All admitted logs are opaque and hashed in full.
+
+The strict serializer accepts exact frozen concrete types, validates receipt
+facts, ordered reasons, rows, refs, hashes and derived statuses, and emits sorted
+compact UTF8 JSON with one final LF. Every result retains exact integer zero
+accepted-case credit, profiles disabled, no enabled tiers, null runtime lock and
+run record, and all nine authority values false. A valid fixed-schema diagnostic
+is below the 65536-byte output guard; the guard's final-LF boundary is exercised
+with an encoder-result stub, rather than presented as a reachable oversized
+valid schema. Aggregate input size is the sum of the five individual maxima
+(74448896 bytes), so aggregate overflow after valid individual sizes is
+unreachable; that arithmetic invariant is checked directly.
+
+Failing-first evidence: the initial clean-row assertion failed because the
+adapter was absent; the serializer assertion failed because its API was absent.
+Two subsequent XML boundary regressions failed before their fixes: Expat routes
+outside-root whitespace to `DefaultHandler`, and that handler retains raw CRLF
+rather than the normalized character data used inside the root. The production
+checker now handles both streams consistently; byte hashes remain raw. Literal
+identity, parser limits/errors, lifecycle, independent parsing, all receipt flags,
+optional absence, forged serializer metadata and deterministic output tests use
+constructed bytes only.
+
+Offline commands and measured results for this slice are recorded below. No
+fixture collection or opt-in integration flag was used. Test logs and scope
+receipts are retained outside the repository under
+`/home/corp/autodata-evidence/final180-commerce-build/`.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.dev.test_workshop_final180_commerce_adapter -v
+# 31 tests, 4.605s, OK
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.dev.test_workshop_final180_commerce_adapter scripts.dev.test_workshop_final180_runner scripts.dev.test_workshop_final180_identity_adapter scripts.dev.test_workshop_final180_catalog_adapter -v
+# 131 tests, 14.963s, OK
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/autonomy -p 'test_*.py' -v
+# 146 tests, 52.383s, OK
+```
+
+The initial full developer run was interrupted when the last serializer
+regression was added, because unittest discovery had collected the earlier test
+module. Its log is retained explicitly as interrupted, with no success claim.
+The complete final developer discovery result follows below.
+
+In-memory compilation of both new modules, AST import/call/module-level checks,
+exact six frozen non-slotted dataclass shapes, independently embedded literal
+maps, the 46-code vocabulary and `git diff --check` passed. The implementation
+diff contains exactly the two new modules and this append-only runbook slice.
+All nine canonical parent pins were checked; the inherited 22069-byte runbook
+prefix remains byte-identical (SHA256
+`0a36f9e46ffa767feacc3a49ead622ce3d424b5eec155300c3df58dde8da89d6`).
+Stage A/B1/B2/CI implementation, test, planning, record, task and workflow bytes
+remain unchanged relative to the dispatched checkpoint.
+
+Final safe exports cannot prove omitted intermediate financial facts, signed
+webhook bodies/signatures, HTTP outcomes, settlement, or race/order traces.
+Full financial/raw validation, observed installed JUnit compatibility,
+authenticated process/artifact provenance, real runtime acceptance and the full
+final180 envelope remain blocked. Synthetic unit success enables no profile,
+fixture, provider, payment, settlement, browser, Docker, VM, cloud, merge,
+deployment or promotion authority. Independent exact-code-head review and
+exact-head CI readback remain coordinator-owned and pending at builder handoff;
+no parent CI or local test result substitutes for those results.
+
+A subsequent completed developer discovery baseline passed 390 tests in
+501.629s. Independent review then identified incomplete exact dataclass objects
+constructed through `object.__new__` as a strict-boundary edge. A failing-first
+regression reproduced 23 missing-field errors; narrow field-presence checks and
+guarded reads now preserve `context_invalid`, `input_type`,
+`go_support_invalid` and `receipt_invalid` in the original validation order,
+without broadly catching unrelated errors. The complete developer and autonomy
+suites are rerun for those final guarded source bytes; baseline and final logs
+are retained separately. The source and test hashes were frozen in the external
+`final-source-under-test.json` receipt at the start of that final discovery.
+
+The complete guarded adapter/test source milestone is immutable commit
+`d37744e09491298deba4fd63d15165778ff1c826`, pushed after the 31/131/146
+commerce/focused/autonomy checks. The full developer rerun passed over the
+same frozen source/test hashes; the final documentation commit records its
+measured result without changing either tested module. No full-suite pass was
+claimed by that intermediate source commit.
+
+Final guarded-source developer verification completed successfully:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/dev -p 'test_*.py' -v
+# 391 tests, 542.817s, OK
+```
+
+The final suite's exit code was zero. Both tested modules still match the
+SHA256/byte-length values frozen at discovery start. The fresh final autonomy
+run passed 146 tests in 52.383s; the final focused run passed 131 tests in
+14.963s, including all 31 commerce tests. No code was modified during the final
+full discovery. The intermediate source milestone and final documentation
+commit preserve the exact three-path implementation boundary. Independent
+exact-final-head review and CI remain separate coordinator checks.
