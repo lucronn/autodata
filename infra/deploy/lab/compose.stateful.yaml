@@ -1,0 +1,56 @@
+{
+  "name": "@PROJECT@",
+  "services": {
+    "postgres": {
+      "image": "@POSTGRES_IMAGE@", "user": "999:999", "pull_policy": "never", "restart": "no",
+      "read_only": true, "cap_drop": ["ALL"], "security_opt": ["no-new-privileges:true"],
+      "pids_limit": 128, "logging": {"driver": "none"}, "init": false,
+      "labels": "@LABELS@", "networks": {"lab": {"ipv4_address": "172.31.250.20"}},
+      "tmpfs": ["/tmp:rw,nosuid,nodev,noexec,size=16777216,mode=1777", "/var/run/postgresql:rw,nosuid,nodev,noexec,size=1048576,uid=999,gid=999,mode=3775"],
+      "environment": {"POSTGRES_DB": "workshop_lab", "POSTGRES_USER": "lab_admin", "POSTGRES_PASSWORD_FILE": "/run/lab/POSTGRES_PASSWORD", "PGDATA": "/var/lib/postgresql/data/pgdata", "POSTGRES_INITDB_ARGS": "--auth-host=scram-sha-256"},
+      "command": ["postgres", "-c", "listen_addresses=*", "-c", "password_encryption=scram-sha-256", "-c", "lc_messages=C"],
+      "volumes": [
+        {"type": "bind", "source": "@DATA@/postgres", "target": "/var/lib/postgresql/data", "bind": {"create_host_path": false}},
+        {"type": "bind", "source": "@SECRETS@/postgres", "target": "/run/lab", "read_only": true, "bind": {"create_host_path": false}},
+        {"type": "bind", "source": "@RELEASE@/postgres-seed.sql", "target": "/lab/postgres-seed.sql", "read_only": true, "bind": {"create_host_path": false}}
+      ]
+    },
+    "nats": {
+      "image": "@NATS_IMAGE@", "user": "1000:1000", "pull_policy": "never", "restart": "no",
+      "read_only": true, "cap_drop": ["ALL"], "security_opt": ["no-new-privileges:true"],
+      "pids_limit": 128, "logging": {"driver": "none"}, "init": false,
+      "labels": "@LABELS@", "networks": {"lab": {"ipv4_address": "172.31.250.30"}},
+      "tmpfs": ["/tmp:rw,nosuid,nodev,noexec,size=16777216,mode=1777"],
+      "command": ["--config", "/run/lab/nats.conf"],
+      "volumes": [
+        {"type": "bind", "source": "@DATA@/nats", "target": "/data", "bind": {"create_host_path": false}},
+        {"type": "bind", "source": "@SECRETS@/nats", "target": "/run/lab", "read_only": true, "bind": {"create_host_path": false}}
+      ]
+    },
+    "minio": {
+      "image": "@MINIO_IMAGE@", "user": "1000:1000", "pull_policy": "never", "restart": "no",
+      "read_only": true, "cap_drop": ["ALL"], "security_opt": ["no-new-privileges:true"],
+      "pids_limit": 128, "logging": {"driver": "none"}, "init": false,
+      "labels": "@LABELS@", "networks": {"lab": {"ipv4_address": "172.31.250.40"}},
+      "tmpfs": ["/tmp:rw,nosuid,nodev,noexec,size=16777216,mode=1777"],
+      "command": ["mini", "-dir=/data", "-s3.port=9000", "-s3.config=/run/lab/s3.json", "-admin.ui=false", "-webdav=false", "-s3.iam=false", "-s3.port.iceberg=0", "-s3.port.lance=0", "-master.telemetry=false"],
+      "volumes": [
+        {"type": "bind", "source": "@DATA@/seaweedfs", "target": "/data", "bind": {"create_host_path": false}},
+        {"type": "bind", "source": "@SECRETS@/minio", "target": "/run/lab", "read_only": true, "bind": {"create_host_path": false}}
+      ]
+    },
+    "probe": {
+      "image": "@PROBE_IMAGE@", "user": "1000:1000", "pull_policy": "never", "restart": "no",
+      "read_only": true, "cap_drop": ["ALL"], "security_opt": ["no-new-privileges:true"],
+      "pids_limit": 128, "logging": {"driver": "none"}, "init": false,
+      "labels": "@LABELS@", "networks": {"lab": {"ipv4_address": "172.31.250.50"}},
+      "tmpfs": ["/tmp:rw,nosuid,nodev,noexec,size=16777216,mode=1777"],
+      "command": ["python", "-I", "/lab/stateful_probe.py", "ready", "@RUN@"],
+      "volumes": [
+        {"type": "bind", "source": "@SECRETS@/probe", "target": "/run/lab", "read_only": true, "bind": {"create_host_path": false}},
+        {"type": "bind", "source": "@RELEASE@/stateful_probe.py", "target": "/lab/stateful_probe.py", "read_only": true, "bind": {"create_host_path": false}}
+      ]
+    }
+  },
+  "networks": {"lab": {"internal": true, "enable_ipv6": false, "driver": "bridge", "labels": "@LABELS@", "driver_opts": {"com.docker.network.bridge.name": "@BRIDGE@"}, "ipam": {"config": [{"subnet": "172.31.250.0/24"}]}}}
+}

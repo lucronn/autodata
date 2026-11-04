@@ -39,6 +39,7 @@ RELEASES = "/opt/autodata-lab/releases"
 APPROVAL = "/etc/autodata-lab/approval.json"
 BIN = "/opt/autodata-lab/bin/stateful_vm.py"
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+SECRET_KEYS = ("postgres_password", "nats_writer_password", "nats_reader_password", "s3_writer_access", "s3_writer_secret", "s3_reader_access", "s3_reader_secret")
 
 
 class LabError(Exception):
@@ -88,6 +89,80 @@ def uuid_text(value, version=None):
 def bridge_name(run):
     require(uuid_text(run, 4))
     return "adlab-" + run.replace("-", "")[:9]
+
+
+def render_profile(approval, run_id):
+    require(run_id == approval["run_id"] and uuid_text(run_id, 4))
+    path = RELEASES + "/" + approval["source_sha"] + "/compose.stateful.yaml"
+    template = strict_json(read_file(path, 65536, 0o444))
+    labels = {"autodata.lab": "stateful-v1", "autodata.run": run_id, "autodata.source": approval["source_sha"]}
+    replacements = {"@PROJECT@": "autodata-lab-" + run_id.replace("-", ""), "@RUN@": run_id,
+                    "@BRIDGE@": bridge_name(run_id), "@DATA@": DATA + "/runs/" + run_id + "/data",
+                    "@SECRETS@": RUNTIME + "/delivery/" + run_id, "@RELEASE@": RELEASES + "/" + approval["source_sha"], "@LABELS@": labels}
+    replacements.update({"@" + name.upper() + "_IMAGE@": pin["reference"] for name, pin in approval["images"].items()})
+    def substitute(value):
+        if isinstance(value, str):
+            if value in replacements:
+                return replacements[value]
+            for token, replacement in replacements.items():
+                if token in value:
+                    require(isinstance(replacement, str))
+                    value = value.replace(token, replacement)
+            require("@" not in value or "@sha256:" in value, "template_token")
+            return value
+        if isinstance(value, list):
+            return [substitute(v) for v in value]
+        if isinstance(value, dict):
+            return {k: substitute(v) for k, v in value.items()}
+        return value
+    return substitute(template)
+
+
+def validate_bundle(value, run):
+    require(type(value) is dict and set(value) == set(SECRET_KEYS) | {"schema_version", "run_id"}, "delivery_schema")
+    require(type(value["schema_version"]) is int and value["schema_version"] == 1 and value["run_id"] == run, "delivery_identity")
+    require(all(type(value[k]) is str and HEX64.fullmatch(value[k]) for k in SECRET_KEYS), "delivery_secret")
+    require(len({value[k] for k in SECRET_KEYS}) == len(SECRET_KEYS), "delivery_distinct")
+    return value
+
+
+def read_pipe_frame(fd):
+    end, data = time.monotonic() + 15, bytearray()
+    with selectors.DefaultSelector() as selector:
+        selector.register(fd, selectors.EVENT_READ)
+        while True:
+            remaining = end - time.monotonic()
+            require(remaining > 0, "delivery_timeout", 5)
+            require(selector.select(remaining), "delivery_timeout", 5)
+            block = os.read(fd, min(4096, 16385 - len(data)))
+            if not block:
+                break
+            data.extend(block)
+            require(len(data) <= 16384, "delivery_size")
+    require(data.endswith(b"\n") and data.count(b"\n") == 1, "delivery_frame")
+    return bytes(data)
+
+
+def read_delivery(run):
+    info = os.fstat(3)
+    require(stat.S_ISFIFO(info.st_mode) and fcntl.fcntl(3, fcntl.F_GETFL) & os.O_ACCMODE == os.O_RDONLY, "delivery_pipe")
+    return validate_bundle(strict_json(read_pipe_frame(3), 16384), run)
+
+
+def delivery_material(bundle):
+    password = bundle["postgres_password"]
+    invalid = ("1" if password[0] != "1" else "2") + password[1:]
+    nats = {"listen": "0.0.0.0:4222", "jetstream": {"store_dir": "/data/jetstream"},
+            "authorization": {"users": [
+                {"user": "writer", "password": bundle["nats_writer_password"], "permissions": {"publish": ["lab.probe", "$JS.API.>"], "subscribe": ["_INBOX.>"]}},
+                {"user": "reader", "password": bundle["nats_reader_password"], "permissions": {"publish": ["$JS.API.INFO"], "subscribe": ["_INBOX.>"]}}]}}
+    s3 = {"identities": [{"name": "writer", "credentials": [{"accessKey": bundle["s3_writer_access"], "secretKey": bundle["s3_writer_secret"]}], "actions": ["Read:lab-stateful", "Write:lab-stateful", "List:lab-stateful"]},
+                         {"name": "reader", "credentials": [{"accessKey": bundle["s3_reader_access"], "secretKey": bundle["s3_reader_secret"]}], "actions": ["Read:lab-stateful"]}]}
+    probe = {k: v for k, v in bundle.items() if k != "postgres_password"}
+    prefix = "127.0.0.1:5432:workshop_lab:lab_admin:"
+    return {"postgres": (999, {"POSTGRES_PASSWORD": (password + "\n").encode(), "valid.pgpass": (prefix + password + "\n").encode(), "invalid.pgpass": (prefix + invalid + "\n").encode()}),
+            "nats": (1000, {"nats.conf": canonical(nats) + b"\n"}), "minio": (1000, {"s3.json": canonical(s3) + b"\n"}),
+            "probe": (1000, {"probe.json": canonical(probe) + b"\n"})}
 
 
 def validate_approval(value, source_sha, run_id):
@@ -144,7 +219,7 @@ def fingerprint(info):
 
 
 @contextlib.contextmanager
-def open_dir(path, private=False):
+def open_dir(path, private=False, leaf_uid=0, leaf_gid=0):
     require(path.startswith("/") and all(p not in (".", "..") for p in path.split("/")))
     fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     try:
@@ -156,7 +231,7 @@ def open_dir(path, private=False):
             os.close(fd)
             fd = new
         info = os.fstat(fd)
-        require_owner(info)
+        require_owner(info, leaf_uid, leaf_gid)
         require(not info.st_mode & 0o022, "parent_permissions")
         if private:
             require(stat.S_IMODE(info.st_mode) == 0o700, "private_permissions")
@@ -167,7 +242,7 @@ def open_dir(path, private=False):
 
 def read_file(path, limit, mode=None, uid=0, gid=0):
     parent, name = path.rsplit("/", 1)
-    with open_dir(parent) as directory:
+    with open_dir(parent, leaf_uid=uid, leaf_gid=gid) as directory:
         fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=directory)
         try:
             before = os.fstat(fd)
@@ -316,13 +391,20 @@ def pseudo_read(path, limit=65536):
         os.close(fd)
 
 
-def run_tool(tool, args, deadline, timeout=15):
+def run_tool(tool, args, deadline, timeout=15, negative_pg=False):
     """Execute the verified descriptor; bound output, process group and cleanup."""
+    if negative_pg:
+        prefix = ["--host", "unix:///var/run/docker.sock", "--config", RUNTIME + "/docker-empty"]
+        require(tool["path"] == TOOLS["docker"] and args[:4] == prefix and len(args) > 15, "diagnostic_command")
+        # Reconstruct the complete fixed command; no generic stderr capture API.
+        candidate = next((x for x in args[4:] if type(x) is str and re.fullmatch("[0-9a-f]{64}", x)), None)
+        require(candidate is not None and args[4:] == pg_args(candidate, "negative"), "diagnostic_command")
     path = tool["path"]
     parent, name = path.rsplit("/", 1)
     with open_dir(parent) as directory:
         fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory)
     proc, selector, old_handlers = None, selectors.DefaultSelector(), {}
+    diagnostic = bytearray()
     try:
         before = os.fstat(fd)
         require_owner(before)
@@ -344,20 +426,31 @@ def run_tool(tool, args, deadline, timeout=15):
         require(end > time.monotonic(), "timeout", 5)
         proc = subprocess.Popen([path] + list(args), executable="/proc/self/fd/" + str(fd), pass_fds=(fd,),
                                 cwd="/", env={"DOCKER_HOST": "unix:///var/run/docker.sock", "DOCKER_CONFIG": RUNTIME + "/docker-empty"},
-                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE if negative_pg else subprocess.DEVNULL, start_new_session=True)
         os.set_blocking(proc.stdout.fileno(), False)
         selector.register(proc.stdout, selectors.EVENT_READ)
+        if negative_pg:
+            os.set_blocking(proc.stderr.fileno(), False)
+            selector.register(proc.stderr, selectors.EVENT_READ)
         output = bytearray()
         while selector.get_map():
             require(time.monotonic() < end, "timeout", 5)
             for key, _ in selector.select(min(0.1, end - time.monotonic())):
-                block = os.read(key.fd, 65536)
+                is_diagnostic = negative_pg and key.fileobj is proc.stderr
+                block = os.read(key.fd, min(4096, 8193 - len(diagnostic)) if is_diagnostic else 65536)
                 if not block:
                     selector.unregister(key.fileobj)
                 else:
-                    output.extend(block)
-                    require(len(output) <= 65536, "child_output", 4)
+                    if is_diagnostic:
+                        diagnostic.extend(block)
+                        require(len(diagnostic) <= 8192, "pg_diagnostic_limit", 4)
+                    else:
+                        output.extend(block)
+                        require(len(output) <= 65536, "child_output", 4)
         proc.wait(timeout=max(0.001, end - time.monotonic()))
+        if negative_pg:
+            count = len(diagnostic)
+            return proc.returncode, bytes(output), classify_pg_diagnostic(diagnostic, proc.returncode, output), count
         return proc.returncode, bytes(output)
     except subprocess.TimeoutExpired:
         raise LabError("timeout", 5) from None
@@ -378,11 +471,72 @@ def run_tool(tool, args, deadline, timeout=15):
                         continue
                 require(proc.poll() is not None, "child_unreaped", 6)
                 proc.stdout.close()
+                if proc.stderr is not None:
+                    proc.stderr.close()
         finally:
+            for i in range(len(diagnostic)):
+                diagnostic[i] = 0
+            diagnostic.clear()
             selector.close()
             os.close(fd)
             for signum, handler in old_handlers.items():
                 signal.signal(signum, handler)
+
+
+def classify_pg_diagnostic(buffer, code, stdout):
+    expected = (b'psql: error: connection to server at "127.0.0.1", port 5432 failed: FATAL:  password authentication failed for user "lab_admin"\n'
+                b'password retrieved from file "/run/lab/invalid.pgpass"\n')
+    try:
+        require(len(buffer) <= 8192, "pg_diagnostic_limit", 4)
+        return code == 2 and not stdout and buffer == expected
+    finally:
+        for i in range(len(buffer)):
+            buffer[i] = 0
+        buffer.clear()
+
+
+def pg_args(container, kind, run=None):
+    require(type(container) is str and re.fullmatch("[0-9a-f]{64}", container), "pg_identity", 6)
+    require(kind in ("positive", "negative", "locale", "version", "hba", "seed", "check"))
+    args = ["exec", "--user", "999:999"]
+    for value in ("LC_ALL=C", "PGSSLMODE=disable", "PGGSSENCMODE=disable", "PGPASSFILE=/run/lab/" + ("invalid" if kind == "negative" else "valid") + ".pgpass"):
+        args += ["--env", value]
+    args += [container, "psql", "-X", "-w", "--host=127.0.0.1", "--port=5432", "--username=lab_admin", "--dbname=workshop_lab", "--set=ON_ERROR_STOP=1", "--tuples-only", "--no-align"]
+    if kind in ("seed", "check"):
+        require(uuid_text(run, 4))
+        args += ["--quiet", "--set=mode=" + kind, "--set=run_id=" + run, "--file=/lab/postgres-seed.sql"]
+    else:
+        queries = {"positive": "SELECT 1", "negative": "SELECT 1", "locale": "SHOW lc_messages", "version": "SHOW server_version_num",
+                   "hba": "SELECT count(*) > 0 AND bool_and(auth_method = 'scram-sha-256' AND error IS NULL) FROM pg_hba_file_rules WHERE type IN ('host','hostssl','hostnossl')"}
+        args += ["--command=" + queries[kind]]
+    return args
+
+
+PROBE_CHECKS = ("nats_connected", "nats_fixture", "nats_writer_denied", "nats_reader_denied", "s3_connected", "s3_fixture", "s3_reader_denied", "s3_anonymous_denied", "fixture_unchanged")
+PROBE_MEASUREMENTS = ("nats_message_count", "s3_object_bytes", "nats_payload_sha256", "s3_payload_sha256")
+
+
+def validate_probe_result(data, mode, run):
+    value = strict_json(data, 32768)
+    require(set(value) == {"schema_version", "mode", "run_id", "status", "checks", "measurements"}, "probe_schema", 4)
+    require(type(value["schema_version"]) is int and value["schema_version"] == 1 and value["mode"] == mode and value["run_id"] == run and value["status"] == "passed", "probe_identity", 4)
+    checks, measurements = value["checks"], value["measurements"]
+    require(type(checks) is dict and set(checks) == set(PROBE_CHECKS) and all(v is None or type(v) is bool for v in checks.values()), "probe_checks", 4)
+    required = {"nats_connected", "s3_connected"}
+    if mode != "ready":
+        required |= {"nats_fixture", "s3_fixture", "fixture_unchanged"}
+    if mode == "deny":
+        required |= {"nats_writer_denied", "nats_reader_denied", "s3_reader_denied", "s3_anonymous_denied"}
+    require(all(checks[k] is True if k in required else checks[k] is None for k in PROBE_CHECKS), "probe_checks", 4)
+    require(type(measurements) is dict and set(measurements) == set(PROBE_MEASUREMENTS), "probe_measurements", 4)
+    if mode == "ready":
+        require(all(v is None for v in measurements.values()), "probe_measurements", 4)
+    else:
+        payload = ("autodata-lab-v1:" + run).encode()
+        require(type(measurements["nats_message_count"]) is int and measurements["nats_message_count"] == 1 and
+                type(measurements["s3_object_bytes"]) is int and measurements["s3_object_bytes"] == len(payload) and
+                measurements["nats_payload_sha256"] == digest(payload) and measurements["s3_payload_sha256"] == digest(payload), "probe_measurements", 4)
+    return value
 
 
 def empty_receipt(verb, sha, run):
@@ -494,7 +648,8 @@ def operation_lock():
 class Controller:
     def __init__(self, approval, receipt):
         self.approval, self.receipt = approval, receipt
-        self.deadline = time.monotonic() + 270
+        self.hard_deadline = time.monotonic() + 300
+        self.deadline = self.hard_deadline - 30
         self.total_output = 0
         self.mounts = None
         self.run = approval["run_id"]
@@ -502,6 +657,8 @@ class Controller:
         self.run_path = DATA + "/runs/" + self.run
         self.resources = {"containers": {}, "network": None}
         self.state = None
+        self.images = {}
+        self.profile = None
 
     def tool(self, name, args, timeout=15):
         code, output = run_tool(self.approval["tools"][name], args, self.deadline, timeout)
@@ -518,13 +675,10 @@ class Controller:
         observe_machine(current, self.deadline)
         require(observe_mounts(current, self.deadline) == self.mounts, "mount_drift", 3)
 
-    def inventory(self):
+    def raw_inventory(self):
         result = []
         for kind in ("container", "network"):
-            code, output = self.docker([kind, "ls", "--quiet", "--no-trunc"] if kind == "container" else [kind, "ls", "--quiet", "--no-trunc"])
-            # container ls must include stopped resources, not just running ones.
-            if kind == "container":
-                code, output = self.docker(["container", "ls", "--all", "--quiet", "--no-trunc"])
+            code, output = self.docker([kind, "ls"] + (["--all"] if kind == "container" else []) + ["--quiet", "--no-trunc"])
             require(code == 0, "inventory_unavailable", 3)
             ids = output.decode("ascii").splitlines()
             require(len(ids) <= 64 and all(re.fullmatch("[0-9a-f]{64}", x) for x in ids), "inventory_format", 3)
@@ -536,6 +690,10 @@ class Controller:
             else:
                 parsed = []
             result.append(parsed)
+        return result
+
+    def inventory(self):
+        result = self.raw_inventory()
         validate_inventory(*result, self.resources)
         return result
 
@@ -548,6 +706,9 @@ class Controller:
         self.receipt["checks"]["mounts"] = True
         inventory = {x["path"].rsplit("/", 1)[1]: x for x in self.approval["helper_files"]}
         require(digest(read_file(BIN, FILES["stateful_vm.py"], 0o444)) == inventory["stateful_vm.py"]["sha256"], "installed_helper_drift", 3)
+        for tool in self.approval["tools"].values():
+            data = read_file(tool["path"], 134217728)
+            require(digest(data) == tool["sha256"], "tool_drift", 3)
         return inventory
 
     def load_state(self):
@@ -582,6 +743,7 @@ class Controller:
             image = images[0]
             require(image.get("Id") == pin["image_id"] and image.get("Os") == "linux" and image.get("Architecture") == "amd64" and pin["reference"] in image.get("RepoDigests", []), "image_drift", 3)
             self.receipt["image_ids"][name] = pin["image_id"]
+            self.images[name] = image
         self.receipt["checks"]["cache"] = True
 
     def install(self, inventory):
@@ -614,8 +776,429 @@ class Controller:
             raise
         self.save("installed")
 
+    def release(self):
+        bundle = {}
+        for item in self.approval["helper_files"]:
+            name = item["path"].rsplit("/", 1)[1]
+            data = read_file(RELEASES + "/" + self.sha + "/" + name, FILES[name], 0o444)
+            require(len(data) == item["bytes"] and digest(data) == item["sha256"], "release_drift", 6)
+            bundle[name] = data
+        verify_bundle(RELEASES + "/" + self.sha, bundle)
+        self.profile = render_profile(self.approval, self.run)
+        profile_hash = digest(canonical(self.profile))
+        self.receipt["profile_sha256"] = profile_hash
+        require(self.state is not None, "run_missing", 3)
+        previous = self.state.get("profile_sha256")
+        require(previous is None or previous == profile_hash, "profile_drift", 6)
+        path = self.run_path + "/compose.json"
+        if previous is None:
+            self.recheck()
+            atomic_json(path, self.profile)
+            self.state["profile_sha256"] = profile_hash
+            self.save("profile_committed")
+        else:
+            require(strict_json(read_file(path, 65536, 0o600)) == self.profile, "profile_drift", 6)
+
+    def compose(self, args):
+        return self.tool("docker_compose", ["--project-name", self.profile["name"], "--file", self.run_path + "/compose.json"] + args)
+
+    def validate_graph(self):
+        code, output = self.compose(["config", "--format", "json"])
+        require(code == 0, "compose_invalid", 4)
+        observed = strict_json(output)
+        require(observed.get("name") == self.profile["name"] and set(observed.get("services", {})) == set(self.profile["services"]), "compose_graph", 4)
+        require(set(observed.get("networks", {})) == {"lab"} and not observed.get("volumes") and not observed.get("secrets") and not observed.get("configs"), "compose_graph", 4)
+        network = observed["networks"]["lab"]
+        expected_network = self.profile["networks"]["lab"]
+        for key in ("internal", "enable_ipv6", "driver", "labels", "driver_opts", "ipam"):
+            require(network.get(key) == expected_network[key], "compose_network", 4)
+        require(not network.get("external"), "compose_network", 4)
+        for name, expected in self.profile["services"].items():
+            actual = observed["services"][name]
+            require(not set(actual) - (set(expected) | {"name"}), "compose_service_fields", 4)
+            for key in set(expected) - {"volumes"}:
+                require(actual.get(key) == expected[key], "compose_service", 4)
+            def mounts(value):
+                return sorted((m.get("type"), m.get("source"), m.get("target"), m.get("read_only", False), m.get("bind", {}).get("create_host_path", False)) for m in value)
+            require(mounts(actual.get("volumes", [])) == mounts(expected["volumes"]), "compose_mounts", 4)
+        self.receipt["checks"]["profile"] = True
+
+    def deliver(self):
+        bundle = read_delivery(self.run)
+        bundle_hash = digest(canonical(bundle))
+        require(self.state.get("bundle_sha256") in (None, bundle_hash), "bundle_changed", 6)
+        self.state["bundle_sha256"] = bundle_hash
+        self.state["delivery_boot_id"] = None
+        self.save("delivery_pending")
+        self.recheck()
+        make_private(RUNTIME + "/delivery")
+        base = RUNTIME + "/delivery/" + self.run
+        make_private(base)
+        material = delivery_material(bundle)
+        # Each service directory is an atomic tmpfs transaction. Partial delivery
+        # has no current-boot completion record and can never start services.
+        with open_dir(base, private=True) as parent:
+            require(set(os.listdir(parent)) <= set(material), "delivery_inventory", 6)
+            for name, (uid, contents) in material.items():
+                self.recheck()
+                try:
+                    os.stat(name, dir_fd=parent, follow_symlinks=False)
+                except FileNotFoundError:
+                    temp = ".delivery-" + self.approval["authorization_id"] + "-" + name
+                    os.mkdir(temp, 0o700, dir_fd=parent)
+                    stage = os.open(temp, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                    try:
+                        for filename, data in contents.items():
+                            fd = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400, dir_fd=stage)
+                            try:
+                                write_all(fd, data)
+                                os.fchown(fd, uid, uid)
+                                os.fchmod(fd, 0o400)
+                                os.fsync(fd)
+                            finally:
+                                os.close(fd)
+                        os.fchown(stage, uid, uid)
+                        os.fchmod(stage, 0o500)
+                        os.fsync(stage)
+                        self.recheck()
+                        noreplace(parent, temp, name)
+                        os.fsync(parent)
+                    finally:
+                        os.close(stage)
+                self.verify_service_delivery(base, name, uid, contents)
+        self.state["delivery_boot_id"] = self.approval["boot_id"]
+        self.save("delivered")
+        self.receipt["checks"]["secrets"] = True
+
+    def verify_service_delivery(self, base, name, uid, contents=None):
+        with open_dir(base + "/" + name, leaf_uid=uid, leaf_gid=uid) as fd:
+            require(stat.S_IMODE(os.fstat(fd).st_mode) == 0o500, "delivery_permissions", 6)
+            expected = {"postgres": {"POSTGRES_PASSWORD", "valid.pgpass", "invalid.pgpass"}, "nats": {"nats.conf"}, "minio": {"s3.json"}, "probe": {"probe.json"}}[name]
+            require(set(os.listdir(fd)) == expected, "delivery_inventory", 6)
+        for filename in expected:
+            data = read_file(base + "/" + name + "/" + filename, 16384, 0o400, uid, uid)
+            if contents is not None:
+                require(data == contents[filename], "delivery_drift", 6)
+
+    def require_delivery(self):
+        require(self.state.get("bundle_sha256") and self.state.get("delivery_boot_id") == self.approval["boot_id"], "redelivery_required", 3)
+        base = RUNTIME + "/delivery/" + self.run
+        for name, uid in (("postgres", 999), ("nats", 1000), ("minio", 1000), ("probe", 1000)):
+            self.verify_service_delivery(base, name, uid)
+        # Reconstitute the complete synthetic bundle in memory to bind every
+        # current tmpfs credential byte to the persistent hash, never the receipt.
+        probe = strict_json(read_file(base + "/probe/probe.json", 16384, 0o400, 1000, 1000))
+        password = read_file(base + "/postgres/POSTGRES_PASSWORD", 128, 0o400, 999, 999).decode("ascii")
+        require(password.endswith("\n"), "delivery_drift", 6)
+        bundle = validate_bundle(dict(probe, postgres_password=password[:-1]), self.run)
+        require(digest(canonical(bundle)) == self.state["bundle_sha256"], "delivery_drift", 6)
+        for name, (uid, contents) in delivery_material(bundle).items():
+            self.verify_service_delivery(base, name, uid, contents)
+        self.receipt["checks"]["secrets"] = True
+
+    def data_directories(self):
+        self.recheck()
+        make_private(self.run_path + "/data")
+        with open_dir(self.run_path + "/data", private=True) as parent:
+            require(set(os.listdir(parent)) <= {"postgres", "nats", "seaweedfs"}, "data_inventory", 6)
+            for name, uid in (("postgres", 999), ("nats", 1000), ("seaweedfs", 1000)):
+                try:
+                    os.mkdir(name, 0o700, dir_fd=parent)
+                except FileExistsError:
+                    # Existing service data is never recursively repaired.
+                    info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                    require(self.state.get("data_inodes", {}).get(name) == [info.st_dev, info.st_ino], "unowned_data", 6)
+                else:
+                    fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                    try:
+                        require(not os.listdir(fd), "data_not_empty", 6)
+                        os.fchown(fd, uid, uid)
+                        os.fsync(fd)
+                        info = os.fstat(fd)
+                        self.state.setdefault("data_inodes", {})[name] = [info.st_dev, info.st_ino]
+                    finally:
+                        os.close(fd)
+                    os.fsync(parent)
+                    self.save("data_created")
+                with open_dir(self.run_path + "/data/" + name, leaf_uid=uid, leaf_gid=uid) as fd:
+                    require(stat.S_IMODE(os.fstat(fd).st_mode) == 0o700, "data_permissions", 6)
+
+    def inspect_container(self, item, service, command=None, probe=False):
+        expected = self.profile["services"][service]
+        config, host = item.get("Config", {}), item.get("HostConfig", {})
+        require(item.get("Image") == self.approval["images"][service]["image_id"], "container_image", 6)
+        require(config.get("User") == expected["user"] and config.get("Cmd") == (command or expected["command"]), "container_command", 6)
+        image_config = self.images[service].get("Config", {})
+        require((config.get("Entrypoint") or []) == (image_config.get("Entrypoint") or []), "container_entrypoint", 6)
+        image_env = dict(v.split("=", 1) for v in image_config.get("Env", []))
+        image_env.update(expected.get("environment", {}))
+        require(sorted(config.get("Env") or []) == sorted(k + "=" + v for k, v in image_env.items()), "container_environment", 6)
+        labels = config.get("Labels", {})
+        require(all(labels.get(k) == v for k, v in expected["labels"].items()) and labels.get("com.docker.compose.project") == self.profile["name"] and labels.get("com.docker.compose.service") == service, "container_labels", 6)
+        require(all(k.startswith("com.docker.compose.") or k in expected["labels"] or image_config.get("Labels", {}).get(k) == v for k, v in labels.items()), "container_labels", 6)
+        require(host.get("ReadonlyRootfs") is True and host.get("Privileged") is False and host.get("CapDrop") == ["ALL"] and not host.get("CapAdd") and
+                host.get("SecurityOpt") == ["no-new-privileges:true"] and host.get("PidsLimit") == 128 and host.get("LogConfig", {}).get("Type") == "none" and
+                host.get("RestartPolicy", {}).get("Name") in ("", "no") and not host.get("Init") and not host.get("Devices") and not host.get("PortBindings") and not host.get("ExtraHosts") and not host.get("Dns") and not host.get("PublishAllPorts"), "container_security", 6)
+        require(host.get("NetworkMode") == self.profile["name"] + "_lab", "container_network", 6)
+        require(host.get("Tmpfs", {}) == dict(t.split(":", 1) for t in expected["tmpfs"]), "container_tmpfs", 6)
+        actual_mounts = sorted((m.get("Type"), m.get("Source"), m.get("Destination"), m.get("RW")) for m in item.get("Mounts", []))
+        expected_mounts = sorted((m["type"], m["source"], m["target"], not m.get("read_only", False)) for m in expected["volumes"])
+        require(actual_mounts == expected_mounts, "container_mounts", 6)
+        networks = item.get("NetworkSettings", {}).get("Networks", {})
+        require(set(networks) == {self.profile["name"] + "_lab"}, "container_network", 6)
+        network = next(iter(networks.values()))
+        address = expected["networks"]["lab"]["ipv4_address"]
+        require(network.get("IPAMConfig", {}).get("IPv4Address") == address, "container_address", 6)
+        running = item.get("State", {}).get("Running")
+        require(network.get("IPAddress") in ((address,) if running else ("", address)) and network.get("NetworkID") in ((self.resources["network"],) if running else ("", self.resources["network"])), "container_network", 6)
+        require(not config.get("Tty") and not config.get("OpenStdin"), "container_tty", 6)
+        require(not any(v for v in (item.get("NetworkSettings", {}).get("Ports") or {}).values()), "published_port", 6)
+
+    def inspect_network(self, network):
+        expected = self.profile["networks"]["lab"]
+        require(network.get("Name") == self.profile["name"] + "_lab" and network.get("Driver") == "bridge" and network.get("Internal") is True and network.get("EnableIPv6") is False,
+                "network_security", 6)
+        require(network.get("Options", {}).get("com.docker.network.bridge.name") == bridge_name(self.run), "network_bridge", 6)
+        require(all(network.get("Labels", {}).get(k) == v for k, v in expected["labels"].items()) and network.get("Labels", {}).get("com.docker.compose.project") == self.profile["name"] and network.get("Labels", {}).get("com.docker.compose.network") == "lab", "network_labels", 6)
+        ipam = network.get("IPAM", {}).get("Config", [])
+        require(len(ipam) == 1 and ipam[0].get("Subnet") == "172.31.250.0/24" and ipam[0].get("Gateway") in (None, "", "172.31.250.1") and not ipam[0].get("IPRange") and not ipam[0].get("AuxiliaryAddresses"), "network_subnet", 6)
+
+    def security_readback(self, stopped=False, ephemeral=None):
+        containers, networks = self.raw_inventory()
+        resources = dict(self.resources, containers=dict(self.resources["containers"]))
+        if ephemeral is not None:
+            resources["containers"]["probe"] = ephemeral["Id"]
+        validate_inventory(containers, networks, resources)
+        own_networks = [n for n in networks if n.get("Id") == self.resources["network"]]
+        require(len(own_networks) == 1, "network_missing", 6)
+        self.inspect_network(own_networks[0])
+        allowed_interfaces = {bridge_name(self.run)}
+        by_id = {c["Id"]: c for c in containers}
+        for service, cid in self.resources["containers"].items():
+            require(cid in by_id, "container_missing", 6)
+            item = by_id[cid]
+            self.inspect_container(item, service)
+            state = item.get("State", {})
+            if stopped:
+                require(state.get("Running") is False and state.get("Status") in ("exited", "dead", "created"), "stop_unproven", 6)
+            elif state.get("Running"):
+                pid = state.get("Pid")
+                require(type(pid) is int and pid > 1, "container_pid", 6)
+                # Kernel proc-root/sysfs mount exposes that inspected netns's
+                # peer indices. Cross-bind both ends; labels cannot authorize a veth.
+                prefix = "/proc/" + str(pid) + "/root/sys/class/net/eth0/"
+                peer_index = int(pseudo_read(prefix + "iflink", 32))
+                inside_index = int(pseudo_read(prefix + "ifindex", 32))
+                candidates = []
+                for interface in os.listdir("/sys/class/net"):
+                    if interface.startswith("veth") and int(pseudo_read("/sys/class/net/" + interface + "/ifindex", 32)) == peer_index:
+                        require(int(pseudo_read("/sys/class/net/" + interface + "/iflink", 32)) == inside_index, "veth_identity", 6)
+                        candidates.append(interface)
+                require(len(candidates) == 1, "veth_identity", 6)
+                allowed_interfaces.update(candidates)
+        require(set(own_networks[0].get("Containers", {})) <= set(resources["containers"].values()), "unowned_endpoint", 6)
+        observe_interfaces(allowed_interfaces)
+        return containers
+
+    def pg(self, kind):
+        cid = self.resources["containers"].get("postgres")
+        code, output = self.docker(pg_args(cid, kind, self.run))
+        expected = {"positive": b"1\n", "locale": b"C\n", "hba": b"t\n", "seed": b"t\n", "check": b"t\n"}
+        if kind == "version":
+            require(code == 0 and re.fullmatch(b"17[0-9]{4}\n", output), "postgres_version", 4)
+        else:
+            require(code == 0 and output == expected[kind], "postgres_failed", 4)
+        self.receipt["checks"]["postgres"] = True
+
+    def pg_negative(self):
+        self.recheck()
+        self.security_readback()
+        cid = self.resources["containers"].get("postgres")
+        linked = (cid, self.approval["boot_id"], self.sha, self.receipt["profile_sha256"])
+        code, output = self.docker(pg_args(cid, "positive"))
+        require(code == 0 and output == b"1\n", "pg_positive_required", 4)
+        self.recheck()
+        require(linked == (self.resources["containers"].get("postgres"), self.approval["boot_id"], self.sha, self.receipt["profile_sha256"]), "pg_binding_drift", 6)
+        prefix = ["--host", "unix:///var/run/docker.sock", "--config", RUNTIME + "/docker-empty"]
+        code, output, denied, count = run_tool(self.approval["tools"]["docker"], prefix + pg_args(cid, "negative"), self.deadline, negative_pg=True)
+        self.total_output += len(output) + count
+        require(self.total_output <= 1048576 and code == 2 and not output and denied is True, "pg_auth_not_proven", 4)
+        self.recheck()
+        self.security_readback()
+        require(linked == (self.resources["containers"].get("postgres"), self.approval["boot_id"], self.sha, self.receipt["profile_sha256"]), "pg_binding_drift", 6)
+        self.receipt["checks"]["negative_auth"] = True
+
+    def pending(self, kind, names):
+        containers, networks = self.inventory()
+        occupied = {c.get("Name", "").lstrip("/") for c in containers} | {n.get("Name") for n in networks}
+        self.state["pending"] = {"kind": kind, "names_absent": sorted(set(names) - occupied), "started_at": time.time(), "profile_sha256": self.receipt["profile_sha256"]}
+        self.save(kind + "_pending")
+
+    def reconcile(self):
+        pending = self.state.get("pending")
+        if not pending:
+            self.inventory()
+            return
+        require(pending.get("profile_sha256") == self.receipt["profile_sha256"], "pending_profile", 6)
+        containers, networks = self.raw_inventory()
+        def fresh(item, name):
+            require(name in pending.get("names_absent", []), "unowned_resource", 6)
+            created = dt.datetime.fromisoformat(item["Created"].replace("Z", "+00:00")).timestamp()
+            require(pending["started_at"] <= created <= time.time(), "creation_interval", 6)
+        for network in networks:
+            if network.get("Name") == self.profile["name"] + "_lab" and self.resources["network"] is None:
+                fresh(network, network["Name"])
+                self.inspect_network(network)
+                self.resources["network"] = network["Id"]
+        for item in containers:
+            name = item.get("Name", "").lstrip("/")
+            for service in ("postgres", "nats", "minio"):
+                if name == self.profile["name"] + "-" + service + "-1" and service not in self.resources["containers"]:
+                    fresh(item, name)
+                    self.inspect_container(item, service)
+                    self.resources["containers"][service] = item["Id"]
+            if pending.get("kind") == "probe" and name == pending.get("probe_name"):
+                fresh(item, name)
+                self.inspect_container(item, "probe", pending["command"], True)
+                self.state["probe_id"] = item["Id"]
+        known = dict(self.resources, containers=dict(self.resources["containers"]))
+        if self.state.get("probe_id"):
+            known["containers"]["probe"] = self.state["probe_id"]
+        validate_inventory(containers, networks, known)
+        self.save("reconciled")
+
+    def probe(self, mode):
+        require(mode in ("ready", "seed", "check", "deny"))
+        name = self.profile["name"] + "-probe-" + mode + "-" + self.approval["authorization_id"]
+        command = ["python", "-I", "/lab/stateful_probe.py", mode, self.run]
+        self.pending("probe", [name])
+        self.state["pending"].update(probe_name=name, command=command)
+        self.save("probe_pending")
+        code, output = self.compose(["run", "--no-deps", "--pull", "never", "--name", name, "probe"] + command)
+        self.reconcile()
+        cid = self.state.get("probe_id")
+        require(cid is not None, "probe_identity_unknown", 6)
+        inspect_code, inspect_output = self.docker(["container", "inspect", cid])
+        require(inspect_code == 0, "probe_cleanup_unknown", 6)
+        items = json.loads(inspect_output)
+        require(len(items) == 1, "probe_cleanup_unknown", 6)
+        self.inspect_container(items[0], "probe", command, True)
+        require(items[0].get("State", {}).get("Running") is False and items[0]["State"].get("ExitCode") == code, "probe_not_stopped", 6)
+        self.recheck()
+        remove_code, _ = self.docker(["container", "rm", "--force", cid])
+        require(remove_code == 0, "probe_cleanup_failed", 6)
+        self.state.pop("probe_id", None)
+        self.state.pop("pending", None)
+        self.save("probe_removed")
+        require(code == 0, "probe_failed", 4)
+        result = validate_probe_result(output, mode, self.run)
+        self.receipt["checks"].update(nats=result["checks"]["nats_connected"], s3=result["checks"]["s3_connected"])
+        return result
+
+    def start(self):
+        self.require_delivery()
+        self.cache()
+        self.validate_graph()
+        self.reconcile()
+        if self.resources["network"] is None:
+            observe_interfaces(set())
+        else:
+            self.security_readback()
+        self.data_directories()
+        names = [self.profile["name"] + "-" + s + "-1" for s in ("postgres", "nats", "minio")]
+        names.append(self.profile["name"] + "_lab")
+        self.pending("up", names)
+        self.recheck()
+        code, _ = self.compose(["up", "--detach", "--pull", "never", "--no-build", "postgres", "nats", "minio"])
+        self.reconcile()
+        require(code == 0 and set(self.resources["containers"]) == {"postgres", "nats", "minio"} and self.resources["network"], "start_failed", 6)
+        self.state.pop("pending", None)
+        self.save("start_observed")
+        startup_end = min(self.deadline, time.monotonic() + 120)
+        while True:
+            self.security_readback()
+            try:
+                for kind in ("positive", "version", "locale", "hba"):
+                    self.pg(kind)
+                self.probe("ready")
+                break
+            except LabError as error:
+                if error.exit_code != 4 or time.monotonic() + 1 >= startup_end:
+                    raise
+                # No reset of the startup aggregate or helper deadline.
+                time.sleep(min(1, startup_end - time.monotonic()))
+        self.save("started")
+        self.receipt["stateful_started"] = True
+
+    def seed(self):
+        self.require_delivery()
+        self.security_readback()
+        self.save("seed_pending")
+        self.pg("seed")
+        self.probe("seed")
+        self.state["seeded"] = True
+        self.save("seeded")
+        self.receipt["fixture_seeded"] = True
+
+    def check(self):
+        self.require_delivery()
+        require(self.state.get("seeded") is True, "fixture_missing", 6)
+        self.security_readback()
+        self.pg("check")
+        self.probe("check")
+        self.pg_negative()
+        self.probe("deny")
+        self.pg("check")
+        self.receipt["checks"].update(no_work=True, negative_auth=True)
+        self.receipt["persistence_verified"] = True
+        self.save("checked")
+
+    def stop(self):
+        self.security_readback()
+        self.save("stop_pending")
+        self.recheck()
+        code, _ = self.compose(["stop", "--timeout", "10", "postgres", "nats", "minio"])
+        require(code == 0, "stop_failed", 6)
+        self.security_readback(stopped=True)
+        self.save("stopped")
+        self.receipt["cleanup"] = {"status": "stopped"}
+
+    def recover(self):
+        require(self.state.get("seeded") is True, "recovery_fixture_missing", 6)
+        try:
+            self.start()
+            self.check()
+        except LabError:
+            raise LabError("recovery_incomplete", 6) from None
+        self.save("recovered")
+        self.receipt["recovery_verified"] = True
+
+    def failed_operation(self):
+        """Reconcile daemon state after CLI death; absence of proof stays incomplete."""
+        self.deadline = self.hard_deadline
+        self.receipt["status"] = "incomplete"
+        self.receipt["cleanup"] = {"status": "unknown"}
+        try:
+            if self.state is None or self.profile is None:
+                return
+            self.reconcile()
+            if self.state.get("probe_id"):
+                # A running/uncertain one-off is retained, never force-removed.
+                self.save("probe_requires_inspection")
+                return
+            if self.resources["containers"]:
+                self.stop()
+            else:
+                self.receipt["cleanup"] = {"status": "no_containers"}
+            self.save("operation_failed")
+            self.finish(self.receipt["operation"])
+        except (LabError, OSError, ValueError, KeyError, TypeError):
+            # No raw output/exception can cross this boundary.
+            self.receipt["cleanup"] = {"status": "incomplete"}
+
     def finish(self, verb):
         self.receipt["resource_ids"] = self.resources
+        require(self.receipt["checks"]["children_reaped"] is not False, "child_unreaped", 6)
         self.receipt["checks"]["children_reaped"] = True
         self.receipt["finished_at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         self.recheck()
@@ -624,6 +1207,7 @@ class Controller:
 
 def install_cli(verb, source_sha, run_id):
     receipt = empty_receipt(verb, source_sha, run_id)
+    controller = None
     try:
         require(verb in VERBS and receipt["source_sha"] is not None and uuid_text(run_id, 4))
         approval = validate_approval(strict_json(read_file(APPROVAL, 65536, 0o600)), source_sha, run_id)
@@ -646,24 +1230,41 @@ def install_cli(verb, source_sha, run_id):
             if verb == "install":
                 controller.install(inventory)
             else:
-                raise LabError("lifecycle_unavailable", 3)
+                controller.load_state()
+                require(controller.state is not None, "run_missing", 3)
+                controller.release()
+                controller.cache()
+                # Recollect pending owned resources before any lifecycle action.
+                controller.reconcile()
+                if verb == "deliver":
+                    controller.deliver()
+                else:
+                    getattr(controller, verb)()
             receipt.update(status="passed", failure_code=None)
             controller.finish(verb)
         return 0, receipt
     except FileNotFoundError:
         receipt["status"] = "failed"
         receipt["failure_code"] = "missing_prerequisite"
-        return 3, receipt
+        if controller is not None and controller.state is not None:
+            controller.failed_operation()
+        return (6 if receipt["cleanup"]["status"] in ("unknown", "incomplete") else 3), receipt
     except LabError as error:
         receipt["failure_code"] = error.code
         receipt["status"] = "incomplete" if error.exit_code == 6 else "failed"
         if error.code == "post_commit_failure":
             receipt["material_committed"] = True
-        return error.exit_code, receipt
+        if error.code == "child_unreaped":
+            receipt["checks"]["children_reaped"] = False
+        if controller is not None and controller.state is not None:
+            controller.failed_operation()
+        return (6 if receipt["cleanup"]["status"] in ("unknown", "incomplete") else error.exit_code), receipt
     except (OSError, ValueError, TypeError, KeyError, RecursionError):
         receipt["status"] = "failed"
         receipt["failure_code"] = "operation_failed"
-        return 4, receipt
+        if controller is not None and controller.state is not None:
+            controller.failed_operation()
+        return (6 if receipt["cleanup"]["status"] in ("unknown", "incomplete") else 4), receipt
 
 
 if __name__ == "__main__":

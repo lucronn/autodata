@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import contextlib
 import unittest
 from unittest.mock import patch
 
@@ -191,6 +192,306 @@ class IdentityTests(unittest.TestCase):
                 with self.assertRaises(vm.LabError):
                     with vm.operation_lock():
                         pass
+
+
+class DeliveryProfileTests(unittest.TestCase):
+    def bundle(self):
+        return dict(schema_version=1, run_id=RUN, **{key: format(i + 1, "064x") for i, key in enumerate(vm.SECRET_KEYS)})
+
+    def test_pipe_single_frame_limit_and_secret_redaction(self):
+        bundle = self.bundle()
+        frame = json.dumps(bundle).encode() + b"\n"
+        with patch.object(vm.os, "fstat", return_value=type("S", (), {"st_mode": 0o010000})()), patch.object(vm.fcntl, "fcntl", return_value=os.O_RDONLY), patch.object(vm, "read_pipe_frame", return_value=frame):
+            self.assertEqual(vm.read_delivery(RUN), bundle)
+        for invalid in (dict(bundle, extra="no"), dict(bundle, postgres_password="short"), dict(bundle, nats_writer_password=bundle["postgres_password"])):
+            with self.assertRaises(vm.LabError):
+                vm.validate_bundle(invalid, RUN)
+
+    def test_profile_exact_graph_internal_network_no_ports_or_secret_env(self):
+        with patch.object(vm, "read_file", return_value=Path(__file__).with_name("compose.stateful.yaml").read_bytes()):
+            profile = vm.render_profile(ApprovalTests().good(), RUN)
+        self.assertEqual(set(profile["services"]), {"postgres", "nats", "minio", "probe"})
+        network = profile["networks"]["lab"]
+        self.assertIs(network["internal"], True)
+        self.assertEqual(network["driver_opts"]["com.docker.network.bridge.name"], "adlab-123456781")
+        for service in profile["services"].values():
+            self.assertNotIn("ports", service)
+            self.assertEqual(service["pull_policy"], "never")
+            self.assertTrue(service["read_only"])
+            self.assertEqual(service["cap_drop"], ["ALL"])
+            self.assertEqual(service["restart"], "no")
+            self.assertTrue(all(not m["bind"]["create_host_path"] for m in service["volumes"]))
+            self.assertFalse(any(k in vm.SECRET_KEYS for k in service.get("environment", {})))
+
+    def test_postgres_check_sql_cannot_seed(self):
+        sql = Path(__file__).with_name("postgres-seed.sql").read_text()
+        self.assertIn("\\if :do_seed", sql)
+        self.assertIn("ON CONFLICT DO NOTHING", sql)
+        self.assertLess(sql.index("\\if :do_seed"), sql.index("CREATE TABLE"))
+        self.assertLess(sql.index("\\endif"), sql.index("AS fixture_ok"))
+
+    def test_deliver_exact_tmpfs_modes_and_only_hash_in_persistent_state(self):
+        bundle = self.bundle()
+        c = vm.Controller(ApprovalTests().good(), vm.empty_receipt("deliver", SHA, RUN))
+        c.state = {"bundle_sha256": None, "delivery_boot_id": None}
+        with tempfile.TemporaryDirectory(dir=Path.home()) as temp:
+            Path(temp).chmod(0o700)
+            with patch.object(vm, "RUNTIME", temp), patch.object(vm, "require_owner"), patch.object(vm.os, "fchown") as chown, patch.object(vm, "read_delivery", return_value=bundle), patch.object(c, "save"), patch.object(c, "recheck"):
+                c.deliver()
+                c.require_delivery()
+            base = Path(temp, "delivery", RUN)
+            for name, (_, contents) in vm.delivery_material(bundle).items():
+                self.assertEqual((base / name).stat().st_mode & 0o777, 0o500)
+                for filename in contents:
+                    self.assertEqual((base / name / filename).stat().st_mode & 0o777, 0o400)
+            self.assertTrue(any(call.args[1:] == (999, 999) for call in chown.call_args_list))
+            self.assertTrue(any(call.args[1:] == (1000, 1000) for call in chown.call_args_list))
+        self.assertEqual(c.state["delivery_boot_id"], RUN)
+        self.assertEqual(c.state["bundle_sha256"], vm.digest(vm.canonical(bundle)))
+        self.assertFalse(any(value in json.dumps(c.state) for key, value in bundle.items() if key in vm.SECRET_KEYS))
+
+    def test_partial_delivery_cannot_set_boot_completion(self):
+        c = vm.Controller(ApprovalTests().good(), vm.empty_receipt("deliver", SHA, RUN))
+        c.state = {"bundle_sha256": None, "delivery_boot_id": None}
+        with tempfile.TemporaryDirectory(dir=Path.home()) as temp, patch.object(vm, "RUNTIME", temp), patch.object(vm, "require_owner"), patch.object(vm, "read_delivery", return_value=self.bundle()), patch.object(c, "save"), patch.object(c, "recheck"), patch.object(vm, "write_all", side_effect=OSError), self.assertRaises(OSError):
+            Path(temp).chmod(0o700)
+            c.deliver()
+        self.assertIsNone(c.state["delivery_boot_id"])
+
+
+class PostgresDiagnosticTests(unittest.TestCase):
+    DIAGNOSTIC = (b'psql: error: connection to server at "127.0.0.1", port 5432 failed: FATAL:  password authentication failed for user "lab_admin"\n'
+                  b'password retrieved from file "/run/lab/invalid.pgpass"\n')
+
+    def test_pg_negative_auth_exact_fixed_diagnostic_and_buffer_cleared(self):
+        buffer = bytearray(self.DIAGNOSTIC)
+        self.assertTrue(vm.classify_pg_diagnostic(buffer, 2, b""))
+        self.assertEqual(buffer, bytearray())
+
+    def test_pg_negative_auth_refusal_wrong_user_extra_text_or_exit_is_failure(self):
+        for value, code, out in ((b"connection refused\n", 2, b""), (self.DIAGNOSTIC.replace(b"lab_admin", b"other"), 2, b""),
+                                 (self.DIAGNOSTIC + b"extra\n", 2, b""), (self.DIAGNOSTIC.replace(b"FATAL:  ", b"FATAL: "), 2, b""),
+                                 (self.DIAGNOSTIC, 1, b""), (self.DIAGNOSTIC, 2, b"1\n"), (b"secret-sentinel", 2, b"")):
+            buffer = bytearray(value)
+            self.assertFalse(vm.classify_pg_diagnostic(buffer, code, out))
+            self.assertEqual(buffer, bytearray())
+
+    def test_pg_negative_auth_8192_limit_and_8193_fail_closed(self):
+        buffer = bytearray(b"x" * 8192)
+        self.assertFalse(vm.classify_pg_diagnostic(buffer, 2, b""))
+        self.assertEqual(buffer, bytearray())
+        buffer = bytearray(b"x" * 8193)
+        with self.assertRaises(vm.LabError) as error:
+            vm.classify_pg_diagnostic(buffer, 2, b"")
+        self.assertEqual(buffer, bytearray())
+        self.assertNotIn("xxx", str(error.exception))
+
+    def test_pg_locales_and_transport_flags_are_fixed(self):
+        args = vm.pg_args("a" * 64, "negative")
+        for token in ("LC_ALL=C", "PGSSLMODE=disable", "PGGSSENCMODE=disable", "PGPASSFILE=/run/lab/invalid.pgpass",
+                      "--host=127.0.0.1", "--port=5432", "--username=lab_admin", "--dbname=workshop_lab", "-w", "-X", "--command=SELECT 1"):
+            self.assertIn(token, args)
+        with self.assertRaises(vm.LabError):
+            vm.pg_args("a" * 64, "arbitrary SQL")
+
+    def test_pg_negative_auth_positive_same_container_and_binding_required(self):
+        c = vm.Controller(ApprovalTests().good(), vm.empty_receipt("check", SHA, RUN))
+        c.resources["containers"]["postgres"] = "a" * 64
+        with patch.object(c, "recheck"), patch.object(c, "security_readback"), patch.object(c, "docker", return_value=(2, b"")), patch.object(vm, "run_tool") as negative:
+            with self.assertRaises(vm.LabError):
+                c.pg_negative()
+        negative.assert_not_called()
+        with patch.object(c, "recheck"), patch.object(c, "security_readback"), patch.object(c, "docker", return_value=(0, b"1\n")), patch.object(vm, "run_tool", return_value=(2, b"", True, len(self.DIAGNOSTIC))):
+            c.pg_negative()
+        self.assertTrue(c.receipt["checks"]["negative_auth"])
+
+
+class LifecycleTests(unittest.TestCase):
+    def controller(self):
+        c = vm.Controller(ApprovalTests().good(), vm.empty_receipt("check", SHA, RUN))
+        c.state = {"binding": c.binding(), "resources": c.resources, "bundle_sha256": "b" * 64,
+                   "delivery_boot_id": RUN, "phase": "started", "seeded": True}
+        return c
+
+    def test_partial_delivery_cannot_start(self):
+        c = self.controller()
+        c.state["delivery_boot_id"] = None
+        with patch.object(c, "compose") as command, self.assertRaises(vm.LabError):
+            c.require_delivery()
+        command.assert_not_called()
+
+    def test_changed_bundle_fails_without_start(self):
+        c = self.controller()
+        with patch.object(vm, "read_delivery", return_value=DeliveryProfileTests().bundle()), patch.object(c, "save"), patch.object(c, "compose") as command, self.assertRaises(vm.LabError):
+            c.deliver()
+        command.assert_not_called()
+
+    def test_recover_reuses_fixture_without_seed(self):
+        c = self.controller()
+        with patch.object(c, "start") as start, patch.object(c, "check") as check, patch.object(c, "seed") as seed, patch.object(c, "save"):
+            c.recover()
+        start.assert_called_once()
+        check.assert_called_once()
+        seed.assert_not_called()
+        self.assertTrue(c.receipt["recovery_verified"])
+
+    def test_drifted_or_corrupt_data_retained_incomplete(self):
+        c = self.controller()
+        with patch.object(c, "start"), patch.object(c, "check", side_effect=vm.LabError("fixture_failed", 4)), patch.object(c, "save"), self.assertRaises(vm.LabError) as caught:
+            c.recover()
+        self.assertEqual(caught.exception.exit_code, 6)
+        self.assertFalse(c.receipt["recovery_verified"])
+
+    def test_check_has_zero_write_commands(self):
+        c = self.controller()
+        calls = []
+        with patch.object(c, "require_delivery"), patch.object(c, "security_readback"), patch.object(c, "pg_negative"), patch.object(c, "pg", side_effect=lambda mode: calls.append(mode)), patch.object(c, "probe", side_effect=lambda mode: calls.append(mode)), patch.object(c, "save"):
+            c.check()
+        self.assertEqual(calls, ["check", "check", "deny", "check"])
+        self.assertTrue(c.receipt["checks"]["no_work"])
+
+    def test_stop_preserves_data_and_unowned_resources(self):
+        c = self.controller()
+        commands = []
+        with patch.object(c, "security_readback"), patch.object(c, "recheck"), patch.object(c, "save"), patch.object(c, "compose", side_effect=lambda args: (commands.append(args) or (0, b""))):
+            c.stop()
+        self.assertEqual(commands, [["stop", "--timeout", "10", "postgres", "nats", "minio"]])
+        self.assertTrue(c.state["seeded"])
+
+    def test_probe_result_requires_typed_closed_checks(self):
+        result = dict(schema_version=1, mode="ready", run_id=RUN, status="passed",
+                      checks={k: None for k in vm.PROBE_CHECKS}, measurements={k: None for k in vm.PROBE_MEASUREMENTS})
+        with self.assertRaises(vm.LabError):
+            vm.validate_probe_result(canonical_bytes(result), "ready", RUN)
+        result["checks"].update(nats_connected=True, s3_connected=True)
+        self.assertEqual(vm.validate_probe_result(canonical_bytes(result), "ready", RUN), result)
+        result["checks"]["nats_connected"] = 1
+        with self.assertRaises(vm.LabError):
+            vm.validate_probe_result(canonical_bytes(result), "ready", RUN)
+
+    def test_reboot_requires_new_boot_approval_and_redelivery(self):
+        c = self.controller()
+        c.approval["boot_id"] = AUTH
+        with self.assertRaises(vm.LabError):
+            c.require_delivery()
+        c.state["delivery_boot_id"] = AUTH
+        with patch.object(c, "verify_service_delivery"), patch.object(vm, "read_file", side_effect=FileNotFoundError), self.assertRaises(FileNotFoundError):
+            c.require_delivery()
+
+    def test_shortened_bridge_collision_cannot_be_adopted(self):
+        c = self.controller()
+        # Same shortened prefix, different full UUID and unknown exact ID.
+        other = "12345678-1234-4234-8234-000000000000"
+        self.assertEqual(vm.bridge_name(RUN), vm.bridge_name(other))
+        with self.assertRaises(vm.LabError):
+            vm.validate_inventory([], [{"Id": "f" * 64, "Name": "foreign", "Labels": {"autodata.run": other}}], c.resources)
+
+    def test_pg_negative_auth_container_changed_during_positive_fails(self):
+        c = self.controller()
+        c.resources["containers"]["postgres"] = "a" * 64
+        def changed(args):
+            c.resources["containers"]["postgres"] = "b" * 64
+            return 0, b"1\n"
+        with patch.object(c, "recheck"), patch.object(c, "security_readback"), patch.object(c, "docker", side_effect=changed), patch.object(vm, "run_tool") as negative, self.assertRaises(vm.LabError):
+            c.pg_negative()
+        negative.assert_not_called()
+
+    def test_failed_operation_keeps_unknown_probe_for_inspection(self):
+        c = self.controller()
+        c.profile = {"name": "fixed"}
+        c.state["probe_id"] = "f" * 64
+        with patch.object(c, "reconcile"), patch.object(c, "save"), patch.object(c, "stop") as stop:
+            c.failed_operation()
+        stop.assert_not_called()
+        self.assertEqual(c.receipt["status"], "incomplete")
+        self.assertEqual(c.receipt["cleanup"]["status"], "unknown")
+
+    def test_successful_finish_does_not_override_unreaped_child(self):
+        c = self.controller()
+        c.receipt["status"] = "passed"
+        c.receipt["checks"]["children_reaped"] = False
+        with patch.object(c, "recheck"), patch.object(vm, "atomic_json"), self.assertRaises(vm.LabError):
+            c.finish("check")
+
+
+class CapturedChildTests(unittest.TestCase):
+    """Intercept Popen; real pipe readiness/stream bounds, no process or Docker."""
+    @contextlib.contextmanager
+    def child(self, diagnostic, code=2):
+        with tempfile.TemporaryDirectory(dir=Path.home()) as temp:
+            Path(temp, "docker").write_bytes(b"reviewed binary")
+            Path(temp, "docker").chmod(0o444)
+            directory = os.open(temp, os.O_RDONLY | os.O_DIRECTORY)
+            @contextlib.contextmanager
+            def pinned_dir(*args, **kwargs):
+                yield directory
+            class Process:
+                pid = 99999999
+                returncode = code
+                stderr = None
+                def __init__(self, args, **kwargs):
+                    self.kwargs = kwargs
+                    r, w = os.pipe()
+                    os.close(w)
+                    self.stdout = os.fdopen(r, "rb", buffering=0)
+                    if kwargs["stderr"] == vm.subprocess.PIPE:
+                        r, w = os.pipe()
+                        # Linux pipe capacity may be8KiB; stream through a thread.
+                        import threading
+                        def feed():
+                            try:
+                                vm.write_all(w, diagnostic)
+                            except BrokenPipeError:
+                                pass
+                            finally:
+                                os.close(w)
+                        self.thread = threading.Thread(target=feed)
+                        if len(diagnostic) <= 8192:
+                            feed()
+                        else:
+                            self.thread.start()
+                        self.stderr = os.fdopen(r, "rb", buffering=0)
+                def wait(self, timeout=None):
+                    return self.returncode
+                def poll(self):
+                    return self.returncode
+            try:
+                with patch.object(vm, "open_dir", side_effect=pinned_dir), patch.object(vm, "require_owner"), patch.object(vm.subprocess, "Popen", side_effect=Process) as popen, patch.object(vm.os, "killpg", side_effect=ProcessLookupError):
+                    yield {"path": vm.TOOLS["docker"], "sha256": vm.digest(b"reviewed binary")}, popen
+            finally:
+                os.close(directory)
+
+    def test_pg_capture_exact_and_oversize_never_returns_raw_stderr(self):
+        args = ["--host", "unix:///var/run/docker.sock", "--config", vm.RUNTIME + "/docker-empty"] + vm.pg_args("a" * 64, "negative")
+        for diagnostic, expected in ((PostgresDiagnosticTests.DIAGNOSTIC, True), (b"connection refused", False), (b"x" * 8192, False)):
+            with self.child(diagnostic) as (tool, popen):
+                result = vm.run_tool(tool, args, vm.time.monotonic() + 15, negative_pg=True)
+                self.assertEqual(result, (2, b"", expected, len(diagnostic)))
+                self.assertEqual(popen.call_args.kwargs["stderr"], vm.subprocess.PIPE)
+        with self.child(b"x" * 8193) as (tool, _), self.assertRaises(vm.LabError) as caught:
+            vm.run_tool(tool, args, vm.time.monotonic() + 15, negative_pg=True)
+        self.assertEqual(caught.exception.code, "pg_diagnostic_limit")
+
+    def test_non_pg_negative_children_stderr_discarded(self):
+        with self.child(b"synthetic-secret") as (tool, popen):
+            self.assertEqual(vm.run_tool(tool, ["image", "inspect", "fixed"], vm.time.monotonic() + 15), (2, b""))
+        self.assertEqual(popen.call_args.kwargs["stderr"], vm.subprocess.DEVNULL)
+
+    def test_pg_timeout_after_auth_prefix_clears_buffer_and_never_passes(self):
+        args = ["--host", "unix:///var/run/docker.sock", "--config", vm.RUNTIME + "/docker-empty"] + vm.pg_args("a" * 64, "negative")
+        buffers = []
+        def capture(value=b""):
+            buffer = bytearray(value)
+            buffers.append(buffer)
+            return buffer
+        with self.child(PostgresDiagnosticTests.DIAGNOSTIC) as (tool, _), patch.object(vm, "bytearray", side_effect=capture, create=True), patch.object(vm.time, "monotonic", side_effect=[0, 0, 0, 0, 20]), self.assertRaises(vm.LabError) as caught:
+            vm.run_tool(tool, args, 15, negative_pg=True)
+        self.assertEqual(caught.exception.code, "timeout")
+        self.assertTrue(not buffers[0])
+
+
+def canonical_bytes(value):
+    return json.dumps(value).encode()
 
 
 if __name__ == "__main__":
