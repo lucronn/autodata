@@ -124,6 +124,11 @@ class _State:
         with os.scandir(self.root.fd) as entries:
             for entry in entries:
                 self.charge()
+                if entry.name in ('home','artifacts','minio'):
+                    anchor=self.anchors.get(entry.name)
+                    if anchor is None or not _equal(_identity(entry.stat(follow_symlinks=False)),anchor.identity,directory=True):raise TransportFault('integrity')
+                    self.directory(anchor.fd,anchor.identity)
+                    continue
                 if len(names)>=17 or entry.name not in p.OUTPUT_NAMES:raise TransportFault('integrity')
                 names.append(entry.name)
         if set(names)!=set(expected) or len(names)!=len(expected):raise TransportFault('integrity')

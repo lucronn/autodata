@@ -55,6 +55,7 @@ def fixture():
     directory=dict(dev=1,inode=1,uid=1000,gid=1000,mode=0o40700,size=0,mtime_ns=1,ctime_ns=1,nlink=1)
     d['anchors']=[dict(reference='filesystem',path='/',identity=directory),
                   dict(reference='root',path=root,identity=directory)]
+    d['anchors'] += [dict(reference=n,path=root+'/'+n,identity=directory.copy()) for n in ('home','artifacts','minio')]
     paths=[(v,'regular') for v in d['tools'].values()]
     paths += [(v,'absence') for v in d['git_provenance']['absent_paths']]
     paths += [('/var/run/docker.sock','socket'),('/owned/clone/.git/config','regular')]
@@ -66,6 +67,9 @@ def fixture():
             kind=kind,identity=None if kind=='absence' else ident,
             parents=[directory]*len(path[1:].split('/')),sha256=hashlib.sha256(raw).hexdigest() if kind=='regular' else None,
             literal=literal))
+    sources=dict(system=['/etc/gitconfig'],global_paths=[root+'/home/.gitconfig'],xdg=[root+'/home/.config/git/config'],local=['/owned/clone/.git/config'],worktree=['/owned/clone/.git/config.worktree'])
+    d['git_provenance']['installation_sources']=sources
+    d['git_provenance']['installation_manifest']=hashlib.sha256(encode(sources)).hexdigest()
     d['prerequisites']={n:[f['id'] for f in d['files']] for n in a.WINDOWS}
     d['daemon_identity_sha256']=hashlib.sha256(b'private').hexdigest()
     d['commands'] = [dict(id=c.id, argv=list(c.argv), cwd=c.cwd, env=dict(c.env),
@@ -123,6 +127,64 @@ class AdmissionTests(unittest.TestCase):
             doc=encode(d); result=a.admit_actual(doc,bundle(doc))
             with self.subTest(mutation=mutation): self.assertIsInstance(result,p.Problem)
             self.assertNotIn('PRIVATE_SENTINEL',repr(result))
+
+    def test_prerequisite_windows_cannot_substitute_unrelated_absence(self):
+        d=fixture();d['prerequisites']={n:['file_4'] for n in a.WINDOWS};doc=encode(d)
+        self.assertIsInstance(a.admit_actual(doc,bundle(doc)),p.Problem)
+
+    def test_git_implicit_config_paths_cannot_be_replaced_without_manifest(self):
+        d=fixture();d['git_provenance']['absent_paths'][0]='/unrelated/absence'
+        d['files'][4]['components']=['unrelated','absence'];doc=encode(d)
+        self.assertIsInstance(a.admit_actual(doc,bundle(doc)),p.Problem)
+
+    def test_literal_config_and_models_do_not_coerce_bool_and_int(self):
+        d=fixture();im=p.IMAGES[0];d['image_configs'][im]['Labels']={'flag':1}
+        doc=encode(d);c=a.admit_actual(doc,bundle(doc));self.assertIsInstance(c,a.ActualContract)
+        image=dict(Id=im,Os='linux',Architecture='amd64',Config=copy.deepcopy(d['image_configs'][im]),
+                   RootFS=d['image_rootfs'][im],RepoDigests=[])
+        image['Config']['Labels']['flag']=True
+        self.assertIsInstance(a.project('image_runner',[image],c),p.Problem)
+        d=fixture();d['baseline']['services']['postgres']['scale']=1;doc=encode(d)
+        c=a.admit_actual(doc,bundle(doc));observed=copy.deepcopy(d['baseline'])
+        observed['services']['postgres']['scale']=True
+        self.assertIsInstance(a.project('compose_baseline',observed,c),p.Problem)
+
+    def test_root_requires_private_directories(self):
+        for mode in (0o40755,0o40750):
+            d=fixture();next(x for x in d['anchors'] if x['reference']=='root')['identity']['mode']=mode
+            doc=encode(d);self.assertIsInstance(a.admit_actual(doc,bundle(doc)),p.Problem)
+
+    def test_json_ledger_nested_deadline_cumulative_time_and_cancel(self):
+        from unittest.mock import patch
+        import threading
+        now=[0];event=threading.Event()
+        with patch.object(a.time,'monotonic_ns',side_effect=lambda:now[0]):
+            budget=a.JsonBudget(200*10**9,event)
+            for i in range(12):
+                with budget.operation():now[0]+=5*10**9-1;budget.check_json()
+            self.assertGreater(budget.spent_ns,59*10**9)
+            with self.assertRaises(a.BudgetFault):
+                with budget.operation():now[0]+=100;budget.check_json()
+            now[0]=0;budget=a.JsonBudget(200*10**9,event)
+            with self.assertRaises(a.BudgetFault):
+                with budget.operation():
+                    now[0]=4*10**9
+                    with budget.operation():now[0]=5*10**9;budget.check_json()
+            self.assertIsNotNone(budget.fault)
+            event.set()
+            with self.assertRaises(a.BudgetFault):
+                with budget.operation():pass
+
+    def test_shared_json_ledger_is_used_by_readmission_and_projection(self):
+        import threading
+        import time
+        d=fixture();raw=encode(d);budget=a.JsonBudget(time.monotonic_ns()+10**10,threading.Event())
+        c=a._admit_actual(raw,bundle(raw),budget)
+        self.assertIsInstance(c,a.ActualContract);first=budget.spent_ns
+        a.project('python_version','Python 3.12.1',c,budget)
+        self.assertGreater(budget.spent_ns,first)
+        budget.cancel.set()
+        self.assertRaises(a.BudgetFault,a.values,c,budget)
 
     def test_duplicate_nested_keys_invalid_utf8_and_nonfinite(self):
         for raw in (b'{"x":1,"x":2}',b'{"x":{"a":1,"a":2}}',b'\xff',b'{"x":NaN}',b'['*65+b']'*65):
