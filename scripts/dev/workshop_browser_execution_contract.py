@@ -97,6 +97,19 @@ def disjoint_roots(roots: tuple[str, ...]) -> None:
                 raise ValueError("source/tools/cache/evidence roots overlap")
 
 
+def offline_output(path: str, protected_roots: tuple[str, ...]) -> Path:
+    """Check an offline CLI destination; no allocation or directory creation."""
+    output = Path(absolute_path(path))
+    disjoint_roots((str(output.parent), *protected_roots))
+    for entry in (output, *output.parents):
+        if entry.is_symlink():
+            raise ValueError("offline output may not follow links")
+    # Existing lexical roots may themselves have aliases. This observation is
+    # only an offline write safeguard, never a runtime filesystem admission.
+    disjoint_roots((str(output.parent.resolve()), *(str(Path(root).resolve()) for root in protected_roots)))
+    return output
+
+
 @dataclass(frozen=True)
 class RuntimeBindings:
     candidate_sha: str
@@ -348,8 +361,9 @@ def producer_command(b: RuntimeBindings, lane: str, *, origin: str | None = None
         role, cwd, timeout, stem = "dto_browser", "/workspace", 4560000, "/artifacts/dto/browser"
     else:
         raise ValueError("unknown producer")
+    stdout, stderr = (stem + ".log", stem + ".log") if lane == "dto_go" else (stem + ".stdout.log", stem + ".stderr.log")
     return make_command(lane + ".producer", "api" if lane == "api" else "dto", argv, cwd, environment(role, b.attempt_root), timeout,
-                        stem + ".stdout.log", stem + ".stderr.log", depends_on)
+                        stdout, stderr, depends_on)
 
 
 def graph_blockers(bindings: RuntimeBindings, lane: str) -> tuple[str, ...]:

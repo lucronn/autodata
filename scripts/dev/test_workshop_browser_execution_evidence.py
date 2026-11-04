@@ -23,7 +23,7 @@ def manifest():
 
 
 def seal_documents(port, state="sealed_unreviewed"):
-    support = set(c.specification()["support_schemas"]["artifact_contracts"])
+    support = e.required_artifacts()
     files = [dict(path=name, kind="regular", mode=384, uid=1, gid=1, device=1, inode=i + 1,
                   bytes=len(data), sha256=c.digest_bytes(data), classification="created", reason=None)
              for i, (name, data) in enumerate(port.files.items())]
@@ -151,6 +151,42 @@ def test_sealing_rejects_laundered_terminal_file_hash():
     terminal["artifacts"][0]["sha256"] = "0" * 64
     with pytest.raises(ValueError):
         e.seal_evidence(port, (last,), m, terminal, "now")
+
+
+@pytest.mark.parametrize("mutation", ["wrong_hash", "false_absence", "invalid_commands"])
+def test_midpoint_seal_bundle_probes(mutation):
+    port = e.MemoryEvidencePort()
+    last = e.journal_event(event(action="seal_intent", state="sealing"))
+    port.append_fsync("journal.jsonl", c.canonical_json(last))
+    if mutation == "invalid_commands":
+        port.write_exclusive("commands.json", b"NOT JSON")
+    m, terminal = seal_documents(port, "failed")
+    if mutation == "wrong_hash":
+        terminal["artifacts"][0]["sha256"] = "0" * 64
+    elif mutation == "false_absence":
+        terminal["artifacts"][0].update(state="absent", reason="not here", sha256=None, bytes=0)
+    with pytest.raises(ValueError):
+        e.seal_evidence(port, (last,), m, terminal, "now")
+    assert "seal.json" not in port.files
+
+
+def test_unknown_produced_path_and_unbound_source_inventory_reject_sealing():
+    port = e.MemoryEvidencePort()
+    last = e.journal_event(event(action="seal_intent", state="sealing"))
+    port.append_fsync("journal.jsonl", c.canonical_json(last))
+    port.write_exclusive("unknown-support.json", b"{}\n")
+    m, terminal = seal_documents(port)
+    with pytest.raises(ValueError):
+        e.seal_evidence(port, (last,), m, terminal, "now")
+
+
+def test_source_artifact_inventory_is_preserved_without_semantic_acceptance():
+    names = e.required_artifacts()
+    assert "workshop-browser-api.xml" in names
+    assert "browser/evidence.json" in names
+    for case in c.inventory()["api_cases"]:
+        assert case["case_dir"].removeprefix("/artifacts/") + "/result.json" in names
+    assert e.validate_artifact("readiness/dto/fixture.json", b"{}\n", {})
 
 
 def migration_rows():

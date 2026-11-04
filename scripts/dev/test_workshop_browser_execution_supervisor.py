@@ -251,3 +251,32 @@ def test_stop_reap_failures_cannot_clear_original_failure_and_artifact_caps_pres
     assert st["artifacts"]["api/pytest.stdout.log"]["bytes"] == len(raw)
     assert st["artifacts"]["api/pytest.stdout.log"]["sha256"] == c.digest_bytes(raw)
     assert st["status"] == "failed"
+
+
+def test_replay_cannot_write_to_candidate_or_cache_even_as_fresh_output(tmp_path):
+    binding_path = tmp_path / "bindings.json"
+    binding_path.write_bytes(c.canonical_json(dataclasses.asdict(bindings())))
+    events = tmp_path / "events.json"
+    events.write_bytes(b"[]\n")
+    observations = tmp_path / "observations.json"
+    observations.write_bytes(c.canonical_json(dict(start_ns=1)))
+    for output in (bindings().source_root + "/new.json", bindings().module_cache_root + "/new.json"):
+        with pytest.raises(ValueError):
+            s.main(["replay", "--bindings", str(binding_path), "--events", str(events), "--observations", str(observations), "--output", output])
+
+
+def test_offline_render_writes_fresh_external_file_and_rejects_symlink_parent(tmp_path):
+    binding_path = tmp_path / "bindings.json"
+    binding_path.write_bytes(c.canonical_json(dataclasses.asdict(bindings())))
+    outdir = tmp_path / "out"
+    outdir.mkdir()
+    output = outdir / "render.json"
+    assert s.main(["render", "--bindings", str(binding_path), "--output", str(output)]) == 0
+    result = c.strict_json(output.read_bytes())
+    assert result["status"] == "unadmitted" and result["pass"] is False
+    with pytest.raises(FileExistsError):
+        s.main(["render", "--bindings", str(binding_path), "--output", str(output)])
+    linked = tmp_path / "linked"
+    linked.symlink_to(outdir)
+    with pytest.raises(ValueError):
+        s.main(["render", "--bindings", str(binding_path), "--output", str(linked / "new.json")])

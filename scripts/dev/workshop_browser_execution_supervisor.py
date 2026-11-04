@@ -32,7 +32,7 @@ FAILURE_EVENTS = {"broker_dead": "recovery_blocked", "broker_lock_lost": "recove
                   "service_exit": "failed", "write_failed": "failed", "source_failed": "failed",
                   "signal": "interrupted"}
 NONPASS = {"failed", "interrupted", "recovery_blocked"}
-LIVE_MODES = {"execute", "probe-execute", "cleanup-live", "recover-live", "execute-runner", "broker-live"}
+LIVE_MODES = {"execute", "probe-execute", "cleanup-live", "recover-live", "execute-runner", "broker-live", "watchdog-live"}
 
 
 def initial_state(bindings: c.RuntimeBindings, now_ns: int, *, broker_process=None, lease_ns=1000000000) -> dict:
@@ -317,7 +317,7 @@ def watchdog(state: dict, now_ns: int) -> tuple[dict, ...]:
 
 
 def missing_map(state: dict) -> list[dict]:
-    expected = set(c.specification()["support_schemas"]["artifact_contracts"]) - {"terminal.json", "seal.json"}
+    expected = evidence.required_artifacts() - {"terminal.json", "seal.json"}
     expected.update(state["artifacts"])
     result = []
     for path in sorted(expected):
@@ -348,12 +348,16 @@ def main(argv=None):
     parser.add_argument("--observations")
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
-    output = Path(c.absolute_path(args.output))
+    if not args.bindings:
+        raise ValueError("offline output protection requires --bindings")
+    bindings = c.parse_bindings(Path(c.absolute_path(args.bindings)).read_bytes())
+    protected = (bindings.source_root, bindings.tools_root, bindings.module_cache_root, bindings.browser_cache_root)
+    if args.mode == "validate":
+        protected += (c.absolute_path(args.attempt_root),)
+    output = c.offline_output(args.output, protected)
     if args.mode == "render":
-        bindings = c.parse_bindings(Path(c.absolute_path(args.bindings)).read_bytes())
         result = dict(status="unadmitted", operations=[c.operation_dict(op) for op in c.compile_graph(bindings, args.lane)],
                       blockers=c.graph_blockers(bindings, args.lane), **{"pass": False}, new_case_credit=0)
-        c.disjoint_roots((str(output.parent), bindings.source_root, bindings.tools_root, bindings.module_cache_root, bindings.browser_cache_root))
     elif args.mode == "validate":
         root = Path(c.absolute_path(args.attempt_root))
         errors = []
@@ -364,7 +368,6 @@ def main(argv=None):
                 errors.extend(evidence.validate_artifact(entry.name, entry.read_bytes(), {}))
         result = dict(status="unadmitted", errors=errors, **{"pass": False}, new_case_credit=0)
     else:
-        bindings = c.parse_bindings(Path(c.absolute_path(args.bindings)).read_bytes())
         events = c.strict_json(Path(c.absolute_path(args.events)).read_bytes())
         observations = c.strict_json(Path(c.absolute_path(args.observations)).read_bytes())
         result = initial_state(bindings, observations["start_ns"], broker_process=observations.get("broker_process"))

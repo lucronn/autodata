@@ -17,7 +17,7 @@ def probe_input():
                  source_root="/offline/source", tools_root="/offline/tools", module_cache_root="/offline/modules",
                  browser_cache_root="/offline/browsers", evidence_root="/offline/evidence",
                  images={k: "sha256:" + "3" * 64 for k in c.IMAGE_ROLES},
-                 exported_runtime_manifest_paths=["/offline/exports/runtime.json"],
+                 exported_runtime_manifest_paths=["/offline/tools/runtime.json"],
                  limits=dict(wall_seconds=180, per_subprocess_seconds=10, max_operations=18, artifact_bytes=33554432, retry_count=0))
     value["expected_environment_sha256"] = c.digest(c.environment("host", value["evidence_root"]))
     return value
@@ -55,6 +55,7 @@ def test_exact_thirteen_operations_have_frozen_order_templates_outputs_and_no_li
     lambda v: v["images"].update(runner="runner:latest"),
     lambda v: v.update(source_root="/offline/tools/source"),
     lambda v: v.update(expected_environment_sha256="0" * 64),
+    lambda v: v.update(exported_runtime_manifest_paths=["/secret/export.json"]),
 ])
 def test_invalid_probe_inputs_reject(mutate):
     inp = probe_input()
@@ -151,3 +152,52 @@ def test_execute_rejects_before_any_output_io(monkeypatch):
     monkeypatch.setattr("builtins.open", forbidden)
     with pytest.raises(c.LiveAdapterNotAdmitted):
         p.main(["execute", "--bindings", "/missing", "--output", "/missing"])
+
+
+def local_result(op):
+    rows = [dict(path=root, kind="directory", mode=448, uid=1, gid=1, device=1, inode=i + 1,
+                 bytes=0, sha256=None, classification="unchanged", reason=None)
+            for i, root in enumerate(op.local_read["roots"])]
+    capacity = [dict(root=root, available_disk_bytes=8589934592, affinity_cpus=4,
+                     physical_memory_bytes=12884901888, fd_soft_limit=4096) for root in op.local_read["roots"]]
+    return dict(operation_id=op.id, action=op.local_read["action"], before=rows, after=copy.deepcopy(rows),
+                capacity_before=capacity if op.index == 12 else [], capacity_after=copy.deepcopy(capacity) if op.index == 12 else [],
+                before_sha256=c.digest(rows), after_sha256=c.digest(rows), outcome=outcome(), effective_uid=1, reasons=[])
+
+
+def test_local_result_requires_root_identity_and_all_capacity_floors_without_free_byte_equality():
+    inp = probe_input()
+    op = p.plan_preparation(inp)[12]
+    result = local_result(op)
+    roots = {row["path"]: row for row in result["before"]}
+    assert p.validate_local_result(op, result, inp, roots) == ()
+    result["capacity_after"][-1]["available_disk_bytes"] += 100
+    assert p.validate_local_result(op, result, inp, roots) == ()
+    for mutate in (lambda r: r["after"][0].update(inode=999),
+                   lambda r: r["capacity_after"][-1].update(available_disk_bytes=1),
+                   lambda r: r.update(before=[]), lambda r: r["before"][-1].update(mode=511)):
+        changed = copy.deepcopy(result)
+        mutate(changed)
+        assert p.validate_local_result(op, changed, inp, roots)
+    assert p.validate_local_result(op, result, inp, {})
+
+
+def test_probe_complete_requires_exact_operations_and_literal_null_manifest():
+    inp = probe_input()
+    ops = p.plan_preparation(inp)
+    rows = [dict(index=op.index, outcome={**outcome(), "start_ns": op.index * 3 + 1, "end_ns": op.index * 3 + 2}, bindings=[], before_manifest_sha256=None,
+                 after_manifest_sha256=None, spec=c.operation_dict(op)) for op in ops]
+    probe = dict(version="browser-preparation-v1", attempt_id="a" * 32, candidate_sha=c.CANDIDATE_SHA,
+                 candidate_tree=c.CANDIDATE_TREE, probe_source_sha256="1" * 64, authorization_sha256="2" * 64,
+                 start_utc="2026-11-04T00:00:00Z", end_utc="2026-11-04T00:00:01Z", start_ns=0,
+                 end_ns=40, deadline_ns=180000000000, operations=rows, manifest_sha256=None,
+                 terminal="complete_unadmitted", reasons=[], admitted=False)
+    context = dict(preparation_operations=ops)
+    assert e.validate_artifact("preparation-probe.json", c.canonical_json(probe), context) == ()
+    for mutate in (lambda v: v.update(manifest_sha256="0" * 64), lambda v: v.update(admitted=True),
+                   lambda v: v["operations"].pop(), lambda v: v["operations"][1].update(index=0),
+                   lambda v: v["operations"][0]["spec"]["command"]["environment"].update(HTTP_PROXY="bad"),
+                   lambda v: v.update(end_ns=180000000000)):
+        changed = copy.deepcopy(probe)
+        mutate(changed)
+        assert e.validate_artifact("preparation-probe.json", c.canonical_json(changed), context)

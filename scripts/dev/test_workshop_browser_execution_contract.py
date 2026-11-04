@@ -144,6 +144,11 @@ def test_runner_does_not_add_undeclared_alias_and_full_docker_verbs_are_closed()
             c.resource_command(b, "api", "runner", verb, resource_id="2" * 64)
 
 
+def test_dto_fixture_declares_the_source_merged_log_path():
+    cmd = c.producer_command(bindings(), "dto_go")
+    assert cmd.stdout_path == cmd.stderr_path == "/artifacts/dto/go-fixture.log"
+
+
 def test_modules_import_no_process_or_network_clients():
     for filename in ("workshop_browser_execution_contract.py", "workshop_browser_execution_evidence.py",
                      "workshop_browser_execution_supervisor.py", "workshop_browser_preparation_probe.py"):

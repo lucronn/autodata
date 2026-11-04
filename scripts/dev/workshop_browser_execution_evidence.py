@@ -12,6 +12,60 @@ import re
 import workshop_browser_execution_contract as c
 
 
+def required_artifacts() -> set[str]:
+    """Frozen required support and source paths, including not-started cases."""
+    names = set(c.specification()["support_schemas"]["artifact_contracts"])
+    names.update(("journal.jsonl", "workshop-browser-api.xml", "api/pytest.stdout.log", "api/pytest.stderr.log",
+                  "browser/evidence.json", "dto/browser.stdout.log", "dto/browser.stderr.log", "dto/go-fixture.log", "dto/ready.json"))
+    for case in c.inventory()["api_cases"]:
+        root = case["case_dir"].removeprefix("/artifacts/")
+        names.update(root + "/" + suffix for suffix in ("child.log", "go-fixture.log", "ready.json", "browser.stdout.log",
+                                                        "browser.stderr.log", "result.json", "browser/evidence.json"))
+    return names
+
+
+def _dynamic_contract(name: str):
+    contracts = {}
+    for lane, path in (("api", "postgres"), ("api", "nats"), ("api", "s3"), ("dto", "fixture")):
+        contracts[f"readiness/{lane}/{path}.json"] = {"schema": {"$ref": "#/$defs/ReadinessResult"}, "max_bytes": 1048576}
+    for case in c.inventory()["api_cases"]:
+        prefix = "readiness/api/" + case["id"] + "/"
+        contracts[prefix + "fixture.json"] = {"schema": {"$ref": "#/$defs/ReadinessResult"}, "max_bytes": 1048576}
+        contracts[prefix + "migrations.json"] = {"schema": {"type": "array", "items": {"$ref": "#/$defs/Migration"}, "minItems": 40, "maxItems": 40}, "max_bytes": 1048576}
+    for row in c.specification()["preparation_schedule"]:
+        prefix = "preparation/" + row["id"]
+        schema = {"$ref": "#/$defs/VersionResult" if row["kind"] == "command" else "#/$defs/LocalReadResult"}
+        contracts[prefix + ".result.json"] = {"schema": schema, "max_bytes": 4194304}
+        if row["kind"] == "local_read":
+            for phase in ("before", "after"):
+                contracts[prefix + "." + phase + ".json"] = {"schema": {"type": "array", "items": {"$ref": "#/$defs/File"}, "maxItems": 10000}, "max_bytes": 4194304}
+    return contracts.get(name)
+
+
+def _known_raw(name: str) -> bool:
+    if name in required_artifacts() - set(c.specification()["support_schemas"]["artifact_contracts"]) - {"journal.jsonl"}:
+        return True
+    for row in c.specification()["preparation_schedule"]:
+        if name in ("preparation/" + row["id"] + ".stdout", "preparation/" + row["id"] + ".stderr"):
+            return True
+    for case in c.inventory()["api_cases"]:
+        prefix = case["case_dir"].removeprefix("/artifacts/")
+        if name == prefix + "/browser/" + case["browser"] + "/" + case["test"] + "-failure.png":
+            return True
+    for case in c.inventory()["dto_cases"]:
+        if any(name == "browser/" + case["browser"] + "/" + case["scenario"] + suffix for suffix in ("-failure.json", "-failure.png", "-failure-trace.zip")):
+            return True
+    # Command logs have a finite template namespace, rather than an arbitrary
+    # commands/ prefix. They carry no successful semantic fixture credit.
+    for lane in ("api", "dto"):
+        roles = ("net", "runner", "postgres", "nats", "s3", "pgdata", "natsdata", "s3data") if lane == "api" else ("net", "runner")
+        for role in roles:
+            verbs = ("create", "inspect", "rm") if role in ("net", "pgdata", "natsdata", "s3data") else ("create", "start", "inspect", "wait", "logs", "stop", "kill", "rm")
+            if any(name == f"commands/{lane}.{role}.{verb}.{stream}" for verb in verbs for stream in ("stdout", "stderr")):
+                return True
+    return False
+
+
 def _same(a, b):
     return type(a) is type(b) and a == b
 
@@ -118,7 +172,10 @@ def _semantic(name, value, path, errors, context):
             reject("complete environment mismatch")
     elif name in ("Missing", "File"):
         try:
-            c.relative_path(value["path"])
+            if name == "File" and context.get("local_root_metadata") and value["path"].startswith("/"):
+                c.absolute_path(value["path"])
+            else:
+                c.relative_path(value["path"])
         except ValueError as exc:
             reject(str(exc))
         if name == "Missing":
@@ -186,6 +243,7 @@ def _semantic(name, value, path, errors, context):
         for artifact, field in (("manifest.json", "manifest_sha256"), ("terminal.json", "terminal_sha256"), ("journal.jsonl", "journal_sha256")):
             if artifact not in files or c.digest_bytes(files[artifact]) != value[field]:
                 reject("seal raw byte binding missing/mismatch: " + artifact)
+        errors.extend(validate_bundle(files, context))
     elif name == "OperationSpec":
         members = tuple(value[k] is not None for k in ("command", "local_read", "readiness"))
         expected = {"command": (True, False, False), "local_read": (False, True, False), "readiness": (False, False, True), "observation_gate": (False, False, False)}
@@ -196,6 +254,8 @@ def _semantic(name, value, path, errors, context):
             reject("probe source mismatch")
         if value["deadline_ns"] - value["start_ns"] > 180000000000 or value["deadline_ns"] < value["start_ns"]:
             reject("probe wall budget exceeded")
+        if value["end_ns"] is not None and not value["start_ns"] <= value["end_ns"] < value["deadline_ns"]:
+            reject("probe ended outside its absolute deadline")
         operations = value["operations"]
         if [op["index"] for op in operations] != list(range(len(operations))):
             reject("probe indices reordered/duplicated")
@@ -208,9 +268,23 @@ def _semantic(name, value, path, errors, context):
             expected = [c.operation_dict(op) if isinstance(op, c.OperationSpec) else op for op in expected]
             if len(operations) != len(expected) or any(op["spec"] != wanted or op["index"] != wanted["index"] for op, wanted in zip(operations, expected)):
                 reject("probe operation differs from frozen rendering")
+        prior_end = value["start_ns"]
+        not_started = False
         for op in operations:
             if op["spec"]["kind"] not in ("command", "local_read") or op["spec"]["timeout_ms"] > 10000:
                 reject("preparation illegal action/budget")
+            outcome = op["outcome"]
+            if outcome["state"] == "not_started":
+                not_started = True
+            elif not_started:
+                reject("preparation ran after not-started suffix")
+            elif outcome["start_ns"] is not None:
+                if outcome["start_ns"] < prior_end:
+                    reject("preparation operations overlap or reorder")
+                if outcome["end_ns"] is not None:
+                    if outcome["end_ns"] - outcome["start_ns"] > 10000000000 or outcome["end_ns"] >= value["deadline_ns"]:
+                        reject("preparation operation absolute budget exceeded")
+                    prior_end = outcome["end_ns"]
         if value["terminal"] == "complete_unadmitted" and any(op["outcome"]["state"] != "exited" or op["outcome"]["exit_code"] != 0 for op in operations):
             reject("complete probe includes non-success outcome")
     elif name == "ProbeInput":
@@ -220,6 +294,10 @@ def _semantic(name, value, path, errors, context):
                 c.absolute_path(value[k])
             for path_value in value["exported_runtime_manifest_paths"]:
                 c.absolute_path(path_value)
+                if not path_value.startswith(value["tools_root"] + "/"):
+                    reject("runtime export must be beneath tools_root traversal")
+            if len(set(value["exported_runtime_manifest_paths"])) != len(value["exported_runtime_manifest_paths"]):
+                reject("duplicate exported runtime manifest")
             if not value["exported_runtime_manifest_paths"]:
                 reject("exported runtime manifest required")
             if value["expected_environment_sha256"] != c.digest(c.environment("host", value["evidence_root"])):
@@ -306,7 +384,7 @@ def validate_artifact(name: str, data: bytes, context: dict) -> tuple[str, ...]:
             return validate_journal(events)
         except (ValueError, UnicodeError):
             return ("invalid journal JSON",)
-    contract = {**root["artifact_contracts"], **root["input_contracts"]}.get(name)
+    contract = {**root["artifact_contracts"], **root["input_contracts"]}.get(name) or _dynamic_contract(name)
     if contract is None:
         return ("unknown artifact: " + name,)
     if len(data) > contract["max_bytes"]:
@@ -438,7 +516,60 @@ class MemoryEvidencePort:
         self.calls.append(("fsync_parent", name))
 
 
-def seal_evidence(port, journal: tuple[dict, ...], manifest: dict, terminal: dict, sealed_at: str) -> dict:
+def validate_bundle(files: dict, context: dict | None = None) -> tuple[str, ...]:
+    """Reconcile a finished static bundle; never recurse through seal.json."""
+    errors = []
+    ctx = {**(context or {}), "files": files}
+    support = c.specification()["support_schemas"]["artifact_contracts"]
+    for name, raw in files.items():
+        try:
+            c.relative_path(name)
+        except ValueError as exc:
+            errors.append(str(exc))
+        if name in support and name != "seal.json":
+            errors.extend(validate_artifact(name, raw, ctx))
+        elif name == "journal.jsonl":
+            errors.extend(validate_artifact(name, raw, ctx))
+        elif _dynamic_contract(name):
+            errors.extend(validate_artifact(name, raw, ctx))
+        elif name != "seal.json" and not _known_raw(name):
+            errors.append("unknown produced artifact: " + name)
+    if errors:
+        return tuple(errors)
+    try:
+        manifest = c.strict_json(files["manifest.json"])
+        terminal = c.strict_json(files["terminal.json"])
+        journal = tuple(c.strict_json(line) for line in files["journal.jsonl"].splitlines(keepends=True))
+        existing = set(files) - {"manifest.json", "terminal.json", "seal.json"}
+        listed = {row["path"]: row for row in manifest["files"]}
+        if set(listed) != existing:
+            errors.append("bundle manifest produced-file inventory mismatch")
+        for path in existing:
+            row = listed.get(path, {})
+            if row.get("sha256") != c.digest_bytes(files[path]) or row.get("bytes") != len(files[path]):
+                errors.append("bundle manifest raw file mismatch: " + path)
+        if not journal or journal[-1]["action"] != "seal_intent":
+            errors.append("bundle journal not frozen at final seal_intent")
+        if not journal or manifest["attempt_id"] != journal[0]["attempt_id"] or terminal["attempt_id"] != manifest["attempt_id"] or terminal["candidate_sha"] != c.CANDIDATE_SHA:
+            errors.append("bundle identity mismatch")
+        if terminal["manifest_sha256"] != c.digest_bytes(files["manifest.json"]) or terminal["journal_sha256"] != c.digest_bytes(files["journal.jsonl"]):
+            errors.append("bundle terminal raw digest mismatch")
+        expected = (required_artifacts() | existing) - {"terminal.json", "seal.json"}
+        rows = {row["path"]: row for row in terminal["artifacts"]}
+        if set(rows) != expected:
+            errors.append("bundle terminal missing map incomplete")
+        for path, row in rows.items():
+            if path in files:
+                if row["state"] != "produced" or row["sha256"] != c.digest_bytes(files[path]) or row["bytes"] != len(files[path]):
+                    errors.append("bundle terminal presence/hash mismatch: " + path)
+            elif row["state"] == "produced" or row["sha256"] is not None or row["bytes"] != 0:
+                errors.append("bundle terminal invented artifact: " + path)
+    except (KeyError, ValueError, TypeError):
+        errors.append("bundle support artifacts missing/malformed")
+    return tuple(errors)
+
+
+def seal_evidence(port, journal: tuple[dict, ...], manifest: dict, terminal: dict, sealed_at: str, context: dict | None = None) -> dict:
     errors = validate_journal(journal)
     if errors or not journal or journal[-1]["action"] != "seal_intent":
         raise ValueError("sealing requires intact frozen final journal")
@@ -459,7 +590,7 @@ def seal_evidence(port, journal: tuple[dict, ...], manifest: dict, terminal: dic
     for path, data in port.files.items():
         if listed[path]["bytes"] != len(data) or listed[path]["sha256"] != c.digest_bytes(data):
             raise ValueError("manifest does not bind exact preserved raw evidence bytes")
-    support = set(c.specification()["support_schemas"]["artifact_contracts"])
+    support = required_artifacts()
     expected_missing = support - existing - {"manifest.json", "terminal.json", "seal.json"}
     if {row["path"] for row in manifest["missing"]} != expected_missing:
         raise ValueError("manifest expected-artifact missing map incomplete")
@@ -487,6 +618,8 @@ def seal_evidence(port, journal: tuple[dict, ...], manifest: dict, terminal: dic
     if validate_value("Terminal", terminal):
         raise ValueError("invalid terminal")
     terminal_bytes = c.canonical_json(terminal)
+    if bundle_errors := validate_bundle({**port.files, "terminal.json": terminal_bytes}, context):
+        raise ValueError("; ".join(bundle_errors))
     port.write_exclusive("terminal.json", terminal_bytes)
     port.fsync_parent("terminal.json")
     seal = dict(attempt_id=manifest["attempt_id"], manifest_sha256=c.digest_bytes(manifest_bytes),

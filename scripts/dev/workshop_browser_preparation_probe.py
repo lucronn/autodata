@@ -150,6 +150,35 @@ def parse_command_output(operation: c.OperationSpec, stdout: bytes, stderr: byte
     return result
 
 
+def validate_local_result(operation: c.OperationSpec, result: dict, bindings: dict, declared_roots: dict) -> tuple[str, ...]:
+    """Validate supplied metadata snapshots; never perform a traversal here."""
+    expected = plan_preparation(bindings)
+    if operation.index not in range(7, 13) or operation != expected[operation.index]:
+        return ("not an exact preparation local-read operation",)
+    errors = list(e.validate_value("LocalReadResult", result, {"local_root_metadata": True}))
+    if errors:
+        return tuple(errors)
+    if result["operation_id"] != operation.id or result["action"] != operation.local_read["action"]:
+        errors.append("local result operation/action mismatch")
+    for snapshot in (result["before"], result["after"]):
+        root_rows = {row["path"]: row for row in snapshot if row["path"].startswith("/")}
+        if set(root_rows) != set(operation.local_read["roots"]):
+            errors.append("local result declared root tuple mismatch")
+        for root, row in root_rows.items():
+            if declared_roots.get(root) != row or row["kind"] != "directory":
+                errors.append("local root identity missing/replaced: " + root)
+            if root == bindings["evidence_root"] and (row["mode"] != 448 or row["uid"] != result["effective_uid"]):
+                errors.append("evidence root must be owned0700")
+        identities = [(row["device"], row["inode"]) for row in root_rows.values()]
+        if len(identities) != len(set(identities)):
+            errors.append("local roots share filesystem identity")
+    if operation.index == 12:
+        for snapshot in (result["capacity_before"], result["capacity_after"]):
+            if [row["root"] for row in snapshot] != operation.local_read["roots"]:
+                errors.append("capacity sample root order mismatch")
+    return tuple(errors)
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in ("execute", "probe-execute"):
@@ -161,8 +190,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     inp = c.strict_json(Path(c.absolute_path(args.bindings)).read_bytes())
     operations = plan_preparation(inp)
-    output = Path(c.absolute_path(args.output))
-    c.disjoint_roots((str(output.parent), inp["source_root"], inp["tools_root"], inp["module_cache_root"], inp["browser_cache_root"]))
+    output = c.offline_output(args.output, (inp["source_root"], inp["tools_root"], inp["module_cache_root"], inp["browser_cache_root"]))
     with output.open("xb") as stream:
         stream.write(c.canonical_json(dict(status="unadmitted", admitted=False, operations=[c.operation_dict(op) for op in operations])))
     return 0
