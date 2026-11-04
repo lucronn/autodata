@@ -19,7 +19,7 @@
     "Keep actual PostgreSQL startup and harness Task2 unexecuted and unauthorized until separate exact-image/source dispatch; preserve all blocker/failure receipts and production runtime/grants/services/deployment/readiness denials."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-04T02:48:06.281627+00:00",
+  "updated_at": "2026-11-04T02:51:55.028338+00:00",
   "source_integration_base_sha": "79ce883458c1ac41e385cabc8d1f582b0b28cab1",
   "harness_source_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
   "implementation_allowlist": [],
@@ -29,15 +29,24 @@
   "runtime_verified": false,
   "production_ready": false,
   "tracking_sync": {
-    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621173398",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621225616",
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
     "project_note_field": "Source or dependency reference",
-    "verified_at": "2026-11-04T02:48:06.281627+00:00",
-    "issue_body_sha256": "1d9f24745e09f0e1f70b41d821a85ece25bf3a69e7ec29978293fe70b3e3a1be",
-    "issue_comment_sha256": "cd8019166a924845fc71495323b4dfadcd5a26e200b0421c87ab25ace305e0a1",
-    "project_text_sha256": "271af5cf8b7cff01dbd88467a8e0587e76cc49a87e2a39cc999ee6a015cab448",
-    "prior_project_text_sha256": "f6b01dc0fe6cb7909d045b567505549909e71d4fe8853ac40d55f1a6d649e6b0",
+    "verified_at": "2026-11-04T02:51:55.028338+00:00",
+    "issue_body_sha256": "06f3126a331d33398b2a21338fc7516926aefb713136d23ac9cc98f254ac4314",
+    "issue_comment_sha256": "91ee58cd5ed85ed5bb78c4721567cdc5256f7458bc7620431049da44ea80cb9d",
+    "project_text_sha256": "06eec7a903fc4a4ef8c804f55074d6084acdcbfa43b41072160f5a80f705eec6",
+    "prior_project_text_sha256": "c33381d2d1d30b20763a4d6f51156bdb68d9de53b8560af402b0f7a3a006ec29",
     "full_prior_project_index_preserved_in_issue_comment": true
+  },
+  "review_correction": {
+    "source_checkpoint_sha": "2cf545157ed299b8424bbebe1b01ce9c85ab3a3c",
+    "finding": "P2 quoted pg_config --configure arguments fail naive whitespace split ICU check",
+    "resolution": "shlex.split(comments=False,posix=True), exactly one --with-icu and no --without-icu; strict malformed-quote rejection",
+    "fixture_ref": "docs/agents/records/2026-11-04-workshop-pg17-inspected-preparation-icu-fixture.json",
+    "fixture_passed": 10,
+    "fixture_failed": 0,
+    "review_status": "pending_corrected_checkpoint_review"
   }
 }

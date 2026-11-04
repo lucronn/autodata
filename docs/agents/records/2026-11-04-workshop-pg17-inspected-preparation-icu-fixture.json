@@ -1,0 +1,88 @@
+{
+  "reviewed_checkpoint_sha": "2cf545157ed299b8424bbebe1b01ce9c85ab3a3c",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-inspected-preparation.md",
+  "method": "parse exact embedded inspection script; compile/execute only configure_args assignment and assertion with fixed_run stub; no subprocess/container",
+  "fragment": "configure_args = shlex.split(fixed_run(['/usr/local/bin/pg_config', '--configure']), comments=False, posix=True)\nassert configure_args.count('--with-icu') == 1 and '--without-icu' not in configure_args",
+  "fragment_sha256": "cbd05442b36065f5ab6260d75a5a01c0c7a40ff35659d1431b20a382654cabd8",
+  "old_split_quoted_fixture_accept": false,
+  "cases": [
+    {
+      "case": "quoted_icu",
+      "input": "'--prefix=/usr/local' '--with-icu' '--with-openssl'",
+      "expected_accept": true,
+      "actual_accept": true,
+      "rejection_type": null
+    },
+    {
+      "case": "unquoted_icu",
+      "input": "--prefix=/usr/local --with-icu",
+      "expected_accept": true,
+      "actual_accept": true,
+      "rejection_type": null
+    },
+    {
+      "case": "quoted_space_other_arg",
+      "input": "'--with-includes=/path with space' '--with-icu'",
+      "expected_accept": true,
+      "actual_accept": true,
+      "rejection_type": null
+    },
+    {
+      "case": "missing_icu",
+      "input": "'--prefix=/usr/local' '--with-openssl'",
+      "expected_accept": false,
+      "actual_accept": false,
+      "rejection_type": "AssertionError"
+    },
+    {
+      "case": "without_icu",
+      "input": "'--without-icu'",
+      "expected_accept": false,
+      "actual_accept": false,
+      "rejection_type": "AssertionError"
+    },
+    {
+      "case": "contradictory_flags",
+      "input": "'--with-icu' '--without-icu'",
+      "expected_accept": false,
+      "actual_accept": false,
+      "rejection_type": "AssertionError"
+    },
+    {
+      "case": "duplicate_icu",
+      "input": "'--with-icu' '--with-icu'",
+      "expected_accept": false,
+      "actual_accept": false,
+      "rejection_type": "AssertionError"
+    },
+    {
+      "case": "substring_only",
+      "input": "'--with-icu-extra'",
+      "expected_accept": false,
+      "actual_accept": false,
+      "rejection_type": "AssertionError"
+    },
+    {
+      "case": "empty",
+      "input": "",
+      "expected_accept": false,
+      "actual_accept": false,
+      "rejection_type": "AssertionError"
+    },
+    {
+      "case": "unclosed_quote",
+      "input": "'--with-icu",
+      "expected_accept": false,
+      "actual_accept": false,
+      "rejection_type": "ValueError"
+    }
+  ],
+  "passed": 10,
+  "failed": 0,
+  "verified_at": "2026-11-04T02:50:58.679431+00:00",
+  "docker_execution": false,
+  "download": false,
+  "image_mutation": false,
+  "runtime_verified": false,
+  "production_ready": false
+}
