@@ -11,6 +11,26 @@ import (
 	"testing"
 )
 
+func TestWorkshopRootEntry(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		t.Run(method, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, httptest.NewRequest(method, "/", nil))
+			if response.Code != http.StatusFound || response.Header().Get("Location") != "/workshop/" {
+				t.Fatalf("%s root redirect = %d %q", method, response.Code, response.Header().Get("Location"))
+			}
+		})
+	}
+	t.Run("unknown path", func(t *testing.T) {
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/missing-root-route", nil))
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("unknown root route = %d, want %d", response.Code, http.StatusNotFound)
+		}
+	})
+}
+
 func TestWorkshopAssetsAvailableWithoutCatalogCredentials(t *testing.T) {
 	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
 	for _, asset := range []struct{ path, contentType string }{
@@ -50,6 +70,28 @@ func TestWorkshopAssetsAvailableWithoutCatalogCredentials(t *testing.T) {
 	for _, marker := range []string{"source-review", "source-review-frame", "View stored source", "Load beside article"} {
 		if !strings.Contains(response.Body.String(), marker) {
 			t.Fatalf("workshop HTML is missing source review marker %q", marker)
+		}
+	}
+}
+
+func TestWorkshopPurchaseConfigDisabledByDefault(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/workshop/purchase-config.json", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("purchase config status=%d", response.Code)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &config); err != nil {
+		t.Fatal(err)
+	}
+	if config["enabled"] != false || config["terms_version"] != "workshop-v1" {
+		t.Fatal("default purchase config must remain disabled at workshop-v1")
+	}
+	for _, field := range []string{"terms_url", "privacy_url", "refund_url", "contact_url", "tax_notice"} {
+		value, present := config[field]
+		if !present || value != nil {
+			t.Fatalf("default %s must be present and null", field)
 		}
 	}
 }

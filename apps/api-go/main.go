@@ -155,7 +155,7 @@ func (s *Server) Handler() http.Handler {
 	authService.mountRoutes(mux)
 	s.mountCommerceRoutes(mux)
 	mux.HandleFunc("GET /{$}", func(response http.ResponseWriter, request *http.Request) {
-		http.Redirect(response, request, "/dashboard/", http.StatusFound)
+		http.Redirect(response, request, "/workshop/", http.StatusFound)
 	})
 	mux.HandleFunc("GET /openapi.json", func(response http.ResponseWriter, _ *http.Request) {
 		body, err := dashboardFiles.ReadFile("openapi.json")
