@@ -20,6 +20,7 @@ import struct
 import xml.etree.ElementTree as ET
 import zipfile
 import zlib
+from urllib.parse import unquote
 
 CONTRACT = 'workshop-product-evidence-v1'
 MAX_MANIFEST_BYTES = 2 * 1024 * 1024
@@ -1676,6 +1677,605 @@ def inspect_dto_receipts(store, *, candidate_sha, trusted_base_sha, profile_sha2
         verified_case_ids=[], observed_request_count=request_count, observed_asset_count=11,
         source_expectations_sha=DTO_SOURCE_EXPECTATIONS_SHA,
         missing_validation_families=list(DTO_MISSING_FAMILIES), **{flag: False for flag in FLAGS})
+
+
+# Exact current-source contract frozen by the API21 K2 checkpoint. No producer
+# imports, runtime spec loading, profile registration or CLI dispatch.
+API21_SOURCE_SHA = 'b6279480dc57f81f11f93435ae5b3d10b5ae262f'
+API21_SOURCE_TREE = '9105b372988ca2fc2827310c4806cb826a395bda'
+API21_CASES = (('test_browser_google_exchange_checkout_library_real_api[chromium]',
+  'test_browser_google_exchange_checkout_library_real_api',
+  'chromium',
+  'bankone'),
+ ('test_browser_google_exchange_checkout_library_real_api[firefox]',
+  'test_browser_google_exchange_checkout_library_real_api',
+  'firefox',
+  'bankone'),
+ ('test_browser_google_exchange_checkout_library_real_api[webkit]',
+  'test_browser_google_exchange_checkout_library_real_api',
+  'webkit',
+  'bankone'),
+ ('test_browser_owned_source_canonical_and_media_real_api[chromium-bankone]',
+  'test_browser_owned_source_canonical_and_media_real_api',
+  'chromium',
+  'bankone'),
+ ('test_browser_owned_source_canonical_and_media_real_api[chromium-banktwo]',
+  'test_browser_owned_source_canonical_and_media_real_api',
+  'chromium',
+  'banktwo'),
+ ('test_browser_owned_source_canonical_and_media_real_api[firefox-bankone]',
+  'test_browser_owned_source_canonical_and_media_real_api',
+  'firefox',
+  'bankone'),
+ ('test_browser_owned_source_canonical_and_media_real_api[firefox-banktwo]',
+  'test_browser_owned_source_canonical_and_media_real_api',
+  'firefox',
+  'banktwo'),
+ ('test_browser_owned_source_canonical_and_media_real_api[webkit-bankone]',
+  'test_browser_owned_source_canonical_and_media_real_api',
+  'webkit',
+  'bankone'),
+ ('test_browser_owned_source_canonical_and_media_real_api[webkit-banktwo]',
+  'test_browser_owned_source_canonical_and_media_real_api',
+  'webkit',
+  'banktwo'),
+ ('test_browser_account_scope_and_revocation_real_api[chromium-bankone]',
+  'test_browser_account_scope_and_revocation_real_api',
+  'chromium',
+  'bankone'),
+ ('test_browser_account_scope_and_revocation_real_api[chromium-banktwo]',
+  'test_browser_account_scope_and_revocation_real_api',
+  'chromium',
+  'banktwo'),
+ ('test_browser_account_scope_and_revocation_real_api[firefox-bankone]',
+  'test_browser_account_scope_and_revocation_real_api',
+  'firefox',
+  'bankone'),
+ ('test_browser_account_scope_and_revocation_real_api[firefox-banktwo]',
+  'test_browser_account_scope_and_revocation_real_api',
+  'firefox',
+  'banktwo'),
+ ('test_browser_account_scope_and_revocation_real_api[webkit-bankone]',
+  'test_browser_account_scope_and_revocation_real_api',
+  'webkit',
+  'bankone'),
+ ('test_browser_account_scope_and_revocation_real_api[webkit-banktwo]',
+  'test_browser_account_scope_and_revocation_real_api',
+  'webkit',
+  'banktwo'),
+ ('test_browser_signed_refund_blocks_old_links_real_api[chromium-bankone]',
+  'test_browser_signed_refund_blocks_old_links_real_api',
+  'chromium',
+  'bankone'),
+ ('test_browser_signed_refund_blocks_old_links_real_api[chromium-banktwo]',
+  'test_browser_signed_refund_blocks_old_links_real_api',
+  'chromium',
+  'banktwo'),
+ ('test_browser_signed_refund_blocks_old_links_real_api[firefox-bankone]',
+  'test_browser_signed_refund_blocks_old_links_real_api',
+  'firefox',
+  'bankone'),
+ ('test_browser_signed_refund_blocks_old_links_real_api[firefox-banktwo]',
+  'test_browser_signed_refund_blocks_old_links_real_api',
+  'firefox',
+  'banktwo'),
+ ('test_browser_signed_refund_blocks_old_links_real_api[webkit-bankone]',
+  'test_browser_signed_refund_blocks_old_links_real_api',
+  'webkit',
+  'bankone'),
+ ('test_browser_signed_refund_blocks_old_links_real_api[webkit-banktwo]',
+  'test_browser_signed_refund_blocks_old_links_real_api',
+  'webkit',
+  'banktwo'))
+API21_ASSERTIONS = {'test_browser_account_scope_and_revocation_real_api': ('official_sdk_cookie_and_pg_session',
+                                                        'return_does_not_grant',
+                                                        'signed_public_webhook_grants_once',
+                                                        'permanent_owner_library_reload',
+                                                        'permanent_owner_library_server_restart',
+                                                        'paid_source_and_actual_s3_image',
+                                                        'source_to_canonical_and_warm_reuse',
+                                                        'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                                                        'account_and_exact_scope_isolation',
+                                                        'logout_bfcache_and_firebase_disable_deny'),
+ 'test_browser_google_exchange_checkout_library_real_api': ('official_sdk_cookie_and_pg_session',
+                                                            'return_does_not_grant',
+                                                            'signed_public_webhook_grants_once',
+                                                            'permanent_owner_library_reload',
+                                                            'permanent_owner_library_server_restart',
+                                                            'client_response_loss_same_key_one_checkout'),
+ 'test_browser_owned_source_canonical_and_media_real_api': ('official_sdk_cookie_and_pg_session',
+                                                            'return_does_not_grant',
+                                                            'signed_public_webhook_grants_once',
+                                                            'permanent_owner_library_reload',
+                                                            'permanent_owner_library_server_restart',
+                                                            'paid_source_and_actual_s3_image',
+                                                            'source_to_canonical_and_warm_reuse',
+                                                            'warm_raw_runtime_unchanged_with_approved_s3_delivery'),
+ 'test_browser_signed_refund_blocks_old_links_real_api': ('official_sdk_cookie_and_pg_session',
+                                                          'return_does_not_grant',
+                                                          'signed_public_webhook_grants_once',
+                                                          'permanent_owner_library_reload',
+                                                          'permanent_owner_library_server_restart',
+                                                          'paid_source_and_actual_s3_image',
+                                                          'source_to_canonical_and_warm_reuse',
+                                                          'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                                                          'signed_full_refund_denies_old_content_and_media')}
+API21_SOURCE_INPUTS = {'apps/api-go/workshop_browser_fixture_test.go': '7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33',
+ 'scripts/dev/fixtures/workshop_customer/firebase_transport.js': '96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63',
+ 'scripts/dev/fixtures/workshop_customer/hostile_source.json': '076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1',
+ 'scripts/dev/fixtures/workshop_customer/scenarios.json': '83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9',
+ 'scripts/dev/fixtures/workshop_customer/stripe_checkout.html': '26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083',
+ 'scripts/dev/workshop_browser_smoke.py': '95f95f25de9c1718901f1dc99580a89d5588a17dd43b8a3a013f8b459e6ba2bc'}
+API21_SOURCE_ASSETS = {'app.mjs': {'bytes': 37545,
+             'sha256': '4a3e16b3b407e738ed013f4b7ae416fe6c47eb1548d123e90b5b867df5c74788'},
+ 'article-read.mjs': {'bytes': 2579,
+                      'sha256': '2957242037d4bc3ce7894ae2c7e4bae1636406d0256dd75b6150e78c1c4e5178'},
+ 'auth.mjs': {'bytes': 7908,
+              'sha256': 'ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2'},
+ 'catalog.mjs': {'bytes': 11688,
+                 'sha256': 'cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52'},
+ 'commerce.mjs': {'bytes': 7369,
+                  'sha256': 'e7f8e2fd45d6cd9f4ec2ef2f3a50d3f090f34e2562d4bbc58f9c23d06e8a1142'},
+ 'firebase-web.mjs': {'bytes': 112641,
+                      'sha256': 'bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1'},
+ 'firebase-web.mjs.LEGAL.txt': {'bytes': 35536,
+                                'sha256': '70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319'},
+ 'firebase-web.provenance.json': {'bytes': 2237,
+                                  'sha256': '0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a'},
+ 'index.html': {'bytes': 10868,
+                'sha256': '8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68'},
+ 'progress.mjs': {'bytes': 1076,
+                  'sha256': 'dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48'},
+ 'styles.css': {'bytes': 20773,
+                'sha256': 'c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c'}}
+API21_MISSING_FAMILIES = ('actual_child_go_browser_exit_receipts',
+ 'parent_pytest_exit_and_command_receipts',
+ 'lost_response_pending_measurement_and_snapshot_raw',
+ 'checkout_idempotency_key_request_response_bytes_and_body_hashes',
+ 'signed_settlement_refund_http_bytes_and_authentic_delivery',
+ 'other_account_denial_http_status_and_response_bytes',
+ 'logout_disable_revocation_http_observations',
+ 'runtime_image_browser_cache_sdk_install_identity',
+ 'authenticated_capture_source_observer_and_containment',
+ 'global_worker_log_per_case_ownership_mapping',
+ 'finite_api_success_schedule',
+ 'junit_byte_preserving_capture_mapping',
+ 'all_final180_families_and_profile_promotion',
+ 'independent_authentic_raw_review')
+
+API21_SUPPORT = ('child.log', 'result.json', 'ready.json', 'go-fixture.log',
+                 'browser.stdout.log', 'browser.stderr.log', 'browser/evidence.json')
+API21_MEASUREMENT = ('auth_sessions', 'workshop_orders', 'workshop_checkout_requests',
+    'entitlements', 'dataset_requests', 'dataset_projections', 'payment_events',
+    'hashed_sessions', 'sdk_cert_calls', 'sdk_user_calls', 'sdk_unexpected', 'image_reads')
+API21_DURABLE = ('workshop_orders', 'workshop_checkout_requests', 'entitlements',
+    'dataset_requests', 'dataset_projections', 'payment_events', 'orders', 'auth_sessions', 'hashed_sessions')
+
+
+def _api21_identity(value, candidate, base, profile, version):
+    expected = dict(candidate_sha=candidate, source_sha=candidate, producer_sha=candidate,
+        producer_candidate_sha=candidate, candidate_tree=API21_SOURCE_TREE,
+        source_tree=API21_SOURCE_TREE, tree_sha=API21_SOURCE_TREE, producer_tree=API21_SOURCE_TREE,
+        trusted_base_sha=base, profile_sha256=profile, profile_version=version)
+    pending = [(value, 0)]; nodes = 0
+    while pending:
+        item, depth = pending.pop(); nodes += 1
+        require(depth <= 64 and nodes <= 100000, 'api21_json_complexity')
+        if type(item) is dict:
+            for key, nested in item.items():
+                if key in expected:
+                    require(type(nested) is str and nested == expected[key], 'api21_identity')
+                if key in (*FLAGS, 'accepted', 'verified', 'release_authorized', 'profiles_enabled'):
+                    require(nested is False, 'api21_forged_authority')
+                if key in ('verified_case_ids', 'accepted_case_ids'):
+                    require(type(nested) is list and nested == [], 'api21_forged_authority')
+                if key in ('accepted_case_credit', 'accepted_new_case_credit'):
+                    require(type(nested) is int and nested == 0, 'api21_forged_authority')
+                pending.append((nested, depth+1))
+        elif type(item) is list:
+            pending.extend((nested, depth+1) for nested in item)
+
+
+def _api21_elapsed(value):
+    require(type(value) in (int, float) and math.isfinite(value) and value >= 0, 'api21_elapsed')
+
+
+def _api21_junit(raw):
+    root = strict_junit_xml(raw)
+    require(root.tag == 'testsuites' and root.attrib == {'name':'pytest tests'} and
+            len(root) == 1 and root[0].tag == 'testsuite', 'api21_junit_structure')
+    suite = root[0]
+    exact(suite.attrib, ('name', 'errors', 'failures', 'skipped', 'tests', 'time', 'timestamp', 'hostname'))
+    require(suite.get('name') == 'pytest', 'api21_junit_structure')
+    timestamp(suite.get('timestamp')); string(suite.get('hostname'))
+    def elapsed(text):
+        require(type(text) is str and re.fullmatch(r'[0-9]+(?:\.[0-9]+)?',text) is not None,
+                'api21_junit_elapsed')
+        require(Decimal(text).is_finite(), 'api21_junit_elapsed')
+    elapsed(suite.get('time'))
+    names = []; outcomes = []; counts = dict(errors=0, failures=0, skipped=0)
+    require(not (root.text or '').strip() and not (suite.text or '').strip(), 'api21_junit_structure')
+    for case in suite:
+        require(case.tag == 'testcase' and not (case.text or '').strip() and
+                not (case.tail or '').strip(), 'api21_junit_structure')
+        exact(case.attrib, ('classname', 'name', 'time'))
+        require(case.get('classname') == 'tests.test_workshop_browser_integration', 'api21_junit_identity')
+        elapsed(case.get('time')); names.append(case.get('name'))
+        require(len(case) <= 1, 'api21_junit_outcome')
+        outcome = 'passed'
+        if len(case):
+            child = case[0]
+            require(child.tag in ('failure', 'error', 'skipped') and len(child) == 0,
+                    'api21_junit_outcome')
+            require(set(child.attrib) <= {'message','type'} and not (child.tail or '').strip(),
+                    'api21_junit_outcome')
+            outcome = child.tag; counts[{'failure':'failures','error':'errors','skipped':'skipped'}[outcome]] += 1
+        outcomes.append(outcome)
+    require(names == [case[0] for case in API21_CASES], 'api21_case_inventory')
+    require(suite.get('tests') == str(len(names)) and all(suite.get(key) == str(value)
+                for key,value in counts.items()), 'api21_junit_counters')
+    return outcomes
+
+
+def _api21_measurement(value, scope, *, state):
+    exact(value, (*API21_MEASUREMENT, 'orders'))
+    for key in API21_MEASUREMENT: integer(value[key])
+    require(value['hashed_sessions'] == value['auth_sessions'] and value['auth_sessions'] >= 1 and
+            value['sdk_unexpected'] == 0 and value['sdk_cert_calls'] >= 1 and value['sdk_user_calls'] >= 2,
+            'api21_measurement_identity')
+    require(all(value[key] == 1 for key in ('workshop_orders','workshop_checkout_requests',
+        'entitlements','dataset_requests','dataset_projections')) and value['payment_events'] ==
+        (2 if state == 'revoked' else 1), 'api21_measurement_counts')
+    array(value['orders']); require(len(value['orders']) == 1, 'api21_measurement_orders')
+    order = value['orders'][0]
+    exact(order, ('order_id', 'state', 'owner', 'configuration_id', 'region'))
+    for key in ('order_id','owner','configuration_id'): _paid_uuid(order[key])
+    require(order['state'] == state and order['configuration_id'] == scope['configuration'] and
+            order['region'] == 'US', 'api21_measurement_scope')
+    return order
+
+
+def _api21_paid_rows(paid, scope, *, isolation, revoked):
+    exact(paid, PAID_ROW_FIELDS)
+    for table,fields in PAID_ROW_FIELDS.items():
+        array(paid[table]); require(len(paid[table]) <= 64, 'api21_paid_row_limit')
+        for row in paid[table]:
+            exact(row, fields.split())
+            for key,value in row.items():
+                if value is None and key in PAID_ROW_NULLABLE[table]: continue
+                if key in ('firebase_auth_time','amount_minor','preparation_attempts'): integer(value)
+                elif key == 'livemode': require(type(value) is bool, 'api21_paid_scalar')
+                elif key == 'preparation_index_job_ids':
+                    array(value)
+                    for item in value: _paid_uuid(item)
+                    unique(value)
+                else: string(value)
+    accounts = paid['customer_accounts']
+    require(len(accounts) == (2 if isolation else 1) and
+        {row['firebase_uid'] for row in accounts} == ({'fixture-user','fixture-other'} if isolation else {'fixture-user'}),
+        'api21_accounts')
+    for row in accounts:
+        _paid_uuid(row['customer_account_id']); _paid_uuid(row['personal_organization_id'])
+        require(row['firebase_project_id'] == 'fixture-project' and row['status'] == 'active', 'api21_accounts')
+        timestamp(row['created_at'])
+    ids = [row['customer_account_id'] for row in accounts]; unique(ids)
+    unique([row['personal_organization_id'] for row in accounts])
+    owner = next(row for row in accounts if row['firebase_uid'] == 'fixture-user')
+    sessions = paid['auth_sessions']
+    require(len(sessions) == (3 if isolation else 1) and
+            {row['customer_account_id'] for row in sessions} == set(ids), 'api21_sessions')
+    tokens = []
+    for row in sessions:
+        require(re.fullmatch(r'\\x[a-f0-9]{64}',row['session_token_hash']) is not None, 'api21_session_hash')
+        tokens.append(row['session_token_hash'])
+        require(timestamp(row['created_at']) <= timestamp(row['expires_at']), 'api21_session_time')
+        if row['revoked_at'] is not None: timestamp(row['revoked_at'])
+    unique(tokens)
+    for table in ('workshop_orders','entitlements','dataset_requests','dataset_projections'):
+        require(len(paid[table]) == 1, 'api21_settlement_inventory')
+    order,grant,request,projection = (paid[table][0] for table in
+        ('workshop_orders','entitlements','dataset_requests','dataset_projections'))
+    for row,keys in ((order, ('order_id','customer_account_id','organization_id','configuration_id',
+            'dataset_request_id','dataset_product_id','entitlement_id')),
+            (grant, ('entitlement_id','commerce_order_id','configuration_id','customer_account_id',
+                'dataset_request_id','organization_id','payment_event_id')),
+            (request, ('dataset_request_id','dataset_product_id','organization_id','correlation_id')),
+            (projection, ('dataset_projection_id','dataset_request_id','dataset_product_id','entitlement_id'))):
+        for key in keys: _paid_uuid(row[key])
+    require(order['customer_account_id'] == grant['customer_account_id'] == owner['customer_account_id'] and
+        order['organization_id'] == grant['organization_id'] == request['organization_id'] == owner['personal_organization_id'] and
+        order['configuration_id'] == grant['configuration_id'] == request['vehicle_key'] == scope['configuration'] and
+        order['region'] == grant['region'] == request['region'] == 'US' and
+        order['order_id'] == grant['commerce_order_id'] == request['correlation_id'] and
+        order['dataset_request_id'] == grant['dataset_request_id'] == request['dataset_request_id'] == projection['dataset_request_id'] and
+        order['entitlement_id'] == grant['entitlement_id'] == projection['entitlement_id'] and
+        order['dataset_product_id'] == request['dataset_product_id'] == projection['dataset_product_id'], 'api21_paid_scope')
+    require(order['amount_minor'] == 2000 and order['currency'] == 'USD' and order['livemode'] is False and
+        order['stripe_account_id'] == 'acct_fixture' and order['expected_price_id'] == 'price_fixture' and
+        order['terms_version'] == 'workshop-v1' and order['status'] == ('revoked' if revoked else 'paid') and
+        grant['status'] == ('revoked' if revoked else 'active'), 'api21_payment_binding')
+    for row,key,reason in ((order,'revoked_at','revocation_reason_code'),(grant,'revoked_at','revoke_reason')):
+        if revoked:
+            timestamp(row[key]); string(row[reason])
+        else:
+            require(row[key] is None and row[reason] is None, 'api21_revocation')
+    for row,key in ((order,'paid_at'),(order,'created_at'),(order,'updated_at'),(grant,'granted_at'),
+                    (request,'created_at'),(request,'updated_at'),(projection,'created_at')): timestamp(row[key])
+    return order
+
+
+def _api21_snapshot(snapshot, scope, *, work, isolation=False, revoked=False):
+    exact(snapshot, ('article','asset_calls','counts','ensure','ensure_requests','grant_calls',
+        'immutable_rows','immutable_sha256','model_calls','paid_rows','payment_calls','provider_calls',
+        'provider_traces','proxy','selector_ensure','selector_ensure_requests','source_calls','workers'))
+    for key in ('model_calls','grant_calls','payment_calls'): integer(snapshot[key])
+    require(snapshot['payment_calls'] > 0, 'api21_payment_work')
+    for group in ('ensure','selector_ensure'):
+        counts=snapshot[group]; exact(counts, ('entered','completed','active'))
+        for value in counts.values(): integer(value)
+        require(counts['active'] == 0 and counts['entered'] == counts['completed'], 'api21_unfinished_work')
+        requests=snapshot[group+'_requests']; array(requests)
+        require(len(requests) == counts['entered'], 'api21_request_inventory')
+        for request in requests:
+            exact(request, ('scope','payload','request_id','started_at','completed','status',
+                            'duration_seconds','finished_at'))
+            require(request['completed'] is True and type(request['status']) is int and
+                    request['status'] == 200 and type(request['payload']) is dict and
+                    type(request['request_id']) is str and type(request['scope']) is str,
+                    'api21_completed_request')
+            _api21_elapsed(request['duration_seconds'])
+            require(timestamp(request['started_at']) <= timestamp(request['finished_at']), 'api21_request_time')
+    for group in ('provider_calls','source_calls','asset_calls'):
+        exact(snapshot[group], ('bankone','banktwo'))
+        for value in snapshot[group].values(): integer(value)
+    traces=snapshot['provider_traces']; exact(traces, ('bankone','banktwo'))
+    for bank,paths in traces.items():
+        array(paths)
+        require(len(paths) == snapshot['provider_calls'][bank], 'api21_provider_trace')
+        for path in paths:
+            string(path); require(path.startswith('/') and len(path) <= 4096, 'api21_provider_trace')
+        resources=[unquote(path.split('/resources/',1)[1]) for path in paths if '/resources/' in path]
+        require(snapshot['source_calls'][bank] == resources.count('body') and
+                snapshot['asset_calls'][bank] == len(resources)-resources.count('body'), 'api21_resource_trace')
+    proxy=snapshot['proxy']
+    exact(proxy, ('request_received','upstream_completed','downstream_completed','downstream_waiting','response_captured','errors'))
+    for key in ('request_received','upstream_completed','downstream_completed','downstream_waiting'): integer(proxy[key])
+    require(type(proxy['response_captured']) is bool and proxy['errors'] == [] and
+        proxy['request_received'] >= proxy['upstream_completed'] >= proxy['downstream_completed'] and
+        proxy['downstream_waiting'] <= proxy['upstream_completed']-proxy['downstream_completed'], 'api21_proxy')
+    workers=snapshot['workers']; array(workers)
+    require(len(workers) == (2 if work else 0), 'api21_worker_inventory')
+    for worker in workers:
+        exact(worker, ('kind','alive','exit_code'))
+        require(worker['kind'] == 'cli' and worker['alive'] is True and worker['exit_code'] is None, 'api21_live_worker')
+    rows=snapshot['immutable_rows']; exact(rows, PAID_PG_TABLES)
+    for values in rows.values():
+        array(values); require(len(values) <= 4096 and all(type(row) is dict and row for row in values), 'api21_pg_rows')
+    digest(snapshot['immutable_sha256'])
+    require(sha256(json.dumps(rows,sort_keys=True,allow_nan=False).encode('utf-8')) == snapshot['immutable_sha256'],
+            'api21_row_hash')
+    article=snapshot['article']; require(type(article) is dict, 'api21_article')
+    require(article.get('canonical_article_id') == scope['article'] and article.get('provider_slug') == scope['provider'] and
+        article.get('vehicle_configuration_id') == scope['configuration'] and article.get('vehicle_id') == scope['vehicle'],
+        'api21_article')
+    ids=[]
+    for row in rows['canonical_articles']:
+        _paid_uuid(row.get('canonical_article_id')); ids.append(row['canonical_article_id'])
+        enum(row.get('provider_slug'), ('bankone','banktwo'))
+    unique(ids)
+    selected=[row for row in rows['canonical_articles'] if row['canonical_article_id'] == scope['article']]
+    require(len(selected) == 1 and all(selected[0].get(key) == article.get(key) for key in
+        ('provider_slug','vehicle_configuration_id','vehicle_id')), 'api21_article_seam')
+    exact(snapshot['counts'], PAID_PG_COUNT_TABLES)
+    for key,table in PAID_PG_COUNT_TABLES.items():
+        integer(snapshot['counts'][key])
+        counted=[]
+        for row in rows[table]:
+            require('canonical_article_id' in row, 'api21_count_row')
+            if row['canonical_article_id'] is not None or table != 'source_fetch_jobs': _paid_uuid(row['canonical_article_id'])
+            if table == 'source_fetch_jobs': string(row.get('job_kind'))
+            if table == 'canonical_article_revisions': string(row.get('status'))
+            if row['canonical_article_id'] != scope['article']: continue
+            if key == 'article_jobs' and row['job_kind'] != 'article': continue
+            if key == 'published_revisions' and row['status'] != 'published': continue
+            counted.append(row)
+        require(len(counted) == snapshot['counts'][key], 'api21_count_binding')
+    if work:
+        require(snapshot['model_calls'] > 0 and snapshot['counts']['published_revisions'] == 1, 'api21_warm_publication')
+    order=_api21_paid_rows(snapshot['paid_rows'],scope,isolation=isolation,revoked=revoked)
+    for table in ('customer_accounts','auth_sessions','workshop_orders'):
+        require(rows[table] == snapshot['paid_rows'][table], 'api21_paid_row_seam')
+    return order
+
+
+def _api21_order_seam(measured, order):
+    require(measured['order_id'] == order['order_id'] and measured['owner'] == order['customer_account_id'] and
+        measured['configuration_id'] == order['configuration_id'] and measured['region'] == order['region'] and
+        measured['state'] == order['status'], 'api21_order_seam')
+
+
+def _api21_ready(ready, provider):
+    exact(ready, ('version','kind','origin','certificate_sha256','sdk_sha256','scope'))
+    require(ready['version'] == 'v1' and ready['kind'] == 'api-fixture', 'api21_ready_identity')
+    digest(ready['certificate_sha256']); digest(ready['sdk_sha256'])
+    match=re.fullmatch(r'https://127\.0\.0\.1:([1-9][0-9]{0,4})',ready['origin']) if type(ready['origin']) is str else None
+    require(match is not None and int(match[1]) <= 65535, 'api21_ready_origin')
+    scope=ready['scope']; exact(scope, ('configuration','adjacent','other_region','vehicle','article','unscoped','provider'))
+    values=[]
+    for key in ('configuration','adjacent','other_region','vehicle','article','unscoped'):
+        _paid_uuid(scope[key]); values.append(scope[key])
+    unique(values); require(scope['provider'] == provider, 'api21_ready_scope')
+    return scope
+
+
+def _api21_evidence(evidence, ready, engine, root, *, passed):
+    fields=('engine_revisions','input_sha256','version','mode','candidate_sha','sdk_sha256',
+        'playwright_version','results','provenance')
+    require(type(evidence) is dict, 'api21_evidence')
+    exact(evidence, (*fields,'browser_versions') if 'browser_versions' in evidence else fields)
+    require(not passed or 'browser_versions' in evidence, 'api21_browser_versions')
+    require(evidence['version'] == 'v1' and evidence['mode'] == 'api-fixture' and
+        evidence['candidate_sha'] == API21_SOURCE_SHA and evidence['playwright_version'] == '1.64.1', 'api21_evidence_identity')
+    revisions=evidence['engine_revisions']
+    require(type(revisions) is dict and 0 < len(revisions) <= 32, 'api21_engine_revisions')
+    for key,value in revisions.items():
+        string(key); string(value); require(len(key) <= 96 and len(value) <= 256, 'api21_engine_revisions')
+    if 'browser_versions' in evidence:
+        exact(evidence['browser_versions'], (engine,)); string(evidence['browser_versions'][engine])
+        require(len(evidence['browser_versions'][engine]) <= 256, 'api21_browser_versions')
+    require(evidence['input_sha256'] == API21_SOURCE_INPUTS, 'api21_source_inputs')
+    provenance=evidence['provenance']; exact(provenance, ('assets','certificate_sha256'))
+    exact(provenance['assets'], API21_SOURCE_ASSETS)
+    for name,asset in provenance['assets'].items():
+        exact(asset, ('sha256','bytes')); digest(asset['sha256']); integer(asset['bytes'])
+        require(asset == API21_SOURCE_ASSETS[name], 'api21_source_assets')
+    require(evidence['sdk_sha256'] == ready['sdk_sha256'] == API21_SOURCE_ASSETS['firebase-web.mjs']['sha256'] and
+        provenance['certificate_sha256'] == ready['certificate_sha256'], 'api21_provenance_seam')
+    rows=evidence['results']; array(rows); require(len(rows) <= 1 and (not passed or len(rows) == 1), 'api21_result_inventory')
+    if not rows: return None
+    row=rows[0]
+    require(type(row) is dict and row.get('browser') == engine and row.get('scenario') == root,
+            'api21_row_identity')
+    enum(row.get('status'), ('passed','failed','unavailable'))
+    if row['status'] != 'passed':
+        fields=('browser','scenario','status','error')
+        exact(row, (*fields,'elapsed_seconds') if 'elapsed_seconds' in row else fields)
+        require(row['status'] != 'failed' or 'elapsed_seconds' in row, 'api21_failed_row')
+        if 'elapsed_seconds' in row: _api21_elapsed(row['elapsed_seconds'])
+        require(type(row['error']) is str and len(row['error']) <= 65536, 'api21_failed_row')
+        require(not passed, 'api21_outcome_seam')
+        return row
+    exact(row, ('browser','scenario','elapsed_seconds','status','assertions','provider','requests','measurement','restart','warm'))
+    require(row['provider'] == ready['scope']['provider'], 'api21_row_provider')
+    _api21_elapsed(row['elapsed_seconds']); _paid_assertions(row['assertions'],API21_ASSERTIONS[root])
+    requests=row['requests']; array(requests); require(len(requests) <= 8192, 'api21_request_limit')
+    get_paths={'/workshop/','/workshop/purchase-config.json','/workshop/fonts/InstrumentSans.ttf',
+               '/auth/config','/auth/session','/v1/catalog/years','/v1/workshop/quote','/v1/workshop/library'}
+    get_paths.update('/workshop/'+name for name in API21_SOURCE_ASSETS)
+    get_patterns=(r'/v1/workshop/orders/\{uuid\}',
+        r'/v1/catalog/years/2024/makes(?:/example/models(?:/car/configurations)?)?',
+        r'/v1/catalog/vehicles/\{uuid\}/articles(?:/\{uuid\}(?:/source)?)?',
+        r'/v1/catalog/images/\{capability\}')
+    for request in requests:
+        exact(request, ('method','path'))
+        method,path=request['method'],request['path']
+        require(type(method) is str and type(path) is str, 'api21_request_template')
+        allowed=(method == 'GET' and (path in get_paths or any(re.fullmatch(pattern,path) for pattern in get_patterns))) or (
+            method == 'POST' and (path in ('/auth/firebase/session','/auth/logout','/v1/workshop/checkout-sessions') or
+            re.fullmatch(r'/v1/catalog/vehicles/\{uuid\}/articles/\{uuid\}/prepare',path) is not None))
+        require(allowed, 'api21_request_template')
+    return row
+
+
+def inspect_api21_receipts(store, *, candidate_sha, trusted_base_sha, profile_sha256,
+                           profile_version='api21-fixture-v1'):
+    """Partial retained-byte consistency only. This function cannot grant credit."""
+    digest(candidate_sha,40); digest(trusted_base_sha,40); digest(profile_sha256)
+    require(candidate_sha == API21_SOURCE_SHA, 'api21_source_candidate')
+    require(type(profile_version) is str and profile_version == 'api21-fixture-v1', 'api21_profile_version')
+    required={'workshop-browser-api.xml'}; optional=set(); early_missing=set(); prefixes=[]
+    for _,root,engine,provider in API21_CASES:
+        prefix='workshop-browser/'+root+'/'+engine+'-'+provider+'/'
+        prefixes.append(prefix); required.update(prefix+name for name in API21_SUPPORT)
+        early_missing.update((prefix+'ready.json',prefix+'browser/evidence.json'))
+        optional.add(prefix+'browser/'+engine+'/'+root+'-failure.png')
+    require(required-early_missing <= set(store.by_ref) <= required|optional, 'api21_support_inventory')
+    # Read every declared byte, including opaque diagnostic logs/screenshots.
+    raw={}
+    for ref,record in store.by_ref.items():
+        require(record['visibility'] == 'private' and record['kind'] ==
+            ('junit' if ref == 'workshop-browser-api.xml' else 'raw'), 'api21_artifact_declaration')
+        raw[ref]=store.read(record['artifact_id'])
+    outcomes=_api21_junit(raw['workshop-browser-api.xml'])
+    observed=[]; diagnostics=[]; databases=[]
+    for index,((case_id,root,engine,provider),prefix) in enumerate(zip(API21_CASES,prefixes)):
+        docs={}
+        for name in ('result.json','ready.json','browser/evidence.json'):
+            if prefix+name not in raw: continue
+            value=strict_raw_json(raw[prefix+name])
+            _api21_identity(value,candidate_sha,trusted_base_sha,profile_sha256,profile_version)
+            docs[name]=value
+        result=docs['result.json']
+        fields=('version','mode','candidate_sha','browser','provider','test','fixture_database','passed')
+        require(type(result.get('passed')) is bool, 'api21_result_passed')
+        passed=result['passed']
+        if passed: exact(result, (*fields,'final_snapshot','worker_exits'))
+        else:
+            require(set(result) >= set(fields) and set(result) <= set((*fields,'final_snapshot','worker_exits')),
+                    'api21_failed_result')
+        require(result['version'] == 'v1' and result['mode'] == 'api-fixture' and
+            result['candidate_sha'] == candidate_sha and result['browser'] == engine and
+            result['provider'] == provider and result['test'] == root, 'api21_result_identity')
+        database=result['fixture_database']; string(database)
+        require(re.fullmatch(r'[a-z][a-z0-9_]{0,62}',database) is not None, 'api21_fixture_database')
+        databases.append(database)
+        ready=docs.get('ready.json'); evidence=docs.get('browser/evidence.json')
+        require(not passed or ready is not None and evidence is not None, 'api21_support_inventory')
+        require(ready is not None or evidence is None, 'api21_partial_provenance')
+        scope=_api21_ready(ready,provider) if ready is not None else None
+        row=_api21_evidence(evidence,ready,engine,root,passed=passed) if evidence is not None else None
+        if evidence is None:
+            require(not passed and 'final_snapshot' not in result and 'worker_exits' not in result,
+                    'api21_partial_result')
+        require((outcomes[index] == 'passed') == passed, 'api21_junit_result_seam')
+        screenshot=prefix+'browser/'+engine+'/'+root+'-failure.png'
+        require(not passed or screenshot not in raw, 'api21_success_screenshot')
+        if not passed:
+            category='producer_partial' if row is None or row['status'] == 'passed' else 'producer_'+row['status']
+            diagnostics.append(dict(case_id=case_id,category=category))
+            continue
+        require(row is not None and row['status'] == 'passed', 'api21_outcome_seam')
+        google=root == API21_CASES[0][1]; isolation=root == 'test_browser_account_scope_and_revocation_real_api'
+        refund=root == 'test_browser_signed_refund_blocks_old_links_real_api'
+        final_order=_api21_snapshot(result['final_snapshot'],scope,work=not google,isolation=isolation,revoked=refund)
+        measurement=row['measurement']; measured=_api21_measurement(measurement,scope,state='revoked' if refund else 'paid')
+        _api21_order_seam(measured,final_order)
+        paid=result['final_snapshot']['paid_rows']
+        for key in ('auth_sessions','workshop_orders','entitlements','dataset_requests','dataset_projections'):
+            require(measurement[key] == len(paid[key]), 'api21_measurement_pg_seam')
+        require(measurement['workshop_checkout_requests'] == len(result['final_snapshot']['immutable_rows']['workshop_checkout_requests']),
+                'api21_measurement_pg_seam')
+        restart=row['restart']; exact(restart, ('runtime_before','runtime_after','before','after'))
+        for key in ('runtime_before','runtime_after'):
+            exact(restart[key], ('application_generation',)); integer(restart[key]['application_generation'])
+        require(restart['runtime_after']['application_generation'] == restart['runtime_before']['application_generation']+1,
+                'api21_restart_generation')
+        for key in ('before','after'):
+            order=_api21_measurement(restart[key],scope,state='paid')
+            require(all(order[field] == measured[field] for field in ('order_id','owner','configuration_id','region')),
+                    'api21_restart_order')
+        require(all(restart['before'][key] == restart['after'][key] for key in API21_DURABLE), 'api21_restart_durability')
+        for key in API21_MEASUREMENT:
+            require(measurement[key] >= restart['after'][key], 'api21_measurement_regression')
+        require(isolation or measurement['auth_sessions'] == restart['after']['auth_sessions'], 'api21_session_phase')
+        warm=row['warm']
+        if google: exact(warm, ())
+        else:
+            exact(warm, ('before','after','reader_before','reader_after'))
+            for key in ('before','after'):
+                order=_api21_snapshot(warm[key],scope,work=True)
+                require(all(order[field] == final_order[field] for field in
+                    ('order_id','customer_account_id','organization_id','configuration_id','dataset_request_id',
+                     'dataset_product_id','entitlement_id')), 'api21_warm_order')
+            for key in ('provider_calls','source_calls','asset_calls','model_calls','counts','immutable_sha256'):
+                require(warm['before'][key] == warm['after'][key], 'api21_warm_drift')
+            integer(warm['reader_before']); integer(warm['reader_after'])
+            require(warm['reader_after'] > warm['reader_before'] and measurement['image_reads'] >= warm['reader_after'],
+                    'api21_warm_reader')
+        exits=result['worker_exits']; array(exits)
+        require(len(exits) == (0 if google else 2), 'api21_worker_cleanup_inventory')
+        # Equal records are valid: source retains no distinct process identifiers.
+        for worker in exits:
+            exact(worker, ('kind','exit_code','terminated','intentional_cleanup','alive_before_cleanup'))
+            require(worker['kind'] == 'cli' and type(worker['exit_code']) is int and
+                all(worker[key] is True for key in ('terminated','intentional_cleanup','alive_before_cleanup')),
+                'api21_worker_cleanup')
+        observed.append(case_id)
+    unique(databases); store.recheck()
+    return dict(status='unavailable',complete=False,profile_version=profile_version,
+        candidate_sha=candidate_sha,trusted_base_sha=trusted_base_sha,observed_case_ids=observed,
+        verified_case_ids=[],accepted_case_credit=0,accepted_new_case_credit=0,diagnostics=diagnostics,
+        missing_validation_families=list(API21_MISSING_FAMILIES),**{flag:False for flag in FLAGS})
 
 
 def references(value, artifacts):

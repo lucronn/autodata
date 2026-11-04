@@ -2623,4 +2623,958 @@ class PaidScopeReceiptTests(unittest.TestCase):
             lambda s:s['immutable_rows']['canonical_articles'][i].pop('vehicle_configuration_id')))
             for i in range(8)],'paid_scope_binding')
 
+
+
+class API21RawInspectorTests(unittest.TestCase):
+    """Hand-authored source-shaped bytes, never a producer run or accepted capture."""
+    candidate = 'b6279480dc57f81f11f93435ae5b3d10b5ae262f'
+    cases = [{'case_id': 'test_browser_google_exchange_checkout_library_real_api[chromium]',
+      'case_prefix': 'workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/browser/chromium/test_browser_google_exchange_checkout_library_real_api-failure.png',
+      'engine': 'chromium',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'client_response_loss_same_key_one_checkout'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_google_exchange_checkout_library_real_api[chromium]',
+      'ordinal': 1,
+      'provider': 'bankone',
+      'required_refs': ['workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/child.log',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/result.json',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/ready.json',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/go-fixture.log',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/browser.stdout.log',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/browser.stderr.log',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/browser/evidence.json'],
+      'root': 'test_browser_google_exchange_checkout_library_real_api'},
+     {'case_id': 'test_browser_google_exchange_checkout_library_real_api[firefox]',
+      'case_prefix': 'workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/browser/firefox/test_browser_google_exchange_checkout_library_real_api-failure.png',
+      'engine': 'firefox',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'client_response_loss_same_key_one_checkout'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_google_exchange_checkout_library_real_api[firefox]',
+      'ordinal': 2,
+      'provider': 'bankone',
+      'required_refs': ['workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/child.log',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/result.json',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/ready.json',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/go-fixture.log',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/browser.stdout.log',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/browser.stderr.log',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/browser/evidence.json'],
+      'root': 'test_browser_google_exchange_checkout_library_real_api'},
+     {'case_id': 'test_browser_google_exchange_checkout_library_real_api[webkit]',
+      'case_prefix': 'workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/browser/webkit/test_browser_google_exchange_checkout_library_real_api-failure.png',
+      'engine': 'webkit',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'client_response_loss_same_key_one_checkout'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_google_exchange_checkout_library_real_api[webkit]',
+      'ordinal': 3,
+      'provider': 'bankone',
+      'required_refs': ['workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/child.log',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/result.json',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/ready.json',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/go-fixture.log',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/browser.stdout.log',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/browser.stderr.log',
+                        'workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/browser/evidence.json'],
+      'root': 'test_browser_google_exchange_checkout_library_real_api'},
+     {'case_id': 'test_browser_owned_source_canonical_and_media_real_api[chromium-bankone]',
+      'case_prefix': 'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/browser/chromium/test_browser_owned_source_canonical_and_media_real_api-failure.png',
+      'engine': 'chromium',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_owned_source_canonical_and_media_real_api[chromium-bankone]',
+      'ordinal': 4,
+      'provider': 'bankone',
+      'required_refs': ['workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/child.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/result.json',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/ready.json',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/go-fixture.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/browser.stdout.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/browser.stderr.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/browser/evidence.json'],
+      'root': 'test_browser_owned_source_canonical_and_media_real_api'},
+     {'case_id': 'test_browser_owned_source_canonical_and_media_real_api[chromium-banktwo]',
+      'case_prefix': 'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/browser/chromium/test_browser_owned_source_canonical_and_media_real_api-failure.png',
+      'engine': 'chromium',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_owned_source_canonical_and_media_real_api[chromium-banktwo]',
+      'ordinal': 5,
+      'provider': 'banktwo',
+      'required_refs': ['workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/child.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/result.json',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/ready.json',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/go-fixture.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/browser.stdout.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/browser.stderr.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/browser/evidence.json'],
+      'root': 'test_browser_owned_source_canonical_and_media_real_api'},
+     {'case_id': 'test_browser_owned_source_canonical_and_media_real_api[firefox-bankone]',
+      'case_prefix': 'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/browser/firefox/test_browser_owned_source_canonical_and_media_real_api-failure.png',
+      'engine': 'firefox',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_owned_source_canonical_and_media_real_api[firefox-bankone]',
+      'ordinal': 6,
+      'provider': 'bankone',
+      'required_refs': ['workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/child.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/result.json',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/ready.json',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/go-fixture.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/browser.stdout.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/browser.stderr.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/browser/evidence.json'],
+      'root': 'test_browser_owned_source_canonical_and_media_real_api'},
+     {'case_id': 'test_browser_owned_source_canonical_and_media_real_api[firefox-banktwo]',
+      'case_prefix': 'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/browser/firefox/test_browser_owned_source_canonical_and_media_real_api-failure.png',
+      'engine': 'firefox',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_owned_source_canonical_and_media_real_api[firefox-banktwo]',
+      'ordinal': 7,
+      'provider': 'banktwo',
+      'required_refs': ['workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/child.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/result.json',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/ready.json',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/go-fixture.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/browser.stdout.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/browser.stderr.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/browser/evidence.json'],
+      'root': 'test_browser_owned_source_canonical_and_media_real_api'},
+     {'case_id': 'test_browser_owned_source_canonical_and_media_real_api[webkit-bankone]',
+      'case_prefix': 'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/browser/webkit/test_browser_owned_source_canonical_and_media_real_api-failure.png',
+      'engine': 'webkit',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_owned_source_canonical_and_media_real_api[webkit-bankone]',
+      'ordinal': 8,
+      'provider': 'bankone',
+      'required_refs': ['workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/child.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/result.json',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/ready.json',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/go-fixture.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/browser.stdout.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/browser.stderr.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/browser/evidence.json'],
+      'root': 'test_browser_owned_source_canonical_and_media_real_api'},
+     {'case_id': 'test_browser_owned_source_canonical_and_media_real_api[webkit-banktwo]',
+      'case_prefix': 'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/browser/webkit/test_browser_owned_source_canonical_and_media_real_api-failure.png',
+      'engine': 'webkit',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_owned_source_canonical_and_media_real_api[webkit-banktwo]',
+      'ordinal': 9,
+      'provider': 'banktwo',
+      'required_refs': ['workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/child.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/result.json',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/ready.json',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/go-fixture.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/browser.stdout.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/browser.stderr.log',
+                        'workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/browser/evidence.json'],
+      'root': 'test_browser_owned_source_canonical_and_media_real_api'},
+     {'case_id': 'test_browser_account_scope_and_revocation_real_api[chromium-bankone]',
+      'case_prefix': 'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/browser/chromium/test_browser_account_scope_and_revocation_real_api-failure.png',
+      'engine': 'chromium',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                              'account_and_exact_scope_isolation',
+                              'logout_bfcache_and_firebase_disable_deny'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_account_scope_and_revocation_real_api[chromium-bankone]',
+      'ordinal': 10,
+      'provider': 'bankone',
+      'required_refs': ['workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/child.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/result.json',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/ready.json',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/go-fixture.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/browser.stdout.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/browser.stderr.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/browser/evidence.json'],
+      'root': 'test_browser_account_scope_and_revocation_real_api'},
+     {'case_id': 'test_browser_account_scope_and_revocation_real_api[chromium-banktwo]',
+      'case_prefix': 'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/browser/chromium/test_browser_account_scope_and_revocation_real_api-failure.png',
+      'engine': 'chromium',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                              'account_and_exact_scope_isolation',
+                              'logout_bfcache_and_firebase_disable_deny'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_account_scope_and_revocation_real_api[chromium-banktwo]',
+      'ordinal': 11,
+      'provider': 'banktwo',
+      'required_refs': ['workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/child.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/result.json',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/ready.json',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/go-fixture.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/browser.stdout.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/browser.stderr.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/browser/evidence.json'],
+      'root': 'test_browser_account_scope_and_revocation_real_api'},
+     {'case_id': 'test_browser_account_scope_and_revocation_real_api[firefox-bankone]',
+      'case_prefix': 'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/browser/firefox/test_browser_account_scope_and_revocation_real_api-failure.png',
+      'engine': 'firefox',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                              'account_and_exact_scope_isolation',
+                              'logout_bfcache_and_firebase_disable_deny'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_account_scope_and_revocation_real_api[firefox-bankone]',
+      'ordinal': 12,
+      'provider': 'bankone',
+      'required_refs': ['workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/child.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/result.json',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/ready.json',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/go-fixture.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/browser.stdout.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/browser.stderr.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/browser/evidence.json'],
+      'root': 'test_browser_account_scope_and_revocation_real_api'},
+     {'case_id': 'test_browser_account_scope_and_revocation_real_api[firefox-banktwo]',
+      'case_prefix': 'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/browser/firefox/test_browser_account_scope_and_revocation_real_api-failure.png',
+      'engine': 'firefox',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                              'account_and_exact_scope_isolation',
+                              'logout_bfcache_and_firebase_disable_deny'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_account_scope_and_revocation_real_api[firefox-banktwo]',
+      'ordinal': 13,
+      'provider': 'banktwo',
+      'required_refs': ['workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/child.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/result.json',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/ready.json',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/go-fixture.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/browser.stdout.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/browser.stderr.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/browser/evidence.json'],
+      'root': 'test_browser_account_scope_and_revocation_real_api'},
+     {'case_id': 'test_browser_account_scope_and_revocation_real_api[webkit-bankone]',
+      'case_prefix': 'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/browser/webkit/test_browser_account_scope_and_revocation_real_api-failure.png',
+      'engine': 'webkit',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                              'account_and_exact_scope_isolation',
+                              'logout_bfcache_and_firebase_disable_deny'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_account_scope_and_revocation_real_api[webkit-bankone]',
+      'ordinal': 14,
+      'provider': 'bankone',
+      'required_refs': ['workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/child.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/result.json',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/ready.json',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/go-fixture.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/browser.stdout.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/browser.stderr.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/browser/evidence.json'],
+      'root': 'test_browser_account_scope_and_revocation_real_api'},
+     {'case_id': 'test_browser_account_scope_and_revocation_real_api[webkit-banktwo]',
+      'case_prefix': 'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/browser/webkit/test_browser_account_scope_and_revocation_real_api-failure.png',
+      'engine': 'webkit',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                              'account_and_exact_scope_isolation',
+                              'logout_bfcache_and_firebase_disable_deny'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_account_scope_and_revocation_real_api[webkit-banktwo]',
+      'ordinal': 15,
+      'provider': 'banktwo',
+      'required_refs': ['workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/child.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/result.json',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/ready.json',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/go-fixture.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/browser.stdout.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/browser.stderr.log',
+                        'workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/browser/evidence.json'],
+      'root': 'test_browser_account_scope_and_revocation_real_api'},
+     {'case_id': 'test_browser_signed_refund_blocks_old_links_real_api[chromium-bankone]',
+      'case_prefix': 'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/browser/chromium/test_browser_signed_refund_blocks_old_links_real_api-failure.png',
+      'engine': 'chromium',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                              'signed_full_refund_denies_old_content_and_media'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_signed_refund_blocks_old_links_real_api[chromium-bankone]',
+      'ordinal': 16,
+      'provider': 'bankone',
+      'required_refs': ['workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/child.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/result.json',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/ready.json',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/go-fixture.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/browser.stdout.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/browser.stderr.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/browser/evidence.json'],
+      'root': 'test_browser_signed_refund_blocks_old_links_real_api'},
+     {'case_id': 'test_browser_signed_refund_blocks_old_links_real_api[chromium-banktwo]',
+      'case_prefix': 'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/browser/chromium/test_browser_signed_refund_blocks_old_links_real_api-failure.png',
+      'engine': 'chromium',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                              'signed_full_refund_denies_old_content_and_media'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_signed_refund_blocks_old_links_real_api[chromium-banktwo]',
+      'ordinal': 17,
+      'provider': 'banktwo',
+      'required_refs': ['workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/child.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/result.json',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/ready.json',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/go-fixture.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/browser.stdout.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/browser.stderr.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/browser/evidence.json'],
+      'root': 'test_browser_signed_refund_blocks_old_links_real_api'},
+     {'case_id': 'test_browser_signed_refund_blocks_old_links_real_api[firefox-bankone]',
+      'case_prefix': 'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/browser/firefox/test_browser_signed_refund_blocks_old_links_real_api-failure.png',
+      'engine': 'firefox',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                              'signed_full_refund_denies_old_content_and_media'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_signed_refund_blocks_old_links_real_api[firefox-bankone]',
+      'ordinal': 18,
+      'provider': 'bankone',
+      'required_refs': ['workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/child.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/result.json',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/ready.json',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/go-fixture.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/browser.stdout.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/browser.stderr.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/browser/evidence.json'],
+      'root': 'test_browser_signed_refund_blocks_old_links_real_api'},
+     {'case_id': 'test_browser_signed_refund_blocks_old_links_real_api[firefox-banktwo]',
+      'case_prefix': 'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/browser/firefox/test_browser_signed_refund_blocks_old_links_real_api-failure.png',
+      'engine': 'firefox',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                              'signed_full_refund_denies_old_content_and_media'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_signed_refund_blocks_old_links_real_api[firefox-banktwo]',
+      'ordinal': 19,
+      'provider': 'banktwo',
+      'required_refs': ['workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/child.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/result.json',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/ready.json',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/go-fixture.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/browser.stdout.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/browser.stderr.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/browser/evidence.json'],
+      'root': 'test_browser_signed_refund_blocks_old_links_real_api'},
+     {'case_id': 'test_browser_signed_refund_blocks_old_links_real_api[webkit-bankone]',
+      'case_prefix': 'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/browser/webkit/test_browser_signed_refund_blocks_old_links_real_api-failure.png',
+      'engine': 'webkit',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                              'signed_full_refund_denies_old_content_and_media'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_signed_refund_blocks_old_links_real_api[webkit-bankone]',
+      'ordinal': 20,
+      'provider': 'bankone',
+      'required_refs': ['workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/child.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/result.json',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/ready.json',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/go-fixture.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/browser.stdout.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/browser.stderr.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/browser/evidence.json'],
+      'root': 'test_browser_signed_refund_blocks_old_links_real_api'},
+     {'case_id': 'test_browser_signed_refund_blocks_old_links_real_api[webkit-banktwo]',
+      'case_prefix': 'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/',
+      'conditional_failure_ref': 'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/browser/webkit/test_browser_signed_refund_blocks_old_links_real_api-failure.png',
+      'engine': 'webkit',
+      'expected_assertions': ['official_sdk_cookie_and_pg_session',
+                              'return_does_not_grant',
+                              'signed_public_webhook_grants_once',
+                              'permanent_owner_library_reload',
+                              'permanent_owner_library_server_restart',
+                              'paid_source_and_actual_s3_image',
+                              'source_to_canonical_and_warm_reuse',
+                              'warm_raw_runtime_unchanged_with_approved_s3_delivery',
+                              'signed_full_refund_denies_old_content_and_media'],
+      'junit_classname': 'tests.test_workshop_browser_integration',
+      'junit_name': 'test_browser_signed_refund_blocks_old_links_real_api[webkit-banktwo]',
+      'ordinal': 21,
+      'provider': 'banktwo',
+      'required_refs': ['workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/child.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/result.json',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/ready.json',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/go-fixture.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/browser.stdout.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/browser.stderr.log',
+                        'workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/browser/evidence.json'],
+      'root': 'test_browser_signed_refund_blocks_old_links_real_api'}]
+    inputs = {'apps/api-go/workshop_browser_fixture_test.go': '7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33',
+     'scripts/dev/fixtures/workshop_customer/firebase_transport.js': '96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63',
+     'scripts/dev/fixtures/workshop_customer/hostile_source.json': '076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1',
+     'scripts/dev/fixtures/workshop_customer/scenarios.json': '83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9',
+     'scripts/dev/fixtures/workshop_customer/stripe_checkout.html': '26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083',
+     'scripts/dev/workshop_browser_smoke.py': '95f95f25de9c1718901f1dc99580a89d5588a17dd43b8a3a013f8b459e6ba2bc'}
+    assets = {'app.mjs': {'bytes': 37545, 'sha256': '4a3e16b3b407e738ed013f4b7ae416fe6c47eb1548d123e90b5b867df5c74788'},
+     'article-read.mjs': {'bytes': 2579,
+                          'sha256': '2957242037d4bc3ce7894ae2c7e4bae1636406d0256dd75b6150e78c1c4e5178'},
+     'auth.mjs': {'bytes': 7908, 'sha256': 'ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2'},
+     'catalog.mjs': {'bytes': 11688,
+                     'sha256': 'cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52'},
+     'commerce.mjs': {'bytes': 7369,
+                      'sha256': 'e7f8e2fd45d6cd9f4ec2ef2f3a50d3f090f34e2562d4bbc58f9c23d06e8a1142'},
+     'firebase-web.mjs': {'bytes': 112641,
+                          'sha256': 'bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1'},
+     'firebase-web.mjs.LEGAL.txt': {'bytes': 35536,
+                                    'sha256': '70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319'},
+     'firebase-web.provenance.json': {'bytes': 2237,
+                                      'sha256': '0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a'},
+     'index.html': {'bytes': 10868, 'sha256': '8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68'},
+     'progress.mjs': {'bytes': 1076,
+                      'sha256': 'dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48'},
+     'styles.css': {'bytes': 20773, 'sha256': 'c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c'}}
+    missing = ['actual_child_go_browser_exit_receipts',
+     'parent_pytest_exit_and_command_receipts',
+     'lost_response_pending_measurement_and_snapshot_raw',
+     'checkout_idempotency_key_request_response_bytes_and_body_hashes',
+     'signed_settlement_refund_http_bytes_and_authentic_delivery',
+     'other_account_denial_http_status_and_response_bytes',
+     'logout_disable_revocation_http_observations',
+     'runtime_image_browser_cache_sdk_install_identity',
+     'authenticated_capture_source_observer_and_containment',
+     'global_worker_log_per_case_ownership_mapping',
+     'finite_api_success_schedule',
+     'junit_byte_preserving_capture_mapping',
+     'all_final180_families_and_profile_promotion',
+     'independent_authentic_raw_review']
+
+    @staticmethod
+    def uid(number):
+        return '00000000-0000-0000-0000-'+str(number).zfill(12)
+
+    def paid(self, *, isolation=False, revoked=False):
+        u=self.uid; now='2026-11-04T00:00:00Z'
+        account=dict(customer_account_id=u(10),personal_organization_id=u(11),
+            firebase_project_id='fixture-project',firebase_uid='fixture-user',status='active',created_at=now)
+        sessions=[dict(customer_account_id=u(10),session_token_hash='\\x'+'a'*64,created_at=now,
+            expires_at='2026-11-05T00:00:00Z',firebase_auth_time=1,revoked_at=now if isolation else None)]
+        accounts=[account]
+        if isolation:
+            accounts.append(dict(account,customer_account_id=u(12),personal_organization_id=u(13),firebase_uid='fixture-other'))
+            sessions.extend([dict(sessions[0],customer_account_id=u(12),session_token_hash='\\x'+'b'*64,revoked_at=None),
+                             dict(sessions[0],session_token_hash='\\x'+'c'*64)])
+        order=dict(order_id=u(20),customer_account_id=u(10),organization_id=u(11),configuration_id=u(1),
+            dataset_request_id=u(21),dataset_product_id=u(22),entitlement_id=u(23),amount_minor=2000,currency='USD',
+            livemode=False,stripe_account_id='acct_fixture',expected_price_id='price_fixture',terms_version='workshop-v1',
+            region='US',status='revoked' if revoked else 'paid',checkout_session_id='cs_test_'+'a'*32,
+            checkout_url='https://checkout.stripe.com/c/pay/cs_test_'+'a'*32,payment_intent_id='pi_fixture',
+            provider_idempotency_key='fixture-key',created_at=now,updated_at=now,paid_at=now,
+            first_create_attempt_at=now,last_reconciled_at=None,provider_expires_at=None,
+            preparation_attempts=0,preparation_index_job_ids=[],preparation_state='pending',
+            preparation_last_error_code=None,preparation_lease_expires_at=None,preparation_lease_owner=None,
+            preparation_next_attempt_at=now,revoked_at=now if revoked else None,
+            revocation_reason_code='full_refund' if revoked else None)
+        grant=dict(entitlement_id=u(23),commerce_order_id=u(20),configuration_id=u(1),customer_account_id=u(10),
+            dataset_request_id=u(21),organization_id=u(11),payment_event_id=u(24),provider_event_id='evt_fixture',
+            region='US',status='revoked' if revoked else 'active',granted_at=now,
+            revoked_at=now if revoked else None,revoke_reason='full_refund' if revoked else None)
+        request=dict(dataset_request_id=u(21),dataset_product_id=u(22),organization_id=u(11),correlation_id=u(20),
+            vehicle_key=u(1),vehicle_id=u(4),region='US',idempotency_key='fixture-key',lane='canonical',
+            processing_version='v1',source_snapshot_id=None,status='completed',created_at=now,updated_at=now)
+        projection=dict(dataset_projection_id=u(25),dataset_request_id=u(21),dataset_product_id=u(22),
+            entitlement_id=u(23),created_at=now)
+        return dict(customer_accounts=accounts,auth_sessions=sessions,workshop_orders=[order],entitlements=[grant],
+            dataset_requests=[request],dataset_projections=[projection])
+
+    def snapshot(self, bank, *, work=False, isolation=False, revoked=False):
+        u=self.uid
+        paid=self.paid(isolation=isolation,revoked=revoked)
+        tables=('schema_migrations','catalog_articles','canonical_articles',
+            'canonical_article_source_revisions','canonical_article_source_observations',
+            'canonical_article_revisions','canonical_article_reviews','canonical_article_rewrite_attempts',
+            'source_fetch_jobs','publication_events','source_snapshots','catalog_article_provider_scopes',
+            'catalog_article_index_pages','canonical_article_aliases','customer_accounts','auth_sessions',
+            'workshop_orders','workshop_checkout_requests')
+        rows={table:[] for table in tables}
+        article=dict(canonical_article_id=u(5),provider_slug=bank,vehicle_configuration_id=u(1),vehicle_id=u(4))
+        rows['canonical_articles']=[article.copy()]
+        for table in ('customer_accounts','auth_sessions','workshop_orders'):rows[table]=copy.deepcopy(paid[table])
+        rows['workshop_checkout_requests']=[dict(order_id=u(20))]
+        counts=dict(article_jobs=0,source_revisions=0,canonical_revisions=0,published_revisions=0,
+            publication_events=0,source_observations=0)
+        if work:
+            rows['canonical_article_revisions']=[dict(canonical_article_id=u(5),status='published')]
+            counts.update(canonical_revisions=1,published_revisions=1)
+        zero=lambda:dict(bankone=0,banktwo=0)
+        return dict(article=article,immutable_rows=rows,
+            immutable_sha256=hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest(),
+            paid_rows=paid,counts=counts,ensure=dict(entered=0,completed=0,active=0),ensure_requests=[],
+            selector_ensure=dict(entered=0,completed=0,active=0),selector_ensure_requests=[],
+            provider_calls=zero(),source_calls=zero(),asset_calls=zero(),provider_traces=dict(bankone=[],banktwo=[]),
+            model_calls=int(work),payment_calls=1,grant_calls=1,
+            proxy=dict(request_received=0,upstream_completed=0,downstream_completed=0,downstream_waiting=0,
+                response_captured=False,errors=[]),
+            workers=[dict(kind='cli',alive=True,exit_code=None) for _ in range(2)] if work else [])
+
+    def measurement(self, *, isolation=False, revoked=False):
+        return dict(auth_sessions=3 if isolation else 1,hashed_sessions=3 if isolation else 1,
+            workshop_orders=1,workshop_checkout_requests=1,entitlements=1,dataset_requests=1,dataset_projections=1,
+            payment_events=2 if revoked else 1,sdk_cert_calls=1,sdk_user_calls=2,sdk_unexpected=0,image_reads=2,
+            orders=[dict(order_id=self.uid(20),state='revoked' if revoked else 'paid',owner=self.uid(10),
+                configuration_id=self.uid(1),region='US')])
+
+    def model(self):
+        result=[]
+        for index,case in enumerate(self.cases):
+            google=case['root'].startswith('test_browser_google_')
+            isolation=case['root'].startswith('test_browser_account_')
+            refund=case['root'].startswith('test_browser_signed_')
+            bank=case['provider'];engine=case['engine']
+            ready=dict(version='v1',kind='api-fixture',origin='https://127.0.0.1:12345',
+                certificate_sha256='a'*64,sdk_sha256=self.assets['firebase-web.mjs']['sha256'],
+                scope=dict(configuration=self.uid(1),adjacent=self.uid(2),other_region=self.uid(3),
+                    vehicle=self.uid(4),article=self.uid(5),unscoped=self.uid(6),provider=bank))
+            final=self.snapshot(bank,work=not google,isolation=isolation,revoked=refund)
+            before=self.measurement()
+            row=dict(browser=engine,scenario=case['root'],status='passed',elapsed_seconds=70.5,
+                provider=bank,assertions={key:True for key in case['expected_assertions']},
+                requests=[dict(method='GET',path='/workshop/'),dict(method='POST',path='/auth/firebase/session'),
+                    dict(method='GET',path='/v1/catalog/vehicles/{uuid}/articles/{uuid}'),
+                    dict(method='GET',path='/v1/catalog/images/{capability}')],
+                measurement=self.measurement(isolation=isolation,revoked=refund),
+                restart=dict(runtime_before=dict(application_generation=0),runtime_after=dict(application_generation=1),
+                    before=copy.deepcopy(before),after=copy.deepcopy(before)),warm={})
+            if not google:
+                warm=self.snapshot(bank,work=True)
+                row['warm']=dict(before=warm,after=copy.deepcopy(warm),reader_before=0,reader_after=1)
+            evidence=dict(version='v1',mode='api-fixture',candidate_sha=self.candidate,
+                sdk_sha256=ready['sdk_sha256'],playwright_version='1.64.1',engine_revisions={engine:'synthetic-revision'},
+                browser_versions={engine:'synthetic-version'},input_sha256=copy.deepcopy(self.inputs),
+                provenance=dict(certificate_sha256='a'*64,assets=copy.deepcopy(self.assets)),results=[row])
+            child=dict(version='v1',mode='api-fixture',candidate_sha=self.candidate,browser=engine,provider=bank,
+                test=case['root'],fixture_database='lifecycle_'+str(index).zfill(32),passed=True,
+                final_snapshot=final,worker_exits=[] if google else [dict(kind='cli',exit_code=-15,
+                    terminated=True,intentional_cleanup=True,alive_before_cleanup=True) for _ in range(2)])
+            result.append(dict(case=case,ready=ready,evidence=evidence,result=child))
+        return result
+
+    def files(self, model):
+        raw={}
+        for item in model:
+            case=item['case'];prefix=case['case_prefix']
+            raw.update({ref:b'SECRET_SENTINEL opaque support bytes' for ref in case['required_refs']})
+            for filename,key in (('result.json','result'),('ready.json','ready'),('browser/evidence.json','evidence')):
+                raw[prefix+filename]=json.dumps(item[key],allow_nan=False).encode()
+        leaves=[]; failures=skipped=0
+        for item in model:
+            outcome=''
+            if item['result']['passed'] is False:
+                rows=item['evidence']['results']
+                unavailable=rows and rows[0]['status']=='unavailable'
+                skipped+=bool(unavailable);failures+=not unavailable
+                outcome='<skipped message="SECRET_SENTINEL" />' if unavailable else '<failure message="SECRET_SENTINEL">private failure text</failure>'
+            leaves.append('<testcase classname="tests.test_workshop_browser_integration" name="'+
+                item['case']['case_id']+'" time="70.5">'+outcome+'</testcase>')
+        raw['workshop-browser-api.xml']=('<testsuites name="pytest tests"><testsuite name="pytest" tests="'+str(len(model))+
+            '" failures="'+str(failures)+'" errors="0" skipped="'+str(skipped)+
+            '" time="1500.5" timestamp="2026-11-04T00:00:00Z" hostname="synthetic">'+
+            ''.join(leaves)+'</testsuite></testsuites>').encode()
+        return raw
+
+    def invocation(self):
+        return dict(candidate_sha=self.candidate,trusted_base_sha=TRUSTED_BASE,profile_sha256='b'*64)
+
+    def store(self, raw, directory):
+        declarations=[]
+        for index,(ref,data) in enumerate(raw.items()):
+            path=Path(directory)/ref;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+            declarations.append(dict(artifact_id='api-'+str(index),ref=ref,kind='junit' if ref.endswith('.xml') else 'raw',
+                sha256=hashlib.sha256(data).hexdigest(),bytes=len(data),visibility='private'))
+        return assembler.ArtifactStore(directory,declarations)
+
+    def inspect(self, model=None, *, raw=None, real=False, **kwargs):
+        self.assertTrue(callable(getattr(assembler,'inspect_api21_receipts',None)), 'internal API21 inspector is missing')
+        raw=self.files(self.model() if model is None else model) if raw is None else raw
+        if real:
+            with tempfile.TemporaryDirectory() as directory:
+                with self.store(raw,directory) as store:return assembler.inspect_api21_receipts(store,**(self.invocation()|kwargs))
+        class Store:
+            by_ref={ref:dict(artifact_id=ref,kind='junit' if ref.endswith('.xml') else 'raw',visibility='private') for ref in raw}
+            def read(self,ref):return raw[ref]
+            def recheck(self):pass
+        return assembler.inspect_api21_receipts(Store(),**(self.invocation()|kwargs))
+
+    def reject(self, model=None, *, raw=None, **kwargs):
+        with self.assertRaises(assembler.ContractError) as caught:self.inspect(model,raw=raw,**kwargs)
+        self.assertNotIn('SECRET_SENTINEL',str(caught.exception))
+
+    def test_complete_synthetic_inventory_observed_without_acceptance(self):
+        result=self.inspect(real=True)
+        self.assertEqual(result['observed_case_ids'],[case['case_id'] for case in self.cases])
+        self.assertEqual(result['status'],'unavailable');self.assertIs(result['complete'],False)
+        self.assertEqual(result['verified_case_ids'],[])
+        self.assertEqual(result['accepted_case_credit'],0);self.assertEqual(result['accepted_new_case_credit'],0)
+        self.assertEqual(result['missing_validation_families'],self.missing)
+        self.assertEqual(result['diagnostics'],[])
+        for flag in assembler.FLAGS:self.assertIs(result[flag],False)
+
+    def test_closed_schemas_identity_source_support_and_authority(self):
+        mutations=[
+            lambda x:x['result'].update(candidate_sha='0'*40),
+            lambda x:x['result'].update(go_exit_code=0),
+            lambda x:x['result'].update(passed=1),
+            lambda x:x['result'].update(fixture_database=''),
+            lambda x:x['ready'].update(origin='https://localhost:1234/?token=SECRET_SENTINEL'),
+            lambda x:x['ready']['scope'].update(provider='banktwo'),
+            lambda x:x['ready']['scope'].update(adjacent=self.uid(1)),
+            lambda x:x['evidence'].update(mode='dto-fixture'),
+            lambda x:x['evidence'].update(playwright_version='1.64.0'),
+            lambda x:x['evidence']['input_sha256'].update({'scripts/dev/workshop_browser_smoke.py':'0'*64}),
+            lambda x:x['evidence']['provenance']['assets']['app.mjs'].update(bytes=1),
+            lambda x:x['evidence']['provenance'].update(certificate_sha256='b'*64),
+            lambda x:x['evidence']['engine_revisions'].update(leak=[]),
+            lambda x:x['evidence']['results'][0]['assertions'].update(forged=True),
+            lambda x:x['evidence']['results'][0]['requests'][0].update(query={'token':['SECRET_SENTINEL']}),
+            lambda x:x['evidence']['results'][0]['requests'][0].update(path='/v1/catalog/images/v2.SECRET_SENTINEL'),
+            lambda x:x['evidence']['results'][0].update(elapsed_seconds=True),
+            lambda x:x['evidence']['results'][0].update(browser='firefox'),
+            lambda x:x['result']['final_snapshot']['immutable_rows']['source_snapshots'].append(dict(accepted=True)),
+            lambda x:x['result']['final_snapshot']['immutable_rows']['source_snapshots'].append(dict(candidate_tree='0'*40)),
+            lambda x:x['result']['final_snapshot']['immutable_rows']['source_snapshots'].append(dict(profile_version='dto-fixture-v1')),
+        ]
+        for index,mutate in enumerate(mutations):
+            model=self.model();mutate(model[0])
+            with self.subTest(mutation=index):self.reject(model)
+        for kwargs in (dict(candidate_sha='0'*40),dict(profile_version='other')):self.reject(**kwargs)
+        raw=self.files(self.model())
+        for ref in (next(iter(raw)),'workshop-browser-api.xml'):
+            changed=raw.copy();changed.pop(ref)
+            self.reject(raw=changed)
+        changed=raw.copy();changed['workshop-browser-tests.xml']=changed.pop('workshop-browser-api.xml');self.reject(raw=changed)
+        changed=raw.copy();changed['extra.log']=b'claimed exit0';self.reject(raw=changed)
+
+    def test_semantic_measurement_restart_warm_scope_and_workers(self):
+        mutations=[
+            lambda x:x['evidence']['results'][0]['measurement'].update(hashed_sessions=0),
+            lambda x:x['evidence']['results'][0]['measurement'].update(sdk_unexpected=1),
+            lambda x:x['evidence']['results'][0]['measurement'].update(entitlements=True),
+            lambda x:x['evidence']['results'][0]['measurement']['orders'][0].update(owner=self.uid(99)),
+            lambda x:x['evidence']['results'][0]['restart']['runtime_after'].update(application_generation=3),
+            lambda x:x['evidence']['results'][0]['restart']['after'].update(payment_events=4),
+            lambda x:x['evidence']['results'][0]['warm'].update(reader_after=0),
+            lambda x:x['evidence']['results'][0]['warm']['after'].update(model_calls=2),
+            lambda x:x['result']['final_snapshot'].update(immutable_sha256='0'*64),
+            lambda x:x['result']['final_snapshot']['paid_rows']['workshop_orders'][0].update(amount_minor=0),
+            lambda x:x['result']['final_snapshot']['paid_rows']['entitlements'][0].update(customer_account_id=self.uid(99)),
+            lambda x:x['result']['final_snapshot']['paid_rows']['dataset_projections'][0].update(entitlement_id=self.uid(99)),
+            lambda x:x['result']['final_snapshot']['paid_rows']['dataset_requests'][0].update(region='CA'),
+            lambda x:x['result']['final_snapshot']['paid_rows']['auth_sessions'][0].update(session_token_hash='SECRET_SENTINEL'),
+            lambda x:x['result']['final_snapshot']['paid_rows']['workshop_orders'][0].update(status='revoked'),
+            lambda x:x['result']['final_snapshot']['counts'].update(source_revisions=2),
+            lambda x:x['result']['final_snapshot']['provider_calls'].update(bankone=1),
+            lambda x:x['result']['final_snapshot']['proxy'].update(errors=['SECRET_SENTINEL']),
+            lambda x:x['result']['final_snapshot']['ensure'].update(entered=1,active=1),
+            lambda x:x['result']['final_snapshot']['workers'][0].update(alive=False),
+            lambda x:x['result']['worker_exits'].pop(),
+            lambda x:x['result']['worker_exits'][0].update(exit_code=True),
+            lambda x:x['result']['worker_exits'][0].update(intentional_cleanup=False),
+            lambda x:x['result']['worker_exits'][0].update(browser_exit_code=0),
+        ]
+        for index,mutate in enumerate(mutations):
+            model=self.model();mutate(model[3])
+            with self.subTest(mutation=index):self.reject(model)
+        model=self.model();model[15]['result']['final_snapshot']['paid_rows']['entitlements'][0].update(revoked_at=None)
+        self.reject(model)
+        model=self.model();model[0]['result']['worker_exits']=[dict(kind='cli',exit_code=0,terminated=True,intentional_cleanup=True,alive_before_cleanup=True)]
+        self.reject(model)
+
+    def test_junit_order_counters_outcomes_and_hostile_json_xml(self):
+        raw=self.files(self.model());junit=raw['workshop-browser-api.xml']
+        for data in (junit.replace(b'tests="21"',b'tests="20"'),
+            junit.replace(b'failures="0"',b'failures="1"'),
+            junit.replace(b'tests.test_workshop_browser_integration',b'tests.test_workshop_dto_integration'),
+            junit.replace(b'</testcase>',b'<skipped /></testcase>',1),
+            junit.replace(self.cases[0]['case_id'].encode(),self.cases[1]['case_id'].encode(),1),
+            b'<!DOCTYPE x [<!ENTITY secret SYSTEM "file:///etc/passwd">]>'+junit,
+            b'<testsuite>'+b'<x>'*65+b'</x>'*65+b'</testsuite>',b'<testsuites>'):
+            changed=raw.copy();changed['workshop-browser-api.xml']=data;self.reject(raw=changed)
+        model=self.model();model[0],model[1]=model[1],model[0];self.reject(model)
+        ref=self.cases[0]['case_prefix']+'result.json'
+        for data in (b'{"passed":false,"passed":true}',b'{',b'{"x":NaN}',b'{"x":1e999}',bytes([255]),
+                     b'{"x":'+b'['*1100+b'0'+b']'*1100+b'}'):
+            changed=raw.copy();changed[ref]=data;self.reject(raw=changed)
+
+    def test_failed_unavailable_partial_preserve_private_bytes_and_safe_diagnostics(self):
+        for status in ('failed','unavailable'):
+            model=self.model();item=model[0];item['result']['passed']=False
+            item['result'].pop('final_snapshot');item['result'].pop('worker_exits')
+            row=dict(browser='chromium',scenario=item['case']['root'],status=status,error='SECRET_SENTINEL')
+            if status=='failed':row['elapsed_seconds']=2
+            item['evidence']['results']=[row]
+            if status=='unavailable':item['evidence'].pop('browser_versions')
+            raw=self.files(model);raw[item['case']['conditional_failure_ref']]=b'SECRET_SENTINEL png bytes'
+            result=self.inspect(raw=raw,real=True)
+            self.assertEqual(len(result['observed_case_ids']),20)
+            self.assertEqual(result['diagnostics'],[dict(case_id=item['case']['case_id'],category='producer_'+status)])
+            self.assertNotIn('SECRET_SENTINEL',json.dumps(result))
+            self.assertEqual(result['verified_case_ids'],[])
+        model=self.model();model[0]['result']['passed']=False
+        model[0]['evidence']['results']=[]
+        result=self.inspect(model)
+        self.assertEqual(result['diagnostics'][0]['category'],'producer_partial')
+
+    def test_inspector_has_no_process_network_producer_or_stdout_side_effects(self):
+        model=self.model();output=io.StringIO()
+        with patch('subprocess.run',side_effect=AssertionError('process forbidden')), \
+             patch('subprocess.Popen',side_effect=AssertionError('process forbidden')), \
+             patch('socket.socket',side_effect=AssertionError('network forbidden')), \
+             patch('builtins.print',side_effect=AssertionError('output forbidden')):
+            self.assertEqual(self.inspect(model)['accepted_case_credit'],0)
+        self.assertNotIn('workshop_browser_smoke',sys.modules)
+
+    def test_confined_transport_missing_hash_replacement_alias_and_limits(self):
+        raw=self.files(self.model())
+        for mode in ('hash','replace','symlink','hardlink','extra','public','kind'):
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as directory:
+                with self.store(raw,directory) as store:
+                    ref=self.cases[0]['required_refs'][0];record=store.by_ref[ref];path=Path(directory)/ref
+                    if mode=='hash':record['sha256']='0'*64
+                    elif mode=='replace':path.write_bytes(b'X'*len(raw[ref]))
+                    elif mode=='symlink':path.unlink();path.symlink_to('/etc/passwd')
+                    elif mode=='hardlink':path.unlink();os.link(Path(directory)/self.cases[1]['required_refs'][0],path)
+                    elif mode=='extra':(Path(directory)/'undeclared.log').write_bytes(b'x')
+                    elif mode=='public':record['visibility']='public'
+                    else:record['kind']='manifest'
+                    with self.assertRaises(assembler.ContractError):assembler.inspect_api21_receipts(store,**self.invocation())
+        self.assertEqual(assembler.MAX_ARTIFACT_BYTES,8*1024*1024)
+        self.assertEqual(assembler.MAX_EVIDENCE_BYTES,64*1024*1024)
+
+    @staticmethod
+    def reseal(snapshot, *, copies=True):
+        if copies:
+            for table in ('customer_accounts','auth_sessions','workshop_orders'):
+                snapshot['immutable_rows'][table]=copy.deepcopy(snapshot['paid_rows'][table])
+        snapshot['immutable_sha256']=hashlib.sha256(json.dumps(snapshot['immutable_rows'],sort_keys=True,allow_nan=False).encode()).hexdigest()
+
+    def test_semantic_mutations_reach_binding_checks_after_rehash(self):
+        mutations=[
+            ('api21_accounts',lambda s:s['paid_rows']['customer_accounts'][0].update(firebase_uid='intruder')),
+            ('api21_paid_scope',lambda s:s['paid_rows']['workshop_orders'][0].update(configuration_id=self.uid(99))),
+            ('api21_paid_scope',lambda s:s['paid_rows']['entitlements'][0].update(commerce_order_id=self.uid(99))),
+            ('api21_paid_scope',lambda s:s['paid_rows']['dataset_requests'][0].update(organization_id=self.uid(99))),
+            ('api21_paid_scope',lambda s:s['paid_rows']['dataset_projections'][0].update(dataset_product_id=self.uid(99))),
+            ('api21_payment_binding',lambda s:s['paid_rows']['workshop_orders'][0].update(currency='CAD')),
+            ('api21_payment_binding',lambda s:s['paid_rows']['workshop_orders'][0].update(livemode=True)),
+            ('api21_payment_binding',lambda s:s['paid_rows']['workshop_orders'][0].update(stripe_account_id='wrong')),
+            ('api21_revocation',lambda s:s['paid_rows']['workshop_orders'][0].update(revoked_at='2026-11-04T00:00:00Z')),
+            ('api21_sessions',lambda s:s['paid_rows']['auth_sessions'][0].update(customer_account_id=self.uid(99))),
+            ('api21_count_binding',lambda s:s['immutable_rows']['canonical_article_revisions'].append(dict(canonical_article_id=self.uid(5),status='published'))),
+            ('api21_article_seam',lambda s:s['immutable_rows']['canonical_articles'][0].update(provider_slug='banktwo')),
+            ('api21_resource_trace',lambda s:(s['provider_calls'].update(bankone=1),s['provider_traces']['bankone'].append('/fixture/resources/body'))),
+        ]
+        for position in ('final','warm_before','warm_after'):
+            for code,mutate in mutations:
+                model=self.model();item=model[3]
+                snapshot=item['result']['final_snapshot'] if position=='final' else item['evidence']['results'][0]['warm'][position[5:]]
+                mutate(snapshot);self.reseal(snapshot)
+                with self.subTest(position=position,code=code),self.assertRaises(assembler.ContractError) as caught:self.inspect(model)
+                self.assertEqual(str(caught.exception),code)
+        model=self.model();s=model[3]['result']['final_snapshot']
+        s['immutable_rows']['customer_accounts'][0]['status']='different';self.reseal(s,copies=False)
+        with self.assertRaises(assembler.ContractError) as caught:self.inspect(model)
+        self.assertEqual(str(caught.exception),'api21_paid_row_seam')
+
+    def test_actual_source_route_templates_and_opaque_producer_hash_spacing(self):
+        model=self.model()
+        row=model[3]['evidence']['results'][0]
+        row['requests']=[dict(method=method,path=path) for method,path in (
+            ('GET','/auth/config'),('GET','/auth/session'),('POST','/auth/firebase/session'),('POST','/auth/logout'),
+            ('GET','/workshop/fonts/InstrumentSans.ttf'),('GET','/workshop/purchase-config.json'),
+            ('GET','/v1/catalog/years/2024/makes'),
+            ('GET','/v1/catalog/years/2024/makes/example/models'),
+            ('GET','/v1/catalog/years/2024/makes/example/models/car/configurations'),
+            ('POST','/v1/catalog/vehicles/{uuid}/articles/{uuid}/prepare'),
+            ('GET','/v1/catalog/vehicles/{uuid}/articles/{uuid}/source'))]
+        snapshot=model[3]['result']['final_snapshot']
+        snapshot['immutable_rows']['source_snapshots'].append(dict(opaque='é private SQL',amount=1.5))
+        self.reseal(snapshot)
+        self.assertEqual(self.inspect(model)['accepted_case_credit'],0)
+
+    def test_nested_reserved_identities_and_redacted_exceptions_at_retained_positions(self):
+        for index in (0,3,15):
+            for key,value in (('trusted_base_sha','0'*40),('profile_sha256','0'*64),
+                ('producer_sha','0'*40),('source_tree','0'*40),('verified_case_ids',['forged']),
+                ('accepted_case_credit',1),('fixture_verified',True)):
+                model=self.model();snapshot=model[index]['result']['final_snapshot']
+                snapshot['immutable_rows']['source_snapshots'].append({key:value,'private':'SECRET_SENTINEL'})
+                self.reseal(snapshot)
+                with self.subTest(index=index,key=key),self.assertRaises(assembler.ContractError) as caught:self.inspect(model)
+                self.assertIn(str(caught.exception),('api21_identity','api21_forged_authority'))
+                self.assertNotIn('SECRET_SENTINEL',str(caught.exception))
+
+    def test_cli_stays_exit_three_and_zero_after_internal_inspection(self):
+        self.assertEqual(self.inspect()['verified_case_ids'],[])
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'envelope.json';path.write_text(json.dumps(committed_envelope()))
+            root=Path(directory)/'raw';root.mkdir();(root/'proof.json').write_bytes(b'{}')
+            output=io.StringIO();errors=io.StringIO()
+            with patch('sys.stdout',output),patch('sys.stderr',errors), \
+                 patch.object(assembler,'inspect_api21_receipts',side_effect=AssertionError('CLI dispatch forbidden')):
+                code=assembler.main(['validate','--manifest',str(path),'--evidence-root',str(root),
+                    '--trusted-base-sha',TRUSTED_BASE,'--task-ref',TASK,'--requested-tier','fixture'])
+            self.assertEqual(code,3)
+            result=json.loads(output.getvalue());self.assertTrue(all(value==0 for value in result['derived_counts'].values()))
+            self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+
+    def test_source_early_failure_can_omit_only_ready_and_evidence(self):
+        model=self.model();item=model[0];item['result']['passed']=False
+        item['result'].pop('final_snapshot');item['result'].pop('worker_exits')
+        item['evidence']['results']=[]
+        raw=self.files(model);prefix=item['case']['case_prefix']
+        for names in (('browser/evidence.json',),('ready.json','browser/evidence.json')):
+            changed=raw.copy()
+            for name in names:changed.pop(prefix+name)
+            result=self.inspect(raw=changed,real=True)
+            self.assertEqual(result['diagnostics'],[dict(case_id=item['case']['case_id'],category='producer_partial')])
+            self.assertEqual(len(result['observed_case_ids']),20)
+            self.assertEqual(result['accepted_case_credit'],0)
+        changed=raw.copy();changed.pop(prefix+'child.log');self.reject(raw=changed)
+        changed=self.files(self.model());changed.pop(prefix+'browser/evidence.json');self.reject(raw=changed)
+
+
 if __name__ == '__main__': unittest.main()

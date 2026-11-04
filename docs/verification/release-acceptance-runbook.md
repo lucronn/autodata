@@ -478,3 +478,67 @@ Producer `/artifacts/workshop-browser-api.xml` is retained; proposed byte-preser
 Coordinator-only actual tracking readback, exact-checkpoint preflight and independent review precede any separate code/probe/acquisition/fixture service gate. All eight authentic staging slots remain distinct later2 protected collector/enrollment obligations; no admitted live browser command, no fixture-to-authentic credit, no deployment/cutover.
 
 Tracking readback: https://github.com/lucronn/autodata/issues/186#issuecomment-6640772107. Draft preservation/inventory review PASS; closed executable contract BLOCKED on supervisor static bindings, support/probe schemas, DTO timer proof and 16MiB/8MiB transport. No browser execution credit or authority.
+
+## Current-source API21 internal retained-byte inspection
+
+The API21 G1 inspector is an internal call only:
+`inspect_api21_receipts(store, *, candidate_sha, trusted_base_sha, profile_sha256,
+profile_version="api21-fixture-v1")`. Its frozen product source is
+`b6279480dc57f81f11f93435ae5b3d10b5ae262f`, under the K2 planning checkpoint
+`50289d1215fa335786ba2aab620321e36d209e95`. The static browser compiler retains
+its historical source/timer binding. This addition does not select a CLI raw
+kind, register a profile, enable transport, run a producer or perform capture.
+
+A successful-shaped complete21 specimen requires the literal ordered21 JUnit
+cases at `workshop-browser-api.xml` and seven declared raw files per case (148
+required refs total). The historical `workshop-browser-tests.xml` name is not
+an alias. Every declared file, including diagnostic logs and an optional exact
+failure-screenshot ref, is read through `ArtifactStore`, privately declared and
+hash/inventory checked. Existing 8 MiB/file, 64 MiB/total and 4 MiB/raw-JSON
+limits remain in force. Browser-home contents and global worker logs are not
+silently adopted into per-case support.
+
+Source-shaped nonpass cases are classified before applying successful schemas.
+A `passed:false` result may omit `final_snapshot` and `worker_exits`; failed
+browser rows and launch-unavailable rows retain their own closed shapes. Early
+failure may omit `browser/evidence.json`, or both `ready.json` and that evidence
+file, including their declarations. These omissions yield `producer_partial`;
+all other required support and the complete ordered21 JUnit inventory are still
+required. A present evidence file without readiness, missing success support,
+malformed data or contradictory JUnit outcomes raises a static `ContractError`.
+Failed/skipped/error leaves remain nonpass, with counters checked against leaves.
+Raw error strings, XML content, SQL payloads, logs and screenshots stay private;
+returned diagnostic categories never include their text. This bounded branch
+support is not an incomplete-run capture or transport adapter.
+
+The checks cover source/SDK/asset identity copies, closed successful schemas,
+assertion-key claims, safe method/path templates, retained measurements and
+order/owner/scope chains, restart generation and durable copies, selected SQL
+counts and producer-spaced immutable-row hashes, warm snapshot equality and
+image-read increments, and live-worker/intentional-cleanup consistency. API
+payments are positive, ordinary roots have one account, isolation has its later
+account/session changes, and refund final state is revoked. The older paid
+validators' account/payment assumptions are not reused. Google has no workers;
+other roots have two CLI cleanup entries, and a signed integer exit such as
+`-15` is valid. Equal-valued records are valid because source retains no process
+identifiers; distinct-worker provenance cannot be established.
+
+Every result remains `status: unavailable`, `complete: false`, with verified IDs
+empty, both accepted credits zero and all acceptance flags false. Observed IDs
+mean successful retained-state consistency only; failed/partial cases appear as
+safe nonpass categories. The fourteen frozen missing families remain explicit:
+child/Go/browser exits; parent pytest exit/command; pending raw state; checkout
+idempotency HTTP bytes/hashes; signed settlement/refund HTTP and delivery;
+other-account denial HTTP; logout/disable HTTP; runtime image/browser-cache/SDK
+installation identity; authenticated observation/containment; worker-log
+ownership; finite API scheduling; byte-preserving JUnit capture mapping;
+final180/profile promotion; and independent authentic raw review. Assertions,
+method/path logs and internal source expectations do not supply these facts.
+CLI validate remains exit 3 with zero fixture/staging counts. Runtime, provider,
+profile, release and deployment acceptance remain separately gated.
+
+The focused fake-byte suite is
+`python3 -B -m unittest scripts.dev.test_release_acceptance.API21RawInspectorTests -v`.
+It is parser evidence only. Full developer/autonomy and existing browser
+contract/evidence/supervisor/preparation fake checks must accompany exact-code
+review; none supplies browser execution or product acceptance credit.
