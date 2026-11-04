@@ -32,3 +32,9 @@ The cached official base matches the approved image ID/repo digest and linux/amd
 - Exact-owned container/mount cleanup: no containers were created, so there are no owned container or volume resources to remove.
 
 This is a prerequisite blocker, not a failed PostgreSQL/harness run or an acceptance receipt. All runtime/readiness denials remain in force.
+
+## Read-only feasibility conclusion
+
+The selected `docker` driver exposes builder/node/version/platform/GC metadata through `docker buildx inspect`; it does not expose a pre-execution build-step mount inventory or exact-owned build-sandbox cleanup receipt. Its reported BuildKit version is unknown. This available inspectable state is insufficient to prove the route's required private bounded handling of inherited PGDATA or that no anonymous Docker volume will be allocated. It also does not establish that literal `FROM sha256:<local-image-ID>` resolution stays in the local image store without registry access. No conclusion that BuildKit actually creates a volume is asserted; the missing proof itself blocks this plan.
+
+A reviewed successor decision is needed before further preparation: either provide an approved, inspectable proof mechanism for this exact builder/local-ID behavior or amend the preparation route to a mechanism whose mounts and cleanup can be established before payload execution. The current dispatch does not authorize changing the fixed Dockerfile, substituting a tag/builder, attempting a diagnostic build, or treating lack of visible volumes as proof. Read-only inspection ended; no container/download/build/PostgreSQL/harness action occurred.
