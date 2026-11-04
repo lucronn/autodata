@@ -286,3 +286,22 @@ This is the dedicated successor checkpoint for the owned subprocess primitive. T
 ```
 
 <!-- END 2026-11-04 independent R3 owned subprocess transport successor -->
+
+
+<!-- BEGIN 2026-11-04 R3 owned subprocess transport code-only completion -->
+
+## R3 owned subprocess transport code-only completion
+
+The two-file primitive is implemented on `codex/workshop-r3-process-transport-build` at reviewed code SHA `8f0129cf21ca818c87eb1a3097ad055de9771082` ([PR #241](https://github.com/lucronn/autodata/pull/241)), based on the sealed planning checkpoint `5b128bd4fd5f791605929a2e9c4b2405e83c1498`. Validated milestone commits are `1933bcd103dcbda8b19e3b12c17321d63a34e681` and `8f0129cf21ca818c87eb1a3097ad055de9771082`. The original gate, goal, todo, planning record and earlier histories above remain preserved; this entry records code completion only.
+
+The retained builder receipt reports 32 focused tests PASS. Independent exact-code-head review reports PASS with no findings, a fresh 32-test run in 24.175s and three passing adversarial probes for concurrent output under a shared cap, an exited leader with a descendant retaining its pipe, and the real source-command deadline. These used owned synthetic Python children with explicit minimal environments. Independent review also confirmed memory compilation/static checks, a clean reviewed worktree and matching remote head, exactly two new regular mode100644 files, and unchanged content/modes for every pre-existing tree entry. This docs-only completion update ran no child tests or host preparation.
+
+Evidence: `/home/corp/autodata-evidence/r3-process-transport-build/receipt.json`; independent review `/home/corp/autodata-evidence/r3-process-transport-code-review/receipt.json` (SHA256 `22a3e192f22e17a68917235b3cc3d8794a4c1538cc7e55892128ed3e522e4e39`); coordinator tracking `/home/corp/autodata-evidence/r3-process-transport-code-tracking/receipt.json` and [Issue #186 completion comment](https://github.com/lucronn/autodata/issues/186#issuecomment-6640515895). The top-level `code_only_completion` objects in the process-transport record/task retain the measured evidence and receipt hashes without changing the original gate fields or nested record.
+
+Normal PR #241 CI readback is **not passing**: Vercel deployment failed, and no autonomous-verification job appeared. No workflow changes or runtime jobs were enabled. Local focused tests and independent probes do not establish CI, runtime or product acceptance.
+
+Production executable/source admission, nonescaping or stronger containment and external supervision remain separate: POSIX groups are not a sandbox, direct-child reap/pipe EOF does not attest escaped descendants or host cleanup, and Python has no absolute timing guarantee for Popen, kernel stalls or interpreter loss. Real CommandPort binding, descriptor-anchored cancellable FilePort/output I/O, bounded JSON, named owners/reviewers/cancellation identities, approved host/tool/plugin/config/env/image/clone/output contracts, authorized preparation observations, compatibility and runtime attempt/review remain unresolved. Authenticated product/provider/payment/browser evidence, full retained raw contracts, final180, profile promotion, publisher/staging/recovery and production/cars.tk cutover remain separate gates.
+
+Credit remains exact integer0. `trusted`, `runtime_accepted`, `host_observed`, `profiles_enabled`, `authority` and all nine authority flags remain false; `enabled_tiers` remains [], `runtime_lock` and `run_record` remain null, and release state remains unverified. No runtime, promotion, merge, staging, deployment or cutover authority is granted.
+
+<!-- END 2026-11-04 R3 owned subprocess transport code-only completion -->

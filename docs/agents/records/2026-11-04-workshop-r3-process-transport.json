@@ -117,5 +117,100 @@
     "profile_promotion_authorized": false,
     "merge_authorized": false
   },
-  "release_state": "unverified"
+  "release_state": "unverified",
+  "code_only_completion": {
+    "status": "code_only_complete_independent_review_passed_ci_not_passed",
+    "recorded_at": "2026-11-04T19:51:44.522892+00:00",
+    "scope": "owned_subprocess_transport_primitive_only",
+    "planning_checkpoint_sha": "5b128bd4fd5f791605929a2e9c4b2405e83c1498",
+    "reviewed_code_sha": "8f0129cf21ca818c87eb1a3097ad055de9771082",
+    "implementation_branch": "codex/workshop-r3-process-transport-build",
+    "implementation_pr": "https://github.com/lucronn/autodata/pull/241",
+    "milestone_commits": [
+      "1933bcd103dcbda8b19e3b12c17321d63a34e681",
+      "8f0129cf21ca818c87eb1a3097ad055de9771082"
+    ],
+    "implementation_paths": [
+      "scripts/r3_preparation/process_transport.py",
+      "scripts/r3_preparation/test_process_transport.py"
+    ],
+    "code_evidence": {
+      "builder_focused_tests": 32,
+      "builder_focused_result": "PASS",
+      "independent_focused_tests": 32,
+      "independent_focused_elapsed_seconds": 24.175,
+      "independent_adversarial_probes": 3,
+      "independent_probe_result": "PASS",
+      "independent_code_review": "PASS",
+      "findings": [],
+      "exact_two_new_mode100644_files": true,
+      "all_preexisting_tree_entries_and_modes_preserved": true,
+      "memory_compilation_and_static_checks": "PASS",
+      "reviewed_worktree_clean": true,
+      "reviewed_remote_readback_sha": "8f0129cf21ca818c87eb1a3097ad055de9771082",
+      "child_scope": "owned synthetic Python -I -B -c only, explicit minimal environments",
+      "evidence_basis": "retained builder and independent review receipts; this docs-only update executed no child tests"
+    },
+    "normal_ci_readback": {
+      "source": "coordinator normal PR241 readback retained in code tracking receipt",
+      "vercel_deployment": "failed",
+      "autonomous_verification_job": "not_present",
+      "ci_pass_claimed": false,
+      "runtime_jobs_enabled": false
+    },
+    "evidence_receipts": {
+      "r3-process-transport-build": {
+        "ref": "/home/corp/autodata-evidence/r3-process-transport-build/receipt.json",
+        "sha256": "64a64e09479ced690b0ee059f5a9417dfbf95a8a8003c5deffe4a975b656a803"
+      },
+      "r3-process-transport-code-review": {
+        "ref": "/home/corp/autodata-evidence/r3-process-transport-code-review/receipt.json",
+        "sha256": "22a3e192f22e17a68917235b3cc3d8794a4c1538cc7e55892128ed3e522e4e39"
+      },
+      "r3-process-transport-code-tracking": {
+        "ref": "/home/corp/autodata-evidence/r3-process-transport-code-tracking/receipt.json",
+        "sha256": "3e38bf3a56f17fb1b436173c0e2f5b5b09ae5e0ed877073ce00a639f73e7e75a"
+      }
+    },
+    "tracking_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6640515895",
+    "historical_gate_preserved": "All original planning fields, goal, todo, synchronized record, nested pre_implementation record and authority values are immutable history. This completion note neither replaces that checkpoint nor authorizes a later scope.",
+    "remaining_blockers": [
+      "Production executable/source admission, nonescaping or stronger containment, and external startup/controller-loss/kernel supervision remain unresolved; POSIX groups are not a sandbox and Python has no absolute bound on Popen, kernel stalls or interpreter loss.",
+      "Real CommandPort binding, descriptor-anchored cancellable FilePort/output I/O and incremental bounded JSON remain separate.",
+      "Named owner/reviewer/cancellation identities, approved host/tool/plugin/config/env/image/clone/output contracts, separately authorized preparation observations, compatibility and exact runtime attempt/review remain separate.",
+      "Authenticated product/provider/payment/browser evidence, full retained raw contracts, final180 and profile promotion remain unaccepted.",
+      "Authenticated publisher, staging/schema/readiness/recovery, production payment/DNS/TLS/alerts and production/cars.tk cutover remain separate gates.",
+      "Normal CI is not passing: Vercel failed and no autonomous-verification job appeared on PR241; no workflow or runtime jobs were enabled."
+    ],
+    "trusted": false,
+    "runtime_accepted": false,
+    "host_observed": false,
+    "accepted_case_credit": 0,
+    "profiles_enabled": false,
+    "enabled_tiers": [],
+    "runtime_lock": null,
+    "run_record": null,
+    "authority": false,
+    "fixture_verified": false,
+    "product_candidate_verified": false,
+    "staging_verified": false,
+    "deployment_authorized": false,
+    "cutover_verified": false,
+    "implementation_authorized": false,
+    "runtime_execution_authorized": false,
+    "profile_promotion_authorized": false,
+    "merge_authorized": false,
+    "authorities": {
+      "fixture_verified": false,
+      "product_candidate_verified": false,
+      "staging_verified": false,
+      "deployment_authorized": false,
+      "cutover_verified": false,
+      "implementation_authorized": false,
+      "runtime_execution_authorized": false,
+      "profile_promotion_authorized": false,
+      "merge_authorized": false
+    },
+    "release_state": "unverified"
+  }
 }
