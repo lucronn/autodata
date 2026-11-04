@@ -19,7 +19,7 @@
     "Keep final-head180/support/security/images/SDK/license/CI/reviewer proof and all staging/product/release/deployment/cutover gates separate; pilot/support add zero logical cases, historical evidence cannot certify another SHA, and all profile/authority promotion stays false."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-04T06:22:41.129299+00:00",
+  "updated_at": "2026-11-04T06:23:19.578858+00:00",
   "tracking_writer": "api21_recovery_plan",
   "approved_draft_sha256": "42dd282ae5c5a17cda7cf2e9b590ed4675ae46f55154c565691146bd2223e664",
   "draft_review": "PASS relayed by coordinator; exact committed checkpoint review remains required",
@@ -46,7 +46,7 @@
   "canary_authorized": false,
   "acceptance_claim": false,
   "independent_checkpoint_review": "pending",
-  "machine_preflight_status": "pending",
+  "machine_preflight_status": "synchronized_at_gate_5087d33d0e2ec57318aff0fb9d516142ca573ad6",
   "execution_paths": {
     "source": "/home/corp/autodata-evidence/api21-e5fed17-source",
     "retained_pilot": "/home/corp/autodata-evidence/api21-e5fed17-pilot-20261104",
@@ -103,5 +103,54 @@
     "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
     "all_other_project_fields_unchanged": true,
     "readback_at": "2026-11-04T06:22:41.129299+00:00"
-  }
+  },
+  "checkpoint_verification": {
+    "gate_sha": "5087d33d0e2ec57318aff0fb9d516142ca573ad6",
+    "branch": "codex/workshop-api21-interruption-recovery",
+    "preflight": {
+      "command": [
+        "python3",
+        "scripts/autonomy/pre_implementation.py",
+        "--record",
+        "docs/agents/records/2026-11-04-workshop-api21-interruption-recovery.json",
+        "--base-sha",
+        "5087d33d0e2ec57318aff0fb9d516142ca573ad6",
+        "--repo-root",
+        "/home/corp/.codex/worktrees/workshop-api21-interruption-recovery/autodata"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"status\": \"synchronized\", \"errors\": []}\n",
+      "stderr": ""
+    },
+    "scope_paths": [
+      "docs/agents/records/2026-11-04-workshop-api21-interruption-recovery-tracking-evidence.json",
+      "docs/agents/records/2026-11-04-workshop-api21-interruption-recovery.json",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-api21-interruption-recovery.json",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+      "docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md",
+      "docs/superpowers/plans/2026-11-04-workshop-api21-interruption-recovery.md",
+      "docs/verification/workshop-customer-ui-runbook.md"
+    ],
+    "input_manifest_unchanged": true,
+    "independent_exact_checkpoint_review": "pending",
+    "implementation_authorized": false,
+    "runtime_authorized": false,
+    "canary_authorized": false,
+    "acceptance_claim": false,
+    "pin_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6624174482",
+    "pin_comment_sha256": "4bb66bcdc433ca89d9ac62ce6923b1e8d416abcdc44f417fb5af5d7f534cbd51",
+    "project_source_index": "API21 recovery detail6624161772: docs ee9ca316, exact application e5fed171; old full interrupted despite validated21 scenarios; final receipts absent, cleanup supplemental only. Plan/task/record six todos; fresh full-recovery root, retained-state user service/canary, frozen inputs/3300s+180s reserve; zero implementation/runtime/canary authority. Original API21 detail6623222525/gatee0e50dee/pin6623235715/receiptb1ac3c7c. PG17 PASS detail6623105546/pin6623119656; failed124e43a9 quarantined. Integration detail6623150233/checkpointd2e2270/pin6623168382,gate2728ac/receipt507e3d. Paid HTTP detail6623187020/gatea899eac8/pin6623199160/receipt2ea5b696,18x2 diagnostics only. Complete prior Issue body/all127 comments/1020-char Source and item fields retained verbatim+hash. Status In Progress. Exact gate/preflight/review+separate coordinator dispatch required; no acceptance/profile/staging/deploy/cutover claim. Gate 5087d33d0e2ec57318aff0fb9d516142ca573ad6 pin6624174482.",
+    "project_source_index_sha256": "a052e801bd9cc8b78073e510525ead56a4979074cbb6d6b0f6c7deb2d1a4dac2",
+    "project_source_index_characters": 973,
+    "readback_at": "2026-11-04T06:23:19.578858+00:00",
+    "issue_body_unchanged": true,
+    "all_127_predecessor_comment_bodies_unchanged": true,
+    "detail_comment_unchanged": true,
+    "project_status": "In Progress",
+    "all_other_project_fields_unchanged": true,
+    "writer_slot": "released_after_final_receipt_push"
+  },
+  "writer_slot": "released_after_final_receipt_push"
 }
