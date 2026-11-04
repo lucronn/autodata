@@ -11,7 +11,7 @@
 **Issue:** https://github.com/lucronn/autodata/issues/186
 **Project:** https://github.com/users/lucronn/projects/8 (existing item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4)
 **Inspection source:** 545f32098a659c75c11e4dd7ad7c00fbc9a2a976, latest R6 HTTP completion branch. Code is 66781084bde3ea382b35b4e33cdeace713f1096a. Read-only live PR check: draft/open PR200 has exact code head; draft/open PR202 has exact completion head and bases on the code branch. This planning worktree is based on exact source545f32098; no merge or broader application integration is claimed.
-**Status:** tracking synchronized after independent live readback. Commit/push, full-SHA preflight, independent exact-checkpoint review and explicit builder dispatch remain required. Tracking synchronization grants no implementation authority.
+**Status:** bounded code implementation complete and independently reviewed at exact code30ea7a0; docs-only completion checkpoint and independent completion-docs review remain separate. Original planning authorization text below is historical. Release state remains unverified.
 
 **Task:** `docs/agents/tasks/2026-11-03-production-release/r6-paid-scope-receipts.json`
 **Record:** `docs/agents/records/2026-11-04-r6-paid-scope-receipts.json`
@@ -166,3 +166,62 @@ Issue186 [detail6624437136](https://github.com/lucronn/autodata/issues/186#issue
 Independent draft review identified that predecessor `_paid_pg_rows` does not establish the complete order/request/projection/organization/product chain. This corrected contract assigns all listed joins, strict UUID/cardinality/uniqueness predicates and independently repaired-copy negatives to the new inspector. It also states that R is only the third configuration under the frozen producer contract; no retained vehicle_configurations region row establishes CA. These corrections preserve the synchronized goal/five todos/scope and weaken no acceptance requirement. Exact corrected-draft/checkpoint review remains separately required.
 
 This readback permits only commit/push of the seven-path docs checkpoint and full-SHA preflight. It does not authorize implementation, browser/runtime/provider/cloud execution, profile promotion, verified cases, merge, deployment or cutover. The coordinator remains sole GitHub writer. Any exact pin comment or Project index adjustment must be proposed to the coordinator before its mutation; this worker performs none.
+
+
+## Exact-scope implementation completion — code30ea7a0
+
+The bounded internal tool is implemented at `30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe`
+(draft [PR209](https://github.com/lucronn/autodata/pull/209)), from synchronized
+gate `281ec742e88d9dcde5fb16d1bb778f2778a5c5b3`. Three coherent green milestones
+were pushed: `bd54fc9fcdb38c9b43bd57677cf2bf169ce1dcc6` added the inspector and
+positive/no-dispatch coverage; `1b4b52d94cc742b9c3b6c53e7246efa51c69b54a` added
+adversarial coverage; final code30ea7a0 repaired the demonstrated missing
+canonical configuration-column case with a regression covering all eight rows.
+The earlier missing-column candidate is superseded; only final-code reruns supply
+current parser-tool proof.
+
+Fresh checks at exact code30ea7a0 passed: focused **16**, full module **108**,
+developer discovery **260**, autonomy **146**, and fresh shallow-clone focused plus
+disabled-CLI **17**. Syntax, diff, three-path scope, unchanged predecessor/DTO/CLI/
+constants/limits and exact-gate preflight checks passed. Commands, durations,
+SHA256-bound durable logs and milestone disposition are recorded in
+`docs/agents/records/2026-11-04-r6-paid-scope-completion.json`. This is parser-tool
+verification, never application ancestry or runtime acceptance.
+
+The coordinator relayed independent exact-code review **PASS**, with no outstanding
+finding; Issue186 completion [detail6634324284](https://github.com/lucronn/autodata/issues/186#issuecomment-6634324284)
+independently repeats that result. This documentation does not invent a separate
+reviewer receipt or claim that completion-document review has passed. The new
+docs-only branch starts at exact code30ea7a0 and requires separate exact-SHA review.
+
+All five bounded todos are disposed: synchronized gate/review preceded code;
+independent inline fixtures and repaired semantic/transport mutations exist; the
+unselected inspector emits only22 HTTP/four snapshot diagnostics; required
+verification and independent code review passed; external release blockers remain
+explicit. Original planning text and readback remain historical evidence, not a
+new implementation dispatch. Every authorization flag stays false.
+
+Fresh complete readback at 2026-11-04T15:15:56.466530+00:00 retains the Issue body, all137 comments,
+full Project8 item and all eight field values in
+`docs/agents/records/2026-11-04-r6-paid-scope-completion-tracking-evidence.json`.
+The1541-byte completion detail SHA256 is
+`17557639c66501083e26a14b490222ba7e14b5f7cf549c4f721704c825f0ba37`;
+Project Source is966 characters, SHA256
+`7988162779e1b526fef566c7288f0ab2a99dc7b34dd74650ce06c79673cbd2b5`.
+All133 planning-era comment bodies and the seven non-Source fields are unchanged.
+Coordinator-supplied Source before/after is retained verbatim; no absent full
+pre-update snapshot is invented. Issue186 and Project8 remain In Progress.
+
+`inspect_paid_scope_receipts` stays unselected. Results remain unavailable,
+incomplete, with no verified IDs, zero added logical acceptance cases, all false
+authority flags and disabled profiles/tiers. Terminal rows cannot prove historical
+revocation; no retained configuration-region row independently proves the third
+configuration's CA label; projected bodies cannot establish raw-wire provenance.
+Complete paid12/DTO120, final immutable application-head180 and supporting contracts,
+CI/capture/Git/supervisor/reviewer provenance, security, images, SDK/license and
+licensed-source evidence remain required. All eight real staging gates and actual
+Firebase/Stripe TEST/both-bank provider configuration remain open. Historical
+application candidate `2de36a1305bfbe45992995e6caf0ba52f30fddcc` remains immutable
+history; the future application candidate is unselected. API21 and live evidence
+remain separately gated. No merge, charge, runtime, deployment or cars.tk cutover
+authority follows from this completion.

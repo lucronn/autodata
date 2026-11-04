@@ -206,3 +206,62 @@ Project: https://github.com/users/lucronn/projects/8 (existing item `PVTI_lAHOCS
 5. Retain complete paid12/DTO120/final-head180/support/CI/security/image/SDK/license/reviewer/staging blockers; enable no tier/profile and leave API21/live evidence and later collection separately gated.
 
 Exact-scope tracking receipt: [Issue186 detail6624437136](https://github.com/lucronn/autodata/issues/186#issuecomment-6624437136), body SHA256 `2f815f6ac0a2cb584f740b5162baa56e759309add23e2096074e2c9af5cedc93`; Project Source SHA256 `7dc2f3e86b4b2d7aa8ff225b19be9e4c3eac9ebe580e3d632f1d15700df4d2f9`,996 characters, In Progress/all other fields unchanged; readback `2026-11-04T06:42:35.484222+00:00`. Full Issue body/all133 comments/Project item/Source predecessor bytes are preserved in `docs/agents/records/2026-11-04-r6-paid-scope-tracking-evidence.json`; historical131 comment bodies and unchanged Issue body independently match retained completion evidence. New owner/request/projection/product joins are explicitly assigned to this milestone, not inherited. The third configuration CA role is producer-labeled; retained region rows are absent. Every implementation/runtime/cloud/profile/merge/deploy/cutover authorization stays false. The coordinator remains sole GitHub writer.
+
+
+## Exact-scope implementation completion — code30ea7a0
+
+The bounded internal tool is implemented at `30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe`
+(draft [PR209](https://github.com/lucronn/autodata/pull/209)), from synchronized
+gate `281ec742e88d9dcde5fb16d1bb778f2778a5c5b3`. Three coherent green milestones
+were pushed: `bd54fc9fcdb38c9b43bd57677cf2bf169ce1dcc6` added the inspector and
+positive/no-dispatch coverage; `1b4b52d94cc742b9c3b6c53e7246efa51c69b54a` added
+adversarial coverage; final code30ea7a0 repaired the demonstrated missing
+canonical configuration-column case with a regression covering all eight rows.
+The earlier missing-column candidate is superseded; only final-code reruns supply
+current parser-tool proof.
+
+Fresh checks at exact code30ea7a0 passed: focused **16**, full module **108**,
+developer discovery **260**, autonomy **146**, and fresh shallow-clone focused plus
+disabled-CLI **17**. Syntax, diff, three-path scope, unchanged predecessor/DTO/CLI/
+constants/limits and exact-gate preflight checks passed. Commands, durations,
+SHA256-bound durable logs and milestone disposition are recorded in
+`docs/agents/records/2026-11-04-r6-paid-scope-completion.json`. This is parser-tool
+verification, never application ancestry or runtime acceptance.
+
+The coordinator relayed independent exact-code review **PASS**, with no outstanding
+finding; Issue186 completion [detail6634324284](https://github.com/lucronn/autodata/issues/186#issuecomment-6634324284)
+independently repeats that result. This documentation does not invent a separate
+reviewer receipt or claim that completion-document review has passed. The new
+docs-only branch starts at exact code30ea7a0 and requires separate exact-SHA review.
+
+All five bounded todos are disposed: synchronized gate/review preceded code;
+independent inline fixtures and repaired semantic/transport mutations exist; the
+unselected inspector emits only22 HTTP/four snapshot diagnostics; required
+verification and independent code review passed; external release blockers remain
+explicit. Original planning text and readback remain historical evidence, not a
+new implementation dispatch. Every authorization flag stays false.
+
+Fresh complete readback at 2026-11-04T15:15:56.466530+00:00 retains the Issue body, all137 comments,
+full Project8 item and all eight field values in
+`docs/agents/records/2026-11-04-r6-paid-scope-completion-tracking-evidence.json`.
+The1541-byte completion detail SHA256 is
+`17557639c66501083e26a14b490222ba7e14b5f7cf549c4f721704c825f0ba37`;
+Project Source is966 characters, SHA256
+`7988162779e1b526fef566c7288f0ab2a99dc7b34dd74650ce06c79673cbd2b5`.
+All133 planning-era comment bodies and the seven non-Source fields are unchanged.
+Coordinator-supplied Source before/after is retained verbatim; no absent full
+pre-update snapshot is invented. Issue186 and Project8 remain In Progress.
+
+`inspect_paid_scope_receipts` stays unselected. Results remain unavailable,
+incomplete, with no verified IDs, zero added logical acceptance cases, all false
+authority flags and disabled profiles/tiers. Terminal rows cannot prove historical
+revocation; no retained configuration-region row independently proves the third
+configuration's CA label; projected bodies cannot establish raw-wire provenance.
+Complete paid12/DTO120, final immutable application-head180 and supporting contracts,
+CI/capture/Git/supervisor/reviewer provenance, security, images, SDK/license and
+licensed-source evidence remain required. All eight real staging gates and actual
+Firebase/Stripe TEST/both-bank provider configuration remain open. Historical
+application candidate `2de36a1305bfbe45992995e6caf0ba52f30fddcc` remains immutable
+history; the future application candidate is unselected. API21 and live evidence
+remain separately gated. No merge, charge, runtime, deployment or cars.tk cutover
+authority follows from this completion.
