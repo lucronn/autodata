@@ -621,6 +621,39 @@
         "implementation_dispatch_authorized": false,
         "cloud_execution_authorized": false
       }
+    },
+    {
+      "id": "workshop-staging-boot-device",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-staging-boot-device.json",
+      "depends_on": [],
+      "state": "planning_synchronized_pending_exact_checkpoint_review",
+      "release_state": "unverified",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-staging-boot-device.md",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-staging-boot-device.json",
+      "source_candidate_sha": "188d6e66a3edff53bb84548d78876f8c98f6aec0",
+      "source_candidate_status": "rejected_pending_boot_attachment_correction",
+      "implementation_allowlist": [
+        "infra/deploy/gce/staging_bootstrap.py",
+        "infra/deploy/gce/test_staging_bootstrap.py"
+      ],
+      "dispatch_mode": "coordinator_direct_after_independent_review",
+      "implementation_dispatch_authorized": false,
+      "cloud_execution_authorized": false,
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622382607",
+        "issue_comment_id": 6622382607,
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-04T04:15:55.867157+00:00",
+        "issue_body_sha256": "85e94637b03274a4e6034c7412d1156787f88e1345c2213e31a82541fb859e5a",
+        "issue_comment_sha256": "de667b344474c03a1dc79a08188a8da11fc28dab0c33b9097b384d3f65808344",
+        "project_text_sha256": "56d7757d5c02c6b7aa47c3143c37826efe8cd6ce9893fd1a87f2cb6cd3ba0d3a",
+        "prior_issue_body_sha256": "0220f77b1a669266d5330145f3b9f9818d122c392cfe14c4b4be33e08e80dc49",
+        "prior_issue_body_preserved_as_exact_prefix": true,
+        "prior_project_text_sha256": "8e678c075d383d11fa9a63e3df05040a3b8e721e068d0c38e590728b6d009aa1",
+        "full_prior_pg_and_js_text_preserved_verbatim": true
+      }
     }
   ],
   "execution": {

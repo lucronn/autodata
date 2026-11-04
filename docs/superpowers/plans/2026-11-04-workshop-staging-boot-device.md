@@ -1,6 +1,6 @@
 # Staging M1 explicit boot attachment name correction plan
 
-> **For agentic workers:** Planning draft only. After a synchronized committed checkpoint, passing full-SHA preflight, independent exact-checkpoint review and fresh coordinator dispatch, use superpowers:executing-plans for this single correction. No implementation is authorized by this draft.
+> **For agentic workers:** Synchronized planning checkpoint only. After a synchronized committed checkpoint, passing full-SHA preflight, independent exact-checkpoint review and fresh coordinator dispatch, use superpowers:executing-plans for this single correction. No implementation is authorized by this draft.
 
 **Goal:** Explicitly select the staging VM boot attachment deviceName and make the offline Compute fake distinguish attachment names from disk resource names, preserving strict readback and every existing authority boundary.
 
@@ -12,7 +12,7 @@
 
 ## Draft gate and exact source
 
-Status: **draft; unsynchronized; implementation blocked**. PG's offline successor owns the serialized [Issue186](https://github.com/lucronn/autodata/issues/186)/[Project8](https://github.com/users/lucronn/projects/8) tracking slot. This draft makes no tracking change. It is rooted directly at rejected M1 candidate `188d6e66a3edff53bb84548d78876f8c98f6aec0`, not at an assumed integrated source. Historical M1 gate `52653deef3754972230801ac260875fe92e1a403` and receipt `5bd9b82aa71b68938c130c58062b8664596c6758` are history only; they do not authorize a corrective builder or establish acceptance of the rejected candidate.
+Status: **synchronized planning checkpoint; implementation blocked pending independent exact-checkpoint review and fresh root dispatch**. After PG released the serialized slot at receipt3b67536c, [Issue186](https://github.com/lucronn/autodata/issues/186)/[Project8](https://github.com/users/lucronn/projects/8) were synchronized and read back at `2026-11-04T04:15:55.867157+00:00`; [detail6622382607](https://github.com/lucronn/autodata/issues/186#issuecomment-6622382607) and canonical evidence preserve then-current full PG offline and Stage0/staging/older PG/JS texts verbatim with hashes. This checkpoint is rooted directly at rejected candidate `188d6e66a3edff53bb84548d78876f8c98f6aec0`. Historical M1 gate `52653deef3754972230801ac260875fe92e1a403` and receipt `5bd9b82aa71b68938c130c58062b8664596c6758` remain history only; they do not establish acceptance of the rejected candidate or authorize this correction. Commit/push, full-SHA preflight, independent exact-checkpoint review and root dispatch remain mandatory.
 
 Independent candidate review `/tmp/autodata-staging-m1-188d6e6-review.md` requests one P2 correction: candidate `staging_bootstrap.py:456–458` leaves the boot attachment name unspecified while readback at line484 requires `<instance>-boot`. The fake at `test_staging_bootstrap.py:382` silently derives deviceName from `initializeParams.diskName`. That conflates two distinct API fields. `initializeParams.diskName` names the disk resource; an omitted attachment deviceName receives a Compute-selected `persistent-disk-x` name. Review evidence `/tmp/autodata-staging-m1-188d6e6-review-device-name.log` reproduces rejection after all three POSTs and retained resources. Temporary review files support this draft; later synchronization must retain their hashes and diagnosis durably.
 
@@ -94,6 +94,32 @@ git diff --check
 
 The independently reviewed source baseline had30 bootstrap tests and121 existing host/cloud tests passing; those counts are historical, not acceptance of future correction or cloud compatibility. New meaningful regressions add coverage; require actual final output rather than fixed totals. Verify `git diff --name-only <new-pinned-checkpoint> <candidate>` is exactly the two implementation paths above before review. The new plan/checkpoint may add only canonical documentation and tracking records; those are separate from implementation allowlist.
 
-## Unsynchronized record shape and handoff
+## Synchronized record and pending handoff
 
-The future dedicated record/task will reference this plan, Issue186/Project8, canonical lifecycle/hosting/operations/architecture notes, exact goal/todo/two-file scope and rejected source pin above. Its status remains **draft** until actual tracking/canonical synchronization and readback exist. Do not copy the prior M1 synchronized record as authority for this amendment or label the rejected implementation accepted. No machine-checked synchronized correction record exists at source188d6e6 today. No implementation, cloud, credentials, resources or runtime action has occurred during this draft.
+Dedicated record `docs/agents/records/2026-11-04-workshop-staging-boot-device.json` and task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-boot-device.json` reference this plan, Issue186/Project8, canonical lifecycle/hosting/operations/architecture notes and exact goal/todo/two-file scope/rejected source pin above. Their `status:synchronized` records actual tracking/canonical readback, not implementation dispatch. Independent exact-checkpoint review and fresh coordinator dispatch remain pending. The draft gate was deliberately blocked at source188d6e6; a new committed checkpoint and full-SHA preflight must be verified before correction work. No implementation, cloud, credentials, resources or runtime action occurred during synchronization.
+
+
+## Staging boot attachment deviceName: synchronized corrective planning checkpoint
+
+Goal: Explicitly select the staging VM boot attachment deviceName and make the offline Compute fake distinguish attachment names from disk resource names, preserving strict readback and every existing authority boundary.
+
+Plan `docs/superpowers/plans/2026-11-04-workshop-staging-boot-device.md`; task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-boot-device.json`; record `docs/agents/records/2026-11-04-workshop-staging-boot-device.json`; evidence `docs/agents/records/2026-11-04-workshop-staging-boot-device-evidence.json`. Rejected candidate `188d6e66a3edff53bb84548d78876f8c98f6aec0`; independently reviewed local draft `b31de33a7907bf295d4c69c8df13a2b15ebabd53` PASS via coordinator.
+
+Status: `synchronized` after [Issue186 detail6622382607](https://github.com/lucronn/autodata/issues/186#issuecomment-6622382607) and [Project8](https://github.com/users/lucronn/projects/8) readback at `2026-11-04T04:15:55.867157+00:00`. Commit/push, full-SHA pinned preflight, independent exact-checkpoint review and fresh root dispatch still precede code. No implementation or cloud operation is authorized now.
+
+Exact prospective implementation allowlist:
+
+- `infra/deploy/gce/staging_bootstrap.py`
+- `infra/deploy/gce/test_staging_bootstrap.py`
+
+Narrow request amendment: select boot `AttachedDisk.deviceName=<instance>-boot` explicitly as a sibling of `initializeParams`; independently retain `initializeParams.diskName=<instance>-boot` for the disk resource. Preserve strict attachment-name/resource-ID/image readback and data deviceName `autodata-data`. Make fake echo explicit attachment name and choose representative `persistent-disk-0` when omitted, never derive it from diskName. Original omission must fail strict readback after3POSTs/resources retained; exact explicit request success and observed-name drift rejection are required. No launcher/schema/config/token/network/receipt/budget/authority change. Source188d6e6 remains rejected pending exact correction review; no historical gate is retroactive acceptance.
+
+Concrete todo:
+
+- [ ] After PG releases the serialized tracking slot and coordinator approves this draft, synchronize the exact boot-attachment correction goal, explicit POST amendment, two-file allowlist, regression cases and todo across Issue186/Project8 and canonical plan/task/record/notes; preserve then-current full PG/JS index/detail/pins verbatim with hashes, commit/push and pass full-SHA preflight before independent exact-checkpoint review.
+- [ ] Obtain independent review of that exact new checkpoint and fresh root dispatch before implementation; preserve rejected source `188d6e66a3edff53bb84548d78876f8c98f6aec0` and the prior M1 gate/receipt as distinct historical records without retrospective acceptance.
+- [ ] Change the fake's omitted-name behavior and add the exact request/default/drift regressions first; demonstrate a red complete-run failure on the uncorrected request, with all three POSTs and retained resources, using only intercepted transports.
+- [ ] Add only the explicit boot AttachedDisk.deviceName sibling field in staging_bootstrap.py; keep strict readback and all request/approval/config/FD3/network/receipt/authority boundaries unchanged; run focused bootstrap plus existing host/cloud regressions, syntax and diff/scope checks.
+- [ ] Commit/push the exact two-file candidate, retain red/green logs and independently review its full SHA before integration; no credentials/cloud/resource operations, installation, formatting, host startup, readiness, cars.tk or production authority follows from simulated success.
+
+Preservation: full then-current PG offline Project index SHA256 `8e678c075d383d11fa9a63e3df05040a3b8e721e068d0c38e590728b6d009aa1`, detail6622351785/pin6622361427, and Stage0/staging/older PG/JS index/detail/pin texts are retained verbatim with individual SHA256 in canonical evidence and the exact preserved-comment references in the synchronization detail. Their statuses/independent review/dispatch/denial boundaries remain unchanged. No credentials/cloud/Docker/host/provider/DNS/runtime action or readiness/production claim occurs on this documentation turn.
