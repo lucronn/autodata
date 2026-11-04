@@ -1823,6 +1823,68 @@
         "implementation_dispatched": false,
         "checkpoint_B": null
       }
+    },
+    {
+      "id": "workshop-final180-inventory",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-final180-inventory.json",
+      "depends_on": [
+        "workshop-index-readiness"
+      ],
+      "state": "planning_pending",
+      "release_state": "unverified",
+      "dispatch_mode": "coordinator_direct_planning_only",
+      "needs_scope_refinement": true,
+      "source_inspection_sha": "df52326b2a12fd17db39d9368f66a28a366f38ad",
+      "selected_source_tuple": {
+        "candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+        "source_pins_git_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+        "historical_inspection_sha": "df52326b2a12fd17db39d9368f66a28a366f38ad",
+        "authorizing_checkpoint_sha": null,
+        "promoted_tooling_base_sha": null,
+        "selection_scope": "coordinator-selected code for docs-only inventory; execution and acceptance remain unauthorized"
+      },
+      "implementation_authorized": false,
+      "tracking_status": "pending",
+      "blockers": [
+        "Selected code candidate 4d82e413e04fb2401ac7bc28dc828375ac662180 is pinned for this pending inventory only; clean cloned execution manifest, authorizing checkpoint and promoted tooling base remain absent.",
+        "Committed reviewed final180 supervisor, execution image build recipe/digest, offline dependency/cache inventories and exact Docker invocation.",
+        "Complete raw/support inventory including lifecycle runtime evidence, failure diagnostics, per-file format and size ceilings, aggregate sizing and immutable private storage locator.",
+        "DTO failure traces may reach 16MiB while the current assembler permits only 8MiB per artifact; preserve full private raw evidence and separately decide transport/envelope bounds before profile promotion.",
+        "Browser runtime image digest/build provenance, Playwright package and browser cache file manifest, run-owned service/container/storage identities and sufficient /home plus Docker-filesystem headroom.",
+        "Authoritative executable paths and runtime-resolved argv for every host/container phase; proposed strings are contract decisions, not observed executions.",
+        "DTO nested Go fixture launcher exact argv/environment/ownership/readiness/stop contract, including its existing 4400-second source timer within browser 4440-second and phase 4560-second budgets; assert ready.kind=dto-fixture and omit paid/API selectors.",
+        "Supervisor identities/approval authority, real registered author/reviewer identities, canonical profile hashes and reviewed assembler pin.",
+        "Actual API21 run, all six fresh same-head case families, complete support/security/production image acceptance and independent raw review.",
+        "Authenticated final-head CI repository/workflow/event/ref/attempt/capture/pagination/required-check/branch-protection/log/archive metadata and expiry handling.",
+        "Git ancestry/provenance proof, source/build/SDK/served bytes/migration/image bindings at final candidate.",
+        "Separate licensed staging enrollment, Google/Stripe TEST, live bank/model, isolation/restore/alerts and release policy review."
+      ],
+      "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+      "runtime_execution_authorized": false,
+      "profile_promotion_authorized": false,
+      "deployment_authorized": false
+    },
+    {
+      "id": "workshop-final180-runner",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-final180-runner.json",
+      "depends_on": [
+        "workshop-final180-inventory"
+      ],
+      "state": "synchronized_pending_exact_gate_review",
+      "release_state": "unverified",
+      "dispatch_mode": "coordinator_direct_after_tracking_preflight_review_and_explicit_dispatch",
+      "tracking_status": "synchronized",
+      "planning_parent_sha": "d8579c824eb1ebf546b46b13a0f69079890ad44e",
+      "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+      "implementation_authorized": false,
+      "runtime_execution_authorized": false,
+      "profile_promotion_authorized": false,
+      "deployment_authorized": false,
+      "blockers": [
+        "Stage A committed checkpoint, exact-base preflight and independent committed-gate review are required before implementation dispatch.",
+        "Stage B remains implementation-blocked on exact producer schemas/mappings, concrete Docker templates and complete runtime/run-record contracts; actual host/image/cache/tool/storage/operator facts remain execution-blocked."
+      ],
+      "scope": "Stage A offline admission and normalized claim reconciliation only"
     }
   ],
   "execution": {

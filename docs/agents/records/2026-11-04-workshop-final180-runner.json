@@ -1,0 +1,44 @@
+{
+  "goal": "Implement only offline final180 source admission and normalized claim reconciliation; keep the executable runner backend blocked and every authority false.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-runner.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-04-workshop-final180-runner.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+    "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md"
+  ],
+  "todo": [
+    "Implement Stage A strict immutable inventory loading and clean pinned-candidate source inspection within the three-path allowlist.",
+    "Implement Stage A normalized observation schema, exact literal-ID multiset reconciliation and private offline diagnostic output with all authority false.",
+    "Run adversarial offline unit tests and independent exact-SHA review; document blocked Stage B runtime/backend and separately gated raw validators."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T16:47:16.161432+00:00",
+  "tracking_receipts": {
+    "status": "synchronized_live_readback",
+    "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6636377383",
+    "current_status_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6636440572",
+    "current_status_sha256": "b2000ed6917219f25e5e6a9b90b4b0b52a14c29e7a9b21867da8f9a6d0b06a31",
+    "issue_readback_ref": "/home/corp/autodata-evidence/issue186-stage-a-durable-readback.json",
+    "issue_readback_sha256": "4ee96a8a8902a77e78717797803483964240042d3c956061ea4b1dbf82b765df",
+    "issue_preserved_comment_count": 146,
+    "current_comment_count": 149,
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_status": "In Progress",
+    "project_source_sha256": "a2fcc55961d7389360e4826e8ec36169a17d0081899d0f0e367a76dd7139c900",
+    "project_source_bytes": 491,
+    "previous_project_source_sha256": "5641e3cc48acc047b29ce294252caf2e3da8043b629baf80fe942aca628910e4",
+    "previous_source_archived_verbatim": true,
+    "project_readback_ref": "/home/corp/autodata-evidence/project8-stage-a-durable-readback.json",
+    "project_readback_sha256": "fb467b64e53093b7498a3dada3774165e0a229ff4458251b71c65eda3c0b0afe",
+    "other_project_fields_unchanged": true,
+    "writer": "coordinator serialized writer"
+  },
+  "planning_parent_sha": "d8579c824eb1ebf546b46b13a0f69079890ad44e",
+  "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "source_inspection_sha": "df52326b2a12fd17db39d9368f66a28a366f38ad",
+  "authorizing_checkpoint_sha": null,
+  "promoted_tooling_base_sha": null
+}
