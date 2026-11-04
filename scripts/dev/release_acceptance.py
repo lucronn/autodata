@@ -190,6 +190,92 @@ DTO_ARCHIVE_LIMITS = {'browser/evidence.json': MAX_RAW_JSON_BYTES,
                       'go-fixture.log': MAX_ARTIFACT_BYTES, 'ready.json': MAX_RAW_JSON_BYTES}
 
 
+# Fixed source-content expectations from the independently reviewed DTO gate.
+# These are not populated from candidate receipts and establish no CI authority.
+DTO_SOURCE_EXPECTATIONS_SHA = '99df69caaeb4d5ccf6d0ffbf0377fe6d5d872a3d'
+DTO_SOURCE_INPUTS = {
+    'apps/api-go/workshop_browser_fixture_test.go': '7cf50daeb190686dc55c33c90056b87a62eece96640759b180f1282a0a1a6dd2',
+    'scripts/dev/fixtures/workshop_customer/firebase_transport.js': '96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63',
+    'scripts/dev/fixtures/workshop_customer/hostile_source.json': '076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1',
+    'scripts/dev/fixtures/workshop_customer/scenarios.json': '83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9',
+    'scripts/dev/fixtures/workshop_customer/stripe_checkout.html': '26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083',
+    'scripts/dev/workshop_browser_smoke.py': '45299888e56a78679148f575ac071856f0a3c1941faf059cd586ff2980069de8',
+}
+DTO_SOURCE_ASSETS = {
+    'app.mjs': {'sha256': 'bc1b0d5e1c1181c1ff2a833ab8dc8c9ab88bf84e38b00b018ffa5fc9206e5ab5',
+        'bytes': 37127},
+    'article-read.mjs': {'sha256': 'fefa9ba05d05e8a48f8135d07a53f92d7ef32bf848db075005981848cc8d8f08',
+        'bytes': 2507},
+    'auth.mjs': {'sha256': 'ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2',
+        'bytes': 7908},
+    'catalog.mjs': {'sha256': 'cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52',
+        'bytes': 11688},
+    'commerce.mjs': {'sha256': 'be291187bdbd3ef7faeb9ace6c244eed8a0b28b0edc91f1e01881c7d32c9ae26',
+        'bytes': 7321},
+    'firebase-web.mjs': {'sha256': 'bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1',
+        'bytes': 112641},
+    'firebase-web.mjs.LEGAL.txt': {'sha256': '70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319',
+        'bytes': 35536},
+    'firebase-web.provenance.json': {'sha256': '0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a',
+        'bytes': 2237},
+    'index.html': {'sha256': '8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68',
+        'bytes': 10868},
+    'progress.mjs': {'sha256': 'dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48',
+        'bytes': 1076},
+    'styles.css': {'sha256': 'c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c',
+        'bytes': 20773},
+}
+DTO_BROWSER_VERSIONS = {'chromium': '156.0.8078.4', 'firefox': '157.0', 'webkit': '27.2'}
+DTO_ENGINE_REVISIONS = {'chromium': '1248', 'chromium-headless-shell': '1248',
+    'firefox': '1555', 'webkit': '2370', 'ffmpeg': '1013', 'winldd': '1007', 'android': '1001'}
+DTO_REQUEST_ROUTES = {
+    ('GET', '/__/auth/handler'): ('apiKey', 'appName', 'authType', 'eventId', 'providerId', 'redirectUrl', 'scopes', 'v'),
+    ('GET', '/auth/config'): (),
+    ('GET', '/auth/session'): (),
+    ('GET', '/c/pay/fixture'): (),
+    ('GET', '/js/api.js'): ('onload',),
+    ('GET', '/v1/catalog/images/v2.expired-one'): (),
+    ('GET', '/v1/catalog/images/v2.expired-two'): (),
+    ('GET', '/v1/catalog/images/v2.renewed-one'): (),
+    ('GET', '/v1/catalog/images/v2.renewed-two'): (),
+    ('GET', '/v1/catalog/vehicles/11111111-1111-4111-8111-111111111111/articles'): (),
+    ('GET', '/v1/catalog/vehicles/11111111-1111-4111-8111-111111111111/articles/33333333-3333-4333-8333-333333333333'): (),
+    ('GET', '/v1/catalog/vehicles/11111111-1111-4111-8111-111111111111/articles/33333333-3333-4333-8333-333333333333/source'): ('source_revision_id',),
+    ('GET', '/v1/catalog/vehicles/22222222-2222-4222-8222-222222222222/articles'): (),
+    ('GET', '/v1/catalog/years'): (),
+    ('GET', '/v1/catalog/years/2024/makes'): ('region',),
+    ('GET', '/v1/catalog/years/2024/makes/fixture-make/models'): ('region',),
+    ('GET', '/v1/catalog/years/2024/makes/fixture-make/models/fixture-model/configurations'): ('region',),
+    ('GET', '/v1/projects'): ('key',),
+    ('GET', '/v1/workshop/library'): ('cursor', 'limit'),
+    ('GET', '/v1/workshop/orders/55555555-5555-4555-8555-555555555555'): (),
+    ('GET', '/v1/workshop/quote'): ('configuration_id', 'region'),
+    ('GET', '/workshop/'): ('configuration', 'make', 'model', 'order', 'region', 'year'),
+    ('GET', '/workshop/app.mjs'): (),
+    ('GET', '/workshop/article-read.mjs'): (),
+    ('GET', '/workshop/auth.mjs'): (),
+    ('GET', '/workshop/catalog.mjs'): (),
+    ('GET', '/workshop/commerce.mjs'): (),
+    ('GET', '/workshop/firebase-web.mjs'): (),
+    ('GET', '/workshop/fonts/InstrumentSans.ttf'): (),
+    ('GET', '/workshop/progress.mjs'): (),
+    ('GET', '/workshop/purchase-config.json'): (),
+    ('GET', '/workshop/styles.css'): (),
+    ('POST', '/auth/firebase/session'): (),
+    ('POST', '/auth/logout'): (),
+    ('POST', '/v1/accounts:lookup'): ('key',),
+    ('POST', '/v1/accounts:signInWithIdp'): ('key',),
+    ('POST', '/v1/catalog/vehicles/11111111-1111-4111-8111-111111111111/articles/33333333-3333-4333-8333-333333333333/prepare'): (),
+    ('POST', '/v1/token'): ('key',),
+    ('POST', '/v1/workshop/checkout-sessions'): (),
+}
+DTO_MISSING_FAMILIES = (
+    'dto_scenario_assertion_provenance', 'dto_request_origin_and_response_provenance',
+    'dto_source_execution_binding', 'dto_browser_installation_and_process_provenance',
+    'dto_tls_capture_provenance', 'dto_sdk_build_provenance',
+    'dto_supervisor_commands_and_cleanup', 'dto_host_and_input_provenance',
+    'dto_authenticated_ci_archive_provenance', 'dto_supervisor_and_reviewer_authority')
+
 
 class ContractError(ValueError):
     """A static diagnostic code, never candidate-controlled text."""
@@ -977,6 +1063,241 @@ def inspect_paid_migration_receipts(store, *, candidate_sha, trusted_base_sha, p
     result['missing_validation_families'].extend(('paid_migration_schema_semantics',
                                                  'paid_migration_driver_provenance'))
     return result
+
+
+def _paid_selector_requests(requests, first, last):
+    """Closed metadata-only v2 requests, with exact decimal duration bounds."""
+    array(requests)
+    require(len(requests) == 3, 'paid_selector_request_inventory')
+    scopes = []; keys = []
+    for request in requests:
+        exact(request, ('completed', 'duration_seconds', 'finished_at', 'payload',
+                        'request_id', 'scope', 'started_at', 'status'))
+        require(request['completed'] is True and type(request['status']) is int and
+                request['status'] == 200 and request['request_id'] == '', 'paid_selector_request')
+        duration = request['duration_seconds']
+        require(type(duration) in (int, Decimal) and 0 <= duration <= 120,
+                'paid_selector_duration')
+        require(first <= timestamp(request['started_at']) <= timestamp(request['finished_at']) <= last,
+                'paid_selector_timestamp')
+        scope = request['scope']; enum(scope, ('makes', 'models', 'configurations'))
+        fields = ('scope', 'year', 'region', 'idempotency_key')
+        if scope != 'makes': fields += ('make',)
+        if scope == 'configurations': fields += ('model',)
+        payload = request['payload']; exact(payload, fields)
+        require(payload['scope'] == scope and type(payload['year']) is int and
+                payload['year'] == 2024 and payload['region'] == 'US' and
+                (scope == 'makes' or payload['make'] == 'example') and
+                (scope != 'configurations' or payload['model'] == 'car'), 'paid_selector_payload')
+        key = payload['idempotency_key']
+        require(type(key) is str and re.fullmatch(r'catalog-hydration:[a-f0-9]{24}', key) is not None,
+                'paid_selector_idempotency_key')
+        scopes.append(scope); keys.append(key)
+    require(set(scopes) == {'makes', 'models', 'configurations'}, 'paid_selector_request_inventory')
+    unique(keys)
+
+
+def inspect_paid_selector_work(store, *, candidate_sha, trusted_base_sha, profile_sha256,
+        input_manifest_sha256, host_before_sha256, expected_driver_sha256,
+        profile_version='paid-selector-v2'):
+    """Two-case selector/work receipt consistency; never acceptance or authority."""
+    result = inspect_paid_migration_receipts(store, candidate_sha=candidate_sha,
+        trusted_base_sha=trusted_base_sha, profile_sha256=profile_sha256,
+        input_manifest_sha256=input_manifest_sha256, host_before_sha256=host_before_sha256,
+        expected_driver_sha256=expected_driver_sha256, profile_version=profile_version)
+
+    def document(ref):
+        require(ref in store.by_ref, 'paid_missing_raw')
+        # Preserve all reserved-identity checks and confined reopen/recheck rules.
+        # Only this explicit layer opts into exact decimal JSON number tokens.
+        return ArtifactStore._read_bound_json(store, store.by_ref[ref]['artifact_id'],
+            lambda raw: _strict_json(raw, MAX_RAW_JSON_BYTES, 'raw_json_size', exact_floats=True),
+            candidate_sha, trusted_base_sha, profile_sha256)
+
+    routes = {'/v1/catalog/makes?year=2024',
+              '/v1/catalog/models?year=2024&make=example',
+              '/v1/catalog/configurations?year=2024&make=example&model=car'}
+    phases = ('before', 'selectors', 'unpaid', 'expired', 'paid_cold', 'unavailable')
+    zero = dict(entered=0, completed=0, active=0)
+    observed = []; snapshot_count = 0
+    name = 'TestPostgresPaidCatalogGrantBeforeWork'
+    collector = document('workshop-paid-access.json')
+    for bank in ('bankone', 'banktwo'):
+        prefix = 'paid-access/'+bank+'/'+name+'/'
+        measured = document(prefix+'measured-runtime.json')
+        case = document(prefix+'result.json')
+        measurement = document(prefix+'go-measurement.json')
+        copies = (case['phase_snapshots'], measurement['phase_snapshots'],
+                  collector['case_results'][name+'-'+bank]['phase_snapshots'])
+        first, last = timestamp(case['started_at']), timestamp(case['finished_at'])
+        snapshots = measured['snapshots']; selectors = snapshots['selectors']
+        previous_grants = previous_identity = 0
+        for phase in phases+('final_snapshot',):
+            final = phase == 'final_snapshot'; before = phase == 'before'
+            snapshot = measured['final_snapshot'] if final else snapshots[phase]
+            require(snapshot['ensure'] == zero and snapshot['ensure_requests'] == [] and
+                    all(value == 0 for value in snapshot['counts'].values()) and
+                    all(snapshot[key] == 0 for key in ('model_calls', 'payment_calls')) and
+                    all(value == 0 for key in ('source_calls', 'asset_calls')
+                        for value in snapshot[key].values()) and snapshot['workers'] == [],
+                    'paid_selector_article_work')
+            proxy = snapshot['proxy']
+            require(all(proxy[key] == 0 for key in ('request_received', 'upstream_completed',
+                        'downstream_completed', 'downstream_waiting')) and
+                    proxy['response_captured'] is False and proxy['errors'] == [], 'paid_selector_proxy_work')
+            if not final:
+                require(snapshot['reader_calls'] == 0, 'paid_selector_reader_work')
+                require(snapshot['grant_calls'] >= previous_grants and
+                        snapshot['identity_checks'] >= previous_identity, 'paid_selector_progression')
+                previous_grants, previous_identity = snapshot['grant_calls'], snapshot['identity_checks']
+            else:
+                require(snapshot['grant_calls'] == previous_grants, 'paid_selector_final_grants')
+            if phase == 'selectors':
+                require(snapshot['grant_calls'] == snapshot['identity_checks'] == 0,
+                        'paid_selector_metadata_identity')
+            expected_count = 0 if before else 3
+            require(snapshot['selector_ensure'] == dict(entered=expected_count,
+                    completed=expected_count, active=0), 'paid_selector_request_inventory')
+            requests = snapshot['selector_ensure_requests']
+            if before:
+                require(requests == [], 'paid_selector_request_inventory')
+            else:
+                _paid_selector_requests(requests, first, last)
+                # Each item has been typed above; compare parsed numeric values
+                # directly rather than converting Decimals to binary floats.
+                require(requests == selectors['selector_ensure_requests'], 'paid_selector_request_drift')
+            if not final:
+                require(all(requests == copy[phase]['selector_ensure_requests'] for copy in copies),
+                        'paid_selector_copy_drift')
+            for provider in ('bankone', 'banktwo'):
+                trace = snapshot['provider_traces'][provider]
+                require(snapshot['provider_calls'][provider] == expected_count and
+                        len(trace) == expected_count and set(trace) == (set() if before else routes),
+                        'paid_selector_provider_routes')
+                if not before:
+                    require(trace == selectors['provider_traces'][provider], 'paid_selector_trace_drift')
+            snapshot_count += 1
+        observed.append(name+'-'+bank)
+    store.recheck()
+    result['observed_selector_case_ids'] = observed
+    result['observed_selector_snapshot_count'] = snapshot_count
+    result['missing_validation_families'].extend(('paid_selector_http_outcomes',
+                                                 'paid_selector_request_provenance'))
+    return result
+
+
+def _dto_member_identity(value, candidate_sha, trusted_base_sha, profile_sha256):
+    """Apply the existing reserved-identity rule to parsed archive members."""
+    expected = dict(candidate_sha=candidate_sha, trusted_base_sha=trusted_base_sha,
+                    profile_sha256=profile_sha256)
+    pending = [value]
+    while pending:
+        item = pending.pop()
+        if type(item) is dict:
+            for key, nested in item.items():
+                if key in expected:
+                    require(type(nested) is str and nested == expected[key], 'raw_identity_mismatch')
+                pending.append(nested)
+        elif type(item) is list:
+            pending.extend(item)
+
+
+def _dto_query_text(value, maximum):
+    require(type(value) is str and not any(char in '\x00\r\n' for char in value), 'dto_query_text')
+    require(not any(0xD800 <= ord(char) <= 0xDFFF for char in value), 'dto_query_text')
+    require(len(value.encode('utf-8')) <= maximum, 'dto_query_text')
+
+
+def _dto_requests(value, sdk_requests):
+    array(value)
+    require(len(value) <= 256, 'dto_request_limit')
+    sdk_count = 0
+    for request in value:
+        exact(request, ('method', 'path', 'query'))
+        method, path = request['method'], request['path']
+        require(type(method) is str and type(path) is str and
+                (method, path) in DTO_REQUEST_ROUTES, 'dto_request_route')
+        query = request['query']
+        require(type(query) is dict and len(query) <= 16, 'dto_query_shape')
+        require(set(query) <= set(DTO_REQUEST_ROUTES[(method, path)]), 'dto_query_keys')
+        for key, values in query.items():
+            _dto_query_text(key, 64)
+            array(values)
+            require(1 <= len(values) <= 8, 'dto_query_values')
+            for item in values:
+                _dto_query_text(item, 512)
+        sdk_count += path == '/workshop/firebase-web.mjs'
+    integer(sdk_requests)
+    require(sdk_requests <= 256 and sdk_requests == sdk_count, 'dto_sdk_requests')
+    return len(value)
+
+
+def inspect_dto_receipts(store, *, candidate_sha, trusted_base_sha, profile_sha256,
+                         profile_version='dto-fixture-v1'):
+    """DTO120 receipt consistency only; no execution or verification authority."""
+    digest(candidate_sha, 40); digest(trusted_base_sha, 40); digest(profile_sha256)
+    require(type(profile_version) is str and profile_version == 'dto-fixture-v1', 'dto_profile_version')
+    require('dto-artifact.zip' in store.by_ref, 'dto_missing_raw')
+    record = store.by_ref['dto-artifact.zip']
+    require(record['kind'] == 'raw', 'dto_archive_kind')
+    members = strict_dto_archive(store.read(record['artifact_id']))
+    documents = []
+    for ref in ('browser/evidence.json', 'ready.json'):
+        value = _strict_json(members[ref], MAX_RAW_JSON_BYTES, 'raw_json_size', exact_floats=True)
+        _dto_member_identity(value, candidate_sha, trusted_base_sha, profile_sha256)
+        documents.append(value)
+    evidence, ready = documents
+    exact(evidence, ('browser_versions', 'candidate_sha', 'engine_revisions', 'input_sha256',
+        'mode', 'playwright_version', 'provenance', 'results', 'sdk_sha256', 'version'))
+    require(evidence['version'] == 'v1' and evidence['mode'] == 'dto-fixture' and
+            evidence['candidate_sha'] == candidate_sha and evidence['playwright_version'] == '1.64.1',
+            'dto_evidence_identity')
+    exact(evidence['browser_versions'], DTO_BROWSER_VERSIONS)
+    exact(evidence['engine_revisions'], DTO_ENGINE_REVISIONS)
+    require(evidence['browser_versions'] == DTO_BROWSER_VERSIONS and
+            evidence['engine_revisions'] == DTO_ENGINE_REVISIONS, 'dto_browser_metadata')
+    exact(evidence['input_sha256'], DTO_SOURCE_INPUTS)
+    require(evidence['input_sha256'] == DTO_SOURCE_INPUTS, 'dto_source_inputs')
+    provenance = evidence['provenance']
+    exact(provenance, ('assets', 'certificate_sha256'))
+    exact(provenance['assets'], DTO_SOURCE_ASSETS)
+    for name, expected in DTO_SOURCE_ASSETS.items():
+        asset = provenance['assets'][name]
+        exact(asset, ('sha256', 'bytes'))
+        integer(asset['bytes'])
+        require(asset == expected, 'dto_source_assets')
+    sdk_hash = DTO_SOURCE_ASSETS['firebase-web.mjs']['sha256']
+    digest(provenance['certificate_sha256'])
+    exact(ready, ('certificate_sha256', 'kind', 'origin', 'sdk_sha256', 'version'))
+    require(ready['version'] == 'v1' and ready['kind'] == 'dto-fixture' and
+            ready['sdk_sha256'] == evidence['sdk_sha256'] == sdk_hash, 'dto_readiness_identity')
+    digest(ready['certificate_sha256'])
+    require(ready['certificate_sha256'] == provenance['certificate_sha256'], 'dto_certificate_copy')
+    origin = ready['origin']
+    require(type(origin) is str, 'dto_readiness_origin')
+    match = re.fullmatch(r'https://127\.0\.0\.1:([1-9][0-9]{0,4})', origin)
+    require(match is not None and int(match[1]) <= 65535, 'dto_readiness_origin')
+    rows = evidence['results']
+    array(rows)
+    require(len(rows) == 120, 'dto_case_inventory')
+    identities = []; request_count = 0
+    for row in rows:
+        exact(row, ('browser', 'elapsed_seconds', 'requests', 'scenario', 'sdk_requests', 'status'))
+        require(type(row['status']) is str and row['status'] == 'passed', 'dto_row_failed')
+        elapsed = row['elapsed_seconds']
+        require(type(elapsed) in (int, Decimal) and
+                (type(elapsed) is int or elapsed.is_finite()) and 0 <= elapsed <= 120, 'dto_elapsed')
+        identities.append(dict(browser=row['browser'], scenario=row['scenario']))
+        request_count += _dto_requests(row['requests'], row['sdk_requests'])
+        require(request_count <= 8192, 'dto_request_limit')
+    pairs = dto_case_identities(identities)
+    store.recheck()
+    return dict(status='unavailable', complete=False, profile_version=profile_version,
+        candidate_sha=candidate_sha, trusted_base_sha=trusted_base_sha,
+        observed_case_ids=[dict(browser=engine, scenario=scenario) for engine, scenario in pairs],
+        verified_case_ids=[], observed_request_count=request_count, observed_asset_count=11,
+        source_expectations_sha=DTO_SOURCE_EXPECTATIONS_SHA,
+        missing_validation_families=list(DTO_MISSING_FAMILIES), **{flag: False for flag in FLAGS})
 
 
 def references(value, artifacts):

@@ -269,6 +269,48 @@ false; `observed_migration_phase_count` is diagnostic only. CLI plan/validate ne
 select this layer. Source/document/media corroboration and DTO remain unfinished,
 and no historical run or acceptance profile is promoted by these checks.
 
+
+The internal `inspect_paid_selector_work` layer applies the complete existing
+common/PG/migration receipt chain first, then interprets only the two fixed
+`TestPostgresPaidCatalogGrantBeforeWork` Bankone/Banktwo cases. It checks six
+phase snapshots per case plus each final snapshot: fourteen diagnostic snapshots.
+It never supplies a final reader/identity counter absent from the producer.
+The other ten paid cases retain exactly their existing validation depth.
+
+Its closed selector request records require the exact eight fields, completed
+status 200, empty test-transport request ID, three distinct makes/models/
+configurations scopes and idempotency keys, and scope-specific closed payloads
+for 2024/US/example/car. Request times must lie inside their child case; finite
+JSON durations use exact decimal values within inclusive 0–120 seconds. Negative
+nonzero decimals and values just above 120 cannot underflow or round into range.
+Monotonic elapsed time is not asserted equal to wall-clock timestamp subtraction.
+The separate exact-number parse preserves the unchanged raw/envelope/transport
+ceilings and all reserved identity checks. Requests in case, Go measurement and
+embedded collector copies are compared using parsed exact numeric values, so
+sub-float duration differences cannot hide behind the older copy checks.
+
+The before snapshot has no selector work; every later snapshot/final has exactly
+three completed metadata requests and three literal provider selector routes per
+bank. Concurrent initial request/trace ordering is allowed, while later lists
+must retain their selected order and values. Article ensure, all six article
+counts, source/asset/model/payment work, proxy activity and worker inventories
+remain zero/empty; six phase reader counters remain zero. Grant/identity counts
+must progress monotonically with zero selector counts, and the final grant count
+must equal the last phase. Mutable account/session/grant SQL rows are not compared
+as immutable whole-snapshot values.
+
+The layer adds only `observed_selector_case_ids` (two literal identities) and
+`observed_selector_snapshot_count` (14). It retains every inherited missing
+validation family, including `paid_selector_work_and_model`, and explicitly adds
+`paid_selector_http_outcomes` and `paid_selector_request_provenance`. HTTP status,
+body, headers, actual execution, source/model/lifecycle semantics, supervisor
+provenance and authority remain unverified. Results always remain unavailable/
+incomplete, verified case IDs stay empty and every verification/deployment/
+cutover flag remains false. No profile, filename, raw kind or CLI command selects
+this API. Synthetic mutation tests and confined-store checks provide parser
+regression coverage and contribute zero product acceptance cases.
+
+
 Bounded local checks:
 
 ```sh
@@ -282,3 +324,46 @@ Tests use inline synthetic envelopes/files and the actual disabled committed tas
 at the locally available HEAD, including a depth-one clone.
 They are parser/tooling tests, never actual product acceptance receipts. Do not
 run providers, browsers, Docker or cloud commands as part of this milestone.
+
+## Internal DTO120 receipt consistency
+
+The explicit internal `inspect_dto_receipts` API interprets only the declared
+`raw` artifact `dto-artifact.zip`; disabled CLI plan/validate never invoke it.
+It uses the existing in-memory three-member ZIP parser without extraction and
+strict duplicate-free UTF-8 JSON with exact Decimal number tokens. Expanded
+limits remain 4 MiB each for `browser/evidence.json` and `ready.json`, and 8 MiB
+for the opaque `go-fixture.log`; transport limits remain unchanged.
+
+The closed v1 DTO evidence requires exactly forty frozen scenarios crossed with
+Chromium, Firefox and WebKit, all 120 unique rows reporting passed. Failed,
+unavailable, skipped, extra or missing rows cannot become partial success.
+The inspector checks the fixed Playwright/browser/revision metadata and the
+source-derived six-input and eleven-asset hash/length inventories frozen at
+`99df69caaeb4d5ccf6d0ffbf0377fe6d5d872a3d`. These expected values are literal
+reviewed constants, never copied from supplied receipts or mutable checkout
+contents. SDK hashes must match the frozen bundle hash. A source-content or
+metadata inventory change needs a separately reviewed successor contract.
+
+Each row has a finite exact numeric elapsed time in inclusive 0–120 seconds,
+excluding bool/string/null. **120 seconds is a diagnostic receipt ceiling; it is
+not a producer timeout or independently observed execution duration.** Request
+lists allow retries, arbitrary order and empty lists, with at most 256 entries
+per row and 8,192 total. Closed method/path/query inventories, bounded string
+arrays and a re-derived SDK-request count reject substitutions and contradictory
+counts. Query values remain opaque and are never included in diagnostics.
+Readiness requires the closed DTO schema, a canonical HTTPS 127.0.0.1 port,
+matching SDK hash and matching certificate digest. Matching certificate copies
+are consistency observations, not independent TLS capture evidence.
+
+The result always stays unavailable/incomplete, with no verified IDs and all five
+verification/deployment/cutover flags false. The 120 normalized observed pairs,
+request total and eleven asset observations are diagnostics only. Source hash
+equality does not establish candidate execution, authenticated CI capture or
+collector authorship. Request rows omit network origin and response bodies;
+passed strings cannot independently reproduce DOM assertions. Browser binary
+installation/process identity, TLS capture, reproducible SDK builds, host/input
+provenance, supervisor commands/cleanup, authenticated CI/archive provenance and
+registered supervisor/reviewer authority all remain explicitly missing. The Go
+log and SDK provenance JSON contents are not interpreted as proof. DTO transport
+mocks cannot satisfy API21 or real Firebase/Stripe/bank acceptance. Existing paid
+inspectors and every disabled profile remain unchanged.

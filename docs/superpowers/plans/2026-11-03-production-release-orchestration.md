@@ -557,6 +557,10 @@ Concrete todo:
 
 Tracking synchronized by live Issue186 body/comment6618084753 and Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference` readback at `2026-11-03T23:26:27.924126+00:00`. Exact goal, five todos and five-path scope match the full issue body/comment; the compact Project index links that comment and retains historical DTO/A/B/R6 references, with its previous text preserved verbatim there. Dedicated record stores SHA256 readback hashes. Independent checkpoint review remains pending; synchronized tracking does not authorize a builder or live operation.
 
+## R6 DTO120 receipt planning successor
+
+Next prospective offline family is the [DTO120 receipt plan](2026-11-03-workshop-r6-dto120-receipts.md), source `99df69caaeb4d5ccf6d0ffbf0377fe6d5d872a3d` stacked on draft PR188; task `docs/agents/tasks/2026-11-03-production-release/r6-dto120-receipts.json`, record `docs/agents/records/2026-11-03-r6-dto120-receipts.json`. Tracking readback is synchronized in Issue186 comment6621102242 and Project8 Source/dependency index (879 characters; SHA256 f6b01dc0fe6cb7909d045b567505549909e71d4fe8853ac40d55f1a6d649e6b0); full predecessor text and every prior ID are retained. Exact committed preflight and independent gate review remain required. The three implementation paths remain unchanged. Closed40x3 DTO outcomes and fixed source-derived six-input/eleven-asset expectations add diagnostic consistency only; no verified cases, enabled profiles, CLI dispatch or true authority flags. Existing selector-work/history references and every paid/CI/source/SDK/TLS/supervisor/reviewer/staging gap remain. No implementation or release certification is authorized.
+
 
 ## Verified docs-only integration tracking synchronization
 

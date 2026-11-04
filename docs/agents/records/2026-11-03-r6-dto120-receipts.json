@@ -1,0 +1,54 @@
+{
+  "goal": "Add one internal DTO120 raw outcome and source-derived asset-binding consistency inspector; preserve unavailable results, no verified cases, all disabled profiles and every false authority flag.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-r6-dto120-receipts.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+    "docs/superpowers/plans/2026-11-03-release-acceptance.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "todo": [
+    "Synchronize this closed DTO120 receipt contract, source-derived expected hashes, three-path allowlist and todo in Issue186/Project8 and canonical plan/task/record/queue after coordinator tracking-lock release; commit/push, pass exact-base preflight and obtain independent gate review before implementation.",
+    "Add failing inline synthetic tests for the exact forty scenarios crossed with three engines, closed typed rows and requests, fixed input/asset bindings, readiness consistency, strict limits and unsafe or contradictory archives.",
+    "Implement only the internal inspect_dto_receipts API with fixed dto-fixture-v1 dispatch and source99df69c hash constants, existing bounded archive/strict JSON/confinement checks, observed diagnostics and explicit unverified provenance gaps.",
+    "Keep disabled CLI plan/validate disconnected from the inspector; retain zero CLI counts, unavailable/incomplete results, empty verified IDs, all profiles disabled, enabled_tiers empty and all five verification/deployment/cutover flags false.",
+    "Run controlled red/green mutations, focused/developer/autonomy, syntax, shallow-clone and exact three-path checks; update the runbook, commit/push coherent milestones and obtain independent exact-SHA code review before any integration."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T02:43:04.572252+00:00",
+  "tracking_receipts": {
+    "source_base_sha": "99df69caaeb4d5ccf6d0ffbf0377fe6d5d872a3d",
+    "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621102242",
+    "issue_comment_body_sha256": "9c7251167de52b3b9d3bdcdd2ac071dc795930fdde8edd8058fed3ab18ce98f3",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_status": "In Progress",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_field_sha256": "f6b01dc0fe6cb7909d045b567505549909e71d4fe8853ac40d55f1a6d649e6b0",
+    "prior_project_field_sha256": "e05d13f3c018713ea7200aa5d860d63355cee5d0576ed25836bed7cb30f4ac7d",
+    "project_field_characters": 879,
+    "prior_project_field_characters": 606,
+    "prior_comment_ids": [
+      "6617360191",
+      "6617521783",
+      "6618084753",
+      "6618111784",
+      "6618124676",
+      "6618597888",
+      "6619139974",
+      "6619358812",
+      "6621014641",
+      "6621071257",
+      "6621086102"
+    ],
+    "additional_preserved_comment_ids": [
+      "6617902111",
+      "6619194720",
+      "6619208212"
+    ],
+    "prior_comment_ids_complete": true,
+    "predecessor_verbatim_preserved_in_issue": true,
+    "readback_at": "2026-11-04T02:43:04.572252+00:00"
+  }
+}

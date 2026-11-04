@@ -612,7 +612,8 @@ class RawPrimitiveTests(unittest.TestCase):
                         strict_junit_xml=DEFAULT, strict_dto_archive=DEFAULT,
                         paid_case_identities=DEFAULT, dto_case_identities=DEFAULT,
                         inspect_paid_common=DEFAULT, inspect_paid_pg_snapshots=DEFAULT,
-                        inspect_paid_migration_receipts=DEFAULT) as mocks:
+                        inspect_paid_migration_receipts=DEFAULT, inspect_paid_selector_work=DEFAULT,
+                        inspect_dto_receipts=DEFAULT) as mocks:
                     for mock in mocks.values(): mock.side_effect = AssertionError('raw dispatch forbidden')
                     with patch.object(assembler, 'ArtifactStore', side_effect=AssertionError('plan root I/O')):
                         with patch('builtins.print') as output:
@@ -1271,6 +1272,649 @@ class PaidMigrationReceiptTests(unittest.TestCase):
             ('table',lambda r:r.update(other=[]))]:
             altered=copy.deepcopy(raw);mutate(altered)
             with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):assembler._paid_migration_rows(altered)
+
+
+
+
+class PaidSelectorWorkTests(unittest.TestCase):
+    """Independent synthetic selector observations; no product receipt authority."""
+    root = 'TestPostgresPaidCatalogGrantBeforeWork'
+    phases = ('before', 'selectors', 'unpaid', 'expired', 'paid_cold', 'unavailable')
+    routes = ('/v1/catalog/makes?year=2024',
+              '/v1/catalog/models?year=2024&make=example',
+              '/v1/catalog/configurations?year=2024&make=example&model=car')
+
+    @classmethod
+    def setUpClass(cls):
+        cls.baseline = PaidMigrationReceiptTests().files()
+        for bank in ('bankone', 'banktwo'):
+            def populate(measured):
+                requests = []
+                for index, scope in enumerate(('makes', 'models', 'configurations')):
+                    payload = dict(scope=scope, year=2024, region='US',
+                                   idempotency_key='catalog-hydration:'+str(index+1)*24)
+                    if scope != 'makes': payload['make'] = 'example'
+                    if scope == 'configurations': payload['model'] = 'car'
+                    requests.append(dict(completed=True, duration_seconds=0.5,
+                        started_at='2026-11-03T00:00:00.1Z', finished_at='2026-11-03T00:00:00.2Z',
+                        payload=payload, request_id='', scope=scope, status=200))
+                for index, phase in enumerate(cls.phases):
+                    snapshot = measured['snapshots'][phase]
+                    snapshot.update(identity_checks=max(0,index-1), grant_calls=max(0,index-1))
+                    if phase != 'before':
+                        snapshot.update(selector_ensure=dict(entered=3,completed=3,active=0),
+                            selector_ensure_requests=copy.deepcopy(requests),
+                            provider_calls=dict(bankone=3,banktwo=3),
+                            provider_traces=dict(bankone=list(cls.routes),banktwo=list(reversed(cls.routes))))
+                final = copy.deepcopy(measured['snapshots']['unavailable'])
+                del final['reader_calls']; del final['identity_checks']
+                measured['final_snapshot'] = final
+            cls.alter(cls.baseline, populate, bank=bank)
+
+    @classmethod
+    def alter(cls, raw, mutation, *, bank='bankone'):
+        """Repair copy/hash seams so semantic mutations reach the new inspector."""
+        prefix = 'paid-access/'+bank+'/'+cls.root+'/'
+        measured = json.loads(raw[prefix+'measured-runtime.json']); mutation(measured)
+        raw[prefix+'measured-runtime.json'] = json.dumps(measured).encode()
+        measurement = json.loads(raw[prefix+'go-measurement.json'])
+        measurement['phase_snapshots'] = copy.deepcopy(measured['snapshots'])
+        raw[prefix+'go-measurement.json'] = json.dumps(measurement).encode()
+        collector = json.loads(raw['workshop-paid-access.json'])
+        collector['case_results'][cls.root+'-'+bank]['phase_snapshots'] = copy.deepcopy(measured['snapshots'])
+        raw['workshop-paid-access.json'] = json.dumps(collector).encode()
+        PaidPGSnapshotTests().reseal(raw)
+
+    def invocation(self, **overrides):
+        args = dict(candidate_sha=BASE,trusted_base_sha=TRUSTED_BASE,profile_sha256='1'*64,
+            input_manifest_sha256=hashlib.sha256(b'{}').hexdigest(),host_before_sha256=hashlib.sha256(b'{}').hexdigest(),
+            expected_driver_sha256=hashlib.sha256(PaidMigrationReceiptTests.driver).hexdigest(),
+            profile_version='paid-selector-v2')
+        args.update(overrides)
+        return args
+
+    def inspect(self, raw, **overrides):
+        class Store:
+            by_ref = {ref:dict(artifact_id=ref) for ref in raw}
+            def read(self, artifact_id): return raw[artifact_id]
+            def read_raw_json(self, artifact_id, **_): return assembler.strict_raw_json(raw[artifact_id])
+            def recheck(self): pass
+        self.assertTrue(callable(getattr(assembler,'inspect_paid_selector_work',None)),
+                        'explicit internal selector-work inspector is missing')
+        return assembler.inspect_paid_selector_work(Store(), **self.invocation(**overrides))
+
+    def real_store(self, raw, directory):
+        artifacts=[]
+        for index,(ref,data) in enumerate(raw.items()):
+            path=Path(directory)/ref;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+            artifacts.append(dict(artifact_id='raw-'+str(index),kind='raw',ref=ref,
+                sha256=hashlib.sha256(data).hexdigest(),bytes=len(data),visibility='private'))
+        return assembler.ArtifactStore(directory,artifacts)
+
+    def assert_unavailable(self, result):
+        self.assertEqual(result['status'],'unavailable'); self.assertIs(result['complete'],False)
+        self.assertEqual(result['verified_case_ids'],[])
+        self.assertEqual(result['observed_selector_case_ids'],[self.root+'-bankone',self.root+'-banktwo'])
+        self.assertEqual(result['observed_selector_snapshot_count'],14)
+        previous=PaidMigrationReceiptTests().inspect(self.baseline)
+        self.assertEqual(result['missing_validation_families'],previous['missing_validation_families']+
+            ['paid_selector_http_outcomes','paid_selector_request_provenance'])
+        self.assertEqual(set(result)-set(previous),{'observed_selector_case_ids','observed_selector_snapshot_count'})
+        for key in previous:
+            if key!='missing_validation_families': self.assertEqual(result[key],previous[key])
+        self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+
+    def test_selector_receipts_add_only_incomplete_diagnostics(self):
+        self.assert_unavailable(self.inspect(self.baseline))
+
+    def test_closed_request_and_payload_fields_are_enforced_beyond_hash_consistency(self):
+        mutations=[]
+        receipt_fields=('completed','duration_seconds','finished_at','payload','request_id','scope','started_at','status')
+        for key in receipt_fields:
+            mutations.append(('missing-'+key,lambda req,k=key:req.pop(k)))
+        mutations += [('extra',lambda req:req.update(extra=True)),
+            ('not-completed',lambda req:req.update(completed=False)),
+            ('bool-completed',lambda req:req.update(completed=1)),
+            ('request-id',lambda req:req.update(request_id='unexpected'))]
+        for key in ('scope','year','region','idempotency_key'):
+            mutations.append(('missing-payload-'+key,lambda req,k=key:req['payload'].pop(k)))
+        for key,value in [('year',True),('year',2025),('year','2024'),('region','CA'),('scope','models'),
+                          ('idempotency_key','catalog-hydration:'+'A'*24),
+                          ('idempotency_key','catalog-hydration:'+'1'*23),('idempotency_key','other:'+'1'*24),
+                          ('vehicle_id','00000000-0000-0000-0000-000000000001')]:
+            mutations.append(('payload-'+key+'-'+str(value),lambda req,k=key,v=value:req['payload'].update({k:v})))
+        for value in (True,'200',None,201):
+            mutations.append(('status-'+str(value),lambda req,v=value:req.update(status=v)))
+        for value in (True,'0.5',None,-1,121):
+            mutations.append(('duration-'+str(value),lambda req,v=value:req.update(duration_seconds=v)))
+        for key,value in [('started_at','2026-11-03T00:00:00.3Z'),
+            ('started_at','2026-11-02T23:59:59Z'),('finished_at','2026-11-03T00:00:02Z'),
+            ('started_at','2026-11-03T01:00:00.1+01:00'),('finished_at',True)]:
+            mutations.append((key+'-'+str(value),lambda req,k=key,v=value:req.update({k:v})))
+        for name,mutation in mutations:
+            raw=dict(self.baseline)
+            self.alter(raw,lambda m:[mutation(s['selector_ensure_requests'][0])
+                for s in [*m['snapshots'].values(),m['final_snapshot']] if s['selector_ensure_requests']])
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError): self.inspect(raw)
+        for index,key,value in [(1,'make','wrong'),(2,'model','wrong'),(1,'make',None),(2,'model',None)]:
+            raw=dict(self.baseline)
+            self.alter(raw,lambda m:[s['selector_ensure_requests'][index]['payload'].update({key:value})
+                for s in [*m['snapshots'].values(),m['final_snapshot']] if s['selector_ensure_requests']])
+            with self.subTest(index=index,key=key,value=value),self.assertRaises(assembler.ContractError): self.inspect(raw)
+
+    def test_request_inventory_and_later_copy_drift_cannot_hide_behind_pass_flags(self):
+        mutations=[('missing',lambda m:m['snapshots']['selectors']['selector_ensure_requests'].pop()),
+            ('extra',lambda m:m['snapshots']['selectors']['selector_ensure_requests'].append(copy.deepcopy(m['snapshots']['selectors']['selector_ensure_requests'][0]))),
+            ('duplicate-scope',lambda m:m['snapshots']['selectors']['selector_ensure_requests'].__setitem__(1,copy.deepcopy(m['snapshots']['selectors']['selector_ensure_requests'][0]))),
+            ('duplicate-key',lambda m:m['snapshots']['selectors']['selector_ensure_requests'][1]['payload'].update(idempotency_key='catalog-hydration:'+'1'*24)),
+            ('later-order',lambda m:m['snapshots']['unpaid']['selector_ensure_requests'].reverse()),
+            ('later-time',lambda m:m['snapshots']['unpaid']['selector_ensure_requests'][0].update(finished_at='2026-11-03T00:00:00.25Z')),
+            ('final-copy',lambda m:m['final_snapshot']['selector_ensure_requests'][0].update(duration_seconds=0.6)),
+            ('before-request',lambda m:m['snapshots']['before']['selector_ensure_requests'].append(copy.deepcopy(m['snapshots']['selectors']['selector_ensure_requests'][0])))]
+        for name,mutation in mutations:
+            raw=dict(self.baseline);self.alter(raw,mutation)
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError): self.inspect(raw)
+
+    def test_exact_decimal_duration_boundaries_survive_binary_rounding(self):
+        for token,valid in [('0',True),('120',True),('0.00000000000000000000000001',True),
+            ('-0.00000000000000000000000000000000000001',False),('-1e-999',False),
+            ('120.00000000000000000000000000000000000001',False),('NaN',False),('Infinity',False),('1e999',False)]:
+            raw=dict(self.baseline)
+            def mutate(m):
+                for s in [*m['snapshots'].values(),m['final_snapshot']]:
+                    for request in s['selector_ensure_requests']: request['duration_seconds']='NUMBER_TOKEN'
+            self.alter(raw,mutate)
+            raw={ref:data.replace(b'"NUMBER_TOKEN"',token.encode()) for ref,data in raw.items()}
+            PaidPGSnapshotTests().reseal(raw)
+            with self.subTest(token=token):
+                if valid: self.assert_unavailable(self.inspect(raw))
+                else:
+                    code='^paid_selector_duration$' if token not in ('NaN','Infinity','1e999') else 'nonfinite_number'
+                    with self.assertRaisesRegex(assembler.ContractError,code): self.inspect(raw)
+
+    def test_exact_decimal_request_copy_changes_cannot_round_to_the_same_float(self):
+        prefix='paid-access/bankone/'+self.root+'/'
+        for ref in (prefix+'go-measurement.json',prefix+'result.json','workshop-paid-access.json'):
+            raw=dict(self.baseline)
+            raw[ref]=raw[ref].replace(b'"duration_seconds": 0.5',
+                b'"duration_seconds": 0.50000000000000000000000000000001',1)
+            if ref.endswith('go-measurement.json'): PaidPGSnapshotTests().reseal(raw)
+            with self.subTest(ref=ref),self.assertRaisesRegex(assembler.ContractError,'^paid_selector_copy_drift$'):
+                self.inspect(raw)
+
+    def test_initial_concurrent_order_and_incidental_progress_counts_are_not_hardcoded(self):
+        raw=dict(self.baseline)
+        def reorder(m):
+            for phase in self.phases[1:]:
+                s=m['snapshots'][phase];s['selector_ensure_requests'].reverse()
+                for bank in ('bankone','banktwo'):s['provider_traces'][bank].reverse()
+            for phase,index in zip(self.phases[2:],(10,20,30,40)):
+                m['snapshots'][phase].update(grant_calls=index,identity_checks=index+1)
+            m['final_snapshot']['selector_ensure_requests'].reverse()
+            for bank in ('bankone','banktwo'):m['final_snapshot']['provider_traces'][bank].reverse()
+            m['final_snapshot']['grant_calls']=40
+        self.alter(raw,reorder)
+        self.assert_unavailable(self.inspect(raw))
+
+    def test_metadata_and_later_work_must_stay_zero(self):
+        # Check every phase plus the final snapshot for article/model work.
+        for phase in self.phases+('final_snapshot',):
+            for field in ('model_calls','payment_calls'):
+                raw=dict(self.baseline)
+                self.alter(raw,lambda m,p=phase,f=field:(m['final_snapshot'] if p=='final_snapshot' else m['snapshots'][p]).update({f:1}))
+                with self.subTest(phase=phase,field=field),self.assertRaises(assembler.ContractError):self.inspect(raw)
+        for field in ('source_calls','asset_calls'):
+            for bank in ('bankone','banktwo'):
+                raw=dict(self.baseline);self.alter(raw,lambda m:m['snapshots']['unpaid'][field].update({bank:1}))
+                with self.subTest(field=field,bank=bank),self.assertRaises(assembler.ContractError):self.inspect(raw)
+        for field in ('article_jobs','source_revisions','canonical_revisions','published_revisions','publication_events','source_observations'):
+            raw=dict(self.baseline);self.alter(raw,lambda m:m['snapshots']['selectors']['counts'].update({field:1}))
+            # PG-derived counters already reject this independent contradiction.
+            with self.subTest(count=field),self.assertRaises(assembler.ContractError):self.inspect(raw)
+        mutations=[('reader',lambda s:s.update(reader_calls=1)),
+            ('ensure',lambda s:s.update(ensure=dict(entered=1,completed=1,active=0),ensure_requests=[{'scope':'article'}])),
+            ('selector-count',lambda s:s.update(selector_ensure=dict(entered=2,completed=2,active=0),selector_ensure_requests=s['selector_ensure_requests'][:2])),
+            ('proxy',lambda s:s['proxy'].update(request_received=1)),
+            ('capture',lambda s:s['proxy'].update(response_captured=True)),
+            ('errors',lambda s:s['proxy'].update(errors=['observed-error'])),
+            ('workers',lambda s:s['workers'].append(dict(kind='cli',alive=True,exit_code=None)))]
+        for name,mutate in mutations:
+            raw=dict(self.baseline);self.alter(raw,lambda m:mutate(m['snapshots']['selectors']))
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):self.inspect(raw)
+
+    def test_provider_trace_inventory_is_literal_and_stable(self):
+        for value in ['',self.routes[0], 'https://example.invalid'+self.routes[1],
+            self.routes[1]+'#fragment',self.routes[1]+'&extra=1',self.routes[1]+'&year=2024',
+            '/v1/catalog/%6dodels?year=2024&make=example', '/v1/catalog/articles?year=2024']:
+            raw=dict(self.baseline)
+            self.alter(raw,lambda m:[s['provider_traces']['bankone'].__setitem__(1,value)
+                for s in [*m['snapshots'].values(),m['final_snapshot']] if s['provider_traces']['bankone']])
+            with self.subTest(route=value),self.assertRaises(assembler.ContractError):self.inspect(raw)
+        for name,mutation in [('extra',lambda s:s['provider_traces']['bankone'].append(self.routes[0])),
+            ('missing',lambda s:s['provider_traces']['bankone'].pop()),
+            ('count',lambda s:s['provider_calls'].update(bankone=4)),
+            ('later-order',lambda s:s['provider_traces']['banktwo'].reverse())]:
+            raw=dict(self.baseline);self.alter(raw,lambda m:mutation(m['snapshots']['unpaid']))
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):self.inspect(raw)
+
+    def test_monotone_identity_grant_progression_and_final_grant_binding(self):
+        for field in ('grant_calls','identity_checks'):
+            for phase in ('before','selectors','expired'):
+                raw=dict(self.baseline)
+                value=1 if phase in ('before','selectors') else 0
+                self.alter(raw,lambda m:m['snapshots'][phase].update({field:value}))
+                with self.subTest(field=field,phase=phase),self.assertRaises(assembler.ContractError):self.inspect(raw)
+        raw=dict(self.baseline);self.alter(raw,lambda m:m['final_snapshot'].update(grant_calls=5))
+        with self.assertRaises(assembler.ContractError):self.inspect(raw)
+
+    def test_parent_hash_copy_and_identity_guards_are_not_bypassed(self):
+        for name,override in [('candidate',dict(candidate_sha='2'*40)),('base',dict(trusted_base_sha='invalid')),
+            ('profile',dict(profile_sha256='invalid')),('version',dict(profile_version='other'))]:
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):self.inspect(self.baseline,**override)
+        prefix='paid-access/bankone/'+self.root+'/'
+        for name in ('raw-hash','copy','missing','mixed-candidate','bank','nested-base','nested-profile'):
+            raw=dict(self.baseline)
+            if name=='raw-hash':raw[prefix+'measured-runtime.json']+=b' '
+            elif name=='copy':
+                m=json.loads(raw[prefix+'go-measurement.json']);m['phase_snapshots']['selectors']['grant_calls']=99
+                raw[prefix+'go-measurement.json']=json.dumps(m).encode();PaidPGSnapshotTests().reseal(raw)
+            elif name=='missing':del raw[prefix+'measured-runtime.json']
+            else:
+                key,value={'mixed-candidate':('candidate_sha','2'*40),'bank':('provider','banktwo'),
+                    'nested-base':('trusted_base_sha','2'*40),'nested-profile':('profile_sha256','2'*64)}[name]
+                self.alter(raw,lambda m:m.update({key:value}) if name in ('mixed-candidate','bank') else m['snapshots']['before']['article'].update({key:value}))
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):self.inspect(raw)
+
+    def test_real_confined_store_valid_and_semantic_mutation_remain_conservative(self):
+        for valid in (True,False):
+            raw=dict(self.baseline)
+            if not valid:self.alter(raw,lambda m:m['snapshots']['selectors']['selector_ensure_requests'][0]['payload'].update(year=2025))
+            with tempfile.TemporaryDirectory() as directory,self.real_store(raw,directory) as store:
+                if valid:self.assert_unavailable(assembler.inspect_paid_selector_work(store,**self.invocation()))
+                else:
+                    with self.assertRaises(assembler.ContractError):assembler.inspect_paid_selector_work(store,**self.invocation())
+
+    def test_real_confined_store_rejects_missing_symlink_and_post_read_mutation(self):
+        prefix='paid-access/bankone/'+self.root+'/';ref=prefix+'measured-runtime.json'
+        for mutation in ('missing','symlink','post-read'):
+            with tempfile.TemporaryDirectory() as directory,self.real_store(self.baseline,directory) as store:
+                path=Path(directory)/ref
+                if mutation=='missing':path.unlink()
+                elif mutation=='symlink':path.unlink();path.symlink_to(Path(directory)/'host-before.json')
+                else:
+                    original=store.read_raw_json
+                    def changed(artifact_id,**kwargs):
+                        value=original(artifact_id,**kwargs)
+                        if artifact_id==store.by_ref[ref]['artifact_id']:path.write_bytes(path.read_bytes()+b' ')
+                        return value
+                    store.read_raw_json=changed
+                with self.subTest(mutation=mutation),self.assertRaises(assembler.ContractError):
+                    assembler.inspect_paid_selector_work(store,**self.invocation())
+
+
+class DTOReceiptTests(unittest.TestCase):
+    """Synthetic DTO consistency only; constants copied from the reviewed plan."""
+    inputs = {'apps/api-go/workshop_browser_fixture_test.go': '7cf50daeb190686dc55c33c90056b87a62eece96640759b180f1282a0a1a6dd2',
+ 'scripts/dev/fixtures/workshop_customer/firebase_transport.js': '96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63',
+ 'scripts/dev/fixtures/workshop_customer/hostile_source.json': '076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1',
+ 'scripts/dev/fixtures/workshop_customer/scenarios.json': '83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9',
+ 'scripts/dev/fixtures/workshop_customer/stripe_checkout.html': '26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083',
+ 'scripts/dev/workshop_browser_smoke.py': '45299888e56a78679148f575ac071856f0a3c1941faf059cd586ff2980069de8'}
+    assets = {'app.mjs': {'bytes': 37127,
+             'sha256': 'bc1b0d5e1c1181c1ff2a833ab8dc8c9ab88bf84e38b00b018ffa5fc9206e5ab5'},
+ 'article-read.mjs': {'bytes': 2507,
+                      'sha256': 'fefa9ba05d05e8a48f8135d07a53f92d7ef32bf848db075005981848cc8d8f08'},
+ 'auth.mjs': {'bytes': 7908,
+              'sha256': 'ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2'},
+ 'catalog.mjs': {'bytes': 11688,
+                 'sha256': 'cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52'},
+ 'commerce.mjs': {'bytes': 7321,
+                  'sha256': 'be291187bdbd3ef7faeb9ace6c244eed8a0b28b0edc91f1e01881c7d32c9ae26'},
+ 'firebase-web.mjs': {'bytes': 112641,
+                      'sha256': 'bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1'},
+ 'firebase-web.mjs.LEGAL.txt': {'bytes': 35536,
+                                'sha256': '70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319'},
+ 'firebase-web.provenance.json': {'bytes': 2237,
+                                  'sha256': '0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a'},
+ 'index.html': {'bytes': 10868,
+                'sha256': '8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68'},
+ 'progress.mjs': {'bytes': 1076,
+                  'sha256': 'dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48'},
+ 'styles.css': {'bytes': 20773,
+                'sha256': 'c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c'}}
+    scenarios = ('bankone-cascade',
+ 'banktwo-cascade',
+ 'dual-bank-coverage',
+ 'one-bank-unavailable',
+ 'pending-no-content',
+ 'source-to-canonical',
+ 'source-rewrite-failure',
+ 'review-required',
+ 'warm-reload',
+ 'selection-change-in-flight',
+ 'source-review-change-in-flight',
+ 'cancel-and-retry',
+ 'history-restore',
+ 'document-only',
+ 'missing-media',
+ 'withdrawal',
+ 'keyboard-print-mobile',
+ 'source-media-isolation',
+ 'auth-cookie-reload',
+ 'google-popup-exchange',
+ 'google-popup-blocked',
+ 'google-popup-cancelled',
+ 'google-stale-reauthentication',
+ 'firebase-memory-persistence',
+ 'signin-unavailable-local',
+ 'signin-malformed-config',
+ 'session-expired',
+ 'session-blocked',
+ 'auth-dependency-unavailable',
+ 'quote-exact-scope',
+ 'terms-config-unavailable',
+ 'checkout-double-click-retry',
+ 'checkout-processing-return',
+ 'checkout-untrusted-return',
+ 'checkout-expired',
+ 'already-owned-no-pay',
+ 'library-pagination-and-states',
+ 'paid-prepare-before-poll',
+ 'media-renew-coalesced',
+ 'logout-and-bfcache-clear')
+    routes = [('GET',
+  '/__/auth/handler',
+  ['apiKey', 'appName', 'authType', 'eventId', 'providerId', 'redirectUrl', 'scopes', 'v']),
+ ('GET', '/auth/config', []),
+ ('GET', '/auth/session', []),
+ ('GET', '/c/pay/fixture', []),
+ ('GET', '/js/api.js', ['onload']),
+ ('GET', '/v1/catalog/images/v2.expired-one', []),
+ ('GET', '/v1/catalog/images/v2.expired-two', []),
+ ('GET', '/v1/catalog/images/v2.renewed-one', []),
+ ('GET', '/v1/catalog/images/v2.renewed-two', []),
+ ('GET', '/v1/catalog/vehicles/11111111-1111-4111-8111-111111111111/articles', []),
+ ('GET',
+  '/v1/catalog/vehicles/11111111-1111-4111-8111-111111111111/articles/33333333-3333-4333-8333-333333333333',
+  []),
+ ('GET',
+  '/v1/catalog/vehicles/11111111-1111-4111-8111-111111111111/articles/33333333-3333-4333-8333-333333333333/source',
+  ['source_revision_id']),
+ ('GET', '/v1/catalog/vehicles/22222222-2222-4222-8222-222222222222/articles', []),
+ ('GET', '/v1/catalog/years', []),
+ ('GET', '/v1/catalog/years/2024/makes', ['region']),
+ ('GET', '/v1/catalog/years/2024/makes/fixture-make/models', ['region']),
+ ('GET',
+  '/v1/catalog/years/2024/makes/fixture-make/models/fixture-model/configurations',
+  ['region']),
+ ('GET', '/v1/projects', ['key']),
+ ('GET', '/v1/workshop/library', ['cursor', 'limit']),
+ ('GET', '/v1/workshop/orders/55555555-5555-4555-8555-555555555555', []),
+ ('GET', '/v1/workshop/quote', ['configuration_id', 'region']),
+ ('GET', '/workshop/', ['configuration', 'make', 'model', 'order', 'region', 'year']),
+ ('GET', '/workshop/app.mjs', []),
+ ('GET', '/workshop/article-read.mjs', []),
+ ('GET', '/workshop/auth.mjs', []),
+ ('GET', '/workshop/catalog.mjs', []),
+ ('GET', '/workshop/commerce.mjs', []),
+ ('GET', '/workshop/firebase-web.mjs', []),
+ ('GET', '/workshop/fonts/InstrumentSans.ttf', []),
+ ('GET', '/workshop/progress.mjs', []),
+ ('GET', '/workshop/purchase-config.json', []),
+ ('GET', '/workshop/styles.css', []),
+ ('POST', '/auth/firebase/session', []),
+ ('POST', '/auth/logout', []),
+ ('POST', '/v1/accounts:lookup', ['key']),
+ ('POST', '/v1/accounts:signInWithIdp', ['key']),
+ ('POST',
+  '/v1/catalog/vehicles/11111111-1111-4111-8111-111111111111/articles/33333333-3333-4333-8333-333333333333/prepare',
+  []),
+ ('POST', '/v1/token', ['key']),
+ ('POST', '/v1/workshop/checkout-sessions', [])]
+    missing = (
+        'dto_scenario_assertion_provenance', 'dto_request_origin_and_response_provenance',
+        'dto_source_execution_binding', 'dto_browser_installation_and_process_provenance',
+        'dto_tls_capture_provenance', 'dto_sdk_build_provenance',
+        'dto_supervisor_commands_and_cleanup', 'dto_host_and_input_provenance',
+        'dto_authenticated_ci_archive_provenance', 'dto_supervisor_and_reviewer_authority')
+
+    def model(self):
+        sdk = 'bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1'
+        evidence = dict(version='v1', mode='dto-fixture', candidate_sha=BASE,
+            sdk_sha256=sdk, playwright_version='1.64.1',
+            browser_versions={'chromium':'156.0.8078.4', 'firefox':'157.0', 'webkit':'27.2'},
+            engine_revisions={'chromium':'1248', 'chromium-headless-shell':'1248',
+                'firefox':'1555', 'webkit':'2370', 'ffmpeg':'1013', 'winldd':'1007', 'android':'1001'},
+            input_sha256=copy.deepcopy(self.inputs),
+            provenance=dict(certificate_sha256='a'*64, assets=copy.deepcopy(self.assets)),
+            results=[dict(browser=engine, scenario=scenario, status='passed', elapsed_seconds=1.25,
+                requests=[dict(method='GET', path='/workshop/', query={}),
+                          dict(method='GET', path='/workshop/firebase-web.mjs', query={})],
+                sdk_requests=1) for engine in ('chromium','firefox','webkit') for scenario in self.scenarios])
+        ready = dict(version='v1',kind='dto-fixture',origin='https://127.0.0.1:12345',
+                     certificate_sha256='a'*64,sdk_sha256=sdk)
+        return dict(evidence=evidence, ready=ready, log=b'opaque synthetic fixture log')
+
+    def archive(self, model=None, *, evidence_raw=None, ready_raw=None):
+        model = self.model() if model is None else model
+        return RawPrimitiveTests().archive([
+            ('browser/evidence.json', evidence_raw if evidence_raw is not None else json.dumps(model['evidence']).encode(), stat.S_IFREG | 0o600),
+            ('go-fixture.log',model['log'],stat.S_IFREG | 0o600),
+            ('ready.json',ready_raw if ready_raw is not None else json.dumps(model['ready']).encode(), stat.S_IFREG | 0o600)])
+
+    def invocation(self):
+        return dict(candidate_sha=BASE,trusted_base_sha=TRUSTED_BASE,profile_sha256='b'*64)
+
+    def inspect(self, model=None, *, raw=None, kind='raw', ref='dto-artifact.zip', **kwargs):
+        raw = self.archive(model) if raw is None else raw
+        declaration = dict(artifact_id='dto', kind=kind, ref=ref,
+                          sha256=hashlib.sha256(raw).hexdigest(),bytes=len(raw),visibility='private')
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/ref;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
+            with assembler.ArtifactStore(directory,[declaration]) as store:
+                return assembler.inspect_dto_receipts(store,**(self.invocation() | kwargs))
+
+    def reject(self, model, code=None):
+        with self.assertRaises(assembler.ContractError) as caught:self.inspect(model)
+        if code is not None:self.assertEqual(str(caught.exception),code)
+        self.assertNotIn('SECRET_SENTINEL',str(caught.exception))
+
+    def test_complete_tuple_inventory_is_observed_but_never_verified(self):
+        result=self.inspect()
+        self.assertEqual(set(result), {'status','complete','profile_version','candidate_sha',
+            'trusted_base_sha','observed_case_ids','verified_case_ids','observed_request_count',
+            'observed_asset_count','source_expectations_sha','missing_validation_families',
+            'fixture_verified','product_candidate_verified','staging_verified',
+            'deployment_authorized','cutover_verified'})
+        self.assertEqual(result['status'],'unavailable');self.assertIs(result['complete'],False)
+        self.assertEqual(result['profile_version'],'dto-fixture-v1')
+        self.assertEqual(result['candidate_sha'],BASE);self.assertEqual(result['trusted_base_sha'],TRUSTED_BASE)
+        self.assertEqual(result['observed_case_ids'],[dict(browser=e,scenario=s)
+            for e in ('chromium','firefox','webkit') for s in self.scenarios])
+        self.assertEqual(result['observed_request_count'],240);self.assertEqual(result['observed_asset_count'],11)
+        self.assertEqual(result['source_expectations_sha'],'99df69caaeb4d5ccf6d0ffbf0377fe6d5d872a3d')
+        self.assertEqual(result['verified_case_ids'],[])
+        self.assertEqual(result['missing_validation_families'],list(self.missing))
+        for flag in ('fixture_verified','product_candidate_verified','staging_verified',
+                     'deployment_authorized','cutover_verified'):self.assertIs(result[flag],False)
+
+    def test_order_retries_optional_queries_and_opaque_copies_do_not_create_authority(self):
+        model=self.model();model['evidence']['results'].reverse()
+        row=model['evidence']['results'][0]
+        row['requests']=[dict(method=m,path=p,query={k:['SECRET_SENTINEL'] for k in keys})
+                         for m,p,keys in self.routes]
+        row['sdk_requests']=1
+        model['evidence']['results'][1].update(requests=[],sdk_requests=0)
+        model['evidence']['results'][2]['requests'].append(dict(method='GET',path='/workshop/',query={}))
+        model['evidence']['provenance']['certificate_sha256']='c'*64
+        model['ready'].update(certificate_sha256='c'*64,origin='https://127.0.0.1:65535')
+        model['log']=b'not an authenticated Go outcome\x00'
+        result=self.inspect(model)
+        self.assertEqual(result['observed_request_count'],len(self.routes)+237)
+        self.assertEqual(result['missing_validation_families'],list(self.missing))
+        self.assertNotIn('SECRET_SENTINEL',json.dumps(result))
+        for port in (1,80,443):
+            model['ready']['origin']=f'https://127.0.0.1:{port}';self.inspect(model)
+
+    def test_closed_objects_reject_each_missing_and_extra_key(self):
+        paths=[('evidence',),('ready',),('evidence','provenance'),
+            ('evidence','provenance','assets','index.html'),('evidence','results',0),
+            ('evidence','results',0,'requests',0)]
+        for path in paths:
+            original=self.model()
+            target=original
+            for key in path:target=target[key]
+            for key in tuple(target)+('unknown',):
+                model=copy.deepcopy(original);value=model
+                for part in path:value=value[part]
+                if key=='unknown':value[key]=True
+                else:value.pop(key)
+                with self.subTest(path=path,key=key):self.reject(model,'invalid_object_keys')
+
+    def test_missing_duplicate_extra_or_substituted_tuples_fail(self):
+        for kind in ('missing','extra','duplicate','scenario','engine','api','bool','rowtype'):
+            model=self.model();rows=model['evidence']['results']
+            if kind=='missing':rows.pop()
+            elif kind=='extra':rows.append(copy.deepcopy(rows[0]))
+            elif kind=='duplicate':rows[-1]=copy.deepcopy(rows[0])
+            elif kind=='scenario':rows[0]['scenario']='unreviewed'
+            elif kind=='engine':rows[0]['browser']='other'
+            elif kind=='api':rows[0]['scenario']='google-exchange-checkout-library'
+            elif kind=='bool':rows[0]['browser']=True
+            else:rows[0]=[]
+            with self.subTest(kind=kind):self.reject(model)
+        for status in ('failed','unavailable','skipped','pending',True,None):
+            model=self.model();model['evidence']['results'][0]['status']=status;self.reject(model)
+        model=self.model();model['evidence']['results'][0]={'browser':'chromium','scenario':self.scenarios[0],
+            'status':'unavailable','error':'launch failed'};self.reject(model)
+
+    def test_source_input_asset_and_sdk_bindings_cannot_self_authenticate(self):
+        for group in ('inputs','assets','browsers','revisions'):
+            model=self.model();ev=model['evidence']
+            base={'inputs':ev['input_sha256'],'assets':ev['provenance']['assets'],
+                  'browsers':ev['browser_versions'],'revisions':ev['engine_revisions']}[group]
+            for action in ('missing','extra','changed'):
+                changed=copy.deepcopy(model);value={'inputs':changed['evidence']['input_sha256'],
+                    'assets':changed['evidence']['provenance']['assets'],
+                    'browsers':changed['evidence']['browser_versions'],
+                    'revisions':changed['evidence']['engine_revisions']}[group]
+                if action=='missing':value.pop(next(iter(value)))
+                elif action=='extra':value['unreviewed']='0'*64
+                else:value[next(iter(value))]='0'*64
+                with self.subTest(group=group,action=action):self.reject(changed)
+        for name in self.inputs:
+            model=self.model();model['evidence']['input_sha256'][name]='0'*64
+            self.reject(model,'dto_source_inputs')
+        for name in self.assets:
+            for field in ('sha256','bytes'):
+                model=self.model();asset=model['evidence']['provenance']['assets'][name]
+                asset[field]='0'*64 if field=='sha256' else asset[field]+1
+                self.reject(model,'dto_source_assets')
+        for bad in (True,False,'10868',None,-1):
+            model=self.model();model['evidence']['provenance']['assets']['index.html']['bytes']=bad;self.reject(model)
+        for container in ('evidence','ready'):
+            model=self.model();model[container]['sdk_sha256']='0'*64;self.reject(model)
+        model=self.model();model['evidence']['sdk_sha256']='0'*64;model['ready']['sdk_sha256']='0'*64
+        model['evidence']['provenance']['assets']['firebase-web.mjs']['sha256']='0'*64;self.reject(model)
+
+    def test_versions_readiness_identity_and_declared_artifact_are_closed(self):
+        for key,bad in (('version','v2'),('mode','api-fixture'),('candidate_sha','0'*40),
+                        ('playwright_version','1.64.0')):
+            model=self.model();model['evidence'][key]=bad;self.reject(model)
+        for key,bad in (('version','v2'),('kind','api-fixture'),('certificate_sha256','d'*64)):
+            model=self.model();model['ready'][key]=bad;self.reject(model)
+        for bad in ('https://localhost:80','http://127.0.0.1:80','https://127.0.0.1',
+            'https://user@127.0.0.1:80','https://%31%32%37.0.0.1:80','https://127.0.0.1:0',
+            'https://127.0.0.1:65536','https://127.0.0.1:080','https://127.0.0.1:+80',
+            'https://127.0.0.1:80/','https://127.0.0.1:80?q=x','https://127.0.0.1:80#x',True,None):
+            model=self.model();model['ready']['origin']=bad;self.reject(model)
+        for bad in ('G'*64,'a'*63,True,None):
+            model=self.model();model['evidence']['provenance']['certificate_sha256']=bad;self.reject(model)
+        for key,bad in (('candidate_sha','x'),('trusted_base_sha','x'),('profile_sha256','x'),
+                        ('profile_version','dto-fixture-v2')):
+            with self.subTest(key=key),self.assertRaises(assembler.ContractError):self.inspect(**{key:bad})
+        for kind,ref in (('manifest','dto-artifact.zip'),('raw','other.zip')):
+            with self.assertRaises(assembler.ContractError):self.inspect(kind=kind,ref=ref)
+        for key in ('candidate_sha','trusted_base_sha','profile_sha256'):
+            model=self.model();model['evidence']['results'][0]['requests'][0]['query'][key]=['SECRET_SENTINEL']
+            self.reject(model)
+
+    def test_exact_decimal_duration_boundaries_and_nonfinite_values(self):
+        for token in ('0','120','0.00000000000000000001','119.99999999999999999999'):
+            model=self.model();raw=json.dumps(model['evidence']).replace('"elapsed_seconds": 1.25',
+                '"elapsed_seconds": '+token,1).encode()
+            self.inspect(raw=self.archive(model,evidence_raw=raw))
+        for token in ('-1e-999','-0.00000000000000000001','120.00000000000000000001',
+                      'NaN','Infinity','1e999','true','"1"','null'):
+            model=self.model();raw=json.dumps(model['evidence']).replace('"elapsed_seconds": 1.25',
+                '"elapsed_seconds": '+token,1).encode()
+            with self.subTest(token=token),self.assertRaises(assembler.ContractError):
+                self.inspect(raw=self.archive(model,evidence_raw=raw))
+
+    def test_request_and_query_bounds_paths_primitives_and_sdk_derivation(self):
+        for bad in (True,False,'1',None,-1,0,257):
+            model=self.model();model['evidence']['results'][0]['sdk_requests']=bad;self.reject(model)
+        for key,bad in (('method',True),('method','get'),('method','DELETE'),('path',True),
+            ('path','https://cars.example/workshop/'),('path','/workshop/?x=1'),
+            ('path','/workshop/#x'),('path','/%77orkshop/'),('path','/workshop/../workshop/'),
+            ('query',[]),('query',{'unknown':['x']})):
+            model=self.model();model['evidence']['results'][0]['requests'][0][key]=bad;self.reject(model)
+        for bad in ([],['x']*9,'x',[True],[None],['x'*513],['é'*257],['a\nb'],['a\rb'],['a\x00b']):
+            model=self.model();model['evidence']['results'][0]['requests'][0]=dict(
+                method='GET',path='/v1/workshop/library',query={'limit':bad});self.reject(model)
+        for bad in ({},True,None):
+            model=self.model();model['evidence']['results'][0]['requests']=bad;self.reject(model)
+        model=self.model();model['evidence']['results'][0].update(requests=[dict(method='GET',path='/workshop/',query={})]*257,sdk_requests=0)
+        self.reject(model,'dto_request_limit')
+        model=self.model()
+        for index,row in enumerate(model['evidence']['results']):
+            row.update(requests=[dict(method='GET',path='/workshop/',query={})]*(69 if index<33 else 68),sdk_requests=0)
+        self.reject(model,'dto_request_limit')  # 33*69+87*68 = 8193, all rows below256.
+        model['evidence']['results'][0]['requests'].pop()
+        self.assertEqual(self.inspect(model)['observed_request_count'],8192)
+        model=self.model();model['evidence']['results'][0].update(
+            requests=[dict(method='GET',path='/workshop/',query={})]*256,sdk_requests=0)
+        self.assertEqual(self.inspect(model)['observed_request_count'],494)
+        model=self.model();row=model['evidence']['results'][0]
+        row.update(requests=[dict(method='GET',path='/v1/workshop/library',query={'limit':['é'*256]*8})],sdk_requests=0)
+        self.inspect(model)
+
+    def test_strict_member_json_and_archive_corruption_are_not_bypassed(self):
+        for raw in (b'{}',b'[]',b'\xff',b'{"candidate_sha":"x","candidate_sha":"y"}',
+            b'{"x":"\\ud800"}',b'{"x":NaN}',b' '* (4*1024*1024+1),
+            b'{"x":'+b'['*1100+b'0'+b']'*1100+b'}'):
+            for member in ('evidence_raw','ready_raw'):
+                with self.subTest(member=member),self.assertRaises(assembler.ContractError):
+                    self.inspect(raw=self.archive(**{member:raw}))
+        for raw in (b'not a zip',self.archive()[:-1],self.archive()+b'garbage',
+            RawPrimitiveTests().archive([('browser/evidence.json',b'{}',stat.S_IFLNK | 0o777),
+                ('go-fixture.log',b'x',stat.S_IFREG),('ready.json',b'{}',stat.S_IFREG)])):
+            with self.assertRaises(assembler.ContractError):self.inspect(raw=raw)
+        model=self.model();raw=json.dumps(model['evidence']).replace('"query": {}','"query": {"x":1,"x":2}',1).encode()
+        with self.assertRaisesRegex(assembler.ContractError,'^duplicate_json_key$'):
+            self.inspect(raw=self.archive(model,evidence_raw=raw))
+
+    def test_confined_store_detects_missing_symlink_hash_and_post_read_drift(self):
+        raw=self.archive();declaration=dict(artifact_id='dto',kind='raw',ref='dto-artifact.zip',
+            sha256=hashlib.sha256(raw).hexdigest(),bytes=len(raw),visibility='private')
+        for mutation in ('missing','symlink','ancestor','hash','post-read','extra'):
+            with tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)/'root';root.mkdir();path=root/'dto-artifact.zip';path.write_bytes(raw)
+                record=dict(declaration)
+                if mutation=='hash':record['sha256']='0'*64
+                with assembler.ArtifactStore(root,[record]) as store:
+                    if mutation=='missing':path.unlink()
+                    elif mutation=='symlink':path.unlink();path.symlink_to(Path(directory)/'outside')
+                    elif mutation=='ancestor':
+                        root.rename(Path(directory)/'moved');root.symlink_to(Path(directory)/'moved',target_is_directory=True)
+                    elif mutation=='extra':(root/'extra').write_bytes(b'x')
+                    elif mutation=='post-read':
+                        original=store.read
+                        def changed(artifact_id):
+                            value=original(artifact_id);path.write_bytes(raw+b' ');return value
+                        store.read=changed
+                    with self.subTest(mutation=mutation),self.assertRaises(assembler.ContractError):
+                        assembler.inspect_dto_receipts(store,**self.invocation())
 
 
 if __name__ == '__main__': unittest.main()

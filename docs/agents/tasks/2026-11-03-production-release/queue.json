@@ -170,7 +170,11 @@
       "planning_status": "synchronized",
       "planning_source_sha": "1138ddd2c4c9ba1f90556f568377099e4733745a",
       "planning_record_ref": "docs/agents/records/2026-11-03-workshop-product-evidence.json",
-      "dispatch_prerequisite": "Issue186 comment6617239424 and Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4 read back with matching raw-validator goal/todo/refs. Pin the exact commit containing this synchronized plan/task/record/queue, pass exact-base preflight and obtain independent gate handoff before first3 implementation. No profile promotion."
+      "dispatch_prerequisite": "Issue186 comment6617239424 and Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4 read back with matching raw-validator goal/todo/refs. Pin the exact commit containing this synchronized plan/task/record/queue, pass exact-base preflight and obtain independent gate handoff before first3 implementation. No profile promotion.",
+      "next_bounded_gate_ref": "docs/agents/tasks/2026-11-03-production-release/r6-dto120-receipts.json",
+      "next_bounded_gate_state": "plan_only_independent_review_required",
+      "prior_next_bounded_gate_ref": "docs/agents/tasks/2026-11-03-production-release/r6-paid-selector-work.json",
+      "prior_next_bounded_gate_state": "plan_only_independent_review_required"
     },
     {
       "id": "workshop-commerce",
@@ -563,6 +567,77 @@
         "issue_comment_sha256": "bdcf4f4fb7bdb74f3c65ba6a9bbccd5a0e166469c6f2fbfd1ecf723efc64e060",
         "project_text_sha256": "0a1d7564da5b9e26b365fc471272c5fc0c092e409abe53efbbf8fe185cb7089d",
         "project_index_note": "921-character index retains prior reference IDs; full original 994-character field is preserved verbatim in the scoped Issue comment."
+      }
+    },
+    {
+      "id": "r6-paid-selector-work",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r6-paid-selector-work.json",
+      "depends_on": [],
+      "source_inspection_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+      "state": "planning_checkpoint",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "planning_record_ref": "docs/agents/records/2026-11-03-r6-paid-selector-work.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-r6-paid-selector-work.md",
+      "implementation_scope": "existing_first3_internal_two_case_selector_work_only",
+      "profile_status": "all_tiers_disabled",
+      "dispatch_prerequisite": "Commit/push synchronized gate; exact-base machine preflight and independent coordinator gate review. Existing paid common/PG/migration implementations are source dependencies already integrated at the inspection SHA; this queue item creates no trust promotion or acceptance dependency cycle.",
+      "tracking_correction": {
+        "prior_checkpoint_sha": "2222ce2123016f35a192fea312e9ff19749840b8",
+        "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6619194720",
+        "restored_reference_id": "6617902111",
+        "project_field_sha256": "293ca347ec9b6848b5e8e339b8dce6a0c5bdbe02019ef5feae45e0cbc5db4f93",
+        "readback_at": "2026-11-04T00:34:12.496441+00:00",
+        "independent_gate_review": "required"
+      }
+    },
+    {
+      "id": "r6-dto120-receipts",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/r6-dto120-receipts.json",
+      "depends_on": [],
+      "source_inspection_sha": "99df69caaeb4d5ccf6d0ffbf0377fe6d5d872a3d",
+      "source_dependency_pr": "https://github.com/lucronn/autodata/pull/188",
+      "state": "planning_checkpoint",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "planning_record_ref": "docs/agents/records/2026-11-03-r6-dto120-receipts.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-r6-dto120-receipts.md",
+      "implementation_scope": "existing_first3_internal_dto120_receipt_consistency_only",
+      "profile_status": "all_tiers_disabled",
+      "dispatch_prerequisite": "Issue186 comment6621102242 and Project8 current index read back with identical goal/todo/source/refs and all prior IDs retained. Commit/push docs-only checkpoint, pass full-SHA machine preflight and obtain independent exact-checkpoint plan approval before implementation. No profiles or authority promoted.",
+      "planning_status": "synchronized",
+      "tracking_receipts": {
+        "source_base_sha": "99df69caaeb4d5ccf6d0ffbf0377fe6d5d872a3d",
+        "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621102242",
+        "issue_comment_body_sha256": "9c7251167de52b3b9d3bdcdd2ac071dc795930fdde8edd8058fed3ab18ce98f3",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_status": "In Progress",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_field_sha256": "f6b01dc0fe6cb7909d045b567505549909e71d4fe8853ac40d55f1a6d649e6b0",
+        "prior_project_field_sha256": "e05d13f3c018713ea7200aa5d860d63355cee5d0576ed25836bed7cb30f4ac7d",
+        "project_field_characters": 879,
+        "prior_project_field_characters": 606,
+        "prior_comment_ids": [
+          "6617360191",
+          "6617521783",
+          "6618084753",
+          "6618111784",
+          "6618124676",
+          "6618597888",
+          "6619139974",
+          "6619358812",
+          "6621014641",
+          "6621071257",
+          "6621086102"
+        ],
+        "additional_preserved_comment_ids": [
+          "6617902111",
+          "6619194720",
+          "6619208212"
+        ],
+        "prior_comment_ids_complete": true,
+        "predecessor_verbatim_preserved_in_issue": true,
+        "readback_at": "2026-11-04T02:43:04.572252+00:00"
       }
     },
     {
