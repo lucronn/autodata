@@ -486,7 +486,7 @@
       "receipt_ref": "/home/corp/autodata-evidence/code-ci-exact-readback/20261104T205541Z",
       "runtime_jobs_enabled": false,
       "autonomous_verification": "no_run_workflow_path_filter_excludes_all_ten_scripts_r3_preparation_paths",
-      "vercel": "failed_external_daily_deployment_quota_more_than_100_api-deployments-free-per-day",
+      "vercel": "exact-head failure; cause unconfirmed from available GitHub status/log readback; an earlier quota bot comment predates this head and is context only",
       "application_code_pass_or_fail_established": false,
       "cursor_bugbot": "neutral",
       "documentation_ci_substitutes_for_code_ci": false,
@@ -531,7 +531,7 @@
     ],
     "pending_completion_conditions": [
       "Preserve and revalidate independent successor PASS_CODE_ONLY receipt for exact e88f8a9; any candidate change requires fresh review.",
-      "No normal code CI PASS is claimed: PR247 exact-head Autonomous Verification has no run due workflow path filtering; external Vercel daily deployment quota failure and neutral Cursor Bugbot do not establish application code pass or failure.",
+      "No normal code CI PASS is claimed: PR247 exact-head Autonomous Verification has no run due workflow path filtering; Vercel exact-head failure has an unconfirmed cause from available GitHub status/log readback; an earlier quota bot comment predates this head and is context only. Neither that status nor neutral Cursor Bugbot establishes application code pass or failure.",
       "Coordinator completion tracking readback is synchronized at Issue186 comment6641900979; final documentation adoption and exact docs-head readback remain pending.",
       "Independent review of finalized documentation overlay, exact four-path scope and historical standalone/nested gate preservation."
     ],
