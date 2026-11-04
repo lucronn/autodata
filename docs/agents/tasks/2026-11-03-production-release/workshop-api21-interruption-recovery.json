@@ -1,0 +1,128 @@
+{
+  "task_id": "workshop-api21-interruption-recovery",
+  "repository": "lucronn/autodata",
+  "goal": "Obtain one complete immutable full21 author-run receipt and independent raw acceptance review at application candidate e5fed171bb36fdb759c592cbcd0e15aea5490c97, preserving the interrupted original root and unchanged approved supervisor/runtime/fixtures; no implementation or release acceptance claim.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-api21-interruption-recovery.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-api21-interruption-recovery.json",
+  "phase": "docs_only_recovery_planning",
+  "state": "pending_tracking",
+  "tracking_writer": "api21_recovery_plan",
+  "allowed_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-api21-interruption-recovery.md",
+    "docs/agents/records/2026-11-04-workshop-api21-interruption-recovery.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-api21-interruption-recovery.json",
+    "docs/agents/records/2026-11-04-workshop-api21-interruption-recovery-tracking-evidence.json",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json",
+    "docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md",
+    "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+    "docs/verification/workshop-customer-ui-runbook.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "implementation_allowed_paths": [],
+  "implementation_authorized": false,
+  "runtime_authorized": false,
+  "canary_authorized": false,
+  "acceptance_claim": false,
+  "todo": [
+    "Preserve/classify old full run as interrupted/incomplete despite21/21 observed JUnit; retain supplemental cleanup hash and independent raw audit, without modifying/relabeling old root.",
+    "Synchronize exact recovery goal, these six todos, new roots, process supervision and zero implementation scope in Issue186/Project8/canonical docs/task/record; commit/push docs checkpoint, pin full SHA, pass exact-base preflight and independent checkpoint review; obtain bounded coordinator dispatch.",
+    "Revalidate exact clean source, approved wrapper/base/manifest/image/engines, completed pilot raw evidence, current service image identities, owned absent roots and serial host capacity; prove chosen user-service supervision with a harmless bounded owned canary, otherwise stop.",
+    "Dispatch the unchanged complete full21 command exactly once in its new root through the reviewed Restart=no user service; retain outer argv/identity/exit/log evidence separately, preserve existing deadlines/resources and remain under bounded observation through supervisor finalization.",
+    "Independently audit all21 raw cases, exact candidate and input/runtime provenance, supervisor final receipt/inventory/host-after, hashes/privacy and owned cleanup; retain every failure and require a separate synchronized gate for any repair or later attempt.",
+    "Keep final-head180/support/security/images/SDK/license/CI/reviewer proof and all staging/product/release/deployment/cutover gates separate; pilot/support add zero logical cases, historical evidence cannot certify another SHA, and all profile/authority promotion stays false."
+  ],
+  "pre_implementation": {
+    "goal": "Obtain one complete immutable full21 author-run receipt and independent raw acceptance review at application candidate e5fed171bb36fdb759c592cbcd0e15aea5490c97, preserving the interrupted original root and unchanged approved supervisor/runtime/fixtures; no implementation or release acceptance claim.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-api21-interruption-recovery.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-04-workshop-api21-interruption-recovery.md",
+      "docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md",
+      "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+      "docs/verification/workshop-customer-ui-runbook.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Preserve/classify old full run as interrupted/incomplete despite21/21 observed JUnit; retain supplemental cleanup hash and independent raw audit, without modifying/relabeling old root.",
+      "Synchronize exact recovery goal, these six todos, new roots, process supervision and zero implementation scope in Issue186/Project8/canonical docs/task/record; commit/push docs checkpoint, pin full SHA, pass exact-base preflight and independent checkpoint review; obtain bounded coordinator dispatch.",
+      "Revalidate exact clean source, approved wrapper/base/manifest/image/engines, completed pilot raw evidence, current service image identities, owned absent roots and serial host capacity; prove chosen user-service supervision with a harmless bounded owned canary, otherwise stop.",
+      "Dispatch the unchanged complete full21 command exactly once in its new root through the reviewed Restart=no user service; retain outer argv/identity/exit/log evidence separately, preserve existing deadlines/resources and remain under bounded observation through supervisor finalization.",
+      "Independently audit all21 raw cases, exact candidate and input/runtime provenance, supervisor final receipt/inventory/host-after, hashes/privacy and owned cleanup; retain every failure and require a separate synchronized gate for any repair or later attempt.",
+      "Keep final-head180/support/security/images/SDK/license/CI/reviewer proof and all staging/product/release/deployment/cutover gates separate; pilot/support add zero logical cases, historical evidence cannot certify another SHA, and all profile/authority promotion stays false."
+    ],
+    "status": "pending_tracking",
+    "updated_at": "2026-11-04T06:21:41.056622+00:00",
+    "tracking_writer": "api21_recovery_plan",
+    "approved_draft_sha256": "42dd282ae5c5a17cda7cf2e9b590ed4675ae46f55154c565691146bd2223e664",
+    "draft_review": "PASS relayed by coordinator; exact committed checkpoint review remains required",
+    "planning_base_sha": "b1ac3c7c7786a922dcc89132b07add605d7ebae5",
+    "original_synchronized_gate_sha": "e0e50dee3a5f985dd1f7586fc7a4d681aaf77323",
+    "acceptance_candidate_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+    "input_manifest_ref": "docs/agents/records/2026-11-04-workshop-api21-inputs.json",
+    "approved_input_manifest_sha256": "ee87deb865c06a84df92c1a8b0481f5ebc35cfdbd051bf32d9e1bf264ec67f13",
+    "tracking_evidence_ref": "docs/agents/records/2026-11-04-workshop-api21-interruption-recovery-tracking-evidence.json",
+    "implementation_allowed_paths": [],
+    "planning_allowed_paths": [
+      "docs/superpowers/plans/2026-11-04-workshop-api21-interruption-recovery.md",
+      "docs/agents/records/2026-11-04-workshop-api21-interruption-recovery.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-api21-interruption-recovery.json",
+      "docs/agents/records/2026-11-04-workshop-api21-interruption-recovery-tracking-evidence.json",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json",
+      "docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md",
+      "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+      "docs/verification/workshop-customer-ui-runbook.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "implementation_authorized": false,
+    "runtime_authorized": false,
+    "canary_authorized": false,
+    "acceptance_claim": false,
+    "independent_checkpoint_review": "pending",
+    "machine_preflight_status": "pending",
+    "execution_paths": {
+      "source": "/home/corp/autodata-evidence/api21-e5fed17-source",
+      "retained_pilot": "/home/corp/autodata-evidence/api21-e5fed17-pilot-20261104",
+      "interrupted_full": "/home/corp/autodata-evidence/api21-e5fed17-full-20261104",
+      "new_full": "/home/corp/autodata-evidence/api21-e5fed17-full-recovery-20261104",
+      "supervision": "/home/corp/autodata-evidence/api21-e5fed17-full-recovery-20261104-supervision"
+    },
+    "historical_evidence": {
+      "classification": "interrupted/incomplete supervisor run; validated21 scenario receipts do not establish completion",
+      "audit_receipt": "/home/corp/autodata-evidence/api21-e5fed17-full-20261104-independent-readonly-audit/audit-receipt.json",
+      "audit_sha256": "543985c4fe88230f74a3adb80617b8e67f8b07931f1e3bba761b1e7bdcb320fe",
+      "cleanup_receipt": "/home/corp/autodata-evidence/api21-e5fed17-full-20261104-interruption-recovery/cleanup-recovery.json",
+      "cleanup_sha256": "0e6587d7563a24eea00b9467d955bf6767be757f97d5730c2a2e3ae18baf9881",
+      "raw_files": 325,
+      "raw_bytes": 7375945,
+      "validated_api_cases": 21,
+      "missing_finalization": [
+        "host-after",
+        "runner-inspect/log",
+        "browser-counts",
+        "artifact-inventory",
+        "acceptance-result",
+        "per-container final snapshots"
+      ],
+      "command_results_last": 39
+    },
+    "supervision": {
+      "unit": "autodata-api21-e5fed17-recovery-20261104.service",
+      "type": "exec",
+      "remain_after_exit": true,
+      "restart": "no",
+      "runtime_max_seconds": 3500,
+      "timeout_stop_seconds": 200,
+      "no_collect": true,
+      "canary_required": true,
+      "total_acceptance_seconds": 3300,
+      "finalization_reserve_seconds": 180
+    }
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "priority",
+    "allow_fallback": false
+  }
+}
