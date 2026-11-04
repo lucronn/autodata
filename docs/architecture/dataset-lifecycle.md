@@ -183,3 +183,25 @@ sequenceDiagram
     Reconcile->>Bus: dataset.fast.requested
     Reconcile->>DB: mark fulfillment scheduled
 ```
+
+
+## Synchronized final reviewed Workshop leaf integration gate — 2026-11-04
+
+The [narrow integration plan](../superpowers/plans/2026-11-04-workshop-final-reviewed-leaves-integration.md)
+and [scope](../agents/specs/2026-11-04-workshop-final-reviewed-leaves-integration.md)
+record the plan to preserve the reader `c44034d`, R6 diagnostic `d8a640b` and index completion `df52326b` (code `23a2f3b`)
+histories above exact offline base `e5fed171`. Live tracking is synchronized; no
+implementation dispatch is authorized. Index code review and leaf-only R3 are PASS; independent exact review of completion
+checkpoint df52326b is PASS with matching live tracking readback, coordinator-reported.
+Issue186 [detail](https://github.com/lucronn/autodata/issues/186#issuecomment-6635062899)
+and Project8 Source match the synchronized record and six todos. The Issue body,
+140 predecessor comments, verbatim prior Source and seven recorded other Project
+fields are preserved. The record/plan pin actual readback hashes, the current
+detail hash and the corrected local Node v22.23.1 hash. This integration still
+has independent amended-draft review PASS; it still requires a committed
+exact-base machine preflight, independent gate review and fresh dispatch. The shared client test file must retain both leaf suites.
+The account-bound $20 product, dual-bank scope, source fallback, one canonical
+rewrite and warm reuse remain the product constraints. R6 inspectors add zero
+verified cases; final180 has no ready-to-run complete supervisor and remains a
+separately gated fresh acceptance obligation at the final integrated SHA. Existing
+runtime, staging, production, deployment and cutover denials remain in force.

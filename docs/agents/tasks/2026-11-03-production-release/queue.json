@@ -974,6 +974,23 @@
         "implementation_dispatch_authorized": false,
         "runtime_execution_authorized": false
       }
+    },
+    {
+      "id": "workshop-final-reviewed-leaves-integration",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-final-reviewed-leaves-integration.json",
+      "depends_on": [
+        "workshop-reviewed-leaves-integration"
+      ],
+      "state": "synchronized_pending_committed_gate_review",
+      "release_state": "unverified",
+      "source_integration_base_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "source_leaves": {
+        "reader": "c44034d819f17521559a13a9a91c2ace25a869a1",
+        "r6": "d8a640bcfc701aa600e6a48a7baa7a82897460a1",
+        "index": "df52326b2a12fd17db39d9368f66a28a366f38ad"
+      },
+      "implementation_dispatch_authorized": false,
+      "runtime_execution_authorized": false
     }
   ],
   "execution": {

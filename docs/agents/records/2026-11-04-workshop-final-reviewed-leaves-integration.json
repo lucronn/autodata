@@ -1,0 +1,321 @@
+{
+  "goal": "Integrate reviewed Workshop reader, paid-scope diagnostic and paid-index leaves into one history-preserving offline candidate; retain a separate exact-candidate final180 acceptance gate.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final-reviewed-leaves-integration.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-04-workshop-final-reviewed-leaves-integration.md",
+    "docs/architecture/dataset-lifecycle.md"
+  ],
+  "todo": [
+    "Obtain independent integration-draft review; retain the independent index completion df52326b checkpoint PASS, index23a2f3b code PASS and leaf-only R3 PASS, preserve Issue186/Project8 history, synchronize this goal, fixed source tuple, six-document checkpoint and six todos through the coordinator, then commit/push and pass full-SHA preflight plus independent committed-gate review before dispatch.",
+    "Merge reader completion c44034d, R6 completion d8a640b and index completion df52326b in that order into a coordinator-assigned feature branch from the synchronized checkpoint, preserving full source histories and exact selected implementation blobs.",
+    "Resolve only the Workshop client test union, queue task union and dataset-lifecycle amendment union; preserve all reader/index regressions, every predecessor task and unrelated queue metadata, then verify exact source ancestry and pinned file identities.",
+    "Run required combined offline Node, Go, contract, developer, autonomy and inert publisher/staging checks at the exact integrated candidate; commit and promptly push each validated coherent milestone to the assigned branch.",
+    "Obtain independent exact-head integration review and retain commands, counts, skips, artifact hashes, source bindings and authority denials; record final180 and exact-candidate isolated R3 as pending until separately gated runners execute.",
+    "After separate synchronized acceptance-runner/profile and runtime gates, run fresh identity5 + catalog8 + commerce14 + paid12 + DTO120 + API21 = 180 logical cases and all support/CI/security/image evidence at the unchanged exact candidate; preserve failures and leave release/deployment/cutover unverified."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T15:47:12.295985+00:00",
+  "source_integration_base_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+  "source_leaves": {
+    "reader": "c44034d819f17521559a13a9a91c2ace25a869a1",
+    "r6": "d8a640bcfc701aa600e6a48a7baa7a82897460a1",
+    "index": "df52326b2a12fd17db39d9368f66a28a366f38ad"
+  },
+  "source_manifests": {
+    "reader": {
+      "apps/api-go/workshop-client.test.mjs": {
+        "git_blob_oid": "e9b2baa3aa6e6dec4ec6d2790043e261abf2e409",
+        "git_mode": "100644",
+        "sha256": "843cf3a7d460510779199826147133baa3a6d4d069aa2f2c84b373e835e99a9f",
+        "bytes": 44430
+      },
+      "apps/api-go/workshop/article-read.mjs": {
+        "git_blob_oid": "cd845362a707d512c5d0cf56b4e1b9b057c576a1",
+        "git_mode": "100644",
+        "sha256": "2957242037d4bc3ce7894ae2c7e4bae1636406d0256dd75b6150e78c1c4e5178",
+        "bytes": 2579
+      },
+      "docs/agents/records/2026-11-04-workshop-retryable-reader.json": {
+        "git_blob_oid": "4adafa5a25929b9f965efb89b8f6f057414bd043",
+        "git_mode": "100644",
+        "sha256": "ad4cfa0ae2ef73a8149ef0f7f386838af82784e42b3e90f4ec3dcd4069d1625d",
+        "bytes": 13867
+      },
+      "docs/agents/tasks/2026-11-03-production-release/queue.json": {
+        "git_blob_oid": "5adbfe2044a2d49a6b29bcfcf5dc47f8d395376d",
+        "git_mode": "100644",
+        "sha256": "c13adc6f117981a1982db6c2be6f7ec0dbdadc6ce6488d28c7419343995eb4a8",
+        "bytes": 97511
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-retryable-reader.json": {
+        "git_blob_oid": "dd784258af2bd5895d0ec43c4936605bb8e2104d",
+        "git_mode": "100644",
+        "sha256": "474a1bdf89288dfd518e4142b0281812e84ffdfbc66a4f56e6bb043f3e8e0acb",
+        "bytes": 16617
+      },
+      "docs/architecture/dataset-lifecycle.md": {
+        "git_blob_oid": "5d27c1c42e2595cc24d67e6643cb1d2308c79f63",
+        "git_mode": "100644",
+        "sha256": "0de838ed85df7a625ae128c8b16da1b5be5309cb828591bf1a48ad612ba9c517",
+        "bytes": 14721
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-retryable-reader.md": {
+        "git_blob_oid": "feb42d4b7ce80f9e2baaf5307de3b916c395de5a",
+        "git_mode": "100644",
+        "sha256": "b343cd6207c098f2d4544ff3db2551d2b428b4fb84592d2ea8fbe107252c8d6a",
+        "bytes": 20216
+      }
+    },
+    "r6": {
+      "docs/agents/records/2026-11-04-r6-paid-http-completion-tracking-evidence.json": {
+        "git_blob_oid": "8de191c084b770cff93b391a752e9b19826a225c",
+        "git_mode": "100644",
+        "sha256": "dd1e378cd86b75624672c8636ecf0697590d12259913993745e5943440012489",
+        "bytes": 1399577
+      },
+      "docs/agents/records/2026-11-04-r6-paid-http-completion.json": {
+        "git_blob_oid": "86e88b8b3c4ff1d2a14268d62684307cb3a3a1b8",
+        "git_mode": "100644",
+        "sha256": "234ded38452689e13c13c690d0b6eec23a99de11e5219e1bebf1bd5299d54a47",
+        "bytes": 6592
+      },
+      "docs/agents/records/2026-11-04-r6-paid-http-receipts.json": {
+        "git_blob_oid": "305d65cdf97fd23250836832bb02d5e0d260b832",
+        "git_mode": "100644",
+        "sha256": "27a41915e43add66a756a6cad62bfe746e7398d19b384e8be99939d522e9d8ce",
+        "bytes": 8540
+      },
+      "docs/agents/records/2026-11-04-r6-paid-http-tracking-evidence.json": {
+        "git_blob_oid": "6f635994879809f201995ae807fcdc8ed81d0996",
+        "git_mode": "100644",
+        "sha256": "528554501171acfc4b95c70262a63c9b83b789c9b2f1dc0489b5c5c4d3aebb2f",
+        "bytes": 1105169
+      },
+      "docs/agents/records/2026-11-04-r6-paid-scope-completion-tracking-evidence.json": {
+        "git_blob_oid": "d06e43ca8f22d23295d58d7921b633dea518dc17",
+        "git_mode": "100644",
+        "sha256": "471f538919e514246dc265ceb777fe2477ce1b616e5aef042c81b28623e478c0",
+        "bytes": 1542783
+      },
+      "docs/agents/records/2026-11-04-r6-paid-scope-completion.json": {
+        "git_blob_oid": "4e355f79e154c935773ce542444c7a92eb9fd9e9",
+        "git_mode": "100644",
+        "sha256": "460e0fe11ee1af5dc6787ff55d919efbc87a4f4f04f14e9999649b2502d7df6f",
+        "bytes": 12399
+      },
+      "docs/agents/records/2026-11-04-r6-paid-scope-receipts.json": {
+        "git_blob_oid": "c676bed2f50c0106ef15cec126605ea9a847d07c",
+        "git_mode": "100644",
+        "sha256": "54ec869e6cb6a787e4c3587e84685ca3df67b3ebd2b42aedffd6d331c65a351f",
+        "bytes": 18568
+      },
+      "docs/agents/records/2026-11-04-r6-paid-scope-tracking-evidence.json": {
+        "git_blob_oid": "8c9de3aa3aa40fa11bf79eeb6136bddf7359baf4",
+        "git_mode": "100644",
+        "sha256": "1e82b1bc2ade7a4d4e71437dbbbde33d672eb2090ab4dcbcefa067292bfa4ae6",
+        "bytes": 1548583
+      },
+      "docs/agents/tasks/2026-11-03-production-release/queue.json": {
+        "git_blob_oid": "429e620b3cbba477e1ea7f8213e3b6182cf9d26d",
+        "git_mode": "100644",
+        "sha256": "4120a99a0ffd9521210086dbf8fac8b8d4b23012d11481d3902729b3cab263c2",
+        "bytes": 114717
+      },
+      "docs/agents/tasks/2026-11-03-production-release/r6-paid-http-receipts.json": {
+        "git_blob_oid": "b9d3fad416fd8bd3d605a19e7fb53b04fb2c5f40",
+        "git_mode": "100644",
+        "sha256": "99e96ea37d9b3cd7bf0554326c3bb28040a38c8e5c61244fe803e760795b057f",
+        "bytes": 11892
+      },
+      "docs/agents/tasks/2026-11-03-production-release/r6-paid-scope-receipts.json": {
+        "git_blob_oid": "88a4051f27ee082d1d2d0b83186e37ea4dca6a10",
+        "git_mode": "100644",
+        "sha256": "88a8245934537b7dd3cc8f9c205ff3016049af69f3a86702afa33e856b367d94",
+        "bytes": 41168
+      },
+      "docs/superpowers/plans/2026-11-03-release-acceptance.md": {
+        "git_blob_oid": "d7cf364b73ef5e30a44795ee5341923bd28e32b6",
+        "git_mode": "100644",
+        "sha256": "b262f54d7ef9f73ff29da01e0ff96db97414a3c2f7ad349cef21e338458c04c5",
+        "bytes": 51834
+      },
+      "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md": {
+        "git_blob_oid": "a2247b1d19c9ecaa0696a1b484ebafebcc1e0bfd",
+        "git_mode": "100644",
+        "sha256": "34eb3587ef4718fe64af5296909c66e281ccfc1a4b3eaf3fd6cf7f8b39b99b01",
+        "bytes": 68916
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-r6-paid-http-receipts.md": {
+        "git_blob_oid": "7f547fa710480f17292da630974c7be17be2bb00",
+        "git_mode": "100644",
+        "sha256": "07e0411dd1ec0983476489cd028b45098ec41f9d7aedaa5f1a3d6a7be40047c2",
+        "bytes": 30389
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-r6-paid-scope-receipts.md": {
+        "git_blob_oid": "1b11f9c858efb58d6dfa192f21793e0a64d7178c",
+        "git_mode": "100644",
+        "sha256": "e0bd8d9b198a9d4c1049cf9fc9965f84e4b1af871a08f2b98a59bfbe08f051b4",
+        "bytes": 33057
+      },
+      "docs/verification/2026-11-04-r6-paid-http-completion.md": {
+        "git_blob_oid": "4e04e1484a83fee5bed12f6d60c67cb1db9eac45",
+        "git_mode": "100644",
+        "sha256": "b7ca480abd40f93bc5f80538e9229b80b2c564e16ddc816093eaf5a46bbabbca",
+        "bytes": 5954
+      },
+      "docs/verification/release-acceptance-runbook.md": {
+        "git_blob_oid": "c2b5874445c6899c7c1f550af053bcc7dc842d59",
+        "git_mode": "100644",
+        "sha256": "e178482e4a55cf0e5e7f384320be5255a015782ff2d075f3d8a22cbf30d76a24",
+        "bytes": 30542
+      },
+      "scripts/dev/release_acceptance.py": {
+        "git_blob_oid": "02f7dd277ad5563b1e244ff3c18400aef703727a",
+        "git_mode": "100644",
+        "sha256": "8aa4ee2997f0d522a55905cb229b8b8ca1203a98d12bf78cccd56bbc22456d70",
+        "bytes": 124540
+      },
+      "scripts/dev/test_release_acceptance.py": {
+        "git_blob_oid": "877f9070256f5dff682ae20452d6532ac87686f6",
+        "git_mode": "100644",
+        "sha256": "056b7a999d2c4f8a835789ee0214a71b6ee32a8b7c28afa3e009000401be9f5b",
+        "bytes": 189841
+      }
+    },
+    "index": {
+      "apps/api-go/catalog_access_test.go": {
+        "git_blob_oid": "1b31cfa4d7940d75dd4e90ea65d97f0aea18b1a9",
+        "git_mode": "100644",
+        "sha256": "d2eb444d0c6b962538d11edc15150d4d74fcbdd1b338c4fc7753cf83ee002991",
+        "bytes": 15976
+      },
+      "apps/api-go/catalog_http.go": {
+        "git_blob_oid": "a6151a0d393a87e4c04d082daf92328dece85d1a",
+        "git_mode": "100644",
+        "sha256": "8bf65ff6b6cfab52b8b42c4d6473e75220c19363a04ae97b103c08edf8ecab50",
+        "bytes": 17225
+      },
+      "apps/api-go/catalog_store.go": {
+        "git_blob_oid": "c83477ae66afeeb55172f22facaeaac822b6fe64",
+        "git_mode": "100644",
+        "sha256": "e5e7c34f6e14836e6166a176aab3d9e3c092d2e778fe03239a0b23a32ce963b9",
+        "bytes": 30055
+      },
+      "apps/api-go/postgres_catalog_lifecycle_test.go": {
+        "git_blob_oid": "b0db236512e08851bb87c3e33cc76622e10a8378",
+        "git_mode": "100644",
+        "sha256": "a8ec30ca66629cc0317c511450e5660911a0d90d79daa52b1816bbd781bc7943",
+        "bytes": 40868
+      },
+      "apps/api-go/workshop-client.test.mjs": {
+        "git_blob_oid": "50ccd8caf15342b12df1f3239675123f7d5084f7",
+        "git_mode": "100644",
+        "sha256": "ea2258e2e4aad59bc7ee5a87ee1338036015da18b551af87568fc99259c240f7",
+        "bytes": 47382
+      },
+      "apps/api-go/workshop/app.mjs": {
+        "git_blob_oid": "849609b437d1f24f2a7ca6107b2ad2a0683c08b3",
+        "git_mode": "100644",
+        "sha256": "4a3e16b3b407e738ed013f4b7ae416fe6c47eb1548d123e90b5b867df5c74788",
+        "bytes": 37545
+      },
+      "docs/agents/records/2026-11-04-workshop-index-readiness.json": {
+        "git_blob_oid": "5a7beb50e7959f85a7b019bd2e6b90df0f3400ee",
+        "git_mode": "100644",
+        "sha256": "d92ed307d716cd5c2d6ccbb5cf8735a5999a309558b280a8194733d634755f8f",
+        "bytes": 9800
+      },
+      "docs/agents/tasks/2026-11-03-production-release/queue.json": {
+        "git_blob_oid": "49768aa80a8686acdb82ef873bd318a14a4c58e2",
+        "git_mode": "100644",
+        "sha256": "c41d4d45ff00a6118e138836bfcb441efd274f7317cab4a8015cec1fdd95ec1f",
+        "bytes": 92034
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-index-readiness.json": {
+        "git_blob_oid": "97cee4cbdb34fbb9f180cbb3e781ef2883fd874d",
+        "git_mode": "100644",
+        "sha256": "90b579fbb1147c02d42aad33f260949866342c0fc95381d687ee739bef7a2a7c",
+        "bytes": 19659
+      },
+      "docs/architecture/article-catalog-list-only-hydration.md": {
+        "git_blob_oid": "4766253ced39e809a812211a84be7042ef916a45",
+        "git_mode": "100644",
+        "sha256": "b66aa7fa320c2333d6d9a63f8500dbe065138a84a2326fb38bf4db5aa67db893",
+        "bytes": 12404
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-index-readiness.md": {
+        "git_blob_oid": "4f452960ba24088a8623d0c4f5baca584962ae06",
+        "git_mode": "100644",
+        "sha256": "394d99e0615d33ec53ac68a6093593a7c505053f05ddb0af638b2159b208f40f",
+        "bytes": 24676
+      },
+      "docs/verification/2026-11-03-canonical-article-lifecycle.md": {
+        "git_blob_oid": "7040d3df1f4b6a93bfe09f36c5e67c958606bdc1",
+        "git_mode": "100644",
+        "sha256": "9d7befb5b34d42c1ceae01e732d73bfef5064e9ff2bb9d2ccdd5c730035e9d45",
+        "bytes": 25578
+      }
+    }
+  },
+  "implementation_authorized": false,
+  "implementation_dispatch_authorized": false,
+  "tracking_write_authorized": false,
+  "runtime_execution_authorized": false,
+  "cloud_execution_authorized": false,
+  "deployment_authorized": false,
+  "production_ready": false,
+  "cutover_verified": false,
+  "tracking_sync": {
+    "state": "synchronized_live_readback",
+    "issue_or_project_write_performed": true,
+    "write_actor": "coordinator; this documentation worker performed read-only verification",
+    "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6635062899",
+    "issue_detail_sha256": "40b6af73448eca62dc5cf380d81c5a1597e8049d511fe34acafac9a46bc32516",
+    "prior_issue_detail_sha256": "0e952e57c0f3f206be2623864922efd97f4217205887dd0045c07e0d844dbc04",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_status": "In Progress",
+    "project_source_sha256": "9d9de1637df45e21ea052af516a652c317a51d4272a228a3c6b2b890e3d3ede7",
+    "project_source_utf8_bytes": 785,
+    "previous_project_source_sha256": "df747b126a15288fadfb532f399d36d45cc45fee332ec86541b0824212ecd785",
+    "previous_project_source_utf8_bytes": 464,
+    "previous_source_archived_verbatim": true,
+    "prior_issue_body_and_140_comments_unchanged": true,
+    "comment_count": 141,
+    "recorded_other_project_fields_unchanged": true,
+    "before_archive_ref": "/home/corp/autodata-evidence/final-leaves-tracking-before.json",
+    "readback_ref": "/home/corp/autodata-evidence/final-leaves-tracking-readback.json",
+    "readback_sha256": "2d8791d78ed21b30656225550131713092911acbb5dd86fb847423a92e2df80c",
+    "independent_live_verification_ref": "/home/corp/autodata-evidence/final-leaves-gate-live-verification.json",
+    "runtime_correction_ref": "/home/corp/autodata-evidence/final-leaves-runtime-tracking-correction.json",
+    "runtime_correction_sha256": "2d44cf0d4a7c96fb34ca68c666001981b5147da0ad4541fde643b3571a2af9ef"
+  },
+  "dependencies": {
+    "index_exact_code_review": "PASS at 23a2f3b2e12c0b14b1d4989ab13a075cf1bee084; coordinator-reported independent review",
+    "independent_draft_review": "PASS; reviewer /root/final_leaves_draft_review on six-document draft at e5fed171bb36fdb759c592cbcd0e15aea5490c97; 38 manifest entries/35 union paths, histories/queue/six todos checked; coordinator-reported, no artifact file",
+    "synchronized_committed_checkpoint_review": "pending",
+    "final180_runner_profile_gate": "separate_required_gate",
+    "integrated_candidate_r3_runtime_gate": "separate_required_gate",
+    "index_completion_checkpoint_review": "PASS at df52326b2a12fd17db39d9368f66a28a366f38ad; coordinator-reported independent exact checkpoint review and live tracking readback",
+    "runtime_amended_draft_review": "PASS; reviewer /root/final_leaves_amended_draft_review on amended six-document draft before commit; Node version/hash and 55/55, current live tracking/141 comments, 38 manifests/35 union paths, 28 predecessor queue tasks and false authorities checked; coordinator-reported, no artifact file"
+  },
+  "index_acceptance": {
+    "code_sha": "23a2f3b2e12c0b14b1d4989ab13a075cf1bee084",
+    "completion_sha": "df52326b2a12fd17db39d9368f66a28a366f38ad",
+    "code_review": "PASS; coordinator-reported independent exact-code review",
+    "completion_checkpoint_review": "PASS; coordinator-reported independent exact checkpoint review; live Issue/Project readback matches",
+    "r3_audit_ref": "/home/corp/autodata-evidence/index-readiness-green-independent-audit-68fd8e922a26.json",
+    "r3_candidate_sha": "23a2f3b2e12c0b14b1d4989ab13a075cf1bee084",
+    "r3_verdict": "PASS",
+    "r3_scope": "leaf-only isolated fixture; 8 roots and 42 tuples; no integrated/final180 acceptance",
+    "completion_pr_ref": "https://github.com/lucronn/autodata/pull/213"
+  },
+  "offline_node_runtime": {
+    "path": "/home/corp/.hermes/node/bin/node",
+    "version": "v22.23.1",
+    "sha256": "93956de2e59480474a7b46571da1651180b1a050cdf32641ebec4ce6e478e068",
+    "baseline_client_tests": "55/55 at e5fed171; coordinator-observed",
+    "replacement_policy": "missing or mismatched binary blocks; no download/install/ambient replacement"
+  }
+}
