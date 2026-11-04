@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, writeFile, chmod, rm, symlink, link} from 'node:fs/promises';
+import {mkdtemp, writeFile, chmod, rm, symlink, link, mkdir, readFile, stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {spawnSync} from 'node:child_process';
+import {spawnSync, spawn} from 'node:child_process';
 const helper = await import('./publisher_artifact.mjs').catch(() => ({}));
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const inner = Buffer.from('fixture inner archive, decoded by independently tested Python parser');
@@ -141,4 +141,54 @@ test('trusted clock with fractional milliseconds produces canonical second-resol
  const result=await helper.uploadRelease(request(),deps);
  assert.equal(result.upload_started_at,'2026-11-03T12:00:00Z');
  assert.equal(result.upload_finished_at,'2026-11-03T12:00:00Z');
+});
+
+async function writableDirs(root,mode=0o755){await chmod(root,mode);for(const entry of await (await import('node:fs/promises')).readdir(root,{withFileTypes:true}))if(entry.isDirectory())await writableDirs(path.join(root,entry.name),mode);}
+// The approved tree is recorded before tampering; installed bytes never approve themselves.
+async function treeFixture(t) {
+ const root=await mkdtemp(path.join(tmpdir(),'artifact-tree-'));t.after(async()=>{await writableDirs(root);await rm(root,{recursive:true,force:true});});
+ const lock={packages:{'':{},'node_modules/@actions/artifact':{version:'6.3.1',resolved:'https://registry.npmjs.org/@actions/artifact/-/artifact-6.3.1.tgz',integrity:'sha512-YQ=='},'node_modules/transitive':{version:'1.0.0',resolved:'https://registry.npmjs.org/transitive/-/transitive-1.0.0.tgz',integrity:'sha512-Yg=='}}};
+ const lockBytes=Buffer.from(JSON.stringify(lock)), contents={'package.json':'{}','package-lock.json':lockBytes,'node_modules/@actions/artifact/package.json':JSON.stringify({name:'@actions/artifact',version:'6.3.1',main:'lib/artifact.js'}),'node_modules/@actions/artifact/lib/artifact.js':'throw Error("must never import fixture");','node_modules/transitive/package.json':JSON.stringify({name:'transitive',version:'1.0.0'}),'node_modules/transitive/index.js':'original transitive bytes'};
+ const files=[];
+ for(const [name,value] of Object.entries(contents)){const target=path.join(root,name);await mkdir(path.dirname(target),{recursive:true});await writeFile(target,value,{mode:0o444});files.push({path:name,bytes:Buffer.byteLength(value),sha256:sha(value),mode:0o444});}
+ const packages=Object.fromEntries(Object.entries(lock.packages).filter(([name])=>name));
+ for(const dir of [root,path.join(root,'node_modules'),path.join(root,'node_modules/@actions'),path.join(root,'node_modules/@actions/artifact'),path.join(root,'node_modules/@actions/artifact/lib'),path.join(root,'node_modules/transitive')])await chmod(dir,0o555);
+ const manifest=Buffer.from(JSON.stringify({protocol_version:1,toolkit_lock_sha256:sha(lockBytes),packages,files:files.sort((a,b)=>a.path.localeCompare(b.path,'en'))}));
+ return {root,manifest,lockBytes,approved:sha(manifest)};
+}
+test('complete owner-selected installed tree accepts original bytes without importing',async t=>{
+ const f=await treeFixture(t);await helper.verifyInstalledTree(f.root,f.manifest,f.approved,f.lockBytes);
+});
+for(const name of ['node_modules/@actions/artifact/lib/artifact.js','node_modules/transitive/index.js'])test(`metadata-preserving replacement rejects before import: ${name}`,async t=>{
+ const f=await treeFixture(t);await chmod(path.join(f.root,name),0o644);await writeFile(path.join(f.root,name),'replacement executable');await chmod(path.join(f.root,name),0o444);
+ await assert.rejects(helper.verifyInstalledTree(f.root,f.manifest,f.approved,f.lockBytes),/invalid authenticated publication input/);
+});
+for(const drift of ['writable-dir','extra','missing','symlink','hardlink','duplicate-key','duplicate-path','lock','approval','writable'])test(`installed tree rejects ${drift}`,async t=>{
+ const f=await treeFixture(t),target=path.join(f.root,'node_modules/transitive/index.js');
+ await writableDirs(f.root);
+ if(drift==='writable-dir')await chmod(path.join(f.root,'node_modules'),0o755);
+ if(drift==='extra'){await chmod(f.root,0o755);await writeFile(path.join(f.root,'extra'),'x');await chmod(f.root,0o555);}
+ if(drift==='missing')await rm(target);
+ if(drift==='symlink'){await rm(target);await symlink('package.json',target);}
+ if(drift==='hardlink'){await rm(target);await link(path.join(f.root,'package.json'),target);}
+ if(drift==='duplicate-key')f.manifest=Buffer.from(f.manifest.toString().replace('"protocol_version":1','"protocol_version":1,"protocol_version":1'));
+ if(drift==='duplicate-path'){const m=JSON.parse(f.manifest);m.files.push(m.files[0]);f.manifest=Buffer.from(JSON.stringify(m));}
+ if(drift==='lock')f.lockBytes=Buffer.from('{"packages":{}}');
+ if(drift==='approval')f.approved='0'.repeat(64);
+ if(drift==='writable')await chmod(target,0o644);
+ if(['duplicate-key','duplicate-path'].includes(drift))f.approved=sha(f.manifest);
+ await writableDirs(f.root,0o555);if(drift==='writable-dir')await chmod(path.join(f.root,'node_modules'),0o755);
+ await assert.rejects(helper.verifyInstalledTree(f.root,f.manifest,f.approved,f.lockBytes),/invalid authenticated publication input/);
+});
+test('effective read-only mount rejects writable covers and nested mounts',()=>{
+ const root='/toolkit';
+ assert.equal(helper.verifyReadOnlyMount(root,'1 0 0:1 / / rw - overlay overlay rw\n2 1 0:2 / /toolkit ro - tmpfs tmpfs rw'),true);
+ for(const text of ['1 0 0:1 / / rw - overlay overlay rw','1 0 0:1 / / ro - overlay overlay rw\n2 1 0:2 / /toolkit/node_modules rw - tmpfs tmpfs rw'])assert.throws(()=>helper.verifyReadOnlyMount(root,text),/invalid authenticated publication input/);
+});
+test('FIFO archive rejects promptly without credential hook and completes cleanup',async t=>{
+ const {cwd}=await fixture(t);await rm(path.join(cwd,'release.zip'));assert.equal(spawnSync('mkfifo',['-m','600',path.join(cwd,'release.zip')]).status,0);
+ const moduleUrl=new URL('./publisher_artifact.mjs',import.meta.url).href;
+ const source=`import {uploadRelease} from ${JSON.stringify(moduleUrl)};const deps={cwd:${JSON.stringify(cwd)},policy:{runtime_origins:['https://results.example.invalid'],toolkit_lock_sha256:'1'.repeat(64),control_workflow_sha:'a'.repeat(40)},runtime:${JSON.stringify((await fixture(t)).deps.runtime)},now:()=>new Date(),monotonic:()=>1000,deadline:601000,authenticateRuntime:()=>{throw Error('credential hook reached')},readback:()=>{},cleanup:()=>{process.stdout.write('cleaned\\n')},toolkit:{uploadArtifact:()=>{}},spawn:()=>{throw Error('spawn reached')}};try{await uploadRelease(${JSON.stringify(request())},deps)}catch(e){process.stdout.write(e.message)}`;
+ const result=spawnSync(process.execPath,['--input-type=module','-e',source],{encoding:'utf8',timeout:750});
+ assert.equal(result.error,undefined,'FIFO must reject itself before watchdog');assert.equal(result.stdout,'cleaned\ninvalid authenticated publication input');
 });

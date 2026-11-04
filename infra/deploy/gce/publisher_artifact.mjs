@@ -7,7 +7,8 @@ import {createHash} from 'node:crypto';
 import {open, lstat, readdir, readFile, realpath} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath, pathToFileURL} from 'node:url';
+import {fileURLToPath} from 'node:url';
+import {spawn as spawnProcess} from 'node:child_process';
 
 const INVALID='invalid authenticated publication input';
 const MAX_JSON=65536, MAX_INNER=8*1024*1024, MAX_OUTER=16*1024*1024;
@@ -42,29 +43,98 @@ function validateRequest(request) {
 }
 
 /** Strict UTF-8, duplicate-key/depth/field/byte bounded private IPC parser. */
-export function parseUploadRequest(raw) {
+function strictJSON(raw,limit=MAX_JSON,maxFields=256,maxString=8192,maxArray=256) {
  try {
-  require(Buffer.isBuffer(raw) && raw.length>=1 && raw.length<=MAX_JSON);
+  require(Buffer.isBuffer(raw) && raw.length>=1 && raw.length<=limit);
   const text=new TextDecoder('utf-8',{fatal:true}).decode(raw);let i=0,fields=0;
   const ws=()=>{while(/[ \t\r\n]/.test(text[i]??'!'))i++;};
   function string() {
    const start=i;require(text[i++]==='"');
-   while(i<text.length){const ch=text[i++];if(ch==='"'){const s=JSON.parse(text.slice(start,i));require(Buffer.byteLength(s)<=8192);return s;}if(ch==='\\'){i++;}}
+   while(i<text.length){const ch=text[i++];if(ch==='"'){const s=JSON.parse(text.slice(start,i));require(Buffer.byteLength(s)<=maxString);return s;}if(ch==='\\'){i++;}}
    throw Error(INVALID);
   }
   function value(depth) {
    require(depth<=32);ws();const ch=text[i];
    if(ch==='"')return string();
    if(ch==='{') {i++;const result=Object.create(null),seen=new Set();ws();if(text[i]==='}'){i++;return result;}
-    while(true){ws();const key=string();require(!seen.has(key) && ++fields<=256);seen.add(key);ws();require(text[i++]===':');result[key]=value(depth+1);ws();const end=text[i++];if(end==='}')return result;require(end===',');}
+    while(true){ws();const key=string();require(!seen.has(key) && ++fields<=maxFields);seen.add(key);ws();require(text[i++]===':');result[key]=value(depth+1);ws();const end=text[i++];if(end==='}')return result;require(end===',');}
    }
-   if(ch==='['){i++;const result=[];ws();if(text[i]===']'){i++;return result;}while(true){require(result.length<256);result.push(value(depth+1));ws();const end=text[i++];if(end===']')return result;require(end===',');}}
+   if(ch==='['){i++;const result=[];ws();if(text[i]===']'){i++;return result;}while(true){require(result.length<maxArray);result.push(value(depth+1));ws();const end=text[i++];if(end===']')return result;require(end===',');}}
    const match=/^(?:true|false|null|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/.exec(text.slice(i));require(match);i+=match[0].length;const scalar=JSON.parse(match[0]);require(typeof scalar!=='number'||Number.isFinite(scalar));return scalar;
   }
-  const result=value(0);ws();require(i===text.length);validateRequest(result);
+  const result=value(0);ws();require(i===text.length);
   // Return plain JSON objects only after duplicate detection and exact validation.
   return JSON.parse(JSON.stringify(result));
  } catch {throw Error(INVALID);}
+}
+export function parseUploadRequest(raw) {return validateRequest(strictJSON(raw));}
+
+function sameFile(a,b) {return a.dev===b.dev && a.ino===b.ino && a.size===b.size && a.mode===b.mode && a.uid===b.uid && a.nlink===b.nlink && a.mtimeMs===b.mtimeMs && a.ctimeMs===b.ctimeMs;}
+async function fixedRead(filename,max,expected) {
+ const before=await lstat(filename);require(before.isFile() && before.nlink===1 && before.uid===process.getuid() && before.size<=max);
+ if(expected)require(sameFile(before,expected));
+ const h=await open(filename,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+ try {
+  const start=await h.stat();require(start.isFile() && sameFile(before,start));
+  const buffer=Buffer.alloc(start.size+1);let offset=0;
+  while(offset<buffer.length){const {bytesRead}=await h.read(buffer,offset,buffer.length-offset,offset);if(!bytesRead)break;offset+=bytesRead;}
+  require(offset===start.size && sameFile(start,await h.stat()) && sameFile(start,await lstat(filename)));
+  return buffer.subarray(0,offset);
+ }finally{await h.close();}
+}
+function relativeName(name) {
+ require(typeof name==='string' && Buffer.byteLength(name)<=1024 && name.length>0 && !/[\\\x00-\x20\x7f]/.test(name) && !name.startsWith('/'));
+ const pieces=name.split('/');require(pieces.length<=32 && pieces.every(p=>p && p!=='.' && p!=='..'));return name;
+}
+/** Pure byte verifier; callers cannot turn a fixture result into loader authority. */
+export async function verifyInstalledTree(root,manifestBytes,approvedHash,lockBytes) {
+ require(typeof root==='string' && path.isAbsolute(root) && path.normalize(root)===root && await realpath(root)===root);
+ require(typeof approvedHash==='string' && SHA.test(approvedHash) && Buffer.isBuffer(manifestBytes) && hash(manifestBytes)===approvedHash);
+ const m=strictJSON(manifestBytes,8*1024*1024,400000,8192,50000);keys(m,['protocol_version','toolkit_lock_sha256','packages','files']);
+ require(m.protocol_version===1 && Buffer.isBuffer(lockBytes) && lockBytes.length<=1024*1024 && m.toolkit_lock_sha256===hash(lockBytes));
+ const lock=strictJSON(lockBytes,1024*1024,100000,8192,50000);require(lock.packages && typeof lock.packages==='object');
+ const wanted=Object.create(null);
+ for(const [name,pkg] of Object.entries(lock.packages)){
+  if(!name)continue;relativeName(name);require(name.startsWith('node_modules/') && typeof pkg.version==='string' && typeof pkg.resolved==='string' && /^https:\/\/registry\.npmjs\.org\/[^?#]+$/.test(pkg.resolved) && typeof pkg.integrity==='string' && /^sha512-[A-Za-z0-9+/]+=*$/.test(pkg.integrity) && !pkg.hasInstallScript);
+  wanted[name]={version:pkg.version,resolved:pkg.resolved,integrity:pkg.integrity};
+ }
+ require(canonical(m.packages)===canonical(wanted));
+ require(Array.isArray(m.files) && m.files.length>=2 && m.files.length<=50000);
+ const entries=new Map(),dirs=new Set(['']);let total=0,previous='';
+ for(const f of m.files){keys(f,['path','bytes','sha256','mode']);relativeName(f.path);require(f.path!=='installed-tree.json' && f.path>previous);previous=f.path;
+  require(Number.isSafeInteger(f.bytes) && f.bytes>=0 && f.bytes<=64*1024*1024 && typeof f.sha256==='string' && SHA.test(f.sha256) && Number.isInteger(f.mode) && f.mode>=0 && f.mode<=0o777 && !(f.mode&0o222));
+  total+=f.bytes;require(total<=1024*1024*1024);entries.set(f.path,f);
+  const parts=f.path.split('/');parts.pop();while(parts.length){dirs.add(parts.join('/'));parts.pop();}
+ }
+ require(entries.has('package.json') && entries.has('package-lock.json'));
+ const seen=new Set();
+ async function walk(rel){
+  const absolute=path.join(root,rel),s=await lstat(absolute);require(s.isDirectory() && !s.isSymbolicLink() && s.uid===process.getuid() && !(s.mode&0o222));
+  for(const name of await readdir(absolute)){
+   const next=rel?rel+'/'+name:name;relativeName(next);const file=path.join(root,next),st=await lstat(file);
+   if(next==='installed-tree.json'){require(st.isFile() && st.nlink===1 && st.uid===process.getuid() && !(st.mode&0o222));continue;}
+   if(st.isDirectory()){require(dirs.has(next));await walk(next);continue;}
+   const f=entries.get(next);require(f && st.isFile() && st.nlink===1 && st.uid===process.getuid() && (st.mode&0o777)===f.mode && st.size===f.bytes);
+   const bytes=await fixedRead(file,64*1024*1024,st);require(hash(bytes)===f.sha256);seen.add(next);
+  }
+ }
+ await walk('');require(seen.size===entries.size);
+ require(hash(await fixedRead(path.join(root,'package-lock.json'),1024*1024))===hash(lockBytes));
+ for(const [name,pkg] of Object.entries(wanted)){
+  require(entries.has(name+'/package.json'));
+  const installed=strictJSON(await fixedRead(path.join(root,name,'package.json'),1024*1024),1024*1024,100000,8192,50000);
+  require(installed.version===pkg.version && installed.name===name.split('node_modules/').at(-1));
+ }
+ return true;
+}
+/** Mount flags are authoritative; chmod is not immutable-code evidence. */
+export function verifyReadOnlyMount(root,text) {
+ require(typeof root==='string' && path.isAbsolute(root) && typeof text==='string' && Buffer.byteLength(text)<=1024*1024);
+ const unescape=s=>s.replace(/\\(040|011|012|134)/g,(_,n)=>String.fromCharCode(parseInt(n,8)));
+ const mounts=text.trim().split('\n').map(line=>{const a=line.split(' ');require(a.length>=10 && a.includes('-'));return {at:unescape(a[4]),ro:a[5].split(',').includes('ro')};});
+ const contains=(a,b)=>a==='/' || b===a || b.startsWith(a+'/');
+ const covering=mounts.filter(m=>contains(m.at,root)).sort((a,b)=>b.at.length-a.at.length);
+ require(covering.length && covering[0].ro && !mounts.some(m=>contains(root,m.at) && !m.ro));return true;
 }
 function serviceOrigin(raw) {
  require(typeof raw==='string' && raw.length<=8192 && !/[\x00-\x20\\]/.test(raw));
@@ -81,10 +151,9 @@ async function privateArchive(cwd,request) {
  require(typeof cwd==='string' && path.isAbsolute(cwd) && path.normalize(cwd)===cwd);
  const parent=await lstat(cwd);require(parent.isDirectory() && !parent.isSymbolicLink() && (parent.mode&0o777)===0o700 && parent.uid===process.getuid());
  const names=await readdir(cwd);require(names.length===1 && names[0]==='release.zip');
- const handle=await open(path.join(cwd,'release.zip'),constants.O_RDONLY|constants.O_NOFOLLOW);
- try {const s=await handle.stat();require(s.isFile() && s.nlink===1 && (s.mode&0o777)===0o600 && s.uid===process.getuid() && s.size===request.archive_bytes);
-  const bytes=Buffer.alloc(s.size+1);const {bytesRead}=await handle.read(bytes,0,bytes.length,0);require(bytesRead===s.size);const result=bytes.subarray(0,bytesRead);require(hash(result)===request.archive_sha256);return result;
- } finally {await handle.close();}
+ const file=path.join(cwd,'release.zip'),before=await lstat(file);
+ require(before.isFile() && before.nlink===1 && (before.mode&0o777)===0o600 && before.uid===process.getuid() && before.size===request.archive_bytes);
+ const result=await fixedRead(file,MAX_INNER,before);require(hash(result)===request.archive_sha256);return result;
 }
 async function bounded(operation,ms,signal,controller) {
  if(signal?.aborted)throw Error('operation_cancelled');
@@ -140,10 +209,11 @@ async function uploadReleaseInternal(input,deps) {
  const env=deps.runtime,c=request.context;require(env && typeof env.ACTIONS_RUNTIME_TOKEN==='string' && env.ACTIONS_RUNTIME_TOKEN.length>=1 && env.ACTIONS_RUNTIME_TOKEN.length<=16384);
  const origin=serviceOrigin(env.ACTIONS_RESULTS_URL);require(p.runtime_origins.includes(origin));
  for(const [key,want] of Object.entries({GITHUB_REPOSITORY:c.repository,GITHUB_REPOSITORY_ID:c.repository_id,GITHUB_REPOSITORY_OWNER_ID:c.repository_owner_id,GITHUB_RUN_ID:c.run_id,GITHUB_RUN_ATTEMPT:String(c.run_attempt),GITHUB_WORKFLOW_SHA:c.workflow_sha,GITHUB_WORKFLOW_REF:c.workflow_ref}))require(env[key]===want);
- const bytes=await privateArchive(deps.cwd,request);
+ let bytes;
  const controller=new AbortController();let failure,result;
  const remaining=()=>Math.min(300000,deps.deadline-deps.monotonic()-30000);
  try {
+  bytes=await bounded(()=>privateArchive(deps.cwd,request),Math.min(30000,remaining()),deps.signal,controller);
   const identity=await bounded(()=>deps.authenticateRuntime(env,c,{signal:controller.signal}),Math.min(30000,remaining()),deps.signal,controller);
   keys(identity,['repository_id','repository_owner_id','run_id','run_attempt','runtime_service_origin']);
   for(const k of ['repository_id','repository_owner_id','run_id','run_attempt'])require(identity[k]===c[k]);require(identity.runtime_service_origin===origin);
@@ -184,13 +254,14 @@ export async function uploadRelease(input,deps) {
  * Unresolved moderate audit findings and buffers license require independent
  * toolchain review before any policy is installed. Default CLI never calls this.
  */
+const workers=new WeakMap();
 export async function loadOfficialToolkit(context,policy) {
  if(!policy)throw Error('missing_dependency');
  try {
-  keys(policy,['activation_sha256','toolchain_sha256','trust_policy_sha256','toolkit_lock_sha256','helper_sha256','control_workflow_sha','runtime_origins','dependency_review_sha256']);
+  keys(policy,['activation_sha256','toolchain_sha256','trust_policy_sha256','toolkit_lock_sha256','helper_sha256','control_workflow_sha','runtime_origins','dependency_review_sha256','toolkit_tree_sha256']);
   validateRequest({protocol_version:3,operation:'upload',context,archive_sha256:'0'.repeat(64),archive_bytes:1,artifact_name:`workshop-release-${context.source_sha}-run-${context.run_id}-attempt-${context.run_attempt}`});
   for(const field of ['activation_sha256','toolchain_sha256','trust_policy_sha256'])require(policy[field]===context[field]);
-  for(const field of ['toolkit_lock_sha256','helper_sha256','dependency_review_sha256'])require(typeof policy[field]==='string' && SHA.test(policy[field]));
+  for(const field of ['toolkit_lock_sha256','helper_sha256','dependency_review_sha256','toolkit_tree_sha256'])require(typeof policy[field]==='string' && SHA.test(policy[field]));
   require(policy.control_workflow_sha===context.workflow_sha);
   require(Array.isArray(policy.runtime_origins) && policy.runtime_origins.length>=1 && policy.runtime_origins.length<=8);
   for(const origin of policy.runtime_origins)require(serviceOrigin(origin)===origin);
@@ -203,26 +274,11 @@ export async function loadOfficialToolkit(context,policy) {
   require(manifest.dependencies['@actions/artifact']==='6.3.1' && manifest.engines.node==='22.23.4');
   const locked=JSON.parse(lock).packages['node_modules/@actions/artifact'];
   require(locked.version==='6.3.1' && locked.integrity==='sha512-DBXgdB9T4yj2KSe0tFg+MTi9T5se+16bdrFQh+3Y6Nq1lZ3gYQk1BjHoTof+7Zf36bEAlfVMf+8ifRKeyGJugQ==');
-  // Runtime values come solely from this private worker's actual job environment.
-  const env=process.env;require(typeof env.ACTIONS_RUNTIME_TOKEN==='string' && env.ACTIONS_RUNTIME_TOKEN.length>=1 && env.ACTIONS_RUNTIME_TOKEN.length<=16384);
-  require(policy.runtime_origins.includes(serviceOrigin(env.ACTIONS_RESULTS_URL)));
-  for(const [name,value] of Object.entries({GITHUB_REPOSITORY:context.repository,GITHUB_REPOSITORY_ID:context.repository_id,GITHUB_REPOSITORY_OWNER_ID:context.repository_owner_id,GITHUB_RUN_ID:context.run_id,GITHUB_RUN_ATTEMPT:String(context.run_attempt),GITHUB_WORKFLOW_SHA:context.workflow_sha,GITHUB_WORKFLOW_REF:context.workflow_ref}))require(env[name]===value);
-  const packageDir=path.join(base,'node_modules/@actions/artifact');
-  require(await realpath(packageDir)===packageDir);
-  const installed=JSON.parse(await readFile(path.join(packageDir,'package.json')));require(installed.name==='@actions/artifact' && installed.version==='6.3.1' && installed.main==='lib/artifact.js');
-  const entry=path.join(packageDir,'lib/artifact.js');require(await realpath(entry)===entry);
-  const sdk=await import(pathToFileURL(entry).href);require(typeof sdk.DefaultArtifactClient==='function');
-  const client=new sdk.DefaultArtifactClient();require(typeof client.uploadArtifact==='function');
-  // Expose only upload. No list/latest, overwrite/delete, extraction or arbitrary
-  // package-selected download channel can escape into the finalizer interface.
-  return Object.freeze({uploadArtifact:async(name,files,root,options)=>{
-   keys(options,['compressionLevel','retentionDays','overwrite','includeHiddenFiles']);
-   require(options.compressionLevel===0 && options.retentionDays===7 && options.overwrite===false && options.includeHiddenFiles===false);
-   require(name===`workshop-release-${context.source_sha}-run-${context.run_id}-attempt-${context.run_attempt}` && Array.isArray(files) && files.length===1 && files[0]===path.join(root,'release.zip'));
-   // Do not pass invented options to the official API: overwrite is prohibited
-   // by exposing no delete method, hidden input by the one fixed file check.
-   return client.uploadArtifact(name,files,root,{compressionLevel:0,retentionDays:7});
-  }});
+  const tree=await fixedRead(path.join(base,'installed-tree.json'),8*1024*1024);
+  verifyReadOnlyMount(base.replace(/\/$/,''),await readFile('/proc/self/mountinfo','utf8'));
+  await verifyInstalledTree(base.replace(/\/$/,''),tree,policy.toolkit_tree_sha256,lock);
+  // No SDK import in the parent. This opaque descriptor is not activation authority.
+  const descriptor=Object.freeze({});workers.set(descriptor,{context,policy,executable:process.execPath,helper:fileURLToPath(import.meta.url)});return descriptor;
  } catch(error) {throw Error(error?.message===INVALID?INVALID:'missing_dependency');}
 }
 
