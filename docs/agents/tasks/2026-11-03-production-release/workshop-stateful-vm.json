@@ -59,7 +59,7 @@
       "Obtain a separate coordinator authorization for the concrete pre-provisioned offline disposable-VM run, execute the pinned install/boot/persistence/interruption/reboot drill if authorized, retain failed and successful receipts, and require separate owner inputs/gates for actual cloud staging or production deployment."
     ],
     "status": "synchronized",
-    "updated_at": "2026-11-04T15:33:41.700000+00:00"
+    "updated_at": "2026-11-04T15:43:22Z"
   },
   "execution": {
     "mode": "plan_only",
@@ -67,7 +67,7 @@
     "reasoning_effort": "medium",
     "service_tier": "fast",
     "allow_fallback": false,
-    "builder_dispatch": "blocked_pending_committed_full_SHA_preflight_independent_exact_checkpoint_review_and_fresh_coordinator_dispatch",
+    "builder_dispatch": "blocked_pending_new_checkpoint_preflight_independent_review_and_fresh_dispatch",
     "offline_unit_tests_only_after_dispatch": true,
     "vm_docker_execution": "none_until_separate_pinned_local_run_authorization",
     "cloud_execution": "none"
@@ -80,22 +80,22 @@
   "cutover_authorized": false,
   "tracking_sync": {
     "status": "synchronized",
-    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634690176",
-    "issue_comment_id": 6634690176,
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634995525",
+    "issue_comment_id": 6634995525,
     "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
-    "issue_comment_sha256": "b452e911af91b8e4a117dd4cca54f278d3a08f7ea16610d48316426a7c1adee8",
+    "issue_comment_sha256": "43db6691c84f2bee123196ca7a3133d9f513ed74df2a0cad9f3451fbedeea102",
     "project_id": "PVT_kwHOCSJ8cc4BiQ2B",
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
     "project_note_field": "Source or dependency reference",
-    "project_text": "Stateful VM: https://github.com/lucronn/autodata/issues/186#issuecomment-6634690176; source e5fed171; six new lab files; offline disposable KVM stateful drill only. Full exact predecessor Project Source + SHA256 preserved in linked detail and durable evidence; existing R6/index/PG/publisher authorities unchanged. Checkpoint/preflight/review/fresh dispatch pending; code + intercepted tests only, separate VM run gate. App/cloud staging/production/deployment/cutover authority false.",
-    "project_text_sha256": "46b8e75e2a62481d106c77c1b6677dd8c1f865ef53b5377c0d31950280c68a7b",
-    "project_utf8_bytes": 484,
-    "prior_project_text": "R6 HTTP code66781084 PR200 D6624255418: independent exact-SHA PASS; tests92/244/146. Two-bank18x2 diagnostics only; no CLI/profile/cases/runtime/merge/deploy authority. Gatea899eac8/plan receipt2ea5b696 D6623187020/P6623199160. PG17 PASS D6623105546/P6623119656; failed124e43a9 quarantined. Integration D6623150233/checkpointd2e2270/P6623168382 gate2728ac/R507e3d. API21 D6623222525 gatee0e50dee/P6623235715/Rb1ac3c7c. Recovery D6624161772/P6624174482/R2e55ccc; new API21 raw PASS D6624382132 audit8b809719; old run incomplete. No180/staging. R6HTTP completion C94a5809/P6624284510 PASS; history retained. #186 In Progress; release gated. R6scope D6624437136/G281ec742 C30ea7a0/PR209 D6634324284 reviewed16/108/260/146/17; zero cases/allfalse. Reader D6624605837 goal/todo5/2file source\u2192canonical retry fix; gate pending. Reader C4076ad3/PR206 D6633937350 reviewed59/59; final180/live still open. Index D6634018122 goal/todo6/6files current jobs\u2192ready; gate pending.",
-    "prior_project_text_sha256": "7988162779e1b526fef566c7288f0ab2a99dc7b34dd74650ce06c79673cbd2b5",
-    "predecessor_comments_inventoried": 137,
+    "project_text": "Stateful VM correction: https://github.com/lucronn/autodata/issues/186#issuecomment-6634995525; gate825580dc superseded for bridge15/event64; six lab files only, new docs checkpoint/preflight/review/dispatch required. Index completion df52326b/PR213 independent docs/code/R3 leaf PASS; prior exact Source SHA9c99e5508b2c and all history archived in linked detail. Status In Progress; final180/integrated R3/live staging/cloud/VM run/deploy/cutover authority false.",
+    "project_text_sha256": "df747b126a15288fadfb532f399d36d45cc45fee332ec86541b0824212ecd785",
+    "project_utf8_bytes": 464,
+    "prior_project_text": "Stateful VM gate825580dc/PR212: offline six-file plan, detail https://github.com/lucronn/autodata/issues/186#issuecomment-6634690176; VM/cloud/deploy false. Index code23a2f3b/PR211: reviewed R3 8/8 and 42/42 PASS, detail https://github.com/lucronn/autodata/issues/186#issuecomment-6634845885; docs completion checkpoint requires independent review before integration. Prior exact Source SHA46b8e75e preserved in index detail. Final180/live/release open; all authorities false.",
+    "prior_project_text_sha256": "9c99e5508b2cf825dd8919a125962cb3a4c12df741df53722740de57f535e9b4",
+    "predecessor_comments_inventoried": 139,
     "other_project_fields_unchanged": true,
-    "verified_at": "2026-11-04T15:33:41.700000+00:00",
+    "verified_at": "2026-11-04T15:43:22Z",
     "evidence_files": [
       {
         "path": "/home/corp/autodata-evidence/stateful-vm-tracking-before.json",
@@ -108,9 +108,21 @@
       {
         "path": "/home/corp/autodata-evidence/stateful-vm-comment-correction-readback.json",
         "sha256": "9cc1b859a663f623fbef0781a6cb737d091b0ca722b0561ff8fd4f09d23331ff"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/stateful-vm-feasibility-tracking-before.json",
+        "sha256": "620bba1a8ce3bf12e41f90d94e96120d5dd1c07d5fb05738158c4f29715f4e8b"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/stateful-vm-feasibility-tracking-readback.json",
+        "sha256": "17770e1627d71b1dad54cc1e9859615f34e28847dc6597602fff81f96b849712"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/stateful-vm-feasibility-planner-live-verification.json",
+        "sha256": "3dee9e0b4a4f3d66fccc484e13898e0bf1b2e94e3364b4b6b7624a1561cf42d7"
       }
     ],
-    "evidence_source": "Coordinator corrected and live-read the same Issue comment after independent gate review; local planner verified retained correction evidence and hashes without GitHub writes. Original before/readback snapshots remain historical.",
+    "evidence_source": "Coordinator synchronized the feasibility correction; planner independently live-read Issue body/all140 comments and Project Source/all retained non-Source fields without GitHub writes. Earlier revision and correction histories remain historical.",
     "correction_history": [
       {
         "checkpoint_sha": "71c8b255078f4f2dea01bbb714cd724f81a67586",
@@ -124,7 +136,105 @@
         "other_project_fields_unchanged": true,
         "evidence_path": "/home/corp/autodata-evidence/stateful-vm-comment-correction-readback.json",
         "evidence_sha256": "9cc1b859a663f623fbef0781a6cb737d091b0ca722b0561ff8fd4f09d23331ff"
+      },
+      {
+        "checkpoint_sha": "825580dc7d3c9b837b4ce31903155a4bc92bab67",
+        "reason": "Builder stopped before implementation; bridge15 and global event64 feasibility correction synchronized in a new Issue detail and Project Source. Prior checkpoint cannot authorize corrected implementation.",
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634995525",
+        "issue_comment_sha256": "43db6691c84f2bee123196ca7a3133d9f513ed74df2a0cad9f3451fbedeea102",
+        "prior_project_text": "Stateful VM gate825580dc/PR212: offline six-file plan, detail https://github.com/lucronn/autodata/issues/186#issuecomment-6634690176; VM/cloud/deploy false. Index code23a2f3b/PR211: reviewed R3 8/8 and 42/42 PASS, detail https://github.com/lucronn/autodata/issues/186#issuecomment-6634845885; docs completion checkpoint requires independent review before integration. Prior exact Source SHA46b8e75e preserved in index detail. Final180/live/release open; all authorities false.",
+        "prior_project_text_sha256": "9c99e5508b2cf825dd8919a125962cb3a4c12df741df53722740de57f535e9b4",
+        "project_text_sha256": "df747b126a15288fadfb532f399d36d45cc45fee332ec86541b0824212ecd785",
+        "verified_at": "2026-11-04T15:43:22Z",
+        "issue_body_unchanged": true,
+        "predecessor_comments_unchanged": true,
+        "other_project_fields_unchanged": true,
+        "evidence_path": "/home/corp/autodata-evidence/stateful-vm-feasibility-tracking-readback.json",
+        "evidence_sha256": "17770e1627d71b1dad54cc1e9859615f34e28847dc6597602fff81f96b849712"
+      }
+    ],
+    "comments_verified": 140,
+    "coordinator_readback_at": "2026-11-04T15:42:41Z",
+    "project_status": "In Progress",
+    "prior_tracking_revisions": [
+      {
+        "status": "synchronized",
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634690176",
+        "issue_comment_id": 6634690176,
+        "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+        "issue_comment_sha256": "b452e911af91b8e4a117dd4cca54f278d3a08f7ea16610d48316426a7c1adee8",
+        "project_id": "PVT_kwHOCSJ8cc4BiQ2B",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_note_field": "Source or dependency reference",
+        "project_text": "Stateful VM: https://github.com/lucronn/autodata/issues/186#issuecomment-6634690176; source e5fed171; six new lab files; offline disposable KVM stateful drill only. Full exact predecessor Project Source + SHA256 preserved in linked detail and durable evidence; existing R6/index/PG/publisher authorities unchanged. Checkpoint/preflight/review/fresh dispatch pending; code + intercepted tests only, separate VM run gate. App/cloud staging/production/deployment/cutover authority false.",
+        "project_text_sha256": "46b8e75e2a62481d106c77c1b6677dd8c1f865ef53b5377c0d31950280c68a7b",
+        "project_utf8_bytes": 484,
+        "prior_project_text": "R6 HTTP code66781084 PR200 D6624255418: independent exact-SHA PASS; tests92/244/146. Two-bank18x2 diagnostics only; no CLI/profile/cases/runtime/merge/deploy authority. Gatea899eac8/plan receipt2ea5b696 D6623187020/P6623199160. PG17 PASS D6623105546/P6623119656; failed124e43a9 quarantined. Integration D6623150233/checkpointd2e2270/P6623168382 gate2728ac/R507e3d. API21 D6623222525 gatee0e50dee/P6623235715/Rb1ac3c7c. Recovery D6624161772/P6624174482/R2e55ccc; new API21 raw PASS D6624382132 audit8b809719; old run incomplete. No180/staging. R6HTTP completion C94a5809/P6624284510 PASS; history retained. #186 In Progress; release gated. R6scope D6624437136/G281ec742 C30ea7a0/PR209 D6634324284 reviewed16/108/260/146/17; zero cases/allfalse. Reader D6624605837 goal/todo5/2file source\u2192canonical retry fix; gate pending. Reader C4076ad3/PR206 D6633937350 reviewed59/59; final180/live still open. Index D6634018122 goal/todo6/6files current jobs\u2192ready; gate pending.",
+        "prior_project_text_sha256": "7988162779e1b526fef566c7288f0ab2a99dc7b34dd74650ce06c79673cbd2b5",
+        "predecessor_comments_inventoried": 137,
+        "other_project_fields_unchanged": true,
+        "verified_at": "2026-11-04T15:33:41.700000+00:00",
+        "evidence_files": [
+          {
+            "path": "/home/corp/autodata-evidence/stateful-vm-tracking-before.json",
+            "sha256": "4487759f31c6d4d583f41dc3e9624b8b7b2c71f40b36a2239bdf4aa13090f310"
+          },
+          {
+            "path": "/home/corp/autodata-evidence/stateful-vm-tracking-readback.json",
+            "sha256": "4799ed6745ba733ea145313981e1e4cb53d7890958c54edf1da552a795e1d699"
+          },
+          {
+            "path": "/home/corp/autodata-evidence/stateful-vm-comment-correction-readback.json",
+            "sha256": "9cc1b859a663f623fbef0781a6cb737d091b0ca722b0561ff8fd4f09d23331ff"
+          }
+        ],
+        "evidence_source": "Coordinator corrected and live-read the same Issue comment after independent gate review; local planner verified retained correction evidence and hashes without GitHub writes. Original before/readback snapshots remain historical.",
+        "correction_history": [
+          {
+            "checkpoint_sha": "71c8b255078f4f2dea01bbb714cd724f81a67586",
+            "old_issue_comment_sha256": "6a35d6ea11143901e11d7b42381ccf2b4635d87a5dbd0e84d34eb916140d0b86",
+            "new_issue_comment_sha256": "b452e911af91b8e4a117dd4cca54f278d3a08f7ea16610d48316426a7c1adee8",
+            "reason": "Independent gate review found stale pending-synchronization/not-synchronized wording in the live detail; coordinator corrected that same comment in place. Checkpoint71c8 is not builder-authorizing.",
+            "comment_updated_at": "2026-11-04T15:33:40Z",
+            "verified_at": "2026-11-04T15:33:41.700000+00:00",
+            "project_source_unchanged": true,
+            "issue_body_unchanged": true,
+            "other_project_fields_unchanged": true,
+            "evidence_path": "/home/corp/autodata-evidence/stateful-vm-comment-correction-readback.json",
+            "evidence_sha256": "9cc1b859a663f623fbef0781a6cb737d091b0ca722b0561ff8fd4f09d23331ff"
+          }
+        ]
       }
     ]
-  }
+  },
+  "feasibility_correction": {
+    "status": "synchronized",
+    "inspected_checkpoint_sha": "825580dc7d3c9b837b4ce31903155a4bc92bab67",
+    "evidence_path": "/home/corp/autodata-evidence/stateful-vm-builder-feasibility-block.json",
+    "bridge_name": "adlab-<first9hex-runUUID>",
+    "bridge_ascii_bytes": 15,
+    "global_protocol_events_per_mode": 64,
+    "counting": "Each outbound NATS command/inbound frame including INFO/PONG/+OK/-ERR; each HTTP request/response; one counter across protocols, sockets, attempts, retries and phases.",
+    "required_tests": [
+      "exact deterministic bridge derivation and15-byte length",
+      "shortened bridge-name collision refusal",
+      "64-event accepted transcript passes; event65 fails closed",
+      "shared counter across protocols/connections/retries/subphases",
+      "full negative-authentication transcript and before/after unchanged fixture verification within64"
+    ],
+    "unchanged_limits": {
+      "frame_header_bytes": 16384,
+      "body_bytes": 1048576,
+      "socket_seconds": 3,
+      "operation_seconds": 15,
+      "probe_stdout_bytes": 32768
+    },
+    "next_gate": "New committed full-SHA preflight; independent exact-checkpoint review; fresh coordinator dispatch. VM/Docker execution remains separately gated.",
+    "verified_at": "2026-11-04T15:43:22Z",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634995525",
+    "issue_comment_sha256": "43db6691c84f2bee123196ca7a3133d9f513ed74df2a0cad9f3451fbedeea102",
+    "project_text_sha256": "df747b126a15288fadfb532f399d36d45cc45fee332ec86541b0824212ecd785"
+  },
+  "updated_at": "2026-11-04T15:43:22Z"
 }
