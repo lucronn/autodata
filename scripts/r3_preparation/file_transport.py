@@ -5,6 +5,7 @@ write or force an uninterruptible task to exit. Unconfirmed retirement requires
 owner containment and quarantine. No deletion, repair or retry is performed.
 """
 import errno
+import ctypes
 import hashlib
 import os
 import resource
@@ -22,7 +23,7 @@ _HEADER=struct.Struct('!BBQI')
 _CHUNK=65536
 _SECOND=10**9
 _POLL=.05
-_INVARIANT=('dev','inode','uid','gid','mode','nlink')
+_INVARIANT=('dev','inode','uid','gid','mode','nlink','mount_id')
 
 
 class TransportFault(Exception):
@@ -57,23 +58,77 @@ def _io(sock,data,size,deadline,cancel):
     return bytes(result)
 
 
-def _send(sock,kind,sequence,payload,deadline,cancel):
+class _IPCAccount:
+    def __init__(self):self.bytes=0;self.frames=0
+    def charge(self,size):
+        # Derived from the immutable operation, metadata, output and chunk caps.
+        # Header and payload are charged before allocation/send; neither can be
+        # reset on a request failure or a new operation.
+        if self.bytes+size>2*40000*(_CHUNK+_HEADER.size)+128*1024**2:raise TransportFault('cap')
+        self.bytes+=size
+    def frame(self):
+        if self.frames>=2*40000+2*2048+128:raise TransportFault('cap')
+        self.frames+=1
+
+
+def _send(sock,kind,sequence,payload,deadline,cancel,account=None):
     if type(payload) is not bytes or len(payload)>_CHUNK:raise TransportFault('cap')
+    if account is not None:account.frame();account.charge(_HEADER.size+len(payload))
     _io(sock,_HEADER.pack(1,kind,sequence,len(payload)),_HEADER.size,deadline,cancel)
     _io(sock,payload,len(payload),deadline,cancel)
 
 
-def _receive(sock,kind,sequence,deadline,cancel):
+def _receive(sock,kind,sequence,deadline,cancel,account=None):
+    if account is not None:account.frame();account.charge(_HEADER.size)
     header=_io(sock,None,_HEADER.size,deadline,cancel)
     version,actual_kind,actual_sequence,length=_HEADER.unpack(header)
     if version!=1 or actual_kind!=kind or actual_sequence!=sequence:raise TransportFault('integrity')
     if length>_CHUNK:raise TransportFault('cap')
+    if account is not None:account.charge(length)
     return _io(sock,None,length,deadline,cancel)
 
 
-def _identity(st):
-    return a.FileIdentity(st.st_dev,st.st_ino,st.st_uid,st.st_gid,st.st_mode,st.st_size,
-                          st.st_mtime_ns,st.st_ctime_ns,st.st_nlink)
+class _StatxTimestamp(ctypes.Structure):
+    _fields_=[('seconds',ctypes.c_int64),('nanoseconds',ctypes.c_uint32),('reserved',ctypes.c_int32)]
+
+
+class _Statx(ctypes.Structure):
+    _fields_=[('mask',ctypes.c_uint32),('blksize',ctypes.c_uint32),('attributes',ctypes.c_uint64),
+        ('nlink',ctypes.c_uint32),('uid',ctypes.c_uint32),('gid',ctypes.c_uint32),
+        ('mode',ctypes.c_uint16),('reserved0',ctypes.c_uint16),('inode',ctypes.c_uint64),
+        ('size',ctypes.c_uint64),('blocks',ctypes.c_uint64),('attributes_mask',ctypes.c_uint64),
+        ('atime',_StatxTimestamp),('btime',_StatxTimestamp),('ctime',_StatxTimestamp),('mtime',_StatxTimestamp),
+        ('rdev_major',ctypes.c_uint32),('rdev_minor',ctypes.c_uint32),
+        ('dev_major',ctypes.c_uint32),('dev_minor',ctypes.c_uint32),('mount_id',ctypes.c_uint64),
+        ('dio_mem_align',ctypes.c_uint32),('dio_offset_align',ctypes.c_uint32),('reserved',ctypes.c_uint64*12)]
+
+
+def _identity(st,*,fd=None,dir_fd=None,name=None):
+    """No-follow statx metadata, bound to the same stat identity and mount.
+
+    libc is resolved only during an admitted worker operation. Unsupported
+    Linux/glibc/kernel mount-ID reporting is a blocker; dev/inode is no fallback.
+    """
+    try:
+        if ctypes.sizeof(_Statx)!=256:raise TransportFault('integrity')
+        if fd is not None:
+            descriptor=fd;path=b'';flags=0x1000|0x100|0x800  # EMPTY_PATH, NOFOLLOW, NO_AUTOMOUNT
+        else:
+            if type(dir_fd) is not int or type(name) is not str or not name or '/' in name:raise TransportFault('integrity')
+            descriptor=dir_fd;path=name.encode('utf-8');flags=0x100|0x800
+        libc=ctypes.CDLL(None,use_errno=True);call=libc.statx
+        call.argtypes=(ctypes.c_int,ctypes.c_char_p,ctypes.c_int,ctypes.c_uint,ctypes.POINTER(_Statx))
+        call.restype=ctypes.c_int;result=_Statx()
+        if call(descriptor,path,flags,0x7ff|0x1000,ctypes.byref(result))!=0 or result.mask&(0x7ff|0x1000)!=(0x7ff|0x1000) or result.mount_id<=0:
+            raise TransportFault('integrity')
+        if (result.dev_major!=os.major(st.st_dev) or result.dev_minor!=os.minor(st.st_dev) or
+            result.inode!=st.st_ino or result.mode!=st.st_mode or result.uid!=st.st_uid or
+            result.gid!=st.st_gid or result.nlink!=st.st_nlink or result.size!=st.st_size or
+            result.mtime.seconds*_SECOND+result.mtime.nanoseconds!=st.st_mtime_ns or
+            result.ctime.seconds*_SECOND+result.ctime.nanoseconds!=st.st_ctime_ns):raise TransportFault('integrity')
+        return a.FileIdentity(st.st_dev,st.st_ino,st.st_uid,st.st_gid,st.st_mode,st.st_size,
+                              st.st_mtime_ns,st.st_ctime_ns,st.st_nlink,result.mount_id)
+    except (OSError,AttributeError,ValueError,TypeError,UnicodeError):raise TransportFault('integrity') from None
 
 
 def _equal(actual,expected,*,directory=False):
@@ -85,7 +140,7 @@ class _State:
     def __init__(self,anchors,recipes,root):
         self.anchors={v.reference:v for v in anchors};self.recipes={v.id:v for v in recipes}
         self.root=self.anchors[root];self.metadata=0;self.inputs=0;self.input_bytes=0
-        self.output_bytes=0;self.outputs={};self.active=None;self.active_name=None
+        self.output_bytes=0;self.outputs={};self.observed=set();self.touched=set();self.active=None;self.active_name=None
         self.active_bytes=0;self.active_digest=None;self.active_identity=None
 
     def charge(self,n=1):
@@ -93,7 +148,7 @@ class _State:
         if self.metadata>40000:raise TransportFault('cap')
 
     def directory(self,fd,expected):
-        self.charge();actual=_identity(os.fstat(fd))
+        self.charge();actual=_identity(os.fstat(fd),fd=fd)
         mutable_root=(actual.dev,actual.inode)==(self.root.identity.dev,self.root.identity.inode)
         if not stat.S_ISDIR(actual.mode) or actual.mode&0o022 or not _equal(actual,expected,directory=mutable_root):
             raise TransportFault('integrity')
@@ -126,7 +181,7 @@ class _State:
                 self.charge()
                 if entry.name in ('home','artifacts','minio'):
                     anchor=self.anchors.get(entry.name)
-                    if anchor is None or not _equal(_identity(entry.stat(follow_symlinks=False)),anchor.identity,directory=True):raise TransportFault('integrity')
+                    if anchor is None or not _equal(_identity(entry.stat(follow_symlinks=False),dir_fd=self.root.fd,name=entry.name),anchor.identity,directory=True):raise TransportFault('integrity')
                     self.directory(anchor.fd,anchor.identity)
                     continue
                 if len(names)>=17 or entry.name not in p.OUTPUT_NAMES:raise TransportFault('integrity')
@@ -135,7 +190,7 @@ class _State:
         return {'count':len(names)}
 
 
-def _observe(state,recipe):
+def _observe_recipe(state,recipe):
     parent=state.parent(recipe)
     try:
         name=recipe.components[-1];state.charge()
@@ -143,7 +198,7 @@ def _observe(state,recipe):
             try:os.stat(name,dir_fd=parent,follow_symlinks=False)
             except FileNotFoundError:return {'absent':True}
             raise TransportFault('integrity')
-        before=_identity(os.stat(name,dir_fd=parent,follow_symlinks=False))
+        before=_identity(os.stat(name,dir_fd=parent,follow_symlinks=False),dir_fd=parent,name=name);state.touched.add(recipe.id)
         if not _equal(before,recipe.identity):raise TransportFault('integrity')
         if recipe.kind=='socket':
             if not stat.S_ISSOCK(before.mode):raise TransportFault('integrity')
@@ -152,7 +207,7 @@ def _observe(state,recipe):
         # O_NONBLOCK prevents a swapped FIFO from blocking before fstat rejects it.
         fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC|os.O_NONBLOCK,dir_fd=parent)
         try:
-            opened=_identity(os.fstat(fd));state.charge()
+            opened=_identity(os.fstat(fd),fd=fd);state.charge()
             if not _equal(opened,before):raise TransportFault('integrity')
             state.inputs+=1
             if state.inputs>20000 or opened.size>64*1024**2:raise TransportFault('cap')
@@ -166,17 +221,27 @@ def _observe(state,recipe):
                     if chunk!=recipe.literal[literal_offset:literal_offset+len(chunk)]:raise TransportFault('integrity')
                     literal_offset+=len(chunk)
             state.charge(2)
-            if total!=opened.size or not _equal(_identity(os.fstat(fd)),opened) or not _equal(_identity(os.stat(name,dir_fd=parent,follow_symlinks=False)),opened):raise TransportFault('integrity')
+            if total!=opened.size or not _equal(_identity(os.fstat(fd),fd=fd),opened) or not _equal(_identity(os.stat(name,dir_fd=parent,follow_symlinks=False),dir_fd=parent,name=name),opened):raise TransportFault('integrity')
             if recipe.literal is not None and literal_offset!=len(recipe.literal):raise TransportFault('integrity')
             if digest.hexdigest()!=recipe.sha256:raise TransportFault('integrity')
             # Re-resolve each admitted parent from its anchor after hashing.
             again=state.parent(recipe)
             try:
-                if not _equal(_identity(os.fstat(again)),_identity(os.fstat(parent))):raise TransportFault('integrity')
+                if not _equal(_identity(os.fstat(again),fd=again),_identity(os.fstat(parent),fd=parent)):raise TransportFault('integrity')
             finally:os.close(again)
             return {'sha256':digest.hexdigest(),'size':total,'complete':True}
         finally:os.close(fd)
     finally:os.close(parent)
+
+
+def _observe(state,recipe):
+    try:
+        result=_observe_recipe(state,recipe);state.observed.add(recipe.id);return result
+    except FileNotFoundError:
+        if recipe.id in state.observed or recipe.id in state.touched:raise TransportFault('integrity') from None
+        # A missing approved prerequisite is not permission to repair it. Other
+        # independent graph nodes may still observe their admitted inputs once.
+        return {'blocked_missing_input':True}
 
 
 def _output_start(state,name):
@@ -184,7 +249,7 @@ def _output_start(state,name):
         raise TransportFault('integrity')
     state.space();state.directory(state.root.fd,state.root.identity)
     fd=os.open(name,os.O_RDWR|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_CLOEXEC,0o600,dir_fd=state.root.fd)
-    st=_identity(os.fstat(fd));state.charge()
+    st=_identity(os.fstat(fd),fd=fd);state.charge()
     if not stat.S_ISREG(st.mode) or st.uid!=state.root.identity.uid or st.gid!=state.root.identity.gid or st.dev!=state.root.identity.dev or st.mode&0o777!=0o600 or st.nlink!=1:
         os.close(fd);raise TransportFault('integrity')
     state.active=fd;state.active_name=name;state.active_bytes=0;state.active_digest=hashlib.sha256();state.active_identity=st
@@ -207,7 +272,7 @@ def _output_chunk(state,raw):
 
 
 def _verify_fd(state,fd,expected,digest,size):
-    before=_identity(os.fstat(fd));state.charge()
+    before=_identity(os.fstat(fd),fd=fd);state.charge()
     if not _equal(before,expected,directory=True) or not stat.S_ISREG(before.mode) or before.size!=size:raise TransportFault('integrity')
     os.lseek(fd,0,os.SEEK_SET);h=hashlib.sha256();count=0
     while True:
@@ -216,7 +281,7 @@ def _verify_fd(state,fd,expected,digest,size):
         if count+len(chunk)>16*1024**2:raise TransportFault('cap')
         count+=len(chunk);h.update(chunk)
     state.charge()
-    if count!=size or h.hexdigest()!=digest or not _equal(_identity(os.fstat(fd)),before):raise TransportFault('integrity')
+    if count!=size or h.hexdigest()!=digest or not _equal(_identity(os.fstat(fd),fd=fd),before):raise TransportFault('integrity')
     return before
 
 
@@ -227,7 +292,7 @@ def _output_finish(state):
         os.fsync(fd);digest=state.active_digest.hexdigest();size=state.active_bytes
         final=_verify_fd(state,fd,state.active_identity,digest,size)
         state.charge()
-        if not _equal(_identity(os.stat(state.active_name,dir_fd=state.root.fd,follow_symlinks=False)),final):raise TransportFault('integrity')
+        if not _equal(_identity(os.stat(state.active_name,dir_fd=state.root.fd,follow_symlinks=False),dir_fd=state.root.fd,name=state.active_name),final):raise TransportFault('integrity')
         state.outputs[state.active_name]=(final,digest,size)
         return {'sha256':digest,'size':size,'complete':True}
     finally:os.close(fd);state.active=None
@@ -242,7 +307,7 @@ def _output_verify(state,name):
         final=_verify_fd(state,fd,expected,digest,size)
         if not _equal(final,expected):raise TransportFault('integrity')
         state.charge()
-        if not _equal(_identity(os.stat(name,dir_fd=state.root.fd,follow_symlinks=False)),expected):raise TransportFault('integrity')
+        if not _equal(_identity(os.stat(name,dir_fd=state.root.fd,follow_symlinks=False),dir_fd=state.root.fd,name=name),expected):raise TransportFault('integrity')
         return {'sha256':digest,'size':size,'complete':True}
     finally:os.close(fd)
 
@@ -260,16 +325,17 @@ def _worker(sock,anchors,recipes,root,outer):
         start=fd+1
     os.closerange(start,maximum)
     state=_State(anchors,recipes,root);cancel=threading.Event()
+    ledger=a.JsonBudget(outer,cancel);account=_IPCAccount()
     for anchor in anchors:
         state.directory(anchor.fd,anchor.identity)
-        if not _equal(_identity(os.fstat(anchor.fd)),anchor.identity):raise TransportFault('integrity')
-    _send(sock,2,0,b'{"ready":true}',min(outer,time.monotonic_ns()+5*_SECOND),cancel)
+        if not _equal(_identity(os.fstat(anchor.fd),fd=anchor.fd),anchor.identity):raise TransportFault('integrity')
+    _send(sock,2,0,b'{"ready":true}',min(outer,time.monotonic_ns()+5*_SECOND),cancel,account)
     seq=1
     try:
         while True:
-            raw=_receive(sock,1,seq,outer,cancel)
+            raw=_receive(sock,1,seq,outer,cancel,account)
             try:
-                request=a._parse(raw)
+                request=a._parse(raw,ledger)
                 if type(request) is not dict or set(request)!={'op','id'}:raise TransportFault('integrity')
                 op,reference=request['op'],request['id']
                 if op in ('observe_regular','observe_absence','observe_socket_metadata','revalidate'):
@@ -284,17 +350,17 @@ def _worker(sock,anchors,recipes,root,outer):
                 elif op=='verify_output':result=_output_verify(state,reference)
                 elif op=='finish_output' and reference==state.active_name:result=_output_finish(state)
                 else:raise TransportFault('integrity')
-                _send(sock,2,seq,a.serialize({'ok':result}),outer,cancel);seq+=1
+                _send(sock,2,seq,a.serialize({'ok':result},ledger),outer,cancel,account);seq+=1
                 if op=='create_output':
                     while True:
-                        chunk=_receive(sock,3,seq,outer,cancel)
+                        chunk=_receive(sock,3,seq,outer,cancel,account)
                         if not chunk:break
                         result=_output_chunk(state,chunk)
-                        _send(sock,2,seq,a.serialize({'ok':result}),outer,cancel);seq+=1
-                    _send(sock,2,seq,b'{"ok":{"ended":true}}',outer,cancel);seq+=1
-            except (OSError,TransportFault,a._Rejected,MemoryError,KeyError,TypeError,ValueError) as error:
-                code=error.code if type(error) is TransportFault else 'storage' if isinstance(error,OSError) and error.errno in (errno.ENOSPC,errno.EDQUOT) else 'integrity'
-                _send(sock,2,seq,a.serialize({'fault':code}),outer,cancel)
+                        _send(sock,2,seq,a.serialize({'ok':result},ledger),outer,cancel,account);seq+=1
+                    _send(sock,2,seq,b'{"ok":{"ended":true}}',outer,cancel,account);seq+=1
+            except (OSError,TransportFault,a.BudgetFault,a._Rejected,MemoryError,KeyError,TypeError,ValueError) as error:
+                code=error.code if type(error) in (TransportFault,a.BudgetFault) else 'storage' if isinstance(error,OSError) and error.errno in (errno.ENOSPC,errno.EDQUOT) else 'integrity'
+                _send(sock,2,seq,a.serialize({'fault':code},ledger),outer,cancel,account)
                 return
     finally:
         if state.active is not None:os.close(state.active)
@@ -302,11 +368,12 @@ def _worker(sock,anchors,recipes,root,outer):
 
 class FileWorker:
     """Internal capability constructed only after actual admission by the adapter."""
-    def __init__(self,anchors,recipes,root_reference,outer_deadline_ns,cancel):
+    def __init__(self,anchors,recipes,root_reference,outer_deadline_ns,cancel,*,json_budget=None):
         self._pid=None;self._session=False;self._socket=None;self._sequence=1
         self._closed=False;self._cleanup=None;self._fault=None;self.quarantine_required=False
         self.outer=outer_deadline_ns;self.cancel=cancel;self._file_ns=0;self._output_ns=0
-        self._json_ns=0;self.limits=p.Limits();self._operation_deadline=outer_deadline_ns
+        self.json=a.JsonBudget(outer_deadline_ns,cancel) if json_budget is None else a._budget(json_budget)
+        self._account=_IPCAccount()
         if (type(anchors) is not tuple or not anchors or any(type(v) is not a.Anchor or type(v.fd) is not int or v.fd<3 for v in anchors)
             or len({v.fd for v in anchors})!=len(anchors) or root_reference not in {v.reference for v in anchors}
             or type(recipes) is not tuple or any(type(v) is not a.FileRecipe for v in recipes)
@@ -324,7 +391,7 @@ class FileWorker:
                 except BaseException:pass
                 finally:os._exit(0)
             self._pid=pid;child.close();self._socket=parent
-            ready=_receive(parent,2,0,deadline,cancel)
+            ready=_receive(parent,2,0,deadline,cancel,self._account)
             if ready!=b'{"ready":true}' or os.getpgid(pid)!=pid:raise TransportFault('integrity')
             self._session=True
         except BaseException:
@@ -334,31 +401,35 @@ class FileWorker:
     @property
     def ipc_closed(self):return self._socket is None
 
-    def check_json(self):
-        _check(self._operation_deadline,self.cancel)
-        if self._json_ns>60*_SECOND:raise TransportFault('cap')
-
     def _exchange(self,op,reference,*,output=False):
         if self._closed or self._fault:raise TransportFault(self._fault or 'port_failure')
         start=time.monotonic_ns();ledger=self._output_ns if output else self._file_ns
         total=(60 if output else 300)*_SECOND
-        deadline=min(self.outer,start+5*_SECOND,start+max(0,total-ledger));self._operation_deadline=deadline
+        deadline=min(self.outer,start+5*_SECOND,start+max(0,total-ledger))
         try:
             _check(deadline,self.cancel)
-            _send(self._socket,1,self._sequence,a.serialize({'op':op,'id':reference}),deadline,self.cancel)
-            raw=_receive(self._socket,2,self._sequence,deadline,self.cancel);self._sequence+=1
-            result=a._parse(raw)
-            if type(result) is not dict or len(result)!=1:raise TransportFault('integrity')
-            if 'fault' in result:raise TransportFault(result['fault'])
-            if set(result)!={'ok'} or type(result['ok']) is not dict:raise TransportFault('integrity')
-            return result['ok']
+            with self.json.operation(deadline):
+                return self._exchange_frame(op,reference,deadline)
         except BaseException as error:
-            self._fault=error.code if type(error) is TransportFault else 'port_failure';self.cancel.set();self.close()
+            self._fault=error.code if type(error) in (TransportFault,a.BudgetFault) else 'port_failure';self.cancel.set();self.close()
             raise TransportFault(self._fault) from None
         finally:
             elapsed=time.monotonic_ns()-start
             if output:self._output_ns+=elapsed
             else:self._file_ns+=elapsed
+
+    def _exchange_frame(self,op,reference,deadline):
+        try:
+            _send(self._socket,1,self._sequence,a.serialize({'op':op,'id':reference},self.json),deadline,self.cancel,self._account)
+            raw=_receive(self._socket,2,self._sequence,deadline,self.cancel,self._account);self._sequence+=1
+            result=a._parse(raw,self.json)
+            if type(result) is not dict or len(result)!=1:raise TransportFault('integrity')
+            if 'fault' in result:raise TransportFault(result['fault'])
+            if set(result)!={'ok'} or type(result['ok']) is not dict:raise TransportFault('integrity')
+            return result['ok']
+        except BaseException as error:
+            self._fault=error.code if type(error) in (TransportFault,a.BudgetFault) else 'port_failure';self.cancel.set();self.close()
+            raise TransportFault(self._fault) from None
 
     def observe(self,reference):return self._exchange('revalidate',reference)
     def space(self):return self._exchange('space','root')
@@ -376,15 +447,16 @@ class FileWorker:
     def _chunk(self,data):
         start=time.monotonic_ns();deadline=min(self.outer,start+5*_SECOND,start+max(0,60*_SECOND-self._output_ns))
         try:
-            _check(deadline,self.cancel)
-            _send(self._socket,3,self._sequence,data,deadline,self.cancel)
-            result=a._parse(_receive(self._socket,2,self._sequence,deadline,self.cancel));self._sequence+=1
-            if type(result) is dict and set(result)=={'fault'}:raise TransportFault(result['fault'])
-            if type(result) is not dict or set(result)!={'ok'}:raise TransportFault('integrity')
-            expected={'written':len(data)} if data else {'ended':True}
-            if result['ok']!=expected:raise TransportFault('integrity')
+            with self.json.operation(deadline):
+                _check(deadline,self.cancel)
+                _send(self._socket,3,self._sequence,data,deadline,self.cancel,self._account)
+                result=a._parse(_receive(self._socket,2,self._sequence,deadline,self.cancel,self._account),self.json);self._sequence+=1
+                if type(result) is dict and set(result)=={'fault'}:raise TransportFault(result['fault'])
+                if type(result) is not dict or set(result)!={'ok'}:raise TransportFault('integrity')
+                expected={'written':len(data)} if data else {'ended':True}
+                if result['ok']!=expected:raise TransportFault('integrity')
         except BaseException as error:
-            self._fault=error.code if type(error) is TransportFault else 'port_failure';self.cancel.set();self.close()
+            self._fault=error.code if type(error) in (TransportFault,a.BudgetFault) else 'port_failure';self.cancel.set();self.close()
             raise TransportFault(self._fault) from None
         finally:self._output_ns+=time.monotonic_ns()-start
 

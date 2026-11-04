@@ -41,6 +41,7 @@ class FileIdentity:
     mtime_ns: int
     ctime_ns: int
     nlink: int
+    mount_id: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,9 +117,10 @@ class JsonBudget:
         self.check_json();_need(value)
 
     @contextmanager
-    def operation(self):
+    def operation(self,deadline_ns=None):
         self.check_json();start=time.monotonic_ns()
         deadline=min(self.outer,start+5*10**9,start+max(0,60*10**9-self.spent_ns))
+        if deadline_ns is not None:deadline=min(deadline,deadline_ns)
         if self._stack:deadline=min(deadline,self._stack[-1][1])
         self._stack.append((start,deadline))
         try:
@@ -231,7 +233,7 @@ def _identity(d,budget):
     need=budget.require
     need(type(d) is dict and set(d)==set(FileIdentity.__dataclass_fields__))
     need(all(type(v) is int and v>=0 for v in d.values()))
-    need(d['inode']>0 and d['nlink']>0 and d['mode']<=0o177777)
+    need(d['inode']>0 and d['nlink']>0 and d['mount_id']>0 and d['mode']<=0o177777)
     return FileIdentity(**d)
 
 
@@ -417,7 +419,7 @@ def _project(kind, value, contract, budget):
         if kind in ('python_version','git_version','docker_version'):
             need(type(value) is str and len(value)<=512)
             prefixes={'python_version':r'Python ','git_version':r'git version ','docker_version':r'Docker version '}
-            text=value.rstrip('\n');need(re.fullmatch(prefixes[kind]+r'[0-9]+(?:\.[0-9]+){1,3}(?:[a-z0-9.,+ -]{0,128})?',text))
+            text=value.rstrip('\n');need(re.fullmatch(prefixes[kind]+r'[0-9]+(?:\.[0-9]+){1,3}(?:, build [0-9a-f]{7,40})?',text))
             return {'version':text}
         if kind=='compose_version':
             need(type(value) is dict and type(value.get('version')) is str and re.fullmatch(r'v?[0-9]+(?:\.[0-9]+){1,3}',value['version']))

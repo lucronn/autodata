@@ -15,9 +15,11 @@ from test_policy import load
 a=load('real_admission'); f=load('file_transport')
 
 
-def identity(st):
-    return a.FileIdentity(st.st_dev,st.st_ino,st.st_uid,st.st_gid,st.st_mode,st.st_size,
-                          st.st_mtime_ns,st.st_ctime_ns,st.st_nlink)
+def identity(target):
+    if type(target) is int:return f._identity(os.fstat(target),fd=target)
+    target=Path(target);parent=os.open(target.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_CLOEXEC)
+    try:return f._identity(target.stat(follow_symlinks=False),dir_fd=parent,name=target.name)
+    finally:os.close(parent)
 
 
 class WorkerTests(unittest.TestCase):
@@ -25,8 +27,8 @@ class WorkerTests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name);self.root.chmod(0o700)
         self.leaf=self.root/'input';self.leaf.write_bytes(b'owned input');self.leaf.chmod(0o600)
         self.rootfd=os.open(self.root,os.O_RDONLY|os.O_DIRECTORY|os.O_CLOEXEC)
-        self.anchor=a.Anchor('root',self.rootfd,identity(os.fstat(self.rootfd)))
-        self.recipe=a.FileRecipe('input','root',('input',),'regular',identity(self.leaf.stat()),
+        self.anchor=a.Anchor('root',self.rootfd,identity(self.rootfd))
+        self.recipe=a.FileRecipe('input','root',('input',),'regular',identity(self.leaf),
             (self.anchor.identity,),hashlib.sha256(b'owned input').hexdigest(),None)
         self.cancel=threading.Event();self.workers=[]
 
@@ -59,7 +61,7 @@ class WorkerTests(unittest.TestCase):
                     self.leaf.write_bytes(b'owned input');self.leaf.chmod(0o600)
                     if kind=='nlink':os.link(self.leaf,self.root/'hardlink')
                     if kind=='mode':self.leaf.chmod(0o666)
-                anchor=replace(self.anchor,identity=identity(os.fstat(self.rootfd)))
+                anchor=replace(self.anchor,identity=identity(self.rootfd))
                 with patch.object(self,'anchor',anchor):
                     w=self.worker();self.assertRaises(f.TransportFault,w.observe,'input');self.assertEqual(w.close(),'reaped')
                 if owned_socket:owned_socket.close()
@@ -89,7 +91,7 @@ class WorkerTests(unittest.TestCase):
 
     def test_output_symlink_collision_no_overwrite(self):
         (self.root/'REPORT.md').symlink_to(self.leaf)
-        self.anchor=replace(self.anchor,identity=identity(os.fstat(self.rootfd)))
+        self.anchor=replace(self.anchor,identity=identity(self.rootfd))
         w=self.worker();self.assertRaises(f.TransportFault,w.create_output,'REPORT.md',b'bad')
         self.assertEqual(self.leaf.read_bytes(),b'owned input')
 
@@ -138,7 +140,7 @@ class WorkerTests(unittest.TestCase):
         for operation,code in (('fsync',errno.EIO),('write',errno.ENOSPC)):
             with self.subTest(operation=operation):
                 if (self.root/'REPORT.md').exists():(self.root/'REPORT.md').unlink()
-                self.anchor=replace(self.anchor,identity=identity(os.fstat(self.rootfd)))
+                self.anchor=replace(self.anchor,identity=identity(self.rootfd))
                 with patch.object(f.os,operation,side_effect=OSError(code,'private sentinel')):
                     w=self.worker();self.assertRaises(f.TransportFault,w.create_output,'REPORT.md',b'owned')
                 self.assertRaises(f.TransportFault,w.create_output,'classification.json',b'new')
@@ -152,17 +154,52 @@ class WorkerTests(unittest.TestCase):
 
     def test_input_hash_and_size_change_after_admission(self):
         self.leaf.write_bytes(b'different')
-        self.anchor=replace(self.anchor,identity=identity(os.fstat(self.rootfd)))
+        self.anchor=replace(self.anchor,identity=identity(self.rootfd))
         w=self.worker();self.assertRaises(f.TransportFault,w.observe,'input')
 
     def test_symlink_parent_never_traversed(self):
         directory=self.root/'nested';directory.mkdir(mode=0o700)
         leaf=directory/'data';leaf.write_bytes(b'owned');leaf.chmod(0o600)
-        self.anchor=replace(self.anchor,identity=identity(os.fstat(self.rootfd)))
-        recipe=a.FileRecipe('nested','root',('nested','data'),'regular',identity(leaf.stat()),
-             (self.anchor.identity,identity(directory.stat())),hashlib.sha256(b'owned').hexdigest(),None)
+        self.anchor=replace(self.anchor,identity=identity(self.rootfd))
+        recipe=a.FileRecipe('nested','root',('nested','data'),'regular',identity(leaf),
+             (self.anchor.identity,identity(directory)),hashlib.sha256(b'owned').hexdigest(),None)
         w=self.worker((recipe,));leaf.unlink();directory.rmdir();directory.symlink_to('/not-traversed')
         self.assertRaises(f.TransportFault,w.observe,'nested')
+
+    def test_missing_first_prerequisite_blocks_but_disappearance_is_integrity(self):
+        w=self.worker();self.leaf.unlink()
+        self.assertEqual(w.observe('input'),{'blocked_missing_input':True});self.assertFalse(w.ipc_closed)
+        w.close()
+        self.leaf.write_bytes(b'owned input');self.leaf.chmod(0o600)
+        self.anchor=replace(self.anchor,identity=identity(self.rootfd))
+        self.recipe=replace(self.recipe,identity=identity(self.leaf),parents=(self.anchor.identity,))
+        w=self.worker();w.observe('input');self.leaf.unlink()
+        self.assertRaises(f.TransportFault,w.observe,'input');self.assertEqual(w._fault,'integrity')
+
+    def test_ipc_uses_one_json_ledger_and_cannot_renew_exhausted_budget(self):
+        budget=a.JsonBudget(time.monotonic_ns()+10**10,self.cancel)
+        w=f.FileWorker((self.anchor,),(self.recipe,),'root',time.monotonic_ns()+10**10,self.cancel,json_budget=budget)
+        self.workers.append(w);self.assertIs(w.json,budget)
+        first=budget.spent_ns;w.observe('input');self.assertGreater(budget.spent_ns,first)
+        budget.spent_ns=60*10**9
+        self.assertRaises(f.TransportFault,w.observe,'input');self.assertTrue(w.ipc_closed)
+        self.assertRaises(f.TransportFault,w.create_output,'REPORT.md',b'no more writes')
+        self.assertFalse((self.root/'REPORT.md').exists())
+
+    def test_ipc_lifetime_byte_account_is_not_reset_on_operation(self):
+        w=self.worker();w.observe('input');used=w._account.bytes
+        self.assertGreater(used,0);w.observe('input');self.assertGreater(w._account.bytes,used)
+        w._account.bytes=2*40000*(65536+f._HEADER.size)+128*1024**2
+        self.assertRaises(f.TransportFault,w.observe,'input');self.assertEqual(w._fault,'cap')
+
+    def test_mount_id_mismatch_rejects_regular_and_parent(self):
+        self.assertGreater(self.anchor.identity.mount_id,0)
+        self.recipe=replace(self.recipe,identity=replace(self.recipe.identity,mount_id=self.recipe.identity.mount_id+1))
+        w=self.worker();self.assertRaises(f.TransportFault,w.observe,'input')
+
+    def test_mount_measurement_unavailable_fails_closed(self):
+        with patch.object(f.ctypes,'CDLL',side_effect=OSError('unsupported')):
+            self.assertRaises(f.TransportFault,f._identity,os.fstat(self.rootfd),fd=self.rootfd)
 
     def test_protocol_rejects_length_sequence_and_truncation(self):
         for header,body in ((f._HEADER.pack(1,2,1,65537),b''),

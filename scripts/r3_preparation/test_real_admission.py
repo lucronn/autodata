@@ -52,17 +52,18 @@ def fixture():
                             'reviewer' if n == 'independent-review.md' else 'collector'
                             for n in p.OUTPUT_NAMES},
              daemon_identity_sha256='4'*64, created_container_evidence=None)
-    directory=dict(dev=1,inode=1,uid=1000,gid=1000,mode=0o40700,size=0,mtime_ns=1,ctime_ns=1,nlink=1)
+    directory=dict(dev=1,inode=1,uid=1000,gid=1000,mode=0o40700,size=0,mtime_ns=1,ctime_ns=1,nlink=1,mount_id=1)
     d['anchors']=[dict(reference='filesystem',path='/',identity=directory),
                   dict(reference='root',path=root,identity=directory)]
     d['anchors'] += [dict(reference=n,path=root+'/'+n,identity=directory.copy()) for n in ('home','artifacts','minio')]
     paths=[(v,'regular') for v in d['tools'].values()]
     paths += [(v,'absence') for v in d['git_provenance']['absent_paths']]
-    paths += [('/var/run/docker.sock','socket'),('/owned/clone/.git/config','regular')]
+    paths += [('/var/run/docker.sock','socket'),('/owned/clone/.git/config','regular'),
+              (root+'/owner-contract.json','regular'),(root+'/dispatch.json','regular')]
     for i,(path,kind) in enumerate(paths):
         ident=dict(directory,mode=0o100600 if kind=='regular' else 0o140600,inode=i+2)
         literal=p.CONFIG if path.endswith('/.git/config') else None
-        raw=(literal or '').encode();ident['size']=len(raw)
+        raw=(literal or ('owned contract' if path.endswith('/owner-contract.json') else 'owned dispatch' if path.endswith('/dispatch.json') else '')).encode();ident['size']=len(raw)
         d['files'].append(dict(id='file_'+str(i),anchor='filesystem',components=path[1:].split('/'),
             kind=kind,identity=None if kind=='absence' else ident,
             parents=[directory]*len(path[1:].split('/')),sha256=hashlib.sha256(raw).hexdigest() if kind=='regular' else None,
