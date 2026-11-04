@@ -122,14 +122,19 @@ sha256sum /tmp/autodata-reviewed-node-v22.23.4
 
 Require exactly `94efd062ed066c1a0b332e18249859c905e920eeada5df55d24c99b919629a90`; if absent/different, stop and request the reviewed offline runtime through the coordinator. No automatic download/substitution.
 
-Run from `infra/deploy/gce`:
+Run the Python suites from `infra/deploy/gce`:
 
 ```bash
 python3 -m unittest test_publisher_adapters -q
 python3 -m unittest test_cloud_ops test_host_runtime test_release_workshop_contract -q
-/tmp/autodata-reviewed-node-v22.23.4 --test test_publisher_artifact.mjs
-/tmp/autodata-reviewed-node-v22.23.4 --check publisher_artifact.mjs
-/tmp/autodata-reviewed-node-v22.23.4 --check test_publisher_artifact.mjs
+```
+
+Run the Node suite and syntax checks from the repository root. The tests spawn `infra/deploy/gce/publisher_artifact.mjs` relative to their current working directory; running them from `infra/deploy/gce` causes the two CLI-denial checks to fail before exercising the intended helper.
+
+```bash
+/tmp/autodata-reviewed-node-v22.23.4 --test infra/deploy/gce/test_publisher_artifact.mjs
+/tmp/autodata-reviewed-node-v22.23.4 --check infra/deploy/gce/publisher_artifact.mjs
+/tmp/autodata-reviewed-node-v22.23.4 --check infra/deploy/gce/test_publisher_artifact.mjs
 ```
 
 These existing suites exercise owner-pin denial, FIFO-safe reads, Python SIGTERM child mask/races/cleanup, JS cancellation-before-spawn and late-open failed-close cleanup, strict workflow authority and host default denial. Offline fixtures must remain fixtures; do not invoke installed SDK/toolkit or real provider transports. Capture actual counts/results at the merged SHA; historical183/103/143 counts are not new acceptance evidence.
