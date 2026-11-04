@@ -1,0 +1,2046 @@
+{
+  "contract": "workshop-final180-inventory-draft-v1",
+  "status": "pending",
+  "source_inspection_sha": "df52326b2a12fd17db39d9368f66a28a366f38ad",
+  "selected_source_tuple": {
+    "candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "source_pins_git_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "historical_inspection_sha": "df52326b2a12fd17db39d9368f66a28a366f38ad",
+    "authorizing_checkpoint_sha": null,
+    "promoted_tooling_base_sha": null,
+    "selection_scope": "coordinator-selected code for docs-only inventory; execution and acceptance remain unauthorized"
+  },
+  "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "profiles_enabled": false,
+  "enabled_tiers": [],
+  "source_hashes": [
+    {
+      "path": ".autodata-autonomy-policy.json",
+      "sha256": "798e91b9854098a706ea4ab66a414492c044059a1c98edb9d2f1d003e3baad98",
+      "bytes": 2201
+    },
+    {
+      "path": ".github/workflows/autonomous-verification.yml",
+      "sha256": "d38f4b1a5f414775b494ee801c83ebbc0473a7ab7e970cbf573529d08f1010aa",
+      "bytes": 9521
+    },
+    {
+      "path": "apps/api-go/commerce_client_test.go",
+      "sha256": "972b456f70c8f29afb65505a54266907c74875c7e534bf354884079d757cefc2",
+      "bytes": 11067
+    },
+    {
+      "path": "apps/api-go/postgres_auth_sessions_test.go",
+      "sha256": "85ea27568b5edb6debc08bbedcd8cfb0cf17cb620b9c4b95e6d97c9f92e892cf",
+      "bytes": 8676
+    },
+    {
+      "path": "apps/api-go/postgres_catalog_access_test.go",
+      "sha256": "0775d2a5d30a990be41f177a4cf6e16b6703d75442b3b690c08597934bdadb31",
+      "bytes": 40990
+    },
+    {
+      "path": "apps/api-go/postgres_catalog_lifecycle_test.go",
+      "sha256": "a8ec30ca66629cc0317c511450e5660911a0d90d79daa52b1816bbd781bc7943",
+      "bytes": 40868
+    },
+    {
+      "path": "apps/api-go/workshop-client/build.mjs",
+      "sha256": "8fb4188cba753652657035d0fc57b5a9cfb686e608abb26abe4ac94e8b2e47ea",
+      "bytes": 18991
+    },
+    {
+      "path": "apps/api-go/workshop-client/package-lock.json",
+      "sha256": "164aea9aed4375973526db6710f83cfca40df35e88aa3419416c2eaa849a0975",
+      "bytes": 56520
+    },
+    {
+      "path": "apps/api-go/workshop/app.mjs",
+      "sha256": "4a3e16b3b407e738ed013f4b7ae416fe6c47eb1548d123e90b5b867df5c74788",
+      "bytes": 37545
+    },
+    {
+      "path": "apps/api-go/workshop/article-read.mjs",
+      "sha256": "2957242037d4bc3ce7894ae2c7e4bae1636406d0256dd75b6150e78c1c4e5178",
+      "bytes": 2579
+    },
+    {
+      "path": "apps/api-go/workshop/auth.mjs",
+      "sha256": "ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2",
+      "bytes": 7908
+    },
+    {
+      "path": "apps/api-go/workshop/catalog.mjs",
+      "sha256": "cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52",
+      "bytes": 11688
+    },
+    {
+      "path": "apps/api-go/workshop/commerce.mjs",
+      "sha256": "be291187bdbd3ef7faeb9ace6c244eed8a0b28b0edc91f1e01881c7d32c9ae26",
+      "bytes": 7321
+    },
+    {
+      "path": "apps/api-go/workshop/firebase-web.mjs",
+      "sha256": "bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1",
+      "bytes": 112641
+    },
+    {
+      "path": "apps/api-go/workshop/firebase-web.mjs.LEGAL.txt",
+      "sha256": "70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319",
+      "bytes": 35536
+    },
+    {
+      "path": "apps/api-go/workshop/firebase-web.provenance.json",
+      "sha256": "0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a",
+      "bytes": 2237
+    },
+    {
+      "path": "apps/api-go/workshop/index.html",
+      "sha256": "8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68",
+      "bytes": 10868
+    },
+    {
+      "path": "apps/api-go/workshop/progress.mjs",
+      "sha256": "dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48",
+      "bytes": 1076
+    },
+    {
+      "path": "apps/api-go/workshop/styles.css",
+      "sha256": "c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c",
+      "bytes": 20773
+    },
+    {
+      "path": "apps/api-go/workshop_browser_fixture_test.go",
+      "sha256": "7cf50daeb190686dc55c33c90056b87a62eece96640759b180f1282a0a1a6dd2",
+      "bytes": 18240
+    },
+    {
+      "path": "db/migrations/001_extensions.sql",
+      "sha256": "85478d4fc35579fada5062670498e3f2717e11904c3d636d52824fcfae2f3f3e",
+      "bytes": 312
+    },
+    {
+      "path": "db/migrations/002_platform_spine.sql",
+      "sha256": "dc90eb26a57c3dcebb5b37bc3e6bdfa73906f06b39352d06f673c09449593fa1",
+      "bytes": 8690
+    },
+    {
+      "path": "db/migrations/003_canonical_vehicle.sql",
+      "sha256": "8002381c87c08d9602cc75c84a83fe6afec0d35860477660decc7131c92f1c17",
+      "bytes": 1255
+    },
+    {
+      "path": "db/migrations/004_normalized_source_bundle.sql",
+      "sha256": "2f8758effdcd7c46412c4ae40f5c1dc6bb463e5b46169c663d72edfb7eedcb7b",
+      "bytes": 3927
+    },
+    {
+      "path": "db/migrations/005_preserve_duplicate_article_ids.sql",
+      "sha256": "9d879156e93125590b34b45ebe63ea9da610c6a7553b0a22c5c1fa19291878a5",
+      "bytes": 629
+    },
+    {
+      "path": "db/migrations/006_backfill_article_source_locators.sql",
+      "sha256": "ffc9e0d74bf15027d50467d25309c1af661c6347feb93e0208c1aa47fbc1727f",
+      "bytes": 589
+    },
+    {
+      "path": "db/migrations/007_link_evidence_to_revision.sql",
+      "sha256": "be7488c3fa4fa6d12f7a825b2204b23337a836e490714ab15f57ea596300d5e5",
+      "bytes": 364
+    },
+    {
+      "path": "db/migrations/008_publication_outbox_delivery.sql",
+      "sha256": "8100bdb3a64a275f655ff8a15261dc450f8dfb720ccf4e45ce8e91463ca80001",
+      "bytes": 1288
+    },
+    {
+      "path": "db/migrations/009_feedback_evidence_link.sql",
+      "sha256": "c757f046b99f6b78634178aa8973ebd1be631b5efb002e20950ff40a81cf8e87",
+      "bytes": 739
+    },
+    {
+      "path": "db/migrations/010_evidence_review_metadata.sql",
+      "sha256": "b0c3fe61510d775e212779efb2c0bc0ba31535ac1f8b36959cf308f09962270b",
+      "bytes": 297
+    },
+    {
+      "path": "db/migrations/011_feedback_review_metadata.sql",
+      "sha256": "1e33b4d8975db45a7bb3d48c1ae4d4320f63e0ee8df19e89443ffd93edc50c9e",
+      "bytes": 245
+    },
+    {
+      "path": "db/migrations/012_payment_fulfillment_reconciliation.sql",
+      "sha256": "a1f2de68abbcefef86659c6b6f5e4a98f28c8c8de4e0ebe44ea7833fe9a4d169",
+      "bytes": 1359
+    },
+    {
+      "path": "db/migrations/013_dataset_request_ownership.sql",
+      "sha256": "93a6d17fceb867746abbce5252e32d6837ac9038105ed9b42e782fc48ea061a0",
+      "bytes": 536
+    },
+    {
+      "path": "db/migrations/014_normalized_article_content.sql",
+      "sha256": "aaabc8f973044f1489f34faf8f43cecfae43fd440a6db5f24e8b2341931678aa",
+      "bytes": 1332
+    },
+    {
+      "path": "db/migrations/015_vehicle_identity_resolution.sql",
+      "sha256": "ff749d43e77c5329196a769d3a84941f388694b399daa7d5b5409d4443c4bcbd",
+      "bytes": 6515
+    },
+    {
+      "path": "db/migrations/016_catalog_article_configuration.sql",
+      "sha256": "58f5cf17e07dc151ee29733e662923a20807dea75cc52264b85481ef2ebb1ac3",
+      "bytes": 648
+    },
+    {
+      "path": "db/migrations/017_knowledge_catalog_evidence_index.sql",
+      "sha256": "3d5111d77911bd349248d26943a284cbcb6ea93126c19f5f2cfdf5b239c338b5",
+      "bytes": 444
+    },
+    {
+      "path": "db/migrations/018_source_review_items.sql",
+      "sha256": "d2fcb0c678494d76a0a9e775ae8a23a71f659a49efdef55e7ae1b984dab90c75",
+      "bytes": 1373
+    },
+    {
+      "path": "db/migrations/019_article_content_provenance.sql",
+      "sha256": "666ac9ae863a11b116ee3b4492d229e9c23d24ce646f11438a74b755450c54fb",
+      "bytes": 1137
+    },
+    {
+      "path": "db/migrations/020_autoapi_article_fetch_jobs.sql",
+      "sha256": "5fbbdb0748fdb99b065f369d9cd951af6aeb8b29275958c8eec33b39cb7094e9",
+      "bytes": 1511
+    },
+    {
+      "path": "db/migrations/021_autoapi_article_fetch_job_retries.sql",
+      "sha256": "01408a1e7e354328958f33f83963733e810efb9e0e5b2cb74ad08f7f804d58bb",
+      "bytes": 595
+    },
+    {
+      "path": "db/migrations/022_job_plan_derived_articles.sql",
+      "sha256": "506d55d53f82897455b8d04813797304fa534b1f357f73ad3ff55c3b0e3449a3",
+      "bytes": 3503
+    },
+    {
+      "path": "db/migrations/023_catalog_article_images.sql",
+      "sha256": "066e3c06f543e9f1dca117f879b0dfb1f22f42860a6f041d28a1fca313db7923",
+      "bytes": 714
+    },
+    {
+      "path": "db/migrations/024_catalog_article_operations.sql",
+      "sha256": "f70b2331a2979e83f246ed8a6939ca5c2c971d1f929d901141f25419add97158",
+      "bytes": 737
+    },
+    {
+      "path": "db/migrations/025_chat_quote_procedure.sql",
+      "sha256": "9531b01d539a6afa20a7ec9de358f84590a0e6803cef9c171d91b7477fe947d6",
+      "bytes": 12458
+    },
+    {
+      "path": "db/migrations/026_chat_quote_operation_categories.sql",
+      "sha256": "3796ae1753e267f7fe5cd6fc25d30dd3c5d079e8b708d9f805f7c61e85096012",
+      "bytes": 899
+    },
+    {
+      "path": "db/migrations/027_chat_runtime_durable_state.sql",
+      "sha256": "3c9f0f4ae1a906f666efdd4ffb947e62081774b74c70bb3f19fe76adf2ec95ba",
+      "bytes": 3496
+    },
+    {
+      "path": "db/migrations/028_vehicle_provider_mappings.sql",
+      "sha256": "db77666011d7a5e46a17c849f15c63493e02ace104a7bc26f164c2cb3aac09c6",
+      "bytes": 1772
+    },
+    {
+      "path": "db/migrations/029_vehicle_catalog_sync.sql",
+      "sha256": "1f298236632a42f7dd9730a1af15430b41f8dd90887d8266189d1febcdc37026",
+      "bytes": 2082
+    },
+    {
+      "path": "db/migrations/030_vehicle_catalog_years.sql",
+      "sha256": "746c2bff949fd137b5ebcb67e88102565481193e2e47b11eb1cbb04f50e399f8",
+      "bytes": 1121
+    },
+    {
+      "path": "db/migrations/031_catalog_article_classification.sql",
+      "sha256": "0150e00308e744e24c30e8ac45ca36ba7cac658ca6ff6c1a72d424cb2f09d332",
+      "bytes": 1574
+    },
+    {
+      "path": "db/migrations/032_catalog_article_source_original.sql",
+      "sha256": "8483793a03513de4d1d6a347dfe5d76da6e249a13b02cc89477aaa61ba38f961",
+      "bytes": 1300
+    },
+    {
+      "path": "db/migrations/033_catalog_scope_coverage.sql",
+      "sha256": "144d4786cb343c52b309feb4ded079c1686dd2a68b102fb2d9186f8334ae49f8",
+      "bytes": 1451
+    },
+    {
+      "path": "db/migrations/034_catalog_article_progress.sql",
+      "sha256": "e24c29be3157bdc26616a1cf02c9812e1ea62a67c83420feeea687afaa0273c3",
+      "bytes": 2139
+    },
+    {
+      "path": "db/migrations/035_ordered_article_document.sql",
+      "sha256": "fe8d1d8a69b4f2e84e9ea0770044f45ff49d2a4b3d01a09db85c49fbc5e1d2ce",
+      "bytes": 1662
+    },
+    {
+      "path": "db/migrations/036_source_fetch_jobs.sql",
+      "sha256": "8b4935c5949bd250d8d6fb62098ebbd34e6c5dd3474ea907e73d24c047aa15f9",
+      "bytes": 3734
+    },
+    {
+      "path": "db/migrations/037_article_source_lifecycle.sql",
+      "sha256": "3a1df6fb260a3afd979cdd65dcebed89f51a7e8b2098d4190b03fdccdbc7ca07",
+      "bytes": 12905
+    },
+    {
+      "path": "db/migrations/038_article_transform_publication.sql",
+      "sha256": "343df92024c5e394c1878eb598bfd8e83c96998e19bf03f9523fff35ac62f2ff",
+      "bytes": 12863
+    },
+    {
+      "path": "db/migrations/039_production_identity_sessions.sql",
+      "sha256": "639048d2914f6b7477352b7b14f07d26a211434511f0af970adbc69a766a7a36",
+      "bytes": 1298
+    },
+    {
+      "path": "db/migrations/040_workshop_commerce.sql",
+      "sha256": "7ff3203b5c980bf7fe688470ef737f0d29789ff9c5f04b9744257d0715cb695e",
+      "bytes": 4956
+    },
+    {
+      "path": "docker-compose.base44.yml",
+      "sha256": "eaf0462505ccc58b69670536f73583afc8718bb3ac0c290df5d475c688e3cf89",
+      "bytes": 8659
+    },
+    {
+      "path": "infra/compose/compose.yaml",
+      "sha256": "2323161ddee7ebde57395d59c5dfbe4dfc492d4fe59e6fc0d4c318cea66e39df",
+      "bytes": 17843
+    },
+    {
+      "path": "scripts/autonomy/validate_run.py",
+      "sha256": "e4bcfaea61f4bc3a4f5639fb118ab60e50fdf9f4f84c063fc7e6d9382a1c724c",
+      "bytes": 8977
+    },
+    {
+      "path": "scripts/dev/fixtures/workshop_customer/firebase_transport.js",
+      "sha256": "96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63",
+      "bytes": 1386
+    },
+    {
+      "path": "scripts/dev/fixtures/workshop_customer/hostile_source.json",
+      "sha256": "076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1",
+      "bytes": 485
+    },
+    {
+      "path": "scripts/dev/fixtures/workshop_customer/scenarios.json",
+      "sha256": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+      "bytes": 1027
+    },
+    {
+      "path": "scripts/dev/fixtures/workshop_customer/stripe_checkout.html",
+      "sha256": "26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083",
+      "bytes": 503
+    },
+    {
+      "path": "scripts/dev/migrate_sql.sh",
+      "sha256": "4970eab6f20be35c354547ed5acf73c991dae1a83433094715f051463790a8f3",
+      "bytes": 10452
+    },
+    {
+      "path": "scripts/dev/production_access_smoke.py",
+      "sha256": "ac928cb722eda7e5f0d99d0f4f10fb4b78470c39a7d7d31cb41505f42672675f",
+      "bytes": 10262
+    },
+    {
+      "path": "scripts/dev/release_acceptance.py",
+      "sha256": "8aa4ee2997f0d522a55905cb229b8b8ca1203a98d12bf78cccd56bbc22456d70",
+      "bytes": 124540
+    },
+    {
+      "path": "scripts/dev/requirements-workshop-browser.txt",
+      "sha256": "adeb8976dfd2edb0e44e74da84319fae6d821478330c93e39829516c01d5fe25",
+      "bytes": 19
+    },
+    {
+      "path": "scripts/dev/test_migrations.py",
+      "sha256": "2ce5c434d5f48a265d448b9f2c01d68433177cb1fd7199c227f908434adbddc0",
+      "bytes": 18502
+    },
+    {
+      "path": "scripts/dev/test_production_access_smoke.py",
+      "sha256": "39909327d8db2002c6d2f857fa0a9929e13e952623241efe6f4223aa2c50a8b8",
+      "bytes": 6221
+    },
+    {
+      "path": "scripts/dev/workshop_browser_smoke.py",
+      "sha256": "45299888e56a78679148f575ac071856f0a3c1941faf059cd586ff2980069de8",
+      "bytes": 61845
+    },
+    {
+      "path": "scripts/dev/workshop_commerce_smoke.py",
+      "sha256": "3fa9b5f4d13fee71d8c6cd2b0592a2d6a128485b161f727bcc96685d2a59d2f9",
+      "bytes": 7443
+    },
+    {
+      "path": "scripts/dev/workshop_paid_access_smoke.py",
+      "sha256": "1acaa6bffaf35b122b40757c78dbf01fb06244803720c951b2b828133232632f",
+      "bytes": 7639
+    },
+    {
+      "path": "workers/ingestion-python/tests/lifecycle_support.py",
+      "sha256": "746eba57bfffb760e2f779d0d0494125f8b559b07de5ff6ec11099d517bf76dc",
+      "bytes": 19309
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_article_lifecycle_migrations.py",
+      "sha256": "c6e1e2a7d6da9d709f3c77ac4bc302ca715e2a460637e9403a5f2be169bf3875",
+      "bytes": 20964
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_catalog_api_integration.py",
+      "sha256": "88e6c1fd339da60614056abd7689b6a7fcd1d16bc1e239cec888b06bb6a61974",
+      "bytes": 30980
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_commerce_postgres.py",
+      "sha256": "fbab00f576410393e5077351d08d108c884d4a6442549fc4192647796e19904e",
+      "bytes": 31526
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_paid_catalog_api_integration.py",
+      "sha256": "efd3098953dde54d3fc38c167db1f56ab97225c185fb73f032fe7f3289b70198",
+      "bytes": 19378
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_workshop_browser_integration.py",
+      "sha256": "b16ab3953b863a2c7156cf57936a2bca4f56f2c3078c68f93ba616318793e801",
+      "bytes": 12589
+    }
+  ],
+  "case_id_convention": {
+    "identity": "literal Go subtest name",
+    "catalog": "literal go-name-bank pair",
+    "commerce": "literal Python test name",
+    "paid": "literal go-name-bank pair",
+    "browser_dto": "engine::scenario, a planning tuple serialization; retain separate engine/scenario raw fields",
+    "browser_api": "literal pytest test-name[param-id]"
+  },
+  "expected_counts": {
+    "identity": 5,
+    "catalog": 8,
+    "commerce": 14,
+    "paid": 12,
+    "browser_dto": 120,
+    "browser_api": 21,
+    "total": 180
+  },
+  "expected_case_ids": {
+    "identity": [
+      "TestPostgresAuthSessionsIntegration/ConcurrentCustomerProvisionAndRotation",
+      "TestPostgresAuthSessionsIntegration/SharedSessionRevocation",
+      "TestPostgresAuthSessionsIntegration/ExpiryAndPersistedSecrecy",
+      "TestPostgresAuthSessionsIntegration/FirebaseExchangeAndUserRevocation",
+      "TestPostgresAuthSessionsIntegration/FirebaseStartupRequiresMigratedPostgres"
+    ],
+    "catalog": [
+      "TestPostgresCatalogLifecycleColdHTTPRaceOneJob-bankone",
+      "TestPostgresCatalogLifecycleColdHTTPRaceOneJob-banktwo",
+      "TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP-bankone",
+      "TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP-banktwo",
+      "TestPostgresCatalogLifecycleAtomicPublication-bankone",
+      "TestPostgresCatalogLifecycleAtomicPublication-banktwo",
+      "TestPostgresCatalogLifecycleWarmReadsNoExternalCalls-bankone",
+      "TestPostgresCatalogLifecycleWarmReadsNoExternalCalls-banktwo"
+    ],
+    "commerce": [
+      "test_orders_create_and_owner_scope",
+      "test_same_key_replay_and_conflict",
+      "test_concurrent_keys_share_one_checkout",
+      "test_scope_races_single_active_grant",
+      "test_lost_create_response_and_retention_boundary",
+      "test_expiry_requires_remote_nonchargeable_proof",
+      "test_completion_races_expiry_without_recharge",
+      "test_webhook_before_create_response",
+      "test_settlement_binds_financial_owner_scope",
+      "test_duplicate_and_distinct_events_grant_once",
+      "test_refund_chargeback_ordering_and_monotonic_revocation",
+      "test_payment_survives_source_unavailable_and_restart",
+      "test_library_is_owner_only_and_paginated",
+      "test_grant_check_exact_scope_legacy_and_revoked"
+    ],
+    "paid": [
+      "TestPostgresPaidCatalogGrantBeforeWork-bankone",
+      "TestPostgresPaidCatalogGrantBeforeWork-banktwo",
+      "TestPostgresPaidCatalogExactScopeAndOwnerIsolation-bankone",
+      "TestPostgresPaidCatalogExactScopeAndOwnerIsolation-banktwo",
+      "TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse-bankone",
+      "TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse-banktwo",
+      "TestPostgresPaidCatalogContextualMediaAndRevocation-bankone",
+      "TestPostgresPaidCatalogContextualMediaAndRevocation-banktwo",
+      "TestPostgresPaidCatalogHistoricalSourceAndRights-bankone",
+      "TestPostgresPaidCatalogHistoricalSourceAndRights-banktwo",
+      "TestPostgresPaidCatalogCustomerLegacyRoutesDenied-bankone",
+      "TestPostgresPaidCatalogCustomerLegacyRoutesDenied-banktwo"
+    ],
+    "browser_dto": [
+      "chromium::bankone-cascade",
+      "chromium::banktwo-cascade",
+      "chromium::dual-bank-coverage",
+      "chromium::one-bank-unavailable",
+      "chromium::pending-no-content",
+      "chromium::source-to-canonical",
+      "chromium::source-rewrite-failure",
+      "chromium::review-required",
+      "chromium::warm-reload",
+      "chromium::selection-change-in-flight",
+      "chromium::source-review-change-in-flight",
+      "chromium::cancel-and-retry",
+      "chromium::history-restore",
+      "chromium::document-only",
+      "chromium::missing-media",
+      "chromium::withdrawal",
+      "chromium::keyboard-print-mobile",
+      "chromium::source-media-isolation",
+      "chromium::auth-cookie-reload",
+      "chromium::google-popup-exchange",
+      "chromium::google-popup-blocked",
+      "chromium::google-popup-cancelled",
+      "chromium::google-stale-reauthentication",
+      "chromium::firebase-memory-persistence",
+      "chromium::signin-unavailable-local",
+      "chromium::signin-malformed-config",
+      "chromium::session-expired",
+      "chromium::session-blocked",
+      "chromium::auth-dependency-unavailable",
+      "chromium::quote-exact-scope",
+      "chromium::terms-config-unavailable",
+      "chromium::checkout-double-click-retry",
+      "chromium::checkout-processing-return",
+      "chromium::checkout-untrusted-return",
+      "chromium::checkout-expired",
+      "chromium::already-owned-no-pay",
+      "chromium::library-pagination-and-states",
+      "chromium::paid-prepare-before-poll",
+      "chromium::media-renew-coalesced",
+      "chromium::logout-and-bfcache-clear",
+      "firefox::bankone-cascade",
+      "firefox::banktwo-cascade",
+      "firefox::dual-bank-coverage",
+      "firefox::one-bank-unavailable",
+      "firefox::pending-no-content",
+      "firefox::source-to-canonical",
+      "firefox::source-rewrite-failure",
+      "firefox::review-required",
+      "firefox::warm-reload",
+      "firefox::selection-change-in-flight",
+      "firefox::source-review-change-in-flight",
+      "firefox::cancel-and-retry",
+      "firefox::history-restore",
+      "firefox::document-only",
+      "firefox::missing-media",
+      "firefox::withdrawal",
+      "firefox::keyboard-print-mobile",
+      "firefox::source-media-isolation",
+      "firefox::auth-cookie-reload",
+      "firefox::google-popup-exchange",
+      "firefox::google-popup-blocked",
+      "firefox::google-popup-cancelled",
+      "firefox::google-stale-reauthentication",
+      "firefox::firebase-memory-persistence",
+      "firefox::signin-unavailable-local",
+      "firefox::signin-malformed-config",
+      "firefox::session-expired",
+      "firefox::session-blocked",
+      "firefox::auth-dependency-unavailable",
+      "firefox::quote-exact-scope",
+      "firefox::terms-config-unavailable",
+      "firefox::checkout-double-click-retry",
+      "firefox::checkout-processing-return",
+      "firefox::checkout-untrusted-return",
+      "firefox::checkout-expired",
+      "firefox::already-owned-no-pay",
+      "firefox::library-pagination-and-states",
+      "firefox::paid-prepare-before-poll",
+      "firefox::media-renew-coalesced",
+      "firefox::logout-and-bfcache-clear",
+      "webkit::bankone-cascade",
+      "webkit::banktwo-cascade",
+      "webkit::dual-bank-coverage",
+      "webkit::one-bank-unavailable",
+      "webkit::pending-no-content",
+      "webkit::source-to-canonical",
+      "webkit::source-rewrite-failure",
+      "webkit::review-required",
+      "webkit::warm-reload",
+      "webkit::selection-change-in-flight",
+      "webkit::source-review-change-in-flight",
+      "webkit::cancel-and-retry",
+      "webkit::history-restore",
+      "webkit::document-only",
+      "webkit::missing-media",
+      "webkit::withdrawal",
+      "webkit::keyboard-print-mobile",
+      "webkit::source-media-isolation",
+      "webkit::auth-cookie-reload",
+      "webkit::google-popup-exchange",
+      "webkit::google-popup-blocked",
+      "webkit::google-popup-cancelled",
+      "webkit::google-stale-reauthentication",
+      "webkit::firebase-memory-persistence",
+      "webkit::signin-unavailable-local",
+      "webkit::signin-malformed-config",
+      "webkit::session-expired",
+      "webkit::session-blocked",
+      "webkit::auth-dependency-unavailable",
+      "webkit::quote-exact-scope",
+      "webkit::terms-config-unavailable",
+      "webkit::checkout-double-click-retry",
+      "webkit::checkout-processing-return",
+      "webkit::checkout-untrusted-return",
+      "webkit::checkout-expired",
+      "webkit::already-owned-no-pay",
+      "webkit::library-pagination-and-states",
+      "webkit::paid-prepare-before-poll",
+      "webkit::media-renew-coalesced",
+      "webkit::logout-and-bfcache-clear"
+    ],
+    "browser_api": [
+      "test_browser_google_exchange_checkout_library_real_api[chromium]",
+      "test_browser_google_exchange_checkout_library_real_api[firefox]",
+      "test_browser_google_exchange_checkout_library_real_api[webkit]",
+      "test_browser_owned_source_canonical_and_media_real_api[chromium-bankone]",
+      "test_browser_owned_source_canonical_and_media_real_api[chromium-banktwo]",
+      "test_browser_owned_source_canonical_and_media_real_api[firefox-bankone]",
+      "test_browser_owned_source_canonical_and_media_real_api[firefox-banktwo]",
+      "test_browser_owned_source_canonical_and_media_real_api[webkit-bankone]",
+      "test_browser_owned_source_canonical_and_media_real_api[webkit-banktwo]",
+      "test_browser_account_scope_and_revocation_real_api[chromium-bankone]",
+      "test_browser_account_scope_and_revocation_real_api[chromium-banktwo]",
+      "test_browser_account_scope_and_revocation_real_api[firefox-bankone]",
+      "test_browser_account_scope_and_revocation_real_api[firefox-banktwo]",
+      "test_browser_account_scope_and_revocation_real_api[webkit-bankone]",
+      "test_browser_account_scope_and_revocation_real_api[webkit-banktwo]",
+      "test_browser_signed_refund_blocks_old_links_real_api[chromium-bankone]",
+      "test_browser_signed_refund_blocks_old_links_real_api[chromium-banktwo]",
+      "test_browser_signed_refund_blocks_old_links_real_api[firefox-bankone]",
+      "test_browser_signed_refund_blocks_old_links_real_api[firefox-banktwo]",
+      "test_browser_signed_refund_blocks_old_links_real_api[webkit-bankone]",
+      "test_browser_signed_refund_blocks_old_links_real_api[webkit-banktwo]"
+    ]
+  },
+  "source_observed_required_raw": {
+    "identity": [
+      "r5-access.json",
+      "r5-access-migrations.xml",
+      "r5-access-go-events.jsonl",
+      "r5-access-go-stderr.log",
+      "r5-access-migration-rows.json",
+      "runner-input-before.json",
+      "runner-input-after.json",
+      "runner-git-before.json",
+      "runner-git-after.json"
+    ],
+    "catalog": [
+      "catalog-tests.xml",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/result.json",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-driver.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-driver.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/go-command.json",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/go-events.jsonl",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/go-stderr.log",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/go-measurement.json",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/populated-before.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/populated-before.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/measured-runtime.json",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-fresh.stdout",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-fresh.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-fresh.json",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-fresh.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-fresh.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-empty.stdout",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-empty.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-empty.json",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-empty.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-empty.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-populated.stdout",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-populated.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-populated.json",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-populated.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-populated.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/result.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-driver.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-driver.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/go-command.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/go-events.jsonl",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/go-stderr.log",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/go-measurement.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/populated-before.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/populated-before.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/measured-runtime.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-fresh.stdout",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-fresh.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-fresh.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-fresh.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-fresh.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-empty.stdout",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-empty.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-empty.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-empty.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-empty.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-populated.stdout",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-populated.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-populated.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-populated.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleColdHTTPRaceOneJob/migration-replay-populated.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/result.json",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-driver.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-driver.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/go-command.json",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/go-events.jsonl",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/go-stderr.log",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/go-measurement.json",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/populated-before.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/populated-before.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/measured-runtime.json",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-fresh.stdout",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-fresh.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-fresh.json",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-fresh.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-fresh.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-empty.stdout",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-empty.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-empty.json",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-empty.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-empty.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-populated.stdout",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-populated.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-populated.json",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-populated.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-populated.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/result.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-driver.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-driver.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/go-command.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/go-events.jsonl",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/go-stderr.log",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/go-measurement.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/populated-before.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/populated-before.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/measured-runtime.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-fresh.stdout",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-fresh.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-fresh.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-fresh.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-fresh.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-empty.stdout",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-empty.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-empty.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-empty.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-empty.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-populated.stdout",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-populated.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-populated.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-populated.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleSourceReadableDuringActualModelHTTP/migration-replay-populated.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/result.json",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-driver.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-driver.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/go-command.json",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/go-events.jsonl",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/go-stderr.log",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/go-measurement.json",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/populated-before.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/populated-before.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/measured-runtime.json",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-fresh.stdout",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-fresh.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-fresh.json",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-fresh.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-fresh.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-empty.stdout",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-empty.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-empty.json",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-empty.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-empty.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-populated.stdout",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-populated.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-populated.json",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-populated.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-populated.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/result.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-driver.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-driver.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/go-command.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/go-events.jsonl",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/go-stderr.log",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/go-measurement.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/populated-before.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/populated-before.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/measured-runtime.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-fresh.stdout",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-fresh.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-fresh.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-fresh.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-fresh.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-empty.stdout",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-empty.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-empty.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-empty.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-empty.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-populated.stdout",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-populated.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-populated.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-populated.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleAtomicPublication/migration-replay-populated.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/result.json",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-driver.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-driver.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/go-command.json",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/go-events.jsonl",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/go-stderr.log",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/go-measurement.json",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/populated-before.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/populated-before.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/measured-runtime.json",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-fresh.stdout",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-fresh.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-fresh.json",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-fresh.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-fresh.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-empty.stdout",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-empty.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-empty.json",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-empty.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-empty.rows.json",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-populated.stdout",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-populated.stderr",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-populated.json",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-populated.schema.sql",
+      "r3/bankone/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-populated.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/result.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-driver.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-driver.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/go-command.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/go-events.jsonl",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/go-stderr.log",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/go-measurement.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/populated-before.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/populated-before.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/measured-runtime.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-fresh.stdout",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-fresh.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-fresh.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-fresh.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-fresh.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-empty.stdout",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-empty.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-empty.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-empty.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-empty.rows.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-populated.stdout",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-populated.stderr",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-populated.json",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-populated.schema.sql",
+      "r3/banktwo/TestPostgresCatalogLifecycleWarmReadsNoExternalCalls/migration-replay-populated.rows.json"
+    ],
+    "commerce": [
+      "workshop-commerce.json",
+      "workshop-commerce-tests.xml",
+      "workshop-commerce-pytest.stdout.log",
+      "workshop-commerce-pytest.stderr.log",
+      "workshop-commerce-migration-rows.json",
+      "workshop-commerce-go-events.jsonl",
+      "workshop-commerce-go-stderr.log",
+      "runner-input-before.json",
+      "runner-input-after.json",
+      "runner-git-before.json",
+      "runner-git-after.json"
+    ],
+    "paid": [
+      "workshop-paid-access.json",
+      "workshop-paid-access-tests.xml",
+      "workshop-paid-access-pytest.stdout.log",
+      "workshop-paid-access-pytest.stderr.log",
+      "runner-input-before.json",
+      "runner-input-after.json",
+      "runner-git-before.json",
+      "runner-git-after.json",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/result.json",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-driver.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-driver.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/go-command.json",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/go-events.jsonl",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/go-stderr.log",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/go-measurement.json",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/populated-before.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/populated-before.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/measured-runtime.json",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-fresh.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-fresh.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-fresh.json",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-fresh.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-fresh.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-empty.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-empty.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-empty.json",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-empty.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-empty.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-populated.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-populated.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-populated.json",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-populated.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-populated.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/case-tests.xml",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/case-pytest.stdout.log",
+      "paid-access/bankone/TestPostgresPaidCatalogGrantBeforeWork/case-pytest.stderr.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/result.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-driver.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-driver.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/go-command.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/go-events.jsonl",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/go-stderr.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/go-measurement.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/populated-before.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/populated-before.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/measured-runtime.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-fresh.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-fresh.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-fresh.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-fresh.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-fresh.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-empty.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-empty.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-empty.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-empty.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-empty.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-populated.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-populated.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-populated.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-populated.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/migration-replay-populated.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/case-tests.xml",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/case-pytest.stdout.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogGrantBeforeWork/case-pytest.stderr.log",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/result.json",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-driver.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-driver.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-command.json",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-events.jsonl",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-stderr.log",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-measurement.json",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/populated-before.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/populated-before.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/measured-runtime.json",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-fresh.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-fresh.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-fresh.json",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-fresh.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-fresh.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-empty.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-empty.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-empty.json",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-empty.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-empty.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-populated.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-populated.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-populated.json",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-populated.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-populated.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/case-tests.xml",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/case-pytest.stdout.log",
+      "paid-access/bankone/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/case-pytest.stderr.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/result.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-driver.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-driver.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-command.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-events.jsonl",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-stderr.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/go-measurement.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/populated-before.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/populated-before.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/measured-runtime.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-fresh.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-fresh.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-fresh.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-fresh.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-fresh.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-empty.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-empty.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-empty.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-empty.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-empty.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-populated.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-populated.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-populated.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-populated.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/migration-replay-populated.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/case-tests.xml",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/case-pytest.stdout.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogExactScopeAndOwnerIsolation/case-pytest.stderr.log",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/result.json",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-driver.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-driver.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-command.json",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-events.jsonl",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-stderr.log",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-measurement.json",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/populated-before.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/populated-before.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/measured-runtime.json",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-fresh.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-fresh.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-fresh.json",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-fresh.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-fresh.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-empty.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-empty.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-empty.json",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-empty.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-empty.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-populated.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-populated.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-populated.json",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-populated.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-populated.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/case-tests.xml",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/case-pytest.stdout.log",
+      "paid-access/bankone/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/case-pytest.stderr.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/result.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-driver.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-driver.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-command.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-events.jsonl",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-stderr.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/go-measurement.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/populated-before.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/populated-before.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/measured-runtime.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-fresh.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-fresh.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-fresh.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-fresh.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-fresh.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-empty.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-empty.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-empty.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-empty.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-empty.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-populated.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-populated.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-populated.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-populated.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/migration-replay-populated.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/case-tests.xml",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/case-pytest.stdout.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse/case-pytest.stderr.log",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/result.json",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-driver.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-driver.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/go-command.json",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/go-events.jsonl",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/go-stderr.log",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/go-measurement.json",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/populated-before.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/populated-before.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/measured-runtime.json",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-fresh.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-fresh.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-fresh.json",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-fresh.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-fresh.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-empty.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-empty.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-empty.json",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-empty.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-empty.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-populated.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-populated.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-populated.json",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-populated.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-populated.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/case-tests.xml",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/case-pytest.stdout.log",
+      "paid-access/bankone/TestPostgresPaidCatalogContextualMediaAndRevocation/case-pytest.stderr.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/result.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-driver.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-driver.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/go-command.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/go-events.jsonl",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/go-stderr.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/go-measurement.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/populated-before.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/populated-before.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/measured-runtime.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-fresh.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-fresh.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-fresh.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-fresh.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-fresh.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-empty.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-empty.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-empty.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-empty.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-empty.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-populated.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-populated.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-populated.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-populated.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/migration-replay-populated.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/case-tests.xml",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/case-pytest.stdout.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogContextualMediaAndRevocation/case-pytest.stderr.log",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/result.json",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-driver.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-driver.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/go-command.json",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/go-events.jsonl",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/go-stderr.log",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/go-measurement.json",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/populated-before.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/populated-before.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/measured-runtime.json",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-fresh.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-fresh.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-fresh.json",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-fresh.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-fresh.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-empty.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-empty.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-empty.json",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-empty.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-empty.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-populated.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-populated.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-populated.json",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-populated.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-populated.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/case-tests.xml",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/case-pytest.stdout.log",
+      "paid-access/bankone/TestPostgresPaidCatalogHistoricalSourceAndRights/case-pytest.stderr.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/result.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-driver.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-driver.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/go-command.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/go-events.jsonl",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/go-stderr.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/go-measurement.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/populated-before.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/populated-before.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/measured-runtime.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-fresh.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-fresh.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-fresh.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-fresh.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-fresh.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-empty.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-empty.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-empty.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-empty.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-empty.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-populated.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-populated.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-populated.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-populated.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/migration-replay-populated.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/case-tests.xml",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/case-pytest.stdout.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogHistoricalSourceAndRights/case-pytest.stderr.log",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/result.json",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-driver.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-driver.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-command.json",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-events.jsonl",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-stderr.log",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-measurement.json",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/populated-before.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/populated-before.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/measured-runtime.json",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-fresh.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-fresh.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-fresh.json",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-fresh.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-fresh.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-empty.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-empty.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-empty.json",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-empty.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-empty.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-populated.stdout",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-populated.stderr",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-populated.json",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-populated.schema.sql",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-populated.rows.json",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/case-tests.xml",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/case-pytest.stdout.log",
+      "paid-access/bankone/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/case-pytest.stderr.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/result.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-driver.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-driver.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-command.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-events.jsonl",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-stderr.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/go-measurement.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/populated-before.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/populated-before.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/measured-runtime.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-fresh.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-fresh.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-fresh.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-fresh.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-fresh.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-empty.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-empty.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-empty.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-empty.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-empty.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-populated.stdout",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-populated.stderr",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-populated.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-populated.schema.sql",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/migration-replay-populated.rows.json",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/case-tests.xml",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/case-pytest.stdout.log",
+      "paid-access/banktwo/TestPostgresPaidCatalogCustomerLegacyRoutesDenied/case-pytest.stderr.log"
+    ],
+    "browser_dto": [
+      "browser/evidence.json"
+    ],
+    "browser_api": [
+      "workshop-browser-tests.xml",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/child.log",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/result.json",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/ready.json",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/go-fixture.log",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/browser.stdout.log",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/browser.stderr.log",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/browser/evidence.json",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/child.log",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/result.json",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/ready.json",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/go-fixture.log",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/browser.stdout.log",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/browser.stderr.log",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/browser/evidence.json",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/child.log",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/result.json",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/ready.json",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/go-fixture.log",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/browser.stdout.log",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/browser.stderr.log",
+      "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/browser/evidence.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/child.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/result.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/ready.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/go-fixture.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/browser.stdout.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/browser.stderr.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/browser/evidence.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/child.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/result.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/ready.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/go-fixture.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/browser.stdout.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/browser.stderr.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/browser/evidence.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/child.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/result.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/ready.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/go-fixture.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/browser.stdout.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/browser.stderr.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/browser/evidence.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/child.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/result.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/ready.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/go-fixture.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/browser.stdout.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/browser.stderr.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/browser/evidence.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/child.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/result.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/ready.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/go-fixture.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/browser.stdout.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/browser.stderr.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/browser/evidence.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/child.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/result.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/ready.json",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/go-fixture.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/browser.stdout.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/browser.stderr.log",
+      "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/browser/evidence.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/child.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/result.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/ready.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/go-fixture.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/browser.stdout.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/browser.stderr.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/browser/evidence.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/child.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/result.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/ready.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/go-fixture.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/browser.stdout.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/browser.stderr.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/browser/evidence.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/child.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/result.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/ready.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/go-fixture.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/browser.stdout.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/browser.stderr.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/browser/evidence.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/child.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/result.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/ready.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/go-fixture.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/browser.stdout.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/browser.stderr.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/browser/evidence.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/child.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/result.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/ready.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/go-fixture.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/browser.stdout.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/browser.stderr.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/browser/evidence.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/child.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/result.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/ready.json",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/go-fixture.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/browser.stdout.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/browser.stderr.log",
+      "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/browser/evidence.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/child.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/result.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/ready.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/go-fixture.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/browser.stdout.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/browser.stderr.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/browser/evidence.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/child.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/result.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/ready.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/go-fixture.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/browser.stdout.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/browser.stderr.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/browser/evidence.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/child.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/result.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/ready.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/go-fixture.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/browser.stdout.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/browser.stderr.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/browser/evidence.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/child.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/result.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/ready.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/go-fixture.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/browser.stdout.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/browser.stderr.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/browser/evidence.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/child.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/result.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/ready.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/go-fixture.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/browser.stdout.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/browser.stderr.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/browser/evidence.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/child.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/result.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/ready.json",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/go-fixture.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/browser.stdout.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/browser.stderr.log",
+      "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/browser/evidence.json"
+    ]
+  },
+  "common_support_inventory": [
+    "inputs.sha256.json",
+    "host-before.json",
+    "host-after.json",
+    "runner-input-before.json",
+    "runner-input-after.json",
+    "runner-git-before.json",
+    "runner-git-after.json"
+  ],
+  "raw_inventory_complete": false,
+  "support_inventory_complete": false,
+  "raw_bounds_frozen": false,
+  "commands": [
+    {
+      "slot": "identity",
+      "argv": [
+        "python",
+        "scripts/dev/production_access_smoke.py",
+        "--mode",
+        "fixture",
+        "--candidate-sha",
+        "{candidate_sha}",
+        "--output",
+        "/artifacts/r5-access.json"
+      ],
+      "source_inner_deadline_seconds": 900,
+      "proposed_supervisor_deadline_seconds": 1020
+    },
+    {
+      "slot": "catalog",
+      "argv": [
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "--junitxml=/artifacts/catalog-tests.xml",
+        "workers/ingestion-python/tests/test_catalog_api_integration.py"
+      ],
+      "source_inner_deadline_seconds": {
+        "migration": 90,
+        "go_test": 90,
+        "go_wait": 120
+      },
+      "proposed_supervisor_deadline_seconds": 1800
+    },
+    {
+      "slot": "commerce",
+      "argv": [
+        "python",
+        "scripts/dev/workshop_commerce_smoke.py",
+        "--mode",
+        "fixture",
+        "--candidate-sha",
+        "{candidate_sha}",
+        "--output",
+        "/artifacts/workshop-commerce.json"
+      ],
+      "source_inner_deadline_seconds": 900,
+      "proposed_supervisor_deadline_seconds": 1020
+    },
+    {
+      "slot": "paid",
+      "argv": [
+        "python",
+        "scripts/dev/workshop_paid_access_smoke.py",
+        "--mode",
+        "fixture",
+        "--candidate-sha",
+        "{candidate_sha}",
+        "--output",
+        "/artifacts/workshop-paid-access.json"
+      ],
+      "source_inner_deadline_seconds": 1800,
+      "proposed_supervisor_deadline_seconds": 1920
+    },
+    {
+      "slot": "browser_dto",
+      "argv": [
+        "python",
+        "scripts/dev/workshop_browser_smoke.py",
+        "--base-url",
+        "{owned_https_origin}",
+        "--mode",
+        "dto-fixture",
+        "--browser",
+        "all",
+        "--candidate-sha",
+        "{candidate_sha}",
+        "--output",
+        "/artifacts/browser"
+      ],
+      "source_inner_deadline_seconds": {
+        "global": 4440,
+        "case": 20,
+        "cleanup": 3,
+        "go_fixture_launcher": 4400
+      },
+      "proposed_supervisor_deadline_seconds": 4560
+    },
+    {
+      "slot": "browser_api",
+      "argv": [
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "--junitxml=/artifacts/workshop-browser-tests.xml",
+        "workers/ingestion-python/tests/test_workshop_browser_integration.py"
+      ],
+      "source_inner_deadline_seconds": {
+        "outer_case_including_cleanup": 90,
+        "child_wait": 84,
+        "child_body": 78,
+        "go": 85,
+        "browser_case": 65
+      },
+      "proposed_supervisor_deadline_seconds": 2100
+    }
+  ],
+  "proposed_global_deadline_seconds": 14400,
+  "command_binding_rule": "Substitute only coordinator candidate and supervisor-created loopback TLS origin; resolve Python executable and literal container argv in runner checkpoint, hash canonical JSON argv, never shell interpolation.",
+  "environment": {
+    "inherit_allowlist": [
+      "PATH"
+    ],
+    "fixed": {
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "/workspace/workers/ingestion-python/src:/workspace/workers/ingestion-python/tests:/workspace/scripts/dev",
+      "AUTODATA_LIFECYCLE_TEST": "1",
+      "GOTOOLCHAIN": "local",
+      "GOPROXY": "off",
+      "CGO_ENABLED": "0"
+    },
+    "phase_fixed": {
+      "identity": {
+        "AUTODATA_REQUIRE_AUTH_INTEGRATION": "1"
+      },
+      "catalog": {
+        "AUTODATA_CATALOG_INTEGRATION_REQUIRED": "1"
+      },
+      "commerce": {
+        "AUTODATA_REQUIRE_COMMERCE_INTEGRATION": "1"
+      },
+      "paid": {
+        "AUTODATA_REQUIRE_PAID_CATALOG_INTEGRATION": "1"
+      },
+      "browser_dto": {},
+      "browser_api": {
+        "AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION": "1"
+      }
+    },
+    "phase_rule": "Launch each phase from fixed plus only its own phase_fixed map. The DTO Go fixture launcher must not inherit paid/API selectors; assert its ready.kind is dto-fixture. The exact nested launcher argv, process ownership, readiness and stop behavior remain pending runner-gate decisions.",
+    "owned_generated": [
+      "AUTODATA_R3_CANDIDATE_SHA",
+      "AUTODATA_CATALOG_TEST_CANDIDATE_SHA",
+      "HOME",
+      "GOMODCACHE",
+      "GOCACHE",
+      "GOTMPDIR",
+      "PLAYWRIGHT_BROWSERS_PATH",
+      "XDG_CACHE_HOME",
+      "XDG_CONFIG_HOME",
+      "TMPDIR"
+    ],
+    "forbidden_ambient": [
+      "provider/payment/cloud credentials",
+      "proxy configuration",
+      "FIREBASE_AUTH_EMULATOR_HOST",
+      "external bank/model URLs",
+      "Git configuration/hooks/remotes"
+    ]
+  },
+  "authority": {
+    "fixture_verified": false,
+    "product_candidate_verified": false,
+    "staging_verified": false,
+    "deployment_authorized": false,
+    "cutover_verified": false,
+    "merge_authorized": false,
+    "profile_promotion_authorized": false,
+    "runtime_certified": false,
+    "implementation_authorized": false,
+    "runtime_execution_authorized": false
+  },
+  "missing_evidence": [
+    "Selected code candidate 4d82e413e04fb2401ac7bc28dc828375ac662180 is pinned for this pending inventory only; clean cloned execution manifest, authorizing checkpoint and promoted tooling base remain absent.",
+    "Committed reviewed final180 supervisor, execution image build recipe/digest, offline dependency/cache inventories and exact Docker invocation.",
+    "Complete raw/support inventory including lifecycle runtime evidence, failure diagnostics, per-file format and size ceilings, aggregate sizing and immutable private storage locator.",
+    "DTO failure traces may reach 16MiB while the current assembler permits only 8MiB per artifact; preserve full private raw evidence and separately decide transport/envelope bounds before profile promotion.",
+    "Browser runtime image digest/build provenance, Playwright package and browser cache file manifest, run-owned service/container/storage identities and sufficient /home plus Docker-filesystem headroom.",
+    "Authoritative executable paths and runtime-resolved argv for every host/container phase; proposed strings are contract decisions, not observed executions.",
+    "DTO nested Go fixture launcher exact argv/environment/ownership/readiness/stop contract, including its existing 4400-second source timer within browser 4440-second and phase 4560-second budgets; assert ready.kind=dto-fixture and omit paid/API selectors.",
+    "Supervisor identities/approval authority, real registered author/reviewer identities, canonical profile hashes and reviewed assembler pin.",
+    "Actual API21 run, all six fresh same-head case families, complete support/security/production image acceptance and independent raw review.",
+    "Authenticated final-head CI repository/workflow/event/ref/attempt/capture/pagination/required-check/branch-protection/log/archive metadata and expiry handling.",
+    "Git ancestry/provenance proof, source/build/SDK/served bytes/migration/image bindings at final candidate.",
+    "Separate licensed staging enrollment, Google/Stripe TEST, live bank/model, isolation/restore/alerts and release policy review."
+  ],
+  "assembler_audit": {
+    "source_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "promoted_profiles": "rejected with unsupported_promoted_profile",
+    "validation_diagnostics": [
+      "profiles_unavailable",
+      "raw_validation_unimplemented"
+    ],
+    "assembler_sha256_promoted": false,
+    "registered_supervisor_profiles": [],
+    "complete_family_validators": {
+      "identity": false,
+      "catalog": false,
+      "commerce": false,
+      "paid": false,
+      "browser_dto": false,
+      "browser_api": false
+    },
+    "existing_paid_dto_inspectors": "diagnostic and incomplete; source/format checks do not prove full semantics",
+    "runner_relationship": "Separate later product-fixture runner gate; preserve offline assembler; no profile enablement without independent validator/promotion gate",
+    "historical_source_sha": "df52326b2a12fd17db39d9368f66a28a366f38ad",
+    "candidate_limits": "Candidate adds bounded internal HTTP/DTO/API diagnostic inspectors; no complete final180 validators, enabled profiles or runtime authority."
+  },
+  "proposed_supervisor_support_requirements": {
+    "browser_dto": {
+      "status": "proposed_unfrozen",
+      "required_support": [
+        "go-fixture.log",
+        "ready.json"
+      ],
+      "provenance": "Proposed supervisor-owned DTO fixture launcher support; the listed DTO browser command emits browser/evidence.json. Launcher implementation, filename provenance and final raw contracts remain unresolved; these files are not source-observed outputs of that command."
+    }
+  },
+  "source_hashes_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "historical_source_hashes": [
+    {
+      "path": ".autodata-autonomy-policy.json",
+      "sha256": "798e91b9854098a706ea4ab66a414492c044059a1c98edb9d2f1d003e3baad98",
+      "bytes": 2201
+    },
+    {
+      "path": ".github/workflows/autonomous-verification.yml",
+      "sha256": "d38f4b1a5f414775b494ee801c83ebbc0473a7ab7e970cbf573529d08f1010aa",
+      "bytes": 9521
+    },
+    {
+      "path": "apps/api-go/commerce_client_test.go",
+      "sha256": "972b456f70c8f29afb65505a54266907c74875c7e534bf354884079d757cefc2",
+      "bytes": 11067
+    },
+    {
+      "path": "apps/api-go/postgres_auth_sessions_test.go",
+      "sha256": "85ea27568b5edb6debc08bbedcd8cfb0cf17cb620b9c4b95e6d97c9f92e892cf",
+      "bytes": 8676
+    },
+    {
+      "path": "apps/api-go/postgres_catalog_access_test.go",
+      "sha256": "0775d2a5d30a990be41f177a4cf6e16b6703d75442b3b690c08597934bdadb31",
+      "bytes": 40990
+    },
+    {
+      "path": "apps/api-go/postgres_catalog_lifecycle_test.go",
+      "sha256": "a8ec30ca66629cc0317c511450e5660911a0d90d79daa52b1816bbd781bc7943",
+      "bytes": 40868
+    },
+    {
+      "path": "apps/api-go/workshop-client/build.mjs",
+      "sha256": "8fb4188cba753652657035d0fc57b5a9cfb686e608abb26abe4ac94e8b2e47ea",
+      "bytes": 18991
+    },
+    {
+      "path": "apps/api-go/workshop-client/package-lock.json",
+      "sha256": "164aea9aed4375973526db6710f83cfca40df35e88aa3419416c2eaa849a0975",
+      "bytes": 56520
+    },
+    {
+      "path": "apps/api-go/workshop/app.mjs",
+      "sha256": "4a3e16b3b407e738ed013f4b7ae416fe6c47eb1548d123e90b5b867df5c74788",
+      "bytes": 37545
+    },
+    {
+      "path": "apps/api-go/workshop/article-read.mjs",
+      "sha256": "fefa9ba05d05e8a48f8135d07a53f92d7ef32bf848db075005981848cc8d8f08",
+      "bytes": 2507
+    },
+    {
+      "path": "apps/api-go/workshop/auth.mjs",
+      "sha256": "ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2",
+      "bytes": 7908
+    },
+    {
+      "path": "apps/api-go/workshop/catalog.mjs",
+      "sha256": "cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52",
+      "bytes": 11688
+    },
+    {
+      "path": "apps/api-go/workshop/commerce.mjs",
+      "sha256": "be291187bdbd3ef7faeb9ace6c244eed8a0b28b0edc91f1e01881c7d32c9ae26",
+      "bytes": 7321
+    },
+    {
+      "path": "apps/api-go/workshop/firebase-web.mjs",
+      "sha256": "bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1",
+      "bytes": 112641
+    },
+    {
+      "path": "apps/api-go/workshop/firebase-web.mjs.LEGAL.txt",
+      "sha256": "70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319",
+      "bytes": 35536
+    },
+    {
+      "path": "apps/api-go/workshop/firebase-web.provenance.json",
+      "sha256": "0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a",
+      "bytes": 2237
+    },
+    {
+      "path": "apps/api-go/workshop/index.html",
+      "sha256": "8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68",
+      "bytes": 10868
+    },
+    {
+      "path": "apps/api-go/workshop/progress.mjs",
+      "sha256": "dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48",
+      "bytes": 1076
+    },
+    {
+      "path": "apps/api-go/workshop/styles.css",
+      "sha256": "c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c",
+      "bytes": 20773
+    },
+    {
+      "path": "apps/api-go/workshop_browser_fixture_test.go",
+      "sha256": "7cf50daeb190686dc55c33c90056b87a62eece96640759b180f1282a0a1a6dd2",
+      "bytes": 18240
+    },
+    {
+      "path": "db/migrations/001_extensions.sql",
+      "sha256": "85478d4fc35579fada5062670498e3f2717e11904c3d636d52824fcfae2f3f3e",
+      "bytes": 312
+    },
+    {
+      "path": "db/migrations/002_platform_spine.sql",
+      "sha256": "dc90eb26a57c3dcebb5b37bc3e6bdfa73906f06b39352d06f673c09449593fa1",
+      "bytes": 8690
+    },
+    {
+      "path": "db/migrations/003_canonical_vehicle.sql",
+      "sha256": "8002381c87c08d9602cc75c84a83fe6afec0d35860477660decc7131c92f1c17",
+      "bytes": 1255
+    },
+    {
+      "path": "db/migrations/004_normalized_source_bundle.sql",
+      "sha256": "2f8758effdcd7c46412c4ae40f5c1dc6bb463e5b46169c663d72edfb7eedcb7b",
+      "bytes": 3927
+    },
+    {
+      "path": "db/migrations/005_preserve_duplicate_article_ids.sql",
+      "sha256": "9d879156e93125590b34b45ebe63ea9da610c6a7553b0a22c5c1fa19291878a5",
+      "bytes": 629
+    },
+    {
+      "path": "db/migrations/006_backfill_article_source_locators.sql",
+      "sha256": "ffc9e0d74bf15027d50467d25309c1af661c6347feb93e0208c1aa47fbc1727f",
+      "bytes": 589
+    },
+    {
+      "path": "db/migrations/007_link_evidence_to_revision.sql",
+      "sha256": "be7488c3fa4fa6d12f7a825b2204b23337a836e490714ab15f57ea596300d5e5",
+      "bytes": 364
+    },
+    {
+      "path": "db/migrations/008_publication_outbox_delivery.sql",
+      "sha256": "8100bdb3a64a275f655ff8a15261dc450f8dfb720ccf4e45ce8e91463ca80001",
+      "bytes": 1288
+    },
+    {
+      "path": "db/migrations/009_feedback_evidence_link.sql",
+      "sha256": "c757f046b99f6b78634178aa8973ebd1be631b5efb002e20950ff40a81cf8e87",
+      "bytes": 739
+    },
+    {
+      "path": "db/migrations/010_evidence_review_metadata.sql",
+      "sha256": "b0c3fe61510d775e212779efb2c0bc0ba31535ac1f8b36959cf308f09962270b",
+      "bytes": 297
+    },
+    {
+      "path": "db/migrations/011_feedback_review_metadata.sql",
+      "sha256": "1e33b4d8975db45a7bb3d48c1ae4d4320f63e0ee8df19e89443ffd93edc50c9e",
+      "bytes": 245
+    },
+    {
+      "path": "db/migrations/012_payment_fulfillment_reconciliation.sql",
+      "sha256": "a1f2de68abbcefef86659c6b6f5e4a98f28c8c8de4e0ebe44ea7833fe9a4d169",
+      "bytes": 1359
+    },
+    {
+      "path": "db/migrations/013_dataset_request_ownership.sql",
+      "sha256": "93a6d17fceb867746abbce5252e32d6837ac9038105ed9b42e782fc48ea061a0",
+      "bytes": 536
+    },
+    {
+      "path": "db/migrations/014_normalized_article_content.sql",
+      "sha256": "aaabc8f973044f1489f34faf8f43cecfae43fd440a6db5f24e8b2341931678aa",
+      "bytes": 1332
+    },
+    {
+      "path": "db/migrations/015_vehicle_identity_resolution.sql",
+      "sha256": "ff749d43e77c5329196a769d3a84941f388694b399daa7d5b5409d4443c4bcbd",
+      "bytes": 6515
+    },
+    {
+      "path": "db/migrations/016_catalog_article_configuration.sql",
+      "sha256": "58f5cf17e07dc151ee29733e662923a20807dea75cc52264b85481ef2ebb1ac3",
+      "bytes": 648
+    },
+    {
+      "path": "db/migrations/017_knowledge_catalog_evidence_index.sql",
+      "sha256": "3d5111d77911bd349248d26943a284cbcb6ea93126c19f5f2cfdf5b239c338b5",
+      "bytes": 444
+    },
+    {
+      "path": "db/migrations/018_source_review_items.sql",
+      "sha256": "d2fcb0c678494d76a0a9e775ae8a23a71f659a49efdef55e7ae1b984dab90c75",
+      "bytes": 1373
+    },
+    {
+      "path": "db/migrations/019_article_content_provenance.sql",
+      "sha256": "666ac9ae863a11b116ee3b4492d229e9c23d24ce646f11438a74b755450c54fb",
+      "bytes": 1137
+    },
+    {
+      "path": "db/migrations/020_autoapi_article_fetch_jobs.sql",
+      "sha256": "5fbbdb0748fdb99b065f369d9cd951af6aeb8b29275958c8eec33b39cb7094e9",
+      "bytes": 1511
+    },
+    {
+      "path": "db/migrations/021_autoapi_article_fetch_job_retries.sql",
+      "sha256": "01408a1e7e354328958f33f83963733e810efb9e0e5b2cb74ad08f7f804d58bb",
+      "bytes": 595
+    },
+    {
+      "path": "db/migrations/022_job_plan_derived_articles.sql",
+      "sha256": "506d55d53f82897455b8d04813797304fa534b1f357f73ad3ff55c3b0e3449a3",
+      "bytes": 3503
+    },
+    {
+      "path": "db/migrations/023_catalog_article_images.sql",
+      "sha256": "066e3c06f543e9f1dca117f879b0dfb1f22f42860a6f041d28a1fca313db7923",
+      "bytes": 714
+    },
+    {
+      "path": "db/migrations/024_catalog_article_operations.sql",
+      "sha256": "f70b2331a2979e83f246ed8a6939ca5c2c971d1f929d901141f25419add97158",
+      "bytes": 737
+    },
+    {
+      "path": "db/migrations/025_chat_quote_procedure.sql",
+      "sha256": "9531b01d539a6afa20a7ec9de358f84590a0e6803cef9c171d91b7477fe947d6",
+      "bytes": 12458
+    },
+    {
+      "path": "db/migrations/026_chat_quote_operation_categories.sql",
+      "sha256": "3796ae1753e267f7fe5cd6fc25d30dd3c5d079e8b708d9f805f7c61e85096012",
+      "bytes": 899
+    },
+    {
+      "path": "db/migrations/027_chat_runtime_durable_state.sql",
+      "sha256": "3c9f0f4ae1a906f666efdd4ffb947e62081774b74c70bb3f19fe76adf2ec95ba",
+      "bytes": 3496
+    },
+    {
+      "path": "db/migrations/028_vehicle_provider_mappings.sql",
+      "sha256": "db77666011d7a5e46a17c849f15c63493e02ace104a7bc26f164c2cb3aac09c6",
+      "bytes": 1772
+    },
+    {
+      "path": "db/migrations/029_vehicle_catalog_sync.sql",
+      "sha256": "1f298236632a42f7dd9730a1af15430b41f8dd90887d8266189d1febcdc37026",
+      "bytes": 2082
+    },
+    {
+      "path": "db/migrations/030_vehicle_catalog_years.sql",
+      "sha256": "746c2bff949fd137b5ebcb67e88102565481193e2e47b11eb1cbb04f50e399f8",
+      "bytes": 1121
+    },
+    {
+      "path": "db/migrations/031_catalog_article_classification.sql",
+      "sha256": "0150e00308e744e24c30e8ac45ca36ba7cac658ca6ff6c1a72d424cb2f09d332",
+      "bytes": 1574
+    },
+    {
+      "path": "db/migrations/032_catalog_article_source_original.sql",
+      "sha256": "8483793a03513de4d1d6a347dfe5d76da6e249a13b02cc89477aaa61ba38f961",
+      "bytes": 1300
+    },
+    {
+      "path": "db/migrations/033_catalog_scope_coverage.sql",
+      "sha256": "144d4786cb343c52b309feb4ded079c1686dd2a68b102fb2d9186f8334ae49f8",
+      "bytes": 1451
+    },
+    {
+      "path": "db/migrations/034_catalog_article_progress.sql",
+      "sha256": "e24c29be3157bdc26616a1cf02c9812e1ea62a67c83420feeea687afaa0273c3",
+      "bytes": 2139
+    },
+    {
+      "path": "db/migrations/035_ordered_article_document.sql",
+      "sha256": "fe8d1d8a69b4f2e84e9ea0770044f45ff49d2a4b3d01a09db85c49fbc5e1d2ce",
+      "bytes": 1662
+    },
+    {
+      "path": "db/migrations/036_source_fetch_jobs.sql",
+      "sha256": "8b4935c5949bd250d8d6fb62098ebbd34e6c5dd3474ea907e73d24c047aa15f9",
+      "bytes": 3734
+    },
+    {
+      "path": "db/migrations/037_article_source_lifecycle.sql",
+      "sha256": "3a1df6fb260a3afd979cdd65dcebed89f51a7e8b2098d4190b03fdccdbc7ca07",
+      "bytes": 12905
+    },
+    {
+      "path": "db/migrations/038_article_transform_publication.sql",
+      "sha256": "343df92024c5e394c1878eb598bfd8e83c96998e19bf03f9523fff35ac62f2ff",
+      "bytes": 12863
+    },
+    {
+      "path": "db/migrations/039_production_identity_sessions.sql",
+      "sha256": "639048d2914f6b7477352b7b14f07d26a211434511f0af970adbc69a766a7a36",
+      "bytes": 1298
+    },
+    {
+      "path": "db/migrations/040_workshop_commerce.sql",
+      "sha256": "7ff3203b5c980bf7fe688470ef737f0d29789ff9c5f04b9744257d0715cb695e",
+      "bytes": 4956
+    },
+    {
+      "path": "docker-compose.base44.yml",
+      "sha256": "eaf0462505ccc58b69670536f73583afc8718bb3ac0c290df5d475c688e3cf89",
+      "bytes": 8659
+    },
+    {
+      "path": "infra/compose/compose.yaml",
+      "sha256": "2323161ddee7ebde57395d59c5dfbe4dfc492d4fe59e6fc0d4c318cea66e39df",
+      "bytes": 17843
+    },
+    {
+      "path": "scripts/autonomy/validate_run.py",
+      "sha256": "e4bcfaea61f4bc3a4f5639fb118ab60e50fdf9f4f84c063fc7e6d9382a1c724c",
+      "bytes": 8977
+    },
+    {
+      "path": "scripts/dev/fixtures/workshop_customer/firebase_transport.js",
+      "sha256": "96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63",
+      "bytes": 1386
+    },
+    {
+      "path": "scripts/dev/fixtures/workshop_customer/hostile_source.json",
+      "sha256": "076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1",
+      "bytes": 485
+    },
+    {
+      "path": "scripts/dev/fixtures/workshop_customer/scenarios.json",
+      "sha256": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+      "bytes": 1027
+    },
+    {
+      "path": "scripts/dev/fixtures/workshop_customer/stripe_checkout.html",
+      "sha256": "26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083",
+      "bytes": 503
+    },
+    {
+      "path": "scripts/dev/migrate_sql.sh",
+      "sha256": "4970eab6f20be35c354547ed5acf73c991dae1a83433094715f051463790a8f3",
+      "bytes": 10452
+    },
+    {
+      "path": "scripts/dev/production_access_smoke.py",
+      "sha256": "ac928cb722eda7e5f0d99d0f4f10fb4b78470c39a7d7d31cb41505f42672675f",
+      "bytes": 10262
+    },
+    {
+      "path": "scripts/dev/release_acceptance.py",
+      "sha256": "44914594c529f88868630223ddd6165f3e6f06b8c83359493da75a2e9a2feb64",
+      "bytes": 98410
+    },
+    {
+      "path": "scripts/dev/requirements-workshop-browser.txt",
+      "sha256": "adeb8976dfd2edb0e44e74da84319fae6d821478330c93e39829516c01d5fe25",
+      "bytes": 19
+    },
+    {
+      "path": "scripts/dev/test_migrations.py",
+      "sha256": "2ce5c434d5f48a265d448b9f2c01d68433177cb1fd7199c227f908434adbddc0",
+      "bytes": 18502
+    },
+    {
+      "path": "scripts/dev/test_production_access_smoke.py",
+      "sha256": "39909327d8db2002c6d2f857fa0a9929e13e952623241efe6f4223aa2c50a8b8",
+      "bytes": 6221
+    },
+    {
+      "path": "scripts/dev/workshop_browser_smoke.py",
+      "sha256": "45299888e56a78679148f575ac071856f0a3c1941faf059cd586ff2980069de8",
+      "bytes": 61845
+    },
+    {
+      "path": "scripts/dev/workshop_commerce_smoke.py",
+      "sha256": "3fa9b5f4d13fee71d8c6cd2b0592a2d6a128485b161f727bcc96685d2a59d2f9",
+      "bytes": 7443
+    },
+    {
+      "path": "scripts/dev/workshop_paid_access_smoke.py",
+      "sha256": "1acaa6bffaf35b122b40757c78dbf01fb06244803720c951b2b828133232632f",
+      "bytes": 7639
+    },
+    {
+      "path": "workers/ingestion-python/tests/lifecycle_support.py",
+      "sha256": "746eba57bfffb760e2f779d0d0494125f8b559b07de5ff6ec11099d517bf76dc",
+      "bytes": 19309
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_article_lifecycle_migrations.py",
+      "sha256": "c6e1e2a7d6da9d709f3c77ac4bc302ca715e2a460637e9403a5f2be169bf3875",
+      "bytes": 20964
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_catalog_api_integration.py",
+      "sha256": "88e6c1fd339da60614056abd7689b6a7fcd1d16bc1e239cec888b06bb6a61974",
+      "bytes": 30980
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_commerce_postgres.py",
+      "sha256": "fbab00f576410393e5077351d08d108c884d4a6442549fc4192647796e19904e",
+      "bytes": 31526
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_paid_catalog_api_integration.py",
+      "sha256": "efd3098953dde54d3fc38c167db1f56ab97225c185fb73f032fe7f3289b70198",
+      "bytes": 19378
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_workshop_browser_integration.py",
+      "sha256": "b16ab3953b863a2c7156cf57936a2bca4f56f2c3078c68f93ba616318793e801",
+      "bytes": 12589
+    }
+  ],
+  "source_pin_comparison": {
+    "historical_sha": "df52326b2a12fd17db39d9368f66a28a366f38ad",
+    "candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "paths_checked": 82,
+    "unchanged_paths": 80,
+    "changed_paths": [
+      {
+        "path": "apps/api-go/workshop/article-read.mjs",
+        "historical_sha256": "fefa9ba05d05e8a48f8135d07a53f92d7ef32bf848db075005981848cc8d8f08",
+        "historical_bytes": 2507,
+        "candidate_sha256": "2957242037d4bc3ce7894ae2c7e4bae1636406d0256dd75b6150e78c1c4e5178",
+        "candidate_bytes": 2579
+      },
+      {
+        "path": "scripts/dev/release_acceptance.py",
+        "historical_sha256": "44914594c529f88868630223ddd6165f3e6f06b8c83359493da75a2e9a2feb64",
+        "historical_bytes": 98410,
+        "candidate_sha256": "8aa4ee2997f0d522a55905cb229b8b8ca1203a98d12bf78cccd56bbc22456d70",
+        "candidate_bytes": 124540
+      }
+    ],
+    "literal_id_counts": {
+      "identity": 5,
+      "catalog": 8,
+      "commerce": 14,
+      "paid": 12,
+      "browser_dto": 120,
+      "browser_api": 21
+    },
+    "literal_ids_unchanged": true,
+    "verification_method": "Read immutable git show SHA:path bytes; AST literal extraction from producers and fixture JSON; ordered exact family array comparison. No producer imports or acceptance execution."
+  }
+}
