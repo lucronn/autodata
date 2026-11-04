@@ -692,4 +692,29 @@ class BrowserDTOTimeoutDiagnostics(unittest.IsolatedAsyncioTestCase):
         finally: release.set()
 
 
+class DTOTimingContract(unittest.TestCase):
+    def test_complete_inventory_budget_and_equal_deadline(self):
+        timing = smoke.load_dto_timing(smoke.FIXTURES / 'timing.json')
+        self.assertEqual(smoke.validate_dto_schedule(timing, 120), dict(serial_seconds=2994,
+            parent_total_seconds=4430, fixture_requirement_seconds=4640, go_requirement_seconds=4980))
+        self.assertEqual(smoke.remaining(12., 12.), 0)
+        for count in (0, 40, 119, 121):
+            with self.assertRaises(ValueError): smoke.validate_dto_schedule(timing, count)
+
+    def test_invalid_contract_fails_closed(self):
+        timing = smoke.load_dto_timing(smoke.FIXTURES / 'timing.json')
+        invalid = [dict(timing, unknown=1), dict(timing, version='v2')]
+        for value in (True, 0, -1, 1.5, float('nan'), float('inf')):
+            invalid.append(dict(timing, worker_hard_seconds=value))
+        missing = dict(timing); del missing['worker_hard_seconds']; invalid.append(missing)
+        for field, value in [('worker_hard_seconds',2994), ('producer_hard_seconds',4430),
+                ('dto_fixture_seconds',4640), ('go_test_seconds',4980), ('ci_exercise_seconds',5060)]:
+            invalid.append(dict(timing, **{field:value}))
+        for value in invalid:
+            with self.subTest(value=value), self.assertRaises(ValueError): smoke.validate_dto_schedule(value,120)
+        with TemporaryDirectory() as directory:
+            path=Path(directory)/'timing.json'; path.write_text('{"version":"v1","version":"v1"}')
+            with self.assertRaises(ValueError): smoke.load_dto_timing(path)
+
+
 if __name__ == '__main__': unittest.main()

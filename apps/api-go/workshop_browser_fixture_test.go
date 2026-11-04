@@ -27,6 +27,90 @@ import (
 	"time"
 )
 
+// Shared test-only timing; decoding rejects duplicate/unknown keys and non-integers.
+type workshopBrowserTiming struct {
+	Values map[string]int
+	SHA256 string
+}
+
+func loadWorkshopBrowserTiming(path string) (workshopBrowserTiming, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return workshopBrowserTiming{}, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return workshopBrowserTiming{}, errors.New("timing object required")
+	}
+	allowed := map[string]bool{"version": true, "engines": true, "scenarios_per_engine": true, "case_execution_seconds": true, "case_cleanup_seconds": true, "provenance_seconds": true, "playwright_start_seconds": true, "engine_launch_seconds": true, "engine_close_seconds": true, "playwright_stop_seconds": true, "evidence_persistence_seconds": true, "worker_hard_seconds": true, "producer_hard_seconds": true, "worker_term_seconds": true, "worker_kill_seconds": true, "worker_reap_seconds": true, "readiness_seconds": true, "handoff_seconds": true, "fixture_stop_seconds": true, "safety_seconds": true, "dto_fixture_seconds": true, "api_fixture_seconds": true, "go_test_seconds": true, "fixture_startup_seconds": true, "fixture_teardown_seconds": true, "ci_exercise_seconds": true, "ci_job_minutes": true, "parent_initialization_seconds": true, "parent_progress_read_parse_seconds": true, "parent_final_read_parse_stage_seconds": true, "parent_commit_seconds": true, "io_helper_term_seconds": true, "io_helper_kill_seconds": true, "io_helper_reap_seconds": true, "max_io_helper_cleanup_episodes": true, "parent_scheduling_reserve_seconds": true, "worker_deadline_reserve_seconds": true}
+	values := map[string]int{}
+	seen := map[string]bool{}
+	for decoder.More() {
+		token, err = decoder.Token()
+		if err != nil {
+			return workshopBrowserTiming{}, err
+		}
+		key, ok := token.(string)
+		if !ok || seen[key] || !allowed[key] {
+			return workshopBrowserTiming{}, errors.New("duplicate/unknown timing key")
+		}
+		seen[key] = true
+		var value any
+		if err = decoder.Decode(&value); err != nil {
+			return workshopBrowserTiming{}, err
+		}
+		if key == "version" {
+			if value != "v1" {
+				return workshopBrowserTiming{}, errors.New("timing version")
+			}
+			continue
+		}
+		number, ok := value.(json.Number)
+		if !ok {
+			return workshopBrowserTiming{}, errors.New("integer required")
+		}
+		integer, err := number.Int64()
+		if err != nil || integer <= 0 || integer > 1000000 {
+			return workshopBrowserTiming{}, errors.New("positive bounded integer required")
+		}
+		values[key] = int(integer)
+	}
+	if _, err = decoder.Token(); err != nil {
+		return workshopBrowserTiming{}, err
+	}
+	var tail any
+	if decoder.Decode(&tail) != io.EOF || len(seen) != len(allowed) {
+		return workshopBrowserTiming{}, errors.New("incomplete timing")
+	}
+	t := values
+	serial := t["provenance_seconds"] + t["playwright_start_seconds"] + 3*t["engine_launch_seconds"] + 120*(t["case_execution_seconds"]+t["case_cleanup_seconds"]) + 3*t["engine_close_seconds"] + t["playwright_stop_seconds"] + t["evidence_persistence_seconds"]
+	cleanup := t["worker_term_seconds"] + t["worker_kill_seconds"] + t["worker_reap_seconds"] + 2*(t["io_helper_term_seconds"]+t["io_helper_kill_seconds"]+t["io_helper_reap_seconds"])
+	parent := t["parent_initialization_seconds"] + t["worker_hard_seconds"] + cleanup + t["parent_final_read_parse_stage_seconds"] + t["parent_commit_seconds"] + t["parent_scheduling_reserve_seconds"]
+	fixture := t["readiness_seconds"] + t["handoff_seconds"] + t["producer_hard_seconds"] + t["fixture_stop_seconds"] + t["safety_seconds"]
+	goBound := t["fixture_startup_seconds"] + t["dto_fixture_seconds"] + t["fixture_teardown_seconds"]
+	if t["engines"] != 3 || t["scenarios_per_engine"] != 40 || t["case_execution_seconds"] != 20 || t["case_cleanup_seconds"] != 3 || t["producer_hard_seconds"] != 4440 || t["api_fixture_seconds"] != 4400 || t["max_io_helper_cleanup_episodes"] != 2 || serial >= t["worker_hard_seconds"] || parent >= t["producer_hard_seconds"] || fixture >= t["dto_fixture_seconds"] || goBound >= t["go_test_seconds"] || t["go_test_seconds"]+t["fixture_stop_seconds"]+t["evidence_persistence_seconds"] >= t["ci_exercise_seconds"] || t["ci_exercise_seconds"] >= 60*t["ci_job_minutes"] || cleanup+t["parent_final_read_parse_stage_seconds"]+t["parent_commit_seconds"]+t["parent_scheduling_reserve_seconds"] > t["worker_deadline_reserve_seconds"] {
+		return workshopBrowserTiming{}, errors.New("inconsistent timing schedule")
+	}
+	digest := sha256.Sum256(raw)
+	return workshopBrowserTiming{Values: values, SHA256: hex.EncodeToString(digest[:])}, nil
+}
+func workshopBrowserFixtureLifetime(paid bool, timing workshopBrowserTiming) time.Duration {
+	if paid {
+		return 4400 * time.Second
+	}
+	return time.Duration(timing.Values["dto_fixture_seconds"]) * time.Second
+}
+func workshopBrowserFixtureEnded(stopped <-chan struct{}, deadline <-chan time.Time) bool {
+	select {
+	case <-stopped:
+		return false
+	case <-deadline:
+		return true
+	}
+}
+
 // Explicit test-only process entry point. It always serves the production
 // embedded assets, over TLS; DTO interception belongs to the browser harness.
 func TestWorkshopBrowserFixtureHTTP(t *testing.T) {
@@ -113,12 +197,22 @@ func TestWorkshopBrowserFixtureHTTP(t *testing.T) {
 		metadata["kind"] = "api-fixture"
 		metadata["scope"] = map[string]string{"configuration": paid.configuration, "adjacent": paid.adjacent, "other_region": paid.regionConfiguration, "vehicle": paid.vehicle, "article": paid.article, "unscoped": paid.unscoped, "provider": paid.provider}
 	}
+	timing := workshopBrowserTiming{}
+	if paid == nil {
+		timing, err = loadWorkshopBrowserTiming("../../scripts/dev/fixtures/workshop_customer/timing.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		metadata["lifetime_seconds"] = int(workshopBrowserFixtureLifetime(false, timing) / time.Second)
+		metadata["timing_contract_sha256"] = timing.SHA256
+	}
+	// Start before readiness publication so handoff consumes the selected lifetime.
+	deadline := time.NewTimer(workshopBrowserFixtureLifetime(paid != nil, timing))
+	defer deadline.Stop()
 	body, _ := json.Marshal(metadata)
 	if err = os.WriteFile(output, body, 0600); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.NewTimer(4400 * time.Second)
-	defer deadline.Stop()
 	for {
 		select {
 		case <-stopped:

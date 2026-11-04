@@ -25,6 +25,61 @@ ORDER = '55555555-5555-4555-8555-555555555555'
 ENGINES = ('chromium', 'firefox', 'webkit')
 
 
+# This contract is test-only. No environment override or runtime authority.
+DTO_TIMING_KEYS = frozenset(['version', 'engines', 'scenarios_per_engine', 'case_execution_seconds', 'case_cleanup_seconds', 'provenance_seconds', 'playwright_start_seconds', 'engine_launch_seconds', 'engine_close_seconds', 'playwright_stop_seconds', 'evidence_persistence_seconds', 'worker_hard_seconds', 'producer_hard_seconds', 'worker_term_seconds', 'worker_kill_seconds', 'worker_reap_seconds', 'readiness_seconds', 'handoff_seconds', 'fixture_stop_seconds', 'safety_seconds', 'dto_fixture_seconds', 'api_fixture_seconds', 'go_test_seconds', 'fixture_startup_seconds', 'fixture_teardown_seconds', 'ci_exercise_seconds', 'ci_job_minutes', 'parent_initialization_seconds', 'parent_progress_read_parse_seconds', 'parent_final_read_parse_stage_seconds', 'parent_commit_seconds', 'io_helper_term_seconds', 'io_helper_kill_seconds', 'io_helper_reap_seconds', 'max_io_helper_cleanup_episodes', 'parent_scheduling_reserve_seconds', 'worker_deadline_reserve_seconds'])
+
+
+def _unique_json(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result: raise ValueError('duplicate JSON key: ' + key)
+        result[key] = value
+    return result
+
+
+def load_dto_timing(path):
+    timing = json.loads(Path(path).read_text(), object_pairs_hook=_unique_json)
+    validate_dto_schedule(timing, 120)
+    return timing
+
+
+def validate_dto_schedule(timing, case_count):
+    if not isinstance(timing, dict) or set(timing) != DTO_TIMING_KEYS or timing['version'] != 'v1':
+        raise ValueError('invalid DTO timing schema/version')
+    if any(type(value) is not int or value <= 0 for key,value in timing.items() if key != 'version'):
+        raise ValueError('DTO timing values must be finite positive integers')
+    t = timing
+    fixed = dict(engines=3, scenarios_per_engine=40, case_execution_seconds=20,
+        case_cleanup_seconds=3, producer_hard_seconds=4440, api_fixture_seconds=4400,
+        max_io_helper_cleanup_episodes=2)
+    if case_count != 120 or any(t[key] != value for key,value in fixed.items()):
+        raise ValueError('frozen DTO inventory or phase cap changed')
+    serial = (t['provenance_seconds'] + t['playwright_start_seconds'] +
+        3*t['engine_launch_seconds'] + 120*(t['case_execution_seconds']+t['case_cleanup_seconds']) +
+        3*t['engine_close_seconds'] + t['playwright_stop_seconds'] + t['evidence_persistence_seconds'])
+    worker_cleanup = sum(t['worker_'+part+'_seconds'] for part in ('term','kill','reap'))
+    helper_cleanup = 2*sum(t['io_helper_'+part+'_seconds'] for part in ('term','kill','reap'))
+    parent = (t['parent_initialization_seconds'] + t['worker_hard_seconds'] + worker_cleanup +
+        helper_cleanup + t['parent_final_read_parse_stage_seconds'] + t['parent_commit_seconds'] +
+        t['parent_scheduling_reserve_seconds'])
+    fixture = sum(t[key] for key in ('readiness_seconds','handoff_seconds','producer_hard_seconds','fixture_stop_seconds','safety_seconds'))
+    go = sum(t[key] for key in ('fixture_startup_seconds','dto_fixture_seconds','fixture_teardown_seconds'))
+    if not (serial < t['worker_hard_seconds'] and parent < t['producer_hard_seconds'] and
+            fixture < t['dto_fixture_seconds'] and go < t['go_test_seconds'] and
+            t['go_test_seconds']+t['fixture_stop_seconds']+t['evidence_persistence_seconds'] < t['ci_exercise_seconds'] and
+            t['ci_exercise_seconds'] < t['ci_job_minutes']*60 and
+            worker_cleanup+helper_cleanup+t['parent_final_read_parse_stage_seconds']+t['parent_commit_seconds']+t['parent_scheduling_reserve_seconds'] <= t['worker_deadline_reserve_seconds']):
+        raise ValueError('inconsistent DTO timing inequalities')
+    return dict(serial_seconds=serial, parent_total_seconds=parent, fixture_requirement_seconds=fixture, go_requirement_seconds=go)
+
+
+def remaining(deadline, now):
+    if not all(isinstance(value, (int,float)) and not isinstance(value,bool) and
+            float('-inf') < value < float('inf') for value in (deadline,now)):
+        raise ValueError('invalid monotonic clock')
+    return max(0., deadline-now)
+
+
 def inventory():
     data = json.loads((FIXTURES / 'scenarios.json').read_text())
     names = data['scenarios']
