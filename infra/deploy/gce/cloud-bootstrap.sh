@@ -1,7 +1,7 @@
 #!/bin/sh
-# Offline definition renderer only. Fixed interpreter; discard ambient credentials.
+# Fixed staging launcher and offline plan renderer; discard ambient credentials.
 exec /usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/python3 -I - "$@" <<'PY'
-"""Bounded bootstrap plan; no subprocess, provider client or apply implementation."""
+"""Preserved offline plan; apply delegates only to the installed staging helper."""
 from datetime import datetime, timezone
 import importlib.util
 import json
@@ -9,6 +9,7 @@ import sys
 
 HOST_CONFIG = '/etc/autodata/host.json'
 RUNTIME_HELPER = '/opt/autodata/bin/runtime-check.py'
+STAGING_HELPER = '/opt/autodata/bin/staging_bootstrap.py'
 
 
 def load_runtime():
@@ -16,6 +17,13 @@ def load_runtime():
     runtime = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(runtime)
     return runtime
+
+
+def load_staging():
+    spec = importlib.util.spec_from_file_location('staging_bootstrap_v1', STAGING_HELPER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def build_plan(config, runtime):
@@ -114,8 +122,12 @@ def main(argv, runtime=None):
     if type(argv) not in (list, tuple) or not all(type(arg) is str for arg in argv) or list(argv) not in ([], ['plan'], ['apply']):
         return 2, receipt('failed', 'invalid_input')
     if list(argv) == ['apply']:
-        # No approval flag can unlock an absent, unreviewed apply implementation.
-        return 3, receipt('failed', 'missing_dependency', operation='apply')
+        try:
+            helper = load_staging()
+            runtime = runtime if runtime is not None else load_runtime()
+            return helper.main(runtime)
+        except Exception:
+            return 3, receipt('failed', 'missing_dependency', operation='apply')
     try:
         runtime = runtime if runtime is not None else load_runtime()
     except Exception:
