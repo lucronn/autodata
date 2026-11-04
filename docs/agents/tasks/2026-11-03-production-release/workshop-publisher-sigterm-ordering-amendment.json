@@ -1,0 +1,77 @@
+{
+  "task_id": "workshop-publisher-sigterm-ordering-amendment",
+  "goal": "Correct the dormant Python publisher executor's SIGTERM child leak without passing a blocked SIGTERM mask to its child or changing live-publication authority.",
+  "source_candidate_sha": "f01efeea8b678fc5c16a97d759dbe4a7ae85f107",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-publisher-sigterm-ordering-amendment.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-publisher-sigterm-ordering-amendment.json",
+  "allowed_paths": [
+    "infra/deploy/gce/publisher_adapters.py",
+    "infra/deploy/gce/test_publisher_adapters.py",
+    "docs/operations/workshop-gcp.md"
+  ],
+  "pre_implementation": {
+    "goal": "Correct the dormant Python publisher executor's SIGTERM child leak without passing a blocked SIGTERM mask to its child or changing live-publication authority.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-publisher-sigterm-ordering-amendment.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/operations/workshop-gcp.md"
+    ],
+    "todo": [
+      "After tracking-slot release, synchronize this signal-ordering amendment, source/allowlist and todo across Issue186/Project8/canonical operations notes; preserve the previous Project index verbatim/hash; commit/push, pin full-SHA preflight, and stop for independent checkpoint review and coordinator dispatch.",
+      "After dispatch, restore the preserved owner-boundary red tests and add cancellation-before/inside-Popen assignment, inherited child-mask, pending-signal cleanup/restoration and nested-owner regressions with bounded local probe cleanup.",
+      "Implement main-thread cancellation-flag ownership with the exact pending-signal/Popen ordering and bounded group cleanup below; reject blocked-mask, non-main-thread and nested ownership before spawning.",
+      "Run red/green signal tests and all focused Python regressions, syntax, exact-scope/diff and pinned preflight; commit/push the exact candidate for independent review while preserving no-live/readiness/default-dependency limits."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T03:30:40.772030+00:00",
+    "source_candidate_sha": "f01efeea8b678fc5c16a97d759dbe4a7ae85f107",
+    "prior_correction_gate_sha": "de57baa0f70e363227cf0c446a6aadec10ec7c59",
+    "reviewed_amendment_design_sha256": "a80ede2bdc08a43664b5019b48fca4316ce71d0610bca13c8ed4757d93a8d482",
+    "independent_technical_design_review": "coordinator approved local design for synchronization; exact committed checkpoint review pending",
+    "implementation_allowlist": [
+      "infra/deploy/gce/publisher_adapters.py",
+      "infra/deploy/gce/test_publisher_adapters.py",
+      "docs/operations/workshop-gcp.md"
+    ],
+    "mechanism_amendment": "Replaces only blocked-through-Popen prescription with flag-only handler, original unblocked child mask, pre/post assignment and100ms checks, blocked bounded group cleanup and restore-mask-last pending delivery.",
+    "preserved_red_test_patch": "/tmp/autodata-publisher-python-sigterm-tests-before-amendment.patch",
+    "preserved_red_test_log": "/tmp/autodata-publisher-python-sigterm-red.log",
+    "independent_checkpoint_review": "pending",
+    "builder_dispatch": "blocked_pending_full_sha_preflight_independent_checkpoint_review_and_coordinator_dispatch",
+    "runtime_execution_authorized": false,
+    "staging_activation_authorized": false,
+    "production_publication_authorized": false,
+    "production_ready": false,
+    "deployment_authorized": false,
+    "tracking_sync": {
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621768448",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+      "project_note_field": "Source or dependency reference",
+      "verified_at": "2026-11-04T03:30:40.772030+00:00",
+      "issue_body_sha256": "d63dee3864111c3b4df1d71010f07e62b42d122bd9c0e45ef4b3e31ed5e2920c",
+      "issue_comment_sha256": "e1ccb379425bcfcd082d383cc30787f6e1eab20fdbc8e9f34968f0de3570e57f",
+      "project_text_sha256": "b07906999593fcc769ee632f6369ef99f5b25ca1d2f5841dcf9e6f6ab9385701",
+      "prior_project_index_sha256": "329f8d8db203c0b00101e9244aa4514392faddf01dea720bcdbd8287207cdc08",
+      "prior_pg_adoption_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621749496",
+      "prior_pg_adoption_detail_sha256": "c30cea4816f7ae6f78edf7ab2770caf9d081e7267fa71bb635f966ab3a3f674c",
+      "full_prior_project_index_preserved_in_issue_comment": true,
+      "full_prior_pg_adoption_detail_preserved_in_issue_comment": true
+    },
+    "historical_authority": "PG mount-order adoption3c96b04/JS artifact boundarycb245b7 and every prior Python/PG17/DTO/R6 authority preserved. No live publication/default WIF/OCI/Syft/keyless composition or readiness granted."
+  },
+  "todo": [
+    "After tracking-slot release, synchronize this signal-ordering amendment, source/allowlist and todo across Issue186/Project8/canonical operations notes; preserve the previous Project index verbatim/hash; commit/push, pin full-SHA preflight, and stop for independent checkpoint review and coordinator dispatch.",
+    "After dispatch, restore the preserved owner-boundary red tests and add cancellation-before/inside-Popen assignment, inherited child-mask, pending-signal cleanup/restoration and nested-owner regressions with bounded local probe cleanup.",
+    "Implement main-thread cancellation-flag ownership with the exact pending-signal/Popen ordering and bounded group cleanup below; reject blocked-mask, non-main-thread and nested ownership before spawning.",
+    "Run red/green signal tests and all focused Python regressions, syntax, exact-scope/diff and pinned preflight; commit/push the exact candidate for independent review while preserving no-live/readiness/default-dependency limits."
+  ],
+  "status": "synchronized",
+  "execution": {
+    "mode": "plan_only",
+    "builder_dispatch": "blocked_pending_full_sha_preflight_independent_checkpoint_review_and_coordinator_dispatch",
+    "runtime_execution": "none",
+    "later_scope": "Only local main-thread SIGTERM cancellation ordering/owned-group cleanup tests and correction after separate coordinator dispatch; no real cloud/provider/registry/host/credential/toolkit/Docker/activation/integration/deploy operation."
+  }
+}
