@@ -1,0 +1,292 @@
+{
+  "schema_version": 1,
+  "goal": "Implement an independently reviewable Linux preparation adapter that binds approved host/file/Git/Docker observations to the reviewed subprocess primitive, bounded descriptor I/O, nonrenewable budgets, safe evidence projection, and conservative cleanup; defer actual host observations to a separate preparation execution gate.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-r3-real-preparation-adapter.md",
+  "spec_ref": "docs/agents/specs/2026-11-04-workshop-r3-real-preparation-adapter.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-r3-real-preparation-adapter.json",
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-r3-real-preparation-adapter.json",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-04-workshop-r3-real-preparation-adapter.md",
+    "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md"
+  ],
+  "todo": [
+    "Freeze PR241 code parent 8f0129cf21ca818c87eb1a3097ad055de9771082 and PR240 four-file adoption pin 0da0be85b864ab829200d170a656ad6ea87651dd; synchronize the dedicated six-path canonical gate and Issue186/Project8, pin the actual checkpoint, pass standalone/nested preflight and independent exact-checkpoint review before ten-path code-only dispatch.",
+    "Adopt the four reviewed fake collector files byte-for-byte under the new gate, preserve the inherited subprocess primitive pair, and verify the integrated synthetic and owned-child suites without host probes.",
+    "Implement and adversarially test pure actual-contract admission and the immutable 26-command dependency graph, keeping synthetic admission and historical checkpoints unchanged.",
+    "Implement and adversarially test isolated descriptor I/O, bounded IPC, exclusive output creation, nonrenewable limits and owned worker cleanup with explicit unconfirmed/quarantine outcomes.",
+    "Bind actual orchestration to one reviewed subprocess CaptureBudget and cancellation event, preserve synchronous Popen/startup watchdog limitations and direct-worker-fork-only thread ordering, enforce truthful pending snapshots versus checksum-bound final in-memory completion, and verify using only scripted ports, owned temporary files and owned synthetic children.",
+    "Commit and promptly push validated coherent milestones, obtain independent exact-head review and honest normal CI readback, then synchronize measured code-only completion and all unresolved activation/runtime/release blockers with credit0 and false authorities."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T20:21:18Z",
+  "planning_status": "tracking_synchronized_checkpoint_review_pending",
+  "tracking_status": "synchronized",
+  "planning_base_sha": "8f0129cf21ca818c87eb1a3097ad055de9771082",
+  "planning_parent_sha": "8f0129cf21ca818c87eb1a3097ad055de9771082",
+  "planning_parent_tree": "de1855c3534b82dc551ea59c527f24f1f2b3e9b8",
+  "implementation_base_sha": null,
+  "execution_gate_sha": null,
+  "integration_head_sha": null,
+  "scope": "proposed_code_only_adapter_library_and_synthetic_owned_local_verification",
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-r3-real-preparation-adapter.md",
+    "docs/agents/specs/2026-11-04-workshop-r3-real-preparation-adapter.md",
+    "docs/agents/records/2026-11-04-workshop-r3-real-preparation-adapter.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-r3-real-preparation-adapter.json",
+    "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_implementation_paths": [
+    "scripts/r3_preparation/policy.py",
+    "scripts/r3_preparation/collector.py",
+    "scripts/r3_preparation/test_policy.py",
+    "scripts/r3_preparation/test_collector.py",
+    "scripts/r3_preparation/real_admission.py",
+    "scripts/r3_preparation/file_transport.py",
+    "scripts/r3_preparation/host_adapter.py",
+    "scripts/r3_preparation/test_real_admission.py",
+    "scripts/r3_preparation/test_file_transport.py",
+    "scripts/r3_preparation/test_host_adapter.py"
+  ],
+  "adoption_only_paths": [
+    "scripts/r3_preparation/policy.py",
+    "scripts/r3_preparation/collector.py",
+    "scripts/r3_preparation/test_policy.py",
+    "scripts/r3_preparation/test_collector.py"
+  ],
+  "new_implementation_paths": [
+    "scripts/r3_preparation/real_admission.py",
+    "scripts/r3_preparation/file_transport.py",
+    "scripts/r3_preparation/host_adapter.py",
+    "scripts/r3_preparation/test_real_admission.py",
+    "scripts/r3_preparation/test_file_transport.py",
+    "scripts/r3_preparation/test_host_adapter.py"
+  ],
+  "immutable_inherited_paths": [
+    "scripts/r3_preparation/process_transport.py",
+    "scripts/r3_preparation/test_process_transport.py"
+  ],
+  "implementation_file_mode": "100644",
+  "fake_adoption_sha": "0da0be85b864ab829200d170a656ad6ea87651dd",
+  "fake_adoption_tree": "4564cf95aeb73cb453af5daaedb9d1a6df18c1c7",
+  "future_gate_branch": "codex/workshop-r3-real-preparation-adapter-gate",
+  "future_builder_branch": "codex/workshop-r3-real-preparation-adapter-build",
+  "source_document_sha256": {
+    "/home/corp/autodata-evidence/r3-real-adapter-successor-plan/PLAN.md": "c535581b08361b61b19e90759955a34d0a9380452e660c04456708d7b5db9971",
+    "/home/corp/autodata-evidence/r3-real-adapter-successor-plan/tracking-payload.json": "173ce872e7ea98042a26e8ce2e47ec8efc2850bccc70a58f8150bd51b97e7728",
+    "/home/corp/autodata-evidence/r3-real-adapter-successor-plan/source-pins.json": "afd4cdab1a42a547969b8d7f04a198a16e06517eec0a0d76f6f6a6a6f9801993",
+    "/home/corp/autodata-evidence/r3-real-adapter-successor-plan/validation.json": "bf9f35dfdca6cb17a9eff66c67b4b65868968773ab6c6ce8bf2f4b9faf151024",
+    "/home/corp/autodata-evidence/r3-real-adapter-plan-independent-review/revision2/verdict.json": "f8da765bd15c287e43559c35642104b98be2251bfceb99ca2299f4dd09454b9f"
+  },
+  "source_pins": {
+    "git_pins": {
+      "fake_code": "0da0be85b864ab829200d170a656ad6ea87651dd",
+      "process_code": "8f0129cf21ca818c87eb1a3097ad055de9771082",
+      "fake_docs_completion": "47f06f049ee97a57ebdbd3d034c13a303e166c39",
+      "process_docs_completion": "b3e91e6a81db03b9bbb7615c3fb168bdc77c6834"
+    },
+    "implementation_source_pins": {
+      "scripts/r3_preparation/policy.py": {
+        "source_sha": "0da0be85b864ab829200d170a656ad6ea87651dd",
+        "sha256": "36d8eb70f27277faefc831c1ca3ace18695509e97e4e65352ce0f3cb01120507",
+        "git_mode": "100644"
+      },
+      "scripts/r3_preparation/collector.py": {
+        "source_sha": "0da0be85b864ab829200d170a656ad6ea87651dd",
+        "sha256": "3fddb096d25ca7f1281a41469d1ca846e2ae776f986390e6479fe9df5d573599",
+        "git_mode": "100644"
+      },
+      "scripts/r3_preparation/test_policy.py": {
+        "source_sha": "0da0be85b864ab829200d170a656ad6ea87651dd",
+        "sha256": "3980f876f3d93197ec70d4281c1693051f7d1eaea33c28076a2502ecde7996d2",
+        "git_mode": "100644"
+      },
+      "scripts/r3_preparation/test_collector.py": {
+        "source_sha": "0da0be85b864ab829200d170a656ad6ea87651dd",
+        "sha256": "20557de448cd3a51fcf780627c2a016a6605b91b3f485e3590d4d41cb59863af",
+        "git_mode": "100644"
+      },
+      "scripts/r3_preparation/process_transport.py": {
+        "source_sha": "8f0129cf21ca818c87eb1a3097ad055de9771082",
+        "sha256": "ebfb286f8048437ddc222c0ee1fb7475be2667a5b225174c61f4ea8ef0d3be4c",
+        "git_mode": "100644"
+      },
+      "scripts/r3_preparation/test_process_transport.py": {
+        "source_sha": "8f0129cf21ca818c87eb1a3097ad055de9771082",
+        "sha256": "2d452341a1946b7dc2080dee59d1053324f019d0e90f104c999a6f4a15ee74bd",
+        "git_mode": "100644"
+      }
+    },
+    "external_sources_sha256": {
+      "/home/corp/autodata-evidence/r3-preparation-collector-code-review-revision2/receipt.json": "90160c9864e18abbbf62204a7e9e78d548a45806539c6ee54e59e320d0eff304",
+      "/home/corp/autodata-evidence/r3-preparation-collector-code-review-revision2/report.md": "acd3bafb95287cf6002038c04d1f27d79be9c648c11b58adff69ffcbb14fc82d",
+      "/home/corp/autodata-evidence/r3-process-transport-code-review/verdict.json": "22a3e192f22e17a68917235b3cc3d8794a4c1538cc7e55892128ed3e522e4e39",
+      "/home/corp/autodata-evidence/r3-process-transport-code-review/REPORT.md": "9aa143989a5b99ee102ece951783afb3d4a12349d48cd0a3e82b68712f2d4829",
+      "/home/corp/autodata-evidence/r3-process-transport-code-tracking/receipt.json": "3e38bf3a56f17fb1b436173c0e2f5b5b09ae5e0ed877073ce00a639f73e7e75a",
+      "/home/corp/autodata-evidence/r3-process-transport-completion-docs/receipt.json": "9cb33f982d8f95857aa34a0e69b49d40a8d4d587aabbe7885acaa6389edb9089",
+      "/home/corp/autodata-evidence/r3-preparation-collector-completion-docs/receipt.json": "1a6538412f023e822e758b396c4fb173541b4510be9d6dce5ebf29c2c1cd1b52",
+      "/home/corp/autodata-evidence/r3-preparation-gate-draft/PLAN.md": "55d0b1ea66e4125d033e4eaa8a6caf7c77da9fd32925cbbcedc56e75fa59ed2a"
+    }
+  },
+  "external_plan_review_ref": "/home/corp/autodata-evidence/r3-real-adapter-plan-independent-review/revision2/verdict.json",
+  "external_plan_review_result": "PASS",
+  "external_plan_review_scope": "independent_external_code_only_plan_revision2_review",
+  "closed_external_findings": [
+    "F1",
+    "F2"
+  ],
+  "tracking_sync": {
+    "status": "synchronized_live_readback",
+    "writer": "coordinator sole serialized writer",
+    "goal": "Implement an independently reviewable Linux preparation adapter that binds approved host/file/Git/Docker observations to the reviewed subprocess primitive, bounded descriptor I/O, nonrenewable budgets, safe evidence projection, and conservative cleanup; defer actual host observations to a separate preparation execution gate.",
+    "todo": [
+      "Freeze PR241 code parent 8f0129cf21ca818c87eb1a3097ad055de9771082 and PR240 four-file adoption pin 0da0be85b864ab829200d170a656ad6ea87651dd; synchronize the dedicated six-path canonical gate and Issue186/Project8, pin the actual checkpoint, pass standalone/nested preflight and independent exact-checkpoint review before ten-path code-only dispatch.",
+      "Adopt the four reviewed fake collector files byte-for-byte under the new gate, preserve the inherited subprocess primitive pair, and verify the integrated synthetic and owned-child suites without host probes.",
+      "Implement and adversarially test pure actual-contract admission and the immutable 26-command dependency graph, keeping synthetic admission and historical checkpoints unchanged.",
+      "Implement and adversarially test isolated descriptor I/O, bounded IPC, exclusive output creation, nonrenewable limits and owned worker cleanup with explicit unconfirmed/quarantine outcomes.",
+      "Bind actual orchestration to one reviewed subprocess CaptureBudget and cancellation event, preserve synchronous Popen/startup watchdog limitations and direct-worker-fork-only thread ordering, enforce truthful pending snapshots versus checksum-bound final in-memory completion, and verify using only scripted ports, owned temporary files and owned synthetic children.",
+      "Commit and promptly push validated coherent milestones, obtain independent exact-head review and honest normal CI readback, then synchronize measured code-only completion and all unresolved activation/runtime/release blockers with credit0 and false authorities."
+    ],
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-04-workshop-r3-real-preparation-adapter.md",
+      "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md"
+    ],
+    "planning_parent_sha": "8f0129cf21ca818c87eb1a3097ad055de9771082",
+    "planning_paths": [
+      "docs/superpowers/plans/2026-11-04-workshop-r3-real-preparation-adapter.md",
+      "docs/agents/specs/2026-11-04-workshop-r3-real-preparation-adapter.md",
+      "docs/agents/records/2026-11-04-workshop-r3-real-preparation-adapter.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-r3-real-preparation-adapter.json",
+      "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json"
+    ],
+    "future_implementation_paths": [
+      "scripts/r3_preparation/policy.py",
+      "scripts/r3_preparation/collector.py",
+      "scripts/r3_preparation/test_policy.py",
+      "scripts/r3_preparation/test_collector.py",
+      "scripts/r3_preparation/real_admission.py",
+      "scripts/r3_preparation/file_transport.py",
+      "scripts/r3_preparation/host_adapter.py",
+      "scripts/r3_preparation/test_real_admission.py",
+      "scripts/r3_preparation/test_file_transport.py",
+      "scripts/r3_preparation/test_host_adapter.py"
+    ],
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6641148122",
+    "issue_before_sha256": "c1fc95253f45309547335bc11f26f31af65049091d639280baffcee7bdb9ae72",
+    "issue_after_sha256": "c4070be4162ba5c243567fbd3578410bb3e536c757809d4aa7ee2e04e9ad0101",
+    "project_before_sha256": "071bf6e936f7d05d10df063013f0786019a0806990effb8fda768e832b5c78e9",
+    "project_after_sha256": "903926783f7e868aa7ce2637300c095ba6d0f2822e7fa44e7e91c54ae9e83a14",
+    "receipt_ref": "/home/corp/autodata-evidence/r3-real-adapter-gate-tracking/receipt.json",
+    "receipt_sha256": "f1ea9c4ed4f2acd8b43a3f365df10c6b9633d28866538dada44fac63ecc8cf48",
+    "accepted_case_credit": 0,
+    "readback_verified": true
+  },
+  "implementation_blockers": [
+    "The pushed documentation checkpoint must pass exact-base standalone/nested preflight and independent exact-checkpoint review before any builder dispatch.",
+    "Explicit coordinator ten-path code-only dispatch remains required; tracking synchronization is not implementation authorization."
+  ],
+  "execution_blockers": [
+    "actual named operator/reviewer/cancellation/host/daemon/tool-installation/watchdog identities and authenticated artifacts",
+    "exact approved embedding entry point and inherited descriptor handoff",
+    "immutable actual host/tool/plugin/runtime/Git-config/clone/socket/env/output manifests",
+    "owner-verified resource containment/watchdog/no-swap/no-core/cleanup acceptance",
+    "complete literal nonsecret image Config and Compose model schemas",
+    "separate canonical preparation execution checkpoint, machine preflight, independent gate review and one-attempt dispatch",
+    "A separate initial host runtime execution/acceptance gate remains required after reviewed real preparation; no container creation or service/provider/payment/release authority is supplied."
+  ],
+  "finalization_contract": {
+    "persisted_record_stage": "pre_finalization_snapshot",
+    "persisted_classification": "preparation_finalization_pending",
+    "persisted_started_worker_cleanup": "pending",
+    "persisted_cleanup_status": "pending",
+    "persisted_worker_ipc_closed": false,
+    "persisted_monitor_stopped": false,
+    "persisted_final_receipt_issued": false,
+    "final_return_record_stage": "final_return",
+    "final_return_pending_allowed": false,
+    "final_return_artifact_binding": [
+      "complete_SHA256SUMS_sha256",
+      "command-receipts.json_sha256",
+      "classification.json_sha256"
+    ],
+    "states": [
+      "OBSERVED",
+      "SNAPSHOT_WRITTEN",
+      "REPORT_WRITTEN",
+      "CHECKSUMS_WRITTEN",
+      "ARTIFACTS_VERIFIED",
+      "WORKER_RETIRED",
+      "MONITOR_RETIRED",
+      "FINAL_RETURN"
+    ],
+    "post_checksum_file_writes_allowed": false,
+    "post_fault_file_writes_allowed": false,
+    "post_checksum_faults_require_incomplete_no_success_receipt": [
+      "cancellation",
+      "worker_reap_failure",
+      "monitor_join_failure"
+    ],
+    "root_output_name_count": 17
+  },
+  "startup_contract": {
+    "direct_adapter_python_worker_fork_before_monitor": true,
+    "direct_adapter_worker_refork_allowed": false,
+    "later_unchanged_Popen_spawns_allowed": true,
+    "Popen_may_use_fork_or_vfork": true,
+    "Popen_synchronous_controller_startup": true,
+    "Event_interrupts_blocked_Popen": false,
+    "guaranteed_local_return_during_kernel_startup_or_interpreter_stall": false,
+    "file_worker_isolation_scope": "enumerated approved file-transport recipe operations only",
+    "watchdog_required_for": [
+      "initial_worker_startup",
+      "synchronous_command_Popen_exec_startup_stall",
+      "controller_or_interpreter_loss",
+      "outer_attempt_expiry"
+    ],
+    "new_process_broker": false,
+    "primitive_repair": false,
+    "preexec_fn": false
+  },
+  "host_execution_authorized": false,
+  "implementation_dispatched": false,
+  "runtime_execution_scope": [],
+  "host_execution_scope": [],
+  "implementation_dispatch": null,
+  "preparation_execution_dispatch": null,
+  "normal_ci_predecessor": "PR241 Vercel failed; no autonomous-verification job was present; no CI PASS claimed.",
+  "trusted": false,
+  "runtime_accepted": false,
+  "host_observed": false,
+  "accepted_case_credit": 0,
+  "profiles_enabled": false,
+  "enabled_tiers": [],
+  "runtime_lock": null,
+  "run_record": null,
+  "authority": false,
+  "release_state": "unverified",
+  "fixture_verified": false,
+  "product_candidate_verified": false,
+  "staging_verified": false,
+  "deployment_authorized": false,
+  "cutover_verified": false,
+  "implementation_authorized": false,
+  "runtime_execution_authorized": false,
+  "profile_promotion_authorized": false,
+  "merge_authorized": false,
+  "authorities": {
+    "fixture_verified": false,
+    "product_candidate_verified": false,
+    "staging_verified": false,
+    "deployment_authorized": false,
+    "cutover_verified": false,
+    "implementation_authorized": false,
+    "runtime_execution_authorized": false,
+    "profile_promotion_authorized": false,
+    "merge_authorized": false
+  }
+}
