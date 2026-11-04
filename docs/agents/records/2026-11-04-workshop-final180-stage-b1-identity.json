@@ -1,0 +1,76 @@
+{
+  "goal": "Add only an in-memory identity Go JSONL adapter and finite fake-runtime replay for the five frozen identity IDs; preserve Stage A and zero accepted-case credit, disabled profiles and every authority false.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-stage-b1-identity.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-04-workshop-final180-stage-b1-identity.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+    "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md"
+  ],
+  "todo": [
+    "Synchronize the identity-only B1 plan/spec/task/record and exact three-path allowlist with Issue186/Project8; commit/push checkpoint B descending from reviewed Stage A 2ac80344abe855d8dcbfcc6ccd309cc3c7128a3e, pass standalone/nested exact-B preflight and independent gate review before explicit coordinator dispatch.",
+    "Implement bounded bytes-only Go JSONL parsing and deterministic five-ID identity translation with frozen context/receipt types, exact lifecycle/status precedence and failing-first adversarial synthetic tests.",
+    "Implement finite FakeFrame replay with total equal-time ordering, fixed 180s deadline/5s TERM grace/10s cleanup ceiling, bounded bytes and no process/filesystem/network execution; serialize exactly five ordered synthetic rows with zero credit and all authority false.",
+    "Update only the runbook alongside the two new modules; run focused/Stage A/developer/autonomy/syntax/allowlist checks, commit/push coherent validated milestones and obtain independent exact-implementation-SHA review.",
+    "Record code-only evidence while preserving disabled profiles/tiers, null runtime lock/run record and separate gates for other raw validators, real runtime/Docker supervision and actual final180 execution."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T17:35:03.853461+00:00",
+  "tracking_receipts": {
+    "status": "synchronized_live_readback",
+    "writer": "coordinator sole serialized Issue186/Project8 writer",
+    "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6637529257",
+    "current_status_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6637529257",
+    "current_status_sha256": "71670c86e57f2e8ef8c01c0da473ccbbb11006548036a136808e4312e33e4e20",
+    "issue_readback_ref": "/home/corp/autodata-evidence/stage-b1-gate-tracking-pre/issue-after.json",
+    "issue_readback_sha256": "70c363d329f40eb2367bbc686e42ed524b223f4371d31bcb63ca6c737ffc017d",
+    "issue_comments_readback_ref": "/home/corp/autodata-evidence/stage-b1-gate-tracking-pre/comments-after.json",
+    "issue_comments_readback_sha256": "2227310d507cd0cd8bfb51d530613b55375ac9784c348e92ccac4a4480ac6fac",
+    "issue_preserved_comment_count": 152,
+    "current_comment_count": 153,
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_status": "In Progress",
+    "project_source_sha256": "5e77e950b3200285dddc42d4cfe684edf56fbe313a43f448c89e9e2769a0e64e",
+    "project_source_bytes": 459,
+    "previous_project_source_sha256": "13bd7b288b8aa32124660d15d485c0292e1b34b9e882ce0d1adebc1fa6adb874",
+    "previous_source_archived_verbatim": true,
+    "project_readback_ref": "/home/corp/autodata-evidence/stage-b1-gate-tracking-pre/project-after.json",
+    "project_readback_sha256": "239927d9365a89457a9b1dececb816a00b0d39112e3a603f648ee3de00828408",
+    "other_project_fields_unchanged": true
+  },
+  "planning_parent_sha": "2ac80344abe855d8dcbfcc6ccd309cc3c7128a3e",
+  "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "authorizing_checkpoint_sha": null,
+  "external_draft_artifacts": {
+    "DRAFT.md": {
+      "bytes": 42142,
+      "sha256": "1e596d2d71c11b90a4428ac094c397703706063b065261c3957ca82218284ca1",
+      "historical_locator": "/home/corp/autodata-evidence/final180-stage-b-gate-draft/DRAFT.md"
+    },
+    "report.json": {
+      "bytes": 3480,
+      "sha256": "f8ee1a1c0bfdb3e2dbf3410937a790d30ac4247464a543763bb08596f31c1588",
+      "historical_locator": "/home/corp/autodata-evidence/final180-stage-b-gate-draft/report.json"
+    },
+    "provenance.json": {
+      "bytes": 35452,
+      "sha256": "15e6ce82e507747dd2a93b9adca7c1e461c1a47e239305d6d620a0530ef37fb9",
+      "historical_locator": "/home/corp/autodata-evidence/final180-stage-b-gate-draft/provenance.json"
+    },
+    "literal-mappings.json": {
+      "bytes": 11648,
+      "sha256": "2611386c2074a870d67e04cc1152e2f0e4e8d32d4b62f52864b8117ae513dfdb",
+      "historical_locator": "/home/corp/autodata-evidence/final180-stage-b-gate-draft/literal-mappings.json"
+    }
+  },
+  "draft_review": {
+    "status": "PASS",
+    "provenance": "coordinator-reported independent corrected-draft review; no saved receipt asserted"
+  },
+  "committed_gate_review": {
+    "status": "pending",
+    "checkpoint_sha": null
+  }
+}
