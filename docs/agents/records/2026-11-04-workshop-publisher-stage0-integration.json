@@ -173,5 +173,67 @@
   "staging_activation_authorized": false,
   "production_publication_authorized": false,
   "production_ready": false,
-  "deployment_authorized": false
+  "deployment_authorized": false,
+  "stage0_integration_verification": {
+    "implementation_merge_sha": "49586f0a98c6f27dcd7729761249c7a3f3eb9247",
+    "merge_parents": [
+      "599dd7315644503e843def1c0dc5818c86b1524e",
+      "bba43a0675628db3ac90ca7c72bc47eb8c381cb0"
+    ],
+    "synchronized_gate_sha": "dc1ba895d5761ca8ed5d3ff19f645b654655ae3c",
+    "coordinator_dispatch": "Fresh CODE-ONLY dispatch after independent exact-checkpoint PASS and coordinator pinned preflight; no live tracking or activation authority",
+    "verified_at": "2026-11-04T04:11:42.978606+00:00",
+    "python_publisher": {
+      "command": "python3 -m unittest test_publisher_adapters -q",
+      "cwd": "infra/deploy/gce",
+      "tests": 45,
+      "exit_code": 0
+    },
+    "python_cloud_host_workflow": {
+      "command": "python3 -m unittest test_cloud_ops test_host_runtime test_release_workshop_contract -q",
+      "cwd": "infra/deploy/gce",
+      "tests": 143,
+      "exit_code": 0
+    },
+    "node_artifact": {
+      "command": "/tmp/autodata-reviewed-node-v22.23.4 --test infra/deploy/gce/test_publisher_artifact.mjs",
+      "cwd": "repository root",
+      "tests": 110,
+      "passed": 110,
+      "failed": 0,
+      "exit_code": 0
+    },
+    "node_runtime_sha256": "94efd062ed066c1a0b332e18249859c905e920eeada5df55d24c99b919629a90",
+    "syntax": "Python AST parse of six publisher/cloud/host/workflow modules and both Node --check commands passed",
+    "preservation": "All ten selected implementation blobs match exact source bytes, Git blobs and SHA256; thirteen historical additions exact; four protected workflow job definitions exact; all other implementation paths unchanged",
+    "scope": "Exactly seven artifact implementation paths, thirteen historical documents and operations-note resolution/additive verification note at implementation merge; receipt adds only current Stage0 record/task/plan verification metadata",
+    "operations_resolution": "Complete receipt source retained as prefix; complete artifact append retained with one shared context blank line deduplicated by Git; only expected operations conflict resolved; additive integrated-state note",
+    "pinned_preflight": {
+      "base_sha": "dc1ba895d5761ca8ed5d3ff19f645b654655ae3c",
+      "exit_code": 0,
+      "status": "synchronized",
+      "errors": []
+    },
+    "diff_check_exit_code": 0,
+    "both_cli_modes": "Existing Node tests verify unconditional exit3/missing_dependency, no ambient-token or stdin reads",
+    "retained_blockers": [
+      "owner trust",
+      "authenticated official upload worker",
+      "dependency factory",
+      "immutable installed-tree/runtime/helper pins",
+      "seven moderate toolkit advisories",
+      "buffers licensing",
+      "staging activation",
+      "production publication/deployment"
+    ],
+    "independent_exact_implementation_review": "pending",
+    "post_commit_receipt_head_recheck": "Required before final coordinator report; no checks are claimed here for an uncommitted future SHA",
+    "dependency_installation_performed": false,
+    "sdk_import_performed": false,
+    "live_operation_performed": false,
+    "tracking_write_performed": false,
+    "activation_authorized": false,
+    "runtime_ready": false,
+    "production_ready": false
+  }
 }
