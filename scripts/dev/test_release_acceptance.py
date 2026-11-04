@@ -612,7 +612,7 @@ class RawPrimitiveTests(unittest.TestCase):
                         strict_junit_xml=DEFAULT, strict_dto_archive=DEFAULT,
                         paid_case_identities=DEFAULT, dto_case_identities=DEFAULT,
                         inspect_paid_common=DEFAULT, inspect_paid_pg_snapshots=DEFAULT,
-                        inspect_paid_migration_receipts=DEFAULT) as mocks:
+                        inspect_paid_migration_receipts=DEFAULT, inspect_paid_selector_work=DEFAULT) as mocks:
                     for mock in mocks.values(): mock.side_effect = AssertionError('raw dispatch forbidden')
                     with patch.object(assembler, 'ArtifactStore', side_effect=AssertionError('plan root I/O')):
                         with patch('builtins.print') as output:
@@ -1271,6 +1271,284 @@ class PaidMigrationReceiptTests(unittest.TestCase):
             ('table',lambda r:r.update(other=[]))]:
             altered=copy.deepcopy(raw);mutate(altered)
             with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):assembler._paid_migration_rows(altered)
+
+
+
+
+class PaidSelectorWorkTests(unittest.TestCase):
+    """Independent synthetic selector observations; no product receipt authority."""
+    root = 'TestPostgresPaidCatalogGrantBeforeWork'
+    phases = ('before', 'selectors', 'unpaid', 'expired', 'paid_cold', 'unavailable')
+    routes = ('/v1/catalog/makes?year=2024',
+              '/v1/catalog/models?year=2024&make=example',
+              '/v1/catalog/configurations?year=2024&make=example&model=car')
+
+    @classmethod
+    def setUpClass(cls):
+        cls.baseline = PaidMigrationReceiptTests().files()
+        for bank in ('bankone', 'banktwo'):
+            def populate(measured):
+                requests = []
+                for index, scope in enumerate(('makes', 'models', 'configurations')):
+                    payload = dict(scope=scope, year=2024, region='US',
+                                   idempotency_key='catalog-hydration:'+str(index+1)*24)
+                    if scope != 'makes': payload['make'] = 'example'
+                    if scope == 'configurations': payload['model'] = 'car'
+                    requests.append(dict(completed=True, duration_seconds=0.5,
+                        started_at='2026-11-03T00:00:00.1Z', finished_at='2026-11-03T00:00:00.2Z',
+                        payload=payload, request_id='', scope=scope, status=200))
+                for index, phase in enumerate(cls.phases):
+                    snapshot = measured['snapshots'][phase]
+                    snapshot.update(identity_checks=max(0,index-1), grant_calls=max(0,index-1))
+                    if phase != 'before':
+                        snapshot.update(selector_ensure=dict(entered=3,completed=3,active=0),
+                            selector_ensure_requests=copy.deepcopy(requests),
+                            provider_calls=dict(bankone=3,banktwo=3),
+                            provider_traces=dict(bankone=list(cls.routes),banktwo=list(reversed(cls.routes))))
+                final = copy.deepcopy(measured['snapshots']['unavailable'])
+                del final['reader_calls']; del final['identity_checks']
+                measured['final_snapshot'] = final
+            cls.alter(cls.baseline, populate, bank=bank)
+
+    @classmethod
+    def alter(cls, raw, mutation, *, bank='bankone'):
+        """Repair copy/hash seams so semantic mutations reach the new inspector."""
+        prefix = 'paid-access/'+bank+'/'+cls.root+'/'
+        measured = json.loads(raw[prefix+'measured-runtime.json']); mutation(measured)
+        raw[prefix+'measured-runtime.json'] = json.dumps(measured).encode()
+        measurement = json.loads(raw[prefix+'go-measurement.json'])
+        measurement['phase_snapshots'] = copy.deepcopy(measured['snapshots'])
+        raw[prefix+'go-measurement.json'] = json.dumps(measurement).encode()
+        collector = json.loads(raw['workshop-paid-access.json'])
+        collector['case_results'][cls.root+'-'+bank]['phase_snapshots'] = copy.deepcopy(measured['snapshots'])
+        raw['workshop-paid-access.json'] = json.dumps(collector).encode()
+        PaidPGSnapshotTests().reseal(raw)
+
+    def invocation(self, **overrides):
+        args = dict(candidate_sha=BASE,trusted_base_sha=TRUSTED_BASE,profile_sha256='1'*64,
+            input_manifest_sha256=hashlib.sha256(b'{}').hexdigest(),host_before_sha256=hashlib.sha256(b'{}').hexdigest(),
+            expected_driver_sha256=hashlib.sha256(PaidMigrationReceiptTests.driver).hexdigest(),
+            profile_version='paid-selector-v2')
+        args.update(overrides)
+        return args
+
+    def inspect(self, raw, **overrides):
+        class Store:
+            by_ref = {ref:dict(artifact_id=ref) for ref in raw}
+            def read(self, artifact_id): return raw[artifact_id]
+            def read_raw_json(self, artifact_id, **_): return assembler.strict_raw_json(raw[artifact_id])
+            def recheck(self): pass
+        self.assertTrue(callable(getattr(assembler,'inspect_paid_selector_work',None)),
+                        'explicit internal selector-work inspector is missing')
+        return assembler.inspect_paid_selector_work(Store(), **self.invocation(**overrides))
+
+    def real_store(self, raw, directory):
+        artifacts=[]
+        for index,(ref,data) in enumerate(raw.items()):
+            path=Path(directory)/ref;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+            artifacts.append(dict(artifact_id='raw-'+str(index),kind='raw',ref=ref,
+                sha256=hashlib.sha256(data).hexdigest(),bytes=len(data),visibility='private'))
+        return assembler.ArtifactStore(directory,artifacts)
+
+    def assert_unavailable(self, result):
+        self.assertEqual(result['status'],'unavailable'); self.assertIs(result['complete'],False)
+        self.assertEqual(result['verified_case_ids'],[])
+        self.assertEqual(result['observed_selector_case_ids'],[self.root+'-bankone',self.root+'-banktwo'])
+        self.assertEqual(result['observed_selector_snapshot_count'],14)
+        previous=PaidMigrationReceiptTests().inspect(self.baseline)
+        self.assertEqual(result['missing_validation_families'],previous['missing_validation_families']+
+            ['paid_selector_http_outcomes','paid_selector_request_provenance'])
+        self.assertEqual(set(result)-set(previous),{'observed_selector_case_ids','observed_selector_snapshot_count'})
+        for key in previous:
+            if key!='missing_validation_families': self.assertEqual(result[key],previous[key])
+        self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+
+    def test_selector_receipts_add_only_incomplete_diagnostics(self):
+        self.assert_unavailable(self.inspect(self.baseline))
+
+    def test_closed_request_and_payload_fields_are_enforced_beyond_hash_consistency(self):
+        mutations=[]
+        receipt_fields=('completed','duration_seconds','finished_at','payload','request_id','scope','started_at','status')
+        for key in receipt_fields:
+            mutations.append(('missing-'+key,lambda req,k=key:req.pop(k)))
+        mutations += [('extra',lambda req:req.update(extra=True)),
+            ('not-completed',lambda req:req.update(completed=False)),
+            ('bool-completed',lambda req:req.update(completed=1)),
+            ('request-id',lambda req:req.update(request_id='unexpected'))]
+        for key in ('scope','year','region','idempotency_key'):
+            mutations.append(('missing-payload-'+key,lambda req,k=key:req['payload'].pop(k)))
+        for key,value in [('year',True),('year',2025),('year','2024'),('region','CA'),('scope','models'),
+                          ('idempotency_key','catalog-hydration:'+'A'*24),
+                          ('idempotency_key','catalog-hydration:'+'1'*23),('idempotency_key','other:'+'1'*24),
+                          ('vehicle_id','00000000-0000-0000-0000-000000000001')]:
+            mutations.append(('payload-'+key+'-'+str(value),lambda req,k=key,v=value:req['payload'].update({k:v})))
+        for value in (True,'200',None,201):
+            mutations.append(('status-'+str(value),lambda req,v=value:req.update(status=v)))
+        for value in (True,'0.5',None,-1,121):
+            mutations.append(('duration-'+str(value),lambda req,v=value:req.update(duration_seconds=v)))
+        for key,value in [('started_at','2026-11-03T00:00:00.3Z'),
+            ('started_at','2026-11-02T23:59:59Z'),('finished_at','2026-11-03T00:00:02Z'),
+            ('started_at','2026-11-03T01:00:00.1+01:00'),('finished_at',True)]:
+            mutations.append((key+'-'+str(value),lambda req,k=key,v=value:req.update({k:v})))
+        for name,mutation in mutations:
+            raw=dict(self.baseline)
+            self.alter(raw,lambda m:[mutation(s['selector_ensure_requests'][0])
+                for s in [*m['snapshots'].values(),m['final_snapshot']] if s['selector_ensure_requests']])
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError): self.inspect(raw)
+        for index,key,value in [(1,'make','wrong'),(2,'model','wrong'),(1,'make',None),(2,'model',None)]:
+            raw=dict(self.baseline)
+            self.alter(raw,lambda m:[s['selector_ensure_requests'][index]['payload'].update({key:value})
+                for s in [*m['snapshots'].values(),m['final_snapshot']] if s['selector_ensure_requests']])
+            with self.subTest(index=index,key=key,value=value),self.assertRaises(assembler.ContractError): self.inspect(raw)
+
+    def test_request_inventory_and_later_copy_drift_cannot_hide_behind_pass_flags(self):
+        mutations=[('missing',lambda m:m['snapshots']['selectors']['selector_ensure_requests'].pop()),
+            ('extra',lambda m:m['snapshots']['selectors']['selector_ensure_requests'].append(copy.deepcopy(m['snapshots']['selectors']['selector_ensure_requests'][0]))),
+            ('duplicate-scope',lambda m:m['snapshots']['selectors']['selector_ensure_requests'].__setitem__(1,copy.deepcopy(m['snapshots']['selectors']['selector_ensure_requests'][0]))),
+            ('duplicate-key',lambda m:m['snapshots']['selectors']['selector_ensure_requests'][1]['payload'].update(idempotency_key='catalog-hydration:'+'1'*24)),
+            ('later-order',lambda m:m['snapshots']['unpaid']['selector_ensure_requests'].reverse()),
+            ('later-time',lambda m:m['snapshots']['unpaid']['selector_ensure_requests'][0].update(finished_at='2026-11-03T00:00:00.25Z')),
+            ('final-copy',lambda m:m['final_snapshot']['selector_ensure_requests'][0].update(duration_seconds=0.6)),
+            ('before-request',lambda m:m['snapshots']['before']['selector_ensure_requests'].append(copy.deepcopy(m['snapshots']['selectors']['selector_ensure_requests'][0])))]
+        for name,mutation in mutations:
+            raw=dict(self.baseline);self.alter(raw,mutation)
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError): self.inspect(raw)
+
+    def test_exact_decimal_duration_boundaries_survive_binary_rounding(self):
+        for token,valid in [('0',True),('120',True),('0.00000000000000000000000001',True),
+            ('-0.00000000000000000000000000000000000001',False),('-1e-999',False),
+            ('120.00000000000000000000000000000000000001',False),('NaN',False),('Infinity',False),('1e999',False)]:
+            raw=dict(self.baseline)
+            def mutate(m):
+                for s in [*m['snapshots'].values(),m['final_snapshot']]:
+                    for request in s['selector_ensure_requests']: request['duration_seconds']='NUMBER_TOKEN'
+            self.alter(raw,mutate)
+            raw={ref:data.replace(b'"NUMBER_TOKEN"',token.encode()) for ref,data in raw.items()}
+            PaidPGSnapshotTests().reseal(raw)
+            with self.subTest(token=token):
+                if valid: self.assert_unavailable(self.inspect(raw))
+                else:
+                    code='^paid_selector_duration$' if token not in ('NaN','Infinity','1e999') else 'nonfinite_number'
+                    with self.assertRaisesRegex(assembler.ContractError,code): self.inspect(raw)
+
+    def test_exact_decimal_request_copy_changes_cannot_round_to_the_same_float(self):
+        prefix='paid-access/bankone/'+self.root+'/'
+        for ref in (prefix+'go-measurement.json',prefix+'result.json','workshop-paid-access.json'):
+            raw=dict(self.baseline)
+            raw[ref]=raw[ref].replace(b'"duration_seconds": 0.5',
+                b'"duration_seconds": 0.50000000000000000000000000000001',1)
+            if ref.endswith('go-measurement.json'): PaidPGSnapshotTests().reseal(raw)
+            with self.subTest(ref=ref),self.assertRaisesRegex(assembler.ContractError,'^paid_selector_copy_drift$'):
+                self.inspect(raw)
+
+    def test_initial_concurrent_order_and_incidental_progress_counts_are_not_hardcoded(self):
+        raw=dict(self.baseline)
+        def reorder(m):
+            for phase in self.phases[1:]:
+                s=m['snapshots'][phase];s['selector_ensure_requests'].reverse()
+                for bank in ('bankone','banktwo'):s['provider_traces'][bank].reverse()
+            for phase,index in zip(self.phases[2:],(10,20,30,40)):
+                m['snapshots'][phase].update(grant_calls=index,identity_checks=index+1)
+            m['final_snapshot']['selector_ensure_requests'].reverse()
+            for bank in ('bankone','banktwo'):m['final_snapshot']['provider_traces'][bank].reverse()
+            m['final_snapshot']['grant_calls']=40
+        self.alter(raw,reorder)
+        self.assert_unavailable(self.inspect(raw))
+
+    def test_metadata_and_later_work_must_stay_zero(self):
+        # Check every phase plus the final snapshot for article/model work.
+        for phase in self.phases+('final_snapshot',):
+            for field in ('model_calls','payment_calls'):
+                raw=dict(self.baseline)
+                self.alter(raw,lambda m,p=phase,f=field:(m['final_snapshot'] if p=='final_snapshot' else m['snapshots'][p]).update({f:1}))
+                with self.subTest(phase=phase,field=field),self.assertRaises(assembler.ContractError):self.inspect(raw)
+        for field in ('source_calls','asset_calls'):
+            for bank in ('bankone','banktwo'):
+                raw=dict(self.baseline);self.alter(raw,lambda m:m['snapshots']['unpaid'][field].update({bank:1}))
+                with self.subTest(field=field,bank=bank),self.assertRaises(assembler.ContractError):self.inspect(raw)
+        for field in ('article_jobs','source_revisions','canonical_revisions','published_revisions','publication_events','source_observations'):
+            raw=dict(self.baseline);self.alter(raw,lambda m:m['snapshots']['selectors']['counts'].update({field:1}))
+            # PG-derived counters already reject this independent contradiction.
+            with self.subTest(count=field),self.assertRaises(assembler.ContractError):self.inspect(raw)
+        mutations=[('reader',lambda s:s.update(reader_calls=1)),
+            ('ensure',lambda s:s.update(ensure=dict(entered=1,completed=1,active=0),ensure_requests=[{'scope':'article'}])),
+            ('selector-count',lambda s:s.update(selector_ensure=dict(entered=2,completed=2,active=0),selector_ensure_requests=s['selector_ensure_requests'][:2])),
+            ('proxy',lambda s:s['proxy'].update(request_received=1)),
+            ('capture',lambda s:s['proxy'].update(response_captured=True)),
+            ('errors',lambda s:s['proxy'].update(errors=['observed-error'])),
+            ('workers',lambda s:s['workers'].append(dict(kind='cli',alive=True,exit_code=None)))]
+        for name,mutate in mutations:
+            raw=dict(self.baseline);self.alter(raw,lambda m:mutate(m['snapshots']['selectors']))
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):self.inspect(raw)
+
+    def test_provider_trace_inventory_is_literal_and_stable(self):
+        for value in ['',self.routes[0], 'https://example.invalid'+self.routes[1],
+            self.routes[1]+'#fragment',self.routes[1]+'&extra=1',self.routes[1]+'&year=2024',
+            '/v1/catalog/%6dodels?year=2024&make=example', '/v1/catalog/articles?year=2024']:
+            raw=dict(self.baseline)
+            self.alter(raw,lambda m:[s['provider_traces']['bankone'].__setitem__(1,value)
+                for s in [*m['snapshots'].values(),m['final_snapshot']] if s['provider_traces']['bankone']])
+            with self.subTest(route=value),self.assertRaises(assembler.ContractError):self.inspect(raw)
+        for name,mutation in [('extra',lambda s:s['provider_traces']['bankone'].append(self.routes[0])),
+            ('missing',lambda s:s['provider_traces']['bankone'].pop()),
+            ('count',lambda s:s['provider_calls'].update(bankone=4)),
+            ('later-order',lambda s:s['provider_traces']['banktwo'].reverse())]:
+            raw=dict(self.baseline);self.alter(raw,lambda m:mutation(m['snapshots']['unpaid']))
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):self.inspect(raw)
+
+    def test_monotone_identity_grant_progression_and_final_grant_binding(self):
+        for field in ('grant_calls','identity_checks'):
+            for phase in ('before','selectors','expired'):
+                raw=dict(self.baseline)
+                value=1 if phase in ('before','selectors') else 0
+                self.alter(raw,lambda m:m['snapshots'][phase].update({field:value}))
+                with self.subTest(field=field,phase=phase),self.assertRaises(assembler.ContractError):self.inspect(raw)
+        raw=dict(self.baseline);self.alter(raw,lambda m:m['final_snapshot'].update(grant_calls=5))
+        with self.assertRaises(assembler.ContractError):self.inspect(raw)
+
+    def test_parent_hash_copy_and_identity_guards_are_not_bypassed(self):
+        for name,override in [('candidate',dict(candidate_sha='2'*40)),('base',dict(trusted_base_sha='invalid')),
+            ('profile',dict(profile_sha256='invalid')),('version',dict(profile_version='other'))]:
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):self.inspect(self.baseline,**override)
+        prefix='paid-access/bankone/'+self.root+'/'
+        for name in ('raw-hash','copy','missing','mixed-candidate','bank','nested-base','nested-profile'):
+            raw=dict(self.baseline)
+            if name=='raw-hash':raw[prefix+'measured-runtime.json']+=b' '
+            elif name=='copy':
+                m=json.loads(raw[prefix+'go-measurement.json']);m['phase_snapshots']['selectors']['grant_calls']=99
+                raw[prefix+'go-measurement.json']=json.dumps(m).encode();PaidPGSnapshotTests().reseal(raw)
+            elif name=='missing':del raw[prefix+'measured-runtime.json']
+            else:
+                key,value={'mixed-candidate':('candidate_sha','2'*40),'bank':('provider','banktwo'),
+                    'nested-base':('trusted_base_sha','2'*40),'nested-profile':('profile_sha256','2'*64)}[name]
+                self.alter(raw,lambda m:m.update({key:value}) if name in ('mixed-candidate','bank') else m['snapshots']['before']['article'].update({key:value}))
+            with self.subTest(mutation=name),self.assertRaises(assembler.ContractError):self.inspect(raw)
+
+    def test_real_confined_store_valid_and_semantic_mutation_remain_conservative(self):
+        for valid in (True,False):
+            raw=dict(self.baseline)
+            if not valid:self.alter(raw,lambda m:m['snapshots']['selectors']['selector_ensure_requests'][0]['payload'].update(year=2025))
+            with tempfile.TemporaryDirectory() as directory,self.real_store(raw,directory) as store:
+                if valid:self.assert_unavailable(assembler.inspect_paid_selector_work(store,**self.invocation()))
+                else:
+                    with self.assertRaises(assembler.ContractError):assembler.inspect_paid_selector_work(store,**self.invocation())
+
+    def test_real_confined_store_rejects_missing_symlink_and_post_read_mutation(self):
+        prefix='paid-access/bankone/'+self.root+'/';ref=prefix+'measured-runtime.json'
+        for mutation in ('missing','symlink','post-read'):
+            with tempfile.TemporaryDirectory() as directory,self.real_store(self.baseline,directory) as store:
+                path=Path(directory)/ref
+                if mutation=='missing':path.unlink()
+                elif mutation=='symlink':path.unlink();path.symlink_to(Path(directory)/'host-before.json')
+                else:
+                    original=store.read_raw_json
+                    def changed(artifact_id,**kwargs):
+                        value=original(artifact_id,**kwargs)
+                        if artifact_id==store.by_ref[ref]['artifact_id']:path.write_bytes(path.read_bytes()+b' ')
+                        return value
+                    store.read_raw_json=changed
+                with self.subTest(mutation=mutation),self.assertRaises(assembler.ContractError):
+                    assembler.inspect_paid_selector_work(store,**self.invocation())
 
 
 if __name__ == '__main__': unittest.main()

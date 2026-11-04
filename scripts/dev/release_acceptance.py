@@ -979,6 +979,127 @@ def inspect_paid_migration_receipts(store, *, candidate_sha, trusted_base_sha, p
     return result
 
 
+def _paid_selector_requests(requests, first, last):
+    """Closed metadata-only v2 requests, with exact decimal duration bounds."""
+    array(requests)
+    require(len(requests) == 3, 'paid_selector_request_inventory')
+    scopes = []; keys = []
+    for request in requests:
+        exact(request, ('completed', 'duration_seconds', 'finished_at', 'payload',
+                        'request_id', 'scope', 'started_at', 'status'))
+        require(request['completed'] is True and type(request['status']) is int and
+                request['status'] == 200 and request['request_id'] == '', 'paid_selector_request')
+        duration = request['duration_seconds']
+        require(type(duration) in (int, Decimal) and 0 <= duration <= 120,
+                'paid_selector_duration')
+        require(first <= timestamp(request['started_at']) <= timestamp(request['finished_at']) <= last,
+                'paid_selector_timestamp')
+        scope = request['scope']; enum(scope, ('makes', 'models', 'configurations'))
+        fields = ('scope', 'year', 'region', 'idempotency_key')
+        if scope != 'makes': fields += ('make',)
+        if scope == 'configurations': fields += ('model',)
+        payload = request['payload']; exact(payload, fields)
+        require(payload['scope'] == scope and type(payload['year']) is int and
+                payload['year'] == 2024 and payload['region'] == 'US' and
+                (scope == 'makes' or payload['make'] == 'example') and
+                (scope != 'configurations' or payload['model'] == 'car'), 'paid_selector_payload')
+        key = payload['idempotency_key']
+        require(type(key) is str and re.fullmatch(r'catalog-hydration:[a-f0-9]{24}', key) is not None,
+                'paid_selector_idempotency_key')
+        scopes.append(scope); keys.append(key)
+    require(set(scopes) == {'makes', 'models', 'configurations'}, 'paid_selector_request_inventory')
+    unique(keys)
+
+
+def inspect_paid_selector_work(store, *, candidate_sha, trusted_base_sha, profile_sha256,
+        input_manifest_sha256, host_before_sha256, expected_driver_sha256,
+        profile_version='paid-selector-v2'):
+    """Two-case selector/work receipt consistency; never acceptance or authority."""
+    result = inspect_paid_migration_receipts(store, candidate_sha=candidate_sha,
+        trusted_base_sha=trusted_base_sha, profile_sha256=profile_sha256,
+        input_manifest_sha256=input_manifest_sha256, host_before_sha256=host_before_sha256,
+        expected_driver_sha256=expected_driver_sha256, profile_version=profile_version)
+
+    def document(ref):
+        require(ref in store.by_ref, 'paid_missing_raw')
+        # Preserve all reserved-identity checks and confined reopen/recheck rules.
+        # Only this explicit layer opts into exact decimal JSON number tokens.
+        return ArtifactStore._read_bound_json(store, store.by_ref[ref]['artifact_id'],
+            lambda raw: _strict_json(raw, MAX_RAW_JSON_BYTES, 'raw_json_size', exact_floats=True),
+            candidate_sha, trusted_base_sha, profile_sha256)
+
+    routes = {'/v1/catalog/makes?year=2024',
+              '/v1/catalog/models?year=2024&make=example',
+              '/v1/catalog/configurations?year=2024&make=example&model=car'}
+    phases = ('before', 'selectors', 'unpaid', 'expired', 'paid_cold', 'unavailable')
+    zero = dict(entered=0, completed=0, active=0)
+    observed = []; snapshot_count = 0
+    name = 'TestPostgresPaidCatalogGrantBeforeWork'
+    collector = document('workshop-paid-access.json')
+    for bank in ('bankone', 'banktwo'):
+        prefix = 'paid-access/'+bank+'/'+name+'/'
+        measured = document(prefix+'measured-runtime.json')
+        case = document(prefix+'result.json')
+        measurement = document(prefix+'go-measurement.json')
+        copies = (case['phase_snapshots'], measurement['phase_snapshots'],
+                  collector['case_results'][name+'-'+bank]['phase_snapshots'])
+        first, last = timestamp(case['started_at']), timestamp(case['finished_at'])
+        snapshots = measured['snapshots']; selectors = snapshots['selectors']
+        previous_grants = previous_identity = 0
+        for phase in phases+('final_snapshot',):
+            final = phase == 'final_snapshot'; before = phase == 'before'
+            snapshot = measured['final_snapshot'] if final else snapshots[phase]
+            require(snapshot['ensure'] == zero and snapshot['ensure_requests'] == [] and
+                    all(value == 0 for value in snapshot['counts'].values()) and
+                    all(snapshot[key] == 0 for key in ('model_calls', 'payment_calls')) and
+                    all(value == 0 for key in ('source_calls', 'asset_calls')
+                        for value in snapshot[key].values()) and snapshot['workers'] == [],
+                    'paid_selector_article_work')
+            proxy = snapshot['proxy']
+            require(all(proxy[key] == 0 for key in ('request_received', 'upstream_completed',
+                        'downstream_completed', 'downstream_waiting')) and
+                    proxy['response_captured'] is False and proxy['errors'] == [], 'paid_selector_proxy_work')
+            if not final:
+                require(snapshot['reader_calls'] == 0, 'paid_selector_reader_work')
+                require(snapshot['grant_calls'] >= previous_grants and
+                        snapshot['identity_checks'] >= previous_identity, 'paid_selector_progression')
+                previous_grants, previous_identity = snapshot['grant_calls'], snapshot['identity_checks']
+            else:
+                require(snapshot['grant_calls'] == previous_grants, 'paid_selector_final_grants')
+            if phase == 'selectors':
+                require(snapshot['grant_calls'] == snapshot['identity_checks'] == 0,
+                        'paid_selector_metadata_identity')
+            expected_count = 0 if before else 3
+            require(snapshot['selector_ensure'] == dict(entered=expected_count,
+                    completed=expected_count, active=0), 'paid_selector_request_inventory')
+            requests = snapshot['selector_ensure_requests']
+            if before:
+                require(requests == [], 'paid_selector_request_inventory')
+            else:
+                _paid_selector_requests(requests, first, last)
+                # Each item has been typed above; compare parsed numeric values
+                # directly rather than converting Decimals to binary floats.
+                require(requests == selectors['selector_ensure_requests'], 'paid_selector_request_drift')
+            if not final:
+                require(all(requests == copy[phase]['selector_ensure_requests'] for copy in copies),
+                        'paid_selector_copy_drift')
+            for provider in ('bankone', 'banktwo'):
+                trace = snapshot['provider_traces'][provider]
+                require(snapshot['provider_calls'][provider] == expected_count and
+                        len(trace) == expected_count and set(trace) == (set() if before else routes),
+                        'paid_selector_provider_routes')
+                if not before:
+                    require(trace == selectors['provider_traces'][provider], 'paid_selector_trace_drift')
+            snapshot_count += 1
+        observed.append(name+'-'+bank)
+    store.recheck()
+    result['observed_selector_case_ids'] = observed
+    result['observed_selector_snapshot_count'] = snapshot_count
+    result['missing_validation_families'].extend(('paid_selector_http_outcomes',
+                                                 'paid_selector_request_provenance'))
+    return result
+
+
 def references(value, artifacts):
     array(value)
     for ref in value:

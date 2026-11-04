@@ -269,6 +269,48 @@ false; `observed_migration_phase_count` is diagnostic only. CLI plan/validate ne
 select this layer. Source/document/media corroboration and DTO remain unfinished,
 and no historical run or acceptance profile is promoted by these checks.
 
+
+The internal `inspect_paid_selector_work` layer applies the complete existing
+common/PG/migration receipt chain first, then interprets only the two fixed
+`TestPostgresPaidCatalogGrantBeforeWork` Bankone/Banktwo cases. It checks six
+phase snapshots per case plus each final snapshot: fourteen diagnostic snapshots.
+It never supplies a final reader/identity counter absent from the producer.
+The other ten paid cases retain exactly their existing validation depth.
+
+Its closed selector request records require the exact eight fields, completed
+status 200, empty test-transport request ID, three distinct makes/models/
+configurations scopes and idempotency keys, and scope-specific closed payloads
+for 2024/US/example/car. Request times must lie inside their child case; finite
+JSON durations use exact decimal values within inclusive 0–120 seconds. Negative
+nonzero decimals and values just above 120 cannot underflow or round into range.
+Monotonic elapsed time is not asserted equal to wall-clock timestamp subtraction.
+The separate exact-number parse preserves the unchanged raw/envelope/transport
+ceilings and all reserved identity checks. Requests in case, Go measurement and
+embedded collector copies are compared using parsed exact numeric values, so
+sub-float duration differences cannot hide behind the older copy checks.
+
+The before snapshot has no selector work; every later snapshot/final has exactly
+three completed metadata requests and three literal provider selector routes per
+bank. Concurrent initial request/trace ordering is allowed, while later lists
+must retain their selected order and values. Article ensure, all six article
+counts, source/asset/model/payment work, proxy activity and worker inventories
+remain zero/empty; six phase reader counters remain zero. Grant/identity counts
+must progress monotonically with zero selector counts, and the final grant count
+must equal the last phase. Mutable account/session/grant SQL rows are not compared
+as immutable whole-snapshot values.
+
+The layer adds only `observed_selector_case_ids` (two literal identities) and
+`observed_selector_snapshot_count` (14). It retains every inherited missing
+validation family, including `paid_selector_work_and_model`, and explicitly adds
+`paid_selector_http_outcomes` and `paid_selector_request_provenance`. HTTP status,
+body, headers, actual execution, source/model/lifecycle semantics, supervisor
+provenance and authority remain unverified. Results always remain unavailable/
+incomplete, verified case IDs stay empty and every verification/deployment/
+cutover flag remains false. No profile, filename, raw kind or CLI command selects
+this API. Synthetic mutation tests and confined-store checks provide parser
+regression coverage and contribute zero product acceptance cases.
+
+
 Bounded local checks:
 
 ```sh
