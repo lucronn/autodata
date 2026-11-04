@@ -700,6 +700,18 @@
       "implementation_changes_allowed": false,
       "simulation_dispatch_authorized": false,
       "runtime_verified": false
+    },
+    {
+      "id": "workshop-pg17-offline",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-pg17-offline.json",
+      "depends_on": [
+        "workshop-pg17-cap-order"
+      ],
+      "state": "local_draft_offline_and_OOM_pending_review_before_sync",
+      "release_state": "unverified",
+      "implementation_changes_allowed": false,
+      "simulation_dispatch_authorized": false,
+      "runtime_verified": false
     }
   ],
   "execution": {

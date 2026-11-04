@@ -1,0 +1,63 @@
+{
+  "task_id": "workshop-pg17-offline",
+  "goal": "Propose one fresh offline Task1B simulation with explicit no-network/empty-repository APK argv and only source-proven created-false to stopped-null OomKillDisable lifecycle comparison; preserve all stderr/signature/state/cleanup guards.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-offline.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-pg17-offline.json",
+  "allowed_paths": [],
+  "status": "draft",
+  "pre_implementation": {
+    "goal": "Propose one fresh offline Task1B simulation with explicit no-network/empty-repository APK argv and only source-proven created-false to stopped-null OomKillDisable lifecycle comparison; preserve all stderr/signature/state/cleanup guards.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-offline.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-acquisition-receipts.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-acquisition-overlay.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-inspected-preparation.md",
+      "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+      "docs/operations/workshop-gcp.md",
+      "docs/architecture/infrastructure-and-dev.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/verification/2026-11-04-pg17-runner-preparation.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-bind-targets.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-mount-order.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-control-filter.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-closure-acceptance.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-task1b-simulation.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-cap-order.md"
+    ],
+    "todo": [
+      "Keep this draft LOCAL/UNSYNCHRONIZED pending independent draft review; do not mutate Issue186/Project8 while publisher owns tracking and do not run Docker/retry/install/image/PG/harness.",
+      "Independently review exact new script/argv/zero-byte override/source proof and phase-bound OomKillDisable predicate plus all pure negative fixtures; preserve failed result/diagnosis as failed, no retrospective acceptance.",
+      "Only after coordinator authorizes tracking: preserve full CURRENT Project index/detail verbatim/hash, synchronize Issue186/Project8/canonical docs/task, commit/push a new gate and pin full-SHA passing preflight.",
+      "Only after independent exact synchronized-gate review/adoption/root verification/fresh dispatch: one NEW empty PREP/container, exact33 verification/20 selected simulation, every apk invocation explicitly offline with pinned empty override, unchanged original repositories/keys, empty stderr.",
+      "Require created/stopped empty bind target/export/diff/27+45 baseline/lock/BusyBox/Config/Mounts/CapAdd/cleanup/volume proofs; normalize only exact false-created to null-stopped on exact unsupported engine context; any other discrepancy stops/no retry. Installation/image/Task2 remain unauthorized."
+    ],
+    "status": "draft",
+    "updated_at": "2026-11-04T04:10:26.036266+00:00",
+    "source_integration_base_sha": "581e6c1d35e2b3c4d8ddedea2fbbd11e029cfcc1",
+    "implementation_allowlist": [],
+    "evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-offline-evidence.json",
+    "independent_review": "pending_local_draft_review_before_sync",
+    "tracking_sync": null,
+    "simulation_dispatch_authorized": false,
+    "install_authorized": false,
+    "image_commit_authorized": false,
+    "task2_authorized": false,
+    "runtime_verified": false,
+    "production_ready": false
+  },
+  "todo": [
+    "Keep this draft LOCAL/UNSYNCHRONIZED pending independent draft review; do not mutate Issue186/Project8 while publisher owns tracking and do not run Docker/retry/install/image/PG/harness.",
+    "Independently review exact new script/argv/zero-byte override/source proof and phase-bound OomKillDisable predicate plus all pure negative fixtures; preserve failed result/diagnosis as failed, no retrospective acceptance.",
+    "Only after coordinator authorizes tracking: preserve full CURRENT Project index/detail verbatim/hash, synchronize Issue186/Project8/canonical docs/task, commit/push a new gate and pin full-SHA passing preflight.",
+    "Only after independent exact synchronized-gate review/adoption/root verification/fresh dispatch: one NEW empty PREP/container, exact33 verification/20 selected simulation, every apk invocation explicitly offline with pinned empty override, unchanged original repositories/keys, empty stderr.",
+    "Require created/stopped empty bind target/export/diff/27+45 baseline/lock/BusyBox/Config/Mounts/CapAdd/cleanup/volume proofs; normalize only exact false-created to null-stopped on exact unsupported engine context; any other discrepancy stops/no retry. Installation/image/Task2 remain unauthorized."
+  ],
+  "execution": {
+    "mode": "local_docs_only_unsynchronized",
+    "simulation": "unauthorized",
+    "installation": "unauthorized",
+    "task2": "unauthorized"
+  }
+}

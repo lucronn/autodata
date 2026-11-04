@@ -1,0 +1,127 @@
+# Workshop PG17 Explicit Offline APK and OOM Lifecycle Local Successor Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans only after independent review, synchronized committed gate/full-SHA preflight, adoption/root verification and fresh ONE-attempt simulation dispatch. LOCAL DRAFT ONLY; no Docker or implementation authority.
+
+**Goal:** Propose one fresh offline Task1B simulation with explicit no-network/empty-repository APK argv and only source-proven created-false to stopped-null OomKillDisable lifecycle comparison; preserve all stderr/signature/state/cleanup guards.
+
+**Architecture:** Preserve the accepted33/selected20 offline simulator and every guard, modifying only APK argv to exclude all repository loading/network on all five invocations and a source-proven single HostConfig lifecycle representation. Never accept warnings or bypass signatures; never normalize another field.
+
+**Tech Stack:** Exact cached PG17.11/Alpine3.24.3/apk3.0.8, Engine28.5.2+dfsg4/API1.51/cgroupv2/overlay2; host pure Python evidence.
+
+**Spec:** `docs/superpowers/plans/2026-11-04-workshop-pg17-task1b-simulation.md`, `docs/superpowers/plans/2026-11-04-workshop-pg17-cap-order.md`, canonical `docs/agents/pre-implementation-gate.md`.
+Issue: https://github.com/lucronn/autodata/issues/186
+Project: https://github.com/users/lucronn/projects/8; item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`.
+Local branch `codex/workshop-pg17-offline-plan`; base adopted receipt `581e6c1d35e2b3c4d8ddedea2fbbd11e029cfcc1`. Status DRAFT/UNSYNCHRONIZED. No GitHub mutation or push until coordinator authorizes after independent draft review; no runtime until a later exact synchronized-gate review/adoption/root dispatch.
+
+## Failed history and actual observations
+
+Under adopted gate `cde9652c0e3dce9a9083540d15cb25b3682f144d`, fresh exact container `1b176532694e08222daaff096bc6489fc769f96f1a51f95f4c2c28ef93feac67` ran one payload in network none and was removed. Raw `/home/corp/autodata-evidence/pg17-task1b-simulation-20261104-02/evidence/task1b-result.json` SHA256 `c1f6af1f8242eff80da993cef370e8bdd7cbd47da2a7f4fc5c2731bbf36d9c29`; diagnosis `task1b-diagnosis.json` SHA256 `0660472e7f2a2a72403cd609ce60ef615e0e301c830e4c08f5e2e2c279edf4ab`.
+
+Prestart guards/27copies-before-export/diff passed. Process exit0/noOOM/emptyError, stdout8914bytes and stderr837bytes. Stderr had six WARNING lines: official main/community index DNS transient warnings twice and missing-cache warnings once. Only `apk add` had explicit `--no-network`; `info`/`verify` retained global repository initialization. The warnings are rejected, never suppressed or reclassified as success. Exact command attribution is a source-backed diagnosis, not separately framed per-command stderr proof. Network namespace none prevented successful repository acquisition; no package fetch/install occurred. stdout20 proposed additions/66 signature OK lines/65-package summary is diagnostic ONLY. Stopped27 copies/export were not run after fail; missing proof blocks retrospective acceptance regardless of a new predicate.
+
+Read-only full retained HostConfig comparison separately finds ONLY created `OomKillDisable: false` to stopped `null`. Raw complete inspect/hashes and source facts are in `docs/agents/records/2026-11-04-workshop-pg17-offline-evidence.json`. Config and prior complete Mounts predicates remain unchanged. Exact-owned rm--volumes/absence/empty exact-ID ps, all33/control unchanged hashes and full4volume equality passed. Independent coordinator accepted failure diagnosis/cleanup ONLY, not simulation success. Preserve all failed receipts and both quarantined historical33APK sets; never reuse old container/PREP or treat new pure replay as acceptance.
+
+## Narrow APK CLI remedy supported by exact3.0.8 source
+
+Pin apk-tools source commit `44dcdfc255c26a4e19a4a27f66a54169cce5ca72` (v3.0.8). `src/apk.c` SHA256 `929d3ae791aaf8fa7f3ae0881e307822ca0b38bb08a3debc23038d4d7115e5d9`: global network BOOL and repositories-file ARG options lines65/74, handling159-160/186-187; parser338-397 implements `no-` for BOOL;411-415 applies global options to every applet;579 onward parses argv. The explicit full option spelling is supported before info/verify/add, not a guessed shorthand. `src/database.c` SHA256 `70ed32b5276d67b75a1cb923bfe503f2e698e8f3fb6e764176c0d29926d0b335` lines1538-1539 avoids remote update when APK_NO_NETWORK;2170-2180 uses ONLY non-null explicit repositories_file instead of `/etc/apk/repositories` AND the etc/lib repositories.d trees. Empty regular file therefore supplies zero repositories. `--no-network` alone can still warn about missing configured cached indexes, so use BOTH options on EVERY invocation.
+
+Preserve `cmp /etc/apk/repositories /control/repositories` and original official two-line repository bytes. Do not edit/empty the image repositories file, remove keys, add repositories/indexes, prefill caches, change roots, bypass trust, accept warnings or add force/no-scripts flags. New additional control file `empty-repositories` is regular uid1000-owned0444, zero bytes, SHA256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`, no symlink/hardlink, under same private read-only `/control` bind. Hash exact three control files before create/start/after removal; reject extra/mutated files. No new mount/cap/env needed. All33 APK paths, accepted manifest and signing keys/signature verification remain identical.
+
+Source load_config reads APK_CONFIG or `/etc/apk/config`, then `/lib/apk/config` before argv. Complete retained exact-base `/etc/apk` and `/lib` snapshots prove both default config files absent, inherited Env has no APK_CONFIG/APK_ variables; require those absence facts unchanged in new prestart snapshots/full Config. No arbitrary inherited environment or command-line `--repository`/`--repository-config`. This makes the explicit empty-file repository override effective without hidden configured repository_list additions. These are read-only source/baseline proofs, not an executed new-payload claim.
+
+After future authority only, write exact fixed `simulate.sh`, SHA256 `ece9cb3058ebb2210c91e8d56e572c495b5e1522084d7fc13c658cd1949d73bf`; preserve parser SHA256 `f2a0c79a1c27acbdb66a4d269ff3e922b49c628989487229e31bad55bea04dca` unchanged:
+
+```sh
+#!/bin/sh
+set -eu
+umask 022
+cmp /etc/apk/repositories /control/repositories
+printf '%s\n' 'AUTODATA_PG17_BASELINE_BEFORE_BEGIN'
+apk --no-network --repositories-file /control/empty-repositories info -vv
+printf '%s\n' 'AUTODATA_PG17_BASELINE_BEFORE_END'
+printf '%s\n' 'AUTODATA_PG17_VERIFY_BEFORE_BEGIN'
+apk --no-network --repositories-file /control/empty-repositories verify /apks/binutils-2.45.1-r1.apk /apks/gcc-15.2.0-r5.apk /apks/gdbm-1.26-r0.apk /apks/gmp-6.3.0-r4.apk /apks/isl26-0.26-r2.apk /apks/jansson-2.15.0-r0.apk /apks/libatomic-15.2.0-r5.apk /apks/libbz2-1.0.8-r6.apk /apks/libcrypto3-3.5.9-r0.apk /apks/libexpat-2.10.0-r0.apk /apks/libffi-3.5.2-r1.apk /apks/libgcc-15.2.0-r5.apk /apks/libgcc-static-15.2.0-r5.apk /apks/libgomp-15.2.0-r5.apk /apks/libncursesw-6.6_p20260516-r0.apk /apks/libpanelw-6.6_p20260516-r0.apk /apks/libssl3-3.5.9-r0.apk /apks/libstdc++-15.2.0-r5.apk /apks/mpc1-1.3.1-r1.apk /apks/mpdecimal-4.0.1-r0.apk /apks/mpfr4-4.2.2-r0.apk /apks/musl-1.2.6-r3.apk /apks/musl-dev-1.2.6-r3.apk /apks/ncurses-terminfo-base-6.6_p20260516-r0.apk /apks/pyc-3.14.10-r1.apk /apks/python3-3.14.10-r1.apk /apks/python3-pyc-3.14.10-r1.apk /apks/python3-pycache-pyc0-3.14.10-r1.apk /apks/readline-8.3.3-r1.apk /apks/sqlite-libs-3.53.4-r0.apk /apks/xz-libs-5.8.4-r0.apk /apks/zlib-1.3.2-r1.apk /apks/zstd-libs-1.5.7-r2.apk
+printf '%s\n' 'AUTODATA_PG17_VERIFY_BEFORE_END'
+printf '%s\n' 'AUTODATA_PG17_SIMULATION_BEGIN'
+apk --no-network --repositories-file /control/empty-repositories add --simulate /apks/binutils-2.45.1-r1.apk /apks/gcc-15.2.0-r5.apk /apks/gmp-6.3.0-r4.apk /apks/isl26-0.26-r2.apk /apks/jansson-2.15.0-r0.apk /apks/libatomic-15.2.0-r5.apk /apks/libbz2-1.0.8-r6.apk /apks/libexpat-2.10.0-r0.apk /apks/libgcc-static-15.2.0-r5.apk /apks/libgomp-15.2.0-r5.apk /apks/libpanelw-6.6_p20260516-r0.apk /apks/mpc1-1.3.1-r1.apk /apks/mpdecimal-4.0.1-r0.apk /apks/mpfr4-4.2.2-r0.apk /apks/musl-dev-1.2.6-r3.apk /apks/pyc-3.14.10-r1.apk /apks/python3-3.14.10-r1.apk /apks/python3-pyc-3.14.10-r1.apk /apks/python3-pycache-pyc0-3.14.10-r1.apk /apks/sqlite-libs-3.53.4-r0.apk
+printf '%s\n' 'AUTODATA_PG17_SIMULATION_END'
+printf '%s\n' 'AUTODATA_PG17_VERIFY_AFTER_BEGIN'
+apk --no-network --repositories-file /control/empty-repositories verify /apks/binutils-2.45.1-r1.apk /apks/gcc-15.2.0-r5.apk /apks/gdbm-1.26-r0.apk /apks/gmp-6.3.0-r4.apk /apks/isl26-0.26-r2.apk /apks/jansson-2.15.0-r0.apk /apks/libatomic-15.2.0-r5.apk /apks/libbz2-1.0.8-r6.apk /apks/libcrypto3-3.5.9-r0.apk /apks/libexpat-2.10.0-r0.apk /apks/libffi-3.5.2-r1.apk /apks/libgcc-15.2.0-r5.apk /apks/libgcc-static-15.2.0-r5.apk /apks/libgomp-15.2.0-r5.apk /apks/libncursesw-6.6_p20260516-r0.apk /apks/libpanelw-6.6_p20260516-r0.apk /apks/libssl3-3.5.9-r0.apk /apks/libstdc++-15.2.0-r5.apk /apks/mpc1-1.3.1-r1.apk /apks/mpdecimal-4.0.1-r0.apk /apks/mpfr4-4.2.2-r0.apk /apks/musl-1.2.6-r3.apk /apks/musl-dev-1.2.6-r3.apk /apks/ncurses-terminfo-base-6.6_p20260516-r0.apk /apks/pyc-3.14.10-r1.apk /apks/python3-3.14.10-r1.apk /apks/python3-pyc-3.14.10-r1.apk /apks/python3-pycache-pyc0-3.14.10-r1.apk /apks/readline-8.3.3-r1.apk /apks/sqlite-libs-3.53.4-r0.apk /apks/xz-libs-5.8.4-r0.apk /apks/zlib-1.3.2-r1.apk /apks/zstd-libs-1.5.7-r2.apk
+printf '%s\n' 'AUTODATA_PG17_VERIFY_AFTER_END'
+printf '%s\n' 'AUTODATA_PG17_BASELINE_AFTER_BEGIN'
+apk --no-network --repositories-file /control/empty-repositories info -vv
+printf '%s\n' 'AUTODATA_PG17_BASELINE_AFTER_END'
+```
+
+There are exactly five APK invocations, each beginning literal `apk --no-network --repositories-file /control/empty-repositories`. Both info sections and both33-path signature verification sections keep their exact output contract. Add keeps literal20 operands and `--simulate`. Future installation remains denied; any later installation gate must use the same offline/empty-file prefix/selected20 inputs, only removing `--simulate` under a new explicit gate.
+
+## Separate source-proven OomKillDisable lifecycle rule
+
+Exact retained Engine Server GitCommit `3ef3c07c883be49a2e8097bcf6d2952fce1d70eb`, version28.5.2+dfsg4/API1.51, info Driver overlay2/CgroupVersion2/OomKillDisable=false. Read-only GitHub source at THAT full Engine commit resolved (not inferred only from version tag):
+
+- `daemon/create.go` SHA256 `aa0547d665ea755bbe5535f7e689ece376b43a274a40382d99b1e3eb97754da7`: verifyContainerSettings92 BEFORE adaptContainerSettings124.
+- `daemon/daemon_unix.go` SHA256 `adf696737ec09d33b2fbee4c6252c8f99d15d018d6555915aef870e5f4cb251d`: adapt377-379 sets nil OomKillDisable pointer to false; verify470-476 resets a nonnil pointer to nil when sysInfo lacks support, warning only if pointer was true.
+- `daemon/start.go` SHA256 `e5ca94459cf0eb89fc1c600671886700425cf20c460d15f56aef8e380c35b383`:63-65 re-verifies the same HostConfig before start, discarding unsupported false pointer to nil; typed API pointer `*bool` in hostconfig.go yields JSON null.
+
+Thus pinned unsupported engine context plus raw false-created/null-stopped independently supports this representation transition without disabling OOM killer or changing memory bounds. Source correspondence is exact GitCommit plus observed behavior; it is not blanket source/binary equivalence or a rule for arbitrary Docker versions/hosts.
+
+New guard below carries prior CapAdd-only normalization unchanged. At every created inspection require actual OomKillDisable is literal boolean False and created/never-started phase proof; at every stopped inspection require literal None/null and independently exited/Runningfalse/Exit0/OOMfalse/Error-empty proof. Use the SAME immutable fully validated created HostConfig as anchor, including in stopped export before/after comparisons. Do not compare two stopped objects in isolation or normalize before proving lifecycle. Validate exact full current raw Docker version/info and derive ENGINE_CONTEXT as below, retaining complete raw JSON/hash; unknown/drifted/unsupported context blocks. Do not synthesize or overwrite raw inspect records.
+
+```python
+import copy, hashlib, json
+APPROVED_CAP_ADD = frozenset({"CAP_CHOWN", "CAP_FOWNER", "CAP_DAC_OVERRIDE"})
+def canonical_hostconfig_capadd(value):
+    assert type(value) is dict and "CapAdd" in value
+    caps = value["CapAdd"]
+    assert type(caps) is list and len(caps) == 3
+    assert all(type(cap) is str for cap in caps)
+    assert len(set(caps)) == 3 and set(caps) == APPROVED_CAP_ADD
+    result = copy.deepcopy(value)
+    result["CapAdd"] = sorted(caps)
+    # No other array, field, value or type is discarded or reordered.
+    return json.dumps(result, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False, allow_nan=False).encode("utf-8")
+def compare_complete_hostconfig_capadd(expected, actual):
+    left = canonical_hostconfig_capadd(expected)
+    right = canonical_hostconfig_capadd(actual)
+    assert left == right
+    return hashlib.sha256(left).hexdigest()
+
+EXPECTED_ENGINE_CONTEXT = {"server_version": "28.5.2+dfsg4",
+    "server_git_commit": "3ef3c07c883be49a2e8097bcf6d2952fce1d70eb",
+    "server_api_version": "1.51", "storage_driver": "overlay2",
+    "cgroup_version": "2", "oom_kill_disable_supported": False}
+def compare_phase_hostconfig(validated_created, observed, phase, engine_context):
+    encode = lambda value: json.dumps(value, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=False, allow_nan=False).encode("utf-8")
+    assert encode(engine_context) == encode(EXPECTED_ENGINE_CONTEXT)
+    assert type(validated_created) is dict and type(observed) is dict
+    assert "OomKillDisable" in validated_created and "OomKillDisable" in observed
+    assert validated_created["OomKillDisable"] is False
+    if phase == "created":
+        assert observed["OomKillDisable"] is False
+    elif phase == "stopped":
+        assert observed["OomKillDisable"] is None
+    else:
+        raise AssertionError("unknown inspection phase")
+    # Copy only after phase/engine/type/field checks; retain original raw false/null records.
+    comparison = copy.deepcopy(observed)
+    comparison["OomKillDisable"] = False
+    return compare_complete_hostconfig_capadd(validated_created, comparison)
+```
+
+This allows only createdfalse->stoppednull for OomKillDisable on pinned unsupported context. Creatednull/stoppedfalse/true/numeric0/missing field/unknown phase/engine drift reject. Outside CapAdd order and this exact phase conversion, every complete HostConfig field/type/list order remains strict; Config, identity/labels/argv, State and complete canonical Mounts rules unchanged. No optional capability, resource, network, security, mount or user relaxation. Canonical hash is a comparison artifact; retain original false/null raw records and all original hashes.
+
+## Unchanged lifecycle, next review boundaries and concrete todo
+
+One future NEW empty private PREP/new name/cidfile/new exact-owned container ONLY after independent draft review, coordinator-authorized tracking sync, full-SHA passing gate, independent exact synchronized review/adoption/root verification and fresh dispatch. All accepted33 hash/size/owner/no-link checks, exact20 signature/add selection, original strict empty-stderr/diagnostics/Cc/parser, network none, same3caps,1GiB/2CPU/128pids, three bounded tmpfs/inherited PGDATA override, two readonly binds/no source/secrets/evidence mount remain. New file resides within existing control bind; create argv changes only owned PREP/RUN_ID/gate, never resource authority.
+
+Retain all366 prior pure checks,27base/45package/zero0600lock/BusyBox trigger+script/world/key/PG equality,10prestart cp snapshots BEFORE first created export/diff, empty underlying targets/root-directory metadata, complete created/stopped export limits/tar completion/full diff ONLY A/apks+A/control, all stopped receipts and exact-owned removal/absence/structured full-volume proof. No stderr filtering, retries or relaxed partial state audit. Any difference stops/quarantines the new result and requires a separately reviewed amendment. Installation/image commit/nonroot inspection/PG/harness/Task2/production/provider/cloud/deployment/readiness remain denied.
+
+Local pure tests: 107 new lifecycle/script cases and366 unchanged checks passed (473 total); retained failed-run phase replay is diagnostic only. New payload has NOT executed; no solver success or stopped state audit is claimed. No technical source-support blocker identified for draft review. Blocking work remains independent local draft review; current Issue/Project synchronization/full-SHA machine gate; exact synchronized review/adoption/root verification/fresh dispatch; then actual fully guarded simulation. This draft has no passing synchronized runtime gate.
+
+- [ ] Keep this draft LOCAL/UNSYNCHRONIZED pending independent draft review; do not mutate Issue186/Project8 while publisher owns tracking and do not run Docker/retry/install/image/PG/harness.
+- [ ] Independently review exact new script/argv/zero-byte override/source proof and phase-bound OomKillDisable predicate plus all pure negative fixtures; preserve failed result/diagnosis as failed, no retrospective acceptance.
+- [ ] Only after coordinator authorizes tracking: preserve full CURRENT Project index/detail verbatim/hash, synchronize Issue186/Project8/canonical docs/task, commit/push a new gate and pin full-SHA passing preflight.
+- [ ] Only after independent exact synchronized-gate review/adoption/root verification/fresh dispatch: one NEW empty PREP/container, exact33 verification/20 selected simulation, every apk invocation explicitly offline with pinned empty override, unchanged original repositories/keys, empty stderr.
+- [ ] Require created/stopped empty bind target/export/diff/27+45 baseline/lock/BusyBox/Config/Mounts/CapAdd/cleanup/volume proofs; normalize only exact false-created to null-stopped on exact unsupported engine context; any other discrepancy stops/no retry. Installation/image/Task2 remain unauthorized.
