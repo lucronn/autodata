@@ -548,11 +548,23 @@
       "id": "workshop-pg17-apk-log",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-pg17-apk-log.json",
       "depends_on": [],
-      "state": "plan_only_pending_independent_review",
+      "state": "adopted_tracking_synchronized_retry_held",
       "release_state": "unverified",
       "implementation_changes_allowed": false,
       "preparation_retry_executed": false,
-      "runtime_verified": false
+      "runtime_verified": false,
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621339347",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-04T03:00:29.931234+00:00",
+        "issue_body_sha256": "d559a76b7ab8732ac2068c4f55474194e90dce623190265cd458abcb92f774a9",
+        "issue_comment_sha256": "c763ac57e275b4431d7f79570ae4c9be7a7c1343c80561e8472d151b856a15b3",
+        "project_text_sha256": "dc9aeef76060f53402c540740ae2a5aa7c41d862011d2d23d3f04649ebdf7ca4",
+        "prior_project_text_sha256": "45ae6a38f2a0a0b717a663b7cd66fc3ff0e19210ce1b9b3a621995faa019fe6e",
+        "full_prior_project_index_preserved_in_issue_comment": true
+      }
     }
   ],
   "execution": {
