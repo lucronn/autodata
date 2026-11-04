@@ -199,3 +199,106 @@ class PolicyTests(unittest.TestCase):
                   'command_ms':10000,'source_command_ms':30000,'outer_ms':1800000,
                   'free_bytes':1024**3,'term_ms':2000,'kill_ms':2000}
         self.assertEqual(vars(l),expected)
+
+class StreamingSerializationTests(unittest.TestCase):
+    def test_serialization_charges_before_allocating_next_token(self):
+        for value in ({'x':'a'*100}, {'x':[1]*10}, {'x':{'y':{'z':0}}}):
+            limits=replace(p.Limits(),document_bytes=20,json_string=10,json_members=3,json_depth=2)
+            result=p.serialize_bounded(value,limits)
+            self.assertIsInstance(result,p.Problem);self.assertEqual(result.code,'cap')
+        self.assertEqual(p.serialize_bounded({'a':[1,True,None]},p.Limits()),b'{"a":[1,true,null]}')
+        self.assertIsInstance(p.serialize_bounded({SENTINEL:float('nan')},p.Limits()),p.Problem)
+
+    def test_bounded_parser_and_serializer_observe_operation_budget(self):
+        class Budget:
+            limits=p.Limits()
+            def __init__(self):self.calls=0
+            def check_json(self):
+                self.calls+=1
+                if self.calls>5:raise p._Reject('deadline')
+        self.assertEqual(p.parse_bounded_json([b'"long string"'],Budget()),p.Problem('deadline'))
+        self.assertEqual(p.serialize_bounded({'x':'long string'},Budget()),p.Problem('deadline'))
+
+class ClosedLiteralProjectionTests(unittest.TestCase):
+    def test_daemon_version_never_copies_arbitrary_identifiers(self):
+        c=contract()
+        v={side:{'Version':'27.1.0','ApiVersion':'1.46','MinAPIVersion':'1.24','Os':'linux','Arch':'amd64','GitCommit':'a'*7} for side in ('Client','Server')}
+        self.assertIsInstance(p.project('daemon_version',v,c),p.SafeObservation)
+        for side in ('Client','Server'):
+            for field in ('Version','ApiVersion','MinAPIVersion','GitCommit'):
+                bad=copy.deepcopy(v);bad[side][field]=SENTINEL
+                result=p.project('daemon_version',bad,c)
+                self.assertIsInstance(result,p.Problem);self.assertNotIn(SENTINEL,repr(result))
+
+    def test_unapproved_repository_names_and_config_keys_are_withheld(self):
+        c=contract();v={'Id':p.IMAGES[0],'Os':'linux','Architecture':'amd64',
+            'Config':{'Env':['PATH=/usr/bin:/bin'],'WorkingDir':'/'},
+            'RootFS':{'Type':'layers','Layers':[]},'RepoDigests':['secret-sentinel@sha256:'+'a'*64]}
+        self.assertIsInstance(p.project('image_runner',[v],c),p.Problem)
+        v['RepoDigests']=[];v[SENTINEL]=SENTINEL
+        result=p.project('image_runner',[v],c)
+        self.assertIsInstance(result,p.Problem);self.assertNotIn(SENTINEL,repr(result))
+        d=fixture();d['image_configs'][p.IMAGES[0]][SENTINEL]=SENTINEL
+        self.assertIsInstance(p.admit_contract(json.dumps(d).encode()),p.Problem)
+
+class AdditionalPolicyMatrixTests(unittest.TestCase):
+    def test_exact_argv_manifest_for_all_templates(self):
+        c=contract(commands=list(p.COMMAND_IDS));by={s.id:s for s in c.commands};f=fixture();D=f['docker_abs'];G=f['git_abs'];C=f['checkout'];R=f['prep_root'];T=f['token']
+        g=(G,'--no-optional-locks','-C',C)
+        expected={
+          'git_version':(G,'--version'),'docker_version':(D,'--version'),
+          'compose_version':(D,'compose','version','--format','json'),'context_show':(D,'context','show'),
+          'context_inspect':(D,'context','inspect','default','--format','{{json .}}'),
+          'daemon_version':(D,'version','--format','{{json .}}'),'daemon_info':(D,'info','--format','{{json .}}'),
+          'create_help':(D,'create','--help'),'compose_up_help':(D,'compose','up','--help'),'compose_run_help':(D,'compose','run','--help'),
+          'inventory_names':(D,'ps','-a','--no-trunc','--format','{{.Names}}'),
+          'inventory_owner':(D,'ps','-aq','--no-trunc','--filter','label=autodata.owner='+T),
+          'inventory_project':(D,'ps','-aq','--no-trunc','--filter','label=com.docker.compose.project=autodata-r3-'+T),
+          'git_files':g+('ls-files','--stage','-z'),'git_head':g+('rev-parse','--verify','HEAD'),
+          'git_tree':g+('rev-parse','HEAD^{tree}'),'git_status':g+('status','--porcelain=v1','--untracked-files=all'),
+          'git_remote':g+('remote',),'git_symbolic':g+('symbolic-ref','-q','HEAD')}
+        for key,argv in expected.items():self.assertEqual(by[key].argv,argv)
+        for key in ('compose_baseline','compose_effective'):
+            expected_argv=(D,'compose','--env-file','/dev/null','-p','autodata-r3-'+T,'-f',C+'/infra/compose/compose.article-lifecycle-test.yaml')
+            if key=='compose_effective':expected_argv+=('-f',R+'/effective.json')
+            self.assertEqual(by[key].argv,expected_argv+('config','--format','json'))
+            self.assertEqual(by[key].cwd,C);self.assertEqual(by[key].deadline_ms,30000)
+        for key,image in zip(('image_runner','image_postgres','image_nats','image_minio'),p.IMAGES):self.assertEqual(by[key].argv,(D,'image','inspect',image))
+
+    def test_utf8_multibyte_chunk_boundary_and_collection_bounds(self):
+        self.assertEqual(p.parse_bounded_json([b'"\xf0',b'\x9f\x98',b'\x80"'],p.Limits()),'😀')
+        self.assertEqual(p.parse_bounded_json([b'"\xf0\x9f\x98\x80"'],replace(p.Limits(),json_string=4)),'😀')
+        self.assertEqual(p.parse_bounded_json([b'"\xf0\x9f\x98\x80"'],replace(p.Limits(),json_string=3)),p.Problem('cap'))
+        self.assertEqual(p.parse_bounded_json([b'[0,0]'],replace(p.Limits(),json_members=2)),[0,0])
+        self.assertEqual(p.parse_bounded_json([b'[0,0,0]'],replace(p.Limits(),json_members=2)),p.Problem('cap'))
+        self.assertEqual(p.parse_bounded_json([b'[]'*2],p.Limits()),p.Problem('invalid_json'))
+
+    def test_help_flags_context_tls_and_label_inventory(self):
+        c=contract()
+        for kind,flag in [('create_help','--pull'),('compose_up_help','--no-build'),('compose_run_help','--no-deps')]:
+            self.assertIsInstance(p.project(kind,flag+' '+SENTINEL,c),p.SafeObservation)
+            result=p.project(kind,flag+' '+SENTINEL,c);self.assertNotIn(SENTINEL,repr(result))
+            self.assertIsInstance(p.project(kind,'missing',c),p.Problem)
+        good={'Name':'default','Endpoints':{'docker':{'Host':'unix:///synthetic/docker.sock','SkipTLSVerify':False}}}
+        self.assertIsInstance(p.project('context_inspect',good,c),p.SafeObservation)
+        good['Endpoints']['docker']['SkipTLSVerify']=True
+        self.assertIsInstance(p.project('context_inspect',good,c),p.Problem)
+        for kind in ('inventory_owner','inventory_project'):
+            self.assertIsInstance(p.project(kind,'',c),p.SafeObservation)
+            self.assertEqual(p.project(kind,'a'*64+'\n',c),p.Problem('collision'))
+            self.assertIsInstance(p.project(kind,SENTINEL,c),p.Problem)
+
+class SourceManifestBindingTests(unittest.TestCase):
+    def test_tracked_inventory_requires_independent_manifest_digest(self):
+        from dataclasses import asdict
+        identity=p.Identity(1,10,'regular',1000,1000,0o600,2,1,1,'parent')
+        parent=p.Identity(1,1,'directory',1000,1000,0o700,0,1,1,'anchor')
+        raw='100644 '+'a'*40+' 0\tinput.json\x00'
+        f=fixture();f['approved_files']=[dict(id='file_0',path='/synthetic/clone/input.json',purpose='source',identity=asdict(identity),sha256='c'*64,parents=[asdict(parent)])]
+        bad=p.admit_contract(json.dumps(f).encode())
+        self.assertIsInstance(p.project('git_files',raw,bad),p.Problem)
+        import hashlib
+        f['manifest_pin']=hashlib.sha256(raw.encode()).hexdigest()
+        good=p.admit_contract(json.dumps(f).encode())
+        self.assertIsInstance(p.project('git_files',raw,good),p.SafeObservation)
+        self.assertIsInstance(p.project('git_files',raw.replace('a'*40,'b'*40),good),p.Problem)

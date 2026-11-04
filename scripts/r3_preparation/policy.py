@@ -301,6 +301,12 @@ def admit_contract(document):
         _need(set(d['output_owners'])==set(OUTPUT_NAMES) and all(v in ('collector','operator','reviewer') for v in d['output_owners'].values()) and d['output_owners']['independent-review.md']=='reviewer' and all(d['output_owners'][n]=='collector' for n in ('REPORT.md','SHA256SUMS')))
         _need(type(d['planned_names']) is list and all(_identifier(v) for v in d['planned_names']))
         _need(set(d['image_configs'])==set(IMAGES) and type(d['baseline']) is dict)
+        # This increment admits only an explicitly closed synthetic Config
+        # schema. Additional real Config fields require a later literal review.
+        for cfg in d['image_configs'].values():
+            _need(type(cfg) is dict and set(cfg)=={'Env','WorkingDir'})
+            _need(_path(cfg['WorkingDir']) or cfg['WorkingDir']=='/')
+            _need(type(cfg['Env']) is list and all(type(v) is str and '=' in v and v.split('=',1)[0] in ENV_IMAGE_KEYS for v in cfg['Env']))
         _need(set(d['required_flags'])=={'create_help','compose_up_help','compose_run_help'} and all(type(v) is list and v and all(re.fullmatch('--[a-z-]+',s) for s in v) for v in d['required_flags'].values()))
         gp=d['git_provenance'];_need(set(gp)=={'owner','complete','categories','immutable','plain_clone','config_literal','absent_paths'})
         _need(_identifier(gp['owner']) and type(gp['absent_paths']) is list and len(set(gp['absent_paths']))==len(gp['absent_paths']) and all(_path(x) for x in gp['absent_paths']))
@@ -367,7 +373,8 @@ def project(kind,value,contract):
                 v=value[side];_need(v['Os']=='linux' and v['Arch']=='amd64','unsafe_projection');safe={}
                 for key in ('Version','ApiVersion','MinAPIVersion','Os','Arch','GitCommit'):
                     if key not in v: _need(key=='MinAPIVersion','unsafe_projection');continue
-                    _need(type(v[key]) is str and len(v[key])<=512 and re.fullmatch('[A-Za-z0-9_.+-]+',v[key]),'unsafe_projection')
+                    patterns={'Version':r'[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-z0-9.-]+)?','ApiVersion':r'[0-9]+\.[0-9]+','MinAPIVersion':r'[0-9]+\.[0-9]+','Os':'linux','Arch':'amd64','GitCommit':r'[0-9a-f]{7,40}'}
+                    _need(type(v[key]) is str and len(v[key])<=512 and re.fullmatch(patterns[key],v[key]),'unsafe_projection')
                     safe[key]=v[key]
                 out[side]=safe
         elif kind in ('create_help','compose_up_help','compose_run_help'):
@@ -377,6 +384,7 @@ def project(kind,value,contract):
         elif kind.startswith('image_') and kind in ('image_runner','image_postgres','image_nats','image_minio'):
             index=('image_runner','image_postgres','image_nats','image_minio').index(kind)
             _need(type(value) is list and len(value)==1,'unsafe_projection');v=value[0]
+            _need(type(v) is dict and set(v)=={'Id','Os','Architecture','Config','RootFS','RepoDigests'},'unapproved_key')
             _need(v['Id']==IMAGES[index] and v['Os']=='linux' and v['Architecture']=='amd64','unsafe_projection')
             cfg=v['Config'];_need(type(cfg) is dict,'unsafe_projection')
             if index==0:
@@ -389,7 +397,9 @@ def project(kind,value,contract):
                 if bad:return Problem('unapproved_key',bad)
             _need(cfg==d['image_configs'][IMAGES[index]],'unapproved_key')
             root=v['RootFS'];_need(set(root)=={'Type','Layers'} and root['Type']=='layers' and all(re.fullmatch('sha256:[0-9a-f]{64}',s) for s in root['Layers']),'unsafe_projection')
-            _need(type(v['RepoDigests']) is list and all(type(s) is str and re.fullmatch('[a-z0-9./_-]+@sha256:[0-9a-f]{64}',s) for s in v['RepoDigests']),'unsafe_projection')
+            # No repository-name literal set has been approved in this schema.
+            # Withhold nonempty RepoDigests rather than persist arbitrary names.
+            _need(v['RepoDigests']==[],'missing_prerequisite')
             out={'Id':IMAGES[index],'Os':'linux','Architecture':'amd64','Config':cfg,'config_digest':digest(encode(cfg)),'RootFS':root,'RepoDigests':v['RepoDigests']}
         elif kind in ('compose_baseline','compose_effective'):
             expected=d['baseline'] if kind=='compose_baseline' else effective_model(contract)
@@ -414,8 +424,50 @@ def project(kind,value,contract):
             expected={f.path[len(d['checkout'])+1:] for f in contract.files if f.purpose=='source'};names=set()
             for entry in entries[:-1]:
                 head,path=entry.split('\t',1);_need(re.fullmatch('100(644|755) [0-9a-f]{40} 0',head) is not None and path in expected and path not in names,'unsafe_projection');names.add(path)
-            _need(names==expected,'missing_prerequisite');out={'count':len(names),'digest':digest(value.encode()),'candidate':CANDIDATE}
+            _need(names==expected and digest(value.encode())==d['manifest_pin'],'missing_prerequisite');out={'count':len(names),'digest':digest(value.encode()),'candidate':CANDIDATE}
         else:raise _Reject('unsafe_projection')
         return SafeObservation(kind,freeze(out))
     except _Reject as e:return Problem(e.code)
     except (KeyError,TypeError,ValueError,AttributeError,UnicodeError):return Problem('unsafe_projection')
+
+def serialize_bounded(value,budget):
+    """Serialize closed data incrementally, charging before output allocation."""
+    limits=budget if isinstance(budget,Limits) else budget.limits
+    result=bytearray();nodes=0
+    def tick():
+        if not isinstance(budget,Limits):budget.check_json()
+    def emit(piece):
+        tick();_need(len(result)+len(piece)<=limits.document_bytes,'cap');result.extend(piece)
+    def string(text):
+        _need(type(text) is str,'invalid_json');size=0;emit(b'"')
+        for char in text:
+            tick();_need(not 0xD800<=ord(char)<=0xDFFF,'invalid_json')
+            raw=char.encode('utf-8');size+=len(raw);_need(size<=limits.json_string,'cap')
+            escaped={'"':b'\\"','\\':b'\\\\','\b':b'\\b','\f':b'\\f','\n':b'\\n','\r':b'\\r','\t':b'\\t'}
+            emit(escaped.get(char,('\\u%04x'%ord(char)).encode() if ord(char)<32 else raw))
+        emit(b'"')
+    def write(v,depth=0):
+        nonlocal nodes
+        tick();nodes+=1;_need(nodes<=limits.json_nodes,'cap')
+        if isinstance(v,FrozenMap):v=dict(v)
+        if type(v) in (dict,list,tuple):
+            _need(depth<limits.json_depth and len(v)<=limits.json_members,'cap')
+            mapping=type(v) is dict
+            if mapping:_need(all(type(k) is str for k in v),'invalid_json')
+            emit(b'{' if mapping else b'[')
+            for i,item in enumerate(sorted(v) if mapping else v):
+                if i:emit(b',')
+                if mapping:string(item);emit(b':');write(v[item],depth+1)
+                else:write(item,depth+1)
+            emit(b'}' if mapping else b']')
+        elif type(v) is str:string(v)
+        elif v is None:emit(b'null')
+        elif type(v) is bool:emit(b'true' if v else b'false')
+        elif type(v) is int:
+            _need(v.bit_length()<=426,'cap');text=str(v);_need(len(text)<=128,'cap');emit(text.encode())
+        elif type(v) is float:
+            _need(math.isfinite(v),'invalid_json');emit(repr(v).encode())
+        else:raise _Reject('invalid_json')
+    try:write(value);tick();return bytes(result)
+    except _Reject as e:return Problem(e.code)
+    except (TypeError,ValueError,UnicodeError):return Problem('invalid_json')
