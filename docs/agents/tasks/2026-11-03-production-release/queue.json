@@ -564,6 +564,48 @@
         "project_text_sha256": "0a1d7564da5b9e26b365fc471272c5fc0c092e409abe53efbbf8fe185cb7089d",
         "project_index_note": "921-character index retains prior reference IDs; full original 994-character field is preserved verbatim in the scoped Issue comment."
       }
+    },
+    {
+      "id": "workshop-publisher-transport",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-publisher-transport.json",
+      "depends_on": [
+        "workshop-hosting"
+      ],
+      "state": "planned",
+      "release_state": "unverified",
+      "source_integration_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+      "record_ref": "docs/agents/records/2026-11-03-workshop-publisher-transport.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-publisher-transport.md",
+      "tracking_status": "synchronized",
+      "dispatch_mode": "coordinator_direct",
+      "builder_dispatch": "blocked_pending_committed_pinned_preflight_and_independent_review",
+      "implementation_allowlist": [
+        "infra/deploy/gce/cloud-ops.py",
+        "infra/deploy/gce/test_cloud_ops.py",
+        "docs/operations/workshop-gcp.md"
+      ],
+      "runtime_execution_authorized": false,
+      "goal": "Implement concrete disconnected publisher orchestration for fixed checkout, three image builds/pushes, SBOM/provenance verification and release artifact upload through injected executor/transports, plus a bounded fixed IAP host check; preserve all live execution and readiness denials.",
+      "todo": [
+        "Synchronize this exact publisher-orchestration/host-check goal, three-path allowlist, fixed checkout/build/push/evidence/upload operations, trust/DTOs and five todos in Issue186/Project8 and canonical documents; preserve prior Project index, commit/push and pass pinned preflight before independent coordinator gate review.",
+        "Add failing fake-executor publisher sequencing tests and implement fixed source checkout, three digest-bound build/push operations and post-build registry identity verification; no real executable, network or credential discovery may run.",
+        "Implement deterministic inner release.zip production, bounded SBOM/provenance publish/verify and artifact upload/readback through injected interfaces, with versioned independent transport/payload/member/manifest digests and adversarial identity/subject/signature fixtures.",
+        "Add failing fixed IAP host-check tests and implement only the configured VM deploy.sh check SHA request with strict failed-readiness receipt handling; keep every mutation, schema/service/runtime readiness and CLI/workflow activation unavailable.",
+        "Run focused B and unchanged A regressions, syntax, scope/diff and pinned preflight; commit/push coherent candidates for independent exact-SHA review, retaining red/green evidence and actual authentication/archive compatibility, owner/provider, staging and paid-product gates."
+      ],
+      "limits": "Concrete fixed checkout/build/push/evidence/upload/host-check orchestration through injected fakes only; CLI/workflow/readiness deny; real authenticated adapters and publication evidence separately gated.",
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621071257",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-04T02:40:50.163236+00:00",
+        "issue_body_sha256": "e7c66e46b6ddea09ad6bb9283ca4d12789a584877b9331b8ced74b5a31660277",
+        "issue_comment_sha256": "9ae4e9238132c5bc9dfe24def6d0b7b4759d9cb01d8a87db280e9965b2d329c5",
+        "project_text_sha256": "c796f7369a6ce62f5b391a34a9496a6dfa2cc3875dcebb6725fbd9fad823d7a3",
+        "prior_project_index_sha256": "5ee0f595c306b31fbad80f4b5f4a0053e8fba8441b97277f2d2964a3f538d3b1",
+        "full_prior_project_index_preserved_in_issue_comment": true
+      }
     }
   ],
   "execution": {
