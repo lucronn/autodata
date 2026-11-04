@@ -28,7 +28,7 @@ The two code branches diverge at `e414e8537c8a6f0bc99747f6db09782b7743a949`. Nei
 
 Docs-completion heads `b3e91e6a81db03b9bbb7615c3fb168bdc77c6834` (`codex/workshop-r3-process-transport-gate`) and `47f06f049ee97a57ebdbd3d034c13a303e166c39` (`codex/workshop-r3-preparation-collector-gate`) are documentation branches, not integrated code trees. Preserve their completion receipts as references; do not call either a code integration base.
 
-Coordinator creates a new isolated planning branch `codex/workshop-r3-real-preparation-adapter-gate` from the exact PR241 code pin only after authorization. Future builder branch is `codex/workshop-r3-real-preparation-adapter-build`, created from the externally sealed actual resulting planning checkpoint. No resulting SHA exists yet; `implementation_base_sha` stays null in this proposal. An invented integrated/checkpoint SHA is forbidden.
+The coordinator created the isolated planning branch `codex/workshop-r3-real-preparation-adapter-gate` from the exact PR241 code pin. Future builder branch is `codex/workshop-r3-real-preparation-adapter-build`, created from the externally sealed, independently reviewed planning checkpoint after explicit code-only dispatch. `implementation_base_sha` remains null until then. An invented integrated/checkpoint SHA is forbidden.
 
 Coordinator alone owns the six gate paths:
 

@@ -2,7 +2,7 @@
 
 **Goal:** Implement an independently reviewable Linux preparation adapter that binds approved host/file/Git/Docker observations to the reviewed subprocess primitive, bounded descriptor I/O, nonrenewable budgets, safe evidence projection, and conservative cleanup; defer actual host observations to a separate preparation execution gate.
 
-Canonical decision-complete plan: `docs/superpowers/plans/2026-11-04-workshop-r3-real-preparation-adapter.md`. Its exact ownership, 26-command graph, five implementation milestones and verification matrix are normative alongside this specification. Planning parent is exact PR241 `8f0129cf21ca818c87eb1a3097ad055de9771082`; no resulting checkpoint SHA exists. This document is an external draft and grants no implementation or host authority.
+Canonical decision-complete plan: `docs/superpowers/plans/2026-11-04-workshop-r3-real-preparation-adapter.md`. Its exact ownership, 26-command graph, five implementation milestones and verification matrix are normative alongside this specification. Planning parent is exact PR241 `8f0129cf21ca818c87eb1a3097ad055de9771082`. This committed planning checkpoint grants no implementation or host authority; its pushed head is sealed in external review evidence after each commit.
 
 ## Status and evidence boundary
 
