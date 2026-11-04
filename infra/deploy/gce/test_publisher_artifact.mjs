@@ -278,6 +278,7 @@ test('private cwd cannot use a symlink ancestor before any credential call',asyn
 // fixture evidence only, never an installed owner policy or immutable toolchain.
 async function descriptorDeadlineProbe({mode,source,context:c,runtime}) {
  const fs=(await import('node:fs/promises')).default,{syncBuiltinESMExports}=await import('node:module'),{spawn}=await import('node:child_process'),path=await import('node:path'),{createHash}=await import('node:crypto');
+ const {fstatSync}=await import('node:fs');
  const hash=b=>createHash('sha256').update(b).digest('hex');
  const root=await fs.mkdtemp('/tmp/artifact-deadline-contract-'),tree=path.join(root,'publisher-toolkit'),self=path.join(root,'publisher_artifact.mjs');
  await fs.mkdir(tree);await fs.copyFile(source,self);
@@ -291,12 +292,14 @@ async function descriptorDeadlineProbe({mode,source,context:c,runtime}) {
  await dirs(tree,0o555);
  const originalRead=fs.readFile,originalOpen=fs.open,originalLstat=fs.lstat,ctrl=new AbortController(),deadline=601000;
  let now=1000,mountReads=0,opens=0,spawned=0,readbacks=0,cleanups=0,auth=0,transitioned=false,lateOperations=0,released=false,closedHandle=false,closedHandleAtReturn=false,returnedBeforeRelease=false;
+ let heldHandle,heldFd,independentClose,observation;
+ const fdOpen=()=>{if(heldFd===undefined)return null;try{fstatSync(heldFd);return true;}catch(e){if(e.code==='EBADF')return false;throw e;}};
  const mount='1 0 0:1 / / ro - overlay overlay ro';
  function transition(){transitioned=true;if(mode.includes('deadline'))now=301001;else if(mode==='pending-exhaustion')now=deadline+1;else if(mode.includes('sigterm'))process.kill(process.pid,'SIGTERM');else ctrl.abort();}
  fs.readFile=async(filename,...args)=>{
   if(filename==='/proc/self/mountinfo'){
    mountReads++;
-   if(mountReads===2 && !mode.startsWith('final-') && mode!=='valid' && mode!=='pending-open'){
+   if(mountReads===2 && !mode.startsWith('final-') && mode!=='valid' && mode!=='pending-open' && !mode.startsWith('close-') && !mode.startsWith('closed-')){
     if(mode.startsWith('pending-'))return new Promise(resolve=>{setTimeout(transition,10);setTimeout(()=>{released=true;resolve(mount)},100);});
     transition();
    }
@@ -307,7 +310,18 @@ async function descriptorDeadlineProbe({mode,source,context:c,runtime}) {
  fs.open=async(filename,...args)=>{
   if(transitioned)lateOperations++;
   const handle=await originalOpen(filename,...args);
-  if(filename===path.join(tree,'package-lock.json') && ++opens===4 && mode==='pending-open'){
+  const target=mode==='close-archive'?path.join(root,'archive','release.zip'):path.join(tree,'package-lock.json');
+  const selectedOpen=filename===path.join(tree,'package-lock.json') && ++opens===4;
+  if(filename===target && (selectedOpen || mode==='close-archive') && (mode.startsWith('close-') || mode.startsWith('closed-'))){
+   heldHandle=handle;heldFd=handle.fd;independentClose=handle.close.bind(handle);
+   handle.close=async()=>{
+    if(mode.startsWith('closed-') || mode==='close-after-success'){await independentClose();closedHandle=true;}
+    if(!mode.startsWith('closed-'))throw Error('fixture close detail must be redacted');
+   };
+   if(['close-ordinary','close-after-success','close-archive'].includes(mode))handle.stat=async()=>{throw Error('fixture inspection failure');};
+   else return new Promise(resolve=>{setTimeout(transition,10);setTimeout(()=>{released=true;resolve(handle)},100);});
+  }
+  if(selectedOpen && mode==='pending-open'){
    const close=handle.close.bind(handle);handle.close=async()=>{await close();closedHandle=true;};
    return new Promise(resolve=>{setTimeout(transition,10);setTimeout(()=>{released=true;resolve(handle)},100);});
   }
@@ -327,14 +341,18 @@ async function descriptorDeadlineProbe({mode,source,context:c,runtime}) {
    readback:async()=>{readbacks++;return {artifact_id:'987',artifact_name:request.artifact_name,digest:'sha256:'+hash(outer),outer_bytes:outer,archive_bytes:inner,metadata_sha256:'2'.repeat(64),created_at:'2026-11-03T11:59:00Z',expires_at:'2026-11-10T11:59:00Z',expired:false};},
    spawn:(exe,_args,options)=>{spawned++;child=spawn(exe,['-e',`process.stdin.resume();require('node:fs').writeSync(3,${JSON.stringify(JSON.stringify({id:987,size:outer.length,digest:hash(outer)}))});`],options);return child;}
   });}catch(e){error=e.message;}
-  closedHandleAtReturn=closedHandle;returnedBeforeRelease=!released;
+  closedHandleAtReturn=closedHandle;returnedBeforeRelease=!released;const fdOpenAtReturn=fdOpen();
   await new Promise(resolve=>setTimeout(resolve,150));
-  console.log(JSON.stringify({error,success:!!result,mountReads,spawned,readbacks,cleanups,auth,transitioned,lateOperations,released,closedHandle,closedHandleAtReturn,returnedBeforeRelease}));
+  observation={error,success:!!result,mountReads,spawned,readbacks,cleanups,auth,transitioned,lateOperations,released,closedHandle,closedHandleAtReturn,returnedBeforeRelease,fdOpenAtReturn};
  }finally{
+  // Fixture cleanup is independent of the helper; never let a failed assertion
+  // or rejected production close leak the actual file descriptor.
+  if(heldHandle){if(heldHandle.fd>=0)await independentClose();if(observation)observation.fdOpenAfterFixtureCleanup=fdOpen();}
   fs.readFile=originalRead;fs.open=originalOpen;fs.lstat=originalLstat;syncBuiltinESMExports();
   if(child && child.exitCode===null && child.signalCode===null){try{process.kill(-child.pid,'SIGKILL')}catch{}await new Promise(resolve=>child.once('close',resolve));}
   await dirs(tree,0o755);await fs.rm(root,{recursive:true,force:true});
  }
+ console.log(JSON.stringify(observation));
 }
 function runDescriptorProbe(mode,runtime){
  const source=`(${descriptorDeadlineProbe.toString()})(${JSON.stringify({mode,source:new URL('./publisher_artifact.mjs',import.meta.url).pathname,context:context(),runtime})})`;
@@ -352,4 +370,24 @@ for(const mode of ['deadline','abort','pending-deadline','pending-abort','pendin
 });
 test('verified descriptor positive fixture retains fixed process and readback contract',async t=>{
  const {deps}=await fixture(t),r=runDescriptorProbe('valid',deps.runtime);assert.equal(r.error,null);assert.equal(r.success,true);assert.equal(r.mountReads,2);assert.equal(r.spawned,1);assert.equal(r.readbacks,1);assert.equal(r.cleanups,1);
+});
+
+// Removing close-failure ownership must expose a real still-open descriptor,
+// never downgrade the public error to cancellation/timeout or loader redaction.
+for(const [mode,want,openAtReturn] of [
+ ['close-abort','cleanup_failed',true],
+ ['close-deadline','cleanup_failed',true],
+ ['close-ordinary','cleanup_failed',true],
+ ['close-after-success','cleanup_failed',false],
+ ['close-archive','cleanup_failed',true],
+ ['closed-abort','operation_cancelled',false],
+ ['closed-deadline','operation_timed_out',false],
+])test(`actual FD ${mode} preserves inspection cleanup outcome`,async t=>{
+ const {deps}=await fixture(t),r=runDescriptorProbe(mode,deps.runtime);
+ assert.equal(r.fdOpenAtReturn,openAtReturn,'observe the actual captured FD before independent fixture cleanup');
+ assert.equal(r.fdOpenAfterFixtureCleanup,false,'fixture must independently close its real descriptor');
+ assert.equal(r.error,want);assert.equal(r.spawned,0);assert.equal(r.readbacks,0);assert.equal(r.success,false);assert.equal(r.cleanups,1);
+ assert.equal(r.auth,mode==='close-archive'?0:1);
+ assert.equal(r.lateOperations,0,'failed inspection must not start further file operations');
+ if(mode.endsWith('abort') || mode.endsWith('deadline')){assert.equal(r.transitioned,true);assert.equal(r.released,true);assert.equal(r.returnedBeforeRelease,false);}
 });

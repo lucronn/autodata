@@ -74,8 +74,10 @@ export function parseUploadRequest(raw) {return validateRequest(strictJSON(raw))
 const inspections=new WeakSet();
 function inspectionScope(remaining,signal,reserve) {
  const end=performance.now()+Math.max(0,Math.min(30000,remaining())),controller=new AbortController();
+ const handles=new Set();
  let failure,notify;const cancelled=new Promise(resolve=>{notify=resolve;});
- const cancel=reason=>{if(!failure){failure=reason;controller.abort();notify(Error(reason));}};
+ // Closure failure is sticky, including when abort/timeout won the initial race.
+ const cancel=reason=>{if(!failure || reason==='cleanup_failed'){failure=reason;controller.abort();notify(Error(reason));}};
  const check=()=>{
   if(!failure && signal?.aborted)cancel('operation_cancelled');
   if(!failure && (!(remaining()>0) || performance.now()>=end))cancel('operation_timed_out');
@@ -85,11 +87,16 @@ function inspectionScope(remaining,signal,reserve) {
  const abort=()=>cancel('operation_cancelled');signal?.addEventListener('abort',abort,{once:true});
  const timer=setInterval(()=>{try{check();}catch{}},10);
  const scope={signal:controller.signal,check,
+  acquire(handle){handles.add(handle);},
+  async close(handle){
+   try{await handle.close();handles.delete(handle);}
+   catch{cancel('cleanup_failed');throw Error('cleanup_failed');}
+  },
   async step(operation){check();const result=await operation();check();return result;},
   hash(bytes){const digest=createHash('sha256');for(let i=0;i<bytes.length;i+=1024*1024){check();digest.update(bytes.subarray(i,i+1024*1024));}check();return digest.digest('hex');},
   async run(operation){
    check();let settled=false;
-   const task=Promise.resolve().then(()=>{check();return operation();}).then(result=>{check();return result;});
+   const task=Promise.resolve().then(()=>{check();return operation();}).then(result=>{check();if(handles.size)throw Error('cleanup_failed');return result;});
    task.then(()=>{settled=true;},()=>{settled=true;});
    try{return await Promise.race([task,cancelled.then(error=>{throw error;})]);}
    catch(error){
@@ -97,13 +104,15 @@ function inspectionScope(remaining,signal,reserve) {
     if(!settled){
      const cleanupEnd=performance.now()+Math.max(0,Math.min(30000,reserve()));let cleanupTimer;
      try{
-      const drained=await Promise.race([task.then(()=>true,()=>true),new Promise(resolve=>{
+      const settledWithinReserve=await Promise.race([task.then(()=>true,()=>true),new Promise(resolve=>{
        const expired=()=>{if(!(reserve()>0) || performance.now()>=cleanupEnd)resolve(false);};
        cleanupTimer=setInterval(expired,10);expired();
       })]);
-      if(!drained)throw Error('cleanup_failed');
+      if(!settledWithinReserve)throw Error('cleanup_failed');
      }finally{clearInterval(cleanupTimer);}
     }
+    // Settlement alone says nothing about whether an acquired FD closed.
+    if(failure==='cleanup_failed' || handles.size)throw Error('cleanup_failed');
     throw Error(reason);
    }
   },
@@ -112,19 +121,20 @@ function inspectionScope(remaining,signal,reserve) {
  inspections.add(scope);return scope;
 }
 function localInspection(){const start=performance.now();return inspectionScope(()=>30000-(performance.now()-start),undefined,()=>60000-(performance.now()-start));}
-const unscoped={check(){},step:operation=>operation(),hash};
+const unscoped={check(){},step:operation=>operation(),hash,acquire(){},async close(handle){try{await handle.close();}catch{throw Error('cleanup_failed');}}};
 function sameFile(a,b) {return a.dev===b.dev && a.ino===b.ino && a.size===b.size && a.mode===b.mode && a.uid===b.uid && a.nlink===b.nlink && a.mtimeMs===b.mtimeMs && a.ctimeMs===b.ctimeMs;}
 async function fixedRead(filename,max,expected,scope=unscoped) {
  const before=await scope.step(()=>lstat(filename));require(before.isFile() && before.nlink===1 && before.uid===process.getuid() && before.size<=max);
  if(expected)require(sameFile(before,expected));
  scope.check();const h=await open(filename,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+ scope.acquire(h);
  try {
   scope.check();const start=await scope.step(()=>h.stat());require(start.isFile() && sameFile(before,start));
   const buffer=Buffer.alloc(start.size+1);let offset=0;
   while(offset<buffer.length){const {bytesRead}=await scope.step(()=>h.read(buffer,offset,Math.min(1024*1024,buffer.length-offset),offset));if(!bytesRead)break;offset+=bytesRead;}
   require(offset===start.size && sameFile(start,await scope.step(()=>h.stat())) && sameFile(start,await scope.step(()=>lstat(filename))));
   return buffer.subarray(0,offset);
- }finally{await h.close();}
+ }finally{await scope.close(h);}
 }
 function relativeName(name) {
  require(typeof name==='string' && Buffer.byteLength(name)<=1024 && name.length>0 && !/[\\\x00-\x20\x7f]/.test(name) && !name.startsWith('/'));
