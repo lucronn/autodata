@@ -299,7 +299,10 @@ def validate_artifact(name: str, data: bytes, context: dict) -> tuple[str, ...]:
             lines = data.splitlines(keepends=True)
             if any(len(line) > root["journal"]["max_record_bytes"] for line in lines):
                 return ("journal record cap exceeded",)
-            return validate_journal(tuple(c.strict_json(line) for line in lines))
+            events = tuple(c.strict_json(line) for line in lines)
+            if any(line != c.canonical_json(event) for line, event in zip(lines, events)):
+                return ("journal record is not canonical raw JSON bytes",)
+            return validate_journal(events)
         except (ValueError, UnicodeError):
             return ("invalid journal JSON",)
     contract = {**root["artifact_contracts"], **root["input_contracts"]}.get(name)
@@ -403,7 +406,7 @@ def ownership_matches(expected: dict, observed: dict) -> bool:
     if validate_value("Resource", expected) or validate_value("Resource", observed):
         return False
     keys = ("resource_key", "generation", "kind", "attempt_id", "candidate_sha", "supervisor_sha256",
-            "name", "immutable_id", "created_at", "labels", "process", "filesystem", "owner_resource_key")
+            "name", "immutable_id", "created_at", "labels", "process", "filesystem", "owner_resource_key", "inspect_sha256")
     if any(expected[k] != observed[k] for k in keys):
         return False
     return expected["status"] in ("verified", "stopped") and observed["status"] in ("verified", "stopped")
@@ -445,6 +448,29 @@ def seal_evidence(port, journal: tuple[dict, ...], manifest: dict, terminal: dic
     # The port exposes immutable original bytes for independent comparison.
     if getattr(port, "files", {}).get("journal.jsonl") != journal_bytes:
         raise ValueError("final journal not durably present")
+    if (manifest["attempt_id"] != journal[0]["attempt_id"] or terminal.get("attempt_id") != manifest["attempt_id"]
+            or terminal.get("candidate_sha") != c.CANDIDATE_SHA):
+        raise ValueError("seal attempt/candidate identity mismatch")
+    existing = set(port.files)
+    listed = {row["path"]: row for row in manifest["files"]}
+    if set(listed) != existing:
+        raise ValueError("manifest omitted or invented existing evidence")
+    for path, data in port.files.items():
+        if listed[path]["bytes"] != len(data) or listed[path]["sha256"] != c.digest_bytes(data):
+            raise ValueError("manifest does not bind exact preserved raw evidence bytes")
+    support = set(c.specification()["support_schemas"]["artifact_contracts"])
+    expected_missing = support - existing - {"manifest.json", "terminal.json", "seal.json"}
+    if {row["path"] for row in manifest["missing"]} != expected_missing:
+        raise ValueError("manifest expected-artifact missing map incomplete")
+    terminal_expected = (support | existing) - {"terminal.json", "seal.json"}
+    if {row["path"] for row in terminal.get("artifacts", [])} != terminal_expected:
+        raise ValueError("terminal expected-artifact map incomplete")
+    if "attempt.json" in port.files:
+        attempt = c.strict_json(port.files["attempt.json"])
+        if evidence_errors := validate_artifact("attempt.json", port.files["attempt.json"], {}):
+            raise ValueError("invalid original attempt: " + "; ".join(evidence_errors))
+        if any(terminal[k] != attempt[k] for k in ("attempt_id", "candidate_sha", "supervisor_sha256")):
+            raise ValueError("terminal differs from initialized attempt identity")
     manifest_bytes = c.canonical_json(manifest)
     port.write_exclusive("manifest.json", manifest_bytes)
     port.fsync_parent("manifest.json")

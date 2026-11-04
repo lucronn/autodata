@@ -1,5 +1,6 @@
 """Malformed static evidence and in-memory durable write protocol tests."""
 import copy
+import json
 
 import pytest
 
@@ -19,6 +20,24 @@ def process():
 
 def manifest():
     return dict(attempt_id="a" * 32, sealed=True, files=[], total_bytes=0, missing=[], terminal_sha256=None)
+
+
+def seal_documents(port, state="sealed_unreviewed"):
+    support = set(c.specification()["support_schemas"]["artifact_contracts"])
+    files = [dict(path=name, kind="regular", mode=384, uid=1, gid=1, device=1, inode=i + 1,
+                  bytes=len(data), sha256=c.digest_bytes(data), classification="created", reason=None)
+             for i, (name, data) in enumerate(port.files.items())]
+    missing = [dict(path=name, state="not_started", reason="not produced", sha256=None, bytes=0)
+               for name in sorted(support - set(port.files) - {"manifest.json", "terminal.json", "seal.json"})]
+    m = {**manifest(), "files": files, "total_bytes": sum(row["bytes"] for row in files), "missing": missing}
+    produced = [dict(path=name, state="produced", reason=None, sha256=c.digest_bytes(data), bytes=len(data))
+                for name, data in port.files.items()]
+    m_bytes = c.canonical_json(m)
+    produced.append(dict(path="manifest.json", state="produced", reason=None, sha256=c.digest_bytes(m_bytes), bytes=len(m_bytes)))
+    t = dict(attempt_id="a" * 32, candidate_sha=c.CANDIDATE_SHA, supervisor_sha256="1" * 64,
+             state=state, **{"pass": False}, new_case_credit=0, manifest_sha256=None, journal_sha256="0" * 64,
+             artifacts=produced + missing, failure_reasons=[] if state == "sealed_unreviewed" else ["source failed"], residual_resource_keys=[])
+    return m, t
 
 
 @pytest.mark.parametrize("value", ["f" * 64, 0, False])
@@ -84,10 +103,8 @@ def test_seal_write_order_and_raw_digest_vectors():
     last = e.journal_event(event(action="seal_intent", state="sealing"))
     journal = (last,)
     port.append_fsync("journal.jsonl", c.canonical_json(last))
-    terminal = dict(attempt_id="a" * 32, candidate_sha=c.CANDIDATE_SHA, supervisor_sha256="1" * 64,
-                    state="sealed_unreviewed", **{"pass": False}, new_case_credit=0,
-                    manifest_sha256=None, journal_sha256="0" * 64, artifacts=[], failure_reasons=[], residual_resource_keys=[])
-    seal = e.seal_evidence(port, journal, manifest(), terminal, "2026-11-04T00:00:01Z")
+    m, terminal = seal_documents(port)
+    seal = e.seal_evidence(port, journal, m, terminal, "2026-11-04T00:00:01Z")
     assert list(port.files) == ["journal.jsonl", "manifest.json", "terminal.json", "seal.json"]
     assert seal["manifest_sha256"] == c.digest_bytes(port.files["manifest.json"])
     assert seal["terminal_sha256"] == c.digest_bytes(port.files["terminal.json"])
@@ -95,13 +112,32 @@ def test_seal_write_order_and_raw_digest_vectors():
     assert port.calls[-1] == ("fsync_parent", "seal.json")
     assert e.validate_artifact("seal.json", port.files["seal.json"], {"files": port.files}) == ()
     with pytest.raises(ValueError):
-        e.seal_evidence(port, journal, manifest(), terminal, "later")
+        e.seal_evidence(port, journal, m, terminal, "later")
 
 
 def test_failed_fsync_never_creates_successor_artifacts():
     port = e.MemoryEvidencePort(fail_at="manifest.json")
     journal = (e.journal_event(event(action="seal_intent", state="sealing")),)
     port.append_fsync("journal.jsonl", c.canonical_json(journal[0]))
+    m, terminal = seal_documents(port)
     with pytest.raises(OSError):
-        e.seal_evidence(port, journal, manifest(), {}, "now")
+        e.seal_evidence(port, journal, m, terminal, "now")
     assert "terminal.json" not in port.files and "seal.json" not in port.files
+
+
+def test_journal_rejects_noncanonical_raw_bytes():
+    item = e.journal_event(event())
+    assert e.validate_artifact("journal.jsonl", (json.dumps(item) + "\n").encode(), {})
+
+
+def test_sealing_rejects_omitted_failed_log_and_mismatched_identity():
+    last = e.journal_event(event(action="seal_intent", state="sealing"))
+    for extra_log, terminal_change in ((True, {}), (False, {"attempt_id": "other"}), (False, {"candidate_sha": "0" * 40})):
+        port = e.MemoryEvidencePort()
+        port.append_fsync("journal.jsonl", c.canonical_json(last))
+        m, terminal = seal_documents(port, "failed")
+        if extra_log:
+            port.write_exclusive("api/pytest.stderr.log", b"failure retained\n")
+        with pytest.raises(ValueError):
+            e.seal_evidence(port, (last,), m, {**terminal, **terminal_change}, "now")
+        assert "seal.json" not in port.files

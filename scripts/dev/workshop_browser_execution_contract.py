@@ -67,7 +67,7 @@ def validate_inventory(value: dict) -> None:
 
 
 def absolute_path(value: str) -> str:
-    if not isinstance(value, str) or not value.startswith("/") or any(ch in value for ch in ("\0", "\n", "\r", ",")):
+    if not isinstance(value, str) or not value.startswith("/") or any(ch in value for ch in ("\0", "\n", "\r", ",", "$", "@", "\\")):
         raise ValueError("invalid absolute path")
     if str(PurePosixPath(value)) != value or any(p in (".", "..") for p in value.split("/")):
         raise ValueError("path must be normalized without traversal")
@@ -93,7 +93,7 @@ def disjoint_roots(roots: tuple[str, ...]) -> None:
         absolute_path(root)
     for index, a in enumerate(roots):
         for b in roots[index + 1:]:
-            if a == b or a.startswith(b + "/") or b.startswith(a + "/"):
+            if a == "/" or b == "/" or a == b or a.startswith(b + "/") or b.startswith(a + "/"):
                 raise ValueError("source/tools/cache/evidence roots overlap")
 
 
@@ -367,6 +367,8 @@ def compile_graph(bindings: RuntimeBindings, lane: str) -> tuple[OperationSpec, 
                                  event if kind == "observation_gate" else None, timeout, "/artifacts/operations/" + id))
 
     add(lane + ".reserve", event="owned_directory_reserved_and_fsynced")
+    if lane == "dto":
+        add("dto.api-generation-sealed", event="api.cleaned_and_sealed")
     add(lane + ".net.create", command=resource_command(bindings, lane, "net", "create", depends_on=(ops[-1].id,)))
     add(lane + ".net.inspect", event="owned_network_inspected:exact_id_labels")
     if lane == "api":
@@ -377,14 +379,13 @@ def compile_graph(bindings: RuntimeBindings, lane: str) -> tuple[OperationSpec, 
             for verb in ("create", "start", "inspect"):
                 add(f"api.{role}.{verb}", event=f"bound_command:api.{role}.{verb}:verified_identity")
         add("api.services.started", event="owned_services_started_and_inspected")
-    else:
-        add("dto.api-generation-sealed", event="api.cleaned_and_sealed")
     for verb in ("create", "start", "inspect"):
         add(lane + ".runner." + verb, event=f"bound_command:{lane}.runner.{verb}:verified_identity")
 
     def ready(id, action, origin, case=None, deps=None):
         resource = "runner" if action == "fixture_ready_tls_assets" else {"pg_select_one": "postgres", "nats_info": "nats", "s3_roundtrip": "s3"}.get(action, "database")
-        output = "/artifacts/readiness/" + lane + "/" + ((case + "/") if case else "") + resource + ".json"
+        output_name = "fixture" if action == "fixture_ready_tls_assets" else resource
+        output = "/artifacts/readiness/" + lane + "/" + ((case + "/") if case else "") + output_name + ".json"
         values = dict(action=action, origin=origin, resource_key=lane + "." + resource, case_id=case,
                       input_paths=[], output_path=output, request_timeout_ms=5000, phase_timeout_ms=120000,
                       poll_interval_ms=250, max_polls=480, expected_sha256=None)

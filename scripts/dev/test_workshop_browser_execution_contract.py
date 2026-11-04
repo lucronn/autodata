@@ -33,6 +33,8 @@ def test_strict_json_rejects_ambiguous_values(raw):
     ("module_cache_root", "/offline/a,b"), ("candidate_sha", "0" * 40),
     ("attempt_id", "B" * 32), ("docker_socket", "tcp://localhost"),
     ("images", {"runner": "runner:latest"}),
+    ("source_root", "/"), ("docker", "/${UNRESOLVED_DOCKER}"),
+    ("host_python", "/${UNRESOLVED_PYTHON}"),
 ])
 def test_invalid_bindings_cannot_compile(field, value):
     with pytest.raises(ValueError):
@@ -70,10 +72,21 @@ def test_dto_stays_blocked_and_has_go_before_tls_before_browser():
     assert "live_adapter_not_admitted" in c.graph_blockers(b, "dto")
     ops = c.compile_graph(b, "dto")
     ids = [op.id for op in ops]
+    assert ids.index("dto.api-generation-sealed") < ids.index("dto.net.create")
     assert ids.index("dto.go.start") < ids.index("dto.fixture.ready") < ids.index("dto.browser.start")
     assert not any("migrations" in i or "service.pg" in i for i in ids)
     commands = [op.command for op in ops if op.command]
     assert not any("AUTODATA_LIFECYCLE_TEST" in dict(cmd.environment) for cmd in commands)
+
+
+def test_fixture_readiness_paths_match_frozen_schedule():
+    for lane in ("api", "dto"):
+        ops = c.compile_graph(bindings(), lane)
+        fixture_ops = [op for op in ops if op.readiness and op.readiness["action"] == "fixture_ready_tls_assets"]
+        for op in fixture_ops:
+            case = op.readiness["case_id"]
+            wanted = "/artifacts/readiness/" + lane + "/" + ((case + "/") if case else "") + "fixture.json"
+            assert op.readiness["output_path"] == wanted
 
 
 def test_concrete_command_constructor_requires_observed_ids_and_keeps_isolation():
