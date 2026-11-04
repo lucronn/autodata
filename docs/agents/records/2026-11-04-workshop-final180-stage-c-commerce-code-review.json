@@ -1,0 +1,154 @@
+{
+  "contract": "final180-commerce-code-only-completion-v1",
+  "status": "code_review_pass_ci_pending_at_coordinator_readback",
+  "scope": "Historical restricted synthetic commerce14 adapter code completion; docs-only receipt, no new implementation or runtime dispatch.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-stage-c-commerce.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "gate_sha": "cd9e8355a0ccb055b4327bbbd1ecaf97e7cddbe9",
+  "code_sha": "c4dd59b3ac6a1afb74f7ad1d4f54ef1eb6e7fdad",
+  "source_milestone_sha": "d37744e09491298deba4fd63d15165778ff1c826",
+  "pull_request": "https://github.com/lucronn/autodata/pull/235",
+  "application_candidate": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "gate_review": {
+    "status": "PASS",
+    "findings": [],
+    "provenance": "Coordinator session-attested PASS/no findings at cd9e835; Issue186 comment6639013928, PR233; no independent reviewer file invented",
+    "tracking_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6639013928"
+  },
+  "gate_preflight": {
+    "standalone": "synchronized",
+    "nested": "synchronized",
+    "errors": [],
+    "base_sha": "cd9e8355a0ccb055b4327bbbd1ecaf97e7cddbe9"
+  },
+  "builder_verification": {
+    "path": "/home/corp/autodata-evidence/final180-commerce-build/verification.json",
+    "sha256": "2fe7efa0ee60518c282860716af86e99436d3a4f7baf800087e94071f6cd4731"
+  },
+  "independent_review": {
+    "path": "/home/corp/autodata-evidence/final180-commerce-independent-review/review.json",
+    "sha256": "45667ebb99371465e8c0e56547b917092ed1a214d8a76815b4996a9bef696ae2",
+    "status": "PASS",
+    "findings": [],
+    "completed_at": "2026-11-04T19:10:53.216205+00:00",
+    "independent_focused": {
+      "code_sha": "c4dd59b3ac6a1afb74f7ad1d4f54ef1eb6e7fdad",
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts.dev.test_workshop_final180_commerce_adapter scripts.dev.test_workshop_final180_runner scripts.dev.test_workshop_final180_identity_adapter scripts.dev.test_workshop_final180_catalog_adapter -v",
+      "exit_code": 0,
+      "summary": "----------------------------------------------------------------------\nRan 131 tests in 14.241s\n\nOK",
+      "completed_at": "2026-11-04T19:09:14.973010+00:00"
+    },
+    "contract_products": 4096,
+    "full_suites": "Builder log hashes and source freeze verified; full developer/autonomy suites not independently rerun."
+  },
+  "builder_tests": {
+    "autonomy": {
+      "bytes": 24472,
+      "exit_code": 0,
+      "log": "/home/corp/autodata-evidence/final180-commerce-build/autonomy.log",
+      "result": "OK",
+      "seconds": 52.383,
+      "sha256": "2f2712b1c48bbbaa53922b0fbb2b1960cdb44da84aa602e8f15880f235395f8a",
+      "tests": 146
+    },
+    "commerce": {
+      "bytes": 5824,
+      "exit_code": 0,
+      "log": "/home/corp/autodata-evidence/final180-commerce-build/commerce.log",
+      "result": "OK",
+      "seconds": 4.605,
+      "sha256": "62868ec80dcb0c23044f19441f572a3d2c6ac02444db7a8b324120e2d580091e",
+      "tests": 31
+    },
+    "developer": {
+      "bytes": 66569,
+      "exit_code": 0,
+      "log": "/home/corp/autodata-evidence/final180-commerce-build/developer.log",
+      "result": "OK",
+      "seconds": 542.817,
+      "sha256": "a1355ed8e818f71054d60612e3028831ad632ea9e7e0cb2504c04ff3bfc0fb20",
+      "tests": 391
+    },
+    "focused": {
+      "bytes": 23759,
+      "exit_code": 0,
+      "log": "/home/corp/autodata-evidence/final180-commerce-build/focused.log",
+      "result": "OK",
+      "seconds": 14.963,
+      "sha256": "690bdcd7b1cbf79fcd0e4416fdf454f789390b922c046650f5ae0fcccef1e27d",
+      "tests": 131
+    }
+  },
+  "source_files": [
+    {
+      "bytes": 29905,
+      "path": "docs/verification/workshop-final180-runbook.md",
+      "sha256": "0e7677c76b83fc0006ef45258a5e231c6c29be122ee54701b477d4e2c00f1270"
+    },
+    {
+      "bytes": 39932,
+      "path": "scripts/dev/test_workshop_final180_commerce_adapter.py",
+      "sha256": "193db3d21667b0aecb87648512f6ee8792ddcc1176bab247b9d17319625a78ca"
+    },
+    {
+      "bytes": 25450,
+      "path": "scripts/dev/workshop_final180_commerce_adapter.py",
+      "sha256": "68fe9d269f595f6ea361cf713591bc2735e1ba87a364001bd78cbfe697dabfc4"
+    }
+  ],
+  "scope_checks": {
+    "ast_imports_calls_module_level": "passed",
+    "diff_check": "passed",
+    "exact_three_path_diff": true,
+    "frozen_source_hashes_unchanged": true,
+    "preserved_parent_pins": 9,
+    "runbook_prefix_bytes": 22069,
+    "runbook_prefix_sha256": "0a36f9e46ffa767feacc3a49ead622ce3d424b5eec155300c3df58dde8da89d6",
+    "runbook_prefix_unchanged": true,
+    "syntax": "passed"
+  },
+  "resolved_boundary_finding": "Incomplete exact context/input/Go-support/receipt objects now reject with the ordered stable AdapterError code; final regression independently passed.",
+  "failing_first_evidence": "Builder receipts translation-red.log, serialization-red.log and incomplete-input-red.log were hash-checked; final exact-head focused regression independently passed.",
+  "ci": {
+    "run_url": "https://github.com/lucronn/autodata/actions/runs/41894074351",
+    "code_sha": "c4dd59b3ac6a1afb74f7ad1d4f54ef1eb6e7fdad",
+    "status": "in_progress_at_coordinator_readback",
+    "provenance": "Coordinator dispatch observation; this docs worker did not read back CI and asserts no CI PASS."
+  },
+  "docs_verification": {
+    "evidence_files_hash_checked": 22,
+    "source_files_hash_checked": 3,
+    "protected_pins_hash_checked": 9,
+    "exact_three_path_implementation_diff": true,
+    "remote_build_branch_matches_code_sha": true,
+    "original_gate_task_spec_preserved": true
+  },
+  "tracking": {
+    "writer": "coordinator sole serialized writer",
+    "completion_issue_project_update": "pending_coordinator_serialized_update",
+    "docs_worker_github_writes": false
+  },
+  "accepted_case_credit": 0,
+  "profiles_enabled": false,
+  "enabled_tiers": [],
+  "runtime_lock": null,
+  "run_record": null,
+  "authority": {
+    "fixture_verified": false,
+    "product_candidate_verified": false,
+    "staging_verified": false,
+    "deployment_authorized": false,
+    "cutover_verified": false,
+    "implementation_authorized": false,
+    "runtime_execution_authorized": false,
+    "profile_promotion_authorized": false,
+    "merge_authorized": false
+  },
+  "blockers": [
+    "Full raw/intermediate financial validation and actual installed pytest/JUnit compatibility remain unobserved.",
+    "Authenticated runtime/process/artifact provenance, genuine same-head final180 acceptance, profiles, staging, live/release and promotion remain blocked.",
+    "Exact-head CI was in progress at coordinator readback; no CI success or merge authority is asserted."
+  ],
+  "historical_preservation": "Original synchronized pre-implementation record, task, spec, todo and plan prefix remain unchanged at the gate; this separate receipt does not rewrite the authorizing checkpoint."
+}
