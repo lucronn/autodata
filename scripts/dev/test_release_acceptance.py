@@ -3594,5 +3594,38 @@ class API21RawInspectorTests(unittest.TestCase):
         model=self.model();model[3]['result']['final_snapshot']['model_calls']=2
         self.reject(model)
 
+    def test_nonpass_validates_present_snapshots_cleanup_and_passed_row_internals(self):
+        mutations=(
+            lambda x:x['result'].update(final_snapshot='PRIVATE_SENTINEL'),
+            lambda x:x['result'].update(worker_exits={'invalid':'PRIVATE_SENTINEL'}),
+            lambda x:x['evidence']['results'][0].update(measurement='PRIVATE_SENTINEL'),
+            lambda x:x['evidence']['results'][0].update(restart=[]),
+            lambda x:x['evidence']['results'][0].update(warm=None),
+        )
+        for index,mutate in enumerate(mutations):
+            model=self.model();model[3]['result']['passed']=False;mutate(model[3])
+            with self.subTest(mutation=index):
+                with self.assertRaises(assembler.ContractError) as caught:self.inspect(model,real=True)
+                self.assertNotIn('PRIVATE_SENTINEL',str(caught.exception))
+        for keep_final,keep_cleanup in ((True,True),(True,False),(False,False)):
+            model=self.model();item=model[3];item['result']['passed']=False
+            if not keep_final:item['result'].pop('final_snapshot')
+            if not keep_cleanup:item['result'].pop('worker_exits')
+            result=self.inspect(model,real=True)
+            self.assertEqual(result['diagnostics'],[dict(case_id=item['case']['case_id'],category='producer_partial')])
+            self.assertEqual(len(result['observed_case_ids']),20)
+            self.assertEqual(result['accepted_case_credit'],0)
+
+    def test_isolation_session_distribution_and_nullable_vehicle_fk(self):
+        model=self.model();snapshot=model[9]['result']['final_snapshot']
+        snapshot['paid_rows']['auth_sessions'][2]['customer_account_id']=self.uid(12)
+        self.reseal(snapshot)
+        with self.subTest(distribution='one-owner-two-other'):self.reject(model,real=True)
+        for vehicle in ('not-a-uuid',self.uid(99)):
+            model=self.model();model[3]['result']['final_snapshot']['paid_rows']['dataset_requests'][0]['vehicle_id']=vehicle
+            with self.subTest(vehicle=vehicle):self.reject(model,real=True)
+        model=self.model();model[3]['result']['final_snapshot']['paid_rows']['dataset_requests'][0]['vehicle_id']=None
+        self.assertEqual(self.inspect(model,real=True)['accepted_case_credit'],0)
+
 
 if __name__ == '__main__': unittest.main()

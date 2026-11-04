@@ -548,3 +548,11 @@ completed every counted request, no waiting delivery, and a captured response
 exactly when model calls are positive. Revoked refund rows retain the source's
 `full_refund` reason. Finite nonnegative integer durations are checked without
 floating-point conversion or a fabricated successful-runtime bound.
+
+Nonpass classification still validates every present final snapshot and worker
+cleanup record. A retained passed browser row always undergoes measurement,
+restart and warm validation, even if later child cleanup failed and the overall
+result is `passed:false`; absent optional success fields remain absent. Isolation
+terminal sessions must retain the source's two owner sessions and one other-account
+session. A non-null dataset-request vehicle ID must be a UUID matching the selected
+vehicle; the source's nullable vehicle ID remains allowed.

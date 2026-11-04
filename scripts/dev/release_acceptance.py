@@ -1965,6 +1965,8 @@ def _api21_paid_rows(paid, scope, *, isolation, revoked):
     sessions = paid['auth_sessions']
     require(len(sessions) == (3 if isolation else 1) and
             {row['customer_account_id'] for row in sessions} == set(ids), 'api21_sessions')
+    require(all(sum(row['customer_account_id'] == account['customer_account_id'] for row in sessions) ==
+        (2 if isolation and account['customer_account_id'] == owner['customer_account_id'] else 1) for account in accounts), 'api21_session_owners')
     tokens = []
     for row in sessions:
         require(re.fullmatch(r'\\x[a-f0-9]{64}',row['session_token_hash']) is not None, 'api21_session_hash')
@@ -1983,6 +1985,9 @@ def _api21_paid_rows(paid, scope, *, isolation, revoked):
             (request, ('dataset_request_id','dataset_product_id','organization_id','correlation_id')),
             (projection, ('dataset_projection_id','dataset_request_id','dataset_product_id','entitlement_id'))):
         for key in keys: _paid_uuid(row[key])
+    if request['vehicle_id'] is not None:
+        _paid_uuid(request['vehicle_id'])
+        require(request['vehicle_id'] == scope['vehicle'], 'api21_paid_scope')
     require(order['customer_account_id'] == grant['customer_account_id'] == owner['customer_account_id'] and
         order['organization_id'] == grant['organization_id'] == request['organization_id'] == owner['personal_organization_id'] and
         order['configuration_id'] == grant['configuration_id'] == request['vehicle_key'] == scope['configuration'] and
@@ -2224,57 +2229,65 @@ def inspect_api21_receipts(store, *, candidate_sha, trusted_base_sha, profile_sh
         require((outcomes[index] == 'passed') == passed, 'api21_junit_result_seam')
         screenshot=prefix+'browser/'+engine+'/'+root+'-failure.png'
         require(not passed or screenshot not in raw, 'api21_success_screenshot')
+        google=root == API21_CASES[0][1]; isolation=root == 'test_browser_account_scope_and_revocation_real_api'
+        refund=root == 'test_browser_signed_refund_blocks_old_links_real_api'
+        final_order=None
+        if 'final_snapshot' in result:
+            final_order=_api21_snapshot(result['final_snapshot'],scope,work=not google,isolation=isolation,revoked=refund)
+        if row is not None and row['status'] == 'passed':
+            measurement=row['measurement']; measured=_api21_measurement(measurement,scope,state='revoked' if refund else 'paid')
+            if final_order is not None:
+                _api21_order_seam(measured,final_order)
+                paid=result['final_snapshot']['paid_rows']
+                for key in ('auth_sessions','workshop_orders','entitlements','dataset_requests','dataset_projections'):
+                    require(measurement[key] == len(paid[key]), 'api21_measurement_pg_seam')
+                require(measurement['workshop_checkout_requests'] == len(result['final_snapshot']['immutable_rows']['workshop_checkout_requests']),
+                        'api21_measurement_pg_seam')
+            restart=row['restart']; exact(restart, ('runtime_before','runtime_after','before','after'))
+            for key in ('runtime_before','runtime_after'):
+                exact(restart[key], ('application_generation',)); integer(restart[key]['application_generation'])
+            require(restart['runtime_after']['application_generation'] == restart['runtime_before']['application_generation']+1,
+                    'api21_restart_generation')
+            for key in ('before','after'):
+                order=_api21_measurement(restart[key],scope,state='paid')
+                require(all(order[field] == measured[field] for field in ('order_id','owner','configuration_id','region')),
+                        'api21_restart_order')
+            require(all(restart['before'][key] == restart['after'][key] for key in API21_DURABLE), 'api21_restart_durability')
+            for key in API21_MEASUREMENT:
+                require(measurement[key] >= restart['after'][key], 'api21_measurement_regression')
+            require(isolation or measurement['auth_sessions'] == restart['after']['auth_sessions'], 'api21_session_phase')
+            warm=row['warm']
+            if google: exact(warm, ())
+            else:
+                exact(warm, ('before','after','reader_before','reader_after'))
+                for key in ('before','after'):
+                    order=_api21_snapshot(warm[key],scope,work=True)
+                    require(order['order_id'] == measured['order_id'] and order['customer_account_id'] == measured['owner'] and
+                        order['configuration_id'] == measured['configuration_id'] and order['region'] == measured['region'],
+                        'api21_warm_order')
+                    if final_order is not None:
+                        require(all(order[field] == final_order[field] for field in
+                            ('order_id','customer_account_id','organization_id','configuration_id','dataset_request_id',
+                             'dataset_product_id','entitlement_id')), 'api21_warm_order')
+                for key in ('provider_calls','source_calls','asset_calls','model_calls','counts','immutable_sha256'):
+                    require(warm['before'][key] == warm['after'][key], 'api21_warm_drift')
+                integer(warm['reader_before']); integer(warm['reader_after'])
+                require(warm['reader_after'] > warm['reader_before'] and measurement['image_reads'] >= warm['reader_after'],
+                        'api21_warm_reader')
+        if 'worker_exits' in result:
+            exits=result['worker_exits']; array(exits)
+            require(len(exits) == (0 if google else 2), 'api21_worker_cleanup_inventory')
+            # Equal records are valid: source retains no distinct process identifiers.
+            for worker in exits:
+                exact(worker, ('kind','exit_code','terminated','intentional_cleanup','alive_before_cleanup'))
+                require(worker['kind'] == 'cli' and type(worker['exit_code']) is int and
+                    all(worker[key] is True for key in ('terminated','intentional_cleanup','alive_before_cleanup')),
+                    'api21_worker_cleanup')
         if not passed:
             category='producer_partial' if row is None or row['status'] == 'passed' else 'producer_'+row['status']
             diagnostics.append(dict(case_id=case_id,category=category))
-            continue
-        require(row is not None and row['status'] == 'passed', 'api21_outcome_seam')
-        google=root == API21_CASES[0][1]; isolation=root == 'test_browser_account_scope_and_revocation_real_api'
-        refund=root == 'test_browser_signed_refund_blocks_old_links_real_api'
-        final_order=_api21_snapshot(result['final_snapshot'],scope,work=not google,isolation=isolation,revoked=refund)
-        measurement=row['measurement']; measured=_api21_measurement(measurement,scope,state='revoked' if refund else 'paid')
-        _api21_order_seam(measured,final_order)
-        paid=result['final_snapshot']['paid_rows']
-        for key in ('auth_sessions','workshop_orders','entitlements','dataset_requests','dataset_projections'):
-            require(measurement[key] == len(paid[key]), 'api21_measurement_pg_seam')
-        require(measurement['workshop_checkout_requests'] == len(result['final_snapshot']['immutable_rows']['workshop_checkout_requests']),
-                'api21_measurement_pg_seam')
-        restart=row['restart']; exact(restart, ('runtime_before','runtime_after','before','after'))
-        for key in ('runtime_before','runtime_after'):
-            exact(restart[key], ('application_generation',)); integer(restart[key]['application_generation'])
-        require(restart['runtime_after']['application_generation'] == restart['runtime_before']['application_generation']+1,
-                'api21_restart_generation')
-        for key in ('before','after'):
-            order=_api21_measurement(restart[key],scope,state='paid')
-            require(all(order[field] == measured[field] for field in ('order_id','owner','configuration_id','region')),
-                    'api21_restart_order')
-        require(all(restart['before'][key] == restart['after'][key] for key in API21_DURABLE), 'api21_restart_durability')
-        for key in API21_MEASUREMENT:
-            require(measurement[key] >= restart['after'][key], 'api21_measurement_regression')
-        require(isolation or measurement['auth_sessions'] == restart['after']['auth_sessions'], 'api21_session_phase')
-        warm=row['warm']
-        if google: exact(warm, ())
         else:
-            exact(warm, ('before','after','reader_before','reader_after'))
-            for key in ('before','after'):
-                order=_api21_snapshot(warm[key],scope,work=True)
-                require(all(order[field] == final_order[field] for field in
-                    ('order_id','customer_account_id','organization_id','configuration_id','dataset_request_id',
-                     'dataset_product_id','entitlement_id')), 'api21_warm_order')
-            for key in ('provider_calls','source_calls','asset_calls','model_calls','counts','immutable_sha256'):
-                require(warm['before'][key] == warm['after'][key], 'api21_warm_drift')
-            integer(warm['reader_before']); integer(warm['reader_after'])
-            require(warm['reader_after'] > warm['reader_before'] and measurement['image_reads'] >= warm['reader_after'],
-                    'api21_warm_reader')
-        exits=result['worker_exits']; array(exits)
-        require(len(exits) == (0 if google else 2), 'api21_worker_cleanup_inventory')
-        # Equal records are valid: source retains no distinct process identifiers.
-        for worker in exits:
-            exact(worker, ('kind','exit_code','terminated','intentional_cleanup','alive_before_cleanup'))
-            require(worker['kind'] == 'cli' and type(worker['exit_code']) is int and
-                all(worker[key] is True for key in ('terminated','intentional_cleanup','alive_before_cleanup')),
-                'api21_worker_cleanup')
-        observed.append(case_id)
+            observed.append(case_id)
     unique(databases); store.recheck()
     return dict(status='unavailable',complete=False,profile_version=profile_version,
         candidate_sha=candidate_sha,trusted_base_sha=trusted_base_sha,observed_case_ids=observed,
