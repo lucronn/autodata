@@ -1780,6 +1780,41 @@
       "live_provider_rehearsal_status": "open",
       "runtime_execution_authorized": false,
       "completion_checkpoint_state": "requires_independent_review_before_integration"
+    },
+    {
+      "id": "workshop-integrated-r3-runtime",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-integrated-r3-runtime.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-integrated-r3-runtime.json",
+      "goal": "Measure the integrated Workshop candidate with one fresh, isolated, bounded R3 fixture run: eight required provider/root outcomes and 42 SQL readiness tuples at one unchanged exact SHA.",
+      "todo": [
+        "Retain the coordinator-reported independent exact-head integration review PASS at 4d82e413e04fb2401ac7bc28dc828375ac662180 with Issue186 comment6636079243 and builder handoff hash; any candidate change requires a fresh binding and review.",
+        "Resolve immutable runner/service image availability, candidate compatibility, cache manifest and reviewed supervisor adaptation facts with read-only evidence; preserve the historical supervisor and leaf receipts.",
+        "Independently review this docs-only blocked draft; have the serialized coordinator preserve Issue186/Project8 history and synchronize this exact goal, scope, references and todo only after blockers close; commit/push the checkpoint, pin its full SHA and pass canonical machine preflight before runtime dispatch.",
+        "After a separate explicit runtime handoff, prepare a clean remote-free plain clone of the fixed candidate, new owned artifacts and services, immutable input/image/cache/host manifests and a fresh private /home SeaweedFS bind with at least 12 GiB free.",
+        "Execute the unchanged required pytest bridge and eight exact Go roots under the 1320-second runner deadline; require zero skips, 42 expected/observed SQL tuple matches and every original lifecycle invariant.",
+        "Preserve before/after provenance, all failed/successful commands and evidence, and bounded ownership-checked cleanup; obtain independent exact-run audit and synchronize measured completion without claiming final180, provider, payment, cloud or release acceptance."
+      ],
+      "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+      "state": "blocked",
+      "planning_status": "blocked",
+      "tracking_status": "not_synchronized",
+      "depends_on": [
+        "workshop-final-reviewed-leaves-integration"
+      ],
+      "allowed_paths": [
+        "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+        "docs/agents/records/2026-11-04-workshop-integrated-r3-runtime.json",
+        "docs/agents/tasks/2026-11-03-production-release/workshop-integrated-r3-runtime.json",
+        "docs/agents/tasks/2026-11-03-production-release/queue.json",
+        "docs/verification/2026-11-03-canonical-article-lifecycle.md"
+      ],
+      "allowed_implementation_paths": [],
+      "implementation_dispatch_authorized": false,
+      "runtime_execution_authorized": false,
+      "cloud_execution_authorized": false,
+      "release_state": "unverified",
+      "dispatch_prerequisite": "Close immutable runtime provenance and reviewed supervisor adaptation blockers; independently review and synchronize committed docs-only checkpoint, pass exact-base machine preflight and obtain separate runtime handoff."
     }
   ],
   "execution": {
