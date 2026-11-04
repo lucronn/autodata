@@ -74,6 +74,28 @@ func TestWorkshopAssetsAvailableWithoutCatalogCredentials(t *testing.T) {
 	}
 }
 
+func TestWorkshopPurchaseConfigDisabledByDefault(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/workshop/purchase-config.json", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("purchase config status=%d", response.Code)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &config); err != nil {
+		t.Fatal(err)
+	}
+	if config["enabled"] != false || config["terms_version"] != "workshop-v1" {
+		t.Fatal("default purchase config must remain disabled at workshop-v1")
+	}
+	for _, field := range []string{"terms_url", "privacy_url", "refund_url", "contact_url", "tax_notice"} {
+		value, present := config[field]
+		if !present || value != nil {
+			t.Fatalf("default %s must be present and null", field)
+		}
+	}
+}
+
 func TestWorkshopRedirectPreservesSeparateEntryPoint(t *testing.T) {
 	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
 	response := httptest.NewRecorder()
