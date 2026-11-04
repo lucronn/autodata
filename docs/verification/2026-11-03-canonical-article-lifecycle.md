@@ -290,3 +290,140 @@ The retained runtime sequence is deliberately separate:
 Final receipt: `/home/corp/autodata-evidence/index-readiness-green-68fd8e922a26/artifacts/acceptance-result.json`, SHA-256 `a677ebea4d8234d222c2d71065b0bf9337b2fbef0e51ed23f2b0eef5a967209a`. Independent raw-evidence audit **PASS**: `/home/corp/autodata-evidence/index-readiness-green-independent-audit-68fd8e922a26.json`, SHA-256 `9e8bb8769123928682401fab64f899924b7d168775dd317d09031eb2843bd61b`. Storage cleanup receipt SHA-256: `355598ffef4fcc101245fbe6bc72169a1e261b6e2db23dd1cf68d78a60fd9a44`. Final supervisor SHA-256: `e4a8f054f85207b5dc8e83155cf1b39e67ffcbc467d8f0a44eb08bc86a0e26b9`.
 
 Completion tracking is synchronized from the coordinator's serialized readback: [Issue186 completion detail](https://github.com/lucronn/autodata/issues/186#issuecomment-6634845885), body SHA-256 `9acb67f385d4f0c038afa12917c76d5799de7b9068e70cd4f869158bd548294b`; final Project8 Source SHA-256 `9c99e5508b2cf825dd8919a125962cb3a4c12df741df53722740de57f535e9b4` (476 bytes), with other Project fields unchanged. The exact predecessor Source SHA-256 `46b8e75e2a62481d106c77c1b6677dd8c1f865ef53b5377c0d31950280c68a7b`, its full text and all 138 predecessor comment hashes remain preserved in the linked detail and durable `/home/corp/autodata-evidence/index-readiness-completion-tracking-before.json` and `index-readiness-completion-tracking-readback.json`; the wording correction is retained in `index-readiness-completion-project-correction.json`. The earlier planning receipt remains historical evidence. No GitHub write was performed by this documentation agent. The full-SHA preflight receipt for this docs-only checkpoint is retained externally after commit; independent committed-checkpoint review remains required before integration. All release authorities remain false and `release_state` remains `unverified`; final180, stateful release-readiness review, live provider rehearsal/payment, PG/Stage1A/M2A/publisher/release, activation and deployment gates remain separate/open. The result establishes isolated fixture behavior only.
+
+
+## Separate integrated R3 runtime draft (2026-11-04; blocked)
+
+The separate plan `docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md` proposes one fresh isolated fixture measurement of integrated candidate `4d82e413e04fb2401ac7bc28dc828375ac662180`: eight required provider/root outcomes and 42 current-job readiness SQL tuples with zero skips. Its record is `docs/agents/records/2026-11-04-workshop-integrated-r3-runtime.json` and task is `docs/agents/tasks/2026-11-03-production-release/workshop-integrated-r3-runtime.json`; the release queue indexes the same goal and concrete todo. This is a docs-only uncommitted draft, not a synchronized or machine-passing implementation/runtime gate. The coordinator reports independent exact-head integration review PASS at that SHA/tree `d9fb2a8f49beacd009374a76327d0736c1fc9b0a` and draft PR217; [Issue186 comment6636079243](https://github.com/lucronn/autodata/issues/186#issuecomment-6636079243) records the later review with verified readback. This supplies no R3/runtime or production approval.
+
+The selected strategy reuses immutable local runner/PG17/NATS/Seaweed image IDs only after image/cache/source compatibility manifests and current availability are established; no build, pull, acquisition or service operation is authorized here. The historical leaf supervisor (`e4a8f054f85207b5dc8e83155cf1b39e67ffcbc467d8f0a44eb08bc86a0e26b9`) is evidence only: it unconditionally builds and needs a separately gated, reviewed adaptation before the selected strategy has an executable command. The plan fixes a clean remote-free read-only plain clone, fresh owned services/databases, a fresh private `/home` Seaweed bind with at least 12 GiB free, 1320-second runner deadline, all existing lifecycle invariants, before/after immutable manifests and bounded ownership cleanup. Missing provenance and a final reviewed command keep execution blocked.
+
+Historical index-leaf green/audit receipts do not establish this candidate's runtime result. Final180, real providers/payments, cloud/VM/staging, release/deployment/activation and cutover retain their separate gates and unverified states. No predecessor evidence or authority changes.
+
+
+## R3 immutable supervisor code-only gate (2026-11-04; tracking synchronized)
+
+`docs/superpowers/plans/2026-11-04-workshop-r3-immutable-supervisor.md` and `docs/agents/records/2026-11-04-workshop-r3-immutable-supervisor.json` define a separate adaptation-only code gate for exact candidate `4d82e413e04fb2401ac7bc28dc828375ac662180` (tree `d9fb2a8f49beacd009374a76327d0736c1fc9b0a`), based on blocked R3 plan commit `d94543e6ec75e788b42421b0e4cfeca6f5cb3e9c`. Task: `docs/agents/tasks/2026-11-03-production-release/workshop-r3-immutable-supervisor.json`. The current read-only audit report hash is `b48449fb92e7541ee2f727dd0edba7a53f67bd36ef7d0a2b88f7c3a3046c96af`: all four immutable images remain local, while current tool/package/cache manifests and offline compatibility evidence remain absent. Historical evidence is preserved.
+
+The release queue now indexes `workshop-r3-immutable-supervisor` as a separate code-only task with no execution dependencies, preserving all predecessor entries. Its parent runtime plan is context and consumes the adaptation; the adaptation does not depend on running that parent.
+
+The synchronized gate implementation allowlist contains only a new external supervisor, probe payload and focused offline tests under `/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/`; it does not alter candidate source or the historical supervisor. The correction based on `aafaaf93089b009baae3d68011cd74365b8de18e` passed independent docs-only review; coordinator tracking is synchronized at https://github.com/lucronn/autodata/issues/186#issuecomment-6636602964. It fixes distinct synthetic code-only, initial-probe and fixture admission interfaces, immutable command generation and manifest code, inherited eight-root/42-tuple validation, deadlines and bounded owned cleanup. The sole permitted stronger validator assertion requires the exact 24-name artifact inventory inspected in all eight retained historical per-case receipts, as enumerated in the plan; historical PASS cannot become current evidence. All temporary fixtures/logs/bytecode/receipts stay below the same external test-artifacts directory. No real Docker call, host tool/import/Go compatibility probe, build/pull/acquisition or source change occurs during this slice. Tests and source review require this synchronized gate to be committed, pass exact-base preflight and independent committed-gate review, then receive explicit external-path code-only dispatch. Creating even a read-only/network-none probe container requires a separate execution gate; fixture services require accepted fresh probe manifests and the parent runtime gate.
+
+Issue186/Project8 synchronization is complete; committed gate/preflight, independent exact-gate review and explicit absolute-path implementation dispatch are required before code edits. Offline completion means reviewed external source hashes and fake-test receipts only. Current executable/package/cache manifests, installed Compose compatibility and fresh independently accepted probe evidence are later execution blockers, not prerequisites to writing fake-tested code. Initial probe admission does not require its own future receipt; fixture admission does require the execution owner’s independent acceptance of that receipt and manifest digests. This documentation checkpoint grants no Docker/probe/runtime, provider/payment, cloud or release authority; code-only implementation requires the separate review/preflight/dispatch boundary; final180 remains open and release unverified.
+
+Correction goal: Prepare reviewed offline external supervisor, probe payload and fake unit tests for exact candidate 4d82e413e04fb2401ac7bc28dc828375ac662180; no Docker or probe/runtime execution.
+
+Concrete todo (same synchronized record/task/queue):
+- [x] Independently review this docs-only correction; coordinator synchronizes Issue186/Project8, canonical document and this concrete todo, commits the checkpoint, pins its full SHA and passes canonical preflight before explicit external-code implementation dispatch.
+- [x] Create only the three named external Python sources and test-artifacts; preserve historical evidence byte-for-byte and use synthetic observations, temporary fixtures and fake executor calls only, with no Docker invocation.
+- [x] Implement distinct synthetic, initial-probe and fixture admission interfaces, deterministic manifests and immutable command generation; retain eight-root/42-tuple semantics and add only the explicitly frozen 24-name artifact completeness check.
+- [x] Run failing-first then green standard-library tests for admission, manifests, validator and bounded owned cleanup; retain offline receipts/source hashes and obtain independent exact-source review.
+- [x] Handoff reviewed source and offline-test evidence only; keep current image/tool/package/cache/Compose/probe facts as execution blockers under separate later gates, all runtime/release authorities false and release unverified.
+
+### Code-only handoff receipt (2026-11-04)
+
+The planning checkpoint was committed and pushed at `5aeb9fb70ae041197ea57b7a33be509872a1715a`; canonical preflight and independent exact-base gate review passed before the explicit external-path dispatch. The three allowed sources now exist under `/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/`. Independent exact-source revision-3 review passed after two correction rounds, and 44 offline standard-library fake-executor tests passed. The reviewed SHA256 values are `6c64cad2e3c490a2762367bdfe4e0bb662320d48f3f9cc7a3af831c6c356c0ed` (`supervisor.py`), `ec2850f3f463c724498ee8bbfd6c7fef5e7e693b56b424579389dfcb72a32947` (`offline_probe.py`) and `d3d3f4a6e5aad509950b4a3ff85215eedb3407cfd68cad77e181404b7183b9fd` (`test_supervisor.py`). The handoff receipt is `test-artifacts/offline-handoff-revision3.json` under that external root. The completed planning todos above remain the synchronized dispatch record; this paragraph records their code-only completion, not runtime acceptance.
+
+The reviewed timeout path records stop, kill, delayed after-probe, source-after and image-after in order. No Docker execution, immutable-image probe, fixture service, real eight-root/42-tuple run, final180, provider/payment, cloud/staging or release activation occurred. All runtime and release authority remains false. A separately synchronized execution gate is required before even a read-only container probe.
+
+## R3 host launcher code-only gate promotion — 2026-11-04
+
+Status: `tracking_synchronized_pending_checkpoint` at https://github.com/lucronn/autodata/issues/186#issuecomment-6637620320; all authority flags false, implementation/checkpoint and successor execution SHA null, release `unverified`. Goal: Prepare and independently review a fake-tested host launcher/enforcement adapter for the unchanged R3 immutable supervisor at exact app candidate 4d82e413e04fb2401ac7bc28dc828375ac662180; no Docker or compatibility execution.
+
+Canonical plan: `docs/superpowers/plans/2026-11-04-workshop-r3-host-launcher.md`; spec: `docs/agents/specs/2026-11-04-workshop-r3-host-launcher.md`; record: `docs/agents/records/2026-11-04-workshop-r3-host-launcher.json`; task: `docs/agents/tasks/2026-11-03-production-release/workshop-r3-host-launcher.json`; queue: `docs/agents/tasks/2026-11-03-production-release/queue.json`. Issue: https://github.com/lucronn/autodata/issues/186 . Project: https://github.com/users/lucronn/projects/8 . Planning base is PR220 head `880cd78eacdca9b60d18e7a28ca43112549b493d`. Independent external-draft PASS is coordinator-reported; reviewed draft SHA256 is `7ab7435de8a79decea1bb4ffc9245be3d8345a5e3c0e1efc8f1696b7fc662d0f`. This additive entry preserves all predecessor evidence and states.
+
+The exact two future external sources are `/home/corp/autodata-evidence/r3-immutable-probe-launcher-4d82e413-implementation/launcher.py` and `/home/corp/autodata-evidence/r3-immutable-probe-launcher-4d82e413-implementation/test_launcher.py`; only synthetic receipts/fixtures/temporary files additionally belong under that root’s `test-artifacts/`. Preserve the reviewed supervisor/probe/tests/handoff byte-for-byte. No Docker, actual tool/import/Go probe, real compatibility/Compose config or service/provider/payment/cloud execution is authorized.
+
+The launcher must enforce exact future CLI and split code/execution bindings, closed argv/state/HostConfig identity before starts, exact direct-container absence/cleanup inventories, full image-environment inheritance and evidence-derived Compose no-build. All tests use fakes and deny host subprocess/network; code completion supplies reviewed hashes/command contract and synthetic `trusted:false` evidence only. The existing supervisor code gate is historical input; this distinct launcher checkpoint must be actually committed before it can be pinned. Later execution SHA/fresh observations and accepted probe manifests are not fabricated as code-planning prerequisites. The successor execution gate first authorizes bounded preparation observations and then freezes admission/dispatch before any container.
+
+The sole coordinator tracker writer preserved complete Issue186/Project8 history and synchronized/read back this matching goal/six-document scope/references/five todos at https://github.com/lucronn/autodata/issues/186#issuecomment-6637620320. The coordinator must now commit/push the synchronized checkpoint, externally pin its full SHA, pass exact-base preflight and independent committed-gate review before explicit absolute-path code-only dispatch. This planning worker does none of those actions. Parent PR219 runtime remains blocked; fixture/eight-root/42-tuple/final180 and release claims require separate gates.
+
+Concrete todo (same exact record/task/queue):
+
+- [ ] Independently review this code-only draft; serialized coordinator synchronizes Issue186/Project8, canonical document, plan/record/task/queue and this exact todo, commits/pushes, then pins the real code checkpoint SHA, passes canonical preflight and independent committed-gate review before explicit external-path code-only dispatch.
+- [ ] Create only launcher.py and test_launcher.py in the named external adapter root; preserve the three existing reviewed sources and historical artifacts byte-for-byte, using inert imports, synthetic fixtures, fake transports/clocks and owned test-artifacts only.
+- [ ] Implement exact future CLI, separated checkpoint/runtime bindings, command/state/HostConfig/effective-env enforcement, direct-container absence checks and evidence-derived Compose no-build admission without calling real tools.
+- [ ] Run failing-first then green standard-library fake tests and scope/hash/syntax checks; retain red/green artifacts, exact launcher/test hashes and independent exact-source review with every enforcement requirement checked.
+- [ ] Handoff reviewed launcher/command contract and synthetic evidence only; leave fresh observations, actual probe/manifest acceptance, parent PR219 fixture execution, acquisition, final180, provider/payment/cloud/release authorities behind separate successor gates.
+
+
+## R3 bounded fake-transport preparation collector code-only gate — 2026-11-04
+
+Status: `tracking_synchronized_pending_checkpoint`; committed checkpoint, exact-base preflight, independent gate review and code-only dispatch are pending. All authority flags false; trusted/runtime_accepted/host_observed false; evidence synthetic; release unverified.
+
+Goal: Implement and independently review a bounded fake-transport R3 preparation collector policy/state machine for exact candidate 4d82e413e04fb2401ac7bc28dc828375ac662180; no host observation or execution adapter.
+
+Issue: https://github.com/lucronn/autodata/issues/186; Project: https://github.com/users/lucronn/projects/8. Exact six canonical references:
+
+- `docs/superpowers/plans/2026-11-04-workshop-r3-preparation-collector.md`
+- `docs/agents/specs/2026-11-04-workshop-r3-preparation-collector.md`
+- `docs/agents/records/2026-11-04-workshop-r3-preparation-collector.json`
+- `docs/agents/tasks/2026-11-03-production-release/workshop-r3-preparation-collector.json`
+- `docs/verification/2026-11-03-canonical-article-lifecycle.md`
+- `docs/agents/tasks/2026-11-03-production-release/queue.json`
+
+Planning source parent `e3eb94311f69f6e9ecab74be21d399a5cd126c21` is not the future code-only checkpoint. The four new future implementation files are `scripts/r3_preparation/policy.py`, `scripts/r3_preparation/collector.py`, `scripts/r3_preparation/test_policy.py`, `scripts/r3_preparation/test_collector.py`. Existing source/evidence remains immutable. No real adapters, CLI, host/Git/Docker/Compose observation, runtime, network/cloud/provider/payment action or acquisition is authorized. Reviewed external preparation/design revision2 SHA256 pins are `55d0b1ea66e4125d033e4eaa8a6caf7c77da9fd32925cbbcedc56e75fa59ed2a` and `07370ec9c7b3a0f26e0090e258e02bafbdd51ac0fa01f517c7aa365e37b84636`. Correction PASS is a design review, not gate/code/runtime approval.
+
+Concrete todo (identical to plan/record/task/queue):
+
+- [ ] Independently review this code-only six-document draft; coordinator synchronizes Issue186/Project8 and the identical goal, references and todo, commits/pushes the checkpoint, pins its full SHA, passes canonical exact-base preflight and committed-gate review before explicit four-file code-only dispatch.
+- [ ] Write failing strict-contract, command/environment, Git-prerequisite, bounded-JSON and closed-projection tests in scripts/r3_preparation/test_policy.py; implement scripts/r3_preparation/policy.py using synthetic inputs only and verify the focused tests pass.
+- [ ] Write failing scripted-port tests in scripts/r3_preparation/test_collector.py; implement scripts/r3_preparation/collector.py with explicit fake file/command/output/clock/cancel ports, nonrenewable budgets, stop precedence and exact finalization ordering.
+- [ ] Run the standard-library isolated fake-only suite and the complete adversarial acceptance matrix; assert production limit constants, zero unexpected port calls, no secret-sentinel persistence and synthetic nonpromotion markers; retain honest red/green evidence.
+- [ ] Commit and promptly push validated coherent code milestones on the coordinator-assigned branch; obtain independent exact-code review and record exact source hashes, verification evidence and unresolved real-adapter obligations without changing authority.
+- [ ] Handoff fake-only code and synthetic evidence with trusted:false, runtime_accepted:false and host_observed:false; leave real adapters, owner contracts, host/Git/Docker/Compose observations, initial probe, PR219 fixtures, final180 and all release/provider/payment/cloud activity behind separate gates.
+
+
+### R3 collector live planning synchronization receipt
+
+Issue detail: https://github.com/lucronn/autodata/issues/186#issuecomment-6639936878. Coordinator sole serialized writer read back exact matching goal, six planning paths, four future implementation paths and six todo entries. Issue body and all 173 prior comments are preserved (174 current); previous Project Source archived verbatim and other Project fields unchanged. Project status remains In Progress. Receipt `/home/corp/autodata-evidence/r3-preparation-collector-gate-tracking/receipt.json`, SHA256 `3d2937b91770feaffaa4bfd4a5df18b3fda15f13910654650ecbbb5d19d44be1`. Independent draft review PASS is coordinator-reported, not committed-gate/code/runtime acceptance.
+
+Exact live receipt (verbatim field values):
+
+```json
+{
+  "candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "current_comment_count": 174,
+  "goal": "Implement and independently review a bounded fake-transport R3 preparation collector policy/state machine for exact candidate 4d82e413e04fb2401ac7bc28dc828375ac662180; no host observation or execution adapter.",
+  "implementation_allowlist": [
+    "scripts/r3_preparation/policy.py",
+    "scripts/r3_preparation/collector.py",
+    "scripts/r3_preparation/test_policy.py",
+    "scripts/r3_preparation/test_collector.py"
+  ],
+  "issue_after_sha256": "2ac723432b9a3ebd315ea66ed724e35066b89c210b732d1fcbb8da1e9f66f269",
+  "issue_before_sha256": "376583bf9a466cfd7408c9619de4b45179fb86bb8ce02203034bff79ec63ca0c",
+  "issue_body_unchanged": true,
+  "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6639936878",
+  "other_project_fields_unchanged": true,
+  "planning_base_sha": "e3eb94311f69f6e9ecab74be21d399a5cd126c21",
+  "planning_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-r3-preparation-collector.md",
+    "docs/agents/specs/2026-11-04-workshop-r3-preparation-collector.md",
+    "docs/agents/records/2026-11-04-workshop-r3-preparation-collector.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-r3-preparation-collector.json",
+    "docs/verification/2026-11-03-canonical-article-lifecycle.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "previous_source_archived_verbatim": true,
+  "prior_comment_count": 173,
+  "prior_comments_preserved": true,
+  "prior_project_source_sha256": "db7aa0b80bfae8d8a6b2550f588b7d7ce635c070ae1dce5e80970aa9ab04091c",
+  "project_after_sha256": "e4aef634865eee20e992ebea2fdc522690cce3ae1bc5379312478b4334b22a04",
+  "project_before_sha256": "bdbcb5b32c7990bb0aaf5c6b08eaffd0248d5865e4b05ca676156995b37d719d",
+  "project_source_sha256": "e4766212ff8a2a95f62e0893c583e5fc92577c55930efa2ea5599660d27f108f",
+  "project_status": "In Progress",
+  "status": "synchronized_live_readback",
+  "todo": [
+    "Independently review this code-only six-document draft; coordinator synchronizes Issue186/Project8 and the identical goal, references and todo, commits/pushes the checkpoint, pins its full SHA, passes canonical exact-base preflight and committed-gate review before explicit four-file code-only dispatch.",
+    "Write failing strict-contract, command/environment, Git-prerequisite, bounded-JSON and closed-projection tests in scripts/r3_preparation/test_policy.py; implement scripts/r3_preparation/policy.py using synthetic inputs only and verify the focused tests pass.",
+    "Write failing scripted-port tests in scripts/r3_preparation/test_collector.py; implement scripts/r3_preparation/collector.py with explicit fake file/command/output/clock/cancel ports, nonrenewable budgets, stop precedence and exact finalization ordering.",
+    "Run the standard-library isolated fake-only suite and the complete adversarial acceptance matrix; assert production limit constants, zero unexpected port calls, no secret-sentinel persistence and synthetic nonpromotion markers; retain honest red/green evidence.",
+    "Commit and promptly push validated coherent code milestones on the coordinator-assigned branch; obtain independent exact-code review and record exact source hashes, verification evidence and unresolved real-adapter obligations without changing authority.",
+    "Handoff fake-only code and synthetic evidence with trusted:false, runtime_accepted:false and host_observed:false; leave real adapters, owner contracts, host/Git/Docker/Compose observations, initial probe, PR219 fixtures, final180 and all release/provider/payment/cloud activity behind separate gates."
+  ],
+  "writer": "coordinator sole serialized writer"
+}
+```
+
+The coordinator authorized committing/pushing exactly this six-document checkpoint. Actual checkpoint SHA is externally pinned after commit; then standalone/nested canonical preflight and independent exact-committed-gate review remain required before fresh code-only dispatch. No implementation or observation dispatch is supplied by this receipt; all authorities remain false.

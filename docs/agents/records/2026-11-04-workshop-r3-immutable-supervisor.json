@@ -1,0 +1,139 @@
+{
+  "goal": "Prepare reviewed offline external supervisor, probe payload and fake unit tests for exact candidate 4d82e413e04fb2401ac7bc28dc828375ac662180; no Docker or probe/runtime execution.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-r3-immutable-supervisor.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-03-canonical-article-lifecycle.md"
+  ],
+  "todo": [
+    "Independently review this docs-only correction; coordinator synchronizes Issue186/Project8, canonical document and this concrete todo, commits the checkpoint, pins its full SHA and passes canonical preflight before explicit external-code implementation dispatch.",
+    "Create only the three named external Python sources and test-artifacts; preserve historical evidence byte-for-byte and use synthetic observations, temporary fixtures and fake executor calls only, with no Docker invocation.",
+    "Implement distinct synthetic, initial-probe and fixture admission interfaces, deterministic manifests and immutable command generation; retain eight-root/42-tuple semantics and add only the explicitly frozen 24-name artifact completeness check.",
+    "Run failing-first then green standard-library tests for admission, manifests, validator and bounded owned cleanup; retain offline receipts/source hashes and obtain independent exact-source review.",
+    "Handoff reviewed source and offline-test evidence only; keep current image/tool/package/cache/Compose/probe facts as execution blockers under separate later gates, all runtime/release authorities false and release unverified."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T16:54:25.364421+00:00",
+  "planning_base_sha": "d94543e6ec75e788b42421b0e4cfeca6f5cb3e9c",
+  "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "source_candidate_tree": "d9fb2a8f49beacd009374a76327d0736c1fc9b0a",
+  "implementation_base_sha": null,
+  "tracking_sync": {
+    "status": "synchronized_live_readback",
+    "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6636602964",
+    "issue_detail_sha256": "43cd3127bc4736f2b4e1aa8ba4f243bade1b0e8a9390fbfe673bffdd3ac9e6c1",
+    "issue_readback_ref": "/home/corp/autodata-evidence/issue186-r3-code-readback.json",
+    "issue_readback_sha256": "9be09fcf9c928f77d76197555cbeeed8fb567cc75aab15b4734c41f6aba749f5",
+    "preserved_prior_comments": 149,
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_status": "In Progress",
+    "project_source_sha256": "6c41cc0301604cf45d6c0d1431976a664e9a6c6db56b2f0652a53840fa6f06bf",
+    "project_source_bytes": 469,
+    "previous_project_source_sha256": "a2fcc55961d7389360e4826e8ec36169a17d0081899d0f0e367a76dd7139c900",
+    "previous_source_archived_verbatim": true,
+    "project_readback_ref": "/home/corp/autodata-evidence/project8-r3-code-readback.json",
+    "project_readback_sha256": "56d8e54dccc0118966be06c48f9633faa7017d9291246b8d193c03bbc9d92a53",
+    "other_project_fields_unchanged": true,
+    "writer": "coordinator serialized writer"
+  },
+  "allowed_implementation_paths": [
+    "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/supervisor.py",
+    "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/offline_probe.py",
+    "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/test_supervisor.py"
+  ],
+  "proposed_external_implementation_paths": [
+    "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/supervisor.py",
+    "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/offline_probe.py",
+    "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/test_supervisor.py"
+  ],
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-r3-immutable-supervisor.md",
+    "docs/agents/records/2026-11-04-workshop-r3-immutable-supervisor.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-r3-immutable-supervisor.json",
+    "docs/verification/2026-11-03-canonical-article-lifecycle.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "authorities": {
+    "implementation": false,
+    "github_write": false,
+    "commit": false,
+    "push": false,
+    "probe_execution": false,
+    "runtime": false,
+    "service_start": false,
+    "acquisition": false,
+    "build": false,
+    "pull": false,
+    "cloud": false,
+    "live_provider": false,
+    "live_payment": false,
+    "merge": false,
+    "release": false,
+    "deployment": false,
+    "production": false,
+    "final180": false
+  },
+  "release_state": "unverified",
+  "blockers": [
+    "Committed synchronized checkpoint, exact-base preflight, independent committed-gate review and explicit absolute-path code-only dispatch are prerequisites to external source edits.",
+    "Adaptation/probe/tests, offline red/green receipts, source hashes and independent exact-source review are code-only deliverables, not current completion claims.",
+    "Fresh executable/distribution/cache manifests, independently accepted manifest digests and current offline import/compile/cleanup-interpreter probe evidence remain absent; code-only work cannot close these facts.",
+    "Installed Docker/Compose CLI support and actual resolved Compose compatibility remain unmeasured for this adaptation; no image availability/config observation substitutes for the later pre-mutation check.",
+    "Separately synchronized committed probe gate/dispatch is required for any container; fixture execution additionally requires independently accepted fresh probe evidence and the parent runtime gate with reviewed exact source hashes/command."
+  ],
+  "historical_supervisor_sha256": "e4a8f054f85207b5dc8e83155cf1b39e67ffcbc467d8f0a44eb08bc86a0e26b9",
+  "audit_report_sha256": "b48449fb92e7541ee2f727dd0edba7a53f67bd36ef7d0a2b88f7c3a3046c96af",
+  "proposed_external_artifact_paths": [
+    "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/test-artifacts/**"
+  ],
+  "planning_status": "synchronized_pending_exact_gate_review",
+  "implementation_blockers": [
+    "Committed synchronized checkpoint, exact-base preflight, independent committed-gate review and explicit absolute-path code-only dispatch are prerequisites to external source edits.",
+    "Adaptation/probe/tests, offline red/green receipts, source hashes and independent exact-source review are code-only deliverables, not current completion claims."
+  ],
+  "execution_blockers": [
+    "Fresh executable/distribution/cache manifests, independently accepted manifest digests and current offline import/compile/cleanup-interpreter probe evidence remain absent; code-only work cannot close these facts.",
+    "Installed Docker/Compose CLI support and actual resolved Compose compatibility remain unmeasured for this adaptation; no image availability/config observation substitutes for the later pre-mutation check.",
+    "Separately synchronized committed probe gate/dispatch is required for any container; fixture execution additionally requires independently accepted fresh probe evidence and the parent runtime gate with reviewed exact source hashes/command."
+  ],
+  "offline_completion_contract": "Reviewed external source hashes and fake-test receipts only; no fresh compatibility, current manifest acceptance or R3 runtime result.",
+  "artifact_completeness_contract": {
+    "origin": "index-readiness-green-68fd8e922a26/artifacts/r3/*/*/result.json",
+    "inspected_receipt_count": 8,
+    "required_per_case_artifact_names": [
+      "go-command.json",
+      "go-events.jsonl",
+      "go-measurement.json",
+      "go-stderr.log",
+      "measured-runtime.json",
+      "migration-driver.sql",
+      "migration-driver.stderr",
+      "migration-fresh.json",
+      "migration-fresh.rows.json",
+      "migration-fresh.schema.sql",
+      "migration-fresh.stderr",
+      "migration-fresh.stdout",
+      "migration-replay-empty.json",
+      "migration-replay-empty.rows.json",
+      "migration-replay-empty.schema.sql",
+      "migration-replay-empty.stderr",
+      "migration-replay-empty.stdout",
+      "migration-replay-populated.json",
+      "migration-replay-populated.rows.json",
+      "migration-replay-populated.schema.sql",
+      "migration-replay-populated.stderr",
+      "migration-replay-populated.stdout",
+      "populated-before.rows.json",
+      "populated-before.schema.sql"
+    ],
+    "rule": "Require exact name set and valid matching SHA-256 for every listed file; no other validator semantic change."
+  },
+  "correction_base_sha": "aafaaf93089b009baae3d68011cd74365b8de18e",
+  "admission_stages": [
+    "synthetic_code_only",
+    "initial_probe",
+    "fixture"
+  ]
+}
