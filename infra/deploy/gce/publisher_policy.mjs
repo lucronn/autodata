@@ -1,6 +1,7 @@
 import {createHash, createPublicKey, verify} from 'node:crypto';
 import {open} from 'node:fs/promises';
 import {constants} from 'node:fs';
+import {types} from 'node:util';
 
 const fail = (code='invalid_trust_input') => {throw new Error(code);};
 const requireValue = condition => {if (!condition) fail();};
@@ -19,7 +20,7 @@ function fields(value,names) {
 }
 function dataOptions(value,allowed) {
   try {
-    requireValue(value!==null && typeof value==='object' && [Object.prototype,null].includes(Object.getPrototypeOf(value)));
+    requireValue(value!==null && typeof value==='object' && !types.isProxy(value) && [Object.prototype,null].includes(Object.getPrototypeOf(value)));
     for(const key of Reflect.ownKeys(value)) {requireValue(typeof key==='string' && allowed.includes(key));const descriptor=Object.getOwnPropertyDescriptor(value,key);requireValue(descriptor && Object.hasOwn(descriptor,'value'));}
     return value;
   } catch {fail();}
@@ -78,7 +79,7 @@ export function parseStrictJsonBytes(raw, limits={}) {
       const match=/^-?(?:0|[1-9][0-9]*)/.exec(text.slice(position));requireValue(Boolean(match));
       position+=match[0].length;const number=Number(match[0]);requireValue(Number.isSafeInteger(number) && !Object.is(number,-0));return number;
     }
-    const result=value(0);ws();requireValue(position===text.length);return result;
+    const result=value(1);ws();requireValue(position===text.length);return result;
   } catch {fail();}
 }
 
@@ -163,12 +164,14 @@ function register(scope,promise,isOpen) {
 }
 export class OwnedTrustReadScope {
   constructor(options={}) {
+    try {
     const {signal,budgetMs=5000,cleanupReserveMs=1000}=dataOptions(options,['signal','budgetMs','cleanupReserveMs']);
     requireValue(Number.isInteger(budgetMs) && budgetMs>=1 && budgetMs<=5000 && Number.isInteger(cleanupReserveMs) && cleanupReserveMs>=1 && cleanupReserveMs<=1000);
-    requireValue(signal===undefined || (signal instanceof AbortSignal));
+    requireValue(signal===undefined || (signal instanceof AbortSignal && !types.isProxy(signal)));
     const start=performance.now();const state={signal,verifyCutoff:start+budgetMs,finalCutoff:start+budgetMs+cleanupReserveMs,cleanupReserveMs,pending:new Set(),handles:new Map(),ending:false,returned:false,finishPromise:null};
     state.abort=()=>{const now=performance.now();state.verifyCutoff=Math.min(state.verifyCutoff,now);state.finalCutoff=Math.min(state.finalCutoff,now+cleanupReserveMs);};
     signal?.addEventListener('abort',state.abort,{once:true});if(signal?.aborted)state.abort();scopeStates.set(this,state);
+    } catch {fail();}
   }
   check() {const state=scopeStates.get(this);requireValue(Boolean(state) && !state.ending && state.pending.size<16);const error=reason(state);if(error)fail(error);}
   trackOpen(promise) {return register(this,promise,true);}

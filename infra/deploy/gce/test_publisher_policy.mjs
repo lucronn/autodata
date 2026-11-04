@@ -126,3 +126,26 @@ test('scope adopts already-started opens even when the verification deadline pas
   await assert.rejects(scope.trackOpen(Promise.resolve({close:async()=>{closes++;}})),{message:'operation_timed_out'});
   await assert.rejects(scope.finish(),{message:'operation_timed_out'});assert.equal(closes,1);
 });
+test('strict parser counts empty container depth and decoded duplicate names',()=>{
+  invalid(()=>parseStrictJsonBytes(Buffer.from('['.repeat(17)+']'.repeat(17)),{maxBytes:1024}));
+  for(const input of ['{"__proto__":1,"\\u005f_proto__":2}','{"a":"\\uD834"}','{"a":"\\uDD1E"}','+1','01','[NaN]','[Infinity]','true false','{"a":1,}','"line\nfeed"']) invalid(()=>parseStrictJsonBytes(Buffer.from(input),{maxBytes:1024}));
+  const value=parseStrictJsonBytes(Buffer.from('{"__proto__":{"x":1},"unicode":"\\uD834\\uDD1E"}'),{maxBytes:1024});assert.equal(Object.getPrototypeOf(value),null);assert.equal(value.unicode,'𝄞');
+  invalid(()=>parseStrictJsonBytes(Buffer.from(JSON.stringify('é'.repeat(4097))),{maxBytes:16384}));
+});
+test('a close settling after cleanup cutoff cannot change the original failure',async()=>{
+  let resolveClose,closes=0;const scope=new OwnedTrustReadScope({budgetMs:5,cleanupReserveMs:5});
+  await scope.trackOpen(Promise.resolve({close:()=>{closes++;return new Promise(resolve=>resolveClose=resolve);}}));
+  await assert.rejects(scope.finish(),{message:'cleanup_failed'});resolveClose();await delay(10);
+  await assert.rejects(scope.finish(),{message:'cleanup_failed'});assert.equal(closes,1);
+});
+test('missing fixed installation never reads environment token properties',async()=>{
+  const original=process.env;let reads=0;
+  process.env=new Proxy(original,{get(target,key){if(['ACTIONS_RUNTIME_TOKEN','ACTIONS_ID_TOKEN_REQUEST_TOKEN','AUTODATA_PUBLISHER_POLICY'].includes(key)){reads++;throw Error('secret');}return Reflect.get(target,key);}});
+  try {await assert.rejects(loadInstalledOwnerPolicy(),{message:'missing_dependency'});}finally{process.env=original;}
+  assert.equal(reads,0);
+});
+test('invalid signal and option objects cannot leak underlying exceptions',async()=>{
+  invalid(()=>new OwnedTrustReadScope({signal:Object.create(AbortSignal.prototype)}));
+  invalid(()=>new OwnedTrustReadScope(new Proxy({},{get(){throw Error('secret');}})));
+  await assert.rejects(loadInstalledOwnerPolicy(new Proxy({},{get(){throw Error('secret');}})),{message:'invalid_trust_input'});
+});
