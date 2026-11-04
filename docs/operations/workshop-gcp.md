@@ -306,3 +306,16 @@ Concrete todo:
 
 
 Tracking readback: [issuecomment-6621425159](https://github.com/lucronn/autodata/issues/186#issuecomment-6621425159), Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference`, verified `2026-11-04T03:06:38.051955+00:00`. Exact body/comment/Project/prior-index hashes are in the dedicated synchronized record. Full predecessor Project index SHA256 `4e26f3831956fb10f26a64e5b791e27f502a35e3ead19015622e118d22dfec20` is preserved verbatim in that comment. This synchronizes planning only; committed full-SHA preflight, independent exact-checkpoint review and coordinator dispatch still precede implementation. No staging or production activation.
+
+
+## Dormant staging workflow regression assertion amendment
+
+Scope legacy cloud-workflow production assertions to production jobs while retaining strict dormant staging checks and every activation denial.
+
+Plan: `docs/superpowers/plans/2026-11-03-workshop-staging-workflow-regression-amendment.md`; record: `docs/agents/records/2026-11-03-workshop-staging-workflow-regression.json`; task: `docs/agents/tasks/2026-11-03-production-release/workshop-staging-workflow-regression.json`. Issue186/Project8 track this additive test-only amendment at candidate `e9faaf594ecd671e113190fe0c57229d9824ad04`. The143-test focused run has one retained legacy production-loop assertion failure;52 Node tests and five dedicated staging tests pass. Only the named legacy test in test_cloud_ops.py may gain an exact release-job inventory and apply its unchanged production invariants to publish/deploy. Dedicated staging checks and frozen production job hashes remain required. No workflow/CLI/runtime/credential/toolkit/deploy behavior changes or activation follows.
+
+Concrete todo:
+
+- [ ] Synchronize the narrow test-only amendment across Issue186, Project8 and canonical docs; commit and pass pinned preflight before correction.
+- [ ] Limit legacy release-loop production invariants to publish/deploy, retain all their assertions, and reject unknown release jobs alongside dedicated dormant staging checks.
+- [ ] Run retained red/green workflow, cloud and host regressions plus Node/syntax/scope checks; push for independent exact-SHA review without activation.
