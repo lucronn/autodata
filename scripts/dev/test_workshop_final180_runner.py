@@ -321,6 +321,16 @@ class ProductionGitTests(unittest.TestCase):
                 (gitdir/'config').write_text(config)
                 with self.subTest(config=config),self.assertRaises(r.ContractError):self.git.observe_checkout(self.root)
 
+    def test_normal_worktree_extension_and_actual_worktree_config(self):
+        gitdir=self.metadata();(gitdir/'config').write_text('[extensions]\n worktreeConfig=true\n')
+        with mock.patch.object(self.git,'_git',side_effect=self.checkout_git):
+            self.git.observe_checkout(self.root)
+            (gitdir/'config.worktree').write_text('[codex]\n bookkeeping=true\n')
+            self.git.observe_checkout(self.root)
+            for config in ('[core]\n hooksPath=/tmp/hooks\n','[include]\n path=/tmp/config\n','[remote "x"]\n promisor=true\n'):
+                (gitdir/'config.worktree').write_text(config)
+                with self.subTest(config=config),self.assertRaises(r.ContractError):self.git.observe_checkout(self.root)
+
     def test_alternates_detached_and_remote_constraints(self):
         gitdir=self.metadata();p=gitdir/'objects/info/alternates';p.write_bytes(b'')
         with mock.patch.object(self.git,'_git',side_effect=self.checkout_git):self.assertRaises(r.ContractError,self.git.observe_checkout,self.root)

@@ -551,16 +551,28 @@ class ProductionGitReader:
             raise ContractError('git_tool_drift') from None
 
     @staticmethod
-    def _validate_metadata(gitdir):
-        fd = _open_dir(gitdir, owned=True)
-        os.close(fd)
-        config, _ = _read_regular(gitdir, 'config', limit=1024*1024)
+    def _validate_config(config):
         try:
             text = config.decode('utf-8')
         except UnicodeError:
             raise ContractError('git_config') from None
         # Missing objects must never trigger promisor fetches, even from tooling.
-        _require(not re.search(r'(?im)^\s*(?:hooksPath|worktree|worktreeConfig|partialClone|promisor)\s*=|^\s*\[\s*include(?:If)?\b', text), 'git_config')
+        _require(not re.search(r'(?im)^\s*(?:hooksPath|worktree|partialClone|promisor)\s*=|^\s*\[\s*include(?:If)?\b', text), 'git_config')
+
+    @classmethod
+    def _validate_worktree_config(cls, gitdir):
+        path = gitdir / 'config.worktree'
+        if path.exists() or path.is_symlink():
+            config, _ = _read_regular(gitdir, 'config.worktree', limit=1024*1024)
+            cls._validate_config(config)
+
+    @classmethod
+    def _validate_metadata(cls, gitdir):
+        fd = _open_dir(gitdir, owned=True)
+        os.close(fd)
+        config, _ = _read_regular(gitdir, 'config', limit=1024*1024)
+        cls._validate_config(config)
+        cls._validate_worktree_config(gitdir)
         objects = _open_dir(gitdir / 'objects', owned=True)
         try:
             try:
@@ -591,6 +603,7 @@ class ProductionGitReader:
                 raise ContractError('git_metadata') from None
             _require(_string(value, 4096) and '\x00' not in value and '\n' not in value, 'git_metadata')
             self._validate_metadata(Path(os.path.abspath(gitdir / value)))
+            self._validate_worktree_config(gitdir)
         else:
             self._validate_metadata(dotgit)
 
