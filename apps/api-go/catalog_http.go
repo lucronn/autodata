@@ -186,7 +186,9 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	hydrating := progress != nil && progress.Status == "running"
+	hydrating := progress != nil && !progress.Complete &&
+		(progress.Status == "pending" || progress.Status == "running" ||
+			(progress.Status == "failed" && progress.Retryable))
 	if !s.paidCatalogEnabled() && (progress == nil || !progress.Complete) && s.ingestionClient != nil {
 		configuration, configurationErr := s.catalog.ConfigurationByVehicle(request.Context(), principal, vehicleID)
 		if configurationErr != nil && !errors.Is(configurationErr, ErrCatalogNotFound) {

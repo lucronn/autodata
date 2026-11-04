@@ -337,6 +337,8 @@ async function selectVehicle(g, articleID = "") {
   await loadArticles(g, articleID);
 }
 async function loadArticles(g, articleID = "") {
+  if (!g.current()) return;
+  $("completion-status").textContent = "";
   stage("articles");
   status("Opening your article index…", { busy: true });
   const data = await readCollection(
@@ -359,11 +361,19 @@ async function loadArticles(g, articleID = "") {
     if (!articles.some((item) => item.id === articleID))
       throw new Error("This article is unavailable for the selected vehicle.");
     await loadArticle(articleID, g);
-  } else if (data.timedOut) {
+  } else if (data.complete === true) {
+    status(data.items.length ? "Article index ready." :
+      "Article index ready. No articles are currently available.", { complete: true });
+  } else if (data.progress?.status === "failed" && data.progress?.retryable !== true) {
+    status("Your article index could not be prepared. Available articles can still be opened.", {
+      complete: false,
+    });
+  } else {
     status("Your article index is still being prepared. Check again.", {
+      complete: false,
       retry: () => operation((next) => loadArticles(next)),
     });
-  } else status("Article index ready.", { complete: true });
+  }
 }
 
 function renderArticles() {

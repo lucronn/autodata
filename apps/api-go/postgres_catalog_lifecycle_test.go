@@ -283,8 +283,126 @@ func (f *r3Fixture) published() CatalogArticle {
 	}
 	return article
 }
+
+// verifyIndexReadiness runs inside the existing cold root: the fixture bridge
+// deliberately accepts exactly one Go root event stream per provider/case.
+func (f *r3Fixture) verifyIndexReadiness() {
+	t := f.t
+	ctx := context.Background()
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := f.pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var vehicle string
+	if err := f.pool.QueryRow(ctx, `INSERT INTO vehicles(vehicle_key,make,model,model_year,region,source_snapshot_id,source_watermark) SELECT gen_random_uuid()::text,make,model,model_year,region,source_snapshot_id,source_watermark FROM vehicles WHERE vehicle_id::text=$1 RETURNING vehicle_id::text`, f.vehicle).Scan(&vehicle); err != nil {
+		t.Fatal(err)
+	}
+	reset := func() {
+		exec(`UPDATE catalog_article_provider_scopes SET current_job_id=NULL WHERE vehicle_id::text=$1`, vehicle)
+		exec(`DELETE FROM source_fetch_jobs WHERE canonical_vehicle_id::text=$1`, vehicle)
+		exec(`DELETE FROM catalog_article_provider_scopes WHERE vehicle_id::text=$1`, vehicle)
+		exec(`DELETE FROM catalog_articles WHERE vehicle_id::text=$1`, vehicle)
+	}
+	defer func() { reset(); exec(`DELETE FROM vehicles WHERE vehicle_id::text=$1`, vehicle) }()
+	type bank struct {
+		scope, job string
+		retryable  bool
+		retries    int
+		stale      bool
+	}
+	type tuple struct {
+		Status    string `json:"status"`
+		Complete  bool   `json:"complete"`
+		Retryable bool   `json:"retryable"`
+		Processed int    `json:"processed"`
+		Total     int    `json:"total"`
+		Percent   int    `json:"percent"`
+	}
+	type scenario struct {
+		name       string
+		banks      []bank
+		status     string
+		retryable  bool
+		processed  int
+		descriptor bool
+	}
+	pending := bank{scope: "pending", job: "pending"}
+	processing := bank{scope: "running", job: "processing"}
+	retry := bank{scope: "partial", job: "failed", retryable: true, retries: 1}
+	complete := bank{scope: "complete", job: "completed"}
+	cases := []scenario{
+		{name: "no scopes", status: "pending"},
+		{name: "pending scope without current job", banks: []bank{{scope: "pending"}}, status: "pending"},
+		{name: "one pending current job", banks: []bank{pending}, status: "running"},
+		{name: "both pending current jobs", banks: []bank{pending, pending}, status: "running"},
+		{name: "processing current job", banks: []bank{processing}, status: "running"},
+		{name: "partial retryable failed future attempt", banks: []bank{retry}, status: "failed", retryable: true},
+		{name: "complete bank and retryable failed bank", banks: []bank{complete, retry}, status: "failed", retryable: true, processed: 1},
+		{name: "processing and terminal failed bank", banks: []bank{processing, {scope: "failed", job: "failed"}}, status: "running"},
+		{name: "processing and retryable failed bank", banks: []bank{processing, retry}, status: "running", retryable: true},
+		{name: "needs_review job stale running scope", banks: []bank{{scope: "running", job: "needs_review"}}, status: "failed"},
+		{name: "dead_letter job stale running scope", banks: []bank{{scope: "running", job: "dead_letter"}}, status: "failed"},
+		{name: "nonretryable failed job stale running scope", banks: []bank{{scope: "running", job: "failed"}}, status: "failed"},
+		{name: "exhausted failed job stale running scope", banks: []bank{{scope: "running", job: "failed", retryable: true, retries: 3}}, status: "failed"},
+		{name: "retryable failed job stale running scope", banks: []bank{{scope: "running", job: "failed", retryable: true, retries: 1}}, status: "failed", retryable: true},
+		{name: "both current generations complete nonempty", banks: []bank{complete, complete}, status: "completed", processed: 2, descriptor: true},
+		{name: "both current generations complete empty", banks: []bank{complete, complete}, status: "completed", processed: 2},
+		{name: "stale completed generation", banks: []bank{{scope: "complete", job: "completed", stale: true}}, status: "pending"},
+	}
+	for _, status := range []string{"partial", "failed", "needs_review", "not_configured"} {
+		cases = append(cases, scenario{name: "terminal scope " + status + " without retryable current job", banks: []bank{{scope: status, job: "completed"}}, status: "failed"})
+	}
+	measurements := []map[string]any{}
+	f.extra["index_readiness_cases"] = measurements
+	for _, tc := range cases {
+		reset()
+		for i, b := range tc.banks {
+			provider := []string{f.provider, map[string]string{"bankone": "banktwo", "banktwo": "bankone"}[f.provider]}[i]
+			var scope string
+			generation := 2
+			completedGeneration := generation
+			if b.stale {
+				completedGeneration--
+			}
+			err := f.pool.QueryRow(ctx, `INSERT INTO catalog_article_provider_scopes(catalog_provider_scope_id,vehicle_id,scope_key,provider_slug,generation,completed_generation,status) VALUES(gen_random_uuid(),$1::uuid,'vehicle:'||$1,$2,2,$3,$4) RETURNING catalog_provider_scope_id::text`, vehicle, provider, completedGeneration, b.scope).Scan(&scope)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// A historical failed job must never make current completed/pending work retryable.
+			exec(`INSERT INTO source_fetch_jobs(source_fetch_job_id,provider_slug,canonical_vehicle_id,source_vehicle_ref,source_version,connector_name,idempotency_key,status,job_kind,catalog_provider_scope_id,request_generation,retryable,retry_count) VALUES(gen_random_uuid(),$1,$2::uuid,'fixture','fixture','fixture',gen_random_uuid()::text,'failed','catalog_index',$3::uuid,1,true,1)`, provider, vehicle, scope)
+			if b.job != "" {
+				var job string
+				err = f.pool.QueryRow(ctx, `INSERT INTO source_fetch_jobs(source_fetch_job_id,provider_slug,canonical_vehicle_id,source_vehicle_ref,source_version,connector_name,idempotency_key,status,job_kind,catalog_provider_scope_id,request_generation,retryable,retry_count,max_attempts,next_attempt_at,lease_owner,lease_token,lease_expires_at,heartbeat_at) VALUES(gen_random_uuid(),$1,$2::uuid,'fixture','fixture','fixture',gen_random_uuid()::text,$3,'catalog_index',$4::uuid,2,$5,$6,3,now()+interval '1 day',CASE WHEN $3='processing' THEN gen_random_uuid() END,CASE WHEN $3='processing' THEN 1 ELSE 0 END,CASE WHEN $3='processing' THEN now()+interval '1 hour' END,CASE WHEN $3='processing' THEN now() END) RETURNING source_fetch_job_id::text`, provider, vehicle, b.job, scope, b.retryable, b.retries).Scan(&job)
+				if err != nil {
+					t.Fatal(err)
+				}
+				exec(`UPDATE catalog_article_provider_scopes SET current_job_id=$1::uuid WHERE catalog_provider_scope_id::text=$2`, job, scope)
+			}
+		}
+		if tc.descriptor {
+			exec(`INSERT INTO catalog_articles(vehicle_id,article_id,title,source_snapshot_id,evidence_locator,evidence_confidence) SELECT $1::uuid,gen_random_uuid()::text,'Partial descriptor',descriptor_source_snapshot_id,'fixture',1 FROM canonical_articles WHERE canonical_article_id::text=$2`, vehicle, f.article)
+		}
+		progress, err := newPostgresCatalogStore(f.pool).CatalogArticleProgress(ctx, Principal{}, vehicle)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected := tuple{tc.status, tc.processed == 2, tc.retryable, tc.processed, 2, tc.processed * 50}
+		observed := tuple{progress.Status, progress.Complete, progress.Retryable, progress.Processed, progress.Total, progress.Percent}
+		passed := expected == observed
+		measurements = append(measurements, map[string]any{"name": tc.name, "provider": f.provider, "expected": expected, "observed": observed, "passed": passed})
+		f.extra["index_readiness_cases"] = measurements
+		t.Logf("index readiness provider=%s case=%q expected=%+v observed=%+v passed=%t", f.provider, tc.name, expected, observed, passed)
+		if !passed {
+			t.Errorf("index readiness %s: expected=%+v observed=%+v", tc.name, expected, observed)
+		}
+	}
+}
+
 func TestPostgresCatalogLifecycleColdHTTPRaceOneJob(t *testing.T) {
 	f := r3Setup(t)
+	f.verifyIndexReadiness()
 	f.snapshot("initial", CatalogArticle{})
 	start := make(chan struct{})
 	var wg sync.WaitGroup
@@ -617,7 +735,7 @@ func (f *r3Fixture) verifyScopeAndLegacyDescriptors() {
 	exec(`UPDATE canonical_articles SET takedown_status='active' WHERE canonical_article_id::text=$1`, f.other)
 	exec(`UPDATE catalog_article_provider_scopes SET status='partial' WHERE vehicle_id::text=$1 AND provider_slug='banktwo'`, f.vehicle)
 	progress, err := store.CatalogArticleProgress(ctx, p, f.vehicle)
-	if err != nil || progress.Complete || !progress.Retryable || progress.Status != "failed" {
+	if err != nil || progress.Complete || progress.Retryable || progress.Status != "failed" {
 		t.Fatal("nonempty partial index falsely complete", progress, err)
 	}
 	exec(`UPDATE catalog_article_provider_scopes SET status='complete' WHERE vehicle_id::text=$1 AND provider_slug='banktwo'`, f.vehicle)

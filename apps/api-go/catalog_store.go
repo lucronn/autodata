@@ -608,12 +608,23 @@ func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Princ
 }
 
 func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Principal, vehicleID string) (*CatalogArticleProgress, error) {
-	var total, completed, active, failed int
-	err := s.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE scope.status='complete' AND scope.completed_generation=scope.generation),count(*) FILTER(WHERE job.status IN ('pending','processing')),count(*) FILTER(WHERE scope.status IN ('partial','failed','needs_review','not_configured')) FROM catalog_article_provider_scopes scope LEFT JOIN source_fetch_jobs job ON job.source_fetch_job_id=scope.current_job_id WHERE (scope.vehicle_id::text=$1 AND scope.vehicle_configuration_id IS NULL OR scope.vehicle_configuration_id::text=$1) AND scope.provider_slug IN ('bankone','banktwo')`, vehicleID).Scan(&total, &completed, &active, &failed)
+	var total, completed, active, failed, retryable int
+	err := s.pool.QueryRow(ctx, `
+  SELECT count(*),
+    count(*) FILTER(WHERE scope.status='complete' AND scope.completed_generation=scope.generation),
+    count(*) FILTER(WHERE job.status IN ('pending','processing')),
+    count(*) FILTER(WHERE scope.status IN ('partial','failed','needs_review','not_configured')
+      OR job.status IN ('failed','needs_review','dead_letter')),
+    count(*) FILTER(WHERE job.status='failed' AND job.retryable=true
+      AND job.retry_count < job.max_attempts)
+  FROM catalog_article_provider_scopes scope
+  LEFT JOIN source_fetch_jobs job ON job.source_fetch_job_id=scope.current_job_id
+  WHERE (scope.vehicle_id::text=$1 AND scope.vehicle_configuration_id IS NULL OR scope.vehicle_configuration_id::text=$1)
+    AND scope.provider_slug IN ('bankone','banktwo')`, vehicleID).Scan(&total, &completed, &active, &failed, &retryable)
 	if err != nil {
 		return nil, err
 	}
-	progress := &CatalogArticleProgress{Status: "pending", Phase: "indexing", Total: 2, Processed: completed, Percent: completed * 50, Complete: total == 2 && completed == 2, Retryable: failed > 0}
+	progress := &CatalogArticleProgress{Status: "pending", Phase: "indexing", Total: 2, Processed: completed, Percent: completed * 50, Complete: total == 2 && completed == 2, Retryable: retryable > 0}
 	if progress.Complete {
 		progress.Status = "completed"
 	} else if active > 0 {

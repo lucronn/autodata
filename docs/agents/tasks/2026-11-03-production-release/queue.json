@@ -1629,6 +1629,157 @@
         "outstanding_findings": 0,
         "regression": "Missing canonical vehicle_configuration_id column was independently reproduced and rejected for both banks after repair"
       }
+    },
+    {
+      "id": "workshop-index-readiness",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-index-readiness.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-index-readiness.md",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-index-readiness.json",
+      "source_candidate_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "state": "verified",
+      "release_state": "unverified",
+      "depends_on": [
+        "workshop-reviewed-leaves-integration"
+      ],
+      "todo": [
+        "Preserve live Issue186 and Project8 history, append this goal/refs/todo, read back both records, then synchronize the docs-only checkpoint and pass full-SHA preflight.",
+        "Add real PostgreSQL current-job progress regressions within the existing cold fixture root; correct aggregate retryable/terminal predicates in catalog_store.go and restore fixture state.",
+        "Add paid Handler hydration and read-only descriptor regressions in catalog_access_test.go; correct catalog_http.go incomplete hydration mapping.",
+        "Execute actual loadArticles with real bounded readCollection in workshop-client.test.mjs; clear prior completion live-region text at current-load entry and require explicit complete before ready while preserving partial rows and desired-article opening.",
+        "Run exact-candidate Node/Go/contract and required non-skipped isolated PostgreSQL acceptance; record commands, counts, SHA and scope checks, then commit/push validated milestones.",
+        "Obtain independent exact-head review and synchronize final evidence; retain separate release/provider/payment/deployment gates."
+      ],
+      "implementation_dispatch_authorized": false,
+      "cloud_execution_authorized": false,
+      "tracking_sync": {
+        "status": "synchronized",
+        "read_at": "2026-11-04T15:36:56.164051+00:00",
+        "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634845885",
+        "detail_body_sha256": "9acb67f385d4f0c038afa12917c76d5799de7b9068e70cd4f869158bd548294b",
+        "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+        "preserved_predecessor_comment_count": 138,
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_source_sha256": "9c99e5508b2cf825dd8919a125962cb3a4c12df741df53722740de57f535e9b4",
+        "project_source_bytes": 476,
+        "predecessor_project_source_sha256": "46b8e75e2a62481d106c77c1b6677dd8c1f865ef53b5377c0d31950280c68a7b",
+        "intermediate_project_source_sha256": "32dd7445f21a1ca39b344a948fc8b408df946ad59b6fa06db99953bca1504db1",
+        "project_other_fields_unchanged": true,
+        "coordinator_before_ref": "/home/corp/autodata-evidence/index-readiness-completion-tracking-before.json",
+        "coordinator_readback_ref": "/home/corp/autodata-evidence/index-readiness-completion-tracking-readback.json",
+        "coordinator_project_correction_ref": "/home/corp/autodata-evidence/index-readiness-completion-project-correction.json",
+        "history_preservation": "Full predecessor Source text and all 138 predecessor comment hashes preserved in the linked Issue detail and durable before/readback evidence.",
+        "writer": "coordinator serialized writer; no GitHub write by this documentation agent"
+      },
+      "planning_tracking_sync": {
+        "read_at": "2026-11-04T15:02:40.245180+00:00",
+        "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+        "detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634018122",
+        "detail_body_sha256": "c1597703501cec2abb5055e120c7d7bce37692bd4c95083045d810aff5d1931d",
+        "detail_body_bytes": 2794,
+        "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+        "comment_count": 136,
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_source_sha256": "51f2da943694be8f11e86e2463fe769f92f3a1f99b7151329f1eb175ba20b510",
+        "project_source_length": 957,
+        "project_status": "In Progress",
+        "project_matches_coordinator_after_readback": true,
+        "coordinator_project_readback_ref": "/home/corp/autodata-evidence/index-readiness-project-readback.json",
+        "independent_revised_draft_review": "PASS (coordinator dispatch)",
+        "live_readback_files": "/home/corp/autodata-evidence/index-readiness-gate-checkpoint-20261104"
+      },
+      "implementation_base_sha": "d60121c41a680d699da575d9883f9ecf45b0fb72",
+      "verified_candidate_sha": "23a2f3b2e12c0b14b1d4989ab13a075cf1bee084",
+      "verification": {
+        "candidate_sha": "23a2f3b2e12c0b14b1d4989ab13a075cf1bee084",
+        "pull_request_ref": "https://github.com/lucronn/autodata/pull/211",
+        "pull_request_state": "draft",
+        "local": {
+          "go": {
+            "passed_roots": 155,
+            "ordinary_fixture_skips": 12,
+            "exit_code": 0
+          },
+          "node": {
+            "passed": 62,
+            "skipped": 0,
+            "exit_code": 0
+          },
+          "contracts": {
+            "passed": 19,
+            "exit_code": 0
+          },
+          "scope_paths": 6,
+          "diff_check_exit_code": 0,
+          "receipt_ref": "/home/corp/autodata-evidence/index-readiness-unit-evidence/verification-exact-23a2f3b.json"
+        },
+        "independent_code_review": {
+          "status": "PASS",
+          "candidate_sha": "23a2f3b2e12c0b14b1d4989ab13a075cf1bee084",
+          "go_independently_rerun": false,
+          "source": "coordinator exact-code-review handoff"
+        },
+        "red": {
+          "candidate_sha": "402fbb2b348df54d9b7dbd55496f6dcf73e3c32f",
+          "run_root": "/home/corp/autodata-evidence/index-readiness-red-9ddd89c1ed01",
+          "classification": "intended regression failure",
+          "matrix_cases": 42,
+          "matrix_mismatches_per_provider": 10,
+          "python_cases_passed": 6,
+          "python_cases_failed": 2,
+          "python_cases_skipped": 0,
+          "original_receipt_preserved": true,
+          "cleanup_recovery_ref": "/home/corp/autodata-evidence/index-readiness-red-9ddd89c1ed01/artifacts/cleanup-recovery.json"
+        },
+        "first_green": {
+          "candidate_sha": "23a2f3b2e12c0b14b1d4989ab13a075cf1bee084",
+          "run_root": "/home/corp/autodata-evidence/index-readiness-green-0407301b80b0",
+          "status": "failed",
+          "classification": "pre-Go warm-fixture SeaweedFS capacity failure; 2.15 percent disk free",
+          "matrix_passed": 42,
+          "python_cases_passed": 6,
+          "python_cases_failed": 2,
+          "python_cases_skipped": 0,
+          "original_receipt_preserved": true,
+          "owned_cleanup_passed": true
+        },
+        "final_green": {
+          "candidate_sha": "23a2f3b2e12c0b14b1d4989ab13a075cf1bee084",
+          "run_root": "/home/corp/autodata-evidence/index-readiness-green-68fd8e922a26",
+          "status": "passed",
+          "python_cases_passed": 8,
+          "go_exact_root_passes": 8,
+          "skipped": 0,
+          "matrix_cases_passed": 42,
+          "pytest_seconds": 76.36,
+          "supervisor_exit_code": 0,
+          "supervisor_sha256": "e4a8f054f85207b5dc8e83155cf1b39e67ffcbc467d8f0a44eb08bc86a0e26b9",
+          "acceptance_receipt_ref": "/home/corp/autodata-evidence/index-readiness-green-68fd8e922a26/artifacts/acceptance-result.json",
+          "acceptance_receipt_sha256": "a677ebea4d8234d222c2d71065b0bf9337b2fbef0e51ed23f2b0eef5a967209a",
+          "independent_audit_ref": "/home/corp/autodata-evidence/index-readiness-green-independent-audit-68fd8e922a26.json",
+          "independent_audit_sha256": "9e8bb8769123928682401fab64f899924b7d168775dd317d09031eb2843bd61b",
+          "independent_audit_status": "PASS",
+          "owned_cleanup_passed": true,
+          "storage_cleanup_receipt_sha256": "355598ffef4fcc101245fbe6bc72169a1e261b6e2db23dd1cf68d78a60fd9a44",
+          "capacity_remedy": "Retained owned backend-final inspect/log, removed build backend before fixtures; private test-only Compose override bound only SeaweedFS /data to a fresh owned /home directory with >12 GiB headroom; verified cleanup entrypoint/mount, config delta, provenance and bounded owned cleanup. No application source change between GREEN attempts."
+        },
+        "evidence_limits": "Isolated synthetic PostgreSQL/S3/NATS and HTTP fixture acceptance only; no live provider/payment, production identity, final180, activation, release or deployment claim."
+      },
+      "release_authorities": {
+        "merge": false,
+        "release": false,
+        "deployment": false,
+        "activation": false,
+        "live_provider": false,
+        "live_payment": false,
+        "final180": false
+      },
+      "final180_status": "open",
+      "live_provider_rehearsal_status": "open",
+      "runtime_execution_authorized": false,
+      "completion_checkpoint_state": "requires_independent_review_before_integration"
     }
   ],
   "execution": {
