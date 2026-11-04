@@ -150,7 +150,7 @@ Immediately capture the exact unit's original InvocationID, process identity and
 
 ## Repository adoption and current gate record
 
-The preceding reviewed draft bytes are preserved verbatim as historical design input (SHA256 42dd282ae5c5a17cda7cf2e9b590ed4675ae46f55154c565691146bd2223e664). This docs-only adoption is based exactly on b1ac3c7c7786a922dcc89132b07add605d7ebae5; sole writer api21_recovery_plan. Tracking and exact committed preflight are pending. No implementation, canary or runtime dispatch is authorized.
+The preceding reviewed draft bytes are preserved verbatim as historical design input (SHA256 42dd282ae5c5a17cda7cf2e9b590ed4675ae46f55154c565691146bd2223e664). This docs-only adoption is based exactly on b1ac3c7c7786a922dcc89132b07add605d7ebae5; sole writer api21_recovery_plan. Tracking is synchronized by the live readback below; exact committed preflight remains pending. No implementation, canary or runtime dispatch is authorized.
 
 Issue: https://github.com/lucronn/autodata/issues/186; Project: https://github.com/users/lucronn/projects/8. Task: `docs/agents/tasks/2026-11-03-production-release/workshop-api21-interruption-recovery.json`; record: `docs/agents/records/2026-11-04-workshop-api21-interruption-recovery.json`; complete tracking evidence: `docs/agents/records/2026-11-04-workshop-api21-interruption-recovery-tracking-evidence.json`.
 
@@ -164,3 +164,8 @@ Concrete todo (identical in task/record/queue):
 - [ ] Dispatch the unchanged complete full21 command exactly once in its new root through the reviewed Restart=no user service; retain outer argv/identity/exit/log evidence separately, preserve existing deadlines/resources and remain under bounded observation through supervisor finalization.
 - [ ] Independently audit all21 raw cases, exact candidate and input/runtime provenance, supervisor final receipt/inventory/host-after, hashes/privacy and owned cleanup; retain every failure and require a separate synchronized gate for any repair or later attempt.
 - [ ] Keep final-head180/support/security/images/SDK/license/CI/reviewer proof and all staging/product/release/deployment/cutover gates separate; pilot/support add zero logical cases, historical evidence cannot certify another SHA, and all profile/authority promotion stays false.
+
+
+### Recovery tracking synchronized — exact checkpoint review still required
+
+Authorized sole writer api21_recovery_plan appended detail https://github.com/lucronn/autodata/issues/186#issuecomment-6624161772 (SHA256 3f07b2a0ce2c191dfa1c0b39c2265567c735c7aef65c0150c5bc62038c42e9f5), and read back the 912-character Project8 Source index (SHA256 1263446217268cd3bd9e34f706ce225151038932eb5f63d0e2e2d607b82c8e26) at 2026-11-04T06:22:41.129299+00:00. Complete original Issue body/all127 predecessor comments and all other Project item fields are byte-preserved in tracking evidence; Status In Progress. Exact six todos, zero implementation scope, approved draft42dd282a, unchanged e5fed171 candidate and frozen inputs/limits are synchronized. No runtime/canary/implementation dispatch or acceptance claim; committed exact-base preflight and independent exact-checkpoint review remain required.
