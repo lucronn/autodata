@@ -58,7 +58,25 @@
     "implementation_dispatch_authorized": false,
     "cloud_execution_authorized": false,
     "runtime_verified": false,
-    "production_ready": false
+    "production_ready": false,
+    "checkpoint_verification": {
+      "checkpoint_sha": "52653deef3754972230801ac260875fe92e1a403",
+      "branch": "codex/workshop-staging-lifecycle-plan",
+      "preflight": {
+        "status": "synchronized",
+        "errors": [],
+        "exit_code": 0,
+        "base_sha": "52653deef3754972230801ac260875fe92e1a403"
+      },
+      "pin_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622247097",
+      "pin_comment_sha256": "94b222b2cfbfb6608213c262a5ef31257ffd0e6a713b70bbdc65f0604da80a0a",
+      "issue_body_sha256": "f39109d6e1eed9b9077cbea29485bd52ffb347d096021e0c6d41a9f95fc4a8ed",
+      "project_text_sha256": "acfd6664aec1798bf581fed620f185faf4155896ddb77674664ea7d1b2a9b33a",
+      "verified_at": "2026-11-04T04:05:59.945032+00:00",
+      "independent_exact_checkpoint_review": "pending",
+      "implementation_dispatch_authorized": false,
+      "cloud_execution_authorized": false
+    }
   },
   "status": "synchronized",
   "execution": {
@@ -74,5 +92,23 @@
     "Implement only the four allowlisted bootstrap files for the fixed staging-only Compute GET and three POST operations, approved resource identity readback and bounded retained-resource failure receipts; keep production apply, IAM mutation, installation, formatting, secrets, application startup and readiness unavailable.",
     "Run offline staging-bootstrap and existing host/cloud regression suites, syntax/scope/diff checks and pinned preflight; commit/push a coherent candidate and obtain independent exact-SHA review before integration or live use.",
     "Keep all cloud execution blocked pending separate owner authorization of selected GCP projects/billing/region/VPC/IAM/pins/staging origin and concrete reviewed scripts; keep host install/readiness/recovery behind separate publisher/schema-dependent gates and preserve cars.tk/production blockers."
-  ]
+  ],
+  "checkpoint_verification": {
+    "checkpoint_sha": "52653deef3754972230801ac260875fe92e1a403",
+    "branch": "codex/workshop-staging-lifecycle-plan",
+    "preflight": {
+      "status": "synchronized",
+      "errors": [],
+      "exit_code": 0,
+      "base_sha": "52653deef3754972230801ac260875fe92e1a403"
+    },
+    "pin_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622247097",
+    "pin_comment_sha256": "94b222b2cfbfb6608213c262a5ef31257ffd0e6a713b70bbdc65f0604da80a0a",
+    "issue_body_sha256": "f39109d6e1eed9b9077cbea29485bd52ffb347d096021e0c6d41a9f95fc4a8ed",
+    "project_text_sha256": "acfd6664aec1798bf581fed620f185faf4155896ddb77674664ea7d1b2a9b33a",
+    "verified_at": "2026-11-04T04:05:59.945032+00:00",
+    "independent_exact_checkpoint_review": "pending",
+    "implementation_dispatch_authorized": false,
+    "cloud_execution_authorized": false
+  }
 }
