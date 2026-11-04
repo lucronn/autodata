@@ -1,0 +1,44 @@
+{
+  "goal": "Scope legacy cloud-workflow production assertions to production jobs while retaining strict dormant staging checks and every activation denial.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-staging-workflow-regression-amendment.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/workshop-gcp.md",
+    "docs/superpowers/plans/2026-11-03-workshop-authenticated-publisher.md"
+  ],
+  "todo": [
+    "Synchronize the narrow test-only amendment across Issue186, Project8 and canonical docs; commit and pass pinned preflight before correction.",
+    "Limit legacy release-loop production invariants to publish/deploy, retain all their assertions, and reject unknown release jobs alongside dedicated dormant staging checks.",
+    "Run retained red/green workflow, cloud and host regressions plus Node/syntax/scope checks; push for independent exact-SHA review without activation."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T03:18:21.961544+00:00",
+  "source_integration_base_sha": "e9faaf594ecd671e113190fe0c57229d9824ad04",
+  "implementation_allowlist": [
+    "infra/deploy/gce/test_cloud_ops.py"
+  ],
+  "independent_checkpoint_review": "pending",
+  "runtime_execution_authorized": false,
+  "staging_activation_authorized": false,
+  "production_publication_authorized": false,
+  "deployment_authorized": false,
+  "tracking_sync": {
+    "prior_project_index_sha256": "d30a179acf2bb676091b0f5bbd64d74c0d08885d9292aca30aec9e774f6ef832",
+    "prior_issue_body_sha256": "954bd6721a877439d06eb41638c21edfc6803ad94fce3903ef095afc131fe2c4",
+    "full_prior_project_index_preserved_in_issue_comment": true,
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621607141",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_note_field": "Source or dependency reference",
+    "verified_at": "2026-11-04T03:19:00.308467+00:00",
+    "issue_comment_sha256": "8ceae3d1263f6e1029cbef57b0ce4a86f758e291be7d413a2f90d1efb7e94bc3",
+    "project_text_sha256": "b8bca1611e3ed2563fb5ce71bfacbde542ee1f069e7ffd4c08f131fc30e4d26b"
+  },
+  "task": "workshop-staging-workflow-regression",
+  "execution": {
+    "mode": "plan_only",
+    "builder_dispatch": "pending_exact_checkpoint_review_and_coordinator_dispatch",
+    "runtime_execution": "none"
+  }
+}

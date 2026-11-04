@@ -413,3 +413,71 @@ Record status is synchronized after verified Issue/Project readback; a committed
 Stage0 synchronization verified 2026-11-04T04:07:54.663787+00:00: https://github.com/lucronn/autodata/issues/186#issuecomment-6622268742. Prior full index SHA256 `acfd6664aec1798bf581fed620f185faf4155896ddb77674664ea7d1b2a9b33a`; complete staging M1/PG/artifact details and pins are preserved verbatim/hash in `docs/agents/records/2026-11-04-workshop-publisher-stage0-integration-evidence.json` and linked preservation comments. Current Project text SHA256 `cc28ab97ee9d02b678552c2303171b73b6e528c88d8ed5ed79d1ffc049649b07`. Issue body unchanged. Local draftc2ebdbc passed scoped independent review; committed exact-checkpoint review/dispatch pending. No implementation, SDK/cloud or activation.
 
 Exact synchronized checkpoint `dc1ba895d5761ca8ed5d3ff19f645b654655ae3c` pushed; full-SHA preflight exit0 returned `{"status":"synchronized","errors":[]}`. Pin https://github.com/lucronn/autodata/issues/186#issuecomment-6622281057 read back 2026-11-04T04:08:26.452850+00:00; final Project index SHA256 `2d8c4a31f378c74200ec22a5ebc0f44876c1e02b287a9ddcb5c48d15a7413e24`. Independent exact-checkpoint review and coordinator dispatch remain required; no implementation merge or activation occurred.
+
+## Dormant staging workflow regression assertion amendment
+
+Scope legacy cloud-workflow production assertions to production jobs while retaining strict dormant staging checks and every activation denial.
+
+Plan: `docs/superpowers/plans/2026-11-03-workshop-staging-workflow-regression-amendment.md`; record: `docs/agents/records/2026-11-03-workshop-staging-workflow-regression.json`; task: `docs/agents/tasks/2026-11-03-production-release/workshop-staging-workflow-regression.json`. Issue186/Project8 track this additive test-only amendment at candidate `e9faaf594ecd671e113190fe0c57229d9824ad04`. The143-test focused run has one retained legacy production-loop assertion failure;52 Node tests and five dedicated staging tests pass. Only the named legacy test in test_cloud_ops.py may gain an exact release-job inventory and apply its unchanged production invariants to publish/deploy. Dedicated staging checks and frozen production job hashes remain required. No workflow/CLI/runtime/credential/toolkit/deploy behavior changes or activation follows.
+
+Concrete todo:
+
+- [ ] Synchronize the narrow test-only amendment across Issue186, Project8 and canonical docs; commit and pass pinned preflight before correction.
+- [ ] Limit legacy release-loop production invariants to publish/deploy, retain all their assertions, and reject unknown release jobs alongside dedicated dormant staging checks.
+- [ ] Run retained red/green workflow, cloud and host regressions plus Node/syntax/scope checks; push for independent exact-SHA review without activation.
+
+
+## Artifact helper independent-review corrections: planning only
+
+Authenticate installed toolkit bytes and enforce an owned process-and-pipe termination boundary plus nonblocking archive preflight while preserving dormant publisher execution.
+
+Candidate `a2453848ed596a00574d63a2ca5cc77d28464c99` remains dormant and is not accepted as a runnable authenticated publisher. Retained review proves replacement toolkit code can bypass metadata-only checks, cancelled SDK work can continue/log after return, and a FIFO can hang before deadline. Plan `docs/superpowers/plans/2026-11-03-workshop-artifact-boundary-corrections.md`; record `docs/agents/records/2026-11-03-workshop-artifact-boundary-corrections.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-artifact-boundary-corrections.json`. Only publisher_artifact.mjs and its Node test may change after a new synchronized pinned gate, independent review and coordinator dispatch. The correction binds all installed/transitive bytes to an independently approved read-only tree, owns/terminates/reaps the actual SDK child and closes private result/log pipes before return, and rejects special archive files with nonblocking bounded descriptor checks. Default CLI and staging/production blockers, lock/runtime pins, seven moderate advisories and unresolved buffers licensing remain. No real owner manifest/policy, credential, SDK network action, workflow or runtime activation follows.
+
+Concrete todo:
+
+- [ ] Synchronize the three review findings, exact two-file correction scope and retained red evidence across Issue186, Project8 and canonical docs; commit and pass pinned preflight for independent review before implementation.
+- [ ] Bind a complete independently approved installed package-tree manifest to the exact reviewed lock and immutable toolchain; reject package or transitive file drift before import or runtime credential use.
+- [ ] Replace in-process SDK callbacks and Promise-only cancellation with one fixed verified child process, private result pipe, bounded log pipes, termination and reap proof before any cancellation or upload result returns.
+- [ ] Open release.zip nonblocking and no-follow, reject nonregular or replaced files, and put filesystem preflight under the same deadline and cleanup reserve.
+- [ ] Run real local tamper, late-output, process-group, cancellation, deadline, overflow and FIFO red/green regressions plus existing focused suites; push exact candidates for independent review with every activation denial and audit limitation intact.
+
+
+## Artifact verified-worker deadline correction: planning only
+
+Bound verified-worker revalidation by the original operation deadline and cancellation ownership, and prohibit child spawn after expiry or cancellation while preserving dormant publisher execution.
+
+Candidate `bf7bb67bfbdca3b8186bb56d603cf4dee7e4116b` closed the original installed-tree/process/FIFO review findings (92 Node and143 Python tests), but approval is withheld for one P2: selected-worker revalidation is outside deadline/cancel bounds and may start a child after expiry. Retained synthetic probe shows spawnedAfterDeadline=true and cleanup_failed; it establishes no live/owner/immutable-toolchain evidence. Plan `docs/superpowers/plans/2026-11-04-workshop-artifact-revalidation-deadline.md`; record `docs/agents/records/2026-11-04-workshop-artifact-revalidation-deadline.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-artifact-revalidation-deadline.json`. Only publisher_artifact.mjs and its Node test may change after synchronized pinned gate, independent review and dispatch. Bind inspection waits/traversal/handle cleanup to one original-budget cancellation scope, preserve the cleanup reserve, and recheck deadline/abort immediately before fixed spawn. No live SDK or workflow action follows. Both CLI modes stay unconditional exit3 without stdin/ambient-token reads; owner trust, immutable-toolchain and seven moderate advisory/buffers-license blockers remain. Preserve CURRENT PG adoption index/detail verbatim/hash; any later closure index follows its independent audit and tracking-slot release.
+
+Concrete todo:
+
+- [ ] Synchronize the single revalidation finding, exact two-file scope and retained red probe across Issue186, Project8 and canonical docs; preserve the current PG adoption index/detail, commit and pass full-SHA pinned preflight for independent review before implementation.
+- [ ] Add verified-descriptor-path deadline, abort and pending-inspection regressions that prove zero spawn and zero readback after the cutoff, using only a synthetic local toolchain and harmless OS child boundary.
+- [ ] Thread one original-budget inspection scope through loader and file/tree awaits, own cancellation before revalidation, drain or fail cleanup for outstanding inspection work, and recheck deadline and cancellation immediately before the fixed spawn without resetting any budget.
+- [ ] Run all existing Node and Python cloud/host/workflow suites plus syntax, exact-scope and pinned-gate checks; push the bounded candidate for independent exact-SHA review while retaining every owner, immutable-toolchain, advisory, licensing and activation blocker.
+
+
+## Workshop artifact inspection close-failure correction: docs-only planning
+
+Goal: Preserve cleanup_failed when an owned inspection handle fails to close, and never treat rejected inspection settlement as proof of successful cleanup.
+
+Docs-only planning on candidate `220d9c3099e190c3a3dc60fde11c43b7300bda7c`; PG Task1B released tracking at receipt c16f40a2730e7bc8a5fb3afd3ac2d10abf551637. Plan: `docs/superpowers/plans/2026-11-04-workshop-artifact-inspection-close-failure.md`. Record: `docs/agents/records/2026-11-04-workshop-artifact-inspection-close-failure.json`. Task: `docs/agents/tasks/2026-11-03-production-release/workshop-artifact-inspection-close-failure.json`. Issue/Project tracking is synchronized; committed full-SHA preflight, independent exact-checkpoint review and coordinator dispatch remain required before implementation. No live action is authorized.
+
+Independent review `/tmp/autodata-artifact-220d9c3-review.md` retains the earlier boundary/deadline fixes but withholds approval for failed handle close being mistaken for drained inspection. A real-FD offline probe returned operation_cancelled while its late-opened descriptor remained open. The proposed two-file-only correction retains explicit handle ownership and sticky cleanup_failed precedence across task settlement, cancellation, timeout and loader redaction. Real-FD red/green cases must independently close fixture descriptors after observing the public failure. Original shared cleanup budgets, zero late spawn, process-group/pipe closure and both unconditional CLI exit3 denials remain required. Owner/immutable-toolchain/authenticator/readback, seven moderate advisory and buffers license blockers remain.
+
+Concrete todo:
+
+- [ ] Synchronize the single close-failure finding and exact two-file scope across Issue186, Project8 and canonical docs after the coordinator releases the tracking slot; preserve the then-CURRENT PG index/details verbatim with hashes, commit and pass full-SHA pinned preflight for independent review before implementation.
+- [ ] Add actual-file-descriptor regressions for cancelled late-open and ordinary inspection close failure, plus timeout and successful-close controls; prove cleanup_failed precedence, zero spawn/readback and bounded independent fixture cleanup.
+- [ ] Retain explicit inspection handle ownership and sticky closure failure, distinguish task settlement from proved closure, and propagate fixed cleanup_failed through loader and operation cleanup without resetting budgets or weakening earlier guards.
+- [ ] Run the full existing 103 Node and 143 Python tests plus new regressions, syntax, exact-scope and pinned-gate checks; push the candidate for independent exact-SHA review with all owner, immutable-toolchain, advisory, license and activation blockers retained.
+
+Close-failure gate tracking: https://github.com/lucronn/autodata/issues/186#issuecomment-6622115738, verified 2026-11-04T03:56:17.962371+00:00. CURRENT PG Task1B full index and details6622084338/6622103154 preserved verbatim/SHA256. Separate PG review/adoption/root verification/dispatch and all quarantine/Task2 denials remain.
+
+
+## Stage0 dormant publisher integrated state
+
+The authorized Stage0 integration retains Python source `101f7d6e2a2795206f16b4419fe561cad531071e` and artifact source `bba43a0675628db3ac90ca7c72bc47eb8c381cb0` exactly, based on synchronized gate `dc1ba895d5761ca8ed5d3ff19f645b654655ae3c` and receipt `599dd7315644503e843def1c0dc5818c86b1524e`. The coordinator dispatched implementation after independent exact-checkpoint review and passing full-SHA preflight. Both complete source document histories above remain historical evidence; their earlier planning-only and pending-dispatch statements describe their original checkpoints.
+
+Offline integration verification passed: Python publisher45 tests; cloud/host/workflow143 tests; Node artifact110 tests. Python syntax (six modules), both Node syntax checks, the ten selected implementation blob/hash comparisons, thirteen exact historical-document additions, all four protected workflow job definitions, exact merge scope and diff checks passed. Node runtime SHA256 is `94efd062ed066c1a0b332e18249859c905e920eeada5df55d24c99b919629a90` (reviewed Node22.23.4); Node tests ran from the repository root and Python tests from infra/deploy/gce. The separate Stage0 verification receipt records the resulting merge SHA and final-head checks.
+
+Both CLI modes retain unconditional exit3/missing_dependency. Missing owner trust, authenticated official upload worker, dependency factory, immutable installed-tree/runtime/helper pins, seven moderate toolkit advisories, buffers licensing and staging/production activation remain blockers. Production/staging workflow job bodies and permissions are byte-identical to the selected artifact source. No dependency installation, SDK import, live upload, cloud/registry/provider/host/Docker operation, Issue/Project write, activation or deployment occurred; runtime/production readiness remains false. Independent exact-implementation review remains required.

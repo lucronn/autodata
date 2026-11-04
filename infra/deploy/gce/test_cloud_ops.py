@@ -885,7 +885,14 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn('push', workflow['on'])
             self.assertNotIn('workflow_run', workflow['on'])
             self.assertFalse(workflow['concurrency']['cancel-in-progress'])
-            for operation, job in workflow['jobs'].items():
+            if name == 'release':
+                self.assertEqual(set(workflow['jobs']), {
+                    'publish', 'deploy', 'staging-build-candidate', 'staging-finalize'})
+                operations = ('publish', 'deploy')
+            else:
+                operations = tuple(workflow['jobs'])
+            for operation in operations:
+                job = workflow['jobs'][operation]
                 self.assertIn("vars.WORKSHOP_" + operation.upper() + "_ENABLED == 'true'", job['if'])
                 self.assertIn("github.ref == 'refs/heads/master'", job['if'])
                 self.assertEqual(job['permissions'], {'contents': 'read'})
