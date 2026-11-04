@@ -1,0 +1,131 @@
+{
+  "task_id": "workshop-publisher-runtime-trust-amendment",
+  "goal": "Decide and document a runner-boundary publisher trust protocol using signed GitHub OIDC run/attempt identity, opaque Results credentials, independent original-byte artifact readback and a signed post-upload statement; preserve every implementation and activation denial until separately gated.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-publisher-runtime-trust-amendment.md",
+  "spec_ref": "docs/agents/specs/2026-11-04-workshop-publisher-runtime-trust-amendment.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-publisher-runtime-trust-amendment.json",
+  "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "status": "blocked_pending_owner_trust_decision_and_new_gate",
+  "allowed_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-publisher-runtime-trust-amendment.md",
+    "docs/agents/specs/2026-11-04-workshop-publisher-runtime-trust-amendment.md",
+    "docs/agents/records/2026-11-04-workshop-publisher-runtime-trust-amendment.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-publisher-runtime-trust-amendment.json",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json",
+    "docs/operations/workshop-gcp.md"
+  ],
+  "implementation_allowlist": [],
+  "proposed_future_implementation_allowlist": [
+    "infra/deploy/gce/publisher_runtime_trust.mjs",
+    "infra/deploy/gce/test_publisher_runtime_trust.mjs",
+    "infra/deploy/gce/publisher_artifact.mjs",
+    "infra/deploy/gce/test_publisher_artifact.mjs",
+    "infra/deploy/gce/publisher_adapters.py",
+    "infra/deploy/gce/test_publisher_adapters.py"
+  ],
+  "todo": [
+    "Obtain the owner decision on independent cryptographic Results bearer binding versus explicit protected-runner trust; reject the proposed protocol if independent bearer binding remains required.",
+    "Review the proposed exact identity, original-byte readback, post-upload signature and negative-test contracts at candidate 4d82e413e04fb2401ac7bc28dc828375ac662180; retain all existing Stage1A and workflow denials.",
+    "Resolve owner signer/verifier roots and pins, numeric repository/owner IDs, protected workflow/environment policy, endpoint/credential separation and replay policy; record actual decisions without fixture substitution.",
+    "After independent draft review and coordinator tracking-slot release, synchronize this goal, six-document scope, proposed future implementation allowlist and concrete todo with Issue186/Project8 preserving all prior lane evidence; commit/push a checkpoint, pin its full SHA and pass canonical preflight before any builder dispatch.",
+    "Only under a separately approved code-only gate, implement and test the six-path dormant protocol amendment with real local cryptographic fixtures, original-byte negative cases and unchanged Stage0/Stage1A/workflow regressions; obtain exact-SHA review before any separate live activation gate."
+  ],
+  "pre_implementation": {
+    "goal": "Decide and document a runner-boundary publisher trust protocol using signed GitHub OIDC run/attempt identity, opaque Results credentials, independent original-byte artifact readback and a signed post-upload statement; preserve every implementation and activation denial until separately gated.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-publisher-runtime-trust-amendment.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-04-workshop-publisher-runtime-trust-amendment.md",
+      "docs/operations/workshop-gcp.md"
+    ],
+    "todo": [
+      "Obtain the owner decision on independent cryptographic Results bearer binding versus explicit protected-runner trust; reject the proposed protocol if independent bearer binding remains required.",
+      "Review the proposed exact identity, original-byte readback, post-upload signature and negative-test contracts at candidate 4d82e413e04fb2401ac7bc28dc828375ac662180; retain all existing Stage1A and workflow denials.",
+      "Resolve owner signer/verifier roots and pins, numeric repository/owner IDs, protected workflow/environment policy, endpoint/credential separation and replay policy; record actual decisions without fixture substitution.",
+      "After independent draft review and coordinator tracking-slot release, synchronize this goal, six-document scope, proposed future implementation allowlist and concrete todo with Issue186/Project8 preserving all prior lane evidence; commit/push a checkpoint, pin its full SHA and pass canonical preflight before any builder dispatch.",
+      "Only under a separately approved code-only gate, implement and test the six-path dormant protocol amendment with real local cryptographic fixtures, original-byte negative cases and unchanged Stage0/Stage1A/workflow regressions; obtain exact-SHA review before any separate live activation gate."
+    ],
+    "status": "pending",
+    "updated_at": "2026-11-04T16:40:45.955249+00:00",
+    "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "draft_document_allowlist": [
+      "docs/superpowers/plans/2026-11-04-workshop-publisher-runtime-trust-amendment.md",
+      "docs/agents/specs/2026-11-04-workshop-publisher-runtime-trust-amendment.md",
+      "docs/agents/records/2026-11-04-workshop-publisher-runtime-trust-amendment.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-publisher-runtime-trust-amendment.json",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json",
+      "docs/operations/workshop-gcp.md"
+    ],
+    "implementation_allowlist": [],
+    "proposed_future_implementation_allowlist": [
+      "infra/deploy/gce/publisher_runtime_trust.mjs",
+      "infra/deploy/gce/test_publisher_runtime_trust.mjs",
+      "infra/deploy/gce/publisher_artifact.mjs",
+      "infra/deploy/gce/test_publisher_artifact.mjs",
+      "infra/deploy/gce/publisher_adapters.py",
+      "infra/deploy/gce/test_publisher_adapters.py"
+    ],
+    "owner_trust_decision": "pending_no_choice_inferred",
+    "blockers": [
+      "No independent authenticated Results bearer binding is available in the reviewed supported interfaces.",
+      "Owner has not chosen whether the protected-runner trust model is acceptable.",
+      "Runtime policy, signer/verifier/roots/pins, official compatibility and actual owner inputs remain absent.",
+      "Amendment GitHub synchronization, committed pinned checkpoint, passing preflight, independent review and dispatch do not exist."
+    ],
+    "tracking_sync": {
+      "state": "not_performed_draft_only",
+      "writes_authorized": false
+    },
+    "preflight": {
+      "state": "blocked_expected",
+      "passing_preflight_claimed": false,
+      "base_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+      "exit_code": 1,
+      "errors": [
+        "pre_implementation.status must equal synchronized",
+        "pre_implementation.plan_ref is absent at base_sha",
+        "pre_implementation.repository_doc_refs[0] is absent at base_sha"
+      ]
+    },
+    "authorities": {
+      "implementation_authorized": false,
+      "code_dispatch_authorized": false,
+      "runtime_execution_authorized": false,
+      "runtime_bearer_authenticated": false,
+      "sdk_import_authorized": false,
+      "upload_authorized": false,
+      "signing_authorized": false,
+      "staging_activation_authorized": false,
+      "production_ready": false,
+      "deployment_authorized": false,
+      "merge_authorized": false,
+      "github_write_authorized": false,
+      "commit_push_authorized": false
+    },
+    "draft_validation": {
+      "json_goal_todo_authority_consistency": "passed",
+      "existing_queue_entries_preserved": "passed",
+      "exact_six_document_scope": "passed",
+      "non_document_tracked_files_byte_equal_to_candidate": 494,
+      "diff_check": "passed",
+      "implementation_or_runtime_tests_performed": false,
+      "evidence_limit": "Documentation-only checks and expected blocking preflight; no application, SDK, API, signing or runtime evidence."
+    }
+  },
+  "authorities": {
+    "implementation_authorized": false,
+    "code_dispatch_authorized": false,
+    "runtime_execution_authorized": false,
+    "runtime_bearer_authenticated": false,
+    "sdk_import_authorized": false,
+    "upload_authorized": false,
+    "signing_authorized": false,
+    "staging_activation_authorized": false,
+    "production_ready": false,
+    "deployment_authorized": false,
+    "merge_authorized": false,
+    "github_write_authorized": false,
+    "commit_push_authorized": false
+  }
+}
