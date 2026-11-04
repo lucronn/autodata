@@ -269,3 +269,20 @@ APK-log correction synchronized by live Issue186 body/comment https://github.com
 
 
 APK-log correction adoption: independently approved checkpoint `bd59558a78a11448f89e35ef34f910bbb64cedbe` (receipt `9db69a7758228fb8997b7c1ca5f5d90c1cc7c32f`) adopted at `cc0945fb841459c68b7a6e4ced8dcb802640b979`, directly after retained failed evidence `6577207980f24e61c51ab0fcc8198ded18c0d1a4`. Five harness54ab files and raw blocker receipt remain unchanged. Live Issue186/Project8 synchronization https://github.com/lucronn/autodata/issues/186#issuecomment-6621339347 read back 2026-11-04T03:00:29.931234+00:00; exact hashes in dedicated APK-log record and predecessor Project index preserved verbatim in comment. Adoption only: no Docker/create/start/download/retry; full adopted-SHA preflight and root verification/new Task1A dispatch still required. Original Task2 and all runtime/production/readiness outcomes remain unauthorized/unverified.
+
+
+## PG17 acquisition-only writable overlay successor: plan-only
+
+Goal: Replace only the blocked read-only PG17 APK acquisition root with a disposable inspected writable overlay, require stopped overlay/baseline audits before accepting APK output, and preserve offline installation, separate harness authority and every production/readiness denial.
+
+Successor plan `docs/superpowers/plans/2026-11-04-workshop-pg17-acquisition-overlay.md`; dedicated task `docs/agents/tasks/2026-11-03-production-release/workshop-pg17-acquisition-overlay.json`; record `docs/agents/records/2026-11-04-workshop-pg17-acquisition-overlay.json`. Base226cb50f preserves both actual Task1A exit99/0APK/cleanup attempts. Only acquisition drops `--read-only` and requires explicit isolated writable root overlay; exact image, unchanged signed APK payload/official bridge scope/caps/resources/two binds/four private tmpfs remain. Require stopped complete docker diff with lock/baseline-only allowlist and unchanged package/keys/repos/PG hashes before any APK output acceptance; acquisition overlay/container is never committed, restarted, reused or passed to offline stages. Exact-owned cleanup/absence/volume inventory mandatory. Offline simulation/install/final-image/Task2 authority unchanged; independent exact-gate review/new Task1A dispatch required. No planning container/download/retry/image/harness action.
+
+Concrete todo:
+
+- [ ] Synchronize both preserved exit99 attempts, acquisition-only overlay decision, exact create/audit/cleanup contracts and unchanged offline/harness limits in Issue186/Project8 and canonical docs; commit/push and pass pinned preflight for independent review.
+- [ ] After independent exact-checkpoint review and fresh coordinator Task1A dispatch only, create a new exact-base acquisition container with one disposable writable root overlay and unchanged private mounts/caps/network/commands; inspect its full created configuration and record baseline file hashes before start.
+- [ ] Run only the unchanged signed official APK acquisition payload under the existing bounded supervisor; require zero exit, unchanged baseline package/key/repository/PG data and an exact stopped docker diff audit before freezing any APK output.
+- [ ] Never commit, restart or reuse acquisition containers; retain every failure/audit/cleanup receipt, remove only the captured exact-owned ID/volumes and verify absence/unchanged volume inventory before downstream use.
+- [ ] Keep offline simulation/install/commit configuration and original Task2 separately authorized and unchanged; no image/toolchain/harness/runtime/production readiness follows from plan synchronization or synthetic guard fixtures.
+
+Acquisition-overlay successor synchronized by live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6621400986 and Project8 readback at `2026-11-04T03:04:46.045770+00:00`; exact hashes in dedicated record. Full prior Project index preserved verbatim. Independent exact-checkpoint review/new preparation dispatch pending; all Docker/download/install/image/harness actions remain unexecuted.
