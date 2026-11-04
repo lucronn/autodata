@@ -1,0 +1,58 @@
+{
+  "goal": "Build bounded real GitHub Actions artifact, registry/evidence and fixed IAP check adapters behind an independently controlled activation boundary, preserving all production and runtime readiness denials.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-authenticated-publisher.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-workshop-publisher-transport.md",
+    "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+    "docs/operations/workshop-gcp.md",
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "After accepted migration review and root tracking release, synchronize the authenticated adapter-only goal, v3 identity/digest contracts, exact allowlist, five todos and activation exclusions across Issue186/Project8/canonical docs; commit/push, pin and independently review a machine-passing checkpoint before implementation.",
+    "Implement bounded authenticated I/O, strict real-wire projections, separate workflow/source identity, official-toolkit single-file upload, original outer ZIP decoding and post-upload signed originating-attempt binding with terminal digestMismatch/expiry/digest/older-attempt rejection; retain every existing v2 and CLI denial.",
+    "Implement actual build-once registry candidate push/SBOM/provenance verification, independent manifest approval and rebuild-free finalization plus separate fixed IAP check library, preserving independently supplied bounded v1 rollback_manifest through every phase and migration POSTGRES_IMAGE, credential/issuer/audience separation, pinned trust/tooling and bounded cleanup; reject candidate/approved-manifest/rollback mismatch without rewriting approval.",
+    "Add adversarial fake/local contract tests and a dormant protected staging workflow definition with unconditional precredential blocker; preserve unchanged production jobs, false readiness and all existing application/schema/deploy authority boundaries.",
+    "Run focused regressions, syntax/scope/diff and pinned preflight; commit/push coherent candidates for independent exact-SHA review, document missing owner/tool/origin/host/staging evidence and stop before any activation or live operation until a separate synchronized gate authorizes it."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T03:06:38.051955+00:00",
+  "source_integration_base_sha": "1a0e2740171e6e0a2aa0bbc97a36299ecbf2106c",
+  "implementation_allowlist": [
+    "infra/deploy/gce/publisher_adapters.py",
+    "infra/deploy/gce/publisher_artifact.mjs",
+    "infra/deploy/gce/publisher-toolkit/package.json",
+    "infra/deploy/gce/publisher-toolkit/package-lock.json",
+    "infra/deploy/gce/test_publisher_adapters.py",
+    "infra/deploy/gce/test_publisher_artifact.mjs",
+    "infra/deploy/gce/test_release_workshop_contract.py",
+    ".github/workflows/release-workshop.yml",
+    "docs/operations/workshop-gcp.md"
+  ],
+  "independent_design_review": {
+    "status": "approved",
+    "reviewed_plan_sha256": "2e17c0e153ead31ae71e67b535b5d1d46b3ec10f401b8c3883773fe8c1aa4142",
+    "coordinator_instruction": "Corrected design independently approved before tracking; exact committed checkpoint review remains pending."
+  },
+  "independent_checkpoint_review": "pending",
+  "runtime_execution_authorized": false,
+  "staging_activation_authorized": false,
+  "production_publication_authorized": false,
+  "production_ready": false,
+  "deployment_authorized": false,
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621425159",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_note_field": "Source or dependency reference",
+    "verified_at": "2026-11-04T03:06:38.051955+00:00",
+    "issue_body_sha256": "2647a4706442a3770dea66d9cd94d914889f9f5e8f7f7059d3b2da1367123a24",
+    "issue_comment_sha256": "ea8ee6cabae61f67284e6db8d503bf7eb4d6b1ca23b99059f2cbcbd125bb7ca1",
+    "project_text_sha256": "e97b0707a188aa6203b0d32fffffb1652f1569c598ca16d25cb708f5ce0a9319",
+    "prior_project_index_sha256": "4e26f3831956fb10f26a64e5b791e27f502a35e3ead19015622e118d22dfec20",
+    "full_prior_project_index_preserved_in_issue_comment": true
+  },
+  "historical_authority": "Additive authenticated-adapter successor only; v2 simulations/CLI denials, PG17/schema/catalog/DTO/R6/browser authority unchanged. Predecessor Project index includes gate26989e1 and receipt80d4a20; preserved verbatim/hash in the synchronization comment."
+}
