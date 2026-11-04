@@ -1,0 +1,104 @@
+{
+  "task_id": "workshop-api21-acceptance",
+  "repository": "lucronn/autodata",
+  "goal": "Collect and independently assess exactly 21 real-API browser cases at immutable PR #198 head e5fed171bb36fdb759c592cbcd0e15aea5490c97 without changing implementation or claiming final release acceptance.",
+  "source_integration_base_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+  "acceptance_candidate_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+  "phase": "docs_only_planning_checkpoint",
+  "state": "pending_tracking",
+  "tracking_writer": "integration_status_audit",
+  "allowed_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md",
+    "docs/agents/records/2026-11-04-workshop-api21-acceptance.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-api21-acceptance.json",
+    "docs/agents/records/2026-11-04-workshop-api21-inputs.json",
+    "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+    "docs/verification/workshop-customer-ui-runbook.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "implementation_allowed_paths": [],
+  "runtime_authorized": false,
+  "implementation_authorized": false,
+  "inputs": [
+    "docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md",
+    "docs/agents/records/2026-11-04-workshop-api21-inputs.json",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "outputs": [
+    "docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md",
+    "docs/agents/records/2026-11-04-workshop-api21-acceptance.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-api21-acceptance.json",
+    "docs/agents/records/2026-11-04-workshop-api21-inputs.json",
+    "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+    "docs/verification/workshop-customer-ui-runbook.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "todo": [
+    "Sole tracking writer integration_status_audit synchronizes this exact goal, six todos, docs-only scope, candidate and runtime limits in Issue186/Project8 with readback hashes, preserving historical indexes; coordinator commits the synchronized successor checkpoint, pins its full SHA, passes exact-base preflight and obtains independent checkpoint review before dispatch.",
+    "Coordinator verifies a clean exact-e5fed17 source clone, approved v2 supervisor a06bea8 and inherited base, immutable runtime image and six inputs, retained successful historical probe, actual service image identities and available serial host capacity; missing preconditions remain blocked.",
+    "After separate coordinator runtime authorization, execute one Chromium checkout/library pilot in a fresh private owned root; retain all raw outcomes, provenance and cleanup, and count zero acceptance cases from the pilot.",
+    "If pilot passes raw verification, execute the unchanged complete 3+6+6+6 API inventory once in a different fresh root at the same immutable SHA using the approved v2 supervisor, 3300-second total and 180-second finalization reserve; no retries, skips, missing engines or combined partial runs.",
+    "Independently review exact candidate, 21 unique JUnit/receipt identities, assertion inventories, actual HTTP/PG/S3 and warm/restart facts, input/asset/SDK/TLS/browser/image provenance, private artifact hashes and owned cleanup; retain failures and require a separately narrowed synchronized gate for any fixture repair.",
+    "Keep final-candidate 5+8+14+12+120+21=180 logical cases, supporting scans/images/SDK/license/CI/reviewer authority and all live staging/release gates separate; support and pilot evidence add zero cases and no release profile or authority flag is promoted."
+  ],
+  "pre_implementation": {
+    "goal": "Collect and independently assess exactly 21 real-API browser cases at immutable PR #198 head e5fed171bb36fdb759c592cbcd0e15aea5490c97 without changing implementation or claiming final release acceptance.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md",
+      "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+      "docs/verification/workshop-customer-ui-runbook.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Sole tracking writer integration_status_audit synchronizes this exact goal, six todos, docs-only scope, candidate and runtime limits in Issue186/Project8 with readback hashes, preserving historical indexes; coordinator commits the synchronized successor checkpoint, pins its full SHA, passes exact-base preflight and obtains independent checkpoint review before dispatch.",
+      "Coordinator verifies a clean exact-e5fed17 source clone, approved v2 supervisor a06bea8 and inherited base, immutable runtime image and six inputs, retained successful historical probe, actual service image identities and available serial host capacity; missing preconditions remain blocked.",
+      "After separate coordinator runtime authorization, execute one Chromium checkout/library pilot in a fresh private owned root; retain all raw outcomes, provenance and cleanup, and count zero acceptance cases from the pilot.",
+      "If pilot passes raw verification, execute the unchanged complete 3+6+6+6 API inventory once in a different fresh root at the same immutable SHA using the approved v2 supervisor, 3300-second total and 180-second finalization reserve; no retries, skips, missing engines or combined partial runs.",
+      "Independently review exact candidate, 21 unique JUnit/receipt identities, assertion inventories, actual HTTP/PG/S3 and warm/restart facts, input/asset/SDK/TLS/browser/image provenance, private artifact hashes and owned cleanup; retain failures and require a separately narrowed synchronized gate for any fixture repair.",
+      "Keep final-candidate 5+8+14+12+120+21=180 logical cases, supporting scans/images/SDK/license/CI/reviewer authority and all live staging/release gates separate; support and pilot evidence add zero cases and no release profile or authority flag is promoted."
+    ],
+    "status": "pending_tracking",
+    "updated_at": "2026-11-04T05:13:06.081352+00:00",
+    "source_integration_base_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+    "acceptance_candidate_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+    "tracking_writer": "integration_status_audit",
+    "tracking_status": "pending",
+    "machine_preflight_status": "not_run_pending_tracking",
+    "independent_checkpoint_review": "pending",
+    "implementation_authorized": false,
+    "runtime_authorized": false,
+    "approved_draft_sha256": "0b88f7cacdd073984f5cad809f72be9c818d5de2d22b29afba3850c8a08db1d9",
+    "approved_input_manifest_sha256": "ee87deb865c06a84df92c1a8b0481f5ebc35cfdbd051bf32d9e1bf264ec67f13",
+    "input_manifest_ref": "docs/agents/records/2026-11-04-workshop-api21-inputs.json",
+    "planning_allowed_paths": [
+      "docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md",
+      "docs/agents/records/2026-11-04-workshop-api21-acceptance.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-api21-acceptance.json",
+      "docs/agents/records/2026-11-04-workshop-api21-inputs.json",
+      "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+      "docs/verification/workshop-customer-ui-runbook.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json"
+    ]
+  },
+  "dispatch_prerequisite": "Sole tracking writer synchronization/readback, committed successor checkpoint, full-SHA machine preflight and independent exact-checkpoint review plus separate coordinator runtime authorization. This pending checkpoint authorizes no implementation or runtime agent.",
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "allow_fallback": false
+  },
+  "forbidden_scope": [
+    "Implementation edits or fixture repairs under this docs-only task",
+    "Issue186/Project8 writes by this planner",
+    "Runtime, browser, Docker, API, provider or cloud execution",
+    "Marking pending tracking synchronized or claiming passing preflight",
+    "Combining different candidates or selected-case repeats into API21",
+    "Enabling R6 profiles or staging/product/deployment/cutover authority"
+  ]
+}

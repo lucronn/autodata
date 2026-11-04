@@ -974,6 +974,42 @@
         "implementation_dispatch_authorized": false,
         "runtime_execution_authorized": false
       }
+    },
+    {
+      "id": "workshop-api21-acceptance",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-api21-acceptance.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-api21-acceptance.json",
+      "input_manifest_ref": "docs/agents/records/2026-11-04-workshop-api21-inputs.json",
+      "state": "pending_tracking",
+      "tracking_status": "pending",
+      "tracking_writer": "integration_status_audit",
+      "source_integration_base_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "acceptance_candidate_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "release_state": "unverified",
+      "allowed_paths": [
+        "docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md",
+        "docs/agents/records/2026-11-04-workshop-api21-acceptance.json",
+        "docs/agents/tasks/2026-11-03-production-release/workshop-api21-acceptance.json",
+        "docs/agents/records/2026-11-04-workshop-api21-inputs.json",
+        "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+        "docs/verification/workshop-customer-ui-runbook.md",
+        "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+        "docs/agents/tasks/2026-11-03-production-release/queue.json"
+      ],
+      "implementation_allowed_paths": [],
+      "runtime_authorized": false,
+      "implementation_authorized": false,
+      "goal": "Collect and independently assess exactly 21 real-API browser cases at immutable PR #198 head e5fed171bb36fdb759c592cbcd0e15aea5490c97 without changing implementation or claiming final release acceptance.",
+      "todo": [
+        "Sole tracking writer integration_status_audit synchronizes this exact goal, six todos, docs-only scope, candidate and runtime limits in Issue186/Project8 with readback hashes, preserving historical indexes; coordinator commits the synchronized successor checkpoint, pins its full SHA, passes exact-base preflight and obtains independent checkpoint review before dispatch.",
+        "Coordinator verifies a clean exact-e5fed17 source clone, approved v2 supervisor a06bea8 and inherited base, immutable runtime image and six inputs, retained successful historical probe, actual service image identities and available serial host capacity; missing preconditions remain blocked.",
+        "After separate coordinator runtime authorization, execute one Chromium checkout/library pilot in a fresh private owned root; retain all raw outcomes, provenance and cleanup, and count zero acceptance cases from the pilot.",
+        "If pilot passes raw verification, execute the unchanged complete 3+6+6+6 API inventory once in a different fresh root at the same immutable SHA using the approved v2 supervisor, 3300-second total and 180-second finalization reserve; no retries, skips, missing engines or combined partial runs.",
+        "Independently review exact candidate, 21 unique JUnit/receipt identities, assertion inventories, actual HTTP/PG/S3 and warm/restart facts, input/asset/SDK/TLS/browser/image provenance, private artifact hashes and owned cleanup; retain failures and require a separately narrowed synchronized gate for any fixture repair.",
+        "Keep final-candidate 5+8+14+12+120+21=180 logical cases, supporting scans/images/SDK/license/CI/reviewer authority and all live staging/release gates separate; support and pilot evidence add zero cases and no release profile or authority flag is promoted."
+      ],
+      "dispatch_prerequisite": "Sole tracking writer synchronization/readback, committed successor checkpoint, full-SHA machine preflight and independent exact-checkpoint review plus separate coordinator runtime authorization. This pending checkpoint authorizes no implementation or runtime agent."
     }
   ],
   "execution": {

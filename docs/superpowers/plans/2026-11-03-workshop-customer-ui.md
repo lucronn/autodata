@@ -248,3 +248,25 @@ Concrete todo (identical to plan/task/record):
 4. Construct provider before the persistence await and move popup invocation inside the existing async try without an intervening await; retain epoch guards, memory-only persistence, fresh token checks, session exchange and cookie-session authority.
 5. Run the focused red/green Node cases, full Workshop Node tests, applicable Go tests and diff/scope/provenance checks; commit and promptly push the coherent fix, then obtain independent exact-commit review.
 6. Coordinator integrates the reviewed fix and collects fresh immutable-candidate API21/DTO120 evidence using the frozen infrastructure; selected-case repeats remain diagnostic only and the original failed receipt remains retained.
+
+
+## Exact-candidate API21 acceptance checkpoint — pending tracking
+
+Canonical plan: `docs/superpowers/plans/2026-11-04-workshop-api21-acceptance.md`; task: `docs/agents/tasks/2026-11-03-production-release/workshop-api21-acceptance.json`; pending record: `docs/agents/records/2026-11-04-workshop-api21-acceptance.json`; frozen input manifest: `docs/agents/records/2026-11-04-workshop-api21-inputs.json`.
+
+Goal: Collect and independently assess exactly 21 real-API browser cases at immutable PR #198 head e5fed171bb36fdb759c592cbcd0e15aea5490c97 without changing implementation or claiming final release acceptance.
+
+This docs-only checkpoint starts from PR198 head `e5fed171bb36fdb759c592cbcd0e15aea5490c97` and adopts independently approved draft `0b88f7cacdd073984f5cad809f72be9c818d5de2d22b29afba3850c8a08db1d9` / input manifest `ee87deb865c06a84df92c1a8b0481f5ebc35cfdbd051bf32d9e1bf264ec67f13`. State is **pending_tracking**. integration_status_audit is the sole Issue186/Project8 writer. No synchronized readback, passing machine preflight, committed-checkpoint review, fixture repair or runtime dispatch is authorized by this record. Existing historical synchronization and delivery entries retain their original scope.
+
+Future lane uses approved external v2 supervisor `/tmp/autodata-workshop-browser-supervisor-v2.py`, SHA256 `a06bea8c6aa7b1fabdb29f3c2b8eba426d9004f2690e9c11ebc56dcb7b8f9c71`, immutable image `sha256:26aea6a9df1a7139e20a6893d9b63a11ab6b9978d113c718c6a792616be5a888` and unchanged six build inputs. It preserves exactly3+6+6+6 cases across Chromium/Firefox/WebKit, uses separate fresh pilot/full roots, and caps full execution at3300s with180s finalization reserve. Current image/engines/capacity are unverified. Pinned successful historical probe `5dd7060edb13f215107e8125f164cbc57c92152f8c39302f7db9b18eb914b02e` at source9ae2809 used different resource settings and proves no current acceptance; the original failed image-probe receipt remains failed. Bankone/Banktwo and model upstreams, plus Google/Firebase/Stripe transports, are synthetic local fixtures; production adapters, actual Go/Python code, PG and S3 execute.
+
+Prospective fixture repair requires a separately narrowed synchronized gate; this task has zero implementation paths. API21 alone establishes no full180-case/support/CI/review result, R6 profile promotion or live staging/product/deployment/cutover authority. Pilot/support evidence adds zero logical cases.
+
+Concrete todo (identical to dedicated plan/task/record):
+
+- [ ] Sole tracking writer integration_status_audit synchronizes this exact goal, six todos, docs-only scope, candidate and runtime limits in Issue186/Project8 with readback hashes, preserving historical indexes; coordinator commits the synchronized successor checkpoint, pins its full SHA, passes exact-base preflight and obtains independent checkpoint review before dispatch.
+- [ ] Coordinator verifies a clean exact-e5fed17 source clone, approved v2 supervisor a06bea8 and inherited base, immutable runtime image and six inputs, retained successful historical probe, actual service image identities and available serial host capacity; missing preconditions remain blocked.
+- [ ] After separate coordinator runtime authorization, execute one Chromium checkout/library pilot in a fresh private owned root; retain all raw outcomes, provenance and cleanup, and count zero acceptance cases from the pilot.
+- [ ] If pilot passes raw verification, execute the unchanged complete 3+6+6+6 API inventory once in a different fresh root at the same immutable SHA using the approved v2 supervisor, 3300-second total and 180-second finalization reserve; no retries, skips, missing engines or combined partial runs.
+- [ ] Independently review exact candidate, 21 unique JUnit/receipt identities, assertion inventories, actual HTTP/PG/S3 and warm/restart facts, input/asset/SDK/TLS/browser/image provenance, private artifact hashes and owned cleanup; retain failures and require a separately narrowed synchronized gate for any fixture repair.
+- [ ] Keep final-candidate 5+8+14+12+120+21=180 logical cases, supporting scans/images/SDK/license/CI/reviewer authority and all live staging/release gates separate; support and pilot evidence add zero cases and no release profile or authority flag is promoted.
