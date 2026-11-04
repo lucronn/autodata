@@ -509,7 +509,17 @@ _ENVELOPE_FIELDS = ('protocol_version', 'source_sha', 'service_config_sha256', '
 
 
 def _same(actual, expected):
-    require(rt.canonical_bytes(actual) == rt.canonical_bytes(expected))
+    """Type-strict DTO equality, including containers and their JSON keys."""
+    require(type(actual) is type(expected))
+    if type(expected) is dict:
+        rt.exact_object(actual, expected)
+        require(all(type(key) is str for key in actual))
+        for key in expected: _same(actual[key], expected[key])
+    elif type(expected) is list:
+        require(len(actual) == len(expected))
+        for left, right in zip(actual, expected): _same(left, right)
+    else:
+        require(actual == expected)
 
 
 def _image_observations(manifest):

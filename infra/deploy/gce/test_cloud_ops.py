@@ -954,6 +954,16 @@ class PublisherProducerTests(unittest.TestCase):
 
 
 
+
+    def test_producer_rejects_nonliteral_dto_mapping_types(self):
+        class Mapping(dict):
+            pass
+        for images in (Mapping(self.producer_images()), self.producer_images()):
+            if type(images) is dict:images['api']=Mapping(images['api'])
+            with self.subTest(nested=type(images) is dict),self.assertRaises(self.ops.ContractError):
+                self.ops.produce_release_archive(self.manifest,self.config,images)
+
+
 class PublisherV2Tests(unittest.TestCase):
     setUp = PublisherProducerTests.setUp
     producer_images = PublisherProducerTests.producer_images
