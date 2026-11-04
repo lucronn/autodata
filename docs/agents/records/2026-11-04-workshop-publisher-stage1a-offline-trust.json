@@ -15,7 +15,7 @@
     "Run new offline crypto/filesystem negative suites and unchanged Stage0 regressions, syntax, exact-scope and frozen-byte checks; obtain independent exact-SHA review with fixture-only evidence and every activation blocker retained."
   ],
   "status": "draft_unsynchronized",
-  "updated_at": "2026-11-04T04:22:18.910670+00:00",
+  "updated_at": "2026-11-04T04:25:36.055502+00:00",
   "accepted_stage0_receipt_sha": "dde53d745f8422ce29d6e8b3d459f4a0b91ebd04",
   "implementation_allowlist": [
     "infra/deploy/gce/publisher_policy.mjs",
@@ -42,5 +42,15 @@
   "staging_activation_authorized": false,
   "production_ready": false,
   "deployment_authorized": false,
-  "owner_inputs": "Actual installed owner key, policy digest/epoch, numeric IDs, protected authority and authenticated JWKS snapshot remain absent; fixture keys never authorize activation."
+  "owner_inputs": "Actual installed owner key, policy digest/epoch, numeric IDs, protected authority and authenticated JWKS snapshot remain absent; fixture keys never authorize activation.",
+  "draft_review_corrections": {
+    "reviewed_draft_sha": "6b8ace0be1ac9f09a86b8f93b1fae9a8d9946320",
+    "state": "addressed_pending_independent_rereview",
+    "items": [
+      "Bind JWT.environment to policy.protected_environment=workshop-staging-publish; keep product stage staging and require positive/negative signed fixtures.",
+      "Define exact three-string PolicyTrustBytes argument and repeat owner signature/hash/epoch/JWKS/lifetime verification on every OIDC invocation; preserve private installed handle provenance.",
+      "Bound unresolved filesystem cleanup with cleanup_failed and retained late-handle quarantine; never claim complete drain/termination or mint an installed handle, and require never-settling/late-handle tests."
+    ],
+    "implementation_or_test_execution_performed": false
+  }
 }

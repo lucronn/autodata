@@ -39,13 +39,16 @@ Freeze these exports; all record values are recursively immutable and all errors
 ```javascript
 // publisher_policy.mjs
 parseStrictJsonBytes(raw, limits) // passive strict JSON value
-OwnedTrustReadScope // constructor({signal,budgetMs,cleanupReserveMs}); trackOpen(promise), check(), finish()
+OwnedTrustReadScope // constructor({signal,budgetMs,cleanupReserveMs}); trackOpen(promise), track(promise), check(), finish()
 verifyOwnerPolicyBytes(bootstrapBytes, envelopeBytes, jwksBytes, nowSeconds)
-// returns {policy, jwks, activation_sha256}; a passive fixture/byte-validation record
+// returns frozen {policy,jwks,activation_sha256,trust_bytes}; passive, never installed authority
+// trust_bytes exact shape {bootstrap_base64,envelope_base64,jwks_base64}; immutable strings
 loadInstalledOwnerPolicy({signal} = {}) // Promise<opaque handle>; no path/fs/clock injection
 installedPolicyClaims(handle) // deep-frozen {policy,jwks,activation_sha256}; rejects forged handle
 // publisher_identity.mjs
-verifyGithubOidcBytes(tokenBytes, validatedPolicyBytes, expectedContext, nowSeconds)
+verifyGithubOidcBytes(tokenBytes, validatedPolicy, expectedContext, nowSeconds)
+// validatedPolicy is exactly policyResult.trust_bytes (PolicyTrustBytes), not parsed policy
+// fully reverify its original bootstrap/envelope/JWKS bytes on every call
 // frozen required verified OIDC claims only; never installed/runtime authority
 verifyInstalledGithubOidc(tokenBytes, installedPolicyHandle, expectedContext)
 // claims only, internal trusted clock, no network/acquisition
@@ -53,7 +56,7 @@ verifyInstalledGithubOidc(tokenBytes, installedPolicyHandle, expectedContext)
 authenticateActionsRuntime() // always throws Error('missing_dependency'), no argument inspection
 ```
 
-Pure APIs recompute necessary policy/JWKS constraints before accepting passive inputs; they do not accept a caller's `verified:true`. The installed wrapper requires the module-private handle and rechecks signed-policy/JWKS expiry at invocation; returning a deep-frozen policy copy never creates another handle. No exported data grants upload capability.
+The spec fixes `PolicyTrustBytes` as exactly three canonical-base64 strings containing the original bounded bootstrap/envelope/JWKS bytes. On every OIDC call, decode bounded copies and repeat the entire owner-policy signature/hash/epoch/schema/JWKS/lifetime verification with the current clock. Parsed/cached policy, full owner-policy result, accessor fields, `verified:true` and forged handles are rejected. The installed wrapper uses only privately stored original trust bytes attached to its fixed-loader handle; its public claims accessor exposes no trust bytes or marker. Passive supplied bootstrap validity never proves installed owner provenance. JWT `environment` binds `policy.protected_environment` (`workshop-staging-publish`); policy `environment` stays `staging`. No exported data grants upload capability.
 
 ## Concrete todo
 
@@ -68,7 +71,7 @@ Pure APIs recompute necessary policy/JWKS constraints before accepting passive i
 Files: this plan, spec, Stage1A record/task and additive operations note only.
 
 - [ ] Review exact byte domain, Ed25519 backend, strict schema, bootstrap source, file/mount/cleanup rules, RS256 verification/claim lifetime, unsupported bearer and passive/installed type boundary against the spec.
-- [ ] Verify actual draft diff is exactly the five declared documentation paths and that its parent is accepted Stage0 receipt `dde53d745f8422ce29d6e8b3d459f4a0b91ebd04`.
+- [ ] Verify actual draft diff is exactly the five declared documentation paths and that its ancestry starts at accepted Stage0 receipt `dde53d745f8422ce29d6e8b3d459f4a0b91ebd04`.
 - [ ] Have the tracking owner preserve the immediately current PG and other lane index/detail evidence before synchronizing Stage1A. No Issue/Project writes are authorized in the current draft assignment.
 - [ ] Commit the independently accepted, genuinely synchronized checkpoint; pin its full SHA and pass canonical preflight. Obtain independent exact-checkpoint acceptance and coordinator code-only dispatch. A draft preflight failure is blocking, not a waiver.
 
@@ -80,7 +83,7 @@ Files: new `publisher_policy.mjs`, new `test_publisher_policy.mjs` only.
 - [ ] Run `/tmp/autodata-reviewed-node-v22.23.4 --test infra/deploy/gce/test_publisher_policy.mjs`; require missing-module/API failure before implementation.
 - [ ] Implement the spec's parser, canonical base64 checks and `crypto.verify(null, domainAndPayload, publicKey, signature)`. Test that alternate whitespace changes in signed payload fail without a new signature while unsigned envelope-byte changes fail the bootstrap digest check. Reject wrong key/domain/signature, altered payload, duplicate keys, unpaired surrogates, alternate encodings, excessive bounds, noninteger times, expired/future/rollback epoch and positive upload/runtime flags.
 - [ ] Implement the fixed descriptor traversal, kernel mount-ID checks, bounded reads/identity rechecks, monotonic cancellation scope and exhaustive owned-descriptor cleanup. Keep lower-level metadata parsers testable as passive validators without any injection hook into `loadInstalledOwnerPolicy`.
-- [ ] Test actual temp filesystem negatives: missing path, symlink final/intermediate, FIFO open cannot block, nonregular/multi-link/writable/wrong-owner or writable-mount inputs where the host supports the case. Exercise pure metadata parser branches with deterministic snapshots for unavailable privileged states; label those fixture-only. Never create `/etc/autodata` trust files or require mount/root provisioning. Test late-open and failed-close behavior through exported `OwnedTrustReadScope.trackOpen(promise)` and `.finish()` with shortened integer budgets; fake closable handles test resource ownership only. This class cannot mint installed-policy handles and `loadInstalledOwnerPolicy` accepts no scope/opener/clock override.
+- [ ] Test actual temp filesystem negatives: missing path, symlink final/intermediate, FIFO open cannot block, nonregular/multi-link/writable/wrong-owner or writable-mount inputs where the host supports the case. Exercise pure metadata parser branches with deterministic snapshots for unavailable privileged states; label those fixture-only. Never create `/etc/autodata` trust files or require mount/root provisioning. Test never-settling open/read/close, late-open/late-read/late-rejection and failed-close behavior through exported `OwnedTrustReadScope.trackOpen(promise)`, `.track(promise)` and `.finish()` with shortened integer budgets and scheduler tolerance; fake closable handles test resource ownership only. At the final cleanup cutoff require bounded `cleanup_failed`, no policy handle, retained late-handle ownership and no unhandled rejection. Require one active/quarantined installed scope at most, immediate denial of subsequent acquisition while quarantined, exactly one late close when safe, and no late parsing or success. Never claim that an uncancellable operation was terminated or that all work drained before this failed result. This class cannot mint installed-policy handles and `loadInstalledOwnerPolicy` accepts no scope/opener/clock override.
 - [ ] Require ordinary missing trust and invalid signatures to perform zero environment-token reads, transport calls, SDK imports or child spawns. Require failed/deadline/cancelled filesystem cleanup to produce no handle and redact underlying values.
 - [ ] Run the owner-policy suite and Node syntax check; review the two-file diff; commit `feat: add offline publisher owner-policy verification` and promptly push only after authorized dispatch and validation.
 
@@ -101,7 +104,7 @@ Files: new `publisher_identity.mjs`, new `test_publisher_identity.mjs` only; exi
 
 - [ ] Write red tests using actual RSA2048 and RSA4096 keys from `generateKeyPairSync`, projected public JWKs, strict normalized snapshot bytes signed into an Ed25519 fixture policy, and `crypto.sign('RSA-SHA256', signingInput, {key,padding:RSA_PKCS1_PADDING})`.
 - [ ] Run the identity test file and retain missing-module/API failure; then implement the exact spec algorithm/header/JWKS/claims/time checks and imported strict parser.
-- [ ] Verify valid fixtures at lifetime boundaries. Reject wrong signer, modulus/signature size, unknown/duplicate kid, malformed base64url, unsigned/HS256/PSS tokens, algorithm/key confusion, header URLs/crit, duplicate/unbounded JSON, unknown claims, array audience, issuer/audience/subject/owner/repository/environment/ref/event/workflow SHA mismatch, numeric/zero-padded run/attempt, previous attempt, expired/future/not-yet-valid or overlong tokens, stale snapshot, and missing jti. No unknown key fetch or claim-based key selection outside the signed snapshot.
+- [ ] Verify valid fixtures at lifetime boundaries, passing exactly `policyResult.trust_bytes`. Require a positive signed JWT with `environment:"workshop-staging-publish"` while the policy product stage is `staging`; reject JWT `environment:"staging"`, another protected environment, missing or nonstring environment. Reject full-result/parsed-policy/accessor/extra-field substitutes for `PolicyTrustBytes`; mutate each raw trust component independently and recheck a previously valid record after policy/JWKS expiry to establish full revalidation. Verify valid fixtures at lifetime boundaries. Reject wrong signer, modulus/signature size, unknown/duplicate kid, malformed base64url, unsigned/HS256/PSS tokens, algorithm/key confusion, header URLs/crit, duplicate/unbounded JSON, unknown claims, array audience, issuer/audience/subject/owner/repository/environment/ref/event/workflow SHA mismatch, numeric/zero-padded run/attempt, previous attempt, expired/future/not-yet-valid or overlong tokens, stale snapshot, and missing jti. No unknown key fetch or claim-based key selection outside the signed snapshot.
 - [ ] Recheck installed handle provenance and policy/JWKS expiry inside `verifyInstalledGithubOidc`; reject copied/forged/passive handles. Demonstrate `source_sha` is not an authenticated OIDC output and that a valid OIDC record cannot satisfy any upload runtime interface.
 - [ ] Add `authenticateActionsRuntime` with its exact zero-inspection denial. Use hostile Proxy arguments and environment getters that throw on access: every call must throw `missing_dependency` without touching either. No callback/SDK/process/network seam exists.
 - [ ] Run both new suites and syntax checks; review exact scope; commit `feat: add offline GitHub OIDC verification with runtime denial` and promptly push only after authorized dispatch and validation.
