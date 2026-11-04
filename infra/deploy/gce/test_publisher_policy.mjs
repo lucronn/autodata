@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync, createHash, sign} from 'node:crypto';
+import {readFile, writeFile, mkdtemp, rm, open, link, unlink, symlink as symlinkFile, mkdir, chmod, lstat} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {parseStrictJsonBytes, verifyOwnerPolicyBytes, OwnedTrustReadScope, loadInstalledOwnerPolicy, installedPolicyClaims} from './publisher_policy.mjs';
 
 const hash = b => createHash('sha256').update(b).digest('hex');
@@ -148,4 +150,82 @@ test('invalid signal and option objects cannot leak underlying exceptions',async
   invalid(()=>new OwnedTrustReadScope({signal:Object.create(AbortSignal.prototype)}));
   invalid(()=>new OwnedTrustReadScope(new Proxy({},{get(){throw Error('secret');}})));
   await assert.rejects(loadInstalledOwnerPolicy(new Proxy({},{get(){throw Error('secret');}})),{message:'invalid_trust_input'});
+});
+
+// The copied production prefix is byte-for-byte identical. Appending passive
+// exports grants tests no path selection seam or installed-policy authority.
+async function withPolicyValidators(run) {
+  const sourcePath=new URL('./publisher_policy.mjs',import.meta.url);
+  const source=await readFile(sourcePath);
+  const directory=await mkdtemp(tmpdir()+'/autodata-policy-validators-');
+  const modulePath=directory+'/policy-copy.mjs';
+  const suffix=Buffer.from('\nexport {validateStat,parseMounts,mountId,identity};\n');
+  try {
+    await writeFile(modulePath,Buffer.concat([source,suffix]),{mode:0o400});
+    const copied=await readFile(modulePath);
+    assert.deepEqual(copied.subarray(0,source.length),source);
+    assert.deepEqual(copied.subarray(source.length),suffix);
+    const module=await import(new URL(modulePath,'file:').href);
+    await run({source,module,directory});
+    assert.deepEqual(await readFile(sourcePath),source);
+  } finally {await rm(directory,{recursive:true,force:true});}
+}
+
+test('exact-source test copy exposes only passive validators and preserves installed call sites',async()=>{
+  await withPolicyValidators(async ({source,module})=>{
+    assert.equal(module.validateStat.name,'validateStat');
+    // These checks bind the exercised helpers to the production fixed-loader sites.
+    const text=source.toString('utf8');
+    for(const call of ['validateStat(stat,true)','validateStat(stat,false,bounds[i])','validateStat(after,i<4,bounds[i-4])','const mounts=parseMounts(raw)','mountId(await procBytes(',"mount.path.startsWith(trustDirectory+'/')",'requireValue(mount.readonly)','identity(after)===identity(nodes[i].stat)','identity(node.stat)===identity(nodes[i].stat)']) assert.ok(text.includes(call),call);
+  });
+});
+test('rootless temporary filesystem metadata rejects owner, type, links, writable/special modes and size',async()=>{
+  await withPolicyValidators(async ({module:{validateStat,identity},directory})=>{
+    const file=directory+'/policy.json',hardlink=directory+'/hardlink.json',symlink=directory+'/symlink.json',subdirectory=directory+'/trust-directory';
+    await writeFile(file,'{}',{mode:0o400});
+    const handle=await open(file,'r');
+    try {
+      const stat=await handle.stat();
+      assert.equal(stat.uid,process.getuid());
+      if(stat.uid!==0)invalid(()=>validateStat(stat,false,16384));
+      // Root ownership is projected only in fixture metadata to isolate the real
+      // kernel type/link/mode/size observations on an unprivileged test host.
+      const rootOwned=stat=>Object.assign(Object.create(stat),{uid:0});
+      validateStat(rootOwned(stat),false,16384);
+      invalid(()=>validateStat(rootOwned(stat),false,1));
+      await link(file,hardlink);const linked=await handle.stat();invalid(()=>validateStat(rootOwned(linked),false,16384));
+      await unlink(hardlink);
+      for(const mode of [0o600,0o440,0o4444,0o2400,0o1400]) {await chmod(file,mode);const observed=await handle.stat();invalid(()=>validateStat(rootOwned(observed),false,16384));}
+      await chmod(file,0o444);validateStat(rootOwned(await handle.stat()),false,16384);
+      await symlinkFile(file,symlink);const linkStat=await lstat(symlink);assert.ok(linkStat.isSymbolicLink());invalid(()=>validateStat(rootOwned(linkStat),false,16384));
+      await mkdir(subdirectory,{mode:0o755});let directoryStat=await lstat(subdirectory);validateStat(rootOwned(directoryStat),true);invalid(()=>validateStat(rootOwned(directoryStat),false,16384));
+      for(const mode of [0o777,0o775,0o1755,0o2755,0o4755]) {await chmod(subdirectory,mode);directoryStat=await lstat(subdirectory);invalid(()=>validateStat(rootOwned(directoryStat),true));}
+      await writeFile(directory+'/empty.json','',{mode:0o400});const empty=await lstat(directory+'/empty.json');invalid(()=>validateStat(rootOwned(empty),false,16384));
+      await writeFile(directory+'/replacement.json','{}',{mode:0o400});const replacement=await lstat(directory+'/replacement.json');assert.notEqual(replacement.ino,stat.ino);assert.notEqual(identity(replacement),identity(stat));
+      assert.equal(identity(stat),identity(Object.create(stat)));
+      for(const field of ['dev','ino','mode','uid','gid','nlink','size'])assert.notEqual(identity(Object.assign(Object.create(stat),{[field]:stat[field]+1})),identity(stat));
+      // Privileged/nonportable file states are fixture-only snapshots.
+      const baseline=rootOwned(stat);
+      for(const changes of [{uid:1},{mode:0o010400,isFile:()=>false},{size:16385},{size:NaN},{size:-1},{nlink:0}])invalid(()=>validateStat(Object.assign(Object.create(baseline),changes),false,16384));
+    } finally {await handle.close();}
+  });
+});
+test('fixture-only mount and fdinfo parsers retain RO/nested mount identity and reject ambiguity',async()=>{
+  await withPolicyValidators(async ({module:{parseMounts,mountId}})=>{
+    const line=(id,path,options='ro')=>`${id} 1 0:2 / ${path} ${options},relatime - ext4 /dev/fixture rw\n`;
+    const raw=Buffer.from(line('1','/','rw')+line('42','/etc/autodata/publisher')+line('43','/etc/autodata/publisher/nested','rw'));
+    const mounts=parseMounts(raw);
+    assert.deepEqual(mounts.get('42'),{path:'/etc/autodata/publisher',readonly:true});
+    assert.deepEqual(mounts.get('43'),{path:'/etc/autodata/publisher/nested',readonly:false});
+    assert.equal(mounts.get('1').readonly,false);
+    assert.equal(mountId(Buffer.from('pos:\t0\nflags:\t0100000\nmnt_id:\t42\nino:\t987654\n')),'42');
+    assert.equal(mounts.has(mountId(Buffer.from('mnt_id:\t999\n'))),false);
+    assert.notEqual(mountId(Buffer.from('mnt_id:\t42\n')),mountId(Buffer.from('mnt_id:\t43\n')));
+    assert.equal(parseMounts(Buffer.from(line('44','/escaped\\040space\\134name'))).get('44').path,'/escaped space\\name');
+    for(const text of [line('42','/a')+line('42','/b'),line('0','/a'),line('-1','/a'),line('2','relative'),line('2','/a','ro,rw'),line('2','/a','nosuid'),'not mountinfo\n',line('2','/a').replace(' - ',' ')])invalid(()=>parseMounts(Buffer.from(text)));
+    invalid(()=>parseMounts(Buffer.from([0xc0,0xaf])));
+    for(const text of ['','pos:\t0\n','mnt_id:\t0\n','mnt_id:\t-1\n','mnt_id:\t+42\n','mnt_id:\t42\nmnt_id:\t43\n','mnt_id:\t42\nmnt_id:\t42\n','mnt_id:\t42garbage\n'])invalid(()=>mountId(Buffer.from(text)));
+    invalid(()=>mountId(Buffer.from([0xc0,0xaf])));
+    // These are parser observations under supplied fixtures, never proof of a real immutable installation.
+  });
 });
