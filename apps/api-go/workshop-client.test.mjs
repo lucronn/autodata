@@ -809,3 +809,17 @@ test('obsolete article index loads cannot clear or publish current navigation st
   assert.equal(inFlight.updates.length, 0);
   assert.equal(inFlight.statuses.some(s => s.complete === true), false);
 });
+
+test('generation changes without abort suppress in-flight article index rendering and ready copy', async () => {
+  let resolve, current = true;
+  const h = articleIndexHarness([() => new Promise(done => { resolve = done; })]);
+  const generation = { signal: new AbortController().signal, current: () => current };
+  const loading = h.load('', generation);
+  current = false;
+  resolve(indexResponse('completed', { complete: true, items: [{ id: 'obsolete' }] }));
+  await loading;
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.equal(h.$('completion-status').textContent, '');
+  assert.equal(h.statuses.some(s => s.complete === true), false);
+});
