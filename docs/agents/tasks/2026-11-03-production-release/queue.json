@@ -974,6 +974,45 @@
         "implementation_dispatch_authorized": false,
         "runtime_execution_authorized": false
       }
+    },
+    {
+      "id": "workshop-index-readiness",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-index-readiness.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-index-readiness.md",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-index-readiness.json",
+      "source_candidate_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "state": "synchronized_pending_committed_gate_review",
+      "release_state": "unverified",
+      "depends_on": [
+        "workshop-reviewed-leaves-integration"
+      ],
+      "todo": [
+        "Preserve live Issue186 and Project8 history, append this goal/refs/todo, read back both records, then synchronize the docs-only checkpoint and pass full-SHA preflight.",
+        "Add real PostgreSQL current-job progress regressions within the existing cold fixture root; correct aggregate retryable/terminal predicates in catalog_store.go and restore fixture state.",
+        "Add paid Handler hydration and read-only descriptor regressions in catalog_access_test.go; correct catalog_http.go incomplete hydration mapping.",
+        "Execute actual loadArticles with real bounded readCollection in workshop-client.test.mjs; clear prior completion live-region text at current-load entry and require explicit complete before ready while preserving partial rows and desired-article opening.",
+        "Run exact-candidate Node/Go/contract and required non-skipped isolated PostgreSQL acceptance; record commands, counts, SHA and scope checks, then commit/push validated milestones.",
+        "Obtain independent exact-head review and synchronize final evidence; retain separate release/provider/payment/deployment gates."
+      ],
+      "implementation_dispatch_authorized": false,
+      "cloud_execution_authorized": false,
+      "tracking_sync": {
+        "read_at": "2026-11-04T15:02:40.245180+00:00",
+        "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+        "detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634018122",
+        "detail_body_sha256": "c1597703501cec2abb5055e120c7d7bce37692bd4c95083045d810aff5d1931d",
+        "detail_body_bytes": 2794,
+        "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+        "comment_count": 136,
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_source_sha256": "51f2da943694be8f11e86e2463fe769f92f3a1f99b7151329f1eb175ba20b510",
+        "project_source_length": 957,
+        "project_status": "In Progress",
+        "project_matches_coordinator_after_readback": true,
+        "coordinator_project_readback_ref": "/home/corp/autodata-evidence/index-readiness-project-readback.json",
+        "independent_revised_draft_review": "PASS (coordinator dispatch)",
+        "live_readback_files": "/home/corp/autodata-evidence/index-readiness-gate-checkpoint-20261104"
+      }
     }
   ],
   "execution": {
