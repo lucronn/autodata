@@ -1,0 +1,103 @@
+{
+  "task_id": "workshop-r3-immutable-supervisor",
+  "state": "blocked",
+  "goal": "Adapt the historical external R3 supervisor to immutable local-image reuse and offline provenance for exact candidate 4d82e413e04fb2401ac7bc28dc828375ac662180 without runtime execution.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-r3-immutable-supervisor.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-r3-immutable-supervisor.json",
+  "spec_ref": "docs/verification/2026-11-03-canonical-article-lifecycle.md",
+  "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "todo": [
+    "Independently review this blocked implementation draft; coordinator synchronizes Issue186/Project8, canonical document and concrete todo, commits the checkpoint, pins its full SHA and passes canonical machine preflight before implementation dispatch.",
+    "Create only the named external supervisor, offline probe and focused standard-library tests; preserve historical supervisor byte-for-byte and demonstrate failing-first admission, manifest, command and cleanup tests without Docker.",
+    "Implement immutable image/config admission, deterministic executable/package/cache manifests and network-none compatibility probe command generation; retain original eight-root/42-tuple validator and bounded cleanup.",
+    "Run focused offline tests and source/allowlist checks; independently review exact adaptation source hashes and provide a non-executable handoff for a separate probe/runtime gate.",
+    "Keep probe execution, service startup, acquisition/build/pull and all release authorities false; record unresolved current provenance facts for the execution owner."
+  ],
+  "allowed_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-r3-immutable-supervisor.md",
+    "docs/agents/records/2026-11-04-workshop-r3-immutable-supervisor.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-r3-immutable-supervisor.json",
+    "docs/verification/2026-11-03-canonical-article-lifecycle.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_implementation_paths": [],
+  "proposed_external_implementation_paths": [
+    "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/supervisor.py",
+    "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/offline_probe.py",
+    "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/test_supervisor.py"
+  ],
+  "pre_implementation": {
+    "goal": "Adapt the historical external R3 supervisor to immutable local-image reuse and offline provenance for exact candidate 4d82e413e04fb2401ac7bc28dc828375ac662180 without runtime execution.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-r3-immutable-supervisor.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/verification/2026-11-03-canonical-article-lifecycle.md"
+    ],
+    "todo": [
+      "Independently review this blocked implementation draft; coordinator synchronizes Issue186/Project8, canonical document and concrete todo, commits the checkpoint, pins its full SHA and passes canonical machine preflight before implementation dispatch.",
+      "Create only the named external supervisor, offline probe and focused standard-library tests; preserve historical supervisor byte-for-byte and demonstrate failing-first admission, manifest, command and cleanup tests without Docker.",
+      "Implement immutable image/config admission, deterministic executable/package/cache manifests and network-none compatibility probe command generation; retain original eight-root/42-tuple validator and bounded cleanup.",
+      "Run focused offline tests and source/allowlist checks; independently review exact adaptation source hashes and provide a non-executable handoff for a separate probe/runtime gate.",
+      "Keep probe execution, service startup, acquisition/build/pull and all release authorities false; record unresolved current provenance facts for the execution owner."
+    ],
+    "status": "blocked",
+    "updated_at": "2026-11-04T17:00:00Z",
+    "planning_base_sha": "d94543e6ec75e788b42421b0e4cfeca6f5cb3e9c",
+    "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "source_candidate_tree": "d9fb2a8f49beacd009374a76327d0736c1fc9b0a",
+    "implementation_base_sha": null,
+    "tracking_sync": {
+      "status": "not_synchronized",
+      "writer": "coordinator serialized writer only"
+    },
+    "allowed_implementation_paths": [],
+    "proposed_external_implementation_paths": [
+      "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/supervisor.py",
+      "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/offline_probe.py",
+      "/home/corp/autodata-evidence/r3-immutable-supervisor-4d82e413-implementation/test_supervisor.py"
+    ],
+    "allowed_gate_document_paths": [
+      "docs/superpowers/plans/2026-11-04-workshop-r3-immutable-supervisor.md",
+      "docs/agents/records/2026-11-04-workshop-r3-immutable-supervisor.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-r3-immutable-supervisor.json",
+      "docs/verification/2026-11-03-canonical-article-lifecycle.md",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json"
+    ],
+    "authorities": {
+      "implementation": false,
+      "github_write": false,
+      "commit": false,
+      "push": false,
+      "probe_execution": false,
+      "runtime": false,
+      "service_start": false,
+      "acquisition": false,
+      "build": false,
+      "pull": false,
+      "cloud": false,
+      "live_provider": false,
+      "live_payment": false,
+      "merge": false,
+      "release": false,
+      "deployment": false,
+      "production": false,
+      "final180": false
+    },
+    "release_state": "unverified",
+    "blockers": [
+      "Fresh tracking/checkpoint/preflight and explicit external-code implementation dispatch absent.",
+      "Current executable/distribution/cache manifests and offline compatibility probe absent; separate execution gate required.",
+      "Exact adapted source/hash and independent review do not yet exist."
+    ],
+    "historical_supervisor_sha256": "e4a8f054f85207b5dc8e83155cf1b39e67ffcbc467d8f0a44eb08bc86a0e26b9",
+    "audit_report_sha256": "b48449fb92e7541ee2f727dd0edba7a53f67bd36ef7d0a2b88f7c3a3046c96af"
+  },
+  "implementation_dispatch_authorized": false,
+  "runtime_execution_authorized": false,
+  "probe_execution_authorized": false,
+  "depends_on": [],
+  "dispatch_prerequisite": "Synchronize reviewed committed implementation checkpoint and explicit external path authority; pass exact-base preflight. Real probe and services require separate execution gate.",
+  "related_runtime_plan_ref": "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+  "dependency_note": "The parent runtime consumes this adaptation; the adaptation does not wait for parent runtime execution. This plan link is context, not execution dependency or authority."
+}
