@@ -58,6 +58,10 @@ def initial_state(bindings: c.RuntimeBindings, now_ns: int, *, broker_process=No
 
 def _fail(state, status, reason):
     # A cleanup acknowledgement never upgrades a previous failure to success.
+    # A durable intent acknowledgement arriving after cancellation is only an
+    # observation. It must never revive the cancelled external action.
+    if state["pending"] is not None and state["pending"]["stage"] == "intent_wait":
+        state["pending"]["stage"] = "cancelled"
     if state["status"] not in NONPASS:
         state["phase_deadline_ns"] = min(state["deadline_ns"], state["now_ns"] + 120000000000)
     if state["status"] != "recovery_blocked" or status == "recovery_blocked":
@@ -196,7 +200,9 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
                 or p["sequence"] != state["journal_sequence"] + 1 or p["parent_fsynced"] is not True):
             _fail(next_state, "recovery_blocked", "intent_fsync_receipt_mismatch")
         elif (pending["ticket"]["epoch"] != state["epoch"] or pending["ticket"]["holder"] != state["holder"]
-              or pending["ticket"]["broker_process"] != state["broker_process"] or state["status"] == "recovery_blocked"):
+              or pending["ticket"]["broker_process"] != state["broker_process"] or state["status"] == "recovery_blocked"
+              or (state["status"] in NONPASS and (state["holder"] != "watchdog_cleanup"
+                  or pending["kind"] not in ("stop", "signal", "remove", "reap", "inspect")))):
             _fail(next_state, "recovery_blocked", "revoked_intent_cannot_mutate")
         elif event.monotonic_ns >= min(pending["deadline_ns"], state["lease_until_ns"]) or state["fence_pending"] is not None:
             _fail(next_state, "recovery_blocked", "intent_expired_before_mutation")

@@ -202,6 +202,18 @@ def test_delayed_intent_ack_after_broker_failure_cannot_mutate(failure):
     assert not any(a["kind"] in ("create", "signal", "stop", "remove") for a in actions)
 
 
+@pytest.mark.parametrize("failure", ["write_failed", "session_lost", "signal", "service_exit"])
+def test_cancelled_supervisor_intent_cannot_dispatch_after_delayed_fsync(failure):
+    st, _ = s.reduce(state(), request(state()))
+    st, _ = s.reduce(st, event(failure, 102, reason="cancelled: " + failure))
+    cancelled_reasons = list(st["failure_reasons"])
+    st, actions = s.reduce(st, event("intent_fsynced", 103, action_id="act", sequence=1, parent_fsynced=True))
+    assert st["status"] in s.NONPASS
+    assert not any(a["kind"] in ("create", "start", "signal", "stop", "remove", "reap") for a in actions)
+    assert st["failure_reasons"][:len(cancelled_reasons)] == cancelled_reasons
+    assert st["pending"]["stage"] != "executing"
+
+
 def test_delayed_intent_ack_after_fence_cannot_use_new_watchdog_lease():
     st, _ = s.reduce(state(), request(state()))
     st, _ = s.reduce(st, event("takeover", 1100, expected_epoch=1))
