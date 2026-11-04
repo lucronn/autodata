@@ -12,9 +12,9 @@
 
 ## Gate and pinned provenance
 
-Issue: https://github.com/lucronn/autodata/issues/186  
-Project: https://github.com/users/lucronn/projects/8  
-Record: `docs/agents/records/2026-11-04-workshop-index-readiness.json`  
+Issue: https://github.com/lucronn/autodata/issues/186
+Project: https://github.com/users/lucronn/projects/8
+Record: `docs/agents/records/2026-11-04-workshop-index-readiness.json`
 Task: `docs/agents/tasks/2026-11-03-production-release/workshop-index-readiness.json`
 
 Inspected application candidate: `e5fed171bb36fdb759c592cbcd0e15aea5490c97`. The revised technical draft passed independent review. Issue/Project synchronization was freshly read back and the record is **synchronized**, with the receipt below. Implementation remains blocked until this docs-only checkpoint is committed/pushed, full-SHA preflight passes, and independent committed-gate review and coordinator dispatch occur. The implementation base must be the later full SHA of the committed docs-only synchronized checkpoint containing this plan and its refs. Run the canonical preflight at that exact SHA before any implementation-file edit. A passing earlier integration gate does not authorize this change.
