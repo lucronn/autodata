@@ -1,0 +1,31 @@
+{
+  "goal": "Add one internal paid selector-work receipt consistency layer for the two GrantBeforeWork bank cases; preserve unavailable results, no verified cases and every disabled profile and false authority flag.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-r6-paid-selector-work.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+    "docs/superpowers/plans/2026-11-03-release-acceptance.md",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "todo": [
+    "Synchronize this single selector-work family, closed schema, three-path allowlist and todo in Issue186/Project8 and canonical plan/task/record/queue; commit/push and pass pinned preflight before independent gate review.",
+    "Add failing inline synthetic tests for closed selector request fields, exact typed payloads and route inventories, phase counter contradictions, numeric boundaries, copy seams and confined-store mutation.",
+    "Implement only inspect_paid_selector_work chained after inspect_paid_migration_receipts, with two fixed observed selector identities and fourteen phase/final snapshot diagnostics, retaining every prior missing family and adding explicit selector HTTP and request-provenance gaps.",
+    "Keep plan and validate disconnected from every internal typed inspector; preserve zero CLI counts, no verified case IDs, unavailable/incomplete results, all profiles disabled, enabled_tiers empty and every verification/deployment/cutover flag false.",
+    "Run focused/developer/autonomy, syntax, shallow-clone and three-path scope checks; update the runbook, commit/push the coherent candidate and obtain independent exact-SHA review before integration."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T00:30:56.950795+00:00",
+  "tracking_receipts": {
+    "source_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+    "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6619139974",
+    "issue_comment_body_sha256": "1149c8c6bacccad6fe9079a444eb8adff56095dabea535a939b92443728a1765",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_status": "In Progress",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_field_sha256": "9682bd24f8eb74c2c85bd3d3f8926544ea74ed5a9fbd7c0cc57ce2b7d536275d",
+    "prior_project_field_sha256": "0a1d7564da5b9e26b365fc471272c5fc0c092e409abe53efbbf8fe185cb7089d",
+    "readback_at": "2026-11-04T00:30:56.950795+00:00"
+  }
+}
