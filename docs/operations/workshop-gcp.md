@@ -319,3 +319,18 @@ Concrete todo:
 - [ ] Synchronize the narrow test-only amendment across Issue186, Project8 and canonical docs; commit and pass pinned preflight before correction.
 - [ ] Limit legacy release-loop production invariants to publish/deploy, retain all their assertions, and reject unknown release jobs alongside dedicated dormant staging checks.
 - [ ] Run retained red/green workflow, cloud and host regressions plus Node/syntax/scope checks; push for independent exact-SHA review without activation.
+
+
+## Artifact helper independent-review corrections: planning only
+
+Authenticate installed toolkit bytes and enforce an owned process-and-pipe termination boundary plus nonblocking archive preflight while preserving dormant publisher execution.
+
+Candidate `a2453848ed596a00574d63a2ca5cc77d28464c99` remains dormant and is not accepted as a runnable authenticated publisher. Retained review proves replacement toolkit code can bypass metadata-only checks, cancelled SDK work can continue/log after return, and a FIFO can hang before deadline. Plan `docs/superpowers/plans/2026-11-03-workshop-artifact-boundary-corrections.md`; record `docs/agents/records/2026-11-03-workshop-artifact-boundary-corrections.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-artifact-boundary-corrections.json`. Only publisher_artifact.mjs and its Node test may change after a new synchronized pinned gate, independent review and coordinator dispatch. The correction binds all installed/transitive bytes to an independently approved read-only tree, owns/terminates/reaps the actual SDK child and closes private result/log pipes before return, and rejects special archive files with nonblocking bounded descriptor checks. Default CLI and staging/production blockers, lock/runtime pins, seven moderate advisories and unresolved buffers licensing remain. No real owner manifest/policy, credential, SDK network action, workflow or runtime activation follows.
+
+Concrete todo:
+
+- [ ] Synchronize the three review findings, exact two-file correction scope and retained red evidence across Issue186, Project8 and canonical docs; commit and pass pinned preflight for independent review before implementation.
+- [ ] Bind a complete independently approved installed package-tree manifest to the exact reviewed lock and immutable toolchain; reject package or transitive file drift before import or runtime credential use.
+- [ ] Replace in-process SDK callbacks and Promise-only cancellation with one fixed verified child process, private result pipe, bounded log pipes, termination and reap proof before any cancellation or upload result returns.
+- [ ] Open release.zip nonblocking and no-follow, reject nonregular or replaced files, and put filesystem preflight under the same deadline and cleanup reserve.
+- [ ] Run real local tamper, late-output, process-group, cancellation, deadline, overflow and FIFO red/green regressions plus existing focused suites; push exact candidates for independent review with every activation denial and audit limitation intact.
