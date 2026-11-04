@@ -1,0 +1,49 @@
+{
+  "goal": "Adopt independently approved complete-record PG17 Mounts ordering correction with unchanged Task1A limits, immutable red evidence and separate runtime authority.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-mount-order.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-acquisition-overlay.md",
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-inspected-preparation.md",
+    "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+    "docs/operations/workshop-gcp.md",
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/verification/2026-11-04-pg17-runner-preparation.md",
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-bind-targets.md"
+  ],
+  "todo": [
+    "After coordinator tracking-slot release, synchronize exact independent approval/plan hash and unchanged Task1A scope in Issue186/Project8/canonical docs, preserve CURRENT prior Project index verbatim/hash, commit/push and pin full-SHA preflight.",
+    "Only after root verifies adopted pinned preflight and dispatches fresh Task1A, use a new exact-owned private run; compare complete Mounts records by unique exact Destination, retaining raw before/after/canonical hashes and rejecting any missing/extra/duplicate destination or field drift.",
+    "Keep all inherited complete config checks, mandatory prestart cp27 baseline comparison BEFORE created export/diff, bounded created/stopped empty-target proof, full stopped diff/signature/exit audits and exact-owned cleanup/absence/volume inventory unchanged.",
+    "Preserve all prior failed/quarantined outputs and red receipts; never reuse historical33APKs or restart/reuse failed containers; no offline simulation/install/image commit/PG startup/harness on this adoption turn.",
+    "Keep Task2/production/provider/cloud/runtime actions separately unauthorized and all readiness unverified; adoption alone is not a fresh retry dispatch."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T03:28:59.162164+00:00",
+  "source_integration_base_sha": "1e43e64a9b1b8237bbc9656aa311d0c7d13d5698",
+  "implementation_allowlist": [],
+  "independent_review": {
+    "status": "approved",
+    "reviewed_gate_sha": "cdbedc871104484d931113ce74c84be0b8ba449e",
+    "reviewed_plan_sha256": "8eb158a7101959b23a096487366692b6f8990c73e6ad4b79c303eb4cae5a302b",
+    "evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-mount-order-adoption-review.json"
+  },
+  "preparation_retry_authorized": false,
+  "adoption_container_operation_executed": false,
+  "runtime_verified": false,
+  "production_ready": false,
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621749496",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_note_field": "Source or dependency reference",
+    "verified_at": "2026-11-04T03:28:59.162164+00:00",
+    "issue_body_sha256": "37a8559509dae8a3c0c9a92e6b7b725c1dc0d0449e618b1e63061b9e38c93428",
+    "issue_comment_sha256": "c30cea4816f7ae6f78edf7ab2770caf9d081e7267fa71bb635f966ab3a3f674c",
+    "project_text_sha256": "e8e7121a6b20773a72968f0d0e0947f8f22c263ffc7c22517198df4217242e63",
+    "prior_project_text_sha256": "82a77f4a8183dc8db4bef09339500f9cc506f16203dfa376f45391c4200c4daf",
+    "full_prior_project_index_preserved_in_issue_comment": true
+  }
+}

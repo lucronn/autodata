@@ -1,0 +1,23 @@
+{
+  "source_review_path": "/tmp/autodata-pg17-mount-order-cdbedc87-review.json",
+  "source_review_sha256": "95235aa57159a28c1a5ca559c53f25a2b7bd8dbd73a0e6b143155bfcf1bdd33a",
+  "exact_reviewed_gate_sha": "cdbedc871104484d931113ce74c84be0b8ba449e",
+  "exact_reviewed_plan_sha256": "8eb158a7101959b23a096487366692b6f8990c73e6ad4b79c303eb4cae5a302b",
+  "coordinator_relay": "independent exact review approved",
+  "raw_review": {
+    "checkpoint": "cdbedc871104484d931113ce74c84be0b8ba449e",
+    "plan_sha256": "8eb158a7101959b23a096487366692b6f8990c73e6ad4b79c303eb4cae5a302b",
+    "fragment_sha256": "47f47616e6ec16ff0a40e8b43844b301e35021f4df9a7a6121b80bae6b97b21b",
+    "raw_hashes_verified": 4,
+    "pure_cases_passed": 18,
+    "canonical_mount_sha256": "7692124c79b10f42cb12fa67a67ed6215f8c8fccaf2328d81fa9c8157c475c94",
+    "state_hostconfig_unchanged": true,
+    "record_sha256": "833a8c3c1918e8a69ac177da63478ce0085a3219813fb24d6dc662b4879d5ce9",
+    "pinned_preflight": "independently_passed",
+    "tracking": "retained_issue186_project8_receipts_consistent_no_fresh_remote_readback",
+    "verdict": "scoped_planning_approval_no_blockers",
+    "stripped_fragment_sha256": "0cd61226ab5828b3603089594779494ab6b98e4441569248a5d29e3b0684cc40"
+  },
+  "planning_docker_invoked": false,
+  "planning_retry": false
+}
