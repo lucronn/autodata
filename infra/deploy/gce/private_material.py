@@ -658,6 +658,7 @@ def install_cli(source, service):
         journal.persist('writing')
         writing = True
         output['commit_state'] = 'writing'
+        guards()
         tx = Transaction(fs, run, '.private-' + approval['authorization_id'])
         tx.start(); tx.build(values); tx.verify(values)
         guards()

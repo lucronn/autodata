@@ -166,6 +166,20 @@ class BoundaryTests(Fixture):
             with self.assertRaises(self.pm.Denied):
                 self.pm.validate_host_record(bad, self.approval, self.config, b'a' * 32 + b'\n', BOOT.encode(), NOW)
 
+    def test_stream_accepts_full_value_limit_and_exact_frame_limit(self):
+        name = MAPS['api'][0]
+        self.frame['values'][name] = base64.b64encode(b'x' * 16384).decode()
+        raw = encoded(self.frame)
+        framed = raw + b' ' * (1048576 - len(raw))
+        self.assertEqual(self.pm.parse_stream(framed, self.approval)[name], b'x' * 16384)
+        with self.assertRaises(self.pm.InvalidInput): self.pm.parse_stream(framed + b' ', self.approval)
+
+    def test_host_identity_rejects_malformed_actual_machine_and_boot(self):
+        for machine, boot in ((b'A' * 32, BOOT.encode()), (b'a' * 32 + b'\n\n', BOOT.encode()),
+                              (b'a' * 32 + b'\n', BOOT.upper().encode()), (b'a' * 32 + b'\n', b'not-a-boot-id')):
+            with self.subTest(machine=machine, boot=boot), self.assertRaises(self.pm.Denied):
+                self.pm.validate_host_record(self.record, self.approval, self.config, machine, boot, NOW)
+
 
 class TransactionTests(Fixture):
     def setUp(self):
@@ -489,6 +503,97 @@ class TransactionTests(Fixture):
             self.assertEqual(self.install()[0], 3)
         self.assertEqual(self.stream_reads, 0)
 
+    def test_guard_drift_during_intent_fsync_blocks_material_creation(self):
+        real_fsync = os.fsync
+        real_mkdir = os.mkdir
+        drifted = False
+        creations = []
+        def fsync(fd):
+            nonlocal drifted
+            real_fsync(fd)
+            if self.journal().exists() and not drifted:
+                drifted = True
+                self.put('etc/machine-id', b'd' * 32, 0o444)
+        def mkdir(name, *args, **kwargs):
+            if str(name).startswith('.private-'): creations.append(name)
+            return real_mkdir(name, *args, **kwargs)
+        with patch.object(self.pm.os, 'fsync', side_effect=fsync), patch.object(self.pm.os, 'mkdir', side_effect=mkdir):
+            self.assertNotEqual(self.install()[0], 0)
+        self.assertEqual(creations, [])
+
+    def test_symlink_hardlink_and_parent_permissions_deny_without_input(self):
+        approval = self.root / 'etc/autodata/private-material-approval.json'
+        alias = self.root / 'etc/autodata/alias'
+        os.link(approval, alias)
+        self.assertEqual(self.install()[0], 3)
+        alias.unlink()
+        approval.rename(alias); approval.symlink_to('alias')
+        self.assertEqual(self.install()[0], 3)
+        approval.unlink(); alias.rename(approval)
+        private = self.root / 'etc/autodata'; private.chmod(0o755)
+        self.assertEqual(self.install()[0], 3)
+        private.chmod(0o700)
+        self.assertEqual(self.stream_reads, 0)
+
+    def test_unsafe_substitution_prevents_cleanup(self):
+        real_write = os.write
+        swapped = False
+        def write(fd, data):
+            nonlocal swapped
+            if not swapped and any(value in bytes(data) for value in self.values.values()):
+                swapped = True
+                original = self.root / ('run/autodata/.private-' + AUTH)
+                original.rename(self.root / 'run/autodata/retained-owned-tree')
+                original.mkdir(mode=0o700)
+                (original / 'unrelated').write_bytes(b'preserve-me')
+                raise OSError('redacted')
+            return real_write(fd, data)
+        with patch.object(self.pm.os, 'write', side_effect=write):
+            code, output = self.install()
+        self.assertEqual(code, 6)
+        self.assertEqual((self.root / ('run/autodata/.private-' + AUTH + '/unrelated')).read_bytes(), b'preserve-me')
+        self.assertEqual(json.loads(self.journal().read_text())['operation_status'], 'unconfirmed')
+
+    def test_budget_exhausted_during_rename_preserves_promoted_material(self):
+        real_module = self.pm.module_bytes
+        def module(*args):
+            result = real_module(*args)
+            if args[1].endswith('host_install.py'):
+                real_rename = result._rename_noreplace
+                def rename(parent, old, new):
+                    real_rename(parent, old, new)
+                    if new == 'api': self.clock = 301
+                result._rename_noreplace = rename
+            return result
+        with patch.object(self.pm, 'module_bytes', side_effect=module):
+            code, output = self.install()
+        self.assertEqual(code, 6)
+        self.assertTrue(output['secret_material_committed'])
+        self.assertTrue((self.root / 'run/autodata/api').exists())
+        self.assertFalse(output['one_service_private_material_installed'])
+        self.assertEqual(json.loads(self.journal().read_text())['operation_status'], 'unconfirmed')
+
+    def test_missing_run_mount_fails_without_creating_boot_persistence(self):
+        (self.root / 'run/autodata').rmdir()
+        self.assertEqual(self.install()[0], 3)
+        self.assertEqual(self.stream_reads, 0)
+        self.assertFalse((self.root / 'etc/systemd').exists())
+        self.assertFalse((self.root / 'opt/autodata/current').exists())
+        self.assertFalse(self.journal().exists())
+
+    def test_redaction_across_all_persistent_input_and_journal_files(self):
+        code, output = self.install()
+        self.assertEqual(code, 0)
+        persisted = b''.join(path.read_bytes() for base in ('etc', 'var', 'opt')
+                             for path in (self.root / base).rglob('*') if path.is_file())
+        observed = persisted + encoded(output)
+        for value in self.values.values():
+            for representation in (value, base64.b64encode(value), hashed(value).encode()):
+                self.assertNotIn(representation, observed)
+        self.assertNotIn(hashed(encoded(self.frame)).encode(), observed)
+        self.assertEqual(set(p.name for p in (self.root / 'var/lib/autodata/operations').iterdir()), {'private-material-' + AUTH + '.json'})
+
+
 
 class PipeAndProbeTests(unittest.TestCase):
     def setUp(self):
@@ -582,6 +687,22 @@ class PipeAndProbeTests(unittest.TestCase):
              patch.object(host.selectors, 'DefaultSelector', self.selector(False)), \
              patch.object(host.os, 'killpg', return_value=None), self.assertRaises(self.pm.RecoveryIncomplete):
             self.pm.probe(host, 42, '/var/lib/autodata', self.pm.Budget())
+
+
+class CliDenialTests(unittest.TestCase):
+    def test_isolated_cli_denial_emits_only_bounded_redacted_json(self):
+        import subprocess
+        import sys
+        for args in ([], ['install', SHA, 'postgres'], ['exec', SHA, 'api'], ['install', SHA, 'api', '/tmp']):
+            result = subprocess.run([sys.executable, '-I', str(HERE / 'private_material.py'), *args],
+                                    input=b'synthetic-cli-secret-sentinel', capture_output=True, timeout=5,
+                                    env={'UNTRUSTED_VALUE': 'synthetic-env-secret-sentinel'}, cwd='/')
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(result.stderr, b'')
+            self.assertLessEqual(len(result.stdout), 65536)
+            output = json.loads(result.stdout)
+            self.assertEqual(output['failure_code'], 'invalid_input')
+            self.assertNotIn(b'synthetic-', result.stdout)
 
 
 if __name__ == '__main__':
