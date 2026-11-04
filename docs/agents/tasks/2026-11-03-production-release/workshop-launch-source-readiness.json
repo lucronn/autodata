@@ -1,0 +1,305 @@
+{
+  "schema_version": 1,
+  "task_id": "workshop-launch-source-readiness",
+  "repository": "lucronn/autodata",
+  "goal": "Make Workshop the application root entry and enforce current purchase configuration readiness without enabling sales",
+  "todo": [
+    "Admit the actual DTO code successor S only after exact-source and actual merge-fixture CI/readback and independent code evidence; refresh source/tree/hash pins and preserve DTO/R6/workflow/120-ID history.",
+    "Review this source-only six-document package, four implementation paths and literal todo; synchronize a verified real Issue and Project8 item with matching goal, refs and todos and retain live readback hashes without replacing prior history.",
+    "Commit/push only the six-document planning checkpoint K descending from accepted S, seal actual K externally, pass standalone and extracted nested exact-K preflight using policy from K, and obtain independent exact-K review plus explicit scoped dispatch before implementation.",
+    "Add failing root GET/HEAD302 and unknown404 tests, change only exact root redirect to /workshop/, retain explicit dashboard/slash/assets behavior, run focused/full Go checks and commit/push the validated routing milestone.",
+    "Add supported/missing/equal-invalid/mismatched terms and merchant-field tests, add only literal workshop-v1 conjunct to purchaseConfiguration, and add served-disabled-default regression; keep purchase-config.json byte-identical and all checkout contracts unchanged.",
+    "Run focused/full Node and Go checks and exact four-path/config invariants, independently review the exact final code SHA, commit/push validated coherent milestones and record honest exact-source and actual merge-fixture CI with no launch or accepted-case credit."
+  ],
+  "status": "synchronized",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-launch-source-readiness.md",
+  "spec_ref": "docs/agents/specs/2026-11-04-workshop-launch-source-readiness.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-launch-source-readiness.json",
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-launch-source-readiness.json",
+  "verification_ref": "docs/verification/2026-11-04-workshop-launch-source-readiness.md",
+  "allowed_checkpoint_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-launch-source-readiness.md",
+    "docs/agents/specs/2026-11-04-workshop-launch-source-readiness.md",
+    "docs/agents/records/2026-11-04-workshop-launch-source-readiness.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-launch-source-readiness.json",
+    "docs/verification/2026-11-04-workshop-launch-source-readiness.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_implementation_paths": [
+    "apps/api-go/main.go",
+    "apps/api-go/workshop/commerce.mjs",
+    "apps/api-go/workshop-client.test.mjs",
+    "apps/api-go/workshop_test.go"
+  ],
+  "source_binding": {
+    "inspection_J": "d9be89d22ac288028d53867e56010bcca4898d64",
+    "rendered_queue_source_sha": "0674adfb49744331b9edc430c5f556da6ee63cd5",
+    "source_S": "0674adfb49744331b9edc430c5f556da6ee63cd5",
+    "checkpoint_K": null,
+    "implementation_base_sha": null,
+    "admitted_source": true,
+    "source_admission_evidence": {
+      "admitted_by": "coordinator",
+      "observed_at": "2026-11-04T23:12:08Z",
+      "source_sha": "0674adfb49744331b9edc430c5f556da6ee63cd5",
+      "source_tree": "cfd5ceb1394225a6c9322e74a68935236b2f8e27",
+      "pull_request": "https://github.com/lucronn/autodata/pull/256",
+      "merge_checkout_sha": "5b7be6ba47c4f7cc85a9106f45e05d31c58b1e9b",
+      "merge_tree": "cfd5ceb1394225a6c9322e74a68935236b2f8e27",
+      "actions_runs": [
+        "https://github.com/lucronn/autodata/actions/runs/41929001769",
+        "https://github.com/lucronn/autodata/actions/runs/41929010145"
+      ],
+      "actions_conclusion": "success",
+      "independent_reviews": [
+        {
+          "ref": "/home/corp/autodata-evidence/dto-timing-exact-head-review/verdict.json",
+          "sha256": "762472fec04e05e75e518ea41564b7d0e7bba9593bab431a5756dc313d7f7291",
+          "verdict": "PASS_CODE_REVIEW_ONLY"
+        },
+        {
+          "ref": "/home/corp/autodata-evidence/dto-timing-ci-independent-audit/verdict.json",
+          "sha256": "10f46595bcb9925e716d3409960da303ad0a523063e78756c713a61b40055fb0",
+          "verdict": "PASS"
+        }
+      ],
+      "scope": "DTO source and Actions admission only; no Workshop source implementation or runtime acceptance",
+      "external_vercel_status": "failure: deployment rate limited; separate from Actions",
+      "pull_request_state": "draft"
+    },
+    "rehearsal_only": false,
+    "source_tree": "cfd5ceb1394225a6c9322e74a68935236b2f8e27",
+    "changed_inspected_paths": [
+      {
+        "path": ".github/workflows/autonomous-verification.yml",
+        "before": {
+          "path": ".github/workflows/autonomous-verification.yml",
+          "mode": "100644",
+          "blob": "fef85365277fc53c06c2cd0b46189e36fa6cf139",
+          "sha256": "99b68b40c7bcad1647bd0bf22f37aa4381c156f1c4f37bd4424454c659b38a89",
+          "bytes": 10474
+        },
+        "after": {
+          "path": ".github/workflows/autonomous-verification.yml",
+          "mode": "100644",
+          "blob": "c312c57f19b809c87338170e661800e5d55b5c93",
+          "sha256": "adbe6221e09c0427d5abaf0ddaa566331abb483f8e246dad3dd42a3dbd6d23a3",
+          "bytes": 15003
+        }
+      }
+    ],
+    "implementation_path_conflicts": [],
+    "requires_independent_successor_dependency_review": true
+  },
+  "pre_implementation": {
+    "goal": "Make Workshop the application root entry and enforce current purchase configuration readiness without enabling sales",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-launch-source-readiness.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-04-workshop-launch-source-readiness.md",
+      "docs/verification/2026-11-04-workshop-launch-source-readiness.md"
+    ],
+    "todo": [
+      "Admit the actual DTO code successor S only after exact-source and actual merge-fixture CI/readback and independent code evidence; refresh source/tree/hash pins and preserve DTO/R6/workflow/120-ID history.",
+      "Review this source-only six-document package, four implementation paths and literal todo; synchronize a verified real Issue and Project8 item with matching goal, refs and todos and retain live readback hashes without replacing prior history.",
+      "Commit/push only the six-document planning checkpoint K descending from accepted S, seal actual K externally, pass standalone and extracted nested exact-K preflight using policy from K, and obtain independent exact-K review plus explicit scoped dispatch before implementation.",
+      "Add failing root GET/HEAD302 and unknown404 tests, change only exact root redirect to /workshop/, retain explicit dashboard/slash/assets behavior, run focused/full Go checks and commit/push the validated routing milestone.",
+      "Add supported/missing/equal-invalid/mismatched terms and merchant-field tests, add only literal workshop-v1 conjunct to purchaseConfiguration, and add served-disabled-default regression; keep purchase-config.json byte-identical and all checkout contracts unchanged.",
+      "Run focused/full Node and Go checks and exact four-path/config invariants, independently review the exact final code SHA, commit/push validated coherent milestones and record honest exact-source and actual merge-fixture CI with no launch or accepted-case credit."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T23:12:08Z",
+    "source_base_sha": "0674adfb49744331b9edc430c5f556da6ee63cd5",
+    "tracking_sync": {
+      "receipt_ref": "/home/corp/autodata-evidence/workshop-launch-source-gate-tracking/receipt.json",
+      "receipt_sha256": "50811cf6e212bb2041de8181a28c8b7e5088f539343c7265627e3a2f10620d9c",
+      "status": "synchronized_live_literal_readback_planning_only",
+      "observed_at": "2026-11-04T23:12:08Z",
+      "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+      "project_ref": "https://github.com/users/lucronn/projects/8",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6644616654",
+      "issue_comment_body_sha256": "239d453b60e78f8632d7e7c54047b6bbff2394c87d760553c365ae7bb619706e",
+      "issue_body_before_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+      "issue_body_after_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+      "project_source_before_sha256": "d71cea6d011b230780fdc394bf1bfb92ed504449bf0da54215dd1453c072c959",
+      "project_source_after_sha256": "cdfaa62da27f0875e1a4c430ed090592c51a0de3f6c61124b6c0106964638421",
+      "before_snapshot_sha256": "8a24b6e74b88792edba01294f2be890f882205164462862b0caf9902c03eee53",
+      "after_snapshot_sha256": "913f2eed81434adaf8fda40fdb245b8ce7b3f20adcb5697fbc4b417d869e89e1",
+      "prior_comments_preserved": 218,
+      "new_comments": 1,
+      "issue_body_unchanged": true,
+      "project_other_fields_unchanged": true,
+      "literal_goal_todos_paths_verified": true,
+      "readback_verified": true,
+      "accepted_case_credit": 0,
+      "implementation_dispatched": false
+    }
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier_preference": "fast_if_available",
+    "allow_fallback": false
+  },
+  "authorities": {
+    "implementation_dispatch": false,
+    "repository_write": false,
+    "github_write": false,
+    "provider_cloud_change": false,
+    "secret_access": false,
+    "dns_inspection_or_change": false,
+    "runtime_application_or_fixture_execution": false,
+    "staging_acceptance": false,
+    "production_release": false,
+    "profile_promotion": false
+  },
+  "accepted_case_credit": 0,
+  "release_state": "unverified",
+  "trusted": false,
+  "runtime_accepted": false,
+  "host_observed": false,
+  "profiles_enabled": false,
+  "implementation_dispatched": false,
+  "tracking_sync": {
+    "receipt_ref": "/home/corp/autodata-evidence/workshop-launch-source-gate-tracking/receipt.json",
+    "receipt_sha256": "50811cf6e212bb2041de8181a28c8b7e5088f539343c7265627e3a2f10620d9c",
+    "status": "synchronized_live_literal_readback_planning_only",
+    "observed_at": "2026-11-04T23:12:08Z",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6644616654",
+    "issue_comment_body_sha256": "239d453b60e78f8632d7e7c54047b6bbff2394c87d760553c365ae7bb619706e",
+    "issue_body_before_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "issue_body_after_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "project_source_before_sha256": "d71cea6d011b230780fdc394bf1bfb92ed504449bf0da54215dd1453c072c959",
+    "project_source_after_sha256": "cdfaa62da27f0875e1a4c430ed090592c51a0de3f6c61124b6c0106964638421",
+    "before_snapshot_sha256": "8a24b6e74b88792edba01294f2be890f882205164462862b0caf9902c03eee53",
+    "after_snapshot_sha256": "913f2eed81434adaf8fda40fdb245b8ce7b3f20adcb5697fbc4b417d869e89e1",
+    "prior_comments_preserved": 218,
+    "new_comments": 1,
+    "issue_body_unchanged": true,
+    "project_other_fields_unchanged": true,
+    "literal_goal_todos_paths_verified": true,
+    "readback_verified": true,
+    "accepted_case_credit": 0,
+    "implementation_dispatched": false
+  },
+  "source_manifest": [
+    {
+      "path": "apps/api-go/main.go",
+      "mode": "100644",
+      "blob": "bf5a63233bc2d141f12e5d6147b433641178232b",
+      "sha256": "c1429d39803ad8170d5f0e4cbd64ea174362adefe7f5b2c008e29cb86888bd44",
+      "bytes": 30492
+    },
+    {
+      "path": "apps/api-go/workshop_test.go",
+      "mode": "100644",
+      "blob": "391e4f3b5eeb0d3c304a3ff340734186861ced85",
+      "sha256": "ec7477e7eefa396251357a092358e64aa039bed8c88331fb7bf0ebc414e404ea",
+      "bytes": 8192
+    },
+    {
+      "path": "apps/api-go/dashboard_test.go",
+      "mode": "100644",
+      "blob": "40b8a44b6aad11bc00337ab6db8dc3d395f4acd0",
+      "sha256": "80297440b13168c0ce200be813f22cdb02484e46612ffb4cc888c42e0f10d76e",
+      "bytes": 3721
+    },
+    {
+      "path": "apps/api-go/workshop/commerce.mjs",
+      "mode": "100644",
+      "blob": "a2474f123cdc61327f1541c007e2b01d9b690767",
+      "sha256": "be291187bdbd3ef7faeb9ace6c244eed8a0b28b0edc91f1e01881c7d32c9ae26",
+      "bytes": 7321
+    },
+    {
+      "path": "apps/api-go/workshop-client.test.mjs",
+      "mode": "100644",
+      "blob": "978332b77d92d836bca13a0c2a029b7c78bc3a9e",
+      "sha256": "10b92a51437389443d3d5e7528f00938bdaab517e81ab3f6505aee177fdce088",
+      "bytes": 52459
+    },
+    {
+      "path": "apps/api-go/workshop/purchase-config.json",
+      "mode": "100644",
+      "blob": "4ccd70282c336c31161800b7e73cb025311a31a7",
+      "sha256": "edb1d6d182c5eeee6c33885e873bc5b44ac7a3eb4465d9e92af5d1bc60d4b45f",
+      "bytes": 168
+    },
+    {
+      "path": "apps/api-go/workshop/app.mjs",
+      "mode": "100644",
+      "blob": "849609b437d1f24f2a7ca6107b2ad2a0683c08b3",
+      "sha256": "4a3e16b3b407e738ed013f4b7ae416fe6c47eb1548d123e90b5b867df5c74788",
+      "bytes": 37545
+    },
+    {
+      "path": "docs/agents/pre-implementation-gate.md",
+      "mode": "100644",
+      "blob": "41076af1db25f0cff8ca41d0203c050af9b772df",
+      "sha256": "fa6e9c95c2674164c90d78e046a0427f6b406c313fb82ff627a2a2facb560ad0",
+      "bytes": 5659
+    },
+    {
+      "path": "scripts/autonomy/pre_implementation.py",
+      "mode": "100644",
+      "blob": "595ccf5f84c8e5ff7aa29dcc2a9284b8b7421f39",
+      "sha256": "af5cf8d987dea0d63f98865a6b6bcf1d730f044a9e6dc14509a91aeb0505f1ec",
+      "bytes": 8645
+    },
+    {
+      "path": ".autodata-autonomy-policy.json",
+      "mode": "100644",
+      "blob": "be4d8088b3fd28c84c101a723ecc7c26768de9e7",
+      "sha256": "798e91b9854098a706ea4ab66a414492c044059a1c98edb9d2f1d003e3baad98",
+      "bytes": 2201
+    },
+    {
+      "path": "docs/architecture/workshop-interface.md",
+      "mode": "100644",
+      "blob": "d7f7886bfdc94cf75567bbe2f01f10d3317d3246",
+      "sha256": "70a5071619b424092974cc6000cbeaa895a9e32f81957dbd24e72c5302bf8718",
+      "bytes": 6665
+    },
+    {
+      "path": "docs/architecture/workshop-commerce.md",
+      "mode": "100644",
+      "blob": "d83059380930535ed520ba3c0ed99de1b2297196",
+      "sha256": "7bca04fe632427949b0415e0c17a37d16729437def4a7193bec702f167307895",
+      "bytes": 6162
+    },
+    {
+      "path": ".github/workflows/autonomous-verification.yml",
+      "mode": "100644",
+      "blob": "c312c57f19b809c87338170e661800e5d55b5c93",
+      "sha256": "adbe6221e09c0427d5abaf0ddaa566331abb483f8e246dad3dd42a3dbd6d23a3",
+      "bytes": 15003
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/queue.json",
+      "mode": "100644",
+      "blob": "48554dc1d4b4fcc15c03905c2c0bc3fbba4cc104",
+      "sha256": "c5163fe223a14bc7ee21fbf14b42154ca0997cc4556da6787c13bd270d32ae42",
+      "bytes": 230205
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-dto-timing-repair.json",
+      "mode": "100644",
+      "blob": "a81ecdb959bb7e866e853d2cfcb5c51d4b719d66",
+      "sha256": "565b583221f7f8c2877585990275cfe02536f5d4d564105d20088a74820f3365",
+      "bytes": 115567
+    }
+  ],
+  "queue_contract": {
+    "source_sha": "0674adfb49744331b9edc430c5f556da6ee63cd5",
+    "source_queue_sha256": "c5163fe223a14bc7ee21fbf14b42154ca0997cc4556da6787c13bd270d32ae42",
+    "existing_task_count": 46,
+    "proposed_task_count": 47,
+    "preserve_all_existing_objects_order_and_root_fields": true,
+    "append_only_task_id": "workshop-launch-source-readiness"
+  }
+}

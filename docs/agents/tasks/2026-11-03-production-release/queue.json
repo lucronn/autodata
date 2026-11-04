@@ -3061,6 +3061,51 @@
         "reviewed_artifact_manifest_sha256": "6b28cbe02b01d4e139b474a71350fcfc748cda8f833c144bdcea51a7486bc225",
         "exact_checkpoint_review": "pending_coordinator"
       }
+    },
+    {
+      "id": "workshop-launch-source-readiness",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-launch-source-readiness.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-launch-source-readiness.md",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-launch-source-readiness.json",
+      "verification_ref": "docs/verification/2026-11-04-workshop-launch-source-readiness.md",
+      "goal": "Make Workshop the application root entry and enforce current purchase configuration readiness without enabling sales",
+      "todo": [
+        "Admit the actual DTO code successor S only after exact-source and actual merge-fixture CI/readback and independent code evidence; refresh source/tree/hash pins and preserve DTO/R6/workflow/120-ID history.",
+        "Review this source-only six-document package, four implementation paths and literal todo; synchronize a verified real Issue and Project8 item with matching goal, refs and todos and retain live readback hashes without replacing prior history.",
+        "Commit/push only the six-document planning checkpoint K descending from accepted S, seal actual K externally, pass standalone and extracted nested exact-K preflight using policy from K, and obtain independent exact-K review plus explicit scoped dispatch before implementation.",
+        "Add failing root GET/HEAD302 and unknown404 tests, change only exact root redirect to /workshop/, retain explicit dashboard/slash/assets behavior, run focused/full Go checks and commit/push the validated routing milestone.",
+        "Add supported/missing/equal-invalid/mismatched terms and merchant-field tests, add only literal workshop-v1 conjunct to purchaseConfiguration, and add served-disabled-default regression; keep purchase-config.json byte-identical and all checkout contracts unchanged.",
+        "Run focused/full Node and Go checks and exact four-path/config invariants, independently review the exact final code SHA, commit/push validated coherent milestones and record honest exact-source and actual merge-fixture CI with no launch or accepted-case credit."
+      ],
+      "allowed_implementation_paths": [
+        "apps/api-go/main.go",
+        "apps/api-go/workshop/commerce.mjs",
+        "apps/api-go/workshop-client.test.mjs",
+        "apps/api-go/workshop_test.go"
+      ],
+      "depends_on": [
+        "workshop-dto-timing-repair"
+      ],
+      "state": "planning_checkpoint_pending_exact_K_review",
+      "planning_status": "synchronized",
+      "tracking_status": "synchronized",
+      "source_base_sha": "0674adfb49744331b9edc430c5f556da6ee63cd5",
+      "implementation_base_sha": null,
+      "release_state": "unverified",
+      "authorities": {
+        "implementation_dispatch": false,
+        "repository_write": false,
+        "github_write": false,
+        "provider_cloud_change": false,
+        "secret_access": false,
+        "dns_inspection_or_change": false,
+        "runtime_application_or_fixture_execution": false,
+        "staging_acceptance": false,
+        "production_release": false,
+        "profile_promotion": false
+      },
+      "accepted_case_credit": 0,
+      "dispatch_prerequisite": "Accepted actual DTO successor S; successor dependency review; live literal tracking readback; fresh committed six-document checkpoint K; standalone/nested exact-K errors=[]; independent exact-K review and explicit dispatch."
     }
   ],
   "execution": {
