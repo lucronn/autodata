@@ -1,0 +1,621 @@
+{
+  "status": "planning_synchronized_pending_checkpoint",
+  "recorded_at": "2026-11-04T17:38:05.771724+00:00",
+  "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "source_integration_base_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "implementation_base_sha": null,
+  "branch": "codex/workshop-gce-private-material-gate",
+  "draft_report_ref": "/home/corp/autodata-evidence/gce-activation-gate-draft/report.md",
+  "draft_report_sha256": "692cf04e2a586f50cb10483f3f296232fedf0e5287d969726e3c15b4ae9f3ad8",
+  "draft_revision": 2,
+  "draft_review": {
+    "result": "PASS",
+    "provenance": "coordinator-relayed independent revision2 review in dispatch",
+    "separate_reviewer_receipt": null,
+    "external_draft_review_status": "pending; preserved as historical input",
+    "exact_checkpoint_review": "pending"
+  },
+  "audit_report_sha256": "5e4d4c07811375838899f3a29d12a6f75673bb3a2f762e0e595b2d651a21f65f",
+  "source_hashes_sha256": "cddfa595d294660500169e12caa1a24bc7b455c954bed66ff684f9d14e7cc1f1",
+  "retained_source_verification": {
+    "candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "audit_report_sha256": "5e4d4c07811375838899f3a29d12a6f75673bb3a2f762e0e595b2d651a21f65f",
+    "expected_audit_report_sha256": "5e4d4c07811375838899f3a29d12a6f75673bb3a2f762e0e595b2d651a21f65f",
+    "source_hashes_sha256": "cddfa595d294660500169e12caa1a24bc7b455c954bed66ff684f9d14e7cc1f1",
+    "source_count": 39,
+    "checks": [
+      {
+        "path": ".github/workflows/release-workshop.yml",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "AGENTS.md",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "docs/agents/pre-implementation-gate.md",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "docs/operations/workshop-gcp.md",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "docs/superpowers/plans/2026-11-04-workshop-staging-lifecycle.md",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "docs/verification/release-acceptance-runbook.md",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/compose/compose.production.yaml",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/compose/compose.yaml",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/Caddyfile",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/autodata-metadata-guard.service",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/cloud-bootstrap.sh",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/cloud-ops.py",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/deploy.sh",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/docker-autodata.conf",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/host_install.py",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/metadata-guard.nft",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/migration.Dockerfile",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/nats.conf.template",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/publisher_adapters.py",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/publisher_artifact.mjs",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/publisher_identity.mjs",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/publisher_policy.mjs",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/release.env.example",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/release.schema.json",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/runtime-check.py",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/runtime-entrypoint.sh",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/seaweedfs-s3.json.template",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/staging-bootstrap.schema.json",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/staging_bootstrap.py",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/test_cloud_ops.py",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/test_host_install.py",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/test_host_runtime.py",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/test_publisher_adapters.py",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/test_publisher_artifact.mjs",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/test_publisher_identity.mjs",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/test_publisher_policy.mjs",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/test_release_workshop_contract.py",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      },
+      {
+        "path": "infra/deploy/gce/test_staging_bootstrap.py",
+        "candidate_sha256_matches": true,
+        "retained_sha256_matches": true,
+        "blob_matches": true
+      }
+    ],
+    "all_pass": true
+  },
+  "local_source_recheck": [
+    {
+      "path": ".github/workflows/release-workshop.yml",
+      "candidate_git_blob_oid": "a8f5ef0fc4ab79ee7a42afb58662a3fbe81766e9",
+      "candidate_sha256": "d74d596e6f4e2650d028afa4639c35a0da5a6fb71040ff3b58d1747fcd297975",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "AGENTS.md",
+      "candidate_git_blob_oid": "5600feb6b56ec443bbe0b024f7f5985d87d68492",
+      "candidate_sha256": "1fab197e77c2ac65a009d93fe7ab0ba200077cda371a079885ceaa594fcc92db",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "docs/agents/pre-implementation-gate.md",
+      "candidate_git_blob_oid": "41076af1db25f0cff8ca41d0203c050af9b772df",
+      "candidate_sha256": "fa6e9c95c2674164c90d78e046a0427f6b406c313fb82ff627a2a2facb560ad0",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "docs/operations/workshop-gcp.md",
+      "candidate_git_blob_oid": "3faf14ee8fb9151ddbfcb146d21875b27038083e",
+      "candidate_sha256": "bbf2b01f73f5b5e4f3205bd06990d1671fab3c7126b9bb21198b35496a8be997",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+      "candidate_git_blob_oid": "2efba65e9e9bf3bcdc40e223f52e7a3e30d5c8a2",
+      "candidate_sha256": "558e1d3f3fa16d97d8c0ae754f03054d2e9c64268549a79562ecc180641c22d7",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-staging-lifecycle.md",
+      "candidate_git_blob_oid": "a1b29c43e0e6016c3035109520ae6d852902d8a4",
+      "candidate_sha256": "e20c2cc687d5cc751053d8f0b13411c4bfd08ba5e2f4e2650b86e88a72eae641",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "docs/verification/release-acceptance-runbook.md",
+      "candidate_git_blob_oid": "c2b5874445c6899c7c1f550af053bcc7dc842d59",
+      "candidate_sha256": "e178482e4a55cf0e5e7f384320be5255a015782ff2d075f3d8a22cbf30d76a24",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/compose/compose.production.yaml",
+      "candidate_git_blob_oid": "e48a50f772914a50f2a31ec7cef723ad31a11b55",
+      "candidate_sha256": "1a4d2795f76f0573fb8a3c217595b584bc2866f404fce487a42b7683e0d85517",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/compose/compose.yaml",
+      "candidate_git_blob_oid": "8fa46ae5ccdacbbeacfa227366096da519bc14f5",
+      "candidate_sha256": "2323161ddee7ebde57395d59c5dfbe4dfc492d4fe59e6fc0d4c318cea66e39df",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/Caddyfile",
+      "candidate_git_blob_oid": "d30053f0249ee08796565e463e976a0959a45fad",
+      "candidate_sha256": "d6351349430a833dd4f8d2ad0b92187a6ad5907e13fd7b4439bebcc0cb40568a",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/autodata-metadata-guard.service",
+      "candidate_git_blob_oid": "7e8a1d1ed8d2f0ca580a5c407906691a374d14a6",
+      "candidate_sha256": "7b9a8a19dd36072ec6232ea5123ed9eae1303981270ec34b6de8025fb5ed0bed",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/cloud-bootstrap.sh",
+      "candidate_git_blob_oid": "8a3c981394ab08433418fc841b44ba3bc59e3cf7",
+      "candidate_sha256": "032e6b968ca54c8724a3b4f81332c9d4efc6d00bd0f92707f1d2f18de50c7715",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/cloud-ops.py",
+      "candidate_git_blob_oid": "ea5facecf4285b7d3366a08e714c1f2137a82623",
+      "candidate_sha256": "abb5190f6ff94c93065403e0863851cc3eea26aaf539d71466d57726ea015ee0",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/deploy.sh",
+      "candidate_git_blob_oid": "b498bf18ded03c01fc5b1ef0e962c9a46eb29f1d",
+      "candidate_sha256": "478e14af7152e8bd5229bcd06ee07fd8d9258db495321b88a40393b46fbf3fb1",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/docker-autodata.conf",
+      "candidate_git_blob_oid": "45d74a817eebb3a2f68c36c5cfd19b66a6503ebe",
+      "candidate_sha256": "ef0da6af400164819ba59d9f78893316171e2aeba9dea7d822cabfb2850eaf56",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/host_install.py",
+      "candidate_git_blob_oid": "c07f94939bf7a84a1936fa8689b7cbcdc619969a",
+      "candidate_sha256": "6b2e25e6a6861dd292d15816e1f3fb926d94aa2f2a416fd9c1ca463fad5fa6f1",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/metadata-guard.nft",
+      "candidate_git_blob_oid": "4fa7b3f86714a4dfddecae26adc88f45e9d86336",
+      "candidate_sha256": "235b49f4dddcabfe57f17c7a29469307ccd1410c7a09578eac041b2ed1cea8bb",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/migration.Dockerfile",
+      "candidate_git_blob_oid": "00470d1c53d330d9e812a59997b32d47bf4502b9",
+      "candidate_sha256": "fdba0f4ceaf9e373c51055267e2d34114441be828cbdc59bf99f6059d71d14ec",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/nats.conf.template",
+      "candidate_git_blob_oid": "6769cad7f0670471273248b0c9d0e804a5b496ce",
+      "candidate_sha256": "74583601a1205ced13ddfb61310963e27dc996115568fe0fb85c326703aba7bf",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/publisher_adapters.py",
+      "candidate_git_blob_oid": "33c478264c48685615a8d4d338b5ad5c8a63169b",
+      "candidate_sha256": "ee8d19abde07f27516527e6456db8a7f1f155592cb9159e7fc608309f1c5d552",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/publisher_artifact.mjs",
+      "candidate_git_blob_oid": "8d72f191b9228f8a19ec1ba145755a8cfd7a93e6",
+      "candidate_sha256": "c75bb4580007934a91a1f3b6d0f2f4d53b0e5eb785fc1dbbeb99480b1e85a1ad",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/publisher_identity.mjs",
+      "candidate_git_blob_oid": "947a1b682608601ecefb055b8c52445aa322b64d",
+      "candidate_sha256": "50d51fe5c6bab2a37d70c901ed5e01c0038ada392b87c23ad4fa5ff9fb11991f",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/publisher_policy.mjs",
+      "candidate_git_blob_oid": "29f98311e91313210b2c2053b553dfbbcb388cd5",
+      "candidate_sha256": "cdb22dafbfa20d1b08add0ba1c4dfe38c0e9283d7d6e44e6ef359ce7307e634b",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/release.env.example",
+      "candidate_git_blob_oid": "49743058fbf7df79d2bd215001bd27d281c955d5",
+      "candidate_sha256": "ce2b6568e8babc9259f2d2a39f1c4a7f555ab56367b6d6e4575eac66faf3f4cc",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/release.schema.json",
+      "candidate_git_blob_oid": "f0fd7175cd597aa635c691ca5976806f33bd2433",
+      "candidate_sha256": "ecea57d864937cf7d2780c53b8ebb64b0f09da4006b9116c007b227ead1624ce",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/runtime-check.py",
+      "candidate_git_blob_oid": "5eef216e03eec07150afeae41c60bc1761980d43",
+      "candidate_sha256": "40dea094b8e58f6dc1e86d90727352ae7e42e9bc868e9b5f711276cf4c8e14b1",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/runtime-entrypoint.sh",
+      "candidate_git_blob_oid": "473a4083e779dcd2188feb340c4d3ec9b6a356d4",
+      "candidate_sha256": "f7b4808d5dd896bd566fb3d2f6d3bb97daaf5121ac278fe984907389eca2f6af",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/seaweedfs-s3.json.template",
+      "candidate_git_blob_oid": "76d61ed75fd8954bb516eeabaa7e399bb59e0760",
+      "candidate_sha256": "d9a70665bfba7909365bfdc46dfcc0d5e087d19e0f6c39e59ae1fff2a90eedae",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/staging-bootstrap.schema.json",
+      "candidate_git_blob_oid": "3c267fb2a13f7db6a1aabec2dcdc6b5ae9dbc45d",
+      "candidate_sha256": "1cb0908d8f96229b9f2c15fc7f26cde330f9902f31453dda8daf60ac20267996",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/staging_bootstrap.py",
+      "candidate_git_blob_oid": "f0a448e43328cb4fc16f1c552cabe020480056f9",
+      "candidate_sha256": "2cfe576bc79d3711cb7f801ec2a6f19135dd994226284bd4db9e1cb9bcaf40f4",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/test_cloud_ops.py",
+      "candidate_git_blob_oid": "4cdc9f05c671bfdd75a7b2775ee292bc254c1129",
+      "candidate_sha256": "c78b3529ecb769433cb5425dcbdec9ca5c6f8f9a0440fad778bf662007cdcfc5",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/test_host_install.py",
+      "candidate_git_blob_oid": "aa6b6bd18045dd644ae8d073747ec15655b76aa4",
+      "candidate_sha256": "89285c85ca6c99704629557164de5a27fbcc0d47443bdc92d5082b75071e87f4",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/test_host_runtime.py",
+      "candidate_git_blob_oid": "ea3fc80be8fd6352469491b81f1ce2ae81a5b0e0",
+      "candidate_sha256": "a6596e01053185aeff3267a4c92ea7d838c5bd0af89b73cf1d54fb68c2d511fd",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/test_publisher_adapters.py",
+      "candidate_git_blob_oid": "8cea6954a8fbb80dadcdee20f4fe8246414e49d5",
+      "candidate_sha256": "d885c8b0c7702d0602c124b27184f56f2959a29abac69e9b98393a9719dfe44b",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/test_publisher_artifact.mjs",
+      "candidate_git_blob_oid": "ae92b91ab5015ec4ca7e268d2712fcd0f06a9a9a",
+      "candidate_sha256": "39e38d1d2c597cafad39b1c5764ee1f81ce57a94fdad587bd38ad508fcb4d597",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/test_publisher_identity.mjs",
+      "candidate_git_blob_oid": "1439cc3a055884ed98d7bf0243aea60725178901",
+      "candidate_sha256": "91fe44a854564bf76e3ca6da39870f306c12541e1b9c2373b86a4c43b652770a",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/test_publisher_policy.mjs",
+      "candidate_git_blob_oid": "b56cfa6fd614d4dc53fd6be0aba61620f50d4729",
+      "candidate_sha256": "2d82ab725023e7e1e6993a6fd0ad3c036390039803c75fa23c5803ba09002657",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/test_release_workshop_contract.py",
+      "candidate_git_blob_oid": "a7c3555187681e52339e18c3d6933edf216f5009",
+      "candidate_sha256": "b46cfeb4dcd049236895be2e5383182b80ee53d3b154e6bf1042719a62992994",
+      "worktree_matches_candidate": true
+    },
+    {
+      "path": "infra/deploy/gce/test_staging_bootstrap.py",
+      "candidate_git_blob_oid": "1dbc7e0bc91d55e9b2def2b6d32b5924e1b17701",
+      "candidate_sha256": "e77548c83bf6f211de167fac134b0520931c61370d3a70b08a0c94a004661e41",
+      "worktree_matches_candidate": true
+    }
+  ],
+  "external_inputs_sha256": {
+    "gate-draft.json": "1b98fd61e7af6f609f57a14b162b4737863a1c8330de44eea9c906dd1f7966c7",
+    "source-verification.json": "abe5d44b172e4f202bcac79d519fb669c97442e768d75be7f3e6de0172cd66dc",
+    "review-response.json": "5d550797a6b893f8766c9025091e17abb9136550800d81d4a4e56954e1d15763"
+  },
+  "tracking_sync": {
+    "status": "synchronized_live_readback",
+    "writer": "coordinator sole serialized Issue186/Project8 writer",
+    "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6637585359",
+    "current_status_sha256": "9fe1a9a5bf75b1e24e8ac76369f80f273f594817b53d40d0e00e66328a5408c5",
+    "issue_readback_ref": "/home/corp/autodata-evidence/gce-private-material-gate-tracking-pre/issue-after.json",
+    "issue_readback_sha256": "23f7d6f33721b3401735577e37a80a5b68a7498af8fcdd62c8d3569153e429d0",
+    "issue_comments_readback_ref": "/home/corp/autodata-evidence/gce-private-material-gate-tracking-pre/comments-after.json",
+    "issue_comments_readback_sha256": "ea1f0c2467d8d0ca182117abb68fa1aea0f85906acb12dbe4d720ae9c79ba0d7",
+    "issue_preserved_comment_count": 153,
+    "current_comment_count": 154,
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_status": "In Progress",
+    "project_source_sha256": "d59c1d94edf48e927604de46ca6cd2411758a0e61accf5a2f35e39edce5d5034",
+    "previous_project_source_sha256": "5e77e950b3200285dddc42d4cfe684edf56fbe313a43f448c89e9e2769a0e64e",
+    "previous_source_archived_verbatim": true,
+    "project_readback_ref": "/home/corp/autodata-evidence/gce-private-material-gate-tracking-pre/project-after.json",
+    "project_readback_sha256": "2002904972a4560a3006326e1675aab281e669e5fdadd97ccba8e0c4a8051d04",
+    "other_project_fields_unchanged": true
+  },
+  "tracking_references_verified": true,
+  "checkpoint_sha": null,
+  "machine_preflight": {
+    "status": "pending_committed_exact_checkpoint",
+    "passing_result": false
+  },
+  "authorities": {
+    "implementation_dispatch_authorized": false,
+    "repository_mutation_authorized": false,
+    "github_mutation_authorized": false,
+    "integration_authorized": false,
+    "merge_authorized": false,
+    "cloud_execution_authorized": false,
+    "vm_operation_authorized": false,
+    "host_mutation_authorized": false,
+    "docker_execution_authorized": false,
+    "credential_access_authorized": false,
+    "secret_delivery_authorized": false,
+    "authenticated_remote_transport_authorized": false,
+    "image_pull_authorized": false,
+    "application_activation_authorized": false,
+    "migration_authorized": false,
+    "runtime_execution_authorized": false,
+    "provider_call_authorized": false,
+    "payment_operation_authorized": false,
+    "backup_restore_authorized": false,
+    "dns_tls_cutover_authorized": false,
+    "production_deployment_authorized": false,
+    "runtime_verified": false,
+    "production_ready": false
+  },
+  "planning_only_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-staging-private-material.md",
+    "docs/agents/specs/2026-11-04-workshop-staging-private-material.md",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-staging-private-material.json",
+    "docs/agents/records/2026-11-04-workshop-staging-private-material.json",
+    "docs/agents/records/2026-11-04-workshop-staging-private-material-evidence.json",
+    "docs/superpowers/plans/2026-11-04-workshop-staging-lifecycle.md",
+    "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+    "docs/operations/workshop-gcp.md",
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "implementation_allowlist": [
+    "infra/deploy/gce/private_material.py",
+    "infra/deploy/gce/test_private_material.py"
+  ],
+  "preservation": {
+    "canonical_updates": "append-only; existing bytes preserved as prefix",
+    "github_history_readback": "verified_by_coordinator; complete prior Issue body/comments and all Project fields except Source preserved"
+  },
+  "mutations_performed": [
+    "repository planning documents and coordinator Issue186/Project8 tracking only; no implementation or runtime action"
+  ],
+  "planning_validation": {
+    "json_consistency": "passed",
+    "canonical_existing_prefix_checks": [
+      {
+        "path": "docs/superpowers/plans/2026-11-04-workshop-staging-lifecycle.md",
+        "prior_bytes_preserved_as_exact_prefix": true,
+        "appended_bytes": 4012
+      },
+      {
+        "path": "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+        "prior_bytes_preserved_as_exact_prefix": true,
+        "appended_bytes": 4012
+      },
+      {
+        "path": "docs/operations/workshop-gcp.md",
+        "prior_bytes_preserved_as_exact_prefix": true,
+        "appended_bytes": 4012
+      },
+      {
+        "path": "docs/architecture/infrastructure-and-dev.md",
+        "prior_bytes_preserved_as_exact_prefix": true,
+        "appended_bytes": 4012
+      },
+      {
+        "path": "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+        "prior_bytes_preserved_as_exact_prefix": true,
+        "appended_bytes": 4012
+      },
+      {
+        "path": "docs/verification/release-acceptance-runbook.md",
+        "prior_bytes_preserved_as_exact_prefix": true,
+        "appended_bytes": 4012
+      }
+    ],
+    "all_39_candidate_worktree_source_checks": "passed_before_document_appends",
+    "implementation_paths_absent": true,
+    "changed_paths_docs_only": true,
+    "git_diff_check": "passed",
+    "preflight": "pending_committed_exact_checkpoint"
+  }
+}
