@@ -59,7 +59,7 @@
       "Obtain a separate coordinator authorization for the concrete pre-provisioned offline disposable-VM run, execute the pinned install/boot/persistence/interruption/reboot drill if authorized, retain failed and successful receipts, and require separate owner inputs/gates for actual cloud staging or production deployment."
     ],
     "status": "synchronized",
-    "updated_at": "2026-11-04T15:30:13.620238+00:00"
+    "updated_at": "2026-11-04T15:33:41.700000+00:00"
   },
   "execution": {
     "mode": "plan_only",
@@ -83,7 +83,7 @@
     "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634690176",
     "issue_comment_id": 6634690176,
     "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
-    "issue_comment_sha256": "6a35d6ea11143901e11d7b42381ccf2b4635d87a5dbd0e84d34eb916140d0b86",
+    "issue_comment_sha256": "b452e911af91b8e4a117dd4cca54f278d3a08f7ea16610d48316426a7c1adee8",
     "project_id": "PVT_kwHOCSJ8cc4BiQ2B",
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
@@ -95,7 +95,7 @@
     "prior_project_text_sha256": "7988162779e1b526fef566c7288f0ab2a99dc7b34dd74650ce06c79673cbd2b5",
     "predecessor_comments_inventoried": 137,
     "other_project_fields_unchanged": true,
-    "verified_at": "2026-11-04T15:30:13.620238+00:00",
+    "verified_at": "2026-11-04T15:33:41.700000+00:00",
     "evidence_files": [
       {
         "path": "/home/corp/autodata-evidence/stateful-vm-tracking-before.json",
@@ -104,8 +104,27 @@
       {
         "path": "/home/corp/autodata-evidence/stateful-vm-tracking-readback.json",
         "sha256": "4799ed6745ba733ea145313981e1e4cb53d7890958c54edf1da552a795e1d699"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/stateful-vm-comment-correction-readback.json",
+        "sha256": "9cc1b859a663f623fbef0781a6cb737d091b0ca722b0561ff8fd4f09d23331ff"
       }
     ],
-    "evidence_source": "Coordinator-authorized live synchronization and retained root readback; planner verified local evidence hashes without new GitHub calls."
+    "evidence_source": "Coordinator corrected and live-read the same Issue comment after independent gate review; local planner verified retained correction evidence and hashes without GitHub writes. Original before/readback snapshots remain historical.",
+    "correction_history": [
+      {
+        "checkpoint_sha": "71c8b255078f4f2dea01bbb714cd724f81a67586",
+        "old_issue_comment_sha256": "6a35d6ea11143901e11d7b42381ccf2b4635d87a5dbd0e84d34eb916140d0b86",
+        "new_issue_comment_sha256": "b452e911af91b8e4a117dd4cca54f278d3a08f7ea16610d48316426a7c1adee8",
+        "reason": "Independent gate review found stale pending-synchronization/not-synchronized wording in the live detail; coordinator corrected that same comment in place. Checkpoint71c8 is not builder-authorizing.",
+        "comment_updated_at": "2026-11-04T15:33:40Z",
+        "verified_at": "2026-11-04T15:33:41.700000+00:00",
+        "project_source_unchanged": true,
+        "issue_body_unchanged": true,
+        "other_project_fields_unchanged": true,
+        "evidence_path": "/home/corp/autodata-evidence/stateful-vm-comment-correction-readback.json",
+        "evidence_sha256": "9cc1b859a663f623fbef0781a6cb737d091b0ca722b0561ff8fd4f09d23331ff"
+      }
+    ]
   }
 }
