@@ -11,6 +11,26 @@ import (
 	"testing"
 )
 
+func TestWorkshopRootEntry(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		t.Run(method, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, httptest.NewRequest(method, "/", nil))
+			if response.Code != http.StatusFound || response.Header().Get("Location") != "/workshop/" {
+				t.Fatalf("%s root redirect = %d %q", method, response.Code, response.Header().Get("Location"))
+			}
+		})
+	}
+	t.Run("unknown path", func(t *testing.T) {
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/missing-root-route", nil))
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("unknown root route = %d, want %d", response.Code, http.StatusNotFound)
+		}
+	})
+}
+
 func TestWorkshopAssetsAvailableWithoutCatalogCredentials(t *testing.T) {
 	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
 	for _, asset := range []struct{ path, contentType string }{
