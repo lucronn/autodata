@@ -1,0 +1,35 @@
+{
+  "checkpoint_sha": "26989e1de7a71ac4f7c23da043dd367548e2ba45",
+  "branch": "codex/workshop-pg17-acquisition-overlay-plan",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-pg17-acquisition-overlay.json",
+  "record_sha256": "42ce1de376f0cc3e1f1b4e1014c5dd65c3723bd2fb76c22e4841c68319462e6c",
+  "command": [
+    "python3",
+    "scripts/autonomy/pre_implementation.py",
+    "--record",
+    "docs/agents/records/2026-11-04-workshop-pg17-acquisition-overlay.json",
+    "--base-sha",
+    "26989e1de7a71ac4f7c23da043dd367548e2ba45"
+  ],
+  "exit_code": 0,
+  "stdout": {
+    "status": "synchronized",
+    "errors": []
+  },
+  "stderr": "",
+  "verified_at": "2026-11-04T03:05:00.837857+00:00",
+  "tracking_readback": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621404413",
+    "issue_body_sha256": "43d3605c47f4a55a84ba02ee336bf2b9c83b965658cd6f091a2618d7abf68f44",
+    "issue_comment_sha256": "b3ac59c771158c81169c62508ded07fb947014c081ad56f9722e0c0c96af1f19",
+    "project_text_sha256": "0e7e4e9fe723808c4587d12c85bc0486089d3d842db1ca158dd2667e4b49aecf",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4"
+  },
+  "independent_checkpoint_review": "pending",
+  "implementation_modified": false,
+  "preparation_executed": false,
+  "runtime_executed": false,
+  "runtime_verified": false,
+  "production_ready": false,
+  "integration_authorized": false
+}
