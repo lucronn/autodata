@@ -243,6 +243,13 @@ def _semantic(name, value, path, errors, context):
         for artifact, field in (("manifest.json", "manifest_sha256"), ("terminal.json", "terminal_sha256"), ("journal.jsonl", "journal_sha256")):
             if artifact not in files or c.digest_bytes(files[artifact]) != value[field]:
                 reject("seal raw byte binding missing/mismatch: " + artifact)
+        try:
+            identities = [c.strict_json(files[name])["attempt_id"] for name in ("manifest.json", "terminal.json")]
+            identities += [c.strict_json(files["journal.jsonl"].splitlines(keepends=True)[0])["attempt_id"]]
+            if any(identity != value["attempt_id"] for identity in identities):
+                reject("seal attempt differs from manifest/terminal/journal")
+        except (ValueError, KeyError, IndexError, TypeError):
+            reject("seal identity bindings unavailable")
         errors.extend(validate_bundle(files, context))
     elif name == "OperationSpec":
         members = tuple(value[k] is not None for k in ("command", "local_read", "readiness"))
@@ -261,6 +268,8 @@ def _semantic(name, value, path, errors, context):
             reject("probe indices reordered/duplicated")
         if value["terminal"] == "complete_unadmitted" and len(operations) != 13:
             reject("complete probe must contain exact thirteen operations")
+        if value["terminal"] == "complete_unadmitted" and (value["end_ns"] is None or value["end_utc"] is None):
+            reject("complete probe lacks completion timestamp")
         expected = context.get("preparation_operations")
         if expected is None:
             reject("independently rendered preparation plan missing")
@@ -281,12 +290,16 @@ def _semantic(name, value, path, errors, context):
             elif outcome["start_ns"] is not None:
                 if outcome["start_ns"] < prior_end:
                     reject("preparation operations overlap or reorder")
+                if outcome["start_ns"] >= value["deadline_ns"] or (value["end_ns"] is not None and outcome["start_ns"] > value["end_ns"]):
+                    reject("preparation operation starts outside enclosing lifetime")
                 if outcome["end_ns"] is not None:
                     if outcome["end_ns"] - outcome["start_ns"] > 10000000000 or outcome["end_ns"] >= value["deadline_ns"]:
                         reject("preparation operation absolute budget exceeded")
                     prior_end = outcome["end_ns"]
         if value["terminal"] == "complete_unadmitted" and any(op["outcome"]["state"] != "exited" or op["outcome"]["exit_code"] != 0 for op in operations):
             reject("complete probe includes non-success outcome")
+        if value["end_ns"] is not None and prior_end > value["end_ns"]:
+            reject("probe ended before its recorded operations completed")
     elif name == "ProbeInput":
         try:
             c.disjoint_roots(tuple(value[k] for k in ("source_root", "tools_root", "module_cache_root", "browser_cache_root", "evidence_root", "docker_config_root")))
@@ -320,6 +333,27 @@ def _semantic(name, value, path, errors, context):
                     if (row["affinity_cpus"] < floors["affinity_cpus"] or row["physical_memory_bytes"] < floors["physical_memory_bytes"]
                             or row["fd_soft_limit"] < floors["fd_soft_limit"] or row["available_disk_bytes"] < floors["evidence_available_bytes"]):
                         reject("capacity floor not met")
+    elif name == "VersionResult":
+        # Re-run the fixed parser against retained raw bytes and independently
+        # supplied input declarations. A normalized document cannot nominate
+        # its own expected values or fill another parser's nullable fields.
+        try:
+            import workshop_browser_preparation_probe as preparation
+
+            bindings = context["version_inputs"]
+            raw = context["version_raw_outputs"][value["operation_id"]]
+            operations = preparation.plan_preparation(bindings)
+            operation = next((op for op in operations[:7] if op.id == value["operation_id"]), None)
+            if operation is None or not isinstance(raw["stdout"], bytes) or not isinstance(raw["stderr"], bytes):
+                raise ValueError("version raw output or operation unavailable")
+            normalized = preparation.parse_command_output(operation, raw["stdout"], raw["stderr"], bindings,
+                                                           raw["executable_sha256"], value["outcome"],
+                                                           runtime_exports=context.get("version_runtime_exports"),
+                                                           _validate_result=False)
+            if value != normalized:
+                reject("version result differs from fixed raw parser output")
+        except (KeyError, ValueError, TypeError):
+            reject("version raw output/input/export binding missing or invalid")
     elif name == "ReadinessResult":
         if value["observed_ns"] >= value["deadline_ns"]:
             reject("readiness at/after deadline")
@@ -438,6 +472,8 @@ def validate_journal(journal: tuple[dict, ...]) -> tuple[str, ...]:
     sealed = False
     attempt_id = None
     epoch = 1
+    holder = "supervisor"
+    broker_process = None
     for index, event in enumerate(journal):
         structural = validate_value("JournalEvent", event)
         errors.extend(structural)
@@ -456,12 +492,19 @@ def validate_journal(journal: tuple[dict, ...]) -> tuple[str, ...]:
         attempt_id = event["attempt_id"]
         if event["fence"]["journal_sequence"] != index:
             errors.append("fence sequence mismatch")
+        if index == 0:
+            broker_process = event["fence"]["broker_process"]
+        if event["fence"]["broker_process"] is None or event["fence"]["broker_process"] != broker_process:
+            errors.append("original journal broker creation identity unavailable/changed")
         if event["action"] == "fence_advance":
-            if event["fence"]["epoch"] != epoch + 1 or event["fence"]["holder"] != "watchdog_cleanup":
+            if holder != "supervisor" or event["fence"]["epoch"] != epoch + 1 or event["fence"]["holder"] != "watchdog_cleanup":
                 errors.append("invalid durable fence advance")
             epoch = event["fence"]["epoch"]
+            holder = "watchdog_cleanup"
         elif event["action"] != "stale_action_rejected" and event["fence"]["epoch"] != epoch:
             errors.append("stale journal mutation epoch")
+        if event["action"] != "stale_action_rejected" and event["fence"]["holder"] != holder:
+            errors.append("revoked or incorrect journal mutation holder")
         if event["action"] == "seal_intent":
             if event["state"] != "sealing" or event["observation_sha256"] is not None:
                 errors.append("seal intent must not bind later artifacts")

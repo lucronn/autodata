@@ -82,7 +82,7 @@ def _nonempty(value):
 
 
 def parse_command_output(operation: c.OperationSpec, stdout: bytes, stderr: bytes, bindings: dict,
-                         executable_sha256: str, outcome: dict, *, runtime_exports=None) -> dict:
+                         executable_sha256: str, outcome: dict, *, runtime_exports=None, _validate_result=True) -> dict:
     expected = plan_preparation(bindings)
     if operation.index not in range(7) or operation != expected[operation.index]:
         raise ValueError("not an exact frozen preparation command")
@@ -144,8 +144,11 @@ def parse_command_output(operation: c.OperationSpec, stdout: bytes, stderr: byte
                           image_config_sha256=config_hash, image_rootfs_sha256=rootfs_hash)
     result = dict(operation_id=operation.id, parser=parser, values=values, executable_sha256=executable_sha256,
                   command_sha256=operation.command.binding_sha256, raw_stdout_sha256=c.digest_bytes(stdout),
-                  raw_stderr_sha256=c.digest_bytes(stderr), outcome=outcome, reasons=[])
-    if e.validate_value("VersionResult", result):
+                  raw_stderr_sha256=c.digest_bytes(stderr),
+                  outcome={**outcome, "stdout_sha256": c.digest_bytes(stdout), "stderr_sha256": c.digest_bytes(stderr)}, reasons=[])
+    context = dict(version_inputs=bindings, version_raw_outputs={operation.id: dict(stdout=stdout, stderr=stderr, executable_sha256=executable_sha256)},
+                   version_runtime_exports=runtime_exports)
+    if _validate_result and e.validate_value("VersionResult", result, context):
         raise ValueError("invalid normalized version result")
     return result
 
@@ -161,6 +164,13 @@ def validate_local_result(operation: c.OperationSpec, result: dict, bindings: di
     if result["operation_id"] != operation.id or result["action"] != operation.local_read["action"]:
         errors.append("local result operation/action mismatch")
     for snapshot in (result["before"], result["after"]):
+        paths = [row["path"] for row in snapshot]
+        if len(paths) != len(set(paths)):
+            errors.append("duplicate local snapshot path")
+        if len(snapshot) > operation.local_read["max_entries"] or len(c.canonical_json(snapshot)) > operation.local_read["max_output_bytes"]:
+            errors.append("local traversal entry/output limit exceeded")
+        if sum(row["bytes"] for row in snapshot if row["kind"] == "regular") > operation.local_read["max_input_bytes"]:
+            errors.append("local traversal input byte limit exceeded")
         root_rows = {row["path"]: row for row in snapshot if row["path"].startswith("/")}
         if set(root_rows) != set(operation.local_read["roots"]):
             errors.append("local result declared root tuple mismatch")
@@ -172,6 +182,20 @@ def validate_local_result(operation: c.OperationSpec, result: dict, bindings: di
         identities = [(row["device"], row["inode"]) for row in root_rows.values()]
         if len(identities) != len(set(identities)):
             errors.append("local roots share filesystem identity")
+        if operation.local_read["action"] == "tree_manifest_v1":
+            children = [row for row in snapshot if not row["path"].startswith("/")]
+            if [row["path"] for row in children] != sorted((row["path"] for row in children), key=lambda path: path.encode("utf-8")):
+                errors.append("tree entries not sorted by relative UTF8 path bytes")
+            regular_ids = [(row["device"], row["inode"]) for row in children if row["kind"] == "regular"]
+            if len(regular_ids) != len(set(regular_ids)):
+                errors.append("regular files share hardlink identity")
+            root_devices = {row["device"] for row in root_rows.values()}
+            if any(row["device"] not in root_devices for row in children):
+                errors.append("tree traversal crosses root device")
+            if any(row["kind"] == "absent" for row in children):
+                errors.append("tree traversal contains unavailable entry")
+        elif len(snapshot) != len(root_rows):
+            errors.append("metadata-only local operation contains child traversal")
     if operation.index == 12:
         for snapshot in (result["capacity_before"], result["capacity_after"]):
             if [row["root"] for row in snapshot] != operation.local_read["roots"]:

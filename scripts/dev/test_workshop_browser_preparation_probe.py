@@ -197,7 +197,58 @@ def test_probe_complete_requires_exact_operations_and_literal_null_manifest():
     for mutate in (lambda v: v.update(manifest_sha256="0" * 64), lambda v: v.update(admitted=True),
                    lambda v: v["operations"].pop(), lambda v: v["operations"][1].update(index=0),
                    lambda v: v["operations"][0]["spec"]["command"]["environment"].update(HTTP_PROXY="bad"),
+                   lambda v: v.update(end_ns=None),
+                   lambda v: v.update(end_utc=None),
+                   lambda v: v.update(end_ns=1),
                    lambda v: v.update(end_ns=180000000000)):
         changed = copy.deepcopy(probe)
         mutate(changed)
         assert e.validate_artifact("preparation-probe.json", c.canonical_json(changed), context)
+
+
+@pytest.mark.parametrize("mutation", ["duplicate_root", "hardlinked_children", "unordered_paths", "input_bytes", "cross_device", "duplicate_child"])
+def test_local_tree_snapshot_enforces_unique_ordered_bounded_files(mutation):
+    inp = probe_input()
+    op = p.plan_preparation(inp)[7]
+    result = local_result(op)
+    roots = {row["path"]: copy.deepcopy(row) for row in result["before"]}
+    child = dict(path="a.txt", kind="regular", mode=420, uid=1, gid=1, device=1, inode=10,
+                 bytes=1, sha256="1" * 64, classification="unchanged", reason=None)
+    rows = result["before"] + [child, {**child, "path": "b.txt", "inode": 11}]
+    result.update(before=copy.deepcopy(rows), after=copy.deepcopy(rows), before_sha256=c.digest(rows), after_sha256=c.digest(rows))
+    assert p.validate_local_result(op, result, inp, roots) == ()
+    changed = copy.deepcopy(rows)
+    if mutation == "duplicate_root":
+        changed.insert(0, copy.deepcopy(changed[0]))
+    elif mutation == "hardlinked_children":
+        changed[2]["inode"] = changed[1]["inode"]
+    elif mutation == "unordered_paths":
+        changed[1:] = list(reversed(changed[1:]))
+    elif mutation == "input_bytes":
+        changed[1]["bytes"] = 8589934593
+    elif mutation == "cross_device":
+        changed[1]["device"] = 2
+    else:
+        changed[2]["path"] = changed[1]["path"]
+    result.update(before=changed, after=copy.deepcopy(changed), before_sha256=c.digest(changed), after_sha256=c.digest(changed))
+    assert p.validate_local_result(op, result, inp, roots)
+
+
+@pytest.mark.parametrize("mutation", ["go_fabricated", "nonparser_python", "missing_raw", "wrong_raw_hash"])
+def test_normalized_versions_are_bound_to_exact_raw_parser_output(mutation):
+    inp = probe_input()
+    op = p.plan_preparation(inp)[6]
+    raw = b"go version go1.24.3 linux/amd64\n"
+    result = p.parse_command_output(op, raw, b"", inp, "4" * 64, outcome())
+    context = dict(version_inputs=inp, version_raw_outputs={op.id: {"stdout": raw, "stderr": b"", "executable_sha256": "4" * 64}})
+    assert e.validate_value("VersionResult", result, context) == ()
+    changed = copy.deepcopy(result)
+    if mutation == "go_fabricated":
+        changed["values"]["go_version"] = "go9.99.99"
+    elif mutation == "nonparser_python":
+        changed["values"]["python_version"] = [9, 9, 9]
+    elif mutation == "missing_raw":
+        context = {}
+    else:
+        changed["raw_stdout_sha256"] = "0" * 64
+    assert e.validate_value("VersionResult", changed, context)

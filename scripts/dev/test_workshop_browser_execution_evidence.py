@@ -88,6 +88,24 @@ def test_journal_hash_chain_detects_reorder_and_freezes_final_event():
         e.append_journal((first, last), event(2, c.digest_bytes(c.canonical_json(last))))
 
 
+def test_revoked_supervisor_cannot_return_in_a_watchdog_epoch():
+    first = e.journal_event(event())
+    takeover = event(1, c.digest_bytes(c.canonical_json(first)), "fence_advance", "stopping")
+    takeover["fence"].update(epoch=2, holder="watchdog_cleanup")
+    takeover = e.journal_event(takeover)
+    resumed = event(2, c.digest_bytes(c.canonical_json(takeover)), "intent", "stopping")
+    resumed["fence"].update(epoch=2, holder="supervisor")
+    resumed = e.journal_event(resumed)
+    assert e.validate_journal((first, takeover, resumed))
+
+
+def test_original_journal_cannot_silently_replace_broker_identity():
+    first = e.journal_event(event())
+    replacement = event(1, c.digest_bytes(c.canonical_json(first)), "intent", "preparing")
+    replacement["fence"]["broker_process"]["start_ticks"] += 1
+    assert e.validate_journal((first, e.journal_event(replacement)))
+
+
 def test_terminal_may_not_include_itself_and_paths_cannot_escape():
     t = dict(attempt_id="a" * 32, candidate_sha=c.CANDIDATE_SHA, supervisor_sha256="1" * 64,
              state="failed", **{"pass": False}, new_case_credit=0, manifest_sha256=None,
@@ -187,6 +205,17 @@ def test_source_artifact_inventory_is_preserved_without_semantic_acceptance():
     for case in c.inventory()["api_cases"]:
         assert case["case_dir"].removeprefix("/artifacts/") + "/result.json" in names
     assert e.validate_artifact("readiness/dto/fixture.json", b"{}\n", {})
+
+
+def test_seal_attempt_identity_cannot_be_replaced_even_with_valid_selfhash():
+    port = e.MemoryEvidencePort()
+    last = e.journal_event(event(action="seal_intent", state="sealing"))
+    port.append_fsync("journal.jsonl", c.canonical_json(last))
+    m, terminal = seal_documents(port)
+    seal = e.seal_evidence(port, (last,), m, terminal, "now")
+    changed = {**seal, "attempt_id": "b" * 32}
+    changed["seal_sha256"] = c.digest({k: v for k, v in changed.items() if k != "seal_sha256"})
+    assert e.validate_artifact("seal.json", c.canonical_json(changed), {"files": port.files})
 
 
 def migration_rows():
