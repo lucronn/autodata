@@ -181,7 +181,13 @@ def load_contract(checkpoint_sha: str, git: GitReader) -> Contract:
         plan = git.read_blob(checkpoint_sha, PLAN_PATH).decode('utf-8')
         _require(task.get('pre_implementation') == record and record.get('status') == 'synchronized'
                  and record.get('plan_ref') == PLAN_PATH and record.get('selected_candidate_sha') == CANDIDATE_SHA
-                 and task.get('selected_candidate_sha') == CANDIDATE_SHA, 'checkpoint_contract')
+                 and task.get('selected_candidate_sha') == CANDIDATE_SHA
+                 and task.get('goal') == record.get('goal')
+                 and task.get('allowed_paths') == ['scripts/dev/workshop_final180_runner.py',
+                     'scripts/dev/test_workshop_final180_runner.py', 'docs/verification/workshop-final180-runbook.md']
+                 and type(task.get('authority')) is dict and set(AUTHORITY) == set(task['authority'])
+                 and all(v is False for v in task['authority'].values())
+                 and task.get('product_evidence') == {'profiles_enabled': False, 'enabled_tiers': []}, 'checkpoint_contract')
         for key in ('goal', 'issue_ref', 'project_ref'):
             _require(_string(record.get(key), 8192) and record[key] in plan, 'checkpoint_contract')
         _require(record['issue_ref'] == 'https://github.com/lucronn/autodata/issues/186'
@@ -199,6 +205,7 @@ def load_contract(checkpoint_sha: str, git: GitReader) -> Contract:
         _require(inv.get('contract') == 'workshop-final180-inventory-draft-v1'
                  and inv.get('selected_candidate_sha') == CANDIDATE_SHA
                  and inv.get('source_hashes_sha') == CANDIDATE_SHA
+                 and inv.get('selected_source_tuple', {}).get('candidate_sha') == CANDIDATE_SHA
                  and inv.get('selected_source_tuple', {}).get('source_pins_git_sha') == CANDIDATE_SHA
                  and inv.get('profiles_enabled') is False and inv.get('enabled_tiers') == [], 'inventory_contract')
         authority = inv.get('authority')
@@ -254,6 +261,13 @@ def _open_dir(path: Path, *, owned=False, protected=False):
 
 
 def _read_regular(root: Path, relative: str, *, limit=MAX_MANIFEST):
+    try:
+        return _read_regular_impl(root, relative, limit=limit)
+    except OSError:
+        raise ContractError('unsafe_input') from None
+
+
+def _read_regular_impl(root: Path, relative: str, *, limit):
     """Return bytes and inode snapshot, never following links or opening special files."""
     _require(_safe_path(relative), 'unsafe_input')
     directory = _open_dir(root, owned=True)
@@ -376,7 +390,9 @@ def _checkout_valid(observation, contract):
     _require(type(hooks) is tuple and all(type(h) is HookEntry for h in hooks), 'checkout_hooks')
     _require(tuple(sorted(hooks, key=lambda h: h.path)) == hooks and len({h.path for h in hooks}) == len(hooks), 'checkout_hooks')
     for hook in hooks:
-        _require(_safe_path(hook.path) and re.fullmatch(r'[0-7]{4}', hook.mode)
+        _require(_safe_path(hook.path) and hook.path.startswith('.git/hooks/')
+                 and len(hook.path.split('/')) == 3 and type(hook.mode) is str
+                 and re.fullmatch(r'[0-7]{4}', hook.mode) and type(hook.sha256) is str
                  and SHA64.fullmatch(hook.sha256) and type(hook.active) is bool, 'checkout_hooks')
         _require(hook.path.rsplit('/', 1)[-1].endswith('.sample') and not hook.active, 'custom_hook')
 
@@ -476,7 +492,7 @@ def reconcile(observed: tuple[Observation, ...], contract: Contract) -> tuple[st
 
 def _validate_tool(identity):
     _require(type(identity) is GitToolIdentity and _string(identity.path, 4096)
-             and Path(identity.path).is_absolute() and SHA64.fullmatch(identity.sha256)
+             and Path(identity.path).is_absolute() and type(identity.sha256) is str and SHA64.fullmatch(identity.sha256)
              and _string(identity.version, 256) and '\n' not in identity.version
              and '\r' not in identity.version, 'git_tool_identity')
 
@@ -503,22 +519,80 @@ class ProductionGitReader:
             _require(len(version) <= 256 and b'\n' not in version and b'\r' not in version and bool(version), 'git_tool_discovery')
             self.identity = GitToolIdentity(str(self.executable), self.tool_hash, version.decode('utf-8'))
             self.tool_identity()
-        except (OSError, UnicodeError):
-            raise ContractError('git_tool_discovery') from None
+            self._validate_tooling_metadata()
+        except BaseException as exc:
+            self.home.cleanup()
+            if isinstance(exc, (OSError, UnicodeError)):
+                exc = ContractError('git_tool_discovery')
+            if self.identity is not None:
+                exc.git_tool = self.identity
+            raise exc
 
     def close(self):
         self.home.cleanup()
 
     def _hash_executable(self):
-        h = hashlib.sha256()
-        with self.executable.open('rb') as stream:
-            before = _identity(os.fstat(stream.fileno()))
-            _require(stat.S_ISREG(before[5]) and bool(before[5] & 0o111), 'git_tool_drift')
-            while chunk := stream.read(1024*1024):
-                h.update(chunk)
-            _require(before == _identity(os.fstat(stream.fileno()))
-                     == _identity(self.executable.stat()), 'git_tool_drift')
-        return h.hexdigest()
+        try:
+            fd = os.open(self.executable, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                before = _identity(os.fstat(fd))
+                _require(stat.S_ISREG(before[5]) and bool(before[5] & 0o111), 'git_tool_drift')
+                _require(before == getattr(self, '_executable_snapshot', before), 'git_tool_drift')
+                self._executable_snapshot = before
+                h = hashlib.sha256()
+                while chunk := os.read(fd, 1024*1024):
+                    h.update(chunk)
+                _require(before == _identity(os.fstat(fd))
+                         == _identity(self.executable.stat(follow_symlinks=False)), 'git_tool_drift')
+                return h.hexdigest()
+            finally:
+                os.close(fd)
+        except OSError:
+            raise ContractError('git_tool_drift') from None
+
+    @staticmethod
+    def _validate_metadata(gitdir):
+        fd = _open_dir(gitdir, owned=True)
+        os.close(fd)
+        config, _ = _read_regular(gitdir, 'config', limit=1024*1024)
+        try:
+            text = config.decode('utf-8')
+        except UnicodeError:
+            raise ContractError('git_config') from None
+        # Missing objects must never trigger promisor fetches, even from tooling.
+        _require(not re.search(r'(?im)^\s*(?:hooksPath|worktree|worktreeConfig|partialClone|promisor)\s*=|^\s*\[\s*include(?:If)?\b', text), 'git_config')
+        objects = _open_dir(gitdir / 'objects', owned=True)
+        try:
+            try:
+                info = os.open('info', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=objects)
+            except FileNotFoundError:
+                return
+            os.close(info)
+        finally:
+            os.close(objects)
+        for name in ('alternates', 'http-alternates'):
+            path = gitdir / 'objects/info' / name
+            _require(not path.exists() and not path.is_symlink(), 'checkout_alternates')
+
+    def _validate_tooling_metadata(self):
+        dotgit = self.tooling_root / '.git'
+        if stat.S_ISREG(dotgit.stat(follow_symlinks=False).st_mode):
+            raw, _ = _read_regular(self.tooling_root, '.git', limit=4096)
+            _require(raw.startswith(b'gitdir: ') and raw.endswith(b'\n') and raw.count(b'\n') == 1, 'git_metadata')
+            try:
+                value = raw[8:-1].decode('utf-8')
+            except UnicodeError:
+                raise ContractError('git_metadata') from None
+            gitdir = Path(os.path.abspath(self.tooling_root / value))
+            common, _ = _read_regular(gitdir, 'commondir', limit=4096)
+            try:
+                value = common.decode('utf-8').removesuffix('\n')
+            except UnicodeError:
+                raise ContractError('git_metadata') from None
+            _require(_string(value, 4096) and '\x00' not in value and '\n' not in value, 'git_metadata')
+            self._validate_metadata(Path(os.path.abspath(gitdir / value)))
+        else:
+            self._validate_metadata(dotgit)
 
     def tool_identity(self):
         _require(self._hash_executable() == self.tool_hash, 'git_tool_drift')
@@ -533,7 +607,8 @@ class ProductionGitReader:
         selector = selectors.DefaultSelector()
         out, err = bytearray(), bytearray()
         try:
-            selector.register(proc.stdout, selectors.EVENT_READ, (out, MAX_MANIFEST))
+            stdout_limit = 257 if argv == (str(self.executable), '--version') else MAX_MANIFEST
+            selector.register(proc.stdout, selectors.EVENT_READ, (out, stdout_limit))
             selector.register(proc.stderr, selectors.EVENT_READ, (err, 1024*1024))
             while selector.get_map():
                 _require(time.monotonic() < deadline, 'git_timeout')
@@ -596,10 +671,7 @@ class ProductionGitReader:
             # A candidate must be a plain clone. Tooling may be an owned worktree.
             fd = _open_dir(root / '.git', owned=True)
             os.close(fd)
-            config, _ = _read_regular(root, '.git/config', limit=1024*1024)
-            # Reject includes/worktree redirects as well as configured hooksPath.
-            text = config.decode('utf-8')
-            _require(not re.search(r'(?im)^\s*(?:hooksPath|worktree)\s*=|^\s*\[\s*include(?:If)?\b', text), 'git_config')
+            self._validate_metadata(root / '.git')
             hooks = []
             hook_dir = root / '.git/hooks'
             if hook_dir.exists() or hook_dir.is_symlink():
@@ -687,10 +759,10 @@ def _interrupted(_signum, _frame):
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description='Offline source/claim diagnostics only; no measured execution or acceptance.')
+    parser = argparse.ArgumentParser(description='Offline source/claim diagnostics only; no measured execution or acceptance.', allow_abbrev=False)
     commands = parser.add_subparsers(dest='mode', required=True)
     for mode in ('inspect', 'reconcile'):
-        sub = commands.add_parser(mode)
+        sub = commands.add_parser(mode, allow_abbrev=False)
         sub.add_argument('--checkpoint-sha', required=True)
         sub.add_argument('--candidate-root', required=True, type=Path)
         sub.add_argument('--output-root', required=True, type=Path)
@@ -726,16 +798,21 @@ def main(argv: list[str] | None = None) -> int:
                 failures = reconcile(rows, contract)
                 _require(_snapshot(args.observations.parent, args.observations.name) == observation_snapshot, 'input_drift')
             status, code = ('inconsistent', 1) if failures else ('consistent', 0)
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as exc:
             status, code, failures = 'interrupted', 1, ('interrupted',)
+            identity = getattr(exc, 'git_tool', None) or getattr(git, 'identity', None)
+            if identity is not None:
+                tool = asdict(identity)
         except ContractError as exc:
             failures = (str(exc),)
             if getattr(exc, 'git_tool', None) is not None:
                 tool = asdict(exc.git_tool)
+            elif getattr(git, 'identity', None) is not None:
+                tool = asdict(git.identity)
         except (OSError, ValueError, TypeError):
             failures = ('unsafe_input',)
         if output is None:
-            return 2
+            return code
         diagnostic = dict(contract='workshop-final180-offline-diagnostic-v1', mode=args.mode,
             checkpoint_sha=args.checkpoint_sha if SHA40.fullmatch(args.checkpoint_sha) else None,
             runner_sha=runner_sha, candidate_sha=contract.candidate_sha if contract else CANDIDATE_SHA,

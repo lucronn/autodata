@@ -56,7 +56,7 @@ class FakeGit:
     def close(self): pass
 
 
-class AdmissionTests(unittest.TestCase):
+class FixtureBase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -72,6 +72,8 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaises(r.ContractError) as ctx: fn(*args)
         self.assertEqual(str(ctx.exception),code)
 
+
+class AdmissionTests(FixtureBase):
     def test_exact_inventory_and_complete_manifest(self):
         self.assertEqual([len(ids) for _,ids in self.contract.expected_ids],[5,8,14,12,120,21])
         self.assertEqual(len(self.contract.source_pins),82)
@@ -155,7 +157,7 @@ class JSONTests(unittest.TestCase):
         self.assertEqual(r.load_json_strict(b'{"x":true}',max_bytes=20),{'x':True})
 
 
-class ObservationTests(AdmissionTests):
+class ObservationTests(FixtureBase):
     def document(self):
         return dict(contract='workshop-final180-observations-v1',candidate_sha=CANDIDATE,observations=[dict(family=f,logical_id=i,status='passed',raw_refs=[]) for f,ids in self.contract.expected_ids for i in ids])
 
@@ -203,12 +205,14 @@ class ObservationTests(AdmissionTests):
         self.assertTrue(failures[1].startswith('extra:browser_api:'))
 
 
-class CLITests(AdmissionTests):
+class CLIFixture(FixtureBase):
     def invoke(self,mode='inspect',observations=None,output=None):
         args=[mode,'--checkpoint-sha',BASE,'--candidate-root',str(self.root),'--output-root',str(output or self.output)]
         if observations is not None:args+=['--observations',str(observations)]
         with mock.patch.object(r,'ProductionGitReader',return_value=self.git):return r.main(args)
 
+
+class CLITests(CLIFixture):
     def test_private_atomic_diagnostic_all_authority_false(self):
         self.assertEqual(self.invoke(),0)
         out=self.output;d=json.loads((out/'diagnostic.json').read_bytes())
@@ -241,6 +245,203 @@ class CLITests(AdmissionTests):
     def test_diagnostic_invariant_fallback(self):
         with mock.patch.object(r,'MAX_DIAGNOSTIC',1):self.assertEqual(self.invoke(),2)
         d=json.loads((self.output/'diagnostic.json').read_bytes());self.assertEqual(d['failures'],['diagnostic_size_invariant']);self.assertEqual(d['status'],'unavailable')
+
+
+
+
+class ProductionGitTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.root=Path(self.tmp.name)
+        # Production command construction is tested using a real immutable host
+        # executable and intercepted read-only command output, never fixture tools.
+        self.git=r.ProductionGitReader(ROOT);self.addCleanup(self.git.close)
+
+    def test_fixed_path_discovery_version_and_exact_isolated_argv(self):
+        identity=self.git.tool_identity()
+        self.assertTrue(Path(identity.path).is_absolute());self.assertEqual(len(identity.sha256),64)
+        with mock.patch.object(self.git,'_capture',return_value=b'blob') as capture:
+            self.assertEqual(self.git.read_blob(CANDIDATE,'safe/file'),b'blob')
+        argv=capture.call_args.args[0]
+        self.assertEqual(argv,(identity.path,'--no-optional-locks','-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false','-c','protocol.file.allow=never','-C',str(ROOT),'cat-file','blob',CANDIDATE+':safe/file'))
+        self.assertEqual(set(self.git.env),{'PATH','HOME','GIT_CONFIG_NOSYSTEM','GIT_CONFIG_GLOBAL','GIT_TERMINAL_PROMPT','GIT_NO_REPLACE_OBJECTS'})
+        self.assertEqual(self.git.env['PATH'],r.FIXED_PATH)
+        self.assertEqual(list(Path(self.git.env['HOME']).iterdir()),[])
+        with mock.patch.object(r.shutil,'which',return_value=None) as which:
+            with self.assertRaises(r.ContractError):r.ProductionGitReader(ROOT)
+        which.assert_called_once_with('git',path='/usr/local/bin:/usr/bin:/bin')
+
+    def test_version_argv_is_only_special_command(self):
+        with mock.patch.object(r.ProductionGitReader,'_capture',return_value=b'git version unit\n') as cap:
+            git=r.ProductionGitReader(ROOT)
+            try:self.assertEqual(git.tool_identity().version,'git version unit')
+            finally:git.close()
+        self.assertEqual(cap.call_args.args[0],(str(Path(self.git.identity.path)),'--version'))
+        for version in (b'',b'x\ny\n',b'x\r\n',b'x'*257,b'\xff'):
+            with self.subTest(version=version),mock.patch.object(r.ProductionGitReader,'_capture',return_value=version),self.assertRaises(r.ContractError):
+                r.ProductionGitReader(ROOT)
+
+    def test_git_executable_changed_or_symlinked_after_discovery(self):
+        executable=self.root/'git';executable.write_bytes(Path(self.git.identity.path).read_bytes());executable.chmod(0o755)
+        with mock.patch.object(r.shutil,'which',return_value=str(executable)),mock.patch.object(r.ProductionGitReader,'_capture',return_value=b'git version unit\n'):
+            git=r.ProductionGitReader(ROOT)
+        self.addCleanup(git.close)
+        executable.write_bytes(b'drift');self.assertRaises(r.ContractError,git.tool_identity)
+        executable.unlink();executable.symlink_to(self.git.identity.path)
+        self.assertRaises(r.ContractError,git.tool_identity)
+
+    def metadata(self):
+        gitdir=self.root/'.git';gitdir.mkdir();(gitdir/'config').write_text('[core]\n repositoryformatversion = 0\n')
+        (gitdir/'hooks').mkdir();(gitdir/'objects/info').mkdir(parents=True)
+        return gitdir
+
+    def checkout_git(self,root,command,**kw):
+        if command==('rev-parse','--verify','HEAD'):return CANDIDATE.encode()+b'\n'
+        return b''
+
+    def test_actual_hooks_sample_modes_and_nonsample_entries(self):
+        gitdir=self.metadata();hook=gitdir/'hooks/pre-commit.sample';hook.write_bytes(b'sample')
+        with mock.patch.object(self.git,'_git',side_effect=self.checkout_git):
+            for mode in (0o644,0o755):
+                hook.chmod(mode);out=self.git.observe_checkout(self.root);self.assertFalse(out['hooks'][0].active)
+                self.assertEqual(out['hooks'][0].mode,f'{mode:04o}')
+            for name,mode in (('custom',0o644),('pre-commit',0o644),('pre-commit',0o755)):
+                p=gitdir/'hooks'/name;p.write_bytes(b'custom');p.chmod(mode)
+                with self.assertRaises(r.ContractError) as ctx:self.git.observe_checkout(self.root)
+                self.assertEqual(str(ctx.exception),'custom_hook');p.unlink()
+
+    def test_unsafe_hook_entries_and_config(self):
+        gitdir=self.metadata();hook=gitdir/'hooks/bad.sample'
+        with mock.patch.object(self.git,'_git',side_effect=self.checkout_git):
+            hook.symlink_to('/etc/passwd');self.assertRaises(r.ContractError,self.git.observe_checkout,self.root);hook.unlink()
+            hook.mkdir();self.assertRaises(r.ContractError,self.git.observe_checkout,self.root);hook.rmdir()
+            os.mkfifo(hook);self.assertRaises(r.ContractError,self.git.observe_checkout,self.root);hook.unlink()
+            other=self.root/'other';other.write_bytes(b'x');os.link(other,hook);self.assertRaises(r.ContractError,self.git.observe_checkout,self.root);hook.unlink()
+            for config in ('[core]\n hooksPath=/tmp/hooks\n','[include]\n path=/tmp/config\n','[extensions]\n partialClone=origin\n','[remote "origin"]\n promisor=true\n'):
+                (gitdir/'config').write_text(config)
+                with self.subTest(config=config),self.assertRaises(r.ContractError):self.git.observe_checkout(self.root)
+
+    def test_alternates_detached_and_remote_constraints(self):
+        gitdir=self.metadata();p=gitdir/'objects/info/alternates';p.write_bytes(b'')
+        with mock.patch.object(self.git,'_git',side_effect=self.checkout_git):self.assertRaises(r.ContractError,self.git.observe_checkout,self.root)
+        p.unlink()
+        def attached(root,command,**kw):
+            return b'refs/heads/main\n' if command[0]=='symbolic-ref' else self.checkout_git(root,command,**kw)
+        with mock.patch.object(self.git,'_git',side_effect=attached):self.assertRaises(r.ContractError,self.git.observe_checkout,self.root)
+
+    def test_git_subprocess_limits_without_running_candidate_code(self):
+        class Process:
+            def __init__(self,*args,**kw):
+                self.stdout=tempfile.TemporaryFile();self.stderr=tempfile.TemporaryFile()
+                self.stdout.write(b'x'*20);self.stdout.seek(0);self.code=None
+            def poll(self):return self.code
+            def wait(self,**kw):self.code=0;return 0
+            def kill(self):self.code=-9
+        # Regular files cannot be registered by epoll, so use a selector stub.
+        class Selector:
+            def __init__(self):self.entries={}
+            def register(self,f,event,data):self.entries[f]=type('Key',(),{'fileobj':f,'data':data})()
+            def get_map(self):return self.entries
+            def select(self,timeout):return [(k,1) for k in self.entries.values()]
+            def unregister(self,f):del self.entries[f]
+            def close(self):pass
+        with mock.patch.object(r.subprocess,'Popen',side_effect=Process) as popen,mock.patch.object(r.selectors,'DefaultSelector',Selector),mock.patch.object(r,'MAX_MANIFEST',10):
+            with self.assertRaises(r.ContractError) as ctx:self.git._capture((self.git.identity.path,'cat-file','blob',CANDIDATE+':safe'))
+            self.assertEqual(str(ctx.exception),'git_output_size')
+        self.assertFalse(popen.call_args.kwargs['shell']);self.assertEqual(popen.call_args.kwargs['env'],self.git.env)
+
+
+class AdditionalBoundaryTests(FixtureBase):
+    def test_extra_file_and_parent_symlink(self):
+        extra=self.root/'extra';extra.write_bytes(b'extra')
+        self.error('source_members',r.inspect_candidate,self.contract,self.root,self.git);extra.unlink()
+        real=self.root/'real';real.mkdir();(real/'file').write_bytes(b'outside')
+        link=self.root/'link';link.symlink_to(real,target_is_directory=True)
+        self.error('unsafe_input',r._read_regular,self.root,'link/file')
+
+    def test_source_limit_and_timeout(self):
+        with mock.patch.object(r.time,'monotonic',side_effect=[0,301]):
+            self.error('inspection_timeout',r.inspect_candidate,self.contract,self.root,self.git)
+
+    def test_api_families_missing_in_expected_order(self):
+        result=r.reconcile((),self.contract)
+        self.assertEqual(len(result),180)
+        self.assertEqual(result[0],'missing:identity:'+self.contract.expected_ids[0][1][0])
+        self.assertEqual(result[-1],'missing:browser_api:'+self.contract.expected_ids[-1][1][-1])
+
+
+class WriteAndClaimBoundaryTests(CLIFixture):
+    def test_interrupt_during_atomic_output_writes_failed_diagnostic(self):
+        original=r._PrivateOutput.write
+        interrupted=False
+        def write(output,name,raw,limit):
+            nonlocal interrupted
+            if not interrupted:
+                interrupted=True
+                raise KeyboardInterrupt
+            return original(output,name,raw,limit)
+        with mock.patch.object(r._PrivateOutput,'write',new=write):self.assertEqual(self.invoke(),1)
+        d=json.loads((self.output/'diagnostic.json').read_bytes())
+        self.assertEqual(d['status'],'interrupted');self.assertEqual(d['failures'],['interrupted'])
+
+    def test_output_error_retains_unavailable_diagnostic(self):
+        original=r._PrivateOutput.write
+        def write(output,name,raw,limit):
+            if name=='source-manifest.json':raise OSError('private path must never be printed')
+            return original(output,name,raw,limit)
+        with mock.patch.object(r._PrivateOutput,'write',new=write):self.assertEqual(self.invoke(),2)
+        self.assertEqual(json.loads((self.output/'diagnostic.json').read_bytes())['failures'],['output_failed'])
+
+    def test_output_inside_candidate_rejected_before_any_write(self):
+        self.assertEqual(self.invoke(output=self.root/'output'),2)
+        self.assertFalse((self.root/'output').exists())
+
+    def test_input_drift_in_reconciliation_is_unavailable(self):
+        obs=self.root.parent/'claims.json';obs.write_bytes(canonical(ObservationTests.document(self)))
+        original=r.reconcile
+        def drift(*args):
+            result=original(*args);obs.write_bytes(b'changed');return result
+        with mock.patch.object(r,'reconcile',side_effect=drift):self.assertEqual(self.invoke('reconcile',obs),2)
+        self.assertEqual(json.loads((self.output/'diagnostic.json').read_bytes())['failures'],['input_drift'])
+
+    def test_all_passed_claim_cli_still_has_no_authority(self):
+        doc=ObservationTests.document(self);doc['observations'][0]['raw_refs']=['never-opened.json']
+        obs=self.root.parent/'claims.json';obs.write_bytes(canonical(doc))
+        self.assertEqual(self.invoke('reconcile',obs),0)
+        d=json.loads((self.output/'diagnostic.json').read_bytes());self.assertEqual(sum(d['observed_counts'].values()),180)
+        self.assertEqual(d['observations_sha256'],hashlib.sha256(obs.read_bytes()).hexdigest())
+        self.assertFalse(any(d['authority'].values()));self.assertEqual(d['status'],'consistent')
+
+    def test_complete_worst_case_claim_diagnostic_below_4mib(self):
+        doc=ObservationTests.document(self);doc['observations']=[dict(family='identity',logical_id='\x01'*256,status='failed',raw_refs=[]) for _ in range(512)]
+        obs=self.root.parent/'claims.json';obs.write_bytes(canonical(doc))
+        self.assertEqual(self.invoke('reconcile',obs),1)
+        raw=(self.output/'diagnostic.json').read_bytes();d=json.loads(raw)
+        self.assertLess(len(raw),4*1024*1024);self.assertEqual(len(d['failures']),1205)
+        self.assertEqual(d['observed_counts']['identity'],512)
+
+    def test_missing_tool_never_produces_consistent_diagnostic(self):
+        with mock.patch.object(r,'ProductionGitReader',side_effect=r.ContractError('git_tool_discovery')):
+            args=['inspect','--checkpoint-sha',BASE,'--candidate-root',str(self.root),'--output-root',str(self.output)]
+            self.assertEqual(r.main(args),2)
+        d=json.loads((self.output/'diagnostic.json').read_bytes());self.assertIsNone(d['git_tool']);self.assertEqual(d['status'],'unavailable')
+
+    def test_option_abbreviations_are_unknown_before_output(self):
+        args=['inspect','--check',BASE,'--candidate-root',str(self.root),'--output-root',str(self.output)]
+        with self.assertRaises(SystemExit) as ctx:r.main(args)
+        self.assertEqual(ctx.exception.code,2);self.assertFalse(self.output.exists())
+
+    def test_task_authority_and_scope_cannot_drift(self):
+        for mutate in (lambda t:t['authority'].update(runtime_execution_authorized=True),lambda t:t['allowed_paths'].append('application.py')):
+            task=json.loads(self.git.blobs[(BASE,r.TASK_PATH)]);mutate(task);self.git.blobs[(BASE,r.TASK_PATH)]=canonical(task)
+            self.error('checkpoint_contract',r.load_contract,BASE,self.git)
+
+    def test_exact_diagnostic_shape_and_safe_unknown_options(self):
+        args=['inspect','--checkpoint-sha',BASE,'--candidate-root',str(self.root),'--output-root',str(self.output),'--runtime-lock','x']
+        with self.assertRaises(SystemExit) as ctx:r.main(args)
+        self.assertEqual(ctx.exception.code,2);self.assertFalse(self.output.exists())
+        self.assertEqual(self.invoke(),0)
+        self.assertEqual(set(json.loads((self.output/'diagnostic.json').read_bytes())),{'contract','mode','checkpoint_sha','runner_sha','candidate_sha','inventory_sha256','source_manifest_sha256','observations_sha256','git_tool','status','observed_counts','failures','authority'})
 
 
 if __name__=='__main__':unittest.main()
