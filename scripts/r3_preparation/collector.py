@@ -21,7 +21,7 @@ class CollectionResult:
     observations:tuple=()
     captures:tuple=()
     receipt:object=None
-    classification:str='preparation_complete_execution_blocked'
+    classification:str='collection_blocked'
     trusted:bool=False
     runtime_accepted:bool=False
     host_observed:bool=False
@@ -189,6 +189,21 @@ class _Attempt:
             plugin=[f for f in self.contract.files if f.path==d['compose_plugin_abs'] and f.purpose=='plugin']
             if not plugin:return None
             needed+=plugin
+        # Tool version/help reads do not establish a local daemon route. Every
+        # context or daemon observation needs the approved metadata-only socket
+        # observation; daemon reads additionally need both successful context
+        # projections. Context inspection follows context_show, avoiding a
+        # circular prerequisite while preserving exact default-route equality.
+        context_commands={'context_show','context_inspect'}
+        daemon_command=spec.id in ('daemon_version','daemon_info') or spec.id.startswith(('image_','inventory_'))
+        if spec.id in context_commands or daemon_command:
+            sockets=[f for f in self.contract.files if f.purpose=='socket' and
+                     f.path==d['local_socket'][7:] and f.identity.type=='socket']
+            if len(sockets)!=1:return None
+            needed+=sockets
+            projected={observation.kind for observation in self.observations}
+            if spec.id=='context_inspect' and 'context_show' not in projected:return None
+            if daemon_command and not context_commands<=projected:return None
         if spec.id.startswith('git_') or spec.id in ('compose_baseline','compose_effective'):
             if p.git_eligibility(self.contract):return None
             configs=[f for f in self.contract.files if f.purpose in ('git_config','git_absent')]
@@ -411,7 +426,8 @@ class _Attempt:
         self.states.append('PROJECTED');receipt=self.finalize();self.states.append('COMPLETE')
         return self.result('COMPLETE',receipt)
     def result(self,status,receipt=None):
-        return CollectionResult(status,tuple(self.states),tuple(self.problems),tuple(self.observations),tuple(self.captures),receipt,self.classification)
+        classification=self.classification if status=='COMPLETE' else 'collection_incomplete'
+        return CollectionResult(status,tuple(self.states),tuple(self.problems),tuple(self.observations),tuple(self.captures),receipt,classification)
 
 def collect(contract,files,commands,outputs,clock,cancel):
     """Consume injected scripted ports. Never creates a production transport.
@@ -421,12 +437,18 @@ def collect(contract,files,commands,outputs,clock,cancel):
     Missing dependent prerequisites skip that observation. Every integrity,
     capture, cancellation or finalization failure latches the entire attempt.
     """
-    if not isinstance(contract,p.Contract):return CollectionResult('BLOCKED',('NEW','BLOCKED'),(p.Problem('invalid_contract'),))
+    if type(contract) is not p.Contract:return CollectionResult('BLOCKED',('NEW','BLOCKED'),(p.Problem('invalid_contract'),))
     try:
-        admitted=p.admit_contract(p.encode(contract.data))
-        if isinstance(admitted,p.Problem) or replace(contract,limits=p.Limits())!=admitted:
+        if type(contract.limits) is not p.Limits or any(type(v) is not int or v<0 or v>getattr(p.Limits(),k) for k,v in vars(contract.limits).items()):
             return CollectionResult('BLOCKED',('NEW','BLOCKED'),(p.Problem('invalid_contract'),))
-        if any(type(v) is not int or v<0 or v>getattr(p.Limits(),k) for k,v in vars(contract.limits).items()):
+        # Contract instances can be forged by the caller. Apply production
+        # document/token bounds before thawing data, allocating an unrestricted
+        # JSON representation, or comparing the supplied dataclass members.
+        document=p.serialize_bounded(contract.data,p.Limits())
+        if isinstance(document,p.Problem):
+            return CollectionResult('BLOCKED',('NEW','BLOCKED'),(p.Problem('invalid_contract'),))
+        admitted=p.admit_contract(document)
+        if isinstance(admitted,p.Problem) or replace(contract,limits=p.Limits())!=admitted:
             return CollectionResult('BLOCKED',('NEW','BLOCKED'),(p.Problem('invalid_contract'),))
         now=clock.now();d=p.values(contract)
         if type(now) is not int or not d['issued_tick']<=now<d['expires_tick']:

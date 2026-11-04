@@ -302,3 +302,10 @@ class SourceManifestBindingTests(unittest.TestCase):
         good=p.admit_contract(json.dumps(f).encode())
         self.assertIsInstance(p.project('git_files',raw,good),p.SafeObservation)
         self.assertIsInstance(p.project('git_files',raw.replace('a'*40,'b'*40),good),p.Problem)
+
+class ForgedFrozenSerializationTests(unittest.TestCase):
+    def test_frozen_object_member_cap_precedes_mapping_conversion(self):
+        frozen=p.FrozenMap((str(i),0) for i in range(4))
+        self.assertEqual(p.serialize_bounded(frozen,replace(p.Limits(),json_members=3)),p.Problem('cap'))
+        self.assertIsInstance(p.serialize_bounded(p.FrozenMap((('x',1),('x',2))),p.Limits()),p.Problem)
+        self.assertIsInstance(p.serialize_bounded(p.FrozenMap((('x',),)),p.Limits()),p.Problem)

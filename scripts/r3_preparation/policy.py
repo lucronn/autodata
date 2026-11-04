@@ -449,7 +449,19 @@ def serialize_bounded(value,budget):
     def write(v,depth=0):
         nonlocal nodes
         tick();nodes+=1;_need(nodes<=limits.json_nodes,'cap')
-        if isinstance(v,FrozenMap):v=dict(v)
+        if type(v) is FrozenMap:
+            # Validate before conversion: dict(v) would otherwise allocate an
+            # arbitrarily large forged mapping and silently erase duplicates.
+            _need(depth<limits.json_depth and len(v)<=limits.json_members,'cap')
+            keys=set()
+            for pair in v:
+                tick();_need(type(pair) is tuple and len(pair)==2 and type(pair[0]) is str,'invalid_json')
+                key=pair[0];size=0
+                for char in key:
+                    tick();_need(not 0xD800<=ord(char)<=0xDFFF,'invalid_json')
+                    size+=len(char.encode('utf-8'));_need(size<=limits.json_string,'cap')
+                _need(key not in keys,'duplicate_key');keys.add(key)
+            v=dict(v)
         if type(v) in (dict,list,tuple):
             _need(depth<limits.json_depth and len(v)<=limits.json_members,'cap')
             mapping=type(v) is dict

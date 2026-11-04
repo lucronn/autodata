@@ -456,3 +456,83 @@ class BudgetAndStopMatrixTests(unittest.TestCase):
             f.scripts['file_0']=stream()
         r,_,cmd,o,_,_=run(setup=setup)
         self.assertEqual(r.status,'INCOMPLETE');self.assertIn('deadline',[v.code for v in r.problems]);self.assertEqual(cmd.calls,[]);self.assertEqual(o.saved,{})
+
+class IndependentReviewRegressionTests(unittest.TestCase):
+    def test_socket_alone_or_partial_context_does_not_enable_daemon_reads(self):
+        for names in (['image_runner'],['context_inspect','image_runner'],
+                      ['context_show','image_runner'],['context_show','context_inspect','image_runner']):
+            d=doc(names)
+            d['approved_files'].append(file_record(len(d['approved_files']),'socket',
+                path=d['local_socket'][7:],identity=replace(IDENT,type='socket')))
+            def setup(f,cmd,o,clock,cancel):
+                cmd.scripts['context_show']=[E('stdout',b'default\n'),E('eof','stdout'),E('eof','stderr'),E('exit',0),E('done')]
+                # A mismatched route must stop before the later image request.
+                bad={'Name':'default','Endpoints':{'docker':{'Host':'tcp://remote','SkipTLSVerify':False}}}
+                cmd.scripts['context_inspect']=[E('stdout',json.dumps(bad).encode()),E('eof','stdout'),E('eof','stderr'),E('exit',0),E('done')]
+            r,_,cmd,_,_,_=run(d,setup=setup)
+            self.assertNotIn('image_runner',[s.id for s in cmd.calls])
+            self.assertEqual([s.id for s in cmd.calls],
+                ['context_show','context_inspect'] if len(names)==3 else
+                ['context_show'] if names[0]=='context_show' else [])
+
+    def test_daemon_commands_do_not_start_without_socket_and_context_chain(self):
+        for command in ('context_show','context_inspect','daemon_version','daemon_info','image_runner',
+                        'inventory_names','inventory_owner','inventory_project'):
+            d=doc([command])
+            def setup(f,cmd,o,clock,cancel):
+                image=[{'Id':p.IMAGES[0],'Os':'linux','Architecture':'amd64',
+                    'Config':d['image_configs'][p.IMAGES[0]],'RootFS':{'Type':'layers','Layers':[]},'RepoDigests':[]}]
+                cmd.scripts[command]=[E('stdout',json.dumps(image).encode()),E('eof','stdout'),E('eof','stderr'),E('exit',0),E('done')]
+            r,_,cmd,_,_,_=run(d,setup=setup)
+            self.assertEqual(cmd.calls,[],command)
+            self.assertIn('missing_prerequisite',[v.code for v in r.problems])
+
+    def test_socket_and_default_context_chain_enables_image_and_rechecks_socket(self):
+        d=doc(['context_show','context_inspect','image_runner'])
+        path=d['local_socket'][7:]
+        socket=file_record(len(d['approved_files']),'socket',path=path,identity=replace(IDENT,type='socket'))
+        d['approved_files'].append(socket)
+        def setup(f,cmd,o,clock,cancel):
+            answers={'context_show':b'default\n','context_inspect':json.dumps({'Name':'default','Endpoints':{'docker':{'Host':d['local_socket'],'SkipTLSVerify':False}}}).encode(),
+              'image_runner':json.dumps([{'Id':p.IMAGES[0],'Os':'linux','Architecture':'amd64','Config':d['image_configs'][p.IMAGES[0]],'RootFS':{'Type':'layers','Layers':[]},'RepoDigests':[]}]).encode()}
+            for name,body in answers.items():cmd.scripts[name]=[E('stdout',body),E('eof','stdout'),E('eof','stderr'),E('exit',0),E('done')]
+        r,f,cmd,_,_,_=run(d,setup=setup)
+        self.assertEqual(r.status,'COMPLETE');self.assertEqual([s.id for s in cmd.calls],['context_show','context_inspect','image_runner'])
+        self.assertEqual(len([v for v in f.calls if v==('revalidate',socket['id'])]),6)
+        def race(f,cmd,o,clock,cancel):
+            setup(f,cmd,o,clock,cancel)
+            original=cmd.start
+            def start(spec):
+                if spec.id=='context_inspect':
+                    def events():
+                        for event in original(spec)[1]:
+                            if event.kind=='done':f.rechecks[socket['id']]=[E('parents',(PARENT,)),E('entry',replace(IDENT,type='socket',inode=999)),E('done')]
+                            yield event
+                    return 'owned-child',events()
+                return original(spec)
+            cmd.start=start
+        r,_,cmd,_,_,_=run(d,setup=race)
+        self.assertEqual(r.status,'INCOMPLETE');self.assertEqual([s.id for s in cmd.calls],['context_show','context_inspect'])
+
+    def test_incomplete_attempt_never_has_completed_preparation_classification(self):
+        def setup(f,cmd,o,clock,cancel):cancel.value=True
+        r,f,cmd,o,_,_=run(setup=setup)
+        self.assertEqual(r.status,'INCOMPLETE');self.assertEqual(r.classification,'collection_incomplete')
+        self.assertEqual(f.calls,[]);self.assertEqual(cmd.calls,[]);self.assertEqual(o.calls,[])
+        def failure(f,cmd,o,clock,cancel):o.fail=('REPORT.md','synced')
+        r,*_=run(setup=failure)
+        self.assertEqual(r.classification,'collection_incomplete');self.assertIsNone(r.receipt)
+
+    def test_forged_contract_is_rejected_before_stock_serialization_or_ports(self):
+        cc=admitted(doc());data=p.thaw(cc.data);data['extra']='x'*(p.Limits().json_string+1)
+        forged=replace(cc,data=p.freeze(data));calls=[];original=p.encode
+        def spy(value):
+            calls.append('stock_encode');return original(value)
+        p.encode=spy
+        try:
+            f,cmd,o=Files(cc),Commands(),Outputs()
+            r=c.collect(forged,f,cmd,o,Clock(),Cancel())
+        finally:p.encode=original
+        self.assertEqual(r.status,'BLOCKED');self.assertEqual(calls,[])
+        self.assertEqual(f.calls,[]);self.assertEqual(cmd.calls,[]);self.assertEqual(o.calls,[])
+        self.assertEqual(r.classification,'collection_blocked')
