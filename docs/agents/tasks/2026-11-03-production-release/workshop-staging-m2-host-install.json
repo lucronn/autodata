@@ -1,0 +1,61 @@
+{
+  "task_id": "workshop-staging-m2-host-install",
+  "goal": "Install only an owner-accepted authenticated release manifest and its exact migration runner/tree into a fixed root-owned staging release directory, without formatting disks, selecting a running release, delivering secrets or starting services.",
+  "source_candidate_sha": "ef536cc24478424efc3cc084425322cfb8056145",
+  "source_integration_base_sha": "ef536cc24478424efc3cc084425322cfb8056145",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-staging-m2-host-install.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-staging-m2-host-install.json",
+  "allowed_paths": [
+    "infra/deploy/gce/deploy.sh",
+    "infra/deploy/gce/host_install.py",
+    "infra/deploy/gce/test_host_install.py"
+  ],
+  "pre_implementation": {
+    "goal": "Install only an owner-accepted authenticated release manifest and its exact migration runner/tree into a fixed root-owned staging release directory, without formatting disks, selecting a running release, delivering secrets or starting services.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-staging-m2-host-install.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+      "docs/superpowers/plans/2026-11-04-workshop-staging-lifecycle.md",
+      "docs/operations/workshop-gcp.md",
+      "docs/architecture/infrastructure-and-dev.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Independently review this M2A split, exact three-file scope, trusted owner-acceptance boundary, immutable file/input/receipt contract and no-replace/cleanup primitives; synchronize goal/todo/references in Issue186/Project8/canonical docs with full then-current history preservation, commit/push and full-SHA preflight before builder dispatch.",
+      "Obtain independent exact synchronized-checkpoint review and fresh root dispatch; establish actual authenticated publisher and separate mounted-disk/tool prerequisites before any later live installation, without inventing a verifier or owner/cloud values.",
+      "Add failing fake-probe and temporary-inode tests for approval/publisher/mount/lock/inventory/no-replace/fault/redaction and reboot fail-closed invariants; then implement only deploy.sh, host_install.py and test_host_install.py for inert release-material installation.",
+      "Run focused host-install tests plus existing host/cloud/bootstrap regressions, syntax/diff/scope and pinned preflight; commit/push a coherent exact candidate for independent review, preserving all startup/readiness/cloud/secret/production denials.",
+      "Require separate decision-complete gates for authenticated remote ingress/private secret delivery, host packages/guard/units, image pull, start/schema/readiness and minimum recovery; no one may treat M2A success as completion of full M2 or live-operation authorization."
+    ],
+    "status": "draft",
+    "updated_at": "2026-11-04T04:26:20.071112+00:00",
+    "source_candidate_sha": "ef536cc24478424efc3cc084425322cfb8056145",
+    "source_integration_base_sha": "ef536cc24478424efc3cc084425322cfb8056145",
+    "implementation_allowlist": [
+      "infra/deploy/gce/deploy.sh",
+      "infra/deploy/gce/host_install.py",
+      "infra/deploy/gce/test_host_install.py"
+    ],
+    "independent_review": "pending_corrected_draft_rereview",
+    "implementation_dispatch_authorized": false,
+    "cloud_execution_authorized": false,
+    "runtime_verified": false,
+    "production_ready": false
+  },
+  "status": "draft",
+  "execution": {
+    "mode": "plan_only",
+    "builder_dispatch": "blocked_pending_tracking_synchronization_exact_checkpoint_review_and_fresh_root_dispatch",
+    "cloud_execution": "none",
+    "runtime_execution": "none"
+  },
+  "todo": [
+    "Independently review this M2A split, exact three-file scope, trusted owner-acceptance boundary, immutable file/input/receipt contract and no-replace/cleanup primitives; synchronize goal/todo/references in Issue186/Project8/canonical docs with full then-current history preservation, commit/push and full-SHA preflight before builder dispatch.",
+    "Obtain independent exact synchronized-checkpoint review and fresh root dispatch; establish actual authenticated publisher and separate mounted-disk/tool prerequisites before any later live installation, without inventing a verifier or owner/cloud values.",
+    "Add failing fake-probe and temporary-inode tests for approval/publisher/mount/lock/inventory/no-replace/fault/redaction and reboot fail-closed invariants; then implement only deploy.sh, host_install.py and test_host_install.py for inert release-material installation.",
+    "Run focused host-install tests plus existing host/cloud/bootstrap regressions, syntax/diff/scope and pinned preflight; commit/push a coherent exact candidate for independent review, preserving all startup/readiness/cloud/secret/production denials.",
+    "Require separate decision-complete gates for authenticated remote ingress/private secret delivery, host packages/guard/units, image pull, start/schema/readiness and minimum recovery; no one may treat M2A success as completion of full M2 or live-operation authorization."
+  ]
+}
