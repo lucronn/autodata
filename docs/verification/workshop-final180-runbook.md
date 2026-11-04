@@ -59,3 +59,99 @@ python3 -m unittest discover -s scripts/autonomy -p 'test_*.py'
 python3 -m py_compile scripts/dev/workshop_final180_runner.py scripts/dev/test_workshop_final180_runner.py
 git diff --check
 ```
+
+## Stage B1 synthetic identity library
+
+The separate B1 authorizing checkpoint is
+`006fab0d1380c2506330bbc0b48397a32294b6cc`. Its plan and normative contract are
+`docs/superpowers/plans/2026-11-04-workshop-final180-stage-b1-identity.md` and
+`docs/agents/specs/2026-11-04-workshop-final180-stage-b1-identity.md`.
+`scripts/dev/workshop_final180_identity_adapter.py` is an importable standard-library
+module for synthetic bytes and finite `FakeFrame` tuples. It has no CLI, real
+runtime adapter, filesystem collector, or producer imports. The Stage A commands,
+historical checkpoint and rejection of `run` above retain their meaning.
+
+Call `parse_identity_events(events_raw)` to validate the restricted simulated Go
+JSONL grammar, or `translate_identity(events_raw, stderr_raw, receipt, context)`
+to produce an `IdentityDiagnostic`. `IdentityContext` binds the exact selected
+application SHA, inventory digest
+`c4e9293875d22e04469c6a3fb4cdab27889328d6519243cee3862f9ecf490b39`, and a
+caller-supplied lowercase SHA256 source-manifest digest. This simulated context
+does not prove source inspection. `SimulatedExit` supplies simulated exit,
+timeout, interruption, ownership and cleanup facts. Even complete clean bytes
+cannot override an adverse receipt.
+
+`replay_identity_fake(frames)` merges finite, prevalidated frames with simulated
+scheduled actions. Time uses integer nanoseconds; no wall clock or sleep runs.
+The child deadline is 180 seconds, TERM grace is 5 seconds, and cleanup ends at
+most 10 seconds after the first trigger, capped at 190 seconds. Equal-time
+ordering is ownership loss, cancellation, scheduled timeout, TERM, KILL,
+leftover, ordinary exit, TERM acknowledgement, KILL acknowledgement, stdout,
+stderr. Ownership loss disarms scheduled actions. Cancellation during cleanup
+does not extend deadlines. A TERM acknowledgement at the KILL deadline and a
+KILL acknowledgement at the cleanup ceiling are too late. All remaining frames
+after terminal completion are rejected.
+
+A caller can hand retained synthetic bytes through the library without writing
+artifacts:
+
+```python
+from scripts.dev.workshop_final180_identity_adapter import (
+    FakeFrame, replay_identity_fake, translate_identity, serialize_identity_diagnostic,
+)
+
+# synthetic_jsonl and context are constructed in memory by the caller.
+replay = replay_identity_fake((
+    FakeFrame(0, 'stdout', synthetic_jsonl, None),
+    FakeFrame(1, 'exit', b'', 0),
+))
+diagnostic = translate_identity(replay.stdout, replay.stderr, replay.result, context)
+canonical_bytes = serialize_identity_diagnostic(diagnostic)
+```
+
+The parser admits at most 64MiB, 65536 lines and 1MiB per line, with strict UTF8,
+no blank lines/CRLF, duplicate keys, nonfinite constants, unknown fields or
+unsupported actions. A final LF is optional. It bounds JSON nesting to 32 and
+decoded strings to 65536 UTF8 bytes. Stderr is opaque bytes bounded to 1MiB.
+Replay accepts at most 65536 frames, 1MiB per chunk, 64MiB stdout and 1MiB stderr;
+the aggregate ceiling is 65MiB. Invalid input returns no successful prefix.
+Public parser and caller-schema errors raise `AdapterError` with a fixed code;
+within the outer byte limits a parser error during translation returns five
+unavailable rows and its stable code.
+
+Exactly five identity rows appear in frozen inventory order. The root/package
+are support and contribute zero IDs. A consistent result requires exact package
+identity, one package start/final pass, and one correctly ordered run/pass for
+the root and every child. Unknown tests, wrong package, duplicate/missing or
+out-of-order events fail closed; repeated output adds no cases. Output strings
+never supply status claims and never enter failure text. Each row's raw refs are
+exactly `r5-access-go-events.jsonl` and `r5-access-go-stderr.log`: names for the
+two caller-retained byte strings, never file reads or evidence that disk artifacts
+exist.
+
+`serialize_identity_diagnostic` revalidates the five ordered IDs, row statuses,
+fixed failure vocabulary, digests, profiles and authority before returning
+canonical compact sorted UTF8 JSON with one LF, bounded to 65536 bytes. Its
+contract is `workshop-final180-identity-synthetic-v1` and observation kind is
+`simulated-source-profile-validation`. Every result has `accepted_case_credit=0`,
+`profiles_enabled=false`, `enabled_tiers=[]` and all nine authority flags false,
+including `fixture_verified`, `runtime_execution_authorized` and
+`merge_authorized`. Runtime lock and run record remain null in the coordinating
+workflow. `consistent` means only that synthetic input matches this restricted
+profile; this is zero real acceptance credit.
+
+B1 omits migration, JUnit, SQL-row and nested JSONB validation. It does not cover
+the other 175 IDs or emit a full180 claim set. Actual Go-version compatibility,
+other-family raw validators, real process/Docker ownership supervision, runtime
+locks, actual fixture execution, tool/image/cache/storage/operator observations,
+acceptance transport and profile promotion require separate successor gates.
+Unit success grants no execution, merge, deployment or provider authority.
+
+Run the offline focused checks with bytecode generation disabled:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/dev/test_workshop_final180_identity_adapter.py -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/dev/test_workshop_final180_runner.py -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/dev -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/autonomy -p 'test_*.py'
+```

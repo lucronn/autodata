@@ -230,6 +230,256 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(d.failures, ('unknown_test',))
         self.assertNotIn('secret', str(d))
 
+    def test_support_duplicates_and_child_after_root(self):
+        for index in (0,1,12,13):
+            rows = clean(); rows.insert(index,dict(rows[index]))
+            d = self.translate(rows)
+            self.assertEqual(tuple(r.status for r in d.observations),('failed',)*5)
+        rows = clean(); child = rows[2:4]; del rows[2:4]; rows[-1:-1] = child
+        d = self.translate(rows)
+        self.assertEqual(d.observations[0].status,'failed')
+        self.assertIn('child_lifecycle:0',d.failures)
+        for index, code in ((12,'root_lifecycle'),(13,'package_lifecycle')):
+            rows = clean(); rows.insert(index+1,event('output',ROOT if index==12 else None,Output='late'))
+            self.assertIn(code,self.translate(rows).failures)
+
+
+class ReplayTests(unittest.TestCase):
+    error = AdapterTests.error
+    context = AdapterTests.context
+    receipt = AdapterTests.receipt
+    translate = AdapterTests.translate
+
+    def frame(self, t, kind, data=b'', code=None):
+        return a.FakeFrame(t, kind, data, code)
+
+    def replay(self, *frames):
+        return a.replay_identity_fake(tuple(frames))
+
+    def test_normal_exit_and_deadline_equality(self):
+        for code in (-255, 0, 255):
+            r = self.replay(self.frame(179999999999, 'exit', code=code))
+            self.assertEqual(r.result, a.SimulatedExit(code, False, False, False, True))
+            self.assertEqual(r.decisions, ())
+        r = self.replay(self.frame(180000000000, 'exit', code=0))
+        self.assertEqual(r.result, a.SimulatedExit(0, True, False, False, True))
+        self.assertEqual(r.decisions, ((180000000000, 'timeout'), (180000000000, 'term'),
+                                       (180000000000, 'cleanup_complete')))
+        r = self.replay()
+        self.assertEqual(r.result, a.SimulatedExit(None, True, False, False, False))
+        self.assertEqual(r.decisions, ((180000000000, 'timeout'), (180000000000, 'term'),
+                                       (185000000000, 'kill'), (190000000000, 'leftover')))
+
+    def test_cleanup_boundaries_and_acknowledgements(self):
+        cancel = self.frame(10000000000, 'cancel')
+        for kind, time, last in (('exit', 10000000000, 'term'),
+                                 ('term_exit', 10000000000, 'term'),
+                                 ('term_exit', 14999999999, 'term'),
+                                 ('kill_exit', 15000000000, 'kill'),
+                                 ('kill_exit', 19999999999, 'kill')):
+            with self.subTest(kind=kind, time=time):
+                r = self.replay(cancel, self.frame(time, kind, code=-2))
+                self.assertEqual(r.result, a.SimulatedExit(-2, False, True, False, True))
+                self.assertEqual(r.decisions[-2][1], last)
+                self.assertEqual(r.decisions[-1], (time, 'cleanup_complete'))
+        for kind, time in (('term_exit', 9999999999), ('term_exit', 15000000000),
+                           ('kill_exit', 14999999999), ('kill_exit', 20000000000),
+                           ('exit', 10000000001)):
+            frames = tuple(sorted((cancel, self.frame(time, kind, code=0)), key=lambda f:f.at_ns))
+            self.error('fake_cleanup_sequence', a.replay_identity_fake, frames)
+        r = self.replay(cancel, self.frame(15000000000, 'cancel'),
+                        self.frame(15000000000, 'kill_exit', code=0))
+        self.assertEqual(tuple(k for _,k in r.decisions), ('cancel','term','kill','cleanup_complete'))
+        r = self.replay(cancel, self.frame(19999999999, 'cancel'))
+        self.assertEqual(r.decisions[-1], (20000000000, 'leftover'))
+        self.assertEqual(len(r.decisions), 4)
+
+    def test_ownership_loss_disarms_actions(self):
+        r = self.replay(self.frame(0, 'identity_lost'))
+        self.assertEqual(r.result, a.SimulatedExit(None, False, False, True, False))
+        self.assertEqual(r.decisions, ((0,'ownership_lost'),))
+        for time in (10000000000, 15000000000, 20000000000):
+            r = self.replay(self.frame(10000000000, 'cancel'), self.frame(time, 'identity_lost')) if time > 10000000000 else self.replay(self.frame(time, 'identity_lost'))
+            self.assertEqual(r.decisions[-1], (time,'ownership_lost'))
+            self.assertFalse(r.result.cleanup_complete)
+            self.assertNotIn((time,'kill'), r.decisions)
+        for time in (180000000000,185000000000,190000000000):
+            r = self.replay(self.frame(time,'identity_lost'))
+            self.assertEqual(r.decisions[-1], (time,'ownership_lost'))
+            self.assertNotIn((time,'term'), r.decisions)
+            self.assertNotIn((time,'kill'), r.decisions)
+        for pair in ((self.frame(11000000000,'identity_lost'),self.frame(11000000000,'term_exit',code=0)),
+                     (self.frame(11000000000,'term_exit',code=0),self.frame(11000000000,'identity_lost'))):
+            self.error('fake_cleanup_sequence', a.replay_identity_fake,
+                       (self.frame(10000000000,'cancel'),)+pair)
+
+    def test_every_frame_pair_tie_is_independent_of_tuple_order(self):
+        import itertools
+        kinds = ('identity_lost','cancel','exit','term_exit','kill_exit','stdout','stderr')
+        def make(kind, t):
+            return self.frame(t, kind, b'x' if kind in ('stdout','stderr') else b'',
+                              0 if kind in ('exit','term_exit','kill_exit') else None)
+        def outcome(frames):
+            try:
+                return self.replay(*frames)
+            except a.AdapterError as exc:
+                return str(exc)
+        for time, prefix in ((10000000000,()),
+                             (10000000000,(self.frame(9000000000,'cancel'),)),
+                             (14000000000,(self.frame(9000000000,'cancel'),)),
+                             (19000000000,(self.frame(9000000000,'cancel'),)),
+                             (180000000000,()), (185000000000,()), (190000000000,())):
+            for one,two in itertools.combinations(kinds,2):
+                with self.subTest(time=time, prefix=prefix, one=one, two=two):
+                    self.assertEqual(outcome(prefix+(make(one,time),make(two,time))),
+                                     outcome(prefix+(make(two,time),make(one,time))))
+        for pair in ((make('cancel',10000000000),make('term_exit',10000000000)),
+                     (make('term_exit',10000000000),make('cancel',10000000000))):
+            r = self.replay(*pair)
+            self.assertTrue(r.result.interrupted)
+            self.assertTrue(r.result.cleanup_complete)
+        r = self.replay(make('cancel',180000000000),make('exit',180000000000))
+        self.assertFalse(r.result.timed_out)
+        self.assertTrue(r.result.interrupted)
+
+    def test_post_terminal_frames_rejected(self):
+        for kind in ('stdout','stderr','exit','cancel','identity_lost','term_exit','kill_exit'):
+            extra = self.frame(1,kind,code=0 if kind in ('exit','term_exit','kill_exit') else None)
+            self.error('fake_after_exit', a.replay_identity_fake,
+                       (self.frame(0,'exit',code=0),extra))
+            self.error('fake_cleanup_sequence', a.replay_identity_fake,
+                       (self.frame(0,'identity_lost'),extra))
+            self.error('fake_cleanup_sequence', a.replay_identity_fake,
+                       (self.frame(0,'cancel'),self.frame(0,'term_exit',code=0),extra))
+        for kind in ('stdout','stderr'):
+            self.error('fake_cleanup_sequence', a.replay_identity_fake,
+                       (self.frame(0,'cancel'),self.frame(1,kind)))
+            self.error('fake_after_exit', a.replay_identity_fake,
+                       (self.frame(0,kind),self.frame(0,'exit',code=0)))
+        self.error('fake_cleanup_sequence', a.replay_identity_fake,
+                   (self.frame(190000000000,'stdout'),))
+
+    def test_complete_shape_validation_precedes_replay(self):
+        self.error('fake_frames', a.replay_identity_fake, [])
+        self.error('fake_frames', a.replay_identity_fake, (self.frame(0,'stdout'),)*65537)
+        self.error('fake_frame_type', a.replay_identity_fake, (None,))
+        for kind in ('exit','term_exit','kill_exit'):
+            for code in (None,True,False,-256,256,0.0):
+                self.error('fake_code', a.replay_identity_fake, (self.frame(0,kind,code=code),))
+        for kind in ('stdout','stderr','cancel','identity_lost'):
+            for code in (0,True,False):
+                self.error('fake_code', a.replay_identity_fake, (self.frame(0,kind,code=code),))
+        for kind in ('stdout','exit'):
+            self.error('fake_frame_type', a.replay_identity_fake,
+                       (self.frame(0,kind,data=bytearray(),code=0 if kind=='exit' else None),))
+        self.error('fake_frame_type', a.replay_identity_fake, (self.frame(0,'cancel',b'x'),))
+        for time in (-1,190000000001,True,0.0):
+            self.error('fake_time', a.replay_identity_fake, (self.frame(time,'cancel'),))
+        self.error('fake_time', a.replay_identity_fake, (self.frame(1,'cancel'),self.frame(0,'cancel')))
+        self.error('fake_kind', a.replay_identity_fake, (self.frame(0,'process'),))
+        self.error('fake_kind', a.replay_identity_fake, (self.frame(0,[]),))
+        self.error('fake_code', a.replay_identity_fake,
+                   (self.frame(0,'exit',code=0),self.frame(1,'term_exit')))
+        r = self.replay(*((self.frame(0,'stdout'),)*65535+(self.frame(1,'exit',code=0),)))
+        self.assertEqual(r.result.exit_code, 0)
+
+    def test_chunk_and_aggregate_byte_boundaries(self):
+        chunk = b'x'*1048576
+        r = self.replay(*((self.frame(0,'stdout',chunk),)*64 +
+                          (self.frame(0,'stderr',chunk),self.frame(1,'exit',code=0))))
+        self.assertEqual(len(r.stdout),67108864)
+        self.assertEqual(len(r.stderr),1048576)
+        self.error('fake_chunk_size', a.replay_identity_fake, (self.frame(0,'stdout',chunk+b'x'),))
+        self.error('fake_stdout_size', a.replay_identity_fake,
+                   (self.frame(0,'stdout',chunk),)*64+(self.frame(0,'stdout',b'x'),))
+        self.error('fake_stderr_size', a.replay_identity_fake,
+                   (self.frame(0,'stderr',chunk),self.frame(0,'stderr',b'x')))
+
+    def test_fake_translation_never_erases_adverse_receipts(self):
+        for terminal in ((self.frame(1,'exit',code=0),),
+                         (self.frame(180000000000,'exit',code=0),),
+                         (self.frame(1,'cancel'),self.frame(1,'term_exit',code=0)),
+                         (self.frame(1,'identity_lost'),)):
+            r = self.replay(self.frame(0,'stdout',raw(clean())),self.frame(0,'stderr',b'opaque'),*terminal)
+            d = a.translate_identity(r.stdout,r.stderr,r.result,self.context())
+            self.assertEqual(d.status, 'consistent' if terminal[0].kind=='exit' and terminal[0].at_ns==1
+                             else 'interrupted' if terminal[0].kind=='cancel' else 'inconsistent')
+
+    def test_serializer_canonical_and_rejects_authority_and_row_changes(self):
+        d = self.translate()
+        result = a.serialize_identity_diagnostic(d)
+        obj = json.loads(result)
+        self.assertEqual(result,(json.dumps(obj,sort_keys=True,separators=(',',':'),ensure_ascii=False)+'\n').encode())
+        self.assertLessEqual(len(result),65536)
+        self.assertEqual(set(obj), {'contract','observation_kind','candidate_sha','inventory_sha256',
+                                  'source_manifest_sha256','events_sha256','stderr_sha256','status',
+                                  'observations','failures','accepted_case_credit','profiles_enabled',
+                                  'enabled_tiers','authority'})
+        self.assertEqual(obj['profiles_enabled'],False)
+        self.assertEqual(obj['enabled_tiers'],[])
+        self.assertEqual(obj['accepted_case_credit'],0)
+        self.assertEqual(tuple(r['logical_id'] for r in obj['observations']),IDS)
+        self.assertEqual(obj['authority'],dict(d.authority))
+        bad_rows = (d.observations[:4],d.observations+(d.observations[0],),
+                    (d.observations[0],)*5,tuple(reversed(d.observations)),
+                    (dataclasses.replace(d.observations[0],family='other'),)+d.observations[1:],
+                    (dataclasses.replace(d.observations[0],raw_refs=('private/path',)),)+d.observations[1:])
+        changes = [dict(observations=rows) for rows in bad_rows]
+        changes += [dict(profiles_enabled=True),dict(profiles_enabled=0),dict(enabled_tiers=('x',)),
+                    dict(enabled_tiers=[]),dict(accepted_case_credit=True),dict(accepted_case_credit=1),
+                    dict(authority=d.authority+(('unknown',False),)),
+                    dict(authority=(('fixture_verified',True),)+d.authority[1:]),
+                    dict(authority=(('fixture_verified',0),)+d.authority[1:]),
+                    dict(authority=tuple(reversed(d.authority))),dict(contract='other'),
+                    dict(source_manifest_sha256='A'*64),dict(status='interrupted'),
+                    dict(failures=('private/path',)),dict(failures=('root_failed','root_failed')),
+                    dict(failures=('simulated_timeout',)),dict(observations=list(d.observations))]
+        for change in changes:
+            with self.subTest(change=change):
+                self.error('diagnostic_invalid', a.serialize_identity_diagnostic,dataclasses.replace(d,**change))
+        for bad in (None,{},result):
+            self.error('diagnostic_invalid',a.serialize_identity_diagnostic,bad)
+
+    def test_serializer_all_translation_statuses(self):
+        for receipt in (self.receipt(),self.receipt(interrupted=True),self.receipt(timed_out=True),
+                        self.receipt(ownership_lost=True,cleanup_complete=False,exit_code=None)):
+            for rows in (clean(),[event('pause')],[event('start'),event('run',ROOT),event('skip',ROOT),event('pass')]):
+                d = self.translate(rows,receipt=receipt)
+                self.assertEqual(json.loads(a.serialize_identity_diagnostic(d))['status'],d.status)
+        d = self.translate()
+        self.error('diagnostic_invalid',a.serialize_identity_diagnostic,
+                   dataclasses.replace(d,failures=('simulated_timeout','root_failed')))
+
+    def test_maximal_fixed_failure_diagnostic_is_bounded(self):
+        # All semantic codes together dominate any subset's encoded failure bytes.
+        codes = ('package_mismatch','unknown_test','package_lifecycle','root_lifecycle',
+                 *(f'child_lifecycle:{i}' for i in range(5)), 'root_failed','root_skipped',
+                 'package_failed','package_skipped',*(f'child_failed:{i}' for i in range(5)),
+                 *(f'child_skipped:{i}' for i in range(5)), 'simulated_nonzero',
+                 'simulated_timeout','simulated_interrupted','ownership_lost','cleanup_incomplete')
+        d = self.translate(receipt=self.receipt(interrupted=True))
+        encoded = a.serialize_identity_diagnostic(dataclasses.replace(d,failures=codes))
+        self.assertLess(len(encoded),65536)
+        self.assertEqual(json.loads(encoded)['failures'],list(codes))
+        self.error('diagnostic_invalid',a.serialize_identity_diagnostic,
+                   dataclasses.replace(d,failures=('root_failed',)*65))
+
+    def test_library_has_no_runtime_or_filesystem_adapter(self):
+        import ast
+        import pathlib
+        tree = ast.parse(pathlib.Path(a.__file__).read_text())
+        allowed = {'dataclasses','hashlib','json','math','re'}
+        for node in ast.walk(tree):
+            if isinstance(node,ast.Import):
+                self.assertTrue(all(n.name in allowed for n in node.names))
+            elif isinstance(node,ast.ImportFrom):
+                self.assertIn(node.module,allowed)
+            elif isinstance(node,ast.Call) and isinstance(node.func,ast.Name):
+                self.assertNotIn(node.func.id,{'open','exec','eval','compile','__import__'})
+        self.assertFalse(any(isinstance(node,ast.If) and isinstance(node.test,ast.Compare)
+                             and isinstance(node.test.left,ast.Name) and node.test.left.id=='__name__'
+                             for node in tree.body))
+
 
 if __name__ == '__main__':
     unittest.main()

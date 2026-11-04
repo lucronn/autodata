@@ -317,3 +317,179 @@ def _diagnostic(context, events_raw, stderr_raw, status, statuses, failures):
         status, tuple(CaseOutcome('identity', name, state, RAW_REFS)
                       for name, state in zip(IDENTITY_IDS, statuses)),
         tuple(failures), 0, False, (), AUTHORITY)
+
+
+_FRAME_RANK = {'identity_lost': 0, 'cancel': 1, 'exit': 6, 'term_exit': 7,
+               'kill_exit': 8, 'stdout': 9, 'stderr': 10}
+_DEADLINE = 180000000000
+_GRACE = 5000000000
+_CEILING = 190000000000
+
+
+def _validate_frames(frames):
+    _require(type(frames) is tuple and len(frames) <= 65536, 'fake_frames')
+    previous = 0
+    stdout_size = stderr_size = 0
+    for frame in frames:
+        _require(type(frame) is FakeFrame, 'fake_frame_type')
+        _require(type(frame.at_ns) is int and previous <= frame.at_ns <= _CEILING, 'fake_time')
+        previous = frame.at_ns
+        _require(type(frame.kind) is str and frame.kind in _FRAME_RANK, 'fake_kind')
+        _require(type(frame.data) is bytes and
+                 (frame.kind in ('stdout', 'stderr') or frame.data == b''), 'fake_frame_type')
+        if frame.kind in ('exit', 'term_exit', 'kill_exit'):
+            _require(type(frame.code) is int and -255 <= frame.code <= 255, 'fake_code')
+        else:
+            _require(frame.code is None, 'fake_code')
+        _require(len(frame.data) <= 1048576, 'fake_chunk_size')
+        if frame.kind == 'stdout':
+            stdout_size += len(frame.data)
+            _require(stdout_size <= EVENTS_LIMIT, 'fake_stdout_size')
+        elif frame.kind == 'stderr':
+            stderr_size += len(frame.data)
+            _require(stderr_size <= STDERR_LIMIT, 'fake_stderr_size')
+        # These independent ceilings imply the aggregate 65MiB ceiling.
+
+
+def replay_identity_fake(frames: tuple[FakeFrame, ...]) -> FakeReplay:
+    """Replay a finite virtual timeline; no clock, callback, process or I/O."""
+    _validate_frames(frames)
+    ordered = sorted(enumerate(frames), key=lambda pair: (pair[1].at_ns, _FRAME_RANK[pair[1].kind], pair[0]))
+    pending = [(_DEADLINE, 2, 'timeout')]
+    index = 0
+    state = 'running'
+    normal_exit = False
+    timed_out = interrupted = ownership_lost = cleanup_complete = False
+    code = trigger = kill_at = cleanup_at = None
+    decisions = []
+    stdout = []
+    stderr = []
+    while index < len(ordered) or pending:
+        scheduled = min(pending) if pending else None
+        frame = ordered[index][1] if index < len(ordered) else None
+        if scheduled is not None and (frame is None or scheduled[:2] < (frame.at_ns, _FRAME_RANK[frame.kind])):
+            pending.remove(scheduled)
+            at, _, kind = scheduled
+            is_frame = False
+        else:
+            index += 1
+            at, kind = frame.at_ns, frame.kind
+            is_frame = True
+        if state == 'done':
+            # pending is always disarmed by finalization; only caller frames remain.
+            raise AdapterError('fake_after_exit' if normal_exit else 'fake_cleanup_sequence')
+        if kind == 'identity_lost':
+            ownership_lost = True
+            decisions.append((at, 'ownership_lost'))
+            state = 'done'
+            pending.clear()
+        elif kind in ('cancel', 'timeout'):
+            if state != 'running':
+                continue
+            interrupted = kind == 'cancel'
+            timed_out = kind == 'timeout'
+            trigger = at
+            kill_at = at + _GRACE
+            cleanup_at = min(at + 2 * _GRACE, _CEILING)
+            decisions.append((at, kind))
+            state = 'triggered'
+            pending = [(at, 3, 'term'), (kill_at, 4, 'kill'), (cleanup_at, 5, 'leftover')]
+        elif kind == 'term':
+            if state == 'triggered':
+                decisions.append((at, 'term'))
+                state = 'term_wait'
+        elif kind == 'kill':
+            if state == 'term_wait':
+                decisions.append((at, 'kill'))
+                state = 'kill_wait'
+        elif kind == 'leftover':
+            if state in ('term_wait', 'kill_wait'):
+                decisions.append((at, 'leftover'))
+                state = 'done'
+                pending.clear()
+        elif kind in ('exit', 'term_exit', 'kill_exit'):
+            if kind == 'exit' and state == 'running':
+                normal_exit = True
+            else:
+                valid = ((kind == 'exit' and state == 'term_wait' and at == trigger)
+                         or (kind == 'term_exit' and state == 'term_wait' and trigger <= at < kill_at)
+                         or (kind == 'kill_exit' and state == 'kill_wait' and kill_at <= at < cleanup_at))
+                _require(valid, 'fake_cleanup_sequence')
+                decisions.append((at, 'cleanup_complete'))
+            code = frame.code
+            cleanup_complete = True
+            state = 'done'
+            pending.clear()
+        elif is_frame and kind in ('stdout', 'stderr'):
+            _require(state == 'running', 'fake_cleanup_sequence')
+            (stdout if kind == 'stdout' else stderr).append(frame.data)
+    return FakeReplay(SimulatedExit(code, timed_out, interrupted, ownership_lost, cleanup_complete),
+                      b''.join(stdout), b''.join(stderr), tuple(decisions))
+
+
+def _expected_result(failures):
+    """Revalidate status/rows from the fixed failure vocabulary, without raw input."""
+    if failures and failures[0] in PARSER_CODES:
+        _require(all(code in SEMANTIC_CODES[-5:] for code in failures[1:]), 'diagnostic_invalid')
+        return 'unavailable', ('unavailable',) * 5
+    _require(all(code in SEMANTIC_CODES for code in failures), 'diagnostic_invalid')
+    if 'simulated_interrupted' in failures:
+        return 'interrupted', ('unavailable',) * 5
+    if any(code in failures for code in (
+            'package_mismatch', 'unknown_test', 'package_lifecycle', 'root_lifecycle',
+            'root_failed', 'package_failed', 'simulated_nonzero', 'simulated_timeout',
+            'ownership_lost', 'cleanup_incomplete')):
+        return 'inconsistent', ('failed',) * 5
+    if 'root_skipped' in failures or 'package_skipped' in failures:
+        return 'inconsistent', ('skipped',) * 5
+    statuses = tuple('failed' if f'child_lifecycle:{i}' in failures or f'child_failed:{i}' in failures
+                     else 'skipped' if f'child_skipped:{i}' in failures else 'passed' for i in range(5))
+    return ('consistent' if all(s == 'passed' for s in statuses) else 'inconsistent'), statuses
+
+
+def serialize_identity_diagnostic(value: IdentityDiagnostic) -> bytes:
+    """Return bounded canonical JSON after checking every caller-constructible field."""
+    _require(type(value) is IdentityDiagnostic, 'diagnostic_invalid')
+    _require(type(value.contract) is str and value.contract == 'workshop-final180-identity-synthetic-v1'
+             and type(value.observation_kind) is str
+             and value.observation_kind == 'simulated-source-profile-validation', 'diagnostic_invalid')
+    _require(type(value.candidate_sha) is str and value.candidate_sha == CANDIDATE
+             and type(value.inventory_sha256) is str and value.inventory_sha256 == INVENTORY
+             and all(_digest(h) for h in (value.source_manifest_sha256, value.events_sha256, value.stderr_sha256)),
+             'diagnostic_invalid')
+    _require(type(value.accepted_case_credit) is int and value.accepted_case_credit == 0
+             and value.profiles_enabled is False and type(value.enabled_tiers) is tuple
+             and value.enabled_tiers == (), 'diagnostic_invalid')
+    _require(type(value.authority) is tuple and len(value.authority) == len(AUTHORITY), 'diagnostic_invalid')
+    for pair, expected in zip(value.authority, AUTHORITY):
+        _require(type(pair) is tuple and len(pair) == 2 and type(pair[0]) is str
+                 and pair[0] == expected[0] and pair[1] is False, 'diagnostic_invalid')
+    _require(type(value.failures) is tuple and len(value.failures) <= 64
+             and all(type(code) is str and code in (*PARSER_CODES, *SEMANTIC_CODES) for code in value.failures),
+             'diagnostic_invalid')
+    _require(len(set(value.failures)) == len(value.failures), 'diagnostic_invalid')
+    order = (*PARSER_CODES, *SEMANTIC_CODES)
+    _require(value.failures == tuple(sorted(value.failures, key=order.index)), 'diagnostic_invalid')
+    status, statuses = _expected_result(value.failures)
+    _require(type(value.status) is str and value.status == status, 'diagnostic_invalid')
+    _require(type(value.observations) is tuple and len(value.observations) == 5, 'diagnostic_invalid')
+    observations = []
+    for row, name, state in zip(value.observations, IDENTITY_IDS, statuses):
+        _require(type(row) is CaseOutcome, 'diagnostic_invalid')
+        _require(type(row.family) is str and row.family == 'identity'
+                 and type(row.logical_id) is str and row.logical_id == name
+                 and type(row.status) is str and row.status == state
+                 and type(row.raw_refs) is tuple and len(row.raw_refs) == 2
+                 and all(type(ref) is str and ref == expected for ref, expected in zip(row.raw_refs, RAW_REFS)),
+                 'diagnostic_invalid')
+        observations.append(dict(family=row.family, logical_id=row.logical_id,
+                                 status=row.status, raw_refs=row.raw_refs))
+    obj = dict(contract=value.contract, observation_kind=value.observation_kind,
+               candidate_sha=value.candidate_sha, inventory_sha256=value.inventory_sha256,
+               source_manifest_sha256=value.source_manifest_sha256, events_sha256=value.events_sha256,
+               stderr_sha256=value.stderr_sha256, status=value.status, observations=observations,
+               failures=value.failures, accepted_case_credit=0, profiles_enabled=False,
+               enabled_tiers=(), authority=dict(value.authority))
+    encoded = (json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=False) + '\n').encode('utf-8')
+    _require(len(encoded) <= 65536, 'diagnostic_size')
+    return encoded
