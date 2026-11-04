@@ -1903,6 +1903,97 @@
         ],
         "rule": "Require exact name set and valid matching SHA-256 for every listed file; no other validator semantic change."
       }
+    },
+    {
+      "state": "blocked_pending_checkpoint_review",
+      "planning_status": "tracking_synchronized_pending_checkpoint",
+      "tracking_status": "synchronized_live_readback",
+      "goal": "Prepare and independently review a fake-tested host launcher/enforcement adapter for the unchanged R3 immutable supervisor at exact app candidate 4d82e413e04fb2401ac7bc28dc828375ac662180; no Docker or compatibility execution.",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-r3-host-launcher.md",
+      "spec_ref": "docs/agents/specs/2026-11-04-workshop-r3-host-launcher.md",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-r3-host-launcher.json",
+      "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+      "project_ref": "https://github.com/users/lucronn/projects/8",
+      "todo": [
+        "Independently review this code-only draft; serialized coordinator synchronizes Issue186/Project8, canonical document, plan/record/task/queue and this exact todo, commits/pushes, then pins the real code checkpoint SHA, passes canonical preflight and independent committed-gate review before explicit external-path code-only dispatch.",
+        "Create only launcher.py and test_launcher.py in the named external adapter root; preserve the three existing reviewed sources and historical artifacts byte-for-byte, using inert imports, synthetic fixtures, fake transports/clocks and owned test-artifacts only.",
+        "Implement exact future CLI, separated checkpoint/runtime bindings, command/state/HostConfig/effective-env enforcement, direct-container absence checks and evidence-derived Compose no-build admission without calling real tools.",
+        "Run failing-first then green standard-library fake tests and scope/hash/syntax checks; retain red/green artifacts, exact launcher/test hashes and independent exact-source review with every enforcement requirement checked.",
+        "Handoff reviewed launcher/command contract and synthetic evidence only; leave fresh observations, actual probe/manifest acceptance, parent PR219 fixture execution, acquisition, final180, provider/payment/cloud/release authorities behind separate successor gates."
+      ],
+      "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+      "source_candidate_tree": "d9fb2a8f49beacd009374a76327d0736c1fc9b0a",
+      "planning_base_sha": "880cd78eacdca9b60d18e7a28ca43112549b493d",
+      "implementation_base_sha": null,
+      "launcher_code_checkpoint_sha": null,
+      "execution_gate_sha": null,
+      "allowed_paths": [
+        "docs/superpowers/plans/2026-11-04-workshop-r3-host-launcher.md",
+        "docs/agents/specs/2026-11-04-workshop-r3-host-launcher.md",
+        "docs/agents/records/2026-11-04-workshop-r3-host-launcher.json",
+        "docs/agents/tasks/2026-11-03-production-release/workshop-r3-host-launcher.json",
+        "docs/verification/2026-11-03-canonical-article-lifecycle.md",
+        "docs/agents/tasks/2026-11-03-production-release/queue.json"
+      ],
+      "allowed_implementation_paths": [
+        "/home/corp/autodata-evidence/r3-immutable-probe-launcher-4d82e413-implementation/launcher.py",
+        "/home/corp/autodata-evidence/r3-immutable-probe-launcher-4d82e413-implementation/test_launcher.py"
+      ],
+      "proposed_external_implementation_paths": [
+        "/home/corp/autodata-evidence/r3-immutable-probe-launcher-4d82e413-implementation/launcher.py",
+        "/home/corp/autodata-evidence/r3-immutable-probe-launcher-4d82e413-implementation/test_launcher.py"
+      ],
+      "proposed_external_artifact_paths": [
+        "/home/corp/autodata-evidence/r3-immutable-probe-launcher-4d82e413-implementation/test-artifacts/**"
+      ],
+      "authorities": {
+        "implementation": false,
+        "github_write": false,
+        "commit": false,
+        "push": false,
+        "probe_execution": false,
+        "runtime": false,
+        "service_start": false,
+        "acquisition": false,
+        "build": false,
+        "pull": false,
+        "cloud": false,
+        "live_provider": false,
+        "live_payment": false,
+        "merge": false,
+        "release": false,
+        "deployment": false,
+        "production": false,
+        "final180": false
+      },
+      "implementation_dispatch_authorized": false,
+      "runtime_execution_authorized": false,
+      "probe_execution_authorized": false,
+      "cloud_execution_authorized": false,
+      "release_state": "unverified",
+      "depends_on": [],
+      "related_runtime_plan_ref": "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+      "dependency_note": "Independent code-only launcher task consumes reviewed supervisor handoff; it does not wait for or authorize parent PR219 runtime execution.",
+      "dispatch_prerequisite": "Committed synchronized six-document checkpoint, externally pinned full SHA, exact-base machine preflight, independent committed-gate review and explicit external two-file code-only dispatch are required.",
+      "implementation_blockers": [
+        "Committed synchronized six-document checkpoint, externally pinned full SHA, exact-base machine preflight, independent committed-gate review and explicit external two-file code-only dispatch are required."
+      ],
+      "execution_blockers": [
+        "Future execution requires a separately passing successor gate/dispatch with reviewed adapter hashes and then explicitly authorized fresh preparation observations; no future execution SHA or runtime observation is demanded at code synchronization.",
+        "Actual image-base environment, direct-container absence, CLI/config behavior and tool/package/cache compatibility remain unmeasured; fake tests cannot close those successor execution facts.",
+        "Parent PR219 remains separately blocked; fixture/provider/payment/cloud/final180/release activity is outside this adapter and requires its own gate."
+      ],
+      "blockers": [
+        "Canonical promotion remains blocked: committed checkpoint, exact-base preflight, independent committed-gate review and explicit code-only dispatch have not occurred.",
+        "Adapter source and failing-first/green fake-test deliverables do not yet exist; their reviewed hashes are code-task outputs, not code-gate prerequisites.",
+        "The existing reviewed supervisor must remain unchanged. If the two-file adapter cannot enforce the complete boundary, stop and report source constraints instead of expanding scope.",
+        "Future execution requires a separately passing successor gate/dispatch with reviewed adapter hashes and then explicitly authorized fresh preparation observations; no future execution SHA or runtime observation is demanded at code synchronization.",
+        "Actual image-base environment, direct-container absence, CLI/config behavior and tool/package/cache compatibility remain unmeasured; fake tests cannot close those successor execution facts.",
+        "Parent PR219 remains separately blocked; fixture/provider/payment/cloud/final180/release activity is outside this adapter and requires its own gate."
+      ],
+      "offline_completion_contract": "Reviewed exact two-file source/command hashes, fake-test receipts and independent exact-source review only; trusted:false, no runtime acceptance.",
+      "id": "workshop-r3-host-launcher",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-r3-host-launcher.json"
     }
   ],
   "execution": {
