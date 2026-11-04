@@ -380,6 +380,23 @@ def _policy(policy, context):
     _v1(rt._https,policy['evidence_layout'])
 
 
+def _runtime_origin(value):
+    require(type(value) is str)
+    try: parsed=urlsplit(value)
+    except ValueError: raise AdapterError('invalid_input') from None
+    require(type(parsed.hostname) is str)
+    match(parsed.hostname,r'(?!-)[a-z0-9-]{1,63}(?<!-)(?:\.(?!-)[a-z0-9-]{1,63}(?<!-))*')
+    validate_url(value,{parsed.hostname})
+    require(len(parsed.hostname)<=253 and value=='https://'+parsed.hostname)
+    return value
+
+
+def _upload_policy(policy):
+    require(type(policy) is dict and {'toolkit_lock_sha256','runtime_service_origin'}<=set(policy), 'missing_dependency')
+    sha(policy['toolkit_lock_sha256'])
+    _runtime_origin(policy['runtime_service_origin'])
+
+
 def build_authenticated_candidate(build_input, config, build_context, policy, *, rollback_manifest=None, dependencies=None):
     validate_context(build_context); _policy(policy, build_context)
     input_hash = validate_build_input(build_input, config, build_context, rollback_manifest=rollback_manifest)
@@ -678,6 +695,7 @@ def approval_envelope(value):
 
 def finalize_authenticated_publication(manifest, config, candidate_reference, approval_record, context, policy, *, rollback_manifest=None, dependencies=None):
     validate_context(context, live=True); _policy(policy, context)
+    _upload_policy(policy)
     # The approval envelope contains original independently signed bytes and a
     # detached signature, never a dictionary plus a caller assertion boolean.
     approval_envelope(approval_record)
@@ -750,6 +768,7 @@ def upload_request(archive, context):
 
 
 def validate_upload_observation(upload, archive, context, policy):
+    _upload_policy(policy)
     object_fields(upload, ('protocol_version artifact_id digest digestMismatch runtime_service_origin upload_request_sha256 '
                           'upload_started_at upload_finished_at toolkit_lock_sha256 control_workflow_sha run_id run_attempt').split())
     require(type(upload['protocol_version']) is int and upload['protocol_version'] == 3)
@@ -757,8 +776,10 @@ def validate_upload_observation(upload, archive, context, policy):
     require(type(upload['digestMismatch']) is bool and upload['digestMismatch'] is False, 'digest_mismatch')
     for key in ('run_id','run_attempt'): require(type(upload[key]) is type(context[key]) and upload[key] == context[key])
     require(upload['control_workflow_sha'] == context['workflow_sha'])
-    require(upload['toolkit_lock_sha256'] == policy.get('toolkit_lock_sha256'), 'missing_dependency')
-    require(upload['runtime_service_origin'] == policy.get('runtime_service_origin'), 'credential_scope')
+    sha(upload['toolkit_lock_sha256'])
+    _runtime_origin(upload['runtime_service_origin'])
+    require(upload['toolkit_lock_sha256'] == policy['toolkit_lock_sha256'], 'missing_dependency')
+    require(upload['runtime_service_origin'] == policy['runtime_service_origin'], 'credential_scope')
     require(upload['upload_request_sha256'] == digest(canonical(upload_request(archive, context))))
     require(utc(upload['upload_started_at']) <= utc(upload['upload_finished_at']))
 
@@ -826,6 +847,7 @@ def _binding(binding, manifest, context, rollback_manifest):
 
 def verify_authenticated_publication(manifest, config, binding, context, policy, *, rollback_manifest=None, dependencies=None):
     validate_context(context, live=True); _policy(policy, context)
+    _upload_policy(policy)
     _v1(rt.validate_manifest, manifest, config, rollback_manifest)
     _binding(binding, manifest, context, rollback_manifest)
     require(dependencies is not None, 'missing_dependency')
@@ -888,6 +910,7 @@ def _signed_identity(identity, context):
 
 def run_fixed_iap_check(manifest, config, accepted_binding, context, policy, *, rollback_manifest=None, dependencies=None):
     validate_context(context, live=True); _policy(policy, context)
+    _upload_policy(policy)
     _v1(rt.validate_manifest, manifest, config, rollback_manifest)
     _binding(accepted_binding, manifest, context, rollback_manifest)
     host = policy.get('host')

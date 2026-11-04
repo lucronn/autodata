@@ -246,7 +246,7 @@ class VerificationTests(unittest.TestCase):
                 'upload_started_at':'2026-11-03T12:00:00Z','upload_finished_at':'2026-11-03T12:00:01Z',
                 'toolkit_lock_sha256':'a'*64,'control_workflow_sha':context['workflow_sha'],'run_id':'42','run_attempt':2}
         p.validate_upload_observation(upload,archive,context,policy)
-        for change in ({'digestMismatch':True},{'digestMismatch':None},{'digestMismatch':0},{'run_attempt':1}, {'artifact_id':'latest'},{'upload_request_sha256':'c'*64}):
+        for change in ({'digestMismatch':True},{'digestMismatch':None},{'digestMismatch':0},{'run_attempt':1}, {'artifact_id':'latest'},{'upload_request_sha256':'c'*64}, {'toolkit_lock_sha256':None}, {'toolkit_lock_sha256':''}, {'toolkit_lock_sha256':True}, {'toolkit_lock_sha256':'A'*64}, {'runtime_service_origin':None}, {'runtime_service_origin':''}, {'runtime_service_origin':False}, {'runtime_service_origin':'https://runtime.example/'}, {'runtime_service_origin':'https://[::'}):
             with self.subTest(change=change),self.assertRaises(p.AdapterError): p.validate_upload_observation(upload|change,archive,context,policy)
 
     def test_redirect_keeps_bearer_off_storage_request_and_forbids_second_hop(self):
@@ -357,6 +357,56 @@ class FullFlowTests(OrchestrationTests):
         self.assertEqual(verified['status'],'publication_verified')
         with self.assertRaises(p.AdapterError):
             p.verify_authenticated_publication(self.manifest,self.config,result['binding'],context,policy,dependencies=deps)
+
+    def tracked_operations(self, dependencies):
+        calls=[]
+        for name in vars(type(dependencies)):
+            if name.startswith('_') or not callable(getattr(dependencies,name,None)): continue
+            original=getattr(dependencies,name)
+            def track(*args,_name=name,_original=original,**kwargs):
+                calls.append(_name)
+                return _original(*args,**kwargs)
+            setattr(dependencies,name,track)
+        return calls
+
+    def test_upload_owner_pins_fail_before_all_finalize_and_verify_callbacks(self):
+        p=self.p; deps,context,policy,approval=self.dependencies()
+        binding=p.finalize_authenticated_publication(self.manifest,self.config,context['candidate_digest'],approval,context,policy,dependencies=deps)['binding']
+        self.assertEqual(p.verify_authenticated_publication(self.manifest,self.config,binding,context,policy,dependencies=deps)['status'],'publication_verified')
+        calls=self.tracked_operations(deps)
+        cases=[('missing toolkit',{'toolkit_lock_sha256'}),('missing origin',{'runtime_service_origin'}),
+               ('missing both',{'toolkit_lock_sha256','runtime_service_origin'})]
+        for name,value in [('null toolkit',None),('empty toolkit',''),('bool toolkit',False),('short toolkit','a'*63),('upper toolkit','A'*64)]:
+            cases.append((name,{'toolkit_lock_sha256':value}))
+        for value in (None,'',False,'http://runtime.example','https://*.example','https://user@runtime.example',
+                      'https://runtime.example/path','https://runtime.example/','https://runtime.example?token=x',
+                      'https://runtime.example#fragment','https://runtime.example:444','https://runtime.example:443',
+                      'https://127.0.0.1','https://Runtime.Example','https://runtime.example\n'):
+            cases.append(('origin '+repr(value),{'runtime_service_origin':value}))
+        for name,change in cases:
+            bad=dict(policy)
+            if type(change) is set:
+                for key in change: bad.pop(key)
+            else: bad.update(change)
+            for operation in ('finalize','verify'):
+                calls.clear()
+                with self.subTest(name=name,operation=operation):
+                    with self.assertRaises(p.AdapterError):
+                        if operation=='finalize':
+                            p.finalize_authenticated_publication(self.manifest,self.config,context['candidate_digest'],approval,context,bad,dependencies=deps)
+                        else: p.verify_authenticated_publication(self.manifest,self.config,binding,context,bad,dependencies=deps)
+                    self.assertEqual(calls,[],'invalid owner inputs reached dependency operations')
+
+    def test_null_upload_observation_cannot_authorize_missing_owner_pins(self):
+        p=self.p; deps,context,policy,approval=self.dependencies()
+        original=deps.upload
+        def null_upload(archive,ctx):
+            return original(archive,ctx)|{'toolkit_lock_sha256':None,'runtime_service_origin':None}
+        deps.upload=null_upload
+        bad={key:value for key,value in policy.items() if key not in ('toolkit_lock_sha256','runtime_service_origin')}
+        with self.assertRaises(p.AdapterError):
+            p.finalize_authenticated_publication(self.manifest,self.config,context['candidate_digest'],approval,context,bad,dependencies=deps)
+
 
 class ToolPinTests(unittest.TestCase):
     def test_owner_approval_verifier_requires_pinned_binary_key_and_real_signature_result(self):
