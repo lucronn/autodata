@@ -77,5 +77,20 @@
     "installation_retry": "unauthorized",
     "image": "unauthorized",
     "task2": "unauthorized"
+  },
+  "retrospective_completion": {
+    "status": "retrospective_raw_audit_passed_independently_reviewed",
+    "completion_evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-world-retrospective-completion.json",
+    "tracking_evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-world-retrospective-completion-tracking.json",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6623105546",
+    "result_sha256": "c792e730e67eb3ac6572441065b003afc8e61a79dc973c2ec9ca8b2194ede130",
+    "runner_sha256": "02b36a26155b15739e85d271f8a9038a65d9dd4129ebe17de2463d3040013a72",
+    "independent_review_sha256": "a8cebd2e6994ba78e46d68cf9f4402bbe13eba3d994ac3c40939305404089792",
+    "historical_installation_remains_failed": true,
+    "new_install_dispatch_authorized": false,
+    "installation_accepted": false,
+    "runtime_verified": false,
+    "production_ready": false,
+    "historical_pending_fields_are_retained_as_checkpoint_facts": true
   }
 }
