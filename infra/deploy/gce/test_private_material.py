@@ -44,7 +44,7 @@ def load():
     return module
 
 
-class BoundaryTests(unittest.TestCase):
+class Fixture(unittest.TestCase):
     def setUp(self):
         self.pm = load()
         source = fixtures.ContractTests()
@@ -76,6 +76,9 @@ class BoundaryTests(unittest.TestCase):
                        'assertions': {k: True for k in ('no_installed_workload_lifecycle', 'no_running_workload',
                            'no_restartable_workload', 'no_untrusted_uid1000_process', 'root_exclusive_preparation_window')}}
 
+
+
+class BoundaryTests(Fixture):
     def test_fixed_cli_denies_before_input(self):
         for args in ([], ['install'], ['start', SHA, 'api'], ['install', SHA, 'postgres'],
                      ['install', SHA.upper(), 'api'], ['install', SHA, 'api', '/tmp']):
@@ -162,6 +165,423 @@ class BoundaryTests(unittest.TestCase):
             bad = copy.deepcopy(self.record); bad['assertions']['no_running_workload'] = value
             with self.assertRaises(self.pm.Denied):
                 self.pm.validate_host_record(bad, self.approval, self.config, b'a' * 32 + b'\n', BOOT.encode(), NOW)
+
+
+class TransactionTests(Fixture):
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        for name in ('etc', 'var', 'var/lib', 'opt', 'run', 'usr', 'usr/bin', 'opt/autodata/bin',
+                     'proc', 'proc/sys', 'proc/sys/kernel', 'proc/sys/kernel/random'):
+            (self.root / name).mkdir(parents=True, exist_ok=True)
+            (self.root / name).chmod(0o755)
+        self.root.chmod(0o755)
+        (self.root / 'var/run').symlink_to('../run')
+        for name in ('etc/autodata', 'etc/autodata/publisher-accepted', 'etc/autodata/pre-daemon-accepted',
+                     'opt/autodata', 'opt/autodata/releases', 'run/autodata', 'var/lib/autodata'):
+            (self.root / name).mkdir(exist_ok=True)
+            (self.root / name).chmod(0o700)
+        (self.root / ('opt/autodata/releases/' + SHA)).mkdir(mode=0o700)
+        self.put('opt/autodata/releases/' + SHA + '/release.json', encoded(self.manifest), 0o600)
+        (self.root / ('opt/autodata/releases/' + SHA)).chmod(0o500)
+        self.put('etc/autodata/host.json', encoded(self.config), 0o600)
+        for name in ('host_install.py', 'runtime-check.py', 'release.schema.json'):
+            self.put('opt/autodata/bin/' + name, (HERE / name).read_bytes(), 0o444)
+        self.put('usr/bin/findmnt', b'fake-never-executed', 0o555)
+        self.put('etc/autodata/publisher-accepted/' + SHA + '.json', b'{"accepted":"opaque"}', 0o600)
+        self.put('etc/machine-id', b'a' * 32 + b'\n', 0o444)
+        self.put('proc/sys/kernel/random/boot_id', BOOT.encode() + b'\n', 0o444)
+        self.put('etc/autodata/pre-daemon-accepted/' + AUTH + '.json', encoded(self.record), 0o600)
+        paths = {'manifest_raw_sha256': 'opt/autodata/releases/' + SHA + '/release.json',
+                 'manifest_canonical_sha256': 'opt/autodata/releases/' + SHA + '/release.json',
+                 'host_install_helper_sha256': 'opt/autodata/bin/host_install.py',
+                 'runtime_helper_sha256': 'opt/autodata/bin/runtime-check.py',
+                 'release_schema_sha256': 'opt/autodata/bin/release.schema.json',
+                 'findmnt_binary_sha256': 'usr/bin/findmnt',
+                 'publisher_verification_receipt_sha256': 'etc/autodata/publisher-accepted/' + SHA + '.json',
+                 'owner_pre_daemon_host_evidence_sha256': 'etc/autodata/pre-daemon-accepted/' + AUTH + '.json'}
+        for key, path in paths.items(): self.approval[key] = hashed((self.root / path).read_bytes())
+        self.save()
+        self.clock = 0.0
+        self.probes, self.chowns = [], []
+        self.hook = None
+        self.stream_reads = 0
+        self.assertTrue(callable(getattr(self.pm, '_open_root', None)), 'descriptor transaction missing')
+        guards = [patch.object(self.pm, '_open_root', lambda: os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)),
+                  patch.object(self.pm, '_owner', lambda s, uid=0, gid=0: s.st_uid == os.getuid() and s.st_gid == os.getgid()),
+                  patch.object(self.pm.os, 'geteuid', return_value=0),
+                  patch.object(self.pm.os, 'fchown', side_effect=lambda fd, uid, gid: self.chowns.append((uid, gid))),
+                  patch.object(self.pm, 'utcnow', return_value=NOW),
+                  patch.object(self.pm.time, 'monotonic', side_effect=lambda: self.clock),
+                  patch.object(self.pm, 'probe', self.probe),
+                  patch.object(self.pm, 'read_stream', self.stream)]
+        for guard in guards:
+            guard.start(); self.addCleanup(guard.stop)
+
+    def put(self, path, data, mode):
+        target = self.root / path
+        if target.exists(): target.chmod(0o600)
+        target.write_bytes(data); target.chmod(mode)
+
+    def save(self):
+        self.put('etc/autodata/private-material-approval.json', encoded(self.approval), 0o600)
+
+    def probe(self, host, fd, target, budget):
+        self.probes.append(target)
+        if self.hook: self.hook(target)
+        item = {'target': target, 'uuid': None, 'fstype': 'tmpfs', 'options': 'rw,nosuid,nodev,noexec'}
+        if target == '/var/lib/autodata':
+            item.update(uuid=self.config['resources']['data_disk_filesystem_uuid'], fstype='ext4', options='rw')
+        return encoded({'filesystems': [item]})
+
+    def stream(self, fd, budget):
+        self.stream_reads += 1
+        return encoded(self.frame)
+
+    def install(self):
+        code, output = self.pm.install_cli(SHA, self.approval['service'])
+        self.assertLessEqual(len(encoded(output)), 65536)
+        for key in self.pm.AUTHORITIES: self.assertIs(output[key], False)
+        for key in ('global_ready', 'schema', 'services', 'no_work', 'runtime_evidence'): self.assertIs(output[key], False)
+        return code, output
+
+    def journal(self):
+        return self.root / ('var/lib/autodata/operations/private-material-' + AUTH + '.json')
+
+    def test_transaction_all_services_exact_bytes_and_non_success_journal(self):
+        for service, names in MAPS.items():
+            self.approval['service'] = service
+            self.approval['secret_versions'] = self.manifest['secret_versions'][service]
+            self.record['service'] = service
+            self.put('etc/autodata/pre-daemon-accepted/' + AUTH + '.json', encoded(self.record), 0o600)
+            self.approval['owner_pre_daemon_host_evidence_sha256'] = hashed(encoded(self.record))
+            self.save()
+            self.frame.update(service=service, secret_versions=self.approval['secret_versions'])
+            self.values = {name: ('synthetic-' + service + '-' + str(i) + '-sentinel').encode() for i, name in enumerate(names)}
+            self.frame['values'] = {k: base64.b64encode(v).decode() for k, v in self.values.items()}
+            code, output = self.install()
+            self.assertEqual(code, 0, output)
+            self.assertTrue(output['one_service_private_material_installed'])
+            self.assertTrue(output['secret_material_committed'])
+            final = self.root / ('run/autodata/' + service)
+            self.assertEqual(stat.S_IMODE(final.stat().st_mode), 0o500)
+            self.assertEqual(set(p.name for p in final.iterdir()), set(names))
+            for name, value in self.values.items():
+                self.assertEqual((final / name).read_bytes(), value)
+                self.assertEqual(stat.S_IMODE((final / name).stat().st_mode), 0o400)
+                self.assertEqual((final / name).stat().st_nlink, 1)
+            journal = json.loads(self.journal().read_text())
+            self.assertEqual(journal['phase'], 'material_verified')
+            self.assertEqual(journal['operation_status'], 'unconfirmed')
+            self.assertNotIn('status', journal)
+            self.assertEqual(set(journal), set(('schema_version', 'operation', 'source_sha', 'service', 'authorization_id',
+                'started_at', 'updated_at', 'elapsed_seconds', 'approval_sha256', 'secret_versions', 'phase', 'operation_status')) | set(self.pm.HASH_FIELDS))
+            for value in self.values.values():
+                for representation in (value, base64.b64encode(value), hashed(value).encode()):
+                    self.assertNotIn(representation, self.journal().read_bytes() + encoded(output))
+            self.assertNotIn(hashed(encoded(self.frame)).encode(), self.journal().read_bytes() + encoded(output))
+            self.assertEqual(self.install()[0], 3)
+            final.chmod(0o700)
+            for child in final.iterdir(): child.unlink()
+            final.rmdir(); self.journal().unlink()
+        self.assertTrue(all(pair == (1000, 1000) for pair in self.chowns))
+        self.assertFalse((self.root / 'opt/autodata/current').exists())
+
+    def test_missing_or_stale_acceptance_denies_before_stream_or_writes(self):
+        path = self.root / ('etc/autodata/pre-daemon-accepted/' + AUTH + '.json')
+        path.unlink()
+        self.assertEqual(self.install()[0], 3)
+        self.assertEqual(self.stream_reads, 0)
+        self.assertFalse(self.journal().exists())
+        self.record['expires_at'] = '2026-11-04T18:00:00Z'
+        self.put(str(path.relative_to(self.root)), encoded(self.record), 0o600)
+        self.approval['owner_pre_daemon_host_evidence_sha256'] = hashed(encoded(self.record)); self.save()
+        self.assertEqual(self.install()[0], 3)
+        self.assertEqual(self.stream_reads, 0)
+
+    def test_production_denies_before_approval_and_stream(self):
+        self.config['environment'] = 'production'
+        self.put('etc/autodata/host.json', encoded(self.config), 0o600)
+        (self.root / 'etc/autodata/private-material-approval.json').unlink()
+        self.assertEqual(self.install()[0], 3)
+        self.assertEqual(self.stream_reads, 0)
+        self.assertEqual(self.probes, [])
+
+    def test_residue_current_sockets_and_target_are_never_overwritten(self):
+        for path in ('opt/autodata/current', 'run/docker.sock', 'run/autodata/api',
+                     'run/autodata/.private-' + AUTH):
+            target = self.root / path; target.write_bytes(b'existing')
+            self.assertEqual(self.install()[0], 3, path)
+            self.assertEqual(self.stream_reads, 0)
+            self.assertEqual(target.read_bytes(), b'existing'); target.unlink()
+
+    def test_schema_swap_uses_only_pinned_bytes_then_denies(self):
+        def hook(target):
+            if len(self.probes) == 1:
+                p = self.root / 'opt/autodata/bin/release.schema.json'
+                p.unlink(); self.put('opt/autodata/bin/release.schema.json', b'{"type":"object"}', 0o444)
+        self.hook = hook
+        with patch.object(self.runtime.Path, 'read_bytes', side_effect=AssertionError('path reopen forbidden')):
+            self.assertEqual(self.install()[0], 3)
+        self.assertEqual(self.stream_reads, 0)
+
+    def test_late_machine_or_lock_swap_fails_closed(self):
+        def hook(target):
+            if self.stream_reads and target == '/var/lib/autodata':
+                self.put('etc/machine-id', b'c' * 32, 0o444)
+        self.hook = hook
+        code, output = self.install()
+        self.assertNotEqual(code, 0)
+        self.assertFalse(output['one_service_private_material_installed'])
+        self.assertFalse((self.root / 'run/autodata/api').exists())
+
+    def test_intent_is_durable_before_any_secret_file(self):
+        real_write = os.write
+        def write(fd, data):
+            if any(value in bytes(data) for value in self.values.values()):
+                self.assertEqual(json.loads(self.journal().read_text())['phase'], 'writing')
+            return real_write(fd, data)
+        with patch.object(self.pm.os, 'write', side_effect=write):
+            self.assertEqual(self.install()[0], 0)
+
+    def test_short_writes_are_completed(self):
+        real_write = os.write
+        with patch.object(self.pm.os, 'write', side_effect=lambda fd, data: real_write(fd, data[:7])):
+            self.assertEqual(self.install()[0], 0)
+
+    def test_enospc_cleans_only_own_tree_and_journals_unconfirmed(self):
+        real_write = os.write
+        def write(fd, data):
+            if any(value in bytes(data) for value in self.values.values()): raise OSError('synthetic sentinel error')
+            return real_write(fd, data)
+        with patch.object(self.pm.os, 'write', side_effect=write):
+            code, output = self.install()
+        self.assertEqual(code, 4, output)
+        self.assertFalse((self.root / 'run/autodata/api').exists())
+        self.assertFalse((self.root / ('run/autodata/.private-' + AUTH)).exists())
+        self.assertEqual(json.loads(self.journal().read_text())['operation_status'], 'unconfirmed')
+        self.assertNotIn('sentinel error', str(output))
+
+    def test_slow_final_fsync_never_yields_passing_journal_or_receipt(self):
+        real_fsync = os.fsync
+        def fsync(fd):
+            real_fsync(fd)
+            if self.journal().exists() and json.loads(self.journal().read_text())['phase'] == 'material_verified':
+                self.clock = 271
+        with patch.object(self.pm.os, 'fsync', side_effect=fsync):
+            code, output = self.install()
+        self.assertIn(code, (5, 6), output)
+        self.assertFalse(output['one_service_private_material_installed'])
+        self.assertEqual(json.loads(self.journal().read_text())['operation_status'], 'unconfirmed')
+
+    def test_current_appearing_during_last_probe_denies_promotion(self):
+        def hook(target):
+            if self.stream_reads and target == '/run/autodata':
+                self.put('opt/autodata/current', b'appeared', 0o600)
+        self.hook = hook
+        code, output = self.install()
+        self.assertNotEqual(code, 0, output)
+        self.assertFalse((self.root / 'run/autodata/api').exists())
+
+    def test_temp_residue_other_authorization_requires_recovery(self):
+        (self.root / ('run/autodata/.private-' + BOOT)).mkdir(mode=0o700)
+        self.assertEqual(self.install()[0], 3)
+        self.assertEqual(self.stream_reads, 0)
+
+    def test_late_failed_syscall_still_observes_deadline(self):
+        budget = self.pm.Budget()
+        def late_error():
+            self.clock = 271
+            raise OSError('redacted')
+        try:
+            budget.call(late_error)
+        except self.pm.Expired:
+            pass
+        except OSError:
+            self.fail('late syscall error bypassed deadline observation')
+        else:
+            self.fail('late syscall returned without denial')
+
+    def test_material_fault_matrix_never_publishes_success(self):
+        for operation in ('write', 'fchmod', 'fchown', 'fsync', 'mkdir'):
+            real = getattr(os, operation)
+            fired = False
+            def fail(*args, **kwargs):
+                nonlocal fired
+                if not fired and self.journal().exists():
+                    fired = True
+                    raise OSError('synthetic fault')
+                return real(*args, **kwargs)
+            with patch.object(self.pm.os, operation, side_effect=fail):
+                code, output = self.install()
+            self.assertNotEqual(code, 0, operation)
+            self.assertFalse(output['one_service_private_material_installed'])
+            self.assertFalse((self.root / 'run/autodata/api').exists())
+            self.assertEqual(json.loads(self.journal().read_text())['operation_status'], 'unconfirmed')
+            # Recovery of synthetic owned test artifacts belongs to the test only.
+            for item in (self.root / 'run/autodata').iterdir():
+                if item.name.startswith('.private-'):
+                    item.chmod(0o700)
+                    for child in item.iterdir(): child.unlink()
+                    item.rmdir()
+            self.journal().unlink()
+
+    def test_failed_close_after_promotion_cannot_return_zero(self):
+        real_close = self.pm.close_fd
+        fired = False
+        def close(fd):
+            nonlocal fired
+            real_close(fd)
+            if not fired and (self.root / 'run/autodata/api').exists():
+                fired = True
+                raise self.pm.RecoveryIncomplete()
+        with patch.object(self.pm, 'close_fd', side_effect=close):
+            code, output = self.install()
+        self.assertEqual(code, 6)
+        self.assertTrue(output['secret_material_committed'])
+        self.assertEqual(output['commit_state'], 'incomplete')
+        self.assertTrue((self.root / 'run/autodata/api').exists())
+        self.assertEqual(json.loads(self.journal().read_text())['operation_status'], 'unconfirmed')
+
+    def test_no_replace_target_race_preserves_existing_tree(self):
+        original = self.pm.module_bytes
+        def module(data, path, name):
+            result = original(data, path, name)
+            if path.endswith('host_install.py'):
+                real_rename = result._rename_noreplace
+                def rename(parent, old, new):
+                    if new == 'api':
+                        os.mkdir('api', 0o700, dir_fd=parent)
+                        marker = os.open('api/marker', os.O_CREAT | os.O_WRONLY, 0o600, dir_fd=parent)
+                        os.write(marker, b'preexisting'); os.close(marker)
+                    return real_rename(parent, old, new)
+                result._rename_noreplace = rename
+            return result
+        with patch.object(self.pm, 'module_bytes', side_effect=module):
+            self.assertNotEqual(self.install()[0], 0)
+        self.assertEqual((self.root / 'run/autodata/api/marker').read_bytes(), b'preexisting')
+
+    def test_lock_conflict_and_replacement_deny(self):
+        state = self.root / 'run/autodata/state'; state.mkdir(mode=0o700)
+        lock = state / 'operation.lock'; lock.write_bytes(b''); lock.chmod(0o600)
+        fd = os.open(lock, os.O_RDWR)
+        import fcntl
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.assertEqual(self.install()[0], 3)
+        finally: os.close(fd)
+        def hook(target):
+            if self.stream_reads and lock.exists():
+                lock.unlink(); lock.write_bytes(b''); lock.chmod(0o600)
+        self.hook = hook
+        self.assertNotEqual(self.install()[0], 0)
+        self.assertFalse((self.root / 'run/autodata/api').exists())
+
+    def test_mount_flag_or_uuid_drift_denies_before_read(self):
+        def invalid(host, fd, target, budget):
+            value = json.loads(self.probe(host, fd, target, budget))
+            value['filesystems'][0]['options'] = 'rw'
+            value['filesystems'][0]['uuid'] = AUTH if target.endswith('autodata') else None
+            return encoded(value)
+        with patch.object(self.pm, 'probe', side_effect=invalid):
+            self.assertEqual(self.install()[0], 3)
+        self.assertEqual(self.stream_reads, 0)
+
+
+class PipeAndProbeTests(unittest.TestCase):
+    def setUp(self):
+        self.pm = load()
+        self.clock = 0
+        self.guard = patch.object(self.pm.time, 'monotonic', side_effect=lambda: self.clock)
+        self.guard.start(); self.addCleanup(self.guard.stop)
+
+    def fifo(self, inode=10):
+        from types import SimpleNamespace
+        return SimpleNamespace(st_mode=stat.S_IFIFO | 0o600, st_dev=1, st_ino=inode)
+
+    def selector(self, ready=True):
+        owner = self
+        class Selector:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def register(self, fd, flags): pass
+            def select(self, timeout):
+                if not ready: owner.clock += timeout
+                return [True] if ready else []
+        return Selector
+
+    def test_pipe_only_bounded_eof_and_identity_drift(self):
+        budget = self.pm.Budget()
+        with patch.object(self.pm.os, 'fstat', return_value=self.fifo()), \
+             patch.object(self.pm.os, 'read', side_effect=[b'{}', b'']), \
+             patch.object(self.pm.selectors, 'DefaultSelector', self.selector()):
+            self.assertEqual(self.pm.read_stream(0, budget), b'{}')
+        for mode in (stat.S_IFREG, stat.S_IFSOCK, stat.S_IFCHR):
+            node = self.fifo(); node.st_mode = mode
+            with patch.object(self.pm.os, 'fstat', return_value=node), self.assertRaises(self.pm.InvalidInput):
+                self.pm.read_stream(0, budget)
+        with patch.object(self.pm.os, 'fstat', side_effect=[self.fifo(), self.fifo(11)]), \
+             patch.object(self.pm.selectors, 'DefaultSelector', self.selector()), self.assertRaises(self.pm.InvalidInput):
+            self.pm.read_stream(0, budget)
+
+    def test_pipe_timeout_consumes_shared_budget_and_oversize_denies(self):
+        with patch.object(self.pm.os, 'fstat', return_value=self.fifo()), \
+             patch.object(self.pm.selectors, 'DefaultSelector', self.selector(False)), self.assertRaises(self.pm.Expired):
+            self.pm.read_stream(0, self.pm.Budget())
+        self.assertEqual(self.clock, 270)
+        self.clock = 0
+        with patch.object(self.pm.os, 'fstat', return_value=self.fifo()), \
+             patch.object(self.pm.os, 'read', return_value=b'x' * 65536), \
+             patch.object(self.pm.selectors, 'DefaultSelector', self.selector()), self.assertRaises(self.pm.InvalidInput):
+            self.pm.read_stream(0, self.pm.Budget())
+
+    def test_probe_uses_fixed_command_and_fake_process_cleanup(self):
+        import types
+        host = self.pm.module_bytes((HERE / 'host_install.py').read_bytes(), '/opt/autodata/bin/host_install.py', 'fake_probe_host')
+        calls = []
+        class Pipe:
+            def fileno(self): return 77
+            def close(self): calls.append('close')
+        class Child:
+            pid = 999999
+            stdout = Pipe()
+            def wait(self, timeout): calls.append(('wait', timeout)); return 0
+        def popen(argv, **kwargs):
+            calls.append((argv, kwargs)); return Child()
+        with patch.object(host.subprocess, 'Popen', side_effect=popen), \
+             patch.object(host.selectors, 'DefaultSelector', self.selector()), \
+             patch.object(host.os, 'read', side_effect=[b'{}', b'']), \
+             patch.object(host.os, 'killpg', side_effect=lambda pid, sig: calls.append(('kill', pid, sig))):
+            self.assertEqual(self.pm.probe(host, 42, '/run/autodata', self.pm.Budget()), b'{}')
+        self.assertEqual(calls[0][0], ['/proc/self/fd/42', '--json', '--list', '--mountpoint', '/run/autodata', '--output', 'TARGET,UUID,FSTYPE,OPTIONS'])
+        self.assertEqual(calls[0][1]['env'], {})
+        self.assertTrue(calls[0][1]['start_new_session'])
+        self.assertEqual(len([c for c in calls if c[0] == 'kill']), 2)
+        self.assertEqual(calls[-1], 'close')
+
+    def test_probe_descendant_pipe_timeout_and_reap_error_are_redacted(self):
+        host = self.pm.module_bytes((HERE / 'host_install.py').read_bytes(), '/opt/autodata/bin/host_install.py', 'fake_probe_host')
+        class Pipe:
+            def close(self): pass
+        class Child:
+            pid = 999999
+            stdout = Pipe()
+            def wait(self, timeout): return 0
+        kills = []
+        with patch.object(host.subprocess, 'Popen', return_value=Child()), \
+             patch.object(host.selectors, 'DefaultSelector', self.selector(False)), \
+             patch.object(host.os, 'killpg', side_effect=lambda pid, sig: kills.append(sig)), self.assertRaises(self.pm.Expired):
+            self.pm.probe(host, 42, '/var/lib/autodata', self.pm.Budget())
+        self.assertEqual(len(kills), 2)
+        self.clock = 0
+        def unreap(timeout): raise host.subprocess.TimeoutExpired('redacted', timeout)
+        child = Child(); child.wait = unreap
+        with patch.object(host.subprocess, 'Popen', return_value=child), \
+             patch.object(host.selectors, 'DefaultSelector', self.selector(False)), \
+             patch.object(host.os, 'killpg', return_value=None), self.assertRaises(self.pm.RecoveryIncomplete):
+            self.pm.probe(host, 42, '/var/lib/autodata', self.pm.Budget())
 
 
 if __name__ == '__main__':

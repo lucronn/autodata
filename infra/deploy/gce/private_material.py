@@ -212,12 +212,494 @@ def finish(output, code):
     return code, output
 
 
-def read_stream(fd, deadline):
-    raise Denied()
+class Budget:
+    """One monotonic budget, with a best-effort cleanup reserve, never reset."""
+    def __init__(self):
+        self.started = time.monotonic()
+        self.cleanup = False
+
+    @property
+    def end(self):
+        # The pinned probe reserves 30s itself. During cleanup it may use the reserve.
+        return self.started + 300 + (30 if self.cleanup else 0)
+
+    def check(self, cleanup=False):
+        if time.monotonic() - self.started >= (300 if cleanup or self.cleanup else 270):
+            raise Expired()
+
+    def remaining(self):
+        self.check()
+        return max(0, self.started + (300 if self.cleanup else 270) - time.monotonic())
+
+    def call(self, function, *args, **kwargs):
+        self.check()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            self.check()
+
+
+def _owner(value, uid=0, gid=0):
+    return value.st_uid == uid and value.st_gid == gid
+
+
+def identity(value):
+    return value.st_dev, value.st_ino
+
+
+def metadata(value):
+    return (value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid,
+            value.st_nlink, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+
+
+def _open_root():
+    return os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+
+
+def close_fd(fd):
+    # Never retry close: even an error can mean the number has been released.
+    try:
+        os.close(fd)
+    except BaseException:
+        raise RecoveryIncomplete() from None
+
+
+PROTECTED = frozenset(('/', '/etc', '/var', '/var/lib', '/opt', '/run', '/usr', '/usr/bin',
+                       '/opt/autodata/bin', '/proc', '/proc/sys', '/proc/sys/kernel', '/proc/sys/kernel/random'))
+
+
+class Filesystem:
+    def __init__(self, stack, budget):
+        self.stack, self.budget = stack, budget
+        self.dirs, self.entries, self.files = {}, [], []
+        root = self.open(_open_root)
+        self.dirs['/'] = root
+        self.check_dir(root, None)
+
+    def open(self, function, *args, **kwargs):
+        self.budget.check()
+        fd = function(*args, **kwargs)
+        # Register before the post-call deadline check so slow opens cannot leak.
+        self.stack.callback(close_fd, fd)
+        self.budget.check()
+        return fd
+
+    def check_dir(self, fd, mode):
+        value = self.budget.call(os.fstat, fd)
+        require(stat.S_ISDIR(value.st_mode) and _owner(value))
+        require(value.st_mode & 0o22 == 0 if mode is None else stat.S_IMODE(value.st_mode) == mode)
+
+    def directory(self, path, mode=None, create=False):
+        if path in self.dirs:
+            self.check_dir(self.dirs[path], mode)
+            return self.dirs[path]
+        parent, name = path.rsplit('/', 1); parent = parent or '/'
+        pfd = self.directory(parent, None if parent in PROTECTED else 0o700)
+        if create:
+            try:
+                self.budget.call(os.mkdir, name, 0o700, dir_fd=pfd)
+                self.budget.call(os.fsync, pfd)
+            except FileExistsError:
+                pass
+        fd = self.open(os.open, name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=pfd)
+        self.check_dir(fd, mode)
+        self.dirs[path] = fd
+        self.entries.append((pfd, name, fd, mode))
+        return fd
+
+    def file(self, path, mode, maximum=MIB, virtual=False):
+        parent, name = path.rsplit('/', 1)
+        pfd = self.directory(parent, None if parent in PROTECTED else (0o500 if parent.startswith('/opt/autodata/releases/') else 0o700))
+        item = PinnedFile(self, pfd, name, mode, maximum, virtual)
+        self.files.append(item)
+        return item
+
+    def recheck(self):
+        self.check_dir(self.dirs['/'], None)
+        for parent, name, fd, mode in self.entries:
+            require(identity(self.budget.call(os.stat, name, dir_fd=parent, follow_symlinks=False)) == identity(self.budget.call(os.fstat, fd)))
+            self.check_dir(fd, mode)
+        for item in self.files:
+            item.read()
+
+
+class PinnedFile:
+    def __init__(self, fs, parent, name, mode, maximum, virtual=False):
+        self.fs, self.parent, self.name = fs, parent, name
+        self.maximum, self.virtual, self.expected = maximum, virtual, None
+        self.fd = fs.open(os.open, name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=parent)
+        value = fs.budget.call(os.fstat, self.fd)
+        require(stat.S_ISREG(value.st_mode) and _owner(value) and value.st_nlink == 1)
+        require((0 if virtual else 1) <= value.st_size <= maximum)
+        require(value.st_mode & 0o222 == 0 if mode is None else stat.S_IMODE(value.st_mode) == mode)
+        self.meta = metadata(value)
+
+    def read(self):
+        b = self.fs.budget
+        require(metadata(b.call(os.fstat, self.fd)) == self.meta)
+        require(metadata(b.call(os.stat, self.name, dir_fd=self.parent, follow_symlinks=False)) == self.meta)
+        b.call(os.lseek, self.fd, 0, os.SEEK_SET)
+        chunks, total = [], 0
+        while True:
+            chunk = b.call(os.read, self.fd, min(65536, self.maximum + 1 - total))
+            if not chunk: break
+            total += len(chunk); require(total <= self.maximum); chunks.append(chunk)
+        data = b''.join(chunks)
+        require(self.virtual or len(data) == self.meta[6])
+        require(metadata(b.call(os.fstat, self.fd)) == self.meta)
+        require(metadata(b.call(os.stat, self.name, dir_fd=self.parent, follow_symlinks=False)) == self.meta)
+        if self.expected is not None: require(digest(data) == self.expected)
+        return data
+
+    def bind(self, expected=None):
+        data = self.read()
+        self.expected = expected if expected is not None else digest(data)
+        require(matches(self.expected, HASH) and digest(data) == self.expected)
+        return data
+
+
+def read_stream(fd, budget):
+    """Pipe/FIFO only, bounded until EOF; no reader may outlive the shared budget."""
+    before = budget.call(os.fstat, fd)
+    if not stat.S_ISFIFO(before.st_mode): raise InvalidInput()
+    chunks, total = [], 0
+    with selectors.DefaultSelector() as selector:
+        budget.call(selector.register, fd, selectors.EVENT_READ)
+        while True:
+            events = budget.call(selector.select, budget.remaining())
+            if not events: raise Expired()
+            current = budget.call(os.fstat, fd)
+            if identity(current) != identity(before) or not stat.S_ISFIFO(current.st_mode): raise InvalidInput()
+            chunk = budget.call(os.read, fd, min(65536, MIB + 1 - total))
+            if not chunk: break
+            total += len(chunk)
+            if total > MIB: raise InvalidInput()
+            chunks.append(chunk)
+    budget.check()
+    return b''.join(chunks)
+
+
+def module_bytes(data, path, name):
+    module = types.ModuleType(name)
+    module.__file__ = path
+    exec(compile(data, path, 'exec'), module.__dict__)
+    return module
+
+
+def probe(host, fd, target, budget):
+    budget.check()
+    try:
+        result = host._probe(fd, target, budget)
+    except host.Expired:
+        raise Expired() from None
+    except host.RecoveryIncomplete:
+        raise RecoveryIncomplete() from None
+    except host.Denied:
+        raise Denied() from None
+    budget.check()
+    return result
+
+
+def absent(fs, parent, name):
+    try:
+        fs.budget.call(os.stat, name, dir_fd=parent, follow_symlinks=False)
+    except FileNotFoundError:
+        return True
+    return False
+
+
+def socket_guards(fs):
+    run = fs.directory('/run', None)
+    require(absent(fs, run, 'docker.sock'))
+    var = fs.directory('/var', None)
+    value = fs.budget.call(os.stat, 'run', dir_fd=var, follow_symlinks=False)
+    if stat.S_ISLNK(value.st_mode):
+        require(_owner(value) and fs.budget.call(os.readlink, 'run', dir_fd=var) in ('/run', '../run'))
+        # Only this standard root-controlled alias is accepted, and only for absence.
+        require(identity(fs.budget.call(os.stat, 'run', dir_fd=var, follow_symlinks=False)) == identity(value))
+    else:
+        alternate = fs.directory('/var/run', None)
+        require(absent(fs, alternate, 'docker.sock'))
+
+
+def write_all(fd, data, budget):
+    view = memoryview(data)
+    while view:
+        count = budget.call(os.write, fd, view[:65536])
+        require(type(count) is int and 0 < count <= len(view[:65536]))
+        view = view[count:]
+
+
+class Transaction:
+    """Exclusive flat tree. Cleanup never removes a promoted or substituted tree."""
+    def __init__(self, fs, parent, name):
+        self.fs, self.parent, self.name = fs, parent, name
+        self.fd, self.ident, self.files = None, None, {}
+        self.created = self.promoted = False
+
+    def start(self):
+        b = self.fs.budget
+        b.check()
+        os.mkdir(self.name, 0o700, dir_fd=self.parent)
+        self.created = True
+        self.ident = identity(os.stat(self.name, dir_fd=self.parent, follow_symlinks=False))
+        self.fd = self.fs.open(os.open, self.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=self.parent)
+        require(identity(b.call(os.fstat, self.fd)) == self.ident)
+        b.check()
+
+    def build(self, values):
+        b = self.fs.budget
+        for name, data in values.items():
+            b.check()
+            fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=self.fd)
+            try:
+                self.files[name] = identity(os.fstat(fd))
+                b.check()
+                write_all(fd, data, b)
+                b.call(os.fsync, fd)
+                b.call(os.fchown, fd, 1000, 1000)
+                b.call(os.fchmod, fd, 0o400)
+                b.call(os.fsync, fd)
+            finally:
+                close_fd(fd)
+            b.check()
+        b.call(os.fchown, self.fd, 1000, 1000)
+        b.call(os.fchmod, self.fd, 0o500)
+        b.call(os.fsync, self.fd)
+
+    def verify(self, values, name=None):
+        b = self.fs.budget
+        name = name or self.name
+        require(identity(b.call(os.stat, name, dir_fd=self.parent, follow_symlinks=False)) == self.ident)
+        # Reopen the final tree as well as retaining the pinned original descriptor.
+        fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=self.parent)
+        try:
+            b.check()
+            value = b.call(os.fstat, fd)
+            require(identity(value) == self.ident and _owner(value, 1000, 1000) and stat.S_IMODE(value.st_mode) == 0o500)
+            require(set(b.call(os.listdir, fd)) == set(values))
+            for leaf, expected in values.items():
+                item = os.open(leaf, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=fd)
+                try:
+                    b.check()
+                    initial = b.call(os.fstat, item)
+                    require(identity(initial) == self.files[leaf] and stat.S_ISREG(initial.st_mode) and initial.st_nlink == 1)
+                    require(_owner(initial, 1000, 1000) and stat.S_IMODE(initial.st_mode) == 0o400 and initial.st_size == len(expected))
+                    chunks, size = [], 0
+                    while True:
+                        chunk = b.call(os.read, item, min(16385 - size, 4096))
+                        if not chunk: break
+                        size += len(chunk); require(size <= 16384); chunks.append(chunk)
+                    require(b''.join(chunks) == expected)
+                    require(metadata(b.call(os.fstat, item)) == metadata(initial))
+                    require(metadata(b.call(os.stat, leaf, dir_fd=fd, follow_symlinks=False)) == metadata(initial))
+                finally:
+                    close_fd(item)
+                b.check()
+        finally:
+            close_fd(fd)
+        b.check()
+
+    def cleanup(self):
+        if not self.created or self.promoted: return
+        b = self.fs.budget
+        b.check()
+        require(self.fd is not None and self.ident is not None)
+        require(identity(b.call(os.stat, self.name, dir_fd=self.parent, follow_symlinks=False)) == self.ident)
+        require(identity(b.call(os.fstat, self.fd)) == self.ident)
+        require(set(b.call(os.listdir, self.fd)) == set(self.files))
+        for name, ident in self.files.items():
+            value = b.call(os.stat, name, dir_fd=self.fd, follow_symlinks=False)
+            require(identity(value) == ident and stat.S_ISREG(value.st_mode) and value.st_nlink == 1)
+            require(_owner(value) or _owner(value, 1000, 1000))
+        b.call(os.fchmod, self.fd, 0o700)
+        for name in self.files: b.call(os.unlink, name, dir_fd=self.fd)
+        b.call(os.rmdir, self.name, dir_fd=self.parent)
+        b.call(os.fsync, self.parent)
+
+
+class Journal:
+    def __init__(self, fs, directory, authorization, bindings):
+        self.fs, self.directory = fs, directory
+        self.name = 'private-material-' + authorization + '.json'
+        self.temporary = '.private-material-' + authorization
+        self.bindings, self.ident = bindings, None
+        require(absent(fs, directory, self.name) and absent(fs, directory, self.temporary))
+
+    def persist(self, phase):
+        b = self.fs.budget
+        data = canonical({**self.bindings, 'updated_at': stamp(),
+                          'elapsed_seconds': max(0, time.monotonic() - b.started),
+                          'phase': phase, 'operation_status': 'unconfirmed'})
+        require(len(data) <= 65536)
+        # Refuse unrelated journal replacements, even under the shared lock.
+        if self.ident is not None:
+            require(identity(b.call(os.stat, self.name, dir_fd=self.directory, follow_symlinks=False)) == self.ident)
+        else:
+            require(absent(self.fs, self.directory, self.name))
+        b.check()
+        fd = os.open(self.temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=self.directory)
+        ident = identity(os.fstat(fd))
+        try:
+            b.check()
+            write_all(fd, data, b)
+            b.call(os.fchmod, fd, 0o600)
+            b.call(os.fsync, fd)
+        finally:
+            close_fd(fd)
+        b.check()
+        value = b.call(os.stat, self.temporary, dir_fd=self.directory, follow_symlinks=False)
+        require(identity(value) == ident and stat.S_ISREG(value.st_mode) and value.st_nlink == 1 and _owner(value))
+        if self.ident is not None:
+            require(identity(b.call(os.stat, self.name, dir_fd=self.directory, follow_symlinks=False)) == self.ident)
+            b.call(os.replace, self.temporary, self.name, src_dir_fd=self.directory, dst_dir_fd=self.directory)
+        else:
+            # Initial intent must never overwrite an existing authorization.
+            self.fs.host._rename_noreplace(self.directory, self.temporary, self.name)
+            b.check()
+        self.ident = ident
+        b.call(os.fsync, self.directory)
 
 
 def install_cli(source, service):
-    return finish(receipt(source, service), 3)
+    output = receipt(source if matches(source, SHA) else None, service if service in SERVICE_NAMES else None)
+    if not matches(source, SHA) or service not in SERVICE_NAMES: return finish(output, 2)
+    b, stack = Budget(), ExitStack()
+    tx = journal = fs = None
+    writing = committed = False
+    code = 3
+    try:
+        require(os.geteuid() == 0)
+        stack.callback(os.umask, os.umask(0o077))
+        fs = Filesystem(stack, b)
+        config_file = fs.file('/etc/autodata/host.json', 0o600)
+        config = strict_json(config_file.bind())
+        require(type(config) is dict and config.get('environment') == 'staging')
+        approval_file = fs.file('/etc/autodata/private-material-approval.json', 0o600, 65536)
+        approval = strict_json(approval_file.bind())
+        validate_approval(approval, source, service, digest(canonical(config)), utcnow())
+        output.update({key: approval[key] for key in HASH_FIELDS + ('authorization_id', 'secret_versions')})
+        output['approval_sha256'] = approval_file.expected
+        evidence = fs.file('/etc/autodata/publisher-accepted/' + source + '.json', 0o600, 65536)
+        evidence.bind(approval['publisher_verification_receipt_sha256'])
+        host_file = fs.file(BIN + 'host_install.py', None)
+        host_data = host_file.bind(approval['host_install_helper_sha256'])
+        runtime_file = fs.file(BIN + 'runtime-check.py', None)
+        runtime_data = runtime_file.bind(approval['runtime_helper_sha256'])
+        schema_file = fs.file(BIN + 'release.schema.json', None)
+        schema_data = schema_file.bind(approval['release_schema_sha256'])
+        fs.host = module_bytes(host_data, BIN + 'host_install.py', '_private_material_host')
+        runtime = module_bytes(runtime_data, BIN + 'runtime-check.py', '_private_material_runtime')
+        b.check()
+        require(runtime.validate_config(config) == approval['service_config_sha256'])
+        for selected, names in SERVICE_NAMES.items(): require(runtime.SECRET_NAMES[selected] == names)
+        manifest_file = fs.file('/opt/autodata/releases/' + source + '/release.json', 0o600)
+        manifest = runtime.strict_json(manifest_file.bind(approval['manifest_raw_sha256']))
+        require(validate_pinned_first_manifest(manifest, config, schema_data, runtime) == approval['manifest_canonical_sha256'])
+        require(manifest['source_sha'] == source and manifest['secret_versions'][service] == approval['secret_versions'])
+        acceptance_file = fs.file('/etc/autodata/pre-daemon-accepted/' + approval['authorization_id'] + '.json', 0o600, 65536)
+        accepted = strict_json(acceptance_file.bind(approval['owner_pre_daemon_host_evidence_sha256']))
+        machine = fs.file('/etc/machine-id', None, 128)
+        machine.bind()
+        boot = fs.file('/proc/sys/kernel/random/boot_id', None, 128, virtual=True)
+        boot.bind()
+        binary = fs.file('/usr/bin/findmnt', None)
+        require(binary.meta[2] & 0o111 != 0)
+        binary.bind(approval['findmnt_binary_sha256'])
+        data, run = fs.directory(DATA, 0o700), fs.directory(RUN, 0o700)
+        opt = fs.directory('/opt/autodata', 0o700)
+        mounts_identity = (identity(b.call(os.fstat, data)), identity(b.call(os.fstat, run)))
+        lock = lock_identity = state = None
+
+        def guards():
+            b.check()
+            fs.recheck()
+            validate_approval(approval, source, service, approval['service_config_sha256'], utcnow())
+            validate_host_record(accepted, approval, config, machine.read(), boot.read(), utcnow())
+            require(absent(fs, opt, 'current'))
+            socket_guards(fs)
+            binary.read()
+            runtime.validate_mount_observations(config, runtime.strict_json(probe(fs.host, binary.fd, DATA, b)),
+                                                runtime.strict_json(probe(fs.host, binary.fd, RUN, b)))
+            binary.read()
+            fs.recheck()
+            validate_host_record(accepted, approval, config, machine.read(), boot.read(), utcnow())
+            validate_approval(approval, source, service, approval['service_config_sha256'], utcnow())
+            require((identity(b.call(os.fstat, data)), identity(b.call(os.fstat, run))) == mounts_identity)
+            if lock is not None:
+                require(metadata(b.call(os.stat, 'operation.lock', dir_fd=state, follow_symlinks=False)) == lock_identity)
+                require(metadata(b.call(os.fstat, lock)) == lock_identity)
+                b.call(fcntl.flock, lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            require(absent(fs, opt, 'current'))
+            socket_guards(fs)
+            b.check()
+
+        guards()
+        require(absent(fs, run, service) and not any(name.startswith('.private-') for name in b.call(os.listdir, run)))
+        # Replay/temp checks precede stream reads and any material writes.
+        if not absent(fs, data, 'operations'):
+            operations = fs.directory(DATA + '/operations', 0o700)
+            require(absent(fs, operations, 'private-material-' + approval['authorization_id'] + '.json'))
+            require(absent(fs, operations, '.private-material-' + approval['authorization_id']))
+        state = fs.directory(RUN + '/state', 0o700, create=True)
+        lock = fs.open(os.open, 'operation.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, 0o600, dir_fd=state)
+        value = b.call(os.fstat, lock)
+        require(stat.S_ISREG(value.st_mode) and _owner(value) and value.st_nlink == 1 and stat.S_IMODE(value.st_mode) == 0o600)
+        lock_identity = metadata(value)
+        b.call(fcntl.flock, lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        guards()
+        values = parse_stream(read_stream(0, b), approval)
+        guards()
+        require(absent(fs, run, service) and absent(fs, run, '.private-' + approval['authorization_id']))
+        operations = fs.directory(DATA + '/operations', 0o700, create=True)
+        bindings = {key: output[key] for key in ('schema_version', 'operation', 'source_sha', 'service', 'authorization_id',
+                                                'started_at', 'approval_sha256', 'secret_versions') + HASH_FIELDS}
+        journal = Journal(fs, operations, approval['authorization_id'], bindings)
+        journal.persist('writing')
+        writing = True
+        output['commit_state'] = 'writing'
+        tx = Transaction(fs, run, '.private-' + approval['authorization_id'])
+        tx.start(); tx.build(values); tx.verify(values)
+        guards()
+        require(absent(fs, run, service))
+        b.check()
+        fs.host._rename_noreplace(run, tx.name, service)
+        tx.promoted = committed = True
+        output['secret_material_committed'] = True
+        output['commit_state'] = 'promoted'
+        b.check()
+        b.call(os.fsync, run)
+        guards()
+        journal.persist('promoted')
+        tx.verify(values, service)
+        guards()
+        # All writers are already closed. Keep journal/lock resources until fsync.
+        journal.persist('material_verified')
+        output['commit_state'] = 'material_verified'
+        stack.close()
+        b.check()
+        return finish(output, 0)
+    except BaseException as error:
+        code = (6 if isinstance(error, RecoveryIncomplete) else 5 if isinstance(error, Expired)
+                else 2 if isinstance(error, InvalidInput) else 3 if isinstance(error, Denied) or not writing else 4)
+        if committed and code not in (5, 6): code = 6
+        b.cleanup = True
+        try:
+            if fs is not None and tx is not None and not committed:
+                guards()
+                tx.cleanup()
+            if journal is not None:
+                guards()
+                journal.persist('incomplete')
+        except BaseException:
+            code = 6
+        try:
+            stack.close()
+        except BaseException:
+            code = 6
+        output['secret_material_committed'] = committed
+        if code == 6: output['commit_state'] = 'incomplete'
+        return finish(output, code)
 
 
 def main(argv):
