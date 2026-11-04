@@ -163,10 +163,30 @@
     "sha256": "069a03c4f9456f649c7b12a51d5f393ecc5d1f04b92e092121ab43d72e708b70"
   },
   "issue_body_unchanged": true,
-  "synchronization_verified_at": "2026-11-04T04:28:01.132963+00:00",
-  "independent_checkpoint_review": "pending",
-  "code_dispatch_authorized": false,
+  "checkpoint_pin": {
+    "id": 6622560758,
+    "url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622560758",
+    "body_sha256": "074c935d78de2a3f49471248dd786f02ab98ea0b2abd2afac2e7a24be0f4db40",
+    "checkpoint_sha": "38c6ffe420498fb3be5927df58dba6051f2df6f7",
+    "preflight": {
+      "base_sha": "38c6ffe420498fb3be5927df58dba6051f2df6f7",
+      "exit_code": 0,
+      "result": {
+        "status": "synchronized",
+        "errors": []
+      }
+    }
+  },
+  "final_synchronized_project_index": {
+    "text": "Stage1A offline trust detail6622550358: four NEW policy/identity Node files+tests; Ed25519 owner envelope, RS256 OIDC/full trust-byte revalidation; JWT.environment protected workshop-staging-publish, product staging. Uncancellable fs: bounded cleanup_failed, retained late-handle quarantine/no installed handle. Runtime bearer ALWAYS missing_dependency; no SDK/upload/factory/workflow/cloud activation. Full CURRENT boot index/detail6622382607+pin6622394314, PG offline6622351785+pin6622361427, Stage0detail6622268742+pin6622281057 and earlier staging/PG/JS details+pins preserved verbatim/hash in linked comments/canonical evidence; prior statuses/denials unchanged. Gate 38c6ffe420498fb3be5927df58dba6051f2df6f7 preflight synchronized/errors[]; pin6622560758. Independent exact review/root code-only dispatch REQUIRED. Actual roots/IDs/JWKS, toolkit advisories/buffers licensing and activation blocked. Tracking slot released.",
+    "sha256": "b37bb75e92fbb2bf448154464782067a88b2c97d2a26e376ed2fa856c95f4ec3"
+  },
+  "verified_at": "2026-11-04T04:28:33.605452+00:00",
+  "tracking_slot_released": true,
+  "synchronization_verified_at": "2026-11-04T04:28:33.605452+00:00",
   "implementation_changed": false,
   "sdk_import_performed": false,
-  "cloud_or_activation_performed": false
+  "cloud_or_activation_performed": false,
+  "code_dispatch_authorized": false,
+  "independent_checkpoint_review": "pending"
 }
