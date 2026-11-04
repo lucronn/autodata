@@ -965,14 +965,14 @@ class DTOFakeClock:
 
 
 class DTOSupervisorTests(unittest.TestCase):
-    def execute(self,blocked=None,cancel_at=None,commit_seconds=0,progress_at=None,worker_seconds=.1,resist_cleanup=False,ack_transform=None):
+    def execute(self,blocked=None,cancel_at=None,commit_seconds=0,progress_at=None,worker_seconds=.1,resist_cleanup=False,ack_transform=None,publish_error=False,progress_seconds=.1):
         clock=DTOFakeClock();actions=[];owner=self;self.handles=[];self.fake_clock=clock;self.cancel_latched=False
         class Handle:
             def __init__(self,kind,request):self.kind,self.request,self.begin=kind,request,clock();self.killed=False;self.closed=False;self.signalled=False
             def poll(self):
                 if self.signalled and resist_cleanup:return None
                 held=self.kind in blocked if isinstance(blocked,tuple) else self.kind==blocked
-                duration=worker_seconds if self.kind=='worker' else .1
+                duration=worker_seconds if self.kind=='worker' else (progress_seconds if self.kind=='progress' else .1)
                 return 0 if self.killed or (not held and clock()-self.begin>=duration) else None
             def progress_ready(self):return self.kind=='worker' and progress_at is not None and clock()>=progress_at
             def read_ack(self):
@@ -989,6 +989,7 @@ class DTOSupervisorTests(unittest.TestCase):
             actions.append(('create',kind,clock()));handle=Handle(kind,request);self.handles.append(handle);return handle
         def publish(ack,attempt,success):
             actions.append(('publish',success,attempt.state,clock()));clock.sleep(commit_seconds if success else 0)
+            if success and publish_error:raise OSError('publication fsync failed')
             return not (cancel_at is not None and clock()>=cancel_at)
         def observer(attempt):owner.attempt=attempt
         args=SimpleNamespace(output='/unused',candidate_sha='a'*40,browser='all',mode='dto-fixture',base_url='https://localhost:1')
@@ -1079,6 +1080,11 @@ class DTORevision2Schedules(DTOSupervisorTests):
         code,clock,actions=self.execute(commit_seconds=.1,cancel_at=.35)
         self.assertEqual(code,1);self.assertEqual(self.attempt.reason,'commit_uncertain')
         self.assertEqual(len([a for a in actions if a[:2]==('publish',True)]),1)
+    def test_partial_parent_publication_exception_is_uncertain_without_recovery_publish(self):
+        code,clock,actions=self.execute(publish_error=True)
+        self.assertEqual(code,1);self.assertEqual(self.attempt.reason,'commit_uncertain')
+        self.assertFalse(any(a[:2]==('create','nonpass') for a in actions))
+        self.assertEqual([a[:2] for a in actions if a[0]=='publish'],[('publish',False),('publish',True)])
     def test_lost_final_ack_never_commits(self):
         code,clock,actions=self.execute(ack_transform=lambda kind,ack:None if kind=='final' else ack)
         self.assertEqual(code,1);self.assertFalse(any(a[:2]==('publish',True) for a in actions))
@@ -1117,6 +1123,11 @@ class DTORevision2Schedules(DTOSupervisorTests):
         self.assertEqual(code,1)
         term=next(a for a in actions if a[:2]==('TERM','worker'))
         self.assertLessEqual(term[3],4380.2);self.assertEqual(term[2],'REVOKED');self.assertLessEqual(clock(),4430)
+    def test_progress_ack_at_exact_cumulative_deadline_is_expired(self):
+        code,clock,actions=self.execute(progress_at=0,worker_seconds=11,progress_seconds=10)
+        self.assertEqual(code,1);self.assertEqual(self.attempt.state,'REVOKED')
+        self.assertEqual(self.attempt.reason,'cumulative progress read/parse exhausted')
+        self.assertFalse(any(a[:2]==('publish',True) for a in actions))
     def test_F2_two_helper_cleanup_episodes(self):
         code,clock,actions=self.execute(blocked=('progress','nonpass'),progress_at=0,worker_seconds=100,resist_cleanup=True)
         self.assertEqual(code,1)

@@ -1231,8 +1231,13 @@ def supervise_dto(args,*,clock,process_factory,writer_factory,timing,sleep=time.
     def publish(ack,success,until):
         begin=clock()
         if cancelled() or begin>=until-2:raise InterruptedError('publication fence expired')
-        if not publisher(ack,attempt,success) or cancelled() or clock()>=begin+2 or clock()>=until:
-            raise RuntimeError('commit_uncertain')
+        try:
+            if not publisher(ack,attempt,success) or cancelled() or clock()>=begin+2 or clock()>=until:
+                raise RuntimeError('commit_uncertain')
+        except BaseException as error:
+            # Renames/fsync may already have changed canonical bytes. Preserve
+            # them and never schedule recovery publication after an ambiguous commit.
+            raise RuntimeError('commit_uncertain') from error
     try:
         if clock()>=init_deadline:raise TimeoutError('initialization_unverified')
         helper,request=create(writer_factory,'init')
@@ -1261,6 +1266,8 @@ def supervise_dto(args,*,clock,process_factory,writer_factory,timing,sleep=time.
                 helper,request=create(writer_factory,'progress');progress_read=True;progress_begin=now
             if helper is not None:
                 current=helper.read_ack();code=helper.poll()
+                if clock()>=progress_begin+progress_left:
+                    raise TimeoutError('cumulative progress read/parse exhausted')
                 if current is not None:
                     if progress_ack is not None:raise ValueError('duplicate progress ACK')
                     progress_ack=current
