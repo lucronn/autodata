@@ -155,3 +155,83 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/dev/test_workshop_final180
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/dev -p 'test_*.py'
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/autonomy -p 'test_*.py'
 ```
+
+## Stage B2 synthetic catalog Go-event library
+
+B2's separate authorizing checkpoint is
+`3cd99224eae7012f8c6cc0bfc15a1053a8e7762f`, descending from reviewed B1 head
+`54a7ca32eab80654310d862f0ac6957375d16e8b`. The selected application candidate
+remains `4d82e413e04fb2401ac7bc28dc828375ac662180`. The decision-complete plan and
+contract are `docs/superpowers/plans/2026-11-04-workshop-final180-stage-b2-catalog-go.md`
+and `docs/agents/specs/2026-11-04-workshop-final180-stage-b2-catalog-go.md`.
+Stage A and B1 retain their separate checkpoint identities and behavior above.
+
+`scripts/dev/workshop_final180_catalog_adapter.py` translates eight synthetic
+caller-selected `(provider, go_test_name)` slots in memory. Each of the four
+literal catalog roots has a bankone and banktwo slot, emitted in inventory order.
+`parse_catalog_events` delegates grammar only to the unchanged public B1 parser.
+`translate_catalog(cases, context)` takes exactly eight frozen `CatalogCase`
+values in a tuple, a frozen `CatalogContext` with the pinned candidate/inventory
+and a caller-claimed source-manifest digest, and directly constructed B1
+`SimulatedExit` receipts. It validates all outer schemas and byte budgets before
+parsing or hashing any slot. It has no CLI, collector, timer scheduler or callback
+runtime. The producer's Go/wait deadlines are source context; B1's identity
+180-second fake replay is not part of this catalog adapter.
+
+Each slot requires exactly one package start at the beginning, its exact root's
+run and terminal strictly inside the package interval, and a final package
+terminal. Root output is valid only between its run and terminal; package output
+is valid only inside the package interval. Duplicate/missing events, other roots,
+children or packages fail closed. Output and stderr content never supply status.
+Parser errors make that row unavailable while preserving applicable receipt
+codes; the other seven slots remain independent. Interruption makes a parsed
+row unavailable. Structural/fail/nonzero/timeout/ownership/cleanup failures take
+precedence over a valid skip. Top status is interrupted, then unavailable, then
+inconsistent for any nonpassed row, otherwise consistent.
+
+Events are bounded to 64MiB per slot, stderr to 1MiB per slot, and the combined
+bytes of all eight slots to 65MiB. The restricted B1 grammar retains its 65536
+lines, 1MiB line, depth32 and 65536-byte decoded-string bounds. There is no
+truncation or successful-prefix result. Each row retains exact SHA256 hashes and
+two literal `r3/<provider>/<root>/go-events.jsonl` / `go-stderr.log` memory refs;
+the adapter never opens those paths or asserts that artifacts exist.
+
+Raw Go bytes cannot authenticate bank identity. Identical bytes in the two bank
+slots are deliberately permitted as two synthetic context rows. A consistent
+result proves only restricted synthetic event consistency. It supplies zero
+real acceptance credit and cannot establish executed catalog cases, source
+inspection, actual Go compatibility or a complete catalog validator.
+
+`serialize_catalog_diagnostic` revalidates the exact eight ordered IDs and refs,
+concrete field types, digest shapes, fixed failure vocabulary/order, derived row
+and top statuses, disabled profiles and every authority pair. It returns compact
+sorted-key ASCII-escaped UTF8 JSON with exactly one LF, bounded to 65536 bytes,
+under contract `workshop-final180-catalog-go-synthetic-v1` and observation kind
+`simulated-source-profile-validation`. Rejected claims raise stable
+`AdapterError('diagnostic_invalid')` without partial bytes. All diagnostics have
+exact integer `accepted_case_credit=0`, `profiles_enabled=false`, empty enabled
+tiers and all nine authorities false. Coordinating runtime lock and run record
+remain null. No acceptance envelope or full180 observations document is emitted.
+
+Complete catalog validation still requires separately admitted JUnit/result/
+process/environment/manifest identity bindings, nested raw document/JSONB
+semantics, and a typed inventory of dynamic support artifacts. Real runtime
+supervision, actual tools/images/cache/storage/operator facts, genuine final180
+execution, independently registered profiles and profile promotion remain
+separate gates. Synthetic unit results authorize none of those actions.
+
+Run the offline catalog suite alongside the unchanged predecessor suites:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/dev/test_workshop_final180_catalog_adapter.py -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/dev/test_workshop_final180_identity_adapter.py -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/dev/test_workshop_final180_runner.py -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/dev -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/autonomy -p 'test_*.py'
+git diff --check
+```
+
+The catalog tests use constructed fake JSONL/receipts and audit the adapter's
+static import/call boundary. Before handing off, compile changed Python source
+in memory without bytecode, check the exact three-path diff allowlist against
+the B2 checkpoint, and verify Stage A/B1 modules and tests remain byte-identical.

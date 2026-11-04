@@ -230,6 +230,216 @@ class TranslationTests(unittest.TestCase):
                 adapter.parse_catalog_events(raw)
         self.assertEqual(len(adapter.parse_catalog_events(event('pass')*65536)),65536)
         self.assertEqual(adapter.parse_catalog_events(event('output',Output='x'*65536))[0].output,'x'*65536)
+        # JSON whitespace reaches the inclusive line/byte ceilings without
+        # violating decoded-string limits or substituting a fake parser.
+        line = event('pass').rstrip(b'\n')
+        self.assertEqual(len(adapter.parse_catalog_events(line+b' '*(1048576-len(line)))),1)
+        rows = [event('start'),event('run',ROOTS[0])]
+        rows += [event('output',ROOTS[0],Output='synthetic')] * 60
+        rows += [event('pass',ROOTS[0]),event('pass')]
+        at_limit = b''.join(row[:-1]+b' '*(1048575-len(row[:-1]))+b'\n' for row in rows)
+        self.assertEqual(len(at_limit),67108864)
+        self.assertEqual(self.row(events_raw=at_limit).status,'passed')
+
+
+    def test_explicit_grammar_rejection_codes_and_scalar_boundaries(self):
+        valid = event('pass')
+        bad = (
+            (valid+b'\n', 'line_delimiter'), (valid+b'\n'+valid, 'line_delimiter'),
+            (valid.replace(b'synthetic', b'syn\rthetic'), 'line_delimiter'),
+            (b'\xef\xbb\xbf'+valid, 'json_invalid'), (b'\xff', 'json_invalid'),
+            (b'{"Time":"x","Action":"pass","Package":"p","Time":"y"}', 'json_duplicate_key'),
+            (b'{"x":{"a":1,"a":2}}', 'json_duplicate_key'),
+            (b'{"x":NaN}', 'json_nonfinite'), (b'{"x":-Infinity}', 'json_nonfinite'),
+            (event('pass',Elapsed=float('inf')), 'json_nonfinite'),
+            (event('pass',Elapsed=1e309), 'json_nonfinite'),
+            (b'{"x":"\\ud800"}', 'json_string'),
+            (event('output',Output='x'*65537), 'json_string'),
+            (event('pass',Time=None), 'event_type'), (b'null', 'event_type'),
+            (event('run',''), 'event_type'), (event('run','x'*257), 'event_type'),
+            (event('pass',Package='x'*257), 'event_type'),
+            (event('fail',ROOTS[0],FailedBuild='build'), 'event_type'),
+            (event('fail',FailedBuild='x'*1025), 'event_type'),
+            (event('pass',Elapsed=-1), 'event_type'),
+            (b'{"x":'+b'['*32+b'0'+b']'*32+b'}', 'json_depth'))
+        for raw, code in bad:
+            with self.subTest(code=code,raw=raw[:100]):
+                with self.assertRaisesRegex(AdapterError,'^'+code+'$'):
+                    adapter.parse_catalog_events(raw)
+        for raw in (event('pass',Time='x'*128,Package='x'*256), event('run','x'*256),
+                    event('fail',FailedBuild='x'*1024),event('output',Output=''),
+                    event('pass',Elapsed=0),event('pass',Elapsed=86400.0)):
+            self.assertEqual(len(adapter.parse_catalog_events(raw)),1)
+        # Depth32 is admitted structurally, then rejected for its unsupported field.
+        with self.assertRaisesRegex(AdapterError,'^event_keys$'):
+            adapter.parse_catalog_events(b'{"x":'+b'['*31+b'0'+b']'*31+b'}')
+
+    def test_semantic_and_receipt_failures_have_fixed_order(self):
+        root = ROOTS[0]
+        raw = event('start',Package='foreign')+event('run',root+'/child')
+        raw += event('skip',root)+event('fail',root)+event('skip')+event('fail')
+        row = self.row(events_raw=raw,receipt=SimulatedExit(1,True,False,True,False))
+        self.assertEqual(row.status,'failed')
+        self.assertEqual(row.failures,('package_mismatch','unknown_test','package_lifecycle',
+            'root_lifecycle','root_failed','root_skipped','package_failed','package_skipped',
+            'simulated_nonzero','simulated_timeout','ownership_lost','cleanup_incomplete'))
+
+    def test_receipt_schema_checks_all_flags_and_exact_classes(self):
+        for field in ('timed_out','interrupted','ownership_lost','cleanup_complete'):
+            self.rejects('receipt_invalid',cases=(replace(self.cases[0],receipt=replace(NORMAL,**{field:1})),)+self.cases[1:])
+        class ForeignCase(adapter.CatalogCase):
+            pass
+        class ForeignContext(adapter.CatalogContext):
+            pass
+        class ForeignExit(SimulatedExit):
+            pass
+        self.rejects('cases_invalid',cases=(ForeignCase(**self.cases[0].__dict__),)+self.cases[1:])
+        self.rejects('context_invalid',context=ForeignContext(**self.context.__dict__))
+        self.rejects('receipt_invalid',cases=(replace(self.cases[0],receipt=ForeignExit(**NORMAL.__dict__)),)+self.cases[1:])
+
+
+class SerializationTests(unittest.TestCase):
+    setUp = TranslationTests.setUp
+
+    def diagnostic(self):
+        return adapter.translate_catalog(self.cases, self.context)
+
+    def assert_invalid(self, value):
+        with self.assertRaisesRegex(AdapterError, '^diagnostic_invalid$'):
+            adapter.serialize_catalog_diagnostic(value)
+
+    def test_serializer_exists(self):
+        self.assertTrue(callable(getattr(adapter, 'serialize_catalog_diagnostic', None)),
+                        'strict catalog serializer implementation is absent')
+
+    def test_canonical_roundtrip_order_ascii_lf_and_size(self):
+        value = self.diagnostic()
+        raw = adapter.serialize_catalog_diagnostic(value)
+        self.assertEqual(raw, adapter.serialize_catalog_diagnostic(
+            adapter.translate_catalog(tuple(reversed(self.cases)), self.context)))
+        obj = json.loads(raw)
+        self.assertEqual(raw, (json.dumps(obj, sort_keys=True, separators=(',', ':'),
+                                         ensure_ascii=True, allow_nan=False)+'\n').encode('utf-8'))
+        self.assertLessEqual(len(raw), 65536)
+        self.assertEqual(raw.count(b'\n'), 1)
+        self.assertTrue(raw.isascii())
+        self.assertEqual(obj['accepted_case_credit'], 0)
+        self.assertEqual(obj['enabled_tiers'], [])
+        self.assertEqual(len(obj['authority']), 9)
+        self.assertEqual(set(obj), set(adapter.CatalogDiagnostic.__dataclass_fields__))
+        self.assertEqual(set(obj['observations'][0]), set(adapter.CatalogOutcome.__dataclass_fields__))
+
+    def test_every_authority_pair_and_top_claim_is_revalidated(self):
+        value = self.diagnostic()
+        for i in range(9):
+            pairs = list(value.authority)
+            pairs[i] = (pairs[i][0], True)
+            self.assert_invalid(replace(value, authority=tuple(pairs)))
+        for changes in (
+            {'accepted_case_credit': 1}, {'accepted_case_credit': True},
+            {'profiles_enabled': True}, {'profiles_enabled': 0}, {'enabled_tiers': ('x',)},
+            {'enabled_tiers': []}, {'authority': dict(value.authority)},
+            {'authority': tuple(reversed(value.authority))}, {'authority': value.authority[:-1]},
+            {'authority': (('extra', False),)+value.authority[1:]},
+            {'authority': ((value.authority[0][0], 0),)+value.authority[1:]},
+            {'contract': 'other'}, {'observation_kind': 'genuine-run'},
+            {'candidate_sha': '0'*40}, {'inventory_sha256': '0'*64},
+            {'source_manifest_sha256': 'A'*64}, {'status': 'interrupted'},
+            {'observations': tuple(reversed(value.observations))},
+            {'observations': value.observations[:-1]}, {'observations': list(value.observations)},
+            {'observations': value.observations+value.observations[:1]}):
+            with self.subTest(changes=changes):
+                self.assert_invalid(replace(value, **changes))
+        self.assert_invalid(None)
+        self.assert_invalid({})
+
+    def test_row_schema_refs_digests_and_failure_lists_are_revalidated(self):
+        value = self.diagnostic()
+        row = value.observations[0]
+        for changes in (
+            {'family':'identity'}, {'logical_id': IDS[1]}, {'logical_id': IDS[0]+'/child'},
+            {'raw_refs':tuple(reversed(row.raw_refs))}, {'raw_refs':list(row.raw_refs)},
+            {'raw_refs':('elsewhere',row.raw_refs[1])}, {'raw_refs':row.raw_refs+('extra',)},
+            {'events_sha256':'A'*64}, {'stderr_sha256':'0'*63}, {'events_sha256':True},
+            {'status':'skipped'}, {'status':False}, {'failures':[]},
+            {'failures':('unknown',)}, {'failures':('root_failed','root_failed')},
+            {'failures':('simulated_timeout','root_failed')},
+            {'failures':('events_count','json_invalid')},
+            {'failures':('events_count','root_failed')}, {'failures':(True,)},
+            {'failures':(['unhashable'],)}):
+            with self.subTest(changes=changes):
+                bad_row = replace(row, **changes)
+                self.assert_invalid(replace(value,observations=(bad_row,)+value.observations[1:]))
+        self.assert_invalid(replace(value,observations=(None,)+value.observations[1:]))
+
+    def test_serializer_derives_row_and_top_status_from_failures(self):
+        value = self.diagnostic()
+        for failures, row_status, top in (
+            ((), 'passed', 'consistent'),
+            (('events_count',), 'unavailable','unavailable'),
+            (('events_count','simulated_interrupted'), 'unavailable','interrupted'),
+            (('root_failed','simulated_interrupted'), 'unavailable','interrupted'),
+            (('root_skipped',),'skipped','inconsistent'),
+            (('root_skipped','simulated_nonzero'),'failed','inconsistent'),
+            (('package_failed',),'failed','inconsistent')):
+            row = replace(value.observations[0],failures=failures,status=row_status)
+            diagnostic = replace(value,observations=(row,)+value.observations[1:],status=top)
+            self.assertEqual(json.loads(adapter.serialize_catalog_diagnostic(diagnostic))['status'],top)
+            self.assert_invalid(replace(diagnostic,status='fabricated'))
+            bad = replace(row,status='failed' if row_status != 'failed' else 'passed')
+            self.assert_invalid(replace(diagnostic,observations=(bad,)+value.observations[1:]))
+        # An interrupted slot dominates another unavailable malformed slot.
+        cases = (replace(self.cases[0],events_raw=b''),
+                 replace(self.cases[1],receipt=replace(NORMAL,interrupted=True)))+self.cases[2:]
+        diagnostic = adapter.translate_catalog(cases,self.context)
+        self.assertEqual(json.loads(adapter.serialize_catalog_diagnostic(diagnostic))['status'],'interrupted')
+
+    def test_frozen_types_and_concrete_type_admission(self):
+        from dataclasses import FrozenInstanceError
+        for value, field in ((self.context,'candidate_sha'), (self.cases[0],'provider'),
+                             (self.diagnostic(),'status'), (self.diagnostic().observations[0],'status')):
+            with self.assertRaises(FrozenInstanceError):
+                setattr(value,field,'changed')
+        class ForeignDiagnostic(adapter.CatalogDiagnostic):
+            pass
+        value = self.diagnostic()
+        self.assert_invalid(ForeignDiagnostic(**value.__dict__))
+
+    def test_static_import_and_call_boundary(self):
+        source = Path(adapter.__file__).read_text()
+        tree = ast.parse(source)
+        expected_imports = {'hashlib','json','re'}
+        expected_from = {
+            'dataclasses': {'dataclass'},
+            'scripts.dev.workshop_final180_identity_adapter': {
+                'parse_identity_events','GoEvent','AdapterError','SimulatedExit'}}
+        seen_imports = set()
+        seen_from = {}
+        functions = {node.name for node in ast.walk(tree) if isinstance(node,(ast.FunctionDef,ast.ClassDef))}
+        allowed_names = functions | {'dataclass','type','all','any','len','tuple','set','sum','str',
+                                    'enumerate','zip','dict','sorted','parse_identity_events','AdapterError'}
+        allowed_attrs = {'fullmatch','sha256','hexdigest','append','add','dumps','encode','index'}
+        forbidden_names = {'open','eval','exec','getattr','__import__','compile','input','breakpoint'}
+        for node in ast.walk(tree):
+            if isinstance(node,ast.Import):
+                for alias in node.names:
+                    self.assertIsNone(alias.asname)
+                    seen_imports.add(alias.name)
+            elif isinstance(node,ast.ImportFrom):
+                seen_from[node.module] = {alias.name for alias in node.names}
+                self.assertTrue(all(alias.asname is None for alias in node.names))
+            elif isinstance(node,ast.Call):
+                if isinstance(node.func,ast.Name):
+                    self.assertNotIn(node.func.id,forbidden_names)
+                    self.assertIn(node.func.id,allowed_names)
+                elif isinstance(node.func,ast.Attribute):
+                    self.assertIn(node.func.attr,allowed_attrs)
+                else:
+                    self.fail('dynamic or callback call')
+            elif isinstance(node,ast.Name):
+                self.assertNotEqual(node.id,'__name__')
+        self.assertEqual(seen_imports,expected_imports)
+        self.assertEqual(seen_from,expected_from)
 
 
 if __name__ == '__main__':

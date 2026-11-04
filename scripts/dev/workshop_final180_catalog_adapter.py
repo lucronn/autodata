@@ -243,3 +243,66 @@ def translate_catalog(cases: tuple[CatalogCase, ...], context: CatalogContext) -
         'workshop-final180-catalog-go-synthetic-v1', 'simulated-source-profile-validation',
         context.candidate_sha, context.inventory_sha256, context.source_manifest_sha256,
         _top_status(rows), tuple(rows), 0, False, (), AUTHORITY)
+
+
+def _validate_failures(failures):
+    order = PARSER_CODES + SEMANTIC_CODES
+    _require(type(failures) is tuple and len(failures) <= len(order)
+             and all(type(code) is str and code in order for code in failures),
+             'diagnostic_invalid')
+    _require(len(set(failures)) == len(failures)
+             and failures == tuple(sorted(failures, key=order.index)), 'diagnostic_invalid')
+    parser_codes = tuple(code for code in failures if code in PARSER_CODES)
+    _require(len(parser_codes) <= 1, 'diagnostic_invalid')
+    if parser_codes:
+        _require(all(code in RECEIPT_CODES for code in failures[1:]), 'diagnostic_invalid')
+
+
+def serialize_catalog_diagnostic(value: CatalogDiagnostic) -> bytes:
+    """Revalidate every claim before producing bounded canonical diagnostic bytes."""
+    _require(type(value) is CatalogDiagnostic, 'diagnostic_invalid')
+    _require(type(value.contract) is str
+             and value.contract == 'workshop-final180-catalog-go-synthetic-v1'
+             and type(value.observation_kind) is str
+             and value.observation_kind == 'simulated-source-profile-validation',
+             'diagnostic_invalid')
+    _require(type(value.candidate_sha) is str and value.candidate_sha == CANDIDATE
+             and type(value.inventory_sha256) is str and value.inventory_sha256 == INVENTORY
+             and _digest(value.source_manifest_sha256), 'diagnostic_invalid')
+    _require(type(value.accepted_case_credit) is int and value.accepted_case_credit == 0
+             and value.profiles_enabled is False and type(value.enabled_tiers) is tuple
+             and value.enabled_tiers == (), 'diagnostic_invalid')
+    _require(type(value.authority) is tuple and len(value.authority) == 9, 'diagnostic_invalid')
+    for pair, expected in zip(value.authority, AUTHORITY):
+        _require(type(pair) is tuple and len(pair) == 2 and type(pair[0]) is str
+                 and pair[0] == expected[0] and pair[1] is False, 'diagnostic_invalid')
+    _require(type(value.observations) is tuple and len(value.observations) == 8,
+             'diagnostic_invalid')
+    observations = []
+    for row, slot in zip(value.observations, SLOTS):
+        _require(type(row) is CatalogOutcome, 'diagnostic_invalid')
+        _require(type(row.family) is str and row.family == 'catalog'
+                 and type(row.logical_id) is str and row.logical_id == slot[2]
+                 and type(row.raw_refs) is tuple and len(row.raw_refs) == 2
+                 and all(type(ref) is str and ref == expected
+                         for ref, expected in zip(row.raw_refs, slot[3]))
+                 and _digest(row.events_sha256) and _digest(row.stderr_sha256),
+                 'diagnostic_invalid')
+        _validate_failures(row.failures)
+        _require(type(row.status) is str and row.status == _row_status(row.failures),
+                 'diagnostic_invalid')
+        observations.append(dict(family=row.family, logical_id=row.logical_id,
+                                 status=row.status, raw_refs=row.raw_refs,
+                                 events_sha256=row.events_sha256, stderr_sha256=row.stderr_sha256,
+                                 failures=row.failures))
+    _require(type(value.status) is str and value.status == _top_status(value.observations),
+             'diagnostic_invalid')
+    obj = dict(contract=value.contract, observation_kind=value.observation_kind,
+               candidate_sha=value.candidate_sha, inventory_sha256=value.inventory_sha256,
+               source_manifest_sha256=value.source_manifest_sha256, status=value.status,
+               observations=observations, accepted_case_credit=0, profiles_enabled=False,
+               enabled_tiers=(), authority=dict(value.authority))
+    encoded = (json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=True,
+                          allow_nan=False) + '\n').encode('utf-8')
+    _require(len(encoded) <= 65536, 'diagnostic_invalid')
+    return encoded
