@@ -1,0 +1,16 @@
+{
+  "task_id": "workshop-reviewed-leaves-completion",
+  "state": "offline_completed_docs_tracking_synchronized",
+  "candidate_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-reviewed-leaves-completion.json",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-reviewed-leaves-integration.md",
+  "todo": [
+    "Preserve full current Issue body/all121 prior comments and Project item/field bytes and hashes.",
+    "Verify exact integrated head, all23 implementation/all59 historical pins, offline evidence hashes and coordinator-relayed independent review.",
+    "Append a completion detail to Issue186 and compact only the Project source index within1024 characters, retaining PG completion detail/pin and PR198; leave Issue body/history/other Project fields unchanged.",
+    "Read back complete tracking, commit/push docs-only completion checkpoint and run exact full-SHA preflight.",
+    "Append exact checkpoint/preflight pin and retain final readback in a receipt commit; no future implementation or runtime authority."
+  ],
+  "future_implementation_authorized": false,
+  "completion_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6623150233"
+}

@@ -1,0 +1,862 @@
+TAP version 13
+# Subtest: helper contract is implemented
+ok 1 - helper contract is implemented
+  ---
+  duration_ms: 1.250117
+  type: 'test'
+  ...
+# Subtest: fixed single-file upload derives current session evidence and verifies original outer bytes
+ok 2 - fixed single-file upload derives current session evidence and verifies original outer bytes
+  ---
+  duration_ms: 47.889155
+  type: 'test'
+  ...
+# Subtest: terminal SDK digestMismatch true
+ok 3 - terminal SDK digestMismatch true
+  ---
+  duration_ms: 31.95955
+  type: 'test'
+  ...
+# Subtest: terminal SDK digestMismatch 0
+ok 4 - terminal SDK digestMismatch 0
+  ---
+  duration_ms: 29.362169
+  type: 'test'
+  ...
+# Subtest: terminal SDK digestMismatch "false"
+ok 5 - terminal SDK digestMismatch "false"
+  ---
+  duration_ms: 33.051884
+  type: 'test'
+  ...
+# Subtest: terminal SDK digestMismatch null
+ok 6 - terminal SDK digestMismatch null
+  ---
+  duration_ms: 31.173036
+  type: 'test'
+  ...
+# Subtest: reject SDK ID/digest {"id":987}
+ok 7 - reject SDK ID/digest {"id":987}
+  ---
+  duration_ms: 30.519026
+  type: 'test'
+  ...
+# Subtest: reject SDK ID/digest {"id":true,"digest":"ac483ce0b5ce18bdd2ff0b273adf9440e40ff07a963ee50af74bd217c5b76e3d"}
+ok 8 - reject SDK ID/digest {"id":true,"digest":"ac483ce0b5ce18bdd2ff0b273adf9440e40ff07a963ee50af74bd217c5b76e3d"}
+  ---
+  duration_ms: 29.769704
+  type: 'test'
+  ...
+# Subtest: reject SDK ID/digest {"id":0,"digest":"ac483ce0b5ce18bdd2ff0b273adf9440e40ff07a963ee50af74bd217c5b76e3d"}
+ok 9 - reject SDK ID/digest {"id":0,"digest":"ac483ce0b5ce18bdd2ff0b273adf9440e40ff07a963ee50af74bd217c5b76e3d"}
+  ---
+  duration_ms: 30.460093
+  type: 'test'
+  ...
+# Subtest: reject SDK ID/digest {"id":9007199254740992,"digest":"ac483ce0b5ce18bdd2ff0b273adf9440e40ff07a963ee50af74bd217c5b76e3d"}
+ok 10 - reject SDK ID/digest {"id":9007199254740992,"digest":"ac483ce0b5ce18bdd2ff0b273adf9440e40ff07a963ee50af74bd217c5b76e3d"}
+  ---
+  duration_ms: 37.60949
+  type: 'test'
+  ...
+# Subtest: reject SDK ID/digest {"id":987,"digest":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+ok 11 - reject SDK ID/digest {"id":987,"digest":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+  ---
+  duration_ms: 30.889781
+  type: 'test'
+  ...
+# Subtest: reject SDK ID/digest {"id":987,"digest":"a00276e6d718609447d2a70edd2c816cdd66bc61a9524acdf5454156028879cd"}
+ok 12 - reject SDK ID/digest {"id":987,"digest":"a00276e6d718609447d2a70edd2c816cdd66bc61a9524acdf5454156028879cd"}
+  ---
+  duration_ms: 36.575898
+  type: 'test'
+  ...
+# Subtest: reject readback drift artifact_id
+ok 13 - reject readback drift artifact_id
+  ---
+  duration_ms: 28.243556
+  type: 'test'
+  ...
+# Subtest: reject readback drift artifact_name
+ok 14 - reject readback drift artifact_name
+  ---
+  duration_ms: 31.909584
+  type: 'test'
+  ...
+# Subtest: reject readback drift digest
+ok 15 - reject readback drift digest
+  ---
+  duration_ms: 31.37771
+  type: 'test'
+  ...
+# Subtest: reject readback drift outer_bytes
+ok 16 - reject readback drift outer_bytes
+  ---
+  duration_ms: 31.766978
+  type: 'test'
+  ...
+# Subtest: reject readback drift archive_bytes
+ok 17 - reject readback drift archive_bytes
+  ---
+  duration_ms: 28.953732
+  type: 'test'
+  ...
+# Subtest: reject readback drift expired
+ok 18 - reject readback drift expired
+  ---
+  duration_ms: 28.143422
+  type: 'test'
+  ...
+# Subtest: reject readback drift expired
+ok 19 - reject readback drift expired
+  ---
+  duration_ms: 27.80544
+  type: 'test'
+  ...
+# Subtest: reject readback drift expires_at
+ok 20 - reject readback drift expires_at
+  ---
+  duration_ms: 30.109748
+  type: 'test'
+  ...
+# Subtest: reject readback drift created_at
+ok 21 - reject readback drift created_at
+  ---
+  duration_ms: 28.994941
+  type: 'test'
+  ...
+# Subtest: reject readback drift created_at
+ok 22 - reject readback drift created_at
+  ---
+  duration_ms: 28.403272
+  type: 'test'
+  ...
+# Subtest: reject authenticated runtime run_id mismatch before upload
+ok 23 - reject authenticated runtime run_id mismatch before upload
+  ---
+  duration_ms: 1.738318
+  type: 'test'
+  ...
+# Subtest: reject authenticated runtime run_attempt mismatch before upload
+ok 24 - reject authenticated runtime run_attempt mismatch before upload
+  ---
+  duration_ms: 1.223035
+  type: 'test'
+  ...
+# Subtest: reject authenticated runtime repository_id mismatch before upload
+ok 25 - reject authenticated runtime repository_id mismatch before upload
+  ---
+  duration_ms: 1.108985
+  type: 'test'
+  ...
+# Subtest: reject authenticated runtime repository_owner_id mismatch before upload
+ok 26 - reject authenticated runtime repository_owner_id mismatch before upload
+  ---
+  duration_ms: 1.260257
+  type: 'test'
+  ...
+# Subtest: reject authenticated runtime runtime_service_origin mismatch before upload
+ok 27 - reject authenticated runtime runtime_service_origin mismatch before upload
+  ---
+  duration_ms: 2.690531
+  type: 'test'
+  ...
+# Subtest: reject runtime URL http://results.example.invalid/
+ok 28 - reject runtime URL http://results.example.invalid/
+  ---
+  duration_ms: 1.030294
+  type: 'test'
+  ...
+# Subtest: reject runtime URL https://results.example.invalid.evil/
+ok 29 - reject runtime URL https://results.example.invalid.evil/
+  ---
+  duration_ms: 0.753771
+  type: 'test'
+  ...
+# Subtest: reject runtime URL https://user@results.example.invalid/
+ok 30 - reject runtime URL https://user@results.example.invalid/
+  ---
+  duration_ms: 0.685721
+  type: 'test'
+  ...
+# Subtest: reject runtime URL https://results.example.invalid:444/
+ok 31 - reject runtime URL https://results.example.invalid:444/
+  ---
+  duration_ms: 0.665692
+  type: 'test'
+  ...
+# Subtest: reject runtime URL https://results.example.invalid/?token=secret
+ok 32 - reject runtime URL https://results.example.invalid/?token=secret
+  ---
+  duration_ms: 0.699186
+  type: 'test'
+  ...
+# Subtest: reject runtime URL https://127.0.0.1/
+ok 33 - reject runtime URL https://127.0.0.1/
+  ---
+  duration_ms: 0.70117
+  type: 'test'
+  ...
+# Subtest: missing pin policy rejects before credential hook or toolkit
+ok 34 - missing pin policy rejects before credential hook or toolkit
+  ---
+  duration_ms: 0.754963
+  type: 'test'
+  ...
+# Subtest: fixed cwd rejects extra file before credential hook
+ok 35 - fixed cwd rejects extra file before credential hook
+  ---
+  duration_ms: 1.021187
+  type: 'test'
+  ...
+# Subtest: reject private archive symlink
+ok 36 - reject private archive symlink
+  ---
+  duration_ms: 1.331103
+  type: 'test'
+  ...
+# Subtest: reject private archive hardlink
+ok 37 - reject private archive hardlink
+  ---
+  duration_ms: 1.2468
+  type: 'test'
+  ...
+# Subtest: reject private archive mode
+ok 38 - reject private archive mode
+  ---
+  duration_ms: 0.941223
+  type: 'test'
+  ...
+# Subtest: reject private archive special-mode
+ok 39 - reject private archive special-mode
+  ---
+  duration_ms: 0.948877
+  type: 'test'
+  ...
+# Subtest: reject private archive directory
+ok 40 - reject private archive directory
+  ---
+  duration_ms: 1.203287
+  type: 'test'
+  ...
+# Subtest: reject private archive size
+ok 41 - reject private archive size
+  ---
+  duration_ms: 1.233275
+  type: 'test'
+  ...
+# Subtest: cancellation aborts in-flight upload and invokes bounded cleanup
+ok 42 - cancellation aborts in-flight upload and invokes bounded cleanup
+  ---
+  duration_ms: 29.164748
+  type: 'test'
+  ...
+# Subtest: deadline preserves cleanup reserve before opening upload
+ok 43 - deadline preserves cleanup reserve before opening upload
+  ---
+  duration_ms: 1.291116
+  type: 'test'
+  ...
+# Subtest: errors are fixed and cleanup failure cannot report success
+ok 44 - errors are fixed and cleanup failure cannot report success
+  ---
+  duration_ms: 29.433163
+  type: 'test'
+  ...
+# Subtest: strict IPC rejects duplicate, unknown, invalid UTF8 and oversized JSON
+ok 45 - strict IPC rejects duplicate, unknown, invalid UTF8 and oversized JSON
+  ---
+  duration_ms: 0.627508
+  type: 'test'
+  ...
+# Subtest: direct invocation stays blocked and emits only fixed redacted JSON
+ok 46 - direct invocation stays blocked and emits only fixed redacted JSON
+  ---
+  duration_ms: 29.906768
+  type: 'test'
+  ...
+# Subtest: official loader cannot acquire ambient credentials or load a package without owner pins
+ok 47 - official loader cannot acquire ambient credentials or load a package without owner pins
+  ---
+  duration_ms: 0.762859
+  type: 'test'
+  ...
+# Subtest: reviewed lock has only exact HTTPS integrity-pinned packages and no install scripts
+ok 48 - reviewed lock has only exact HTTPS integrity-pinned packages and no install scripts
+  ---
+  duration_ms: 3.790088
+  type: 'test'
+  ...
+# Subtest: toolkit stdout and stderr are discarded rather than entering private JSON IPC
+ok 49 - toolkit stdout and stderr are discarded rather than entering private JSON IPC
+  ---
+  duration_ms: 30.424693
+  type: 'test'
+  ...
+# Subtest: combined toolkit output limit rejects and still invokes cleanup
+ok 50 - combined toolkit output limit rejects and still invokes cleanup
+  ---
+  duration_ms: 26.957869
+  type: 'test'
+  ...
+# Subtest: SDK size must equal measured raw archive bytes (undefined)
+ok 51 - SDK size must equal measured raw archive bytes (undefined)
+  ---
+  duration_ms: 30.302167
+  type: 'test'
+  ...
+# Subtest: SDK size must equal measured raw archive bytes (true)
+ok 52 - SDK size must equal measured raw archive bytes (true)
+  ---
+  duration_ms: 29.862532
+  type: 'test'
+  ...
+# Subtest: SDK size must equal measured raw archive bytes (0)
+ok 53 - SDK size must equal measured raw archive bytes (0)
+  ---
+  duration_ms: 28.353396
+  type: 'test'
+  ...
+# Subtest: SDK size must equal measured raw archive bytes (31)
+ok 54 - SDK size must equal measured raw archive bytes (31)
+  ---
+  duration_ms: 29.787386
+  type: 'test'
+  ...
+# Subtest: trusted clock with fractional milliseconds produces canonical second-resolution UTC evidence
+ok 55 - trusted clock with fractional milliseconds produces canonical second-resolution UTC evidence
+  ---
+  duration_ms: 29.112197
+  type: 'test'
+  ...
+# Subtest: complete owner-selected installed tree accepts original bytes without importing
+ok 56 - complete owner-selected installed tree accepts original bytes without importing
+  ---
+  duration_ms: 12.268803
+  type: 'test'
+  ...
+# Subtest: metadata-preserving replacement rejects before import: node_modules/@actions/artifact/lib/artifact.js
+ok 57 - metadata-preserving replacement rejects before import: node_modules/@actions/artifact/lib/artifact.js
+  ---
+  duration_ms: 4.233512
+  type: 'test'
+  ...
+# Subtest: metadata-preserving replacement rejects before import: node_modules/transitive/index.js
+ok 58 - metadata-preserving replacement rejects before import: node_modules/transitive/index.js
+  ---
+  duration_ms: 7.597179
+  type: 'test'
+  ...
+# Subtest: installed tree rejects writable-dir
+ok 59 - installed tree rejects writable-dir
+  ---
+  duration_ms: 3.896042
+  type: 'test'
+  ...
+# Subtest: installed tree rejects extra-dir
+ok 60 - installed tree rejects extra-dir
+  ---
+  duration_ms: 5.765711
+  type: 'test'
+  ...
+# Subtest: installed tree rejects special-mode
+ok 61 - installed tree rejects special-mode
+  ---
+  duration_ms: 5.90957
+  type: 'test'
+  ...
+# Subtest: installed tree rejects extra
+ok 62 - installed tree rejects extra
+  ---
+  duration_ms: 4.327273
+  type: 'test'
+  ...
+# Subtest: installed tree rejects missing
+ok 63 - installed tree rejects missing
+  ---
+  duration_ms: 8.187795
+  type: 'test'
+  ...
+# Subtest: installed tree rejects symlink
+ok 64 - installed tree rejects symlink
+  ---
+  duration_ms: 4.80931
+  type: 'test'
+  ...
+# Subtest: installed tree rejects hardlink
+ok 65 - installed tree rejects hardlink
+  ---
+  duration_ms: 4.685242
+  type: 'test'
+  ...
+# Subtest: installed tree rejects duplicate-key
+ok 66 - installed tree rejects duplicate-key
+  ---
+  duration_ms: 3.728079
+  type: 'test'
+  ...
+# Subtest: installed tree rejects duplicate-path
+ok 67 - installed tree rejects duplicate-path
+  ---
+  duration_ms: 3.629128
+  type: 'test'
+  ...
+# Subtest: installed tree rejects lock
+ok 68 - installed tree rejects lock
+  ---
+  duration_ms: 5.774908
+  type: 'test'
+  ...
+# Subtest: installed tree rejects approval
+ok 69 - installed tree rejects approval
+  ---
+  duration_ms: 3.10535
+  type: 'test'
+  ...
+# Subtest: installed tree rejects writable
+ok 70 - installed tree rejects writable
+  ---
+  duration_ms: 3.992177
+  type: 'test'
+  ...
+# Subtest: effective read-only mount rejects writable covers and nested mounts
+ok 71 - effective read-only mount rejects writable covers and nested mounts
+  ---
+  duration_ms: 0.470155
+  type: 'test'
+  ...
+# Subtest: FIFO archive rejects promptly without credential hook and completes cleanup
+ok 72 - FIFO archive rejects promptly without credential hook and completes cleanup
+  ---
+  duration_ms: 38.193984
+  type: 'test'
+  ...
+# Subtest: real child abort terminates before late output and completion marker
+ok 73 - real child abort terminates before late output and completion marker
+  ---
+  duration_ms: 3834.367827
+  type: 'test'
+  ...
+# Subtest: real child deadline terminates before late output and completion marker
+ok 74 - real child deadline terminates before late output and completion marker
+  ---
+  duration_ms: 3839.784851
+  type: 'test'
+  ...
+# Subtest: real child overflow terminates before late output and completion marker
+ok 75 - real child overflow terminates before late output and completion marker
+  ---
+  duration_ms: 3833.851148
+  type: 'test'
+  ...
+# Subtest: owned child rejects missing and closes actual pipes
+ok 76 - owned child rejects missing and closes actual pipes
+  ---
+  duration_ms: 26.571735
+  type: 'test'
+  ...
+# Subtest: owned child rejects duplicate and closes actual pipes
+ok 77 - owned child rejects duplicate and closes actual pipes
+  ---
+  duration_ms: 31.708756
+  type: 'test'
+  ...
+# Subtest: owned child rejects truncated and closes actual pipes
+ok 78 - owned child rejects truncated and closes actual pipes
+  ---
+  duration_ms: 28.174953
+  type: 'test'
+  ...
+# Subtest: owned child rejects oversized and closes actual pipes
+ok 79 - owned child rejects oversized and closes actual pipes
+  ---
+  duration_ms: 27.012314
+  type: 'test'
+  ...
+# Subtest: owned child rejects stderr and closes actual pipes
+ok 80 - owned child rejects stderr and closes actual pipes
+  ---
+  duration_ms: 26.446816
+  type: 'test'
+  ...
+# Subtest: owned child rejects combined and closes actual pipes
+ok 81 - owned child rejects combined and closes actual pipes
+  ---
+  duration_ms: 28.0704
+  type: 'test'
+  ...
+# Subtest: owned child rejects nonzero and closes actual pipes
+ok 82 - owned child rejects nonzero and closes actual pipes
+  ---
+  duration_ms: 26.499779
+  type: 'test'
+  ...
+# Subtest: owned child rejects held-pipe and closes actual pipes
+ok 83 - owned child rejects held-pipe and closes actual pipes
+  ---
+  duration_ms: 31.587673
+  type: 'test'
+  ...
+# Subtest: normal and explicit worker CLI modes remain denied without installed owner authority
+ok 84 - normal and explicit worker CLI modes remain denied without installed owner authority
+  ---
+  duration_ms: 81.939018
+  type: 'test'
+  ...
+# Subtest: exhausted original cleanup deadline never accepts a result or claims cancellation proof
+ok 85 - exhausted original cleanup deadline never accepts a result or claims cancellation proof
+  ---
+  duration_ms: 36.075754
+  type: 'test'
+  ...
+# Subtest: failed actual OS spawn is redacted and cannot leave unhandled child events
+ok 86 - failed actual OS spawn is redacted and cannot leave unhandled child events
+  ---
+  duration_ms: 4.347029
+  type: 'test'
+  ...
+# Subtest: default CLI does not inspect ambient runtime token or stdin even under explicit private pipes
+ok 87 - default CLI does not inspect ambient runtime token or stdin even under explicit private pipes
+  ---
+  duration_ms: 28.785248
+  type: 'test'
+  ...
+# Subtest: SIGTERM of containing process cancels and reaps SDK child before error returns
+ok 88 - SIGTERM of containing process cancels and reaps SDK child before error returns
+  ---
+  duration_ms: 58.880427
+  type: 'test'
+  ...
+# Subtest: FIFO swapped after lstat cannot block the actual open descriptor
+ok 89 - FIFO swapped after lstat cannot block the actual open descriptor
+  ---
+  duration_ms: 41.628864
+  type: 'test'
+  ...
+# Subtest: valid result bytes before abort cannot start readback until child and pipes close
+ok 90 - valid result bytes before abort cannot start readback until child and pipes close
+  ---
+  duration_ms: 27.693836
+  type: 'test'
+  ...
+# Subtest: equal-depth writable overmount cannot be hidden by an earlier read-only mount
+ok 91 - equal-depth writable overmount cannot be hidden by an earlier read-only mount
+  ---
+  duration_ms: 0.200145
+  type: 'test'
+  ...
+# Subtest: private cwd cannot use a symlink ancestor before any credential call
+ok 92 - private cwd cannot use a symlink ancestor before any credential call
+  ---
+  duration_ms: 1.722506
+  type: 'test'
+  ...
+# Subtest: verified descriptor deadline prevents new spawn and readback
+ok 93 - verified descriptor deadline prevents new spawn and readback
+  ---
+  duration_ms: 521.524566
+  type: 'test'
+  ...
+# Subtest: verified descriptor abort prevents new spawn and readback
+ok 94 - verified descriptor abort prevents new spawn and readback
+  ---
+  duration_ms: 536.985301
+  type: 'test'
+  ...
+# Subtest: verified descriptor pending-deadline prevents new spawn and readback
+ok 95 - verified descriptor pending-deadline prevents new spawn and readback
+  ---
+  duration_ms: 632.526253
+  type: 'test'
+  ...
+# Subtest: verified descriptor pending-abort prevents new spawn and readback
+ok 96 - verified descriptor pending-abort prevents new spawn and readback
+  ---
+  duration_ms: 655.232609
+  type: 'test'
+  ...
+# Subtest: verified descriptor pending-open prevents new spawn and readback
+ok 97 - verified descriptor pending-open prevents new spawn and readback
+  ---
+  duration_ms: 515.239389
+  type: 'test'
+  ...
+# Subtest: verified descriptor pending-exhaustion prevents new spawn and readback
+ok 98 - verified descriptor pending-exhaustion prevents new spawn and readback
+  ---
+  duration_ms: 564.675265
+  type: 'test'
+  ...
+# Subtest: verified descriptor final-deadline prevents new spawn and readback
+ok 99 - verified descriptor final-deadline prevents new spawn and readback
+  ---
+  duration_ms: 540.46822
+  type: 'test'
+  ...
+# Subtest: verified descriptor final-abort prevents new spawn and readback
+ok 100 - verified descriptor final-abort prevents new spawn and readback
+  ---
+  duration_ms: 524.374697
+  type: 'test'
+  ...
+# Subtest: verified descriptor sigterm prevents new spawn and readback
+ok 101 - verified descriptor sigterm prevents new spawn and readback
+  ---
+  duration_ms: 532.240054
+  type: 'test'
+  ...
+# Subtest: verified descriptor final-sigterm prevents new spawn and readback
+ok 102 - verified descriptor final-sigterm prevents new spawn and readback
+  ---
+  duration_ms: 522.058011
+  type: 'test'
+  ...
+# Subtest: verified descriptor positive fixture retains fixed process and readback contract
+ok 103 - verified descriptor positive fixture retains fixed process and readback contract
+  ---
+  duration_ms: 560.690731
+  type: 'test'
+  ...
+# Subtest: actual FD close-abort preserves inspection cleanup outcome
+ok 104 - actual FD close-abort preserves inspection cleanup outcome
+  ---
+  duration_ms: 476.191341
+  type: 'test'
+  ...
+# Subtest: actual FD close-deadline preserves inspection cleanup outcome
+ok 105 - actual FD close-deadline preserves inspection cleanup outcome
+  ---
+  duration_ms: 469.43642
+  type: 'test'
+  ...
+# Subtest: actual FD close-ordinary preserves inspection cleanup outcome
+ok 106 - actual FD close-ordinary preserves inspection cleanup outcome
+  ---
+  duration_ms: 376.974376
+  type: 'test'
+  ...
+# Subtest: actual FD close-after-success preserves inspection cleanup outcome
+ok 107 - actual FD close-after-success preserves inspection cleanup outcome
+  ---
+  duration_ms: 367.20768
+  type: 'test'
+  ...
+# Subtest: actual FD close-archive preserves inspection cleanup outcome
+ok 108 - actual FD close-archive preserves inspection cleanup outcome
+  ---
+  duration_ms: 371.821921
+  type: 'test'
+  ...
+# Subtest: actual FD closed-abort preserves inspection cleanup outcome
+ok 109 - actual FD closed-abort preserves inspection cleanup outcome
+  ---
+  duration_ms: 483.856598
+  type: 'test'
+  ...
+# Subtest: actual FD closed-deadline preserves inspection cleanup outcome
+ok 110 - actual FD closed-deadline preserves inspection cleanup outcome
+  ---
+  duration_ms: 473.582215
+  type: 'test'
+  ...
+# Subtest: real RSA2048 and RSA4096 tokens return only frozen required OIDC claims
+ok 111 - real RSA2048 and RSA4096 tokens return only frozen required OIDC claims
+  ---
+  duration_ms: 18.87254
+  type: 'test'
+  ...
+# Subtest: protected environment is an exact signed binding
+ok 112 - protected environment is an exact signed binding
+  ---
+  duration_ms: 8.198637
+  type: 'test'
+  ...
+# Subtest: all identity, subject and workflow claims bind the signed owner policy
+ok 113 - all identity, subject and workflow claims bind the signed owner policy
+  ---
+  duration_ms: 46.177217
+  type: 'test'
+  ...
+# Subtest: run and attempt must be exact canonical strings and context must be exact
+ok 114 - run and attempt must be exact canonical strings and context must be exact
+  ---
+  duration_ms: 17.261418
+  type: 'test'
+  ...
+# Subtest: JWT lifetime boundaries have exact expiration and bounded clock skew
+ok 115 - JWT lifetime boundaries have exact expiration and bounded clock skew
+  ---
+  duration_ms: 17.989419
+  type: 'test'
+  ...
+# Subtest: JWT requires canonical bounded segments, strict headers and RS256 PKCS1 signatures
+ok 116 - JWT requires canonical bounded segments, strict headers and RS256 PKCS1 signatures
+  ---
+  duration_ms: 18.634092
+  type: 'test'
+  ...
+# Subtest: strict payload rejects duplicate/unknown/unbounded claims and missing jti
+ok 117 - strict payload rejects duplicate/unknown/unbounded claims and missing jti
+  ---
+  duration_ms: 15.111056
+  type: 'test'
+  ...
+# Subtest: PolicyTrustBytes rejects parsed, full-result, forged, accessor and extra-field substitutes
+ok 118 - PolicyTrustBytes rejects parsed, full-result, forged, accessor and extra-field substitutes
+  ---
+  duration_ms: 6.342282
+  type: 'test'
+  ...
+# Subtest: every trust component is fully reverified and old passive records expire
+ok 119 - every trust component is fully reverified and old passive records expire
+  ---
+  duration_ms: 6.466623
+  type: 'test'
+  ...
+# Subtest: installed wrapper cannot accept passive claims, copied handles or claimed receipts
+ok 120 - installed wrapper cannot accept passive claims, copied handles or claimed receipts
+  ---
+  duration_ms: 3.65109
+  type: 'test'
+  ...
+# Subtest: runtime authenticator always denies with zero argument and environment inspection
+ok 121 - runtime authenticator always denies with zero argument and environment inspection
+  ---
+  duration_ms: 1.149514
+  type: 'test'
+  ...
+# Subtest: strict JSON accepts neutral objects and rejects ambiguous byte representations
+ok 122 - strict JSON accepts neutral objects and rejects ambiguous byte representations
+  ---
+  duration_ms: 2.526725
+  type: 'test'
+  ...
+# Subtest: strict parser enforces depth, key, array and string budgets
+ok 123 - strict parser enforces depth, key, array and string budgets
+  ---
+  duration_ms: 2.125954
+  type: 'test'
+  ...
+# Subtest: real Ed25519 exact-byte fixture yields only deeply frozen passive trust
+ok 124 - real Ed25519 exact-byte fixture yields only deeply frozen passive trust
+  ---
+  duration_ms: 3.420417
+  type: 'test'
+  ...
+# Subtest: policy rejects positive authority, schema, identity, time and epoch deviations
+ok 125 - policy rejects positive authority, schema, identity, time and epoch deviations
+  ---
+  duration_ms: 8.602686
+  type: 'test'
+  ...
+# Subtest: signature domain, exact signed payload and exact envelope digest are bound
+ok 126 - signature domain, exact signed payload and exact envelope digest are bound
+  ---
+  duration_ms: 1.561186
+  type: 'test'
+  ...
+# Subtest: canonical base64 and all raw byte bounds are mandatory
+ok 127 - canonical base64 and all raw byte bounds are mandatory
+  ---
+  duration_ms: 1.299903
+  type: 'test'
+  ...
+# Subtest: normalized JWKS rejects private, duplicate, unsorted and weak key metadata
+ok 128 - normalized JWKS rejects private, duplicate, unsorted and weak key metadata
+  ---
+  duration_ms: 4.232611
+  type: 'test'
+  ...
+# Subtest: owned scope closes handles once and rejects invalid budget/capacity
+ok 129 - owned scope closes handles once and rejects invalid budget/capacity
+  ---
+  duration_ms: 27.57133
+  type: 'test'
+  ...
+# Subtest: never-settling open, read and close have bounded cleanup failure
+ok 130 - never-settling open, read and close have bounded cleanup failure
+  ---
+  duration_ms: 77.83253
+  type: 'test'
+  ...
+# Subtest: late opens close exactly once, late reads drain before close, late rejections are consumed
+ok 131 - late opens close exactly once, late reads drain before close, late rejections are consumed
+  ---
+  duration_ms: 63.578786
+  type: 'test'
+  ...
+# Subtest: failed close remains failed and is never retried
+ok 132 - failed close remains failed and is never retried
+  ---
+  duration_ms: 20.662157
+  type: 'test'
+  ...
+# Subtest: cancelled scope cannot succeed and missing fixed installation yields no handle
+ok 133 - cancelled scope cannot succeed and missing fixed installation yields no handle
+  ---
+  duration_ms: 8.598826
+  type: 'test'
+  ...
+# Subtest: fixed loader refuses injected sources and simultaneous acquisition
+ok 134 - fixed loader refuses injected sources and simultaneous acquisition
+  ---
+  duration_ms: 8.029802
+  type: 'test'
+  ...
+# Subtest: scope adopts already-started opens even when the verification deadline passes
+ok 135 - scope adopts already-started opens even when the verification deadline passes
+  ---
+  duration_ms: 8.167217
+  type: 'test'
+  ...
+# Subtest: strict parser counts empty container depth and decoded duplicate names
+ok 136 - strict parser counts empty container depth and decoded duplicate names
+  ---
+  duration_ms: 1.051003
+  type: 'test'
+  ...
+# Subtest: a close settling after cleanup cutoff cannot change the original failure
+ok 137 - a close settling after cleanup cutoff cannot change the original failure
+  ---
+  duration_ms: 20.448204
+  type: 'test'
+  ...
+# Subtest: missing fixed installation never reads environment token properties
+ok 138 - missing fixed installation never reads environment token properties
+  ---
+  duration_ms: 6.713227
+  type: 'test'
+  ...
+# Subtest: invalid signal and option objects cannot leak underlying exceptions
+ok 139 - invalid signal and option objects cannot leak underlying exceptions
+  ---
+  duration_ms: 0.476237
+  type: 'test'
+  ...
+# Subtest: exact-source test copy exposes only passive validators and preserves installed call sites
+ok 140 - exact-source test copy exposes only passive validators and preserves installed call sites
+  ---
+  duration_ms: 3.81698
+  type: 'test'
+  ...
+# Subtest: rootless temporary filesystem metadata rejects owner, type, links, writable/special modes and size
+ok 141 - rootless temporary filesystem metadata rejects owner, type, links, writable/special modes and size
+  ---
+  duration_ms: 4.627581
+  type: 'test'
+  ...
+# Subtest: fixture-only mount and fdinfo parsers retain RO/nested mount identity and reject ambiguity
+ok 142 - fixture-only mount and fdinfo parsers retain RO/nested mount identity and reject ambiguity
+  ---
+  duration_ms: 3.996956
+  type: 'test'
+  ...
+1..142
+# tests 142
+# suites 0
+# pass 142
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 22313.067686

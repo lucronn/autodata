@@ -147,3 +147,28 @@ Concrete todo:
 Gate `2728ac1acaf173d6f244e200e584dac7922fda1d` pushed on `codex/workshop-reviewed-leaves-integration-plan`; canonical preflight at that full SHA exit0, `status: synchronized`, `errors: []`, stderr empty. Pin https://github.com/lucronn/autodata/issues/186#issuecomment-6622928529 read back 2026-11-04T04:55:31.706681+00:00. Final Project index SHA256 `578438413fa8b6738efbf960c46e55ff7b6623772fac191b697af862d57bf0d2` (934 characters), containing every explicit predecessor reference ID including full PG gate74dfe57, receiptd662cb0 and M2A gate9a2b57d0. Complete Issue body/all115 predecessor bodies unchanged on fresh paginated readback. Evidence retains exact prior/full current index, pin hash, command/stdout/stderr and readback.
 
 Independent exact-checkpoint review and fresh coordinator code-only dispatch remain required before any ordered integration. No code merge or activation occurred. Receipt commit records this gate without changing its pinned base.
+
+
+## Additive offline integration completion supplement
+
+Goal: Record the independently reviewed offline integration candidate in draft PR #198 while preserving current PG17 tracking and every release denial.
+
+Issue https://github.com/lucronn/autodata/issues/186; Project https://github.com/users/lucronn/projects/8; draft PR https://github.com/lucronn/autodata/pull/198. Exact reviewed candidate `e5fed171bb36fdb759c592cbcd0e15aea5490c97`, gate `2728ac1acaf173d6f244e200e584dac7922fda1d`, receipt `507e3ddb977ddd45910cba978c7255fac3cb669e`. This separate docs/tracking branch does not change the reviewed candidate or reinterpret inherited pending records. Coordinator relayed independent exact-candidate PASS by `/root/app_server_plan_review`; no file-backed review was supplied. Offline evidence summary SHA256 `03af0e6d41cfa99261a6c92f431cfa0fd9fafacdc8ea2723b264f53899c1896d`, manifest `d17c0dcb33a07c674b0c8f738635df825fee8bed2bc0360252a970ab2572977e`; all12 manifest files verified. Suites81/233/146/188/142/40/33 passed at the exact candidate;23 implementation and59 historical doc pins match. Evidence is retained under `docs/verification/2026-11-04-workshop-reviewed-leaves-completion`.
+
+Completion record `docs/agents/records/2026-11-04-workshop-reviewed-leaves-completion.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-reviewed-leaves-completion.json`; full tracking snapshot `docs/agents/records/2026-11-04-workshop-reviewed-leaves-completion-tracking.json`. The entire current Issue body/all121 prior comments and1001-character Project source field are preserved verbatim+SHA256. Only the bounded Project index is compacted because its1024-character limit cannot retain old prefix plus completion links. PG completion detail6623105546/pin6623119656 stay linked; historical installation remains failed/quarantined. Project Status remains In Progress; Issue body/history and other fields remain unchanged.
+
+CI observation is timestamped in the completion record; push run41776726134 passed both jobs, PR run41777148511 was pending at initial readback, Vercel rate-limited FAILURE. Later observations are additive; offline suites and DTO inventory are not current-tree product acceptance or production readiness.
+
+Concrete todo:
+- [ ] Preserve full current Issue body/all121 prior comments and Project item/field bytes and hashes.
+- [ ] Verify exact integrated head, all23 implementation/all59 historical pins, offline evidence hashes and coordinator-relayed independent review.
+- [ ] Append a completion detail to Issue186 and compact only the Project source index within1024 characters, retaining PG completion detail/pin and PR198; leave Issue body/history/other Project fields unchanged.
+- [ ] Read back complete tracking, commit/push docs-only completion checkpoint and run exact full-SHA preflight.
+- [ ] Append exact checkpoint/preflight pin and retain final readback in a receipt commit; no future implementation or runtime authority.
+
+This completion supplement grants no new implementation, fixture/CI rerun, SDK/upload, credentials, Docker/provider/cloud/host/service/activation/deployment/DNS/cars.tk cutover authority. New work requires a separate decision-complete synchronized gate, exact preflight, independent checkpoint review and fresh dispatch. No independent checkpoint review is sought for future implementation here.
+
+
+### Verified additive completion tracking readback
+
+Completion detail https://github.com/lucronn/autodata/issues/186#issuecomment-6623150233 read back 2026-11-04T05:12:02.611072+00:00. Complete original Issue body/all121 prior comments unchanged; only Project source index changed to792 characters, SHA256 `833157f569a02e5d0aac2226f5ada599d5ce6088effcbeba86989e0dc481cc0c`; Status In Progress/all other fields unchanged. Full old1001-character field and PG detail6623105546/pin6623119656 bodies remain retained verbatim in tracking evidence. All12 evidence files and23/59 pins authenticated. Exact checkpoint/preflight pin follows; this is documentation/tracking completion only and authorizes no future implementation.

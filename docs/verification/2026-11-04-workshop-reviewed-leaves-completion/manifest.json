@@ -1,0 +1,50 @@
+{
+  "autodata-integration-build-check.py": {
+    "bytes": 3759,
+    "sha256": "02a44ee706d44b80b329cf9357674816dfa7623d291a76903dc56500f51c7bcc"
+  },
+  "autodata-integration-exact-combined-0.log": {
+    "bytes": 15186,
+    "sha256": "48e6d798b2333fafa2a80e134cdfe3aefd7042787f9a874033149f33d38fb404"
+  },
+  "autodata-integration-exact-combined-1.log": {
+    "bytes": 334,
+    "sha256": "fea47a0805b3c57899f59a91d9513d62d2daae1eb95770c88497572d4e57a47a"
+  },
+  "autodata-integration-exact-combined-2.log": {
+    "bytes": 1078,
+    "sha256": "65ceb62f861b45fa5aca1f9a2e6ac95b0c1ce8ddade2c3e148dc730740328c6a"
+  },
+  "autodata-integration-exact-publisher-0.log": {
+    "bytes": 100,
+    "sha256": "643f0882d629f1b06d730f019db98993809a21a92d01791eba3f882aa75d0691"
+  },
+  "autodata-integration-exact-publisher-1.log": {
+    "bytes": 27716,
+    "sha256": "01a3c8f8191962fe10c153dd88cbc15e638c60d5a30e57cf21f0d6f85aac4ce1"
+  },
+  "autodata-integration-exact-staging-0.log": {
+    "bytes": 5696,
+    "sha256": "add126f5119501a1ac8d93bd629ceda117316f8be01107c8697e76500d0f7e36"
+  },
+  "autodata-integration-exact-staging-1.log": {
+    "bytes": 4748,
+    "sha256": "6902e26a51c4297c9c74df9aa90d7e2c79716befd0fd3ceadf9cf78bbc7ae458"
+  },
+  "autodata-integration-exact-staging-2.log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "autodata-integration-final-evidence.py": {
+    "bytes": 5771,
+    "sha256": "2579dff7db138088973cc599d4c2a7ad09c50acf19cfd649df8b63ebc6f51161"
+  },
+  "autodata-integration-run-checks.py": {
+    "bytes": 2027,
+    "sha256": "121326cba2f9f9e82f5f1588c1bc65860e26d022f20aa1153d5219b5966c57fa"
+  },
+  "summary.json": {
+    "bytes": 15420,
+    "sha256": "03af0e6d41cfa99261a6c92f431cfa0fd9fafacdc8ea2723b264f53899c1896d"
+  }
+}

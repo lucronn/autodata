@@ -1,0 +1,16 @@
+.........................................Pre-implementation validation error: pre_implementation.plan_ref is required
+Pre-implementation validation error: pre_implementation.issue_ref is required
+Pre-implementation validation error: pre_implementation.project_ref is required
+Pre-implementation validation error: pre_implementation.repository_doc_refs is required
+Pre-implementation validation error: pre_implementation.todo is required
+Pre-implementation validation error: pre_implementation.status is required
+Pre-implementation validation error: pre_implementation.updated_at is required
+Pre-implementation validation error: pre_implementation.goal must be a non-empty string
+.Record file not found: /home/corp/.codex/worktrees/workshop-reviewed-leaves-build/autodata/does/not/exist.json
+........................................................................................................
+----------------------------------------------------------------------
+Ran 146 tests in 44.838s
+
+OK
+{"status": "synchronized", "errors": []}
+{"status": "synchronized", "errors": []}

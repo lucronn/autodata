@@ -1,0 +1,327 @@
+{
+  "checked_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+  "checked_tree": "b1921e093b74ff6c211d2fdd0745acf4370d274e",
+  "captured_at": "2026-11-04T05:05:11.068675+00:00",
+  "worktree": "/home/corp/.codex/worktrees/workshop-reviewed-leaves-build/autodata",
+  "branch": "codex/workshop-reviewed-leaves-integration-build",
+  "receipt": "507e3ddb977ddd45910cba978c7255fac3cb669e",
+  "gate": "2728ac1acaf173d6f244e200e584dac7922fda1d",
+  "source_leaves": {
+    "r6": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+    "publisher": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+    "staging": "10a454a3c4160ac8e423c25fcf38ab58b426fb86"
+  },
+  "merge_commits": [
+    "56839c28e349d20d72495f92443f044a61015df1",
+    "1b6639c4718c4d60092866e0601ff301e9f866f1",
+    "e5fed171bb36fdb759c592cbcd0e15aea5490c97"
+  ],
+  "checks": [
+    {
+      "checked_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "ending_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "scripts/dev/test_release_acceptance.py",
+        "-v"
+      ],
+      "cwd": "/home/corp/.codex/worktrees/workshop-reviewed-leaves-build/autodata",
+      "exit_code": 0,
+      "duration_seconds": 42.7,
+      "log": "/tmp/autodata-integration-exact-combined-0.log",
+      "tail": "test_fabricated_pass_claims_cannot_enable_any_tier (scripts.dev.test_release_acceptance.TrustedBoundaryTests.test_fabricated_pass_claims_cannot_enable_any_tier) ... ok\ntest_invocation_cannot_be_selected_by_manifest (scripts.dev.test_release_acceptance.TrustedBoundaryTests.test_invocation_cannot_be_selected_by_manifest) ... ok\ntest_plan_performs_no_evidence_root_io_and_integrity_does_not_promote (scripts.dev.test_release_acceptance.TrustedBoundaryTests.test_plan_performs_no_evidence_root_io_and_integrity_does_not_promote) ... ok\n\n----------------------------------------------------------------------\nRan 81 tests in 42.598s\n\nOK",
+      "evidence_log": "/tmp/autodata-reviewed-leaves-e5fed171-evidence/autodata-integration-exact-combined-0.log",
+      "log_sha256": "48e6d798b2333fafa2a80e134cdfe3aefd7042787f9a874033149f33d38fb404",
+      "tests": 81
+    },
+    {
+      "checked_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "ending_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/dev",
+        "-p",
+        "test_*.py"
+      ],
+      "cwd": "/home/corp/.codex/worktrees/workshop-reviewed-leaves-build/autodata",
+      "exit_code": 0,
+      "duration_seconds": 53.94,
+      "log": "/tmp/autodata-integration-exact-combined-1.log",
+      "tail": ".........................................................................................................................................................................................................................................\n----------------------------------------------------------------------\nRan 233 tests in 53.318s\n\nOK",
+      "evidence_log": "/tmp/autodata-reviewed-leaves-e5fed171-evidence/autodata-integration-exact-combined-1.log",
+      "log_sha256": "fea47a0805b3c57899f59a91d9513d62d2daae1eb95770c88497572d4e57a47a",
+      "tests": 233
+    },
+    {
+      "checked_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "ending_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/autonomy",
+        "-p",
+        "test_*.py"
+      ],
+      "cwd": "/home/corp/.codex/worktrees/workshop-reviewed-leaves-build/autodata",
+      "exit_code": 0,
+      "duration_seconds": 44.94,
+      "log": "/tmp/autodata-integration-exact-combined-2.log",
+      "tail": ".Record file not found: /home/corp/.codex/worktrees/workshop-reviewed-leaves-build/autodata/does/not/exist.json\n........................................................................................................\n----------------------------------------------------------------------\nRan 146 tests in 44.838s\n\nOK\n{\"status\": \"synchronized\", \"errors\": []}\n{\"status\": \"synchronized\", \"errors\": []}",
+      "evidence_log": "/tmp/autodata-reviewed-leaves-e5fed171-evidence/autodata-integration-exact-combined-2.log",
+      "log_sha256": "65ceb62f861b45fa5aca1f9a2e6ac95b0c1ce8ddade2c3e148dc730740328c6a",
+      "tests": 146
+    },
+    {
+      "checked_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "ending_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "test_publisher_adapters",
+        "test_cloud_ops",
+        "test_host_runtime",
+        "test_release_workshop_contract",
+        "-q"
+      ],
+      "cwd": "/home/corp/.codex/worktrees/workshop-reviewed-leaves-build/autodata/infra/deploy/gce",
+      "exit_code": 0,
+      "duration_seconds": 10.46,
+      "log": "/tmp/autodata-integration-exact-publisher-0.log",
+      "tail": "----------------------------------------------------------------------\nRan 188 tests in 10.324s\n\nOK",
+      "evidence_log": "/tmp/autodata-reviewed-leaves-e5fed171-evidence/autodata-integration-exact-publisher-0.log",
+      "log_sha256": "643f0882d629f1b06d730f019db98993809a21a92d01791eba3f882aa75d0691",
+      "tests": 188
+    },
+    {
+      "checked_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "ending_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "command": [
+        "/tmp/autodata-reviewed-node-v22.23.4",
+        "--test",
+        "infra/deploy/gce/test_publisher_artifact.mjs",
+        "infra/deploy/gce/test_publisher_policy.mjs",
+        "infra/deploy/gce/test_publisher_identity.mjs"
+      ],
+      "cwd": "/home/corp/.codex/worktrees/workshop-reviewed-leaves-build/autodata",
+      "exit_code": 0,
+      "duration_seconds": 22.35,
+      "log": "/tmp/autodata-integration-exact-publisher-1.log",
+      "tail": "# tests 142\n# suites 0\n# pass 142\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 22313.067686",
+      "evidence_log": "/tmp/autodata-reviewed-leaves-e5fed171-evidence/autodata-integration-exact-publisher-1.log",
+      "log_sha256": "01a3c8f8191962fe10c153dd88cbc15e638c60d5a30e57cf21f0d6f85aac4ce1",
+      "tests": 142
+    },
+    {
+      "checked_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "ending_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "infra/deploy/gce",
+        "-p",
+        "test_host_install.py",
+        "-v"
+      ],
+      "cwd": "/home/corp/.codex/worktrees/workshop-reviewed-leaves-build/autodata",
+      "exit_code": 0,
+      "duration_seconds": 1.08,
+      "log": "/tmp/autodata-integration-exact-staging-0.log",
+      "tail": "test_install_launcher_fixed_isolated_and_empty_environment (test_host_install.ProbeAndLauncherTests.test_install_launcher_fixed_isolated_and_empty_environment) ... ok\ntest_probe_fixed_fd_bounded_output (test_host_install.ProbeAndLauncherTests.test_probe_fixed_fd_bounded_output) ... ok\ntest_probe_timeout_child_reaped_and_stderr_discarded (test_host_install.ProbeAndLauncherTests.test_probe_timeout_child_reaped_and_stderr_discarded) ... ok\n\n----------------------------------------------------------------------\nRan 40 tests in 0.995s\n\nOK",
+      "evidence_log": "/tmp/autodata-reviewed-leaves-e5fed171-evidence/autodata-integration-exact-staging-0.log",
+      "log_sha256": "add126f5119501a1ac8d93bd629ceda117316f8be01107c8697e76500d0f7e36",
+      "tests": 40
+    },
+    {
+      "checked_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "ending_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "infra/deploy/gce",
+        "-p",
+        "test_staging_bootstrap.py",
+        "-v"
+      ],
+      "cwd": "/home/corp/.codex/worktrees/workshop-reviewed-leaves-build/autodata",
+      "exit_code": 0,
+      "duration_seconds": 1.37,
+      "log": "/tmp/autodata-integration-exact-staging-1.log",
+      "tail": "test_timeout_retains_resources (test_staging_bootstrap.BootstrapTests.test_timeout_retains_resources) ... ok\ntest_unknown_duplicate_or_expired_approval_denied (test_staging_bootstrap.BootstrapTests.test_unknown_duplicate_or_expired_approval_denied) ... ok\ntest_unowned_existing_resource_not_adopted (test_staging_bootstrap.BootstrapTests.test_unowned_existing_resource_not_adopted) ... ok\n\n----------------------------------------------------------------------\nRan 33 tests in 1.286s\n\nOK",
+      "evidence_log": "/tmp/autodata-reviewed-leaves-e5fed171-evidence/autodata-integration-exact-staging-1.log",
+      "log_sha256": "6902e26a51c4297c9c74df9aa90d7e2c79716befd0fd3ceadf9cf78bbc7ae458",
+      "tests": 33
+    },
+    {
+      "checked_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "ending_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+      "command": [
+        "bash",
+        "-n",
+        "infra/deploy/gce/deploy.sh",
+        "infra/deploy/gce/cloud-bootstrap.sh"
+      ],
+      "cwd": "/home/corp/.codex/worktrees/workshop-reviewed-leaves-build/autodata",
+      "exit_code": 0,
+      "duration_seconds": 0.0,
+      "log": "/tmp/autodata-integration-exact-staging-2.log",
+      "tail": "",
+      "evidence_log": "/tmp/autodata-reviewed-leaves-e5fed171-evidence/autodata-integration-exact-staging-2.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tests": null
+    }
+  ],
+  "static_checks": [
+    {
+      "command": [
+        "python3",
+        "/tmp/autodata-integration-build-check.py",
+        "3",
+        "check"
+      ],
+      "exit_code": 0,
+      "stdout": "{\n  \"milestone\": 3,\n  \"pins\": 82,\n  \"implementation\": 23,\n  \"historical_docs\": 59,\n  \"changed_paths\": 87,\n  \"queue_ids\": 28,\n  \"selected_queue_ids\": [\n    \"r6-release\",\n    \"r6-paid-selector-work\",\n    \"r6-dto120-receipts\",\n    \"workshop-publisher-transport\",\n    \"workshop-migration-build-arg\",\n    \"workshop-authenticated-publisher\",\n    \"workshop-staging-bootstrap\",\n    \"workshop-staging-boot-device\",\n    \"workshop-staging-m2-host-install\"\n  ],\n  \"conflict_resolution_sha256\": {\n    \"docs/architecture/infrastructure-and-dev.md\": \"8e374f6ac2847eccf2bfa552e02d941d0b672c906726eee8472f0d311351673b\",\n    \"docs/superpowers/plans/2026-11-03-production-release-orchestration.md\": \"bbe4768340e82f1da43acb01c2dd97935c1fb29f7c6a6b20fcbceab3f54d3982\",\n    \"docs/superpowers/plans/2026-11-03-workshop-hosting.md\": \"558e1d3f3fa16d97d8c0ae754f03054d2e9c64268549a79562ecc180641c22d7\",\n    \"docs/operations/workshop-gcp.md\": \"bbf2b01f73f5b5e4f3205bd06990d1671fab3c7126b9bb21198b35496a8be997\",\n    \"docs/agents/tasks/2026-11-03-production-release/queue.json\": \"10f4fc4c3229377ae8cb279769eebd4c34908ea753d4c585b69077ac425cef5f\"\n  }\n}\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/autonomy/pre_implementation.py",
+        "--record",
+        "docs/agents/records/2026-11-04-workshop-reviewed-leaves-integration.json",
+        "--base-sha",
+        "2728ac1acaf173d6f244e200e584dac7922fda1d",
+        "--repo-root",
+        "/home/corp/.codex/worktrees/workshop-reviewed-leaves-build/autodata"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"status\": \"synchronized\", \"errors\": []}\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "2728ac1acaf173d6f244e200e584dac7922fda1d",
+        "e5fed171bb36fdb759c592cbcd0e15aea5490c97"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "507e3ddb977ddd45910cba978c7255fac3cb669e",
+        "e5fed171bb36fdb759c592cbcd0e15aea5490c97"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "status",
+        "--porcelain"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "ls-remote",
+        "origin",
+        "refs/heads/codex/workshop-reviewed-leaves-integration-build"
+      ],
+      "exit_code": 0,
+      "stdout": "e5fed171bb36fdb759c592cbcd0e15aea5490c97\trefs/heads/codex/workshop-reviewed-leaves-integration-build\n",
+      "stderr": ""
+    }
+  ],
+  "pins": {
+    "milestone": 3,
+    "pins": 82,
+    "implementation": 23,
+    "historical_docs": 59,
+    "changed_paths": 87,
+    "queue_ids": 28,
+    "selected_queue_ids": [
+      "r6-release",
+      "r6-paid-selector-work",
+      "r6-dto120-receipts",
+      "workshop-publisher-transport",
+      "workshop-migration-build-arg",
+      "workshop-authenticated-publisher",
+      "workshop-staging-bootstrap",
+      "workshop-staging-boot-device",
+      "workshop-staging-m2-host-install"
+    ],
+    "conflict_resolution_sha256": {
+      "docs/architecture/infrastructure-and-dev.md": "8e374f6ac2847eccf2bfa552e02d941d0b672c906726eee8472f0d311351673b",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md": "bbe4768340e82f1da43acb01c2dd97935c1fb29f7c6a6b20fcbceab3f54d3982",
+      "docs/superpowers/plans/2026-11-03-workshop-hosting.md": "558e1d3f3fa16d97d8c0ae754f03054d2e9c64268549a79562ecc180641c22d7",
+      "docs/operations/workshop-gcp.md": "bbf2b01f73f5b5e4f3205bd06990d1671fab3c7126b9bb21198b35496a8be997",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json": "10f4fc4c3229377ae8cb279769eebd4c34908ea753d4c585b69077ac425cef5f"
+    }
+  },
+  "pre_note_resolution_pins": {
+    "docs/architecture/infrastructure-and-dev.md": "f46ae219c094334f02cca16c6eda98d5b31814aadd562377fa64b155568965ad",
+    "docs/operations/workshop-gcp.md": "0c90c263c5bf97ad1f44c4ba6b0ce4a3e761bc82fe0dd9c16f76f6506ad1ea1b",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md": "5be40217fd55e78d4f149abe88d970ebf8d173c9cc319422d84daff001eb784e",
+    "docs/superpowers/plans/2026-11-03-workshop-hosting.md": "1c9958e340d9f936195889240dc7840b7cfdd6b010a92b3e94741e467150bfa5"
+  },
+  "node_sha256": "94efd062ed066c1a0b332e18249859c905e920eeada5df55d24c99b919629a90",
+  "workflow_jobs": [
+    "publish",
+    "deploy",
+    "staging-build-candidate",
+    "staging-finalize"
+  ],
+  "limitations": [
+    "Offline checks only; historical fixture/CI acceptance does not transfer to integrated SHA.",
+    "Independent exact-SHA review required. No live activation/deployment/readiness authority.",
+    "No source corrections, new tests, dependency installation, provider/cloud/Docker operations, GitHub PR creation or merge."
+  ],
+  "unexpected_conflicts": [],
+  "conflicts_by_merge": {
+    "r6": [
+      "queue.json",
+      "2026-11-03-production-release-orchestration.md"
+    ],
+    "publisher": [
+      "queue.json",
+      "infrastructure-and-dev.md",
+      "workshop-gcp.md",
+      "2026-11-03-production-release-orchestration.md",
+      "2026-11-03-workshop-hosting.md"
+    ],
+    "staging": [
+      "queue.json",
+      "infrastructure-and-dev.md",
+      "workshop-gcp.md",
+      "2026-11-03-production-release-orchestration.md",
+      "2026-11-03-workshop-hosting.md"
+    ]
+  }
+}

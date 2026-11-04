@@ -1,0 +1,38 @@
+test_additional_destination_denied_even_when_disjoint (test_staging_bootstrap.BootstrapTests.test_additional_destination_denied_even_when_disjoint) ... ok
+test_apply_production_denied (test_staging_bootstrap.BootstrapTests.test_apply_production_denied) ... ok
+test_approval_expiry_between_mutations_stops_new_post (test_staging_bootstrap.BootstrapTests.test_approval_expiry_between_mutations_stops_new_post) ... ok
+test_approved_default_and_disjoint_subnet_pass (test_staging_bootstrap.BootstrapTests.test_approved_default_and_disjoint_subnet_pass) ... ok
+test_bare_vm_has_no_startup_script_or_format_action (test_staging_bootstrap.BootstrapTests.test_bare_vm_has_no_startup_script_or_format_action) ... ok
+test_boot_attachment_device_name_is_explicit (test_staging_bootstrap.BootstrapTests.test_boot_attachment_device_name_is_explicit) ... ok
+test_boot_attachment_name_drift_rejected (test_staging_bootstrap.BootstrapTests.test_boot_attachment_name_drift_rejected) ... ok
+test_cancelled_or_foreign_operation_stops_new_mutation (test_staging_bootstrap.BootstrapTests.test_cancelled_or_foreign_operation_stops_new_mutation) ... ok
+test_default_route_custom_next_hop_denied (test_staging_bootstrap.BootstrapTests.test_default_route_custom_next_hop_denied) ... ok
+test_effective_firewall_and_resource_drift_after_create_denied (test_staging_bootstrap.BootstrapTests.test_effective_firewall_and_resource_drift_after_create_denied) ... ok
+test_fake_missing_attachment_name_uses_independent_default (test_staging_bootstrap.BootstrapTests.test_fake_missing_attachment_name_uses_independent_default) ... ok
+test_http_redirect_status_and_response_size_are_rejected (test_staging_bootstrap.BootstrapTests.test_http_redirect_status_and_response_size_are_rejected) ... ok
+test_http_request_has_wall_clock_alarm_and_restores_handler (test_staging_bootstrap.BootstrapTests.test_http_request_has_wall_clock_alarm_and_restores_handler) ... ok
+test_idempotent_matching_rerun (test_staging_bootstrap.BootstrapTests.test_idempotent_matching_rerun) ... ok
+test_launcher_delegates_only_apply_to_fixed_installed_helper (test_staging_bootstrap.BootstrapTests.test_launcher_delegates_only_apply_to_fixed_installed_helper) ... ok
+test_main_preserves_partial_receipt_and_redacts_errors (test_staging_bootstrap.BootstrapTests.test_main_preserves_partial_receipt_and_redacts_errors) ... ok
+test_malformed_or_extra_firewall_rule_denied (test_staging_bootstrap.BootstrapTests.test_malformed_or_extra_firewall_rule_denied) ... ok
+test_no_approval_no_token_no_requests (test_staging_bootstrap.BootstrapTests.test_no_approval_no_token_no_requests) ... ok
+test_output_bounds_and_token_redaction (test_staging_bootstrap.BootstrapTests.test_output_bounds_and_token_redaction) ... ok
+test_overlapping_selected_subnet_denied (test_staging_bootstrap.BootstrapTests.test_overlapping_selected_subnet_denied) ... ok
+test_passed_receipt_has_no_runtime_authority (test_staging_bootstrap.BootstrapTests.test_passed_receipt_has_no_runtime_authority) ... ok
+test_pin_route_policy_or_owner_drift_denied (test_staging_bootstrap.BootstrapTests.test_pin_route_policy_or_owner_drift_denied) ... ok
+test_post_transport_loss_same_request_id (test_staging_bootstrap.BootstrapTests.test_post_transport_loss_same_request_id) ... ok
+test_private_pipe_descriptor_and_token_frames (test_staging_bootstrap.BootstrapTests.test_private_pipe_descriptor_and_token_frames) ... ok
+test_production_apply_keeps_exit_three_without_token (test_staging_bootstrap.BootstrapTests.test_production_apply_keeps_exit_three_without_token) ... ok
+test_receipt_store_is_atomic_private_and_rejects_symlinks (test_staging_bootstrap.BootstrapTests.test_receipt_store_is_atomic_private_and_rejects_symlinks) ... ok
+test_redirect_and_ambient_adc_denied (test_staging_bootstrap.BootstrapTests.test_redirect_and_ambient_adc_denied) ... ok
+test_request_inventory_exact (test_staging_bootstrap.BootstrapTests.test_request_inventory_exact) ... ok
+test_response_and_pagination_bounds_and_unknown_requests (test_staging_bootstrap.BootstrapTests.test_response_and_pagination_bounds_and_unknown_requests) ... ok
+test_schema_is_strict_and_matches_approval_keys (test_staging_bootstrap.BootstrapTests.test_schema_is_strict_and_matches_approval_keys) ... ok
+test_timeout_retains_resources (test_staging_bootstrap.BootstrapTests.test_timeout_retains_resources) ... ok
+test_unknown_duplicate_or_expired_approval_denied (test_staging_bootstrap.BootstrapTests.test_unknown_duplicate_or_expired_approval_denied) ... ok
+test_unowned_existing_resource_not_adopted (test_staging_bootstrap.BootstrapTests.test_unowned_existing_resource_not_adopted) ... ok
+
+----------------------------------------------------------------------
+Ran 33 tests in 1.286s
+
+OK

@@ -1,0 +1,45 @@
+test_approval_inventory_duplicate_overflow_traversal_denied (test_host_install.InstallTests.test_approval_inventory_duplicate_overflow_traversal_denied) ... ok
+test_approval_unknown_duplicate_null_expired_source_config_denied (test_host_install.InstallTests.test_approval_unknown_duplicate_null_expired_source_config_denied) ... ok
+test_argument_surface_and_redaction (test_host_install.InstallTests.test_argument_surface_and_redaction) ... ok
+test_cleanup_unlink_failure_incomplete (test_host_install.InstallTests.test_cleanup_unlink_failure_incomplete) ... ok
+test_copy_failure_cleanup_bounded (test_host_install.InstallTests.test_copy_failure_cleanup_bounded) ... ok
+test_current_object_and_rollback_denied (test_host_install.InstallTests.test_current_object_and_rollback_denied) ... ok
+test_existing_release_changed_during_final_mount_probe_denied (test_host_install.InstallTests.test_existing_release_changed_during_final_mount_probe_denied) ... ok
+test_existing_release_exact_rerun_only (test_host_install.InstallTests.test_existing_release_exact_rerun_only) ... ok
+test_extra_secret_directory_and_file_denied (test_host_install.InstallTests.test_extra_secret_directory_and_file_denied) ... ok
+test_hash_shaped_untrusted_receipt_is_not_approval (test_host_install.InstallTests.test_hash_shaped_untrusted_receipt_is_not_approval) ... ok
+test_image_tag_and_unknown_secret_alias_denied (test_host_install.InstallTests.test_image_tag_and_unknown_secret_alias_denied) ... ok
+test_inbox_replacement_after_validation_denied (test_host_install.InstallTests.test_inbox_replacement_after_validation_denied) ... ok
+test_link_fifo_and_source_hash_drift_denied (test_host_install.InstallTests.test_link_fifo_and_source_hash_drift_denied) ... ok
+test_lock_busy_no_persistent_write (test_host_install.InstallTests.test_lock_busy_no_persistent_write) ... ok
+test_lock_close_failure_repairs_passed_receipt (test_host_install.InstallTests.test_lock_close_failure_repairs_passed_receipt) ... ok
+test_missing_noreplace_primitive_is_dependency_failure (test_host_install.InstallTests.test_missing_noreplace_primitive_is_dependency_failure) ... ok
+test_missing_publisher_acceptance_blocks_before_write (test_host_install.InstallTests.test_missing_publisher_acceptance_blocks_before_write) ... ok
+test_mount_replacement_before_commit_denied (test_host_install.InstallTests.test_mount_replacement_before_commit_denied) ... ok
+test_noreplace_race_preserves_existing_tree (test_host_install.InstallTests.test_noreplace_race_preserves_existing_tree) ... ok
+test_owned_copy_close_failure_before_commit_is_incomplete (test_host_install.InstallTests.test_owned_copy_close_failure_before_commit_is_incomplete) ... ok
+test_owned_root_close_failure_after_commit_is_incomplete (test_host_install.InstallTests.test_owned_root_close_failure_after_commit_is_incomplete) ... ok
+test_owned_root_close_failure_before_commit_is_incomplete (test_host_install.InstallTests.test_owned_root_close_failure_before_commit_is_incomplete) ... ok
+test_preexisting_temp_refused_without_removal (test_host_install.InstallTests.test_preexisting_temp_refused_without_removal) ... ok
+test_production_denied_before_approval_is_read (test_host_install.InstallTests.test_production_denied_before_approval_is_read) ... ok
+test_receipt_directory_close_failure_repairs_passed_receipt (test_host_install.InstallTests.test_receipt_directory_close_failure_repairs_passed_receipt) ... ok
+test_receipt_failure_after_commit_incomplete (test_host_install.InstallTests.test_receipt_failure_after_commit_incomplete) ... ok
+test_receipt_file_close_failure_is_incomplete_without_passed_receipt (test_host_install.InstallTests.test_receipt_file_close_failure_is_incomplete_without_passed_receipt) ... ok
+test_restrictive_inherited_umask_does_not_change_created_modes (test_host_install.InstallTests.test_restrictive_inherited_umask_does_not_change_created_modes) ... ok
+test_same_authorization_changed_approval_denied (test_host_install.InstallTests.test_same_authorization_changed_approval_denied) ... ok
+test_staging_install_material_only (test_host_install.InstallTests.test_staging_install_material_only) ... ok
+test_standard_parent_writable_or_private_0755_denied (test_host_install.InstallTests.test_standard_parent_writable_or_private_0755_denied) ... ok
+test_standard_protected_0755_and_private_0700_accepted (test_host_install.InstallTests.test_standard_protected_0755_and_private_0700_accepted) ... ok
+test_symlink_parent_denied (test_host_install.InstallTests.test_symlink_parent_denied) ... ok
+test_temporary_tree_replacement_before_promotion_denied (test_host_install.InstallTests.test_temporary_tree_replacement_before_promotion_denied) ... ok
+test_tool_or_schema_drift_and_reboot_missing_tmpfs_denied (test_host_install.InstallTests.test_tool_or_schema_drift_and_reboot_missing_tmpfs_denied) ... ok
+test_wrong_or_unmounted_disk_never_initializes_boot_disk (test_host_install.InstallTests.test_wrong_or_unmounted_disk_never_initializes_boot_disk) ... ok
+test_wrong_owner_group_and_private_directory_modes_denied (test_host_install.InstallTests.test_wrong_owner_group_and_private_directory_modes_denied) ... ok
+test_install_launcher_fixed_isolated_and_empty_environment (test_host_install.ProbeAndLauncherTests.test_install_launcher_fixed_isolated_and_empty_environment) ... ok
+test_probe_fixed_fd_bounded_output (test_host_install.ProbeAndLauncherTests.test_probe_fixed_fd_bounded_output) ... ok
+test_probe_timeout_child_reaped_and_stderr_discarded (test_host_install.ProbeAndLauncherTests.test_probe_timeout_child_reaped_and_stderr_discarded) ... ok
+
+----------------------------------------------------------------------
+Ran 40 tests in 0.995s
+
+OK
