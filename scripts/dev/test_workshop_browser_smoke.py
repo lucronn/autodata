@@ -678,6 +678,22 @@ class BrowserDTOTimeoutDiagnostics(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stored['diagnostics']['failure_kind'], 'action_timeout')
         self.assertIn('element stability', stored['error'])
 
+    async def test_late_context_creation_is_closed_in_tracked_bounded_task(self):
+        context=self.context();release=asyncio.Event()
+        class Browser:
+            async def new_context(self,**kwargs):
+                try:await release.wait()
+                except asyncio.CancelledError:await release.wait()
+                return context
+        try:
+            result=await smoke.run_dto_case(Browser(),'https://localhost:1','bankone-cascade',self.output,case_timeout=.01,cleanup_timeout=.03)
+            self.assertEqual(result['status'],'failed');self.assertEqual(result['diagnostics']['failure_stage'],'context.create')
+            release.set()
+            await asyncio.wait_for(context.close_entered.wait(),timeout=.2)
+            await asyncio.sleep(0)
+            self.assertTrue(context.closed);self.assertFalse(hasattr(context,'fixture'))
+        finally:release.set()
+
     async def test_dto_browser_shutdown_cannot_hang_acceptance(self):
         self.assertTrue(callable(getattr(smoke, 'close_dto_browser', None)))
         close_entered, release = asyncio.Event(), asyncio.Event()
@@ -752,6 +768,39 @@ class DTOLifecycleTests(unittest.IsolatedAsyncioTestCase):
             [('launch','chromium',15000),('launch','firefox',15000),('launch','webkit',15000)])
         self.assertGreaterEqual(len(self.snapshots),120)
         self.assertEqual(evidence['cleanup_status'],'verified')
+    async def test_complete_120_worst_cost_schedule_approaches_2994(self):
+        # Hand-derived envelope: 150+10+45+120*23+9+10+10 = 2994.
+        self.now=150.;epsilon=.000001
+        original_case=self.lifecycle.case
+        async def case(*args):
+            result=await original_case(*args);self.now+=23-epsilon;return result
+        self.lifecycle.case=case
+        async def persist(evidence):
+            self.now+=10/126-epsilon
+            self.snapshots.append(copy.deepcopy(evidence));return True
+        self.persist=persist
+        async def cost_phase(awaitable,seconds,**kwargs):
+            name=awaitable.cr_code.co_name
+            result=await awaitable
+            if name in ('start','launch','close','stop'):
+                self.now+=dict(start=10,launch=15,close=3,stop=10)[name]-epsilon
+            return result
+        self.phase=cost_phase
+        evidence=await self.execute()
+        self.assertEqual(len(evidence['results']),120);self.assertTrue(all(r['status']=='passed' for r in evidence['results']))
+        self.assertEqual(len(self.snapshots),126);self.assertLess(self.now,2994);self.assertGreater(self.now,2993.99)
+    async def test_third_engine_exact_launch_deadline_stops_new_cases(self):
+        async def edge(awaitable,seconds,**kwargs):
+            name=awaitable.cr_code.co_name;result=await awaitable
+            if name=='launch' and len([a for a in self.actions if isinstance(a,tuple) and a[0]=='launch'])==3:
+                self.now+=15
+            return result
+        self.phase=edge;evidence=await self.execute()
+        self.assertEqual(len([a for a in self.actions if isinstance(a,tuple) and a[0]=='case']),80)
+        self.assertTrue(all(r['status']=='failed' for r in evidence['results']))
+        self.assertEqual(evidence['results'][79]['observed_case_result']['status'],'passed')
+        self.assertNotIn('observed_case_result',evidence['results'][80])
+
     async def test_global_stop_failure_preserves_observations(self):
         self.failure='stop';evidence=await self.execute()
         self.assertEqual(len(evidence['results']),120)
@@ -763,6 +812,28 @@ class DTOLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len([x for x in self.actions if isinstance(x,tuple) and x[0]=='launch']),1)
         self.assertEqual(evidence['results'][0]['failure_kind'],'not_started_after_lifecycle_failure')
         self.assertEqual(evidence['cleanup_status'],'unverified')
+    async def test_late_launch_closes_returned_browser_without_new_engine(self):
+        release=asyncio.Event();closed=asyncio.Event()
+        async def close():closed.set()
+        async def late_launch(engine,timeout):
+            self.actions.append(('launch',engine,timeout))
+            while not release.is_set():
+                try:await release.wait()
+                except asyncio.CancelledError:pass
+            return SimpleNamespace(version='fake',close=close)
+        self.lifecycle.launch=late_launch
+        async def short_bound(awaitable,seconds,**kwargs):return await smoke._dto_bounded(awaitable,.01,**kwargs)
+        self.phase=short_bound
+        try:
+            evidence=await self.execute()
+            self.assertTrue(all(row['status']=='failed' for row in evidence['results']))
+            self.assertEqual(len([a for a in self.actions if isinstance(a,tuple) and a[0]=='launch']),1)
+            release.set();await asyncio.wait_for(closed.wait(),timeout=.2)
+        finally:
+            release.set()
+            tasks=list(smoke._DTO_PENDING_TASKS)
+            if tasks:await asyncio.wait(tasks,timeout=.2)
+
     async def test_cumulative_persistence_and_backward_clock(self):
         async def slow(evidence): self.now+=6;return True
         self.persist=slow;evidence=await self.execute()
@@ -772,6 +843,43 @@ class DTOLifecycleTests(unittest.IsolatedAsyncioTestCase):
         async def backwards(evidence):self.now-=1;return True
         self.persist=backwards;evidence=await self.execute()
         self.assertEqual(evidence['failure_kind'],'clock_or_lifecycle_failure')
+    async def test_primary_cancellation_survives_secondary_close_failure(self):
+        async def cancelled(*args):
+            error=asyncio.CancelledError('original external cancellation')
+            error.dto_diagnostics=SimpleNamespace(error='original external cancellation',snapshot=lambda:dict(requests=[{'path':'/original'}],trace_path='raw.zip'))
+            raise error
+        async def failed_close(*args):raise RuntimeError('secondary close failure')
+        self.lifecycle.case=cancelled;self.lifecycle.close=failed_close
+        with self.assertRaisesRegex(asyncio.CancelledError,'original external cancellation'):await self.execute()
+        final=self.snapshots[-1]
+        self.assertEqual(final['failure_stage'],'case');self.assertEqual(final['failure_kind'],'cancelled')
+        self.assertEqual(final['results'][0]['observed_case_result']['diagnostics']['trace_path'],'raw.zip')
+        self.assertTrue(any('secondary close failure' in entry for entry in final['secondary_errors']))
+
+    async def test_cancellation_in_each_phase_is_sticky_and_stages_failed_inventory(self):
+        for phase in ('start','launch','case','close','stop','persist'):
+            with self.subTest(phase=phase):
+                self.snapshots=[];self.actions=[];self.now=0
+                lifecycle=self.lifecycle
+                target=self.persist if phase=='persist' else getattr(lifecycle,phase)
+                calls=0
+                async def cancel_once(*args,**kwargs):
+                    nonlocal calls
+                    calls+=1
+                    if calls==1:raise asyncio.CancelledError('first cancellation')
+                    return await target(*args,**kwargs)
+                if phase=='persist':self.persist=cancel_once
+                else:setattr(lifecycle,phase,cancel_once)
+                try:
+                    with self.assertRaises(asyncio.CancelledError):await self.execute()
+                    self.assertTrue(self.snapshots)
+                    self.assertTrue(all(row['status']=='failed' for row in self.snapshots[-1]['results']))
+                    self.assertEqual(self.snapshots[-1]['failure_kind'],'cancelled')
+                    self.assertEqual(self.snapshots[-1]['error'],'first cancellation')
+                finally:
+                    if phase=='persist':self.persist=target
+                    else:setattr(lifecycle,phase,target)
+
     def test_failure_rows_preserve_original_diagnostics_and_order(self):
         ids=[(e,n) for e in smoke.ENGINES for n in smoke.inventory()]
         observed=[dict(browser=ids[0][0],scenario=ids[0][1],status='failed',error='primary',
@@ -781,6 +889,30 @@ class DTOLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows[0]['observed_case_result'],observed[0]);self.assertEqual(rows[0]['error'],'primary')
         self.assertEqual(rows[0]['diagnostics'],observed[0]['diagnostics'])
         self.assertNotIn('elapsed_seconds',rows[1]);self.assertNotIn('requests',rows[1])
+
+
+class DTOPlaywrightAdapterTests(unittest.IsolatedAsyncioTestCase):
+    async def test_adapter_stops_returned_playwright_not_context_manager(self):
+        actions=[]
+        async def stop():actions.append('playwright.stop')
+        class Manager:
+            async def start(self):actions.append('manager.start');return SimpleNamespace(stop=stop)
+            async def __aexit__(self,*args):actions.append('manager.exit')
+        manager=Manager()
+        with patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(async_playwright=lambda:manager)}):
+            lifecycle=smoke.DTOPlaywrightLifecycle(SimpleNamespace(),{})
+            await lifecycle.start();await lifecycle.stop()
+        self.assertEqual(actions,['manager.start','playwright.stop'])
+    async def test_uncertain_start_uses_context_manager_exit(self):
+        actions=[]
+        class Manager:
+            async def start(self):raise TimeoutError('uncertain start')
+            async def __aexit__(self,*args):actions.append('manager.exit')
+        with patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(async_playwright=lambda:Manager())}):
+            lifecycle=smoke.DTOPlaywrightLifecycle(SimpleNamespace(),{})
+            with self.assertRaises(TimeoutError):await lifecycle.start()
+            await lifecycle.stop()
+        self.assertEqual(actions,['manager.exit'])
 
 
 class DTOTerminalFenceTests(unittest.TestCase):
@@ -834,7 +966,7 @@ class DTOFakeClock:
 
 class DTOSupervisorTests(unittest.TestCase):
     def execute(self,blocked=None,cancel_at=None,commit_seconds=0,progress_at=None,worker_seconds=.1,resist_cleanup=False,ack_transform=None):
-        clock=DTOFakeClock();actions=[];owner=self
+        clock=DTOFakeClock();actions=[];owner=self;self.handles=[];self.fake_clock=clock;self.cancel_latched=False
         class Handle:
             def __init__(self,kind,request):self.kind,self.request,self.begin=kind,request,clock();self.killed=False;self.closed=False;self.signalled=False
             def poll(self):
@@ -854,7 +986,7 @@ class DTOSupervisorTests(unittest.TestCase):
                 actions.append((kind,self.kind,owner.attempt.state,clock()));self.killed=kind=='KILL';self.signalled=True
             def close(self):self.closed=True
         def factory(kind,request,args):
-            actions.append(('create',kind,clock()));return Handle(kind,request)
+            actions.append(('create',kind,clock()));handle=Handle(kind,request);self.handles.append(handle);return handle
         def publish(ack,attempt,success):
             actions.append(('publish',success,attempt.state,clock()));clock.sleep(commit_seconds if success else 0)
             return not (cancel_at is not None and clock()>=cancel_at)
@@ -862,7 +994,7 @@ class DTOSupervisorTests(unittest.TestCase):
         args=SimpleNamespace(output='/unused',candidate_sha='a'*40,browser='all',mode='dto-fixture',base_url='https://localhost:1')
         result=smoke.supervise_dto(args,clock=clock,process_factory=factory,writer_factory=factory,
             timing=smoke.load_dto_timing(smoke.FIXTURES/'timing.json'),sleep=clock.sleep,publisher=publish,
-            cancelled=lambda:cancel_at is not None and clock()>=cancel_at,observer=observer)
+            cancelled=lambda:self.cancel_latched or (cancel_at is not None and clock()>=cancel_at),observer=observer)
         return result,clock,actions
     def test_success_requires_reaped_worker_helpers_and_fenced_parent_commit(self):
         code,clock,actions=self.execute();self.assertEqual(code,0);self.assertEqual(self.attempt.state,'COMMITTED')
@@ -889,18 +1021,66 @@ class DTOSupervisorTests(unittest.TestCase):
         self.assertEqual(code,1);self.assertLessEqual(clock(),4430)
         self.assertTrue(all(a[2]=='REVOKED' for a in actions if a[0] in ('TERM','KILL')))
 
+class FakeStageWriter:
+    def __init__(self,request,held_operation='stage.private.rename',output=None):
+        self.request=request;self.held_operation=held_operation;self.actions=[];self.output=output
+        if output is not None:
+            self.target=smoke.dto_stage_path(output,request)
+            self.target.parent.mkdir(mode=0o700,parents=True)
+            self.pending=self.target.with_suffix('.private-pending')
+            self.pending.write_bytes(b'uncommitted observed success')
+    def rename_private_and_ack(self):
+        path=str(smoke.dto_stage_path('.',self.request))
+        self.actions.append((self.held_operation,path))
+        if self.output is not None:smoke.os.replace(self.pending,self.target)
+        return dict(attempt_id=self.request['attempt_id'],epoch=self.request['epoch'],stage_nonce=self.request['stage_nonce'],
+            content_sha256='b'*64,byte_length=100,candidate_sha='a'*40,timing_contract_sha256='c'*64,
+            input_fingerprint='d'*64,complete=True,cleanup_verified=True)
+
+
 class DTORevision2Schedules(DTOSupervisorTests):
     def test_F1_timeout_before_commit_and_late_private_rename_ack(self):
-        attempt=smoke.DTOAttempt('1'*32,'a'*40)
-        helper=DTOTerminalFenceTests();request,ack=helper.request_ack(attempt,'init')
-        self.assertTrue(attempt.ack(request,ack));attempt.activate()
-        request,ack=helper.request_ack(attempt);self.assertTrue(attempt.ack(request,ack));attempt.prepare(ack)
-        attempt.revoke('timeout');self.assertEqual(attempt.epoch,1)
-        # A late helper can change private staging bytes; eligibility stays terminal.
-        self.assertFalse(attempt.ack(request,ack));self.assertFalse(attempt.commit_eligible(1,4440,False))
-        self.assertEqual(attempt.state,'REVOKED')
+        original=smoke.DTOAttempt.prepare
+        def prepare(attempt,ack):
+            original(attempt,ack)
+            self.fake_clock.now=4438  # Strict producer_deadline-2 commit fence.
+        with patch.object(smoke.DTOAttempt,'prepare',prepare):
+            code,clock,actions=self.execute()
+        self.assertEqual(code,1);self.assertEqual(self.attempt.state,'REVOKED')
+        self.assertFalse(any(a[:2]==('publish',True) for a in actions))
+        final=next(h for h in self.handles if h.kind=='final')
+        # Execute a delayed source-owned writer action after the terminal decision.
+        writer=FakeStageWriter(final.request)
+        late_ack=writer.rename_private_and_ack()
+        self.assertTrue(writer.actions[0][1].startswith('staging/'))
+        self.assertFalse(self.attempt.ack(final.request,late_ack))
+        self.assertEqual(self.attempt.state,'REVOKED')
+    def test_late_stage_rename_executes_after_term_kill_timeout_without_publication(self):
+        code,clock,actions=self.execute(blocked='final',resist_cleanup=True)
+        self.assertEqual(code,1);self.assertEqual(self.attempt.state,'REVOKED')
+        final=next(h for h in self.handles if h.kind=='final')
+        self.assertEqual([a[0] for a in actions if len(a)>2 and a[1]=='final' and a[0] in ('TERM','KILL')],['TERM','KILL'])
+        with TemporaryDirectory() as directory:
+            writer=FakeStageWriter(final.request,output=directory)
+            self.assertFalse(writer.target.exists());ack=writer.rename_private_and_ack()
+            self.assertTrue(writer.target.exists());self.assertFalse(self.attempt.ack(final.request,ack))
+            self.assertFalse((Path(directory)/'evidence.json').exists());self.assertFalse((Path(directory)/'commit.json').exists())
+        self.assertFalse(any(a[:2]==('publish',True) for a in actions))
     def test_F1_cancel_before_fence(self):
         code,clock,actions=self.execute(cancel_at=.25)
+        self.assertEqual(code,1);self.assertFalse(any(a[:2]==('publish',True) for a in actions))
+    def test_cancellation_after_final_ack_immediately_before_commit_fence(self):
+        original=smoke.DTOAttempt.prepare
+        def prepare(attempt,ack):original(attempt,ack);self.cancel_latched=True
+        with patch.object(smoke.DTOAttempt,'prepare',prepare):code,clock,actions=self.execute()
+        self.assertEqual(code,1);self.assertEqual(self.attempt.state,'REVOKED')
+        self.assertFalse(any(a[:2]==('publish',True) for a in actions))
+    def test_cancellation_inside_commit_keeps_nonzero_invocation(self):
+        code,clock,actions=self.execute(commit_seconds=.1,cancel_at=.35)
+        self.assertEqual(code,1);self.assertEqual(self.attempt.reason,'commit_uncertain')
+        self.assertEqual(len([a for a in actions if a[:2]==('publish',True)]),1)
+    def test_lost_final_ack_never_commits(self):
+        code,clock,actions=self.execute(ack_transform=lambda kind,ack:None if kind=='final' else ack)
         self.assertEqual(code,1);self.assertFalse(any(a[:2]==('publish',True) for a in actions))
     def test_F1_old_attempt_and_epoch_acks(self):
         for field,value in [('attempt_id','2'*32),('epoch',9),('stage_nonce','3'*32)]:
@@ -914,12 +1094,24 @@ class DTORevision2Schedules(DTOSupervisorTests):
     def test_F1_receipt_without_exit_zero(self):
         DTOTerminalFenceTests().test_strict_commit_fence_and_receipt_consumer()
     def test_F2_init_read_blocked(self):
+        self.assert_blocked_initialization('config.read')
+    def test_F2_init_write_blocked(self):
+        self.assert_blocked_initialization('initial.stage.write')
+    def test_initialization_parse_hash_and_allocation_blocked(self):
+        for operation in ('inventory.parse','inventory.hash','directory.allocate'):
+            with self.subTest(operation=operation):self.assert_blocked_initialization(operation)
+    def assert_blocked_initialization(self,operation):
         code,clock,actions=self.execute(blocked='init',resist_cleanup=True)
         self.assertEqual(code,1);self.assertFalse(any(a[:2]==('create','worker') for a in actions))
         self.assertFalse(any(a[0]=='publish' for a in actions));self.assertLessEqual(clock(),16.01)
-    def test_F2_init_write_blocked(self):
-        # Writer ACK is withheld after inventory verification; same deadline/fence.
-        self.test_F2_init_read_blocked()
+        initial=self.handles[0]
+        # Independent helper operation is held; completing it after parent cleanup
+        # can only materialize a private stage, never initial canonical evidence.
+        writer=FakeStageWriter(initial.request,held_operation=operation)
+        ack=writer.rename_private_and_ack()
+        self.assertEqual(writer.actions[0][0],operation)
+        self.assertFalse(self.attempt.ack(initial.request,ack))
+        self.assertFalse(any(a[0]=='publish' for a in actions))
     def test_F2_progress_parse_blocked_at_worker_deadline(self):
         code,clock,actions=self.execute(blocked=('worker','progress'),progress_at=4379,resist_cleanup=True)
         self.assertEqual(code,1)
@@ -933,6 +1125,8 @@ class DTORevision2Schedules(DTOSupervisorTests):
         helper_kills=[a for a in actions if a[0]=='KILL' and a[1]!='worker']
         self.assertEqual(len(helper_kills),2);self.assertLessEqual(clock(),4430)
         self.assertEqual(len([a for a in actions if a[:2]==('create','nonpass')]),1)
+        nonpass_begin=next(a[2] for a in actions if a[:2]==('create','nonpass'))
+        self.assertAlmostEqual((nonpass_begin-helper_terms[0][3])+(clock()-helper_terms[1][3]),12)
     def test_F2_parent_syscall_stalled_does_not_claim_unconditional_bound(self):
         self.assertIn('independent_watchdog_not_admitted',smoke.DTO_RUNTIME_BLOCKERS)
         code,clock,actions=self.execute(commit_seconds=5000)
@@ -998,6 +1192,22 @@ class DTOStageProtocolTests(unittest.TestCase):
         raw=smoke.encode_dto_ack(ack);self.assertLess(len(raw),512);self.assertEqual(smoke.decode_dto_ack(raw),ack)
         for bad in (raw[:-1],raw+b'X'):
             with self.assertRaises(ValueError):smoke.decode_dto_ack(bad)
+    def test_watchdog_body_contains_no_file_json_or_unbounded_wait_operations(self):
+        source=ast.parse(Path(smoke.__file__).read_text())
+        parent=next(node for node in source.body if isinstance(node,ast.FunctionDef) and node.name=='supervise_dto')
+        for node in ast.walk(parent):
+            if isinstance(node,ast.Call) and isinstance(node.func,ast.Attribute):
+                self.assertNotIn(node.func.attr,('read_text','read_bytes','loads','load','wait','join','run_until_complete','run'))
+        # Fixed control parser rejects a second complete ACK without JSON decoding.
+        ack=dict(attempt_id='1'*32,epoch=0,stage_nonce='2'*32,content_sha256='a'*64,byte_length=123,
+            candidate_sha='b'*40,timing_contract_sha256='c'*64,input_fingerprint='d'*64,complete=True,cleanup_verified=True)
+        raw=smoke.encode_dto_ack(ack)
+        channel=SimpleNamespace(recv=lambda size:raw,close=lambda:None)
+        process=SimpleNamespace(poll=lambda:0)
+        handle=smoke.DTOOwnedProcess(process,channel,'final')
+        self.assertEqual(handle.read_ack(),ack)
+        with self.assertRaises(ValueError):handle.read_ack()
+
     def test_direct_worker_request_without_owned_descriptor_rejected(self):
         with self.assertRaises(ValueError):smoke.dto_internal_entry(['--_dto-owned-fd','999999','bad'])
     def test_v1_phase_expansion_rejected_even_if_arithmetic_fits(self):
@@ -1005,5 +1215,20 @@ class DTOStageProtocolTests(unittest.TestCase):
         for key,value in [('parent_progress_read_parse_seconds',5000),('worker_deadline_reserve_seconds',1500),
                 ('worker_deadline_reserve_seconds',1000001),('engine_launch_seconds',16)]:
             with self.subTest(key=key),self.assertRaises(ValueError):smoke.validate_dto_schedule(dict(timing,**{key:value}),120)
+
+class DTOWorkflowBindingTests(unittest.TestCase):
+    def test_dto_job_matches_shared_contract_and_disabled_r6_hash(self):
+        # Workflow commands are inspected offline; this test launches no fixtures.
+        workflow=(smoke.ROOT/'.github/workflows/autonomous-verification.yml').read_bytes()
+        dto=workflow.split(b'  workshop-dto-browser:',1)[1].split(b'  r3-preparation-unit:',1)[0].decode()
+        timing=smoke.load_dto_timing(smoke.FIXTURES/'timing.json')
+        self.assertIn('timeout-minutes: '+str(timing['ci_job_minutes']),dto)
+        self.assertIn('timeout-minutes: '+str(timing['ci_exercise_seconds']//60),dto)
+        self.assertIn("load_dto_timing",dto);self.assertIn("timing_contract_sha256",dto);self.assertIn("lifetime_seconds",dto)
+        self.assertIn("timing['go_test_seconds']",dto);self.assertIn("timing['readiness_seconds']",dto)
+        self.assertNotIn('wait "$fixture_pid"',dto);self.assertIn('if: always()',dto)
+        r6=json.loads((smoke.ROOT/'docs/agents/tasks/2026-11-03-production-release/r6-release.json').read_text())
+        self.assertEqual(r6['product_evidence']['ci_profile']['workflow_sha256'],smoke.hashlib.sha256(workflow).hexdigest())
+
 
 if __name__ == '__main__': unittest.main()

@@ -482,12 +482,16 @@ async def run_dto_case(browser, origin, name, output, *, case_timeout=20, cleanu
     except asyncio.CancelledError as error:
         diagnostics.fail(error, kind='cancelled')
         task.cancel()
+        error.dto_diagnostics=diagnostics
         raise
     except Exception as error:
         diagnostics.fail(error)
     finally:
         diagnostics.execution_elapsed_seconds = time.monotonic() - start
-        await diagnostics.finish()
+        try:await diagnostics.finish()
+        except asyncio.CancelledError as error:
+            error.dto_diagnostics=diagnostics
+            raise
     if diagnostics.failure_kind is not None:
         return dict(status='failed', error=diagnostics.error, diagnostics=diagnostics.snapshot())
     return result
@@ -963,7 +967,8 @@ async def run_dto_inventory(args, *, clock, lifecycle, persist, timing, bounded=
     def fail(error, where):
         nonlocal failure
         if failure is None: failure = (where, 'cancelled' if isinstance(error,asyncio.CancelledError) else
-            'clock_or_lifecycle_failure', str(error) or type(error).__name__)
+            'clock_or_lifecycle_failure', getattr(getattr(error,'dto_diagnostics',None),'error',None) or str(error) or type(error).__name__)
+        else:evidence.setdefault('secondary_errors',[]).append(where+': '+(str(error) or type(error).__name__))
     # Late resource cleanup is tracked by the same registry as case operations.
     def late_browser(done):
         if not done.cancelled() and done.exception() is None:
@@ -985,14 +990,29 @@ async def run_dto_inventory(args, *, clock, lifecycle, persist, timing, bounded=
             try:
                 for name in inventory():
                     stage='case';begin=clock()
-                    result=await lifecycle.case(browser,name,Path(args.output)/engine)
+                    try:result=await lifecycle.case(browser,name,Path(args.output)/engine)
+                    except BaseException as error:
+                        diagnostics=getattr(error,'dto_diagnostics',None)
+                        if diagnostics is not None:
+                            rows.append(dict(browser=engine,scenario=name,status='failed',error=diagnostics.error,
+                                diagnostics=diagnostics.snapshot(),elapsed_seconds=round(clock()-begin,3)))
+                        fail(error,'case')
+                        raise
                     rows.append(dict(browser=engine,scenario=name,elapsed_seconds=round(clock()-begin,3),**result))
                     evidence.setdefault('browser_versions',{})[engine]=browser.version
                     await snapshot()
+            except BaseException as error:
+                fail(error,stage)
+                raise
             finally:
                 stage='engine.close'
                 owned,browser=browser,None
-                await operation(lambda:lifecycle.close(owned),timing['engine_close_seconds'])
+                had_failure=failure is not None
+                try:await operation(lambda:lifecycle.close(owned),timing['engine_close_seconds'])
+                except BaseException as error:
+                    fail(error,stage)
+                    # The recorded primary failure remains sticky, including cancel.
+                    if not had_failure:raise
             await snapshot()
     except BaseException as error:
         fail(error,stage)
@@ -1030,7 +1050,8 @@ class DTOPlaywrightLifecycle:
     async def case(self,browser,name,output):return await run_dto_case(browser,self.args.base_url,name,output)
     async def close(self,browser):await browser.close()
     async def stop(self):
-        if self.manager is not None:await self.manager.stop()
+        if self.playwright is not None:await self.playwright.stop()
+        elif self.manager is not None:await self.manager.__aexit__(None,None,None)
 
 
 async def run(args):

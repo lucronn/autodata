@@ -184,7 +184,7 @@ jobs:
   workshop-dto-browser:
     name: Workshop DTO browser inventory (not real API acceptance)
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -198,47 +198,117 @@ jobs:
           python -m pip install -r scripts/dev/requirements-workshop-browser.txt
           python -m playwright install --with-deps chromium firefox webkit
       - name: Exercise all 120 DTO browser cases over actual Go TLS assets
+        timeout-minutes: 85
         env:
           CANDIDATE_SHA: ${{ github.sha }}
         run: |
-          set -eu
-          fixture_dir="$RUNNER_TEMP/workshop-dto-browser"
-          mkdir -p "$fixture_dir"
-          chmod 700 "$fixture_dir"
-          printf 'WORKSHOP_DTO_EVIDENCE_DIR=%s\n' "$fixture_dir" >> "$GITHUB_ENV"
-          cleanup() {
-            if [ -n "${fixture_pid:-}" ]; then
-              kill -TERM -- "-$fixture_pid" 2>/dev/null || true
-              for attempt in $(seq 1 20); do
-                if ! kill -0 "$fixture_pid" 2>/dev/null; then break; fi
-                sleep 0.1
-              done
-              kill -KILL -- "-$fixture_pid" 2>/dev/null || true
-              wait "$fixture_pid" 2>/dev/null || true
-            fi
-          }
-          trap cleanup EXIT
-          setsid env AUTODATA_WORKSHOP_BROWSER_FIXTURE=1 AUTODATA_WORKSHOP_BROWSER_READY="$fixture_dir/ready.json" go -C apps/api-go test -run '^TestWorkshopBrowserFixtureHTTP$' -count=1 -timeout=75m >"$fixture_dir/go-fixture.log" 2>&1 &
-          fixture_pid=$!
-          python - "$fixture_dir/ready.json" "$fixture_pid" <<'PY'
+          python - <<'PY'
+          import hashlib
+          import importlib.util
+          import json
           import os
           from pathlib import Path
+          import signal
+          import ssl
+          import subprocess
           import sys
           import time
-          ready = Path(sys.argv[1])
-          pid = int(sys.argv[2])
-          deadline = time.monotonic() + 120
-          while not ready.exists():
-              if time.monotonic() >= deadline:
-                  raise SystemExit("fixture readiness timeout")
+          from urllib.request import Request, urlopen
+          spec = importlib.util.spec_from_file_location('workshop_browser_smoke', 'scripts/dev/workshop_browser_smoke.py')
+          smoke = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(smoke)
+          timing = smoke.load_dto_timing(smoke.FIXTURES / 'timing.json')
+          if timing['ci_exercise_seconds'] != 85*60 or timing['ci_job_minutes'] != 100:
+              raise SystemExit('workflow timing binding mismatch')
+          directory = Path(os.environ['RUNNER_TEMP']) / 'workshop-dto-browser'
+          directory.mkdir(mode=0o700)
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write(f'WORKSHOP_DTO_EVIDENCE_DIR={directory}\n')
+          fixture = producer = None
+          code = 1
+          interrupted = []
+          def latch(signum, frame):
+              interrupted.append(signum)
+          for sig in (signal.SIGTERM, signal.SIGINT):
+              signal.signal(sig, latch)
+          def poll_until(process, deadline):
+              while time.monotonic() < deadline:
+                  status = process.poll()
+                  if status is not None:
+                      return status
+                  if interrupted:
+                      return None
+                  time.sleep(min(.05, max(0, deadline-time.monotonic())))
+              return process.poll()
+          def stop_owned(process):
+              if process is None or process.poll() is not None:
+                  return True
+              # Owned sessions only. No unbounded wait or descendant-containment claim.
+              for sig, seconds in ((signal.SIGTERM, 2), (signal.SIGKILL, 2), (None, 2)):
+                  if sig is not None:
+                      try:
+                          os.killpg(process.pid, sig)
+                      except ProcessLookupError:
+                          pass
+                  end = time.monotonic() + seconds
+                  while time.monotonic() < end:
+                      if process.poll() is not None:
+                          return True
+                      time.sleep(min(.05, max(0, end-time.monotonic())))
+              return process.poll() is not None
+          with open(directory / 'go-fixture.log', 'wb') as log:
               try:
-                  os.kill(pid, 0)
-              except ProcessLookupError:
-                  raise SystemExit("fixture process exited before readiness")
-              time.sleep(0.1)
+                  env = dict(os.environ, AUTODATA_WORKSHOP_BROWSER_FIXTURE='1',
+                      AUTODATA_WORKSHOP_BROWSER_READY=str(directory / 'ready.json'))
+                  fixture = subprocess.Popen(['go', '-C', 'apps/api-go', 'test', '-run',
+                      '^TestWorkshopBrowserFixtureHTTP$', '-count=1', f"-timeout={timing['go_test_seconds']}s"],
+                      env=env, start_new_session=True, stdout=log, stderr=subprocess.STDOUT)
+                  readiness_deadline = time.monotonic() + timing['readiness_seconds']
+                  ready = directory / 'ready.json'
+                  while not ready.exists():
+                      if interrupted or time.monotonic() >= readiness_deadline or fixture.poll() is not None:
+                          raise RuntimeError('fixture readiness unverified')
+                      time.sleep(.05)
+                  metadata = json.loads(ready.read_bytes())
+                  contract_hash = hashlib.sha256((smoke.FIXTURES / 'timing.json').read_bytes()).hexdigest()
+                  if (metadata.get('kind') != 'dto-fixture' or metadata.get('lifetime_seconds') != timing['dto_fixture_seconds']
+                          or metadata.get('timing_contract_sha256') != contract_hash):
+                      raise RuntimeError('fixture lifetime/contract metadata mismatch')
+                  origin = smoke.fixture_origin(metadata['origin'])
+                  producer = subprocess.Popen([sys.executable, 'scripts/dev/workshop_browser_smoke.py',
+                      '--base-url', origin, '--mode', 'dto-fixture', '--browser', 'all',
+                      '--candidate-sha', os.environ['CANDIDATE_SHA'], '--output', str(directory / 'browser')],
+                      start_new_session=True)
+                  status = poll_until(producer, time.monotonic()+timing['producer_hard_seconds'])
+                  code = status if status is not None and status > 0 else (0 if status == 0 and not interrupted else 1)
+                  if code == 0:
+                      raw = (directory / 'browser/evidence.json').read_bytes()
+                      evidence = json.loads(raw)
+                      receipt = json.loads((directory / 'browser/commit.json').read_bytes())
+                      invocation = dict(attempt_id=evidence['attempt_id'], epoch=evidence['epoch'],
+                          exit_code=status, terminal_state='COMMITTED')
+                      expected = [(engine, name) for engine in smoke.ENGINES for name in smoke.inventory()]
+                      if not smoke.accept_dto_success(raw, receipt, invocation=invocation,
+                              expected_attempt=evidence['attempt_id'], candidate_sha=os.environ['CANDIDATE_SHA'],
+                              timing_sha256=contract_hash, expected=expected, expected_input_sha256=smoke._dto_inputs()):
+                          raise RuntimeError('same-attempt receipt plus exit0 not verified')
+                  request = Request(origin+'/__fixture/stop', method='POST')
+                  with urlopen(request, context=ssl._create_unverified_context(), timeout=2) as response:
+                      if response.status != 204:
+                          raise RuntimeError('fixture stop ACK missing')
+                  if poll_until(fixture, time.monotonic()+2) != 0 and code == 0:
+                      code = 1
+              except BaseException as error:
+                  print(type(error).__name__ + ': ' + str(error), file=sys.stderr)
+                  if code == 0:
+                      code = 1
+              finally:
+                  producer_clean = stop_owned(producer)
+                  fixture_clean = stop_owned(fixture)
+                  if (not producer_clean or not fixture_clean or interrupted) and code == 0:
+                      code = 1
+          raise SystemExit(code)
           PY
-          fixture_origin=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["origin"])' "$fixture_dir/ready.json")
-          python scripts/dev/workshop_browser_smoke.py --base-url "$fixture_origin" --mode dto-fixture --browser all --candidate-sha "$CANDIDATE_SHA" --output "$fixture_dir/browser"
       - name: Retain actual DTO browser evidence on success or failure
         if: always()
         uses: actions/upload-artifact@v4
