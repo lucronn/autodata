@@ -8,7 +8,7 @@ import {open, lstat, readdir, readFile, realpath} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {spawn as spawnProcess} from 'node:child_process';
+import {spawn as spawnProcess, ChildProcess} from 'node:child_process';
 
 const INVALID='invalid authenticated publication input';
 const MAX_JSON=65536, MAX_INNER=8*1024*1024, MAX_OUTER=16*1024*1024;
@@ -114,7 +114,7 @@ export async function verifyInstalledTree(root,manifestBytes,approvedHash,lockBy
    const next=rel?rel+'/'+name:name;relativeName(next);const file=path.join(root,next),st=await lstat(file);
    if(next==='installed-tree.json'){require(st.isFile() && st.nlink===1 && st.uid===process.getuid() && !(st.mode&0o222));continue;}
    if(st.isDirectory()){require(dirs.has(next));await walk(next);continue;}
-   const f=entries.get(next);require(f && st.isFile() && st.nlink===1 && st.uid===process.getuid() && (st.mode&0o777)===f.mode && st.size===f.bytes);
+   const f=entries.get(next);require(f && st.isFile() && st.nlink===1 && st.uid===process.getuid() && (st.mode&0o7777)===f.mode && st.size===f.bytes);
    const bytes=await fixedRead(file,64*1024*1024,st);require(hash(bytes)===f.sha256);seen.add(next);
   }
  }
@@ -148,11 +148,11 @@ function stamp(value) {
 }
 function clock(deps) {const now=deps.now();require(now instanceof Date && Number.isFinite(now.getTime()));return now.toISOString().replace(/\.[0-9]{3}Z$/,'Z');}
 async function privateArchive(cwd,request) {
- require(typeof cwd==='string' && path.isAbsolute(cwd) && path.normalize(cwd)===cwd);
- const parent=await lstat(cwd);require(parent.isDirectory() && !parent.isSymbolicLink() && (parent.mode&0o777)===0o700 && parent.uid===process.getuid());
+ require(typeof cwd==='string' && path.isAbsolute(cwd) && path.normalize(cwd)===cwd && await realpath(cwd)===cwd);
+ const parent=await lstat(cwd);require(parent.isDirectory() && !parent.isSymbolicLink() && (parent.mode&0o7777)===0o700 && parent.uid===process.getuid());
  const names=await readdir(cwd);require(names.length===1 && names[0]==='release.zip');
  const file=path.join(cwd,'release.zip'),before=await lstat(file);
- require(before.isFile() && before.nlink===1 && (before.mode&0o777)===0o600 && before.uid===process.getuid() && before.size===request.archive_bytes);
+ require(before.isFile() && before.nlink===1 && (before.mode&0o7777)===0o600 && before.uid===process.getuid() && before.size===request.archive_bytes);
  const result=await fixedRead(file,MAX_INNER,before);require(hash(result)===request.archive_sha256);return result;
 }
 async function bounded(operation,ms,signal,controller) {
@@ -168,31 +168,76 @@ async function bounded(operation,ms,signal,controller) {
  } finally {clearTimeout(timer);signal?.removeEventListener('abort',onAbort);}
 }
 
-// SDK logs never share the private JSON IPC stream. This helper runs in one
-// supervisor-owned private process; concurrent uploads in that process are denied.
-let capturing=false;
-async function capturedToolkit(operation) {
- if(capturing)throw Error(INVALID);
- capturing=true;
- const stdout=process.stdout.write,stderr=process.stderr.write;let total=0;
- const discard=(chunk,encoding,callback)=>{
-  const length=Buffer.isBuffer(chunk)?chunk.length:Buffer.byteLength(chunk,typeof encoding==='string'?encoding:undefined);
-  total+=length;
-  if(total>MAX_JSON)throw Error('output_limit_exceeded');
-  const done=typeof encoding==='function'?encoding:callback;if(typeof done==='function')queueMicrotask(done);
-  return true;
- };
- process.stdout.write=discard;process.stderr.write=discard;
- try {return await operation();}
- finally {process.stdout.write=stdout;process.stderr.write=stderr;capturing=false;}
+const SELF=fileURLToPath(import.meta.url);
+const RUNTIME_KEYS=['ACTIONS_RUNTIME_TOKEN','ACTIONS_RESULTS_URL','GITHUB_REPOSITORY','GITHUB_REPOSITORY_ID','GITHUB_REPOSITORY_OWNER_ID','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','GITHUB_WORKFLOW_SHA','GITHUB_WORKFLOW_REF'];
+function groupExists(pid){try{process.kill(-pid,0);return true;}catch(e){if(e.code==='ESRCH')return false;throw Error('cleanup_failed');}}
+/** The sole SDK-capable boundary. Every outcome waits for owned OS resources. */
+async function ownedUpload(request,deps,remaining) {
+ const selected=workers.get(deps.worker);
+ // The explicit injected OS spawn boundary is for offline contract fixtures only.
+ // In production only a descriptor from the fixed verified loader is accepted.
+ if(!selected && typeof deps.spawn!=='function')throw Error('missing_dependency');
+ if(selected){
+  require(canonical(selected.context)===canonical(request.context));
+  require(selected.policy.toolkit_lock_sha256===deps.policy.toolkit_lock_sha256 && canonical(selected.policy.runtime_origins)===canonical(deps.policy.runtime_origins));
+  await loadOfficialToolkit(selected.context,selected.policy);
+ }
+ const executable=selected?.executable??process.execPath,helper=selected?.helper??SELF;
+ const env=Object.fromEntries(RUNTIME_KEYS.map(k=>[k,deps.runtime[k]]));
+ const input=Buffer.from(JSON.stringify({request,policy:selected?.policy??deps.policy}));require(input.length<=MAX_JSON);
+ const child=(deps.spawn??spawnProcess)(executable,[helper,'--internal-upload-worker'],{cwd:deps.cwd,env,shell:false,detached:true,stdio:['pipe','pipe','pipe','pipe']});
+ require(child instanceof ChildProcess);
+ if(!Number.isInteger(child.pid)){await new Promise(resolve=>{child.on('error',()=>{});child.once('close',resolve);});throw Error(INVALID);}
+ require(child.pid>1 && child.stdio.length===4 && child.stdio.every(Boolean));
+ const pid=child.pid,started=performance.now(),streams=child.stdio;
+ return new Promise((resolve,reject)=>{
+  let failure,closed=false,exitCode,exitSignal,settled=false,killAt,cleanupUntil,logs=0,resultSize=0;const chunks=[],logSizes=[0,0];
+  const groupSignal=signal=>{try{process.kill(-pid,signal);}catch(e){if(e.code!=='ESRCH')failure='cleanup_failed';}};
+  const stop=message=>{
+   if(!failure){failure=message;cleanupUntil=performance.now()+Math.max(0,Math.min(30000,deps.deadline-deps.monotonic()));killAt=performance.now()+2000;child.stdin.destroy();groupSignal('SIGTERM');}
+  };
+  const finish=()=>{
+   if(settled)return;
+   let exists;try{exists=groupExists(pid);}catch{stop('cleanup_failed');exists=true;}
+   if(closed && streams.every(stream=>stream.destroyed) && !exists){
+    settled=true;clearInterval(timer);deps.signal?.removeEventListener('abort',abort);process.removeListener('SIGTERM',terminate);
+    if(failure){reject(Error(failure));return;}
+    try{require(exitCode===0 && exitSignal===null);const observation=strictJSON(Buffer.concat(chunks));
+     require(observation && typeof observation==='object' && !Array.isArray(observation));
+     const names=['id','size','digest'];if(Object.hasOwn(observation,'digestMismatch'))names.push('digestMismatch');keys(observation,names);
+     resolve(observation);
+    }catch{reject(Error(INVALID));}return;
+   }
+   if(failure && performance.now()>=cleanupUntil){
+    settled=true;clearInterval(timer);deps.signal?.removeEventListener('abort',abort);process.removeListener('SIGTERM',terminate);groupSignal('SIGKILL');for(const stream of streams)stream.destroy();reject(Error('cleanup_failed'));
+   }
+  };
+  const abort=()=>stop('operation_cancelled'),terminate=()=>stop('operation_cancelled');
+  const timer=setInterval(()=>{
+   if(!failure && (remaining()<=0 || performance.now()-started>=300000))stop('operation_timed_out');
+   if(failure && performance.now()>=killAt){groupSignal('SIGKILL');killAt=Infinity;}
+   finish();
+  },10);
+  child.on('error',()=>{stop(INVALID);finish();});
+  child.on('exit',(code,signal)=>{exitCode=code;exitSignal=signal;if(code!==0 || signal)stop(failure??INVALID);});
+  child.on('close',()=>{closed=true;try{if(!failure && groupExists(pid))stop(INVALID);}catch{stop('cleanup_failed');}finish();});
+  for(const [index,stream] of streams.entries()){
+   stream.on('error',()=>{stop(INVALID);finish();});stream.on('close',finish);
+   if(index===1 || index===2)stream.on('data',chunk=>{logs+=chunk.length;logSizes[index-1]+=chunk.length;if(logs>MAX_JSON || logSizes[index-1]>MAX_JSON)stop('output_limit_exceeded');});
+   if(index===3)stream.on('data',chunk=>{resultSize+=chunk.length;if(resultSize>MAX_JSON)stop('output_limit_exceeded');else if(!failure)chunks.push(chunk);});
+  }
+  process.on('SIGTERM',terminate);deps.signal?.addEventListener('abort',abort,{once:true});
+  if(deps.signal?.aborted)abort();
+  if(!failure)child.stdin.end(input);
+ });
 }
 
 /**
- * Injected official-SDK contract, not an activated uploader. readback must use a
+ * Injected OS-process contract, not an activated uploader. readback must use a
  * separate actions:read REST credential, returned immutable ID and original
  * outer bytes, then independently decode exactly release.zip. No extracted-file
- * SDK download or caller-provided UploadSession is accepted here. All injected
- * operations must honor AbortSignal and synchronously close/reap during cleanup.
+ * SDK download or caller-provided UploadSession is accepted here. The SDK process is owned and reaped here. Separately trusted runtime-auth and
+ * REST transports must honor AbortSignal and close their own resources in cleanup.
  */
 async function uploadReleaseInternal(input,deps) {
  const request=validateRequest(parseUploadRequest(Buffer.from(JSON.stringify(input))));
@@ -202,7 +247,7 @@ async function uploadReleaseInternal(input,deps) {
  require(Array.isArray(p.runtime_origins) && p.runtime_origins.length>=1 && p.runtime_origins.length<=8);
  for(const origin of p.runtime_origins)require(serviceOrigin(origin)===origin);
  for(const fn of ['authenticateRuntime','readback','cleanup','now','monotonic'])require(typeof deps[fn]==='function');
- require(typeof deps.toolkit?.uploadArtifact==='function');
+ if(typeof deps.spawn!=='function' && !workers.has(deps.worker))throw Error('missing_dependency');
  require(Number.isFinite(deps.deadline) && Number.isFinite(deps.monotonic()));
  if(deps.deadline-deps.monotonic()<=330000)throw Error('operation_timed_out');
  if(deps.signal?.aborted)throw Error('operation_cancelled');
@@ -211,7 +256,8 @@ async function uploadReleaseInternal(input,deps) {
  for(const [key,want] of Object.entries({GITHUB_REPOSITORY:c.repository,GITHUB_REPOSITORY_ID:c.repository_id,GITHUB_REPOSITORY_OWNER_ID:c.repository_owner_id,GITHUB_RUN_ID:c.run_id,GITHUB_RUN_ATTEMPT:String(c.run_attempt),GITHUB_WORKFLOW_SHA:c.workflow_sha,GITHUB_WORKFLOW_REF:c.workflow_ref}))require(env[key]===want);
  let bytes;
  const controller=new AbortController();let failure,result;
- const remaining=()=>Math.min(300000,deps.deadline-deps.monotonic()-30000);
+ const operationStart=performance.now(),operationDeadline=Math.min(deps.deadline-30000,deps.monotonic()+300000);
+ const remaining=()=>Math.min(operationDeadline-deps.monotonic(),300000-(performance.now()-operationStart));
  try {
   bytes=await bounded(()=>privateArchive(deps.cwd,request),Math.min(30000,remaining()),deps.signal,controller);
   const identity=await bounded(()=>deps.authenticateRuntime(env,c,{signal:controller.signal}),Math.min(30000,remaining()),deps.signal,controller);
@@ -220,7 +266,7 @@ async function uploadReleaseInternal(input,deps) {
   const started=clock(deps);
   const uploadRequest={filename:'release.zip',archive_sha256:request.archive_sha256,archive_bytes:request.archive_bytes,artifact_name:request.artifact_name,overwrite:false,retention_days:7,compression_level:0,include_hidden_files:false,run_id:c.run_id,run_attempt:c.run_attempt};
   require(remaining()>0);
-  const uploaded=await capturedToolkit(()=>bounded(()=>deps.toolkit.uploadArtifact(request.artifact_name,[path.join(deps.cwd,'release.zip')],deps.cwd,{compressionLevel:0,retentionDays:7,overwrite:false,includeHiddenFiles:false}),remaining(),deps.signal,controller));
+  const uploaded=await ownedUpload(request,deps,remaining);
   require(uploaded && Number.isSafeInteger(uploaded.id) && uploaded.id>0 && typeof uploaded.digest==='string' && SHA.test(uploaded.digest));
   require(Number.isSafeInteger(uploaded.size) && uploaded.size>=1 && uploaded.size<=MAX_OUTER);
   if(Object.hasOwn(uploaded,'digestMismatch'))require(uploaded.digestMismatch===false);
@@ -236,8 +282,8 @@ async function uploadReleaseInternal(input,deps) {
   const finished=clock(deps);require(stamp(finished)>=stamp(started));
   result={protocol_version:3,artifact_id:id,digest,digestMismatch:false,runtime_service_origin:origin,upload_request_sha256:hash(canonical(uploadRequest)),upload_started_at:started,upload_finished_at:finished,toolkit_lock_sha256:p.toolkit_lock_sha256,control_workflow_sha:c.workflow_sha,run_id:c.run_id,run_attempt:c.run_attempt};
   require(Buffer.byteLength(JSON.stringify(result))<=MAX_JSON);
- } catch(error) {failure=new Error(['operation_timed_out','operation_cancelled','output_limit_exceeded',INVALID].includes(error?.message)?error.message:INVALID);}
- finally {controller.abort();try{await bounded(()=>deps.cleanup(),30000);}catch{failure=Error('cleanup_failed');}}
+ } catch(error) {failure=new Error(['operation_timed_out','operation_cancelled','output_limit_exceeded','cleanup_failed','missing_dependency',INVALID].includes(error?.message)?error.message:INVALID);}
+ finally {controller.abort();try{await bounded(()=>deps.cleanup(),Math.max(0,Math.min(30000,deps.deadline-deps.monotonic())));}catch{failure=Error('cleanup_failed');}}
  if(failure)throw failure;return result;
 }
 
@@ -267,21 +313,25 @@ export async function loadOfficialToolkit(context,policy) {
   for(const origin of policy.runtime_origins)require(serviceOrigin(origin)===origin);
   if(process.version!=='v22.23.4' || process.platform!=='linux' || process.arch!=='x64')throw Error('missing_dependency');
   const base=fileURLToPath(new URL('./publisher-toolkit/',import.meta.url));
-  const lock=await readFile(path.join(base,'package-lock.json'));require(lock.length<=1024*1024 && hash(lock)===policy.toolkit_lock_sha256);
-  require(hash(await readFile(fileURLToPath(import.meta.url)))===policy.helper_sha256);
-  require(hash(await readFile(process.execPath))==='94efd062ed066c1a0b332e18249859c905e920eeada5df55d24c99b919629a90');
-  const manifest=JSON.parse(await readFile(path.join(base,'package.json')));
+  const lock=await fixedRead(path.join(base,'package-lock.json'),1024*1024);require(lock.length<=1024*1024 && hash(lock)===policy.toolkit_lock_sha256);
+  require(hash(await fixedRead(SELF,1024*1024))===policy.helper_sha256);
+  require(hash(await fixedRead(process.execPath,128*1024*1024))==='94efd062ed066c1a0b332e18249859c905e920eeada5df55d24c99b919629a90');
+  const manifest=strictJSON(await fixedRead(path.join(base,'package.json'),1024*1024),1024*1024,100000);
   require(manifest.dependencies['@actions/artifact']==='6.3.1' && manifest.engines.node==='22.23.4');
   const locked=JSON.parse(lock).packages['node_modules/@actions/artifact'];
   require(locked.version==='6.3.1' && locked.integrity==='sha512-DBXgdB9T4yj2KSe0tFg+MTi9T5se+16bdrFQh+3Y6Nq1lZ3gYQk1BjHoTof+7Zf36bEAlfVMf+8ifRKeyGJugQ==');
   const tree=await fixedRead(path.join(base,'installed-tree.json'),8*1024*1024);
-  verifyReadOnlyMount(base.replace(/\/$/,''),await readFile('/proc/self/mountinfo','utf8'));
+  const mounts=await readFile('/proc/self/mountinfo','utf8');
+  for(const immutable of [base.replace(/\/$/,''),SELF,process.execPath])verifyReadOnlyMount(immutable,mounts);
   await verifyInstalledTree(base.replace(/\/$/,''),tree,policy.toolkit_tree_sha256,lock);
   // No SDK import in the parent. This opaque descriptor is not activation authority.
-  const descriptor=Object.freeze({});workers.set(descriptor,{context,policy,executable:process.execPath,helper:fileURLToPath(import.meta.url)});return descriptor;
+  const descriptor=Object.freeze({});workers.set(descriptor,{context:structuredClone(context),policy:structuredClone(policy),executable:process.execPath,helper:fileURLToPath(import.meta.url)});return descriptor;
  } catch(error) {throw Error(error?.message===INVALID?INVALID:'missing_dependency');}
 }
 
+// Internal mode deliberately remains denied: no independently authenticated fixed
+// owner trust source/signature format is provisioned. Private FDs/JSON/flags cannot
+// self-authorize an official SDK import. A separate activation gate must supply it.
 // Separately installed activation and toolkit packages are absent. Never read
 // stdin, env credentials or load a package in this default executable path.
 if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
