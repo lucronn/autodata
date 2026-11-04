@@ -1,0 +1,35 @@
+{
+  "checkpoint_sha": "6d65a512172f28a9f7f0960ecf41409db78455c2",
+  "branch": "codex/workshop-pg17-inspected-prep-plan",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-pg17-inspected-preparation.json",
+  "record_sha256": "d6ad07b2af05d8dc38db00902cc36f7d612d219305309d691655274b9c259d58",
+  "command": [
+    "python3",
+    "scripts/autonomy/pre_implementation.py",
+    "--record",
+    "docs/agents/records/2026-11-04-workshop-pg17-inspected-preparation.json",
+    "--base-sha",
+    "6d65a512172f28a9f7f0960ecf41409db78455c2"
+  ],
+  "exit_code": 0,
+  "stdout": {
+    "status": "synchronized",
+    "errors": []
+  },
+  "stderr": "",
+  "verified_at": "2026-11-04T02:52:10.798765+00:00",
+  "tracking_readback": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621229238",
+    "issue_body_sha256": "2f08074006d1830429aa3a26da03b53fe949b0a400279c38c73a0227a91604d8",
+    "issue_comment_sha256": "9adc63701485920c4e17ce57a868ac109ca5238280958f68ff70182e334c2b29",
+    "project_text_sha256": "57686e01498d0441bcbfe8a994d82b00c2f84cb1ff127b2ef0adac0db365f6e2",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4"
+  },
+  "independent_checkpoint_review": "pending",
+  "implementation_modified": false,
+  "preparation_executed": false,
+  "runtime_executed": false,
+  "runtime_verified": false,
+  "production_ready": false,
+  "integration_authorized": false
+}
