@@ -2231,6 +2231,9 @@ def inspect_api21_receipts(store, *, candidate_sha, trusted_base_sha, profile_sh
         require(not passed or screenshot not in raw, 'api21_success_screenshot')
         google=root == API21_CASES[0][1]; isolation=root == 'test_browser_account_scope_and_revocation_real_api'
         refund=root == 'test_browser_signed_refund_blocks_old_links_real_api'
+        require('worker_exits' not in result or 'final_snapshot' in result, 'api21_retained_source_order')
+        require('final_snapshot' not in result or row is not None and row['status'] == 'passed',
+                'api21_retained_source_order')
         final_order=None
         if 'final_snapshot' in result:
             final_order=_api21_snapshot(result['final_snapshot'],scope,work=not google,isolation=isolation,revoked=refund)

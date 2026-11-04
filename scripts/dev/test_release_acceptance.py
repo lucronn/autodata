@@ -3454,6 +3454,7 @@ class API21RawInspectorTests(unittest.TestCase):
             self.assertNotIn('SECRET_SENTINEL',json.dumps(result))
             self.assertEqual(result['verified_case_ids'],[])
         model=self.model();model[0]['result']['passed']=False
+        model[0]['result'].pop('final_snapshot');model[0]['result'].pop('worker_exits')
         model[0]['evidence']['results']=[]
         result=self.inspect(model)
         self.assertEqual(result['diagnostics'][0]['category'],'producer_partial')
@@ -3626,6 +3627,16 @@ class API21RawInspectorTests(unittest.TestCase):
             with self.subTest(vehicle=vehicle):self.reject(model,real=True)
         model=self.model();model[3]['result']['final_snapshot']['paid_rows']['dataset_requests'][0]['vehicle_id']=None
         self.assertEqual(self.inspect(model,real=True)['accepted_case_credit'],0)
+
+    def test_nonpass_retained_fields_follow_source_assignment_order(self):
+        for status in ('failed','empty'):
+            model=self.model();item=model[3];item['result']['passed']=False
+            item['result'].pop('worker_exits')
+            item['evidence']['results']=[] if status=='empty' else [dict(browser=item['case']['engine'],
+                scenario=item['case']['root'],status='failed',elapsed_seconds=1,error='PRIVATE_SENTINEL')]
+            with self.subTest(status=status),self.assertRaises(assembler.ContractError):self.inspect(model,real=True)
+        model=self.model();item=model[3];item['result']['passed']=False;item['result'].pop('final_snapshot')
+        with self.assertRaises(assembler.ContractError):self.inspect(model,real=True)
 
 
 if __name__ == '__main__': unittest.main()

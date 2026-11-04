@@ -556,3 +556,9 @@ result is `passed:false`; absent optional success fields remain absent. Isolatio
 terminal sessions must retain the source's two owner sessions and one other-account
 session. A non-null dataset-request vehicle ID must be a UUID matching the selected
 vehicle; the source's nullable vehicle ID remains allowed.
+
+Retained partial fields also follow the source assignment order: a final snapshot
+requires a retained successful browser row, and worker cleanup records require a
+final snapshot. Failed/empty browser observations cannot acquire those later
+fields. Genuine early failures and failures after successful browser observation
+remain nonpass without inventing absent records.
