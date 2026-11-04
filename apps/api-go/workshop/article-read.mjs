@@ -28,11 +28,11 @@ export function readableArticle(article) {
   );
 }
 export function processingArticle(article) {
+  const processing = article?.processing;
   return Boolean(
-    article?.processing?.job_id &&
-      !["completed", "needs_review", "failed", "withdrawn"].includes(
-        article.processing.state,
-      ),
+    processing?.job_id &&
+      !["completed", "needs_review", "withdrawn"].includes(processing.state) &&
+      (processing.state !== "failed" || processing.retryable === true),
   );
 }
 export async function readArticle(
