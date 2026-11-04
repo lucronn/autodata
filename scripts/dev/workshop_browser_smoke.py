@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Bounded Workshop browser acceptance; DTO checks never count as real API proof."""
 import argparse
+import base64
+import signal
+import socket
+import stat
+import struct
+import sys
 import asyncio
 import hashlib
 import importlib.metadata
@@ -26,6 +32,7 @@ ENGINES = ('chromium', 'firefox', 'webkit')
 
 
 # This contract is test-only. No environment override or runtime authority.
+DTO_TIMING_V1 = {'version': 'v1', 'engines': 3, 'scenarios_per_engine': 40, 'case_execution_seconds': 20, 'case_cleanup_seconds': 3, 'provenance_seconds': 150, 'playwright_start_seconds': 10, 'engine_launch_seconds': 15, 'engine_close_seconds': 3, 'playwright_stop_seconds': 10, 'evidence_persistence_seconds': 10, 'worker_hard_seconds': 4380, 'producer_hard_seconds': 4440, 'worker_term_seconds': 2, 'worker_kill_seconds': 2, 'worker_reap_seconds': 2, 'readiness_seconds': 120, 'handoff_seconds': 10, 'fixture_stop_seconds': 10, 'safety_seconds': 60, 'dto_fixture_seconds': 4800, 'api_fixture_seconds': 4400, 'go_test_seconds': 5040, 'fixture_startup_seconds': 120, 'fixture_teardown_seconds': 60, 'ci_exercise_seconds': 5100, 'ci_job_minutes': 100, 'parent_initialization_seconds': 10, 'parent_progress_read_parse_seconds': 10, 'parent_final_read_parse_stage_seconds': 10, 'parent_commit_seconds': 2, 'io_helper_term_seconds': 2, 'io_helper_kill_seconds': 2, 'io_helper_reap_seconds': 2, 'max_io_helper_cleanup_episodes': 2, 'parent_scheduling_reserve_seconds': 10, 'worker_deadline_reserve_seconds': 50}
 DTO_TIMING_KEYS = frozenset(['version', 'engines', 'scenarios_per_engine', 'case_execution_seconds', 'case_cleanup_seconds', 'provenance_seconds', 'playwright_start_seconds', 'engine_launch_seconds', 'engine_close_seconds', 'playwright_stop_seconds', 'evidence_persistence_seconds', 'worker_hard_seconds', 'producer_hard_seconds', 'worker_term_seconds', 'worker_kill_seconds', 'worker_reap_seconds', 'readiness_seconds', 'handoff_seconds', 'fixture_stop_seconds', 'safety_seconds', 'dto_fixture_seconds', 'api_fixture_seconds', 'go_test_seconds', 'fixture_startup_seconds', 'fixture_teardown_seconds', 'ci_exercise_seconds', 'ci_job_minutes', 'parent_initialization_seconds', 'parent_progress_read_parse_seconds', 'parent_final_read_parse_stage_seconds', 'parent_commit_seconds', 'io_helper_term_seconds', 'io_helper_kill_seconds', 'io_helper_reap_seconds', 'max_io_helper_cleanup_episodes', 'parent_scheduling_reserve_seconds', 'worker_deadline_reserve_seconds'])
 
 
@@ -46,8 +53,9 @@ def load_dto_timing(path):
 def validate_dto_schedule(timing, case_count):
     if not isinstance(timing, dict) or set(timing) != DTO_TIMING_KEYS or timing['version'] != 'v1':
         raise ValueError('invalid DTO timing schema/version')
-    if any(type(value) is not int or value <= 0 for key,value in timing.items() if key != 'version'):
+    if any(type(value) is not int or not 0 < value <= 1000000 for key,value in timing.items() if key != 'version'):
         raise ValueError('DTO timing values must be finite positive integers')
+    if timing != DTO_TIMING_V1:raise ValueError('v1 timing budgets differ from reviewed schedule')
     t = timing
     fixed = dict(engines=3, scenarios_per_engine=40, case_execution_seconds=20,
         case_cleanup_seconds=3, producer_hard_seconds=4440, api_fixture_seconds=4400,
@@ -1006,6 +1014,7 @@ async def run_dto_inventory(args, *, clock, lifecycle, persist, timing, bounded=
             fail(error,'persistence')
             evidence.update(failure_stage=failure[0],failure_kind=failure[1],error=failure[2],persistence_status='unverified',cleanup_status='unverified')
             evidence['results']=complete_dto_failure(expected,rows,stage=failure[0],kind=failure[1],cleanup='unverified')
+    if failure is not None and failure[1]=='cancelled':raise asyncio.CancelledError(failure[2])
     return evidence
 
 
@@ -1025,6 +1034,7 @@ class DTOPlaywrightLifecycle:
 
 
 async def run(args):
+    if args.mode=='dto-fixture':raise ValueError('DTO CLI requires the owned supervisor')
     from playwright.async_api import async_playwright
     engines=ENGINES if args.browser=='all' else (args.browser,)
     names=inventory() if args.mode=='dto-fixture' else [os.environ.get('AUTODATA_WORKSHOP_BROWSER_CASE')]
@@ -1068,7 +1078,500 @@ async def run(args):
     return evidence
 
 
+# Finite DTO-main scheduling is CONDITIONAL on responsive parent clock/create/
+# poll/signal/publication syscalls. Independent watchdog and actual descendant
+# containment are not admitted by this source protocol.
+DTO_RUNTIME_BLOCKERS = ('independent_watchdog_not_admitted', 'descendant_containment_not_admitted',
+    'trace_16MiB_producer_8MiB_consumer_not_admitted')
+DTO_MAX_BYTES = 32*1024*1024
+
+
+class DTOAttempt:
+    def __init__(self, attempt_id, candidate_sha):
+        if not re.fullmatch('[a-f0-9]{32}',attempt_id):raise ValueError('fresh 128-bit attempt required')
+        self.attempt_id,self.candidate_sha = attempt_id,candidate_identity(candidate_sha)
+        self.epoch,self.state,self.reason = 0,'INITIALIZING',None
+        self.pending={}; self.used=set(); self.pins=None; self.final_ack=None
+    def request(self,kind):
+        if self.state in ('COMMITTED','REVOKED') and kind!='nonpass':raise ValueError('terminal attempt')
+        nonce=os.urandom(16).hex()
+        request=dict(kind=kind,attempt_id=self.attempt_id,epoch=self.epoch,stage_nonce=nonce)
+        self.pending[nonce]=request
+        return request
+    def ack(self,request,ack):
+        if self.state in ('COMMITTED','REVOKED') or not isinstance(ack,dict):return False
+        nonce=request['stage_nonce']
+        if nonce in self.used or self.pending.get(nonce)!=request:return False
+        if any(ack.get(key)!=request[key] for key in ('attempt_id','epoch','stage_nonce')):return False
+        if ack.get('candidate_sha')!=self.candidate_sha:return False
+        if any(not isinstance(ack.get(key),str) or not re.fullmatch('[a-f0-9]{64}',ack[key])
+                for key in ('content_sha256','timing_contract_sha256','input_fingerprint')):return False
+        if type(ack.get('byte_length')) is not int or not 0<ack['byte_length']<=DTO_MAX_BYTES:return False
+        pins=(ack['timing_contract_sha256'],ack['input_fingerprint'])
+        if self.pins is not None and pins!=self.pins:return False
+        if self.pins is None:self.pins=pins
+        self.used.add(nonce);del self.pending[nonce]
+        return True
+    def activate(self):
+        if self.state!='INITIALIZING' or self.pins is None:raise ValueError('initialization not acknowledged')
+        self.state='ACTIVE'
+    def prepare(self,ack):
+        if self.state!='ACTIVE' or not ack.get('complete') or not ack.get('cleanup_verified'):
+            raise ValueError('complete clean final ACK required')
+        self.final_ack=ack;self.state='PREPARED'
+    def revoke(self,reason):
+        if self.state in ('COMMITTED','REVOKED'):return
+        self.reason=reason;self.epoch+=1;self.state='REVOKED';self.pending.clear()
+    def commit_eligible(self,now,deadline,cancelled):
+        return self.state=='PREPARED' and self.final_ack is not None and not cancelled and now<deadline-2
+
+
+def dto_receipt(ack,attempt):
+    return dict(version='v1',attempt_id=attempt.attempt_id,epoch=attempt.epoch,
+        candidate_sha=attempt.candidate_sha,timing_contract_sha256=ack['timing_contract_sha256'],
+        evidence_sha256=ack['content_sha256'],terminal_state='committed',cleanup_status='verified')
+
+
+def accept_dto_success(raw,receipt,*,invocation,expected_attempt,candidate_sha,timing_sha256,expected,expected_input_sha256,expected_epoch=0):
+    """A receipt is not an invocation acknowledgement; consumers need both."""
+    try:
+        if len(raw)>DTO_MAX_BYTES or not isinstance(invocation,dict) or not isinstance(receipt,dict):return False
+        evidence=json.loads(raw,object_pairs_hook=_unique_json)
+        if type(receipt.get('epoch')) is not int or receipt['epoch']!=expected_epoch:return False
+        if evidence.get('input_sha256')!=expected_input_sha256:return False
+        if evidence.get('input_fingerprint')!=hashlib.sha256(_dto_bytes(expected_input_sha256)).hexdigest():return False
+        if invocation != dict(attempt_id=expected_attempt,epoch=receipt['epoch'],exit_code=0,terminal_state='COMMITTED'):return False
+        if receipt!=dict(version='v1',attempt_id=expected_attempt,epoch=evidence['epoch'],candidate_sha=candidate_sha,
+            timing_contract_sha256=timing_sha256,evidence_sha256=hashlib.sha256(raw).hexdigest(),
+            terminal_state='committed',cleanup_status='verified'):return False
+        if any(evidence.get(key)!=value for key,value in dict(attempt_id=expected_attempt,candidate_sha=candidate_sha,
+                timing_contract_sha256=timing_sha256,publication_state='requires_commit_receipt',cleanup_status='verified').items()):return False
+        if evidence.get('failure_kind') or evidence.get('revoked'):return False
+        rows=evidence['results']
+        if [(r['browser'],r['scenario']) for r in rows]!=expected:return False
+        validate_results(rows,expected)
+        return True
+    except (ValueError,KeyError,TypeError):return False
+
+
+def supervise_dto(args,*,clock,process_factory,writer_factory,timing,sleep=time.sleep,
+                  publisher=None,cancelled=lambda:False,observer=lambda attempt:None,producer_started=None):
+    """Watch only owned handles and fixed-size ACKs; file I/O/JSON stays in helpers.
+
+    Creation/poll/signal and the <=2s parent publication section are responsive-
+    syscall preconditions, not a claim of kernel-stall survival.
+    """
+    clock=DTOClock(clock)
+    started=clock() if producer_started is None else producer_started
+    deadline=started+4440
+    attempt=DTOAttempt(os.urandom(16).hex(),args.candidate_sha);observer(attempt)
+    init_deadline=started+10;worker=helper=None;helper_episodes=0;initialized=False
+    worker_deadline=None;progress_left=10;progress_read=False;progress_begin=None;progress_ack=None;final_deadline=None
+    publisher=publisher or (lambda ack,attempt,success:publish_dto_stage(args.output,ack,attempt,success))
+    def pause(until):sleep(min(.02,max(0,until-clock())))
+    def stop(handle,helper_stop=False):
+        nonlocal helper_episodes
+        if handle is None:return True
+        if helper_stop:
+            helper_episodes+=1
+            if helper_episodes>2:return False
+        if handle.poll() is not None:handle.close();return True
+        for event,seconds in (('TERM',2),('KILL',2),('REAP',2)):
+            end=clock()+seconds
+            if event!='REAP':
+                try:handle.signal_owned_group(event)
+                except Exception:return False
+            while clock()<end:
+                if handle.poll() is not None:handle.close();return True
+                pause(end)
+        handle.close();return False
+    def collect(handle,until,request,prior_ack=None):
+        ack=prior_ack
+        while clock()<until:
+            if cancelled():raise InterruptedError('external cancellation')
+            current=handle.read_ack()
+            if current is not None:
+                if ack is not None:raise ValueError('duplicate helper ACK')
+                ack=current
+            code=handle.poll()
+            if code is not None:
+                if ack is None:ack=handle.read_ack()
+                if clock()>=until:raise TimeoutError('expired helper ACK')
+                if code!=0 or ack is None or not attempt.ack(request,ack):raise ValueError('helper ACK/exit unverified')
+                handle.close();return ack
+            pause(until)
+        raise TimeoutError('helper phase deadline')
+    def create(factory,kind):
+        request=attempt.request(kind)
+        # A nonpass helper gets the sticky reason, never a success publication target.
+        request.update(failure_reason=attempt.reason)
+        attempt.pending[request['stage_nonce']]=dict(request)
+        return factory(kind,request,args),request
+    def publish(ack,success,until):
+        begin=clock()
+        if cancelled() or begin>=until-2:raise InterruptedError('publication fence expired')
+        if not publisher(ack,attempt,success) or cancelled() or clock()>=begin+2 or clock()>=until:
+            raise RuntimeError('commit_uncertain')
+    try:
+        if clock()>=init_deadline:raise TimeoutError('initialization_unverified')
+        helper,request=create(writer_factory,'init')
+        ack=collect(helper,init_deadline,request);helper=None
+        publish(ack,False,init_deadline);initialized=True
+        # Validate exact contract before ANY browser worker is created. In production
+        # initialization helper performed file parsing; this object is its fixed v1 contract.
+        validate_dto_schedule(timing,120)
+        if clock()>=init_deadline or deadline-clock()<timing['worker_deadline_reserve_seconds']:
+            raise TimeoutError('initialization_unverified')
+        attempt.activate();worker_started=clock()
+        worker,worker_request=create(process_factory,'worker')
+        worker_deadline=min(worker_started+timing['worker_hard_seconds'],deadline-timing['worker_deadline_reserve_seconds'])
+        if clock()>=init_deadline:raise TimeoutError('late worker creation')
+        while True:
+            now=clock()
+            if cancelled():raise InterruptedError('external cancellation')
+            if now>=worker_deadline:raise TimeoutError('worker hard deadline')
+            code=worker.poll()
+            if code is not None:
+                worker.close();worker=None
+                if code!=0:raise RuntimeError('worker exit/cleanup_unverified')
+                break
+            # One optional progress read plus one final read: no per-case renewal.
+            if not progress_read and getattr(worker,'progress_ready',lambda:False)():
+                helper,request=create(writer_factory,'progress');progress_read=True;progress_begin=now
+            if helper is not None:
+                current=helper.read_ack();code=helper.poll()
+                if current is not None:
+                    if progress_ack is not None:raise ValueError('duplicate progress ACK')
+                    progress_ack=current
+                if code is not None:
+                    ack=progress_ack if progress_ack is not None else helper.read_ack()
+                    if code!=0 or ack is None or not attempt.ack(request,ack):raise ValueError('progress ACK/exit unverified')
+                    progress_left-=clock()-progress_begin
+                    helper.close();helper=None
+                elif now-progress_begin>=progress_left:raise TimeoutError('cumulative progress read/parse exhausted')
+            pause(min(worker_deadline,progress_begin+progress_left if helper is not None else worker_deadline))
+        # Any still-owned progress helper must ACK AND reap; final10s is shared.
+        final_deadline=min(clock()+timing['parent_final_read_parse_stage_seconds'],deadline-12)
+        if helper is not None:
+            collect(helper,min(final_deadline,progress_begin+progress_left),request,progress_ack);helper=None
+        helper,request=create(writer_factory,'final')
+        ack=collect(helper,final_deadline,request);helper=None
+        attempt.prepare(ack)
+        if not attempt.commit_eligible(clock(),deadline,cancelled()):raise InterruptedError('commit fence denied')
+        # No await/helper action occurs between fence and serialized parent publication.
+        publish(ack,True,deadline)
+        attempt.state='COMMITTED'
+        return 0
+    except BaseException as error:
+        reason='commit_uncertain' if 'commit_uncertain' in str(error) else str(error) or type(error).__name__
+        attempt.revoke(reason)  # Terminal epoch fence precedes EVERY cleanup signal.
+        try:worker_clean=stop(worker)
+        except BaseException:worker_clean=False
+        worker=None
+        try:helper_clean=stop(helper,True)
+        except BaseException:helper_clean=False
+        helper=None
+        if initialized and reason!='commit_uncertain' and 'clock' not in reason and (final_deadline is None or clock()<final_deadline):
+            # Exactly one post-fault nonpass stage, never another success attempt.
+            try:
+                end=min(clock()+10 if final_deadline is None else final_deadline,deadline-2)
+                helper,request=create(writer_factory,'nonpass')
+                ack=None
+                while clock()<end:
+                    current=helper.read_ack()
+                    if current is not None:ack=current
+                    code=helper.poll()
+                    if code is not None:
+                        if ack is None:ack=helper.read_ack()
+                        if code!=0 or ack is None:raise ValueError('nonpass staging unverified')
+                        if any(ack.get(key)!=request[key] for key in ('attempt_id','epoch','stage_nonce')):raise ValueError('nonpass identity')
+                        helper.close();helper=None
+                        # Publish only failure bytes; no receipt and no terminal success.
+                        if worker_clean and helper_clean:publish(ack,False,deadline)
+                        break
+                    pause(end)
+                if helper is not None:stop(helper,True);helper=None
+            except BaseException:
+                stop(helper,True);helper=None
+        return 1
+
+
+# Fixed binary ACK framing keeps the watchdog free of file reads and JSON parsing.
+_DTO_ACK = struct.Struct('!16sQ16s32sQI20s32s32s')
+
+def encode_dto_ack(ack):
+    return _DTO_ACK.pack(bytes.fromhex(ack['attempt_id']),ack['epoch'],bytes.fromhex(ack['stage_nonce']),
+        bytes.fromhex(ack['content_sha256']),ack['byte_length'],int(ack['complete']) | (int(ack['cleanup_verified'])<<1),
+        bytes.fromhex(ack['candidate_sha']),bytes.fromhex(ack['timing_contract_sha256']),bytes.fromhex(ack['input_fingerprint']))
+
+def decode_dto_ack(raw):
+    if len(raw)!=_DTO_ACK.size:raise ValueError('invalid ACK frame size')
+    attempt,epoch,nonce,digest,length,flags,candidate,timing,inputs=_DTO_ACK.unpack(raw)
+    if flags & ~3:raise ValueError('invalid ACK flags')
+    return dict(attempt_id=attempt.hex(),epoch=epoch,stage_nonce=nonce.hex(),content_sha256=digest.hex(),byte_length=length,
+        complete=bool(flags&1),cleanup_verified=bool(flags&2),candidate_sha=candidate.hex(),
+        timing_contract_sha256=timing.hex(),input_fingerprint=inputs.hex())
+
+
+def dto_worker_environment(environment):
+    allowed=('PATH','HOME','TMPDIR','XDG_CACHE_HOME','PLAYWRIGHT_BROWSERS_PATH','SSL_CERT_FILE','SSL_CERT_DIR','LANG','LC_ALL')
+    result={key:environment[key] for key in allowed if key in environment}
+    for key,value in result.items():
+        if not isinstance(value,str) or '\0' in value:raise ValueError('invalid worker environment')
+        if key not in ('LANG','LC_ALL'):
+            paths=value.split(os.pathsep) if key=='PATH' else [value]
+            if any(not Path(part).is_absolute() for part in paths):raise ValueError('worker paths must be absolute')
+    return result
+
+
+def dto_stage_path(output,request):
+    if not re.fullmatch('[a-f0-9]{32}',request['attempt_id']) or not re.fullmatch('[a-f0-9]{32}',request['stage_nonce']):
+        raise ValueError('invalid staging identity')
+    if type(request['epoch']) is not int or request['epoch']<0:raise ValueError('invalid epoch')
+    return Path(output)/'staging'/request['attempt_id']/str(request['epoch'])/(request['stage_nonce']+'.json')
+
+
+def _dto_bytes(value):return (json.dumps(value,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+
+
+def _dto_read(path):
+    # Helpers only: retain oversize/raw files and reject without truncating them.
+    descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+    try:
+        info=os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or not 0<info.st_size<=DTO_MAX_BYTES:
+            raise ValueError('owned regular evidence <=32MiB required')
+        with os.fdopen(descriptor,'rb',closefd=False) as stream:raw=stream.read(DTO_MAX_BYTES+1)
+        if len(raw)>DTO_MAX_BYTES:raise ValueError('oversize evidence')
+        return json.loads(raw,object_pairs_hook=_unique_json)
+    finally:os.close(descriptor)
+
+
+def _dto_write_private(path,value):
+    path=Path(path);path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+    raw=_dto_bytes(value)
+    if len(raw)>DTO_MAX_BYTES:raise ValueError('oversize staged evidence')
+    descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    try:
+        with os.fdopen(descriptor,'wb',closefd=False) as stream:stream.write(raw);stream.flush();os.fsync(descriptor)
+    finally:os.close(descriptor)
+    return raw
+
+
+def _dto_inputs():
+    paths=[Path(__file__),FIXTURES/'timing.json',FIXTURES/'scenarios.json',FIXTURES/'firebase_transport.js',
+        FIXTURES/'hostile_source.json',FIXTURES/'stripe_checkout.html',ROOT/'apps/api-go/workshop_browser_fixture_test.go']
+    return {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+
+
+def _dto_expected(args):
+    return [(engine,name) for engine in (ENGINES if args.browser=='all' else (args.browser,)) for name in inventory()]
+
+
+def _dto_validate_progress(evidence,initial,args,request,*,final=False):
+    expected=_dto_expected(args)
+    for key in ('candidate_sha','timing_contract_sha256','input_sha256','input_fingerprint','attempt_id'):
+        if evidence.get(key)!=initial.get(key):raise ValueError('stale/mismatched progress pin: '+key)
+    if evidence.get('epoch')!=0 or evidence.get('publication_state')!='requires_commit_receipt':raise ValueError('stale progress epoch')
+    rows=evidence.get('results')
+    if not isinstance(rows,list):raise ValueError('progress results required')
+    keys=[(row['browser'],row['scenario']) for row in rows]
+    if len(keys)!=len(set(keys)) or keys!=expected[:len(keys)] or any(row.get('status') not in ('passed','failed') for row in rows):
+        raise ValueError('malformed/duplicate/unordered progress')
+    if final:
+        validate_results(rows,expected)
+        if evidence.get('cleanup_status')!='verified' or evidence.get('failure_kind') or evidence.get('persistence_status')=='unverified':
+            raise ValueError('final lifecycle/cleanup not verified')
+
+
+def perform_dto_io(kind,request,args):
+    """Owned helpers stage private bytes only. They have no canonical publish API."""
+    output=Path(args.output)
+    if kind=='init':
+        timing=load_dto_timing(FIXTURES/'timing.json');expected=_dto_expected(args)
+        inputs=_dto_inputs();timing_hash=inputs[str((FIXTURES/'timing.json').relative_to(ROOT))]
+        evidence=dict(version='v1',mode='dto-fixture',candidate_sha=args.candidate_sha,attempt_id=request['attempt_id'],
+            epoch=request['epoch'],publication_state='requires_commit_receipt',input_sha256=inputs,
+            timing_contract_sha256=timing_hash,input_fingerprint=hashlib.sha256(_dto_bytes(inputs)).hexdigest(),
+            configured_budgets=timing,cleanup_status='unverified',runtime_blockers=list(DTO_RUNTIME_BLOCKERS),
+            results=complete_dto_failure(expected,[],stage='initialization',kind='not_started',cleanup='unverified'))
+        # Fresh output is exclusive; an old invocation cannot be silently reused.
+        output.mkdir(mode=0o700,parents=False,exist_ok=False)
+        _dto_write_private(output/'initial-observation.json',evidence)
+    else:
+        initial=_dto_read(output/'initial-observation.json')
+        try:evidence=_dto_read(output/'progress.json')
+        except FileNotFoundError:
+            if kind!='nonpass':raise
+            evidence=dict(initial,results=[])
+        if kind!='nonpass':_dto_validate_progress(evidence,initial,args,request,final=kind=='final')
+        else:
+            try:_dto_validate_progress(evidence,initial,args,request)
+            except Exception:evidence=dict(initial,results=[])
+            evidence=dict(evidence,epoch=request['epoch'],failure_kind=request.get('failure_reason') or 'lifecycle_failure',cleanup_status='unverified')
+            evidence['results']=complete_dto_failure(_dto_expected(args),evidence['results'],stage='parent',kind=evidence['failure_kind'],cleanup='unverified')
+    raw=_dto_write_private(dto_stage_path(output,request),evidence)
+    return dict(attempt_id=request['attempt_id'],epoch=request['epoch'],stage_nonce=request['stage_nonce'],
+        content_sha256=hashlib.sha256(raw).hexdigest(),byte_length=len(raw),candidate_sha=args.candidate_sha,
+        timing_contract_sha256=evidence['timing_contract_sha256'],input_fingerprint=evidence['input_fingerprint'],
+        complete=len(evidence['results'])==len(_dto_expected(args)) and all(row['status']=='passed' for row in evidence['results']),
+        cleanup_verified=evidence['cleanup_status']=='verified')
+
+
+def publish_dto_stage(output,ack,attempt,success):
+    """Parent-only serialized <=2s critical section, under responsive-local-I/O assumption.
+
+    No read/parse/hash is performed here. Source-owned helper ACK binds staged
+    bytes; metadata/rename/fsync/receipt publication are the explicit precondition.
+    """
+    if success and (attempt.state!='PREPARED' or attempt.final_ack!=ack):raise ValueError('terminal fence')
+    if success and (ack['epoch']!=attempt.epoch or ack['attempt_id']!=attempt.attempt_id):raise ValueError('stale publication')
+    root=os.open(output,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        relative=str(dto_stage_path('.',ack))
+        source=os.open(relative,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=root)
+        try:
+            info=os.fstat(source)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size!=ack['byte_length']:
+                raise ValueError('stage metadata mismatch')
+        finally:os.close(source)
+        os.replace(relative,'evidence.json',src_dir_fd=root,dst_dir_fd=root);os.fsync(root)
+        if success:
+            # Receipt is published LAST. Its presence alone never establishes exit0.
+            name='receipt-'+attempt.attempt_id+'.stage'
+            descriptor=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=root)
+            try:
+                raw=_dto_bytes(dto_receipt(ack,attempt));written=os.write(descriptor,raw)
+                if written!=len(raw):raise OSError('partial commit receipt')
+                os.fsync(descriptor)
+            finally:os.close(descriptor)
+            os.replace(name,'commit.json',src_dir_fd=root,dst_dir_fd=root);os.fsync(root)
+        return True
+    finally:os.close(root)
+
+
+class DTOOwnedProcess:
+    """Only Popen-created identity is signalable; no caller-supplied PID surface."""
+    def __init__(self,process,control,kind):
+        self.process,self.control,self.kind=process,control,kind
+        self.buffer=bytearray();self.ack_read=False;self.saw_progress=False
+    def poll(self):return self.process.poll()  # poll performs WNOHANG reap.
+    def _receive(self):
+        try:
+            raw=self.control.recv(4096)
+            if self.kind=='worker':
+                if any(byte!=ord('P') for byte in raw):raise ValueError('invalid worker control notification')
+                self.saw_progress|=bool(raw)
+            else:
+                self.buffer.extend(raw)
+                if len(self.buffer)>_DTO_ACK.size:raise ValueError('oversize/duplicate control ACK')
+        except BlockingIOError:pass
+    def read_ack(self):
+        self._receive()
+        if self.ack_read or len(self.buffer)<_DTO_ACK.size:return None
+        self.ack_read=True
+        return decode_dto_ack(self.buffer)
+    def progress_ready(self):self._receive();return self.saw_progress
+    def signal_owned_group(self,event):
+        if self.process.poll() is None:os.killpg(self.process.pid,signal.SIGTERM if event=='TERM' else signal.SIGKILL)
+    def close(self):self.control.close()
+
+
+def create_dto_process(kind,request,args):
+    parent,child=socket.socketpair(socket.AF_UNIX,socket.SOCK_STREAM)
+    parent.setblocking(False)
+    job=dict(kind=kind,request=request,args=vars(args))
+    encoded=base64.urlsafe_b64encode(_dto_bytes(job)).decode('ascii')
+    if len(encoded)>16384:raise ValueError('oversize internal job')
+    try:
+        process=subprocess.Popen([sys.executable,str(ROOT/'scripts/dev/workshop_browser_smoke.py'),'--_dto-owned-fd',str(child.fileno()),encoded],
+            start_new_session=True,pass_fds=(child.fileno(),),env=dto_worker_environment(os.environ),close_fds=True)
+    except BaseException:
+        parent.close();child.close();raise
+    child.close()
+    return DTOOwnedProcess(process,parent,kind)
+
+
+async def _dto_worker_run(args,request,control):
+    timing=load_dto_timing(FIXTURES/'timing.json')
+    initial=_dto_read(Path(args.output)/'initial-observation.json')
+    async def provenance():
+        def gather():
+            provenance=verify_provenance(args)
+            sdk=(ROOT/'apps/api-go/workshop/firebase-web.mjs').read_bytes()
+            manifest=Path(importlib.metadata.distribution('playwright').locate_file('playwright/driver/package/browsers.json'))
+            revisions={item['name']:item['revision'] for item in json.loads(manifest.read_text())['browsers']}
+            version=importlib.metadata.version('playwright')
+            if version!='1.64.1':raise ValueError('exact Playwright 1.64.1 required')
+            return dict(initial,results=[],provenance=provenance,sdk_sha256=hashlib.sha256(sdk).hexdigest(),
+                engine_revisions=revisions,playwright_version=version)
+        return await asyncio.to_thread(gather)
+    persistence_left=timing['evidence_persistence_seconds']
+    async def persist(evidence):
+        def write():
+            nonce=os.urandom(16).hex();target=Path(args.output)/('progress-'+nonce+'.stage')
+            _dto_write_private(target,evidence)
+            os.replace(target,Path(args.output)/'progress.json')
+            directory=os.open(args.output,os.O_RDONLY|os.O_DIRECTORY)
+            try:os.fsync(directory)
+            finally:os.close(directory)
+        await asyncio.to_thread(write)
+        # Nonblocking notifications are hints; durable progress survives dropped hints.
+        try:control.send(b'P')
+        except BlockingIOError:pass
+        return True
+    try:evidence=await _dto_bounded(provenance(),timing['provenance_seconds'])
+    except BaseException as error:
+        evidence=dict(initial,failure_kind='provenance_failure',error=str(error),results=complete_dto_failure(_dto_expected(args),[],stage='provenance',kind='provenance_failure',cleanup='unverified'))
+        try:await _dto_bounded(persist(evidence),persistence_left)
+        except BaseException:pass
+        return 1
+    lifecycle=DTOPlaywrightLifecycle(args,evidence)
+    evidence=await run_dto_inventory(args,clock=time.monotonic,lifecycle=lifecycle,persist=persist,timing=timing)
+    try:
+        validate_results(evidence['results'],_dto_expected(args))
+        if evidence['cleanup_status']!='verified' or evidence.get('failure_kind'):return 1
+        return 0
+    except ValueError:return 1
+
+
+def dto_internal_entry(argv):
+    """Internal marker is usable only with the inherited socket from our parent."""
+    control=None
+    try:
+        if len(argv)!=3 or argv[0]!='--_dto-owned-fd':raise ValueError('owned descriptor required')
+        descriptor=int(argv[1]);control=socket.socket(fileno=descriptor)
+        pid,uid,gid=struct.unpack('3i',control.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+        if pid!=os.getppid() or uid!=os.getuid() or control.family!=socket.AF_UNIX:raise ValueError('unowned control peer')
+        if len(argv[2])>16384:raise ValueError('oversize job')
+        job=json.loads(base64.urlsafe_b64decode(argv[2]),object_pairs_hook=_unique_json)
+        args=argparse.Namespace(**job['args']);request=job['request'];kind=job['kind']
+        if kind not in ('init','progress','final','nonpass','worker') or kind!=request['kind']:raise ValueError('invalid helper job')
+        candidate_identity(args.candidate_sha);fixture_origin(args.base_url)
+        if args.mode!='dto-fixture' or args.browser not in (*ENGINES,'all'):raise ValueError('DTO-only internal job')
+        dto_stage_path(args.output,request);control.setblocking(False)
+    except (OSError,ValueError,KeyError,TypeError) as error:
+        if control is not None:control.close()
+        raise ValueError('direct worker mode requires an owned control descriptor') from error
+    try:
+        if kind=='worker':
+            # Never asyncio.run(): do not drain cancellation-resistant tasks/executors.
+            loop=asyncio.new_event_loop();asyncio.set_event_loop(loop)
+            try:return loop.run_until_complete(_dto_worker_run(args,request,control))
+            finally:
+                for task in asyncio.all_tasks(loop):task.cancel()
+                loop.close()
+        ack=perform_dto_io(kind,request,args)
+        raw=encode_dto_ack(ack)
+        if control.send(raw)!=len(raw):raise OSError('partial helper ACK')
+        return 0
+    finally:control.close()
+
+
 def main(argv=None):
+    producer_started=time.monotonic()  # FIRST action: argparse and all DTO I/O consume this epoch.
+    argv=list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0]=='--_dto-owned-fd':return dto_internal_entry(argv)
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--base-url',required=True,type=fixture_origin)
     parser.add_argument('--mode',required=True,choices=['dto-fixture','api-fixture'])
@@ -1076,7 +1579,25 @@ def main(argv=None):
     parser.add_argument('--candidate-sha',required=True,type=candidate_identity)
     parser.add_argument('--output',required=True)
     args=parser.parse_args(argv)
-    asyncio.run(asyncio.wait_for(run(args),timeout=4440))
+    if args.mode=='api-fixture':
+        asyncio.run(asyncio.wait_for(run(args),timeout=4440))
+        return 0
+    if not Path(args.output).is_absolute() or '\0' in args.output:raise ValueError('absolute owned DTO output required')
+    pending=[]
+    def latch(signum,frame):pending.append(signum)
+    previous={sig:signal.signal(sig,latch) for sig in (signal.SIGINT,signal.SIGTERM)}
+    try:
+        return supervise_dto(args,clock=time.monotonic,process_factory=create_dto_process,
+            writer_factory=create_dto_process,timing=DTO_TIMING_V1,cancelled=lambda:bool(pending),
+            producer_started=producer_started)
+    finally:
+        for sig,handler in previous.items():signal.signal(sig,handler)
 
 
-if __name__=='__main__': main()
+if __name__=='__main__':
+    if sys.argv[1:2]==['--_dto-owned-fd']:
+        # Even exceptions cannot enter interpreter executor/task cancellation drain.
+        try:code=main()
+        except BaseException:code=1
+        os._exit(code)
+    raise SystemExit(main())

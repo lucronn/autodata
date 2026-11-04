@@ -28,7 +28,7 @@ func TestWorkshopBrowserTimingRejectsInvalid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, body := range []string{`{}`, strings.Replace(string(raw), `"version": "v1"`, `"version": "v2"`, 1), strings.Replace(string(raw), `"worker_hard_seconds": 4380`, `"worker_hard_seconds": true`, 1), strings.Replace(string(raw), `"dto_fixture_seconds": 4800`, `"dto_fixture_seconds": 4640`, 1), strings.Replace(string(raw), `"version": "v1"`, `"version": "v1", "version": "v1"`, 1)} {
+	for _, body := range []string{`{}`, strings.Replace(string(raw), `"worker_deadline_reserve_seconds": 50`, `"worker_deadline_reserve_seconds": 1000001`, 1), strings.Replace(string(raw), `"parent_progress_read_parse_seconds": 10`, `"parent_progress_read_parse_seconds": 5000`, 1), strings.Replace(string(raw), `"worker_deadline_reserve_seconds": 50`, `"worker_deadline_reserve_seconds": 1500`, 1), strings.Replace(string(raw), `"version": "v1"`, `"version": "v2"`, 1), strings.Replace(string(raw), `"worker_hard_seconds": 4380`, `"worker_hard_seconds": true`, 1), strings.Replace(string(raw), `"dto_fixture_seconds": 4800`, `"dto_fixture_seconds": 4640`, 1), strings.Replace(string(raw), `"version": "v1"`, `"version": "v1", "version": "v1"`, 1)} {
 		path := filepath.Join(t.TempDir(), "timing.json")
 		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 			t.Fatal(err)

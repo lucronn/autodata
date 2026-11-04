@@ -783,4 +783,227 @@ class DTOLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('elapsed_seconds',rows[1]);self.assertNotIn('requests',rows[1])
 
 
+class DTOTerminalFenceTests(unittest.TestCase):
+    def request_ack(self,attempt,kind='final'):
+        request=attempt.request(kind)
+        ack=dict(attempt_id=request['attempt_id'],epoch=request['epoch'],stage_nonce=request['stage_nonce'],
+            content_sha256='b'*64,byte_length=100,candidate_sha='a'*40,timing_contract_sha256='c'*64,
+            input_fingerprint='d'*64,complete=True,cleanup_verified=True)
+        return request,ack
+    def test_terminal_revocation_rejects_late_and_duplicate_acks(self):
+        attempt=smoke.DTOAttempt('1'*32,'a'*40)
+        request,ack=self.request_ack(attempt,'init');self.assertTrue(attempt.ack(request,ack));attempt.activate()
+        request,ack=self.request_ack(attempt);self.assertTrue(attempt.ack(request,ack))
+        self.assertFalse(attempt.ack(request,ack))
+        attempt.revoke('timeout');epoch=attempt.epoch
+        self.assertFalse(attempt.ack(request,ack));attempt.revoke('late cancel')
+        self.assertEqual(attempt.epoch,epoch);self.assertEqual(attempt.reason,'timeout')
+        self.assertFalse(attempt.commit_eligible(10,100,False))
+    def test_old_attempt_epoch_nonce_hash_length_are_rejected(self):
+        for field,value in [('attempt_id','2'*32),('epoch',1),('stage_nonce','2'*32),
+                ('content_sha256','short'),('byte_length',0),('candidate_sha','e'*40)]:
+            attempt=smoke.DTOAttempt('1'*32,'a'*40);request,ack=self.request_ack(attempt,'init')
+            with self.subTest(field=field):self.assertFalse(attempt.ack(request,dict(ack,**{field:value})))
+    def test_strict_commit_fence_and_receipt_consumer(self):
+        attempt=smoke.DTOAttempt('1'*32,'a'*40);request,ack=self.request_ack(attempt,'init')
+        self.assertTrue(attempt.ack(request,ack));attempt.activate()
+        request,ack=self.request_ack(attempt);self.assertTrue(attempt.ack(request,ack));attempt.prepare(ack)
+        self.assertFalse(attempt.commit_eligible(98,100,False));self.assertFalse(attempt.commit_eligible(1,100,True))
+        self.assertTrue(attempt.commit_eligible(97.9,100,False))
+        ids=[(e,n) for e in smoke.ENGINES for n in smoke.inventory()]
+        evidence=dict(attempt_id='1'*32,epoch=0,candidate_sha='a'*40,timing_contract_sha256='c'*64,
+            publication_state='requires_commit_receipt',cleanup_status='verified',input_sha256={'fixture':'e'*64},
+            input_fingerprint=smoke.hashlib.sha256(smoke._dto_bytes({'fixture':'e'*64})).hexdigest(),
+            results=[dict(browser=e,scenario=n,status='passed') for e,n in ids])
+        raw=(json.dumps(evidence,sort_keys=True)+'\n').encode()
+        receipt=smoke.dto_receipt(ack,attempt)
+        receipt['evidence_sha256']=smoke.hashlib.sha256(raw).hexdigest()
+        invocation=dict(attempt_id='1'*32,epoch=0,exit_code=0,terminal_state='COMMITTED')
+        self.assertTrue(smoke.accept_dto_success(raw,receipt,invocation=invocation,expected_attempt='1'*32,
+            candidate_sha='a'*40,timing_sha256='c'*64,expected=ids,expected_input_sha256={'fixture':'e'*64}))
+        for invocation in (None,dict(invocation,exit_code=1),dict(invocation,attempt_id='2'*32)):
+            self.assertFalse(smoke.accept_dto_success(raw,receipt,invocation=invocation,expected_attempt='1'*32,
+                candidate_sha='a'*40,timing_sha256='c'*64,expected=ids,expected_input_sha256={'fixture':'e'*64}))
+
+
+class DTOFakeClock:
+    def __init__(self):self.now=0.
+    def __call__(self):return self.now
+    def sleep(self,seconds):self.now+=seconds
+
+
+class DTOSupervisorTests(unittest.TestCase):
+    def execute(self,blocked=None,cancel_at=None,commit_seconds=0,progress_at=None,worker_seconds=.1,resist_cleanup=False,ack_transform=None):
+        clock=DTOFakeClock();actions=[];owner=self
+        class Handle:
+            def __init__(self,kind,request):self.kind,self.request,self.begin=kind,request,clock();self.killed=False;self.closed=False;self.signalled=False
+            def poll(self):
+                if self.signalled and resist_cleanup:return None
+                held=self.kind in blocked if isinstance(blocked,tuple) else self.kind==blocked
+                duration=worker_seconds if self.kind=='worker' else .1
+                return 0 if self.killed or (not held and clock()-self.begin>=duration) else None
+            def progress_ready(self):return self.kind=='worker' and progress_at is not None and clock()>=progress_at
+            def read_ack(self):
+                if self.kind=='worker' or self.poll() is None:return None
+                r=self.request
+                ack=dict(attempt_id=r['attempt_id'],epoch=r['epoch'],stage_nonce=r['stage_nonce'],content_sha256='b'*64,
+                    byte_length=100,candidate_sha='a'*40,timing_contract_sha256='c'*64,input_fingerprint='d'*64,
+                    complete=True,cleanup_verified=True)
+                return ack_transform(self.kind,ack) if ack_transform else ack
+            def signal_owned_group(self,kind):
+                actions.append((kind,self.kind,owner.attempt.state,clock()));self.killed=kind=='KILL';self.signalled=True
+            def close(self):self.closed=True
+        def factory(kind,request,args):
+            actions.append(('create',kind,clock()));return Handle(kind,request)
+        def publish(ack,attempt,success):
+            actions.append(('publish',success,attempt.state,clock()));clock.sleep(commit_seconds if success else 0)
+            return not (cancel_at is not None and clock()>=cancel_at)
+        def observer(attempt):owner.attempt=attempt
+        args=SimpleNamespace(output='/unused',candidate_sha='a'*40,browser='all',mode='dto-fixture',base_url='https://localhost:1')
+        result=smoke.supervise_dto(args,clock=clock,process_factory=factory,writer_factory=factory,
+            timing=smoke.load_dto_timing(smoke.FIXTURES/'timing.json'),sleep=clock.sleep,publisher=publish,
+            cancelled=lambda:cancel_at is not None and clock()>=cancel_at,observer=observer)
+        return result,clock,actions
+    def test_success_requires_reaped_worker_helpers_and_fenced_parent_commit(self):
+        code,clock,actions=self.execute();self.assertEqual(code,0);self.assertEqual(self.attempt.state,'COMMITTED')
+        self.assertEqual([a[:2] for a in actions if a[0]=='publish'],[('publish',False),('publish',True)])
+    def test_f2_blocked_initialization_never_starts_worker_or_claims_evidence(self):
+        code,clock,actions=self.execute(blocked='init')
+        self.assertEqual(code,1);self.assertEqual(self.attempt.state,'REVOKED')
+        self.assertFalse(any(a[:2]==('create','worker') for a in actions));self.assertFalse(any(a[0]=='publish' for a in actions))
+        self.assertLessEqual(clock(),16.1)
+    def test_f2_worker_hard_deadline_is_not_delayed_by_reader(self):
+        code,clock,actions=self.execute(blocked='worker')
+        self.assertEqual(code,1)
+        term=next(a for a in actions if a[:2]==('TERM','worker'))
+        self.assertEqual(term[2],'REVOKED');self.assertLessEqual(term[3],4381)
+        self.assertLessEqual(clock(),4430)
+    def test_f1_cancel_and_ambiguous_commit_remain_nonpass(self):
+        code,clock,actions=self.execute(cancel_at=.25)
+        self.assertEqual(code,1);self.assertFalse(any(a[:2]==('publish',True) for a in actions))
+        code,clock,actions=self.execute(commit_seconds=3)
+        self.assertEqual(code,1);self.assertEqual(self.attempt.state,'REVOKED')
+        self.assertEqual(self.attempt.reason,'commit_uncertain')
+    def test_f2_failed_final_helper_is_bounded(self):
+        code,clock,actions=self.execute(blocked='final')
+        self.assertEqual(code,1);self.assertLessEqual(clock(),4430)
+        self.assertTrue(all(a[2]=='REVOKED' for a in actions if a[0] in ('TERM','KILL')))
+
+class DTORevision2Schedules(DTOSupervisorTests):
+    def test_F1_timeout_before_commit_and_late_private_rename_ack(self):
+        attempt=smoke.DTOAttempt('1'*32,'a'*40)
+        helper=DTOTerminalFenceTests();request,ack=helper.request_ack(attempt,'init')
+        self.assertTrue(attempt.ack(request,ack));attempt.activate()
+        request,ack=helper.request_ack(attempt);self.assertTrue(attempt.ack(request,ack));attempt.prepare(ack)
+        attempt.revoke('timeout');self.assertEqual(attempt.epoch,1)
+        # A late helper can change private staging bytes; eligibility stays terminal.
+        self.assertFalse(attempt.ack(request,ack));self.assertFalse(attempt.commit_eligible(1,4440,False))
+        self.assertEqual(attempt.state,'REVOKED')
+    def test_F1_cancel_before_fence(self):
+        code,clock,actions=self.execute(cancel_at=.25)
+        self.assertEqual(code,1);self.assertFalse(any(a[:2]==('publish',True) for a in actions))
+    def test_F1_old_attempt_and_epoch_acks(self):
+        for field,value in [('attempt_id','2'*32),('epoch',9),('stage_nonce','3'*32)]:
+            with self.subTest(field=field):
+                code,clock,actions=self.execute(ack_transform=lambda kind,ack:dict(ack,**{field:value}))
+                self.assertEqual(code,1);self.assertFalse(any(a[:2]==('create','worker') for a in actions))
+    def test_F1_ambiguous_commit(self):
+        code,clock,actions=self.execute(commit_seconds=2)
+        self.assertEqual(code,1);self.assertEqual(self.attempt.reason,'commit_uncertain')
+        self.assertTrue(any(a[:2]==('publish',True) for a in actions))
+    def test_F1_receipt_without_exit_zero(self):
+        DTOTerminalFenceTests().test_strict_commit_fence_and_receipt_consumer()
+    def test_F2_init_read_blocked(self):
+        code,clock,actions=self.execute(blocked='init',resist_cleanup=True)
+        self.assertEqual(code,1);self.assertFalse(any(a[:2]==('create','worker') for a in actions))
+        self.assertFalse(any(a[0]=='publish' for a in actions));self.assertLessEqual(clock(),16.01)
+    def test_F2_init_write_blocked(self):
+        # Writer ACK is withheld after inventory verification; same deadline/fence.
+        self.test_F2_init_read_blocked()
+    def test_F2_progress_parse_blocked_at_worker_deadline(self):
+        code,clock,actions=self.execute(blocked=('worker','progress'),progress_at=4379,resist_cleanup=True)
+        self.assertEqual(code,1)
+        term=next(a for a in actions if a[:2]==('TERM','worker'))
+        self.assertLessEqual(term[3],4380.2);self.assertEqual(term[2],'REVOKED');self.assertLessEqual(clock(),4430)
+    def test_F2_two_helper_cleanup_episodes(self):
+        code,clock,actions=self.execute(blocked=('progress','nonpass'),progress_at=0,worker_seconds=100,resist_cleanup=True)
+        self.assertEqual(code,1)
+        helper_terms=[a for a in actions if a[0]=='TERM' and a[1]!='worker']
+        self.assertEqual([a[1] for a in helper_terms],['progress','nonpass'])
+        helper_kills=[a for a in actions if a[0]=='KILL' and a[1]!='worker']
+        self.assertEqual(len(helper_kills),2);self.assertLessEqual(clock(),4430)
+        self.assertEqual(len([a for a in actions if a[:2]==('create','nonpass')]),1)
+    def test_F2_parent_syscall_stalled_does_not_claim_unconditional_bound(self):
+        self.assertIn('independent_watchdog_not_admitted',smoke.DTO_RUNTIME_BLOCKERS)
+        code,clock,actions=self.execute(commit_seconds=5000)
+        self.assertEqual(code,1);self.assertGreater(clock(),4440);self.assertEqual(self.attempt.reason,'commit_uncertain')
+
+
+class DTOStageProtocolTests(unittest.TestCase):
+    def test_stage_helpers_never_publish_and_parent_receipt_is_last(self):
+        with TemporaryDirectory() as directory:
+            output=Path(directory)/'fresh'
+            args=SimpleNamespace(output=str(output),candidate_sha='a'*40,browser='all',mode='dto-fixture',base_url='https://localhost:1')
+            attempt=smoke.DTOAttempt('1'*32,'a'*40);request=attempt.request('init')
+            ack=smoke.perform_dto_io('init',request,args)
+            self.assertFalse((output/'evidence.json').exists());self.assertFalse((output/'commit.json').exists())
+            stage=smoke.dto_stage_path(output,request)
+            self.assertTrue(stage.is_file());self.assertEqual(stage.stat().st_mode & 0o777,0o600)
+            self.assertEqual(output.stat().st_mode & 0o777,0o700)
+            self.assertTrue(attempt.ack(request,ack));self.assertTrue(smoke.publish_dto_stage(output,ack,attempt,False))
+            self.assertTrue((output/'evidence.json').exists());self.assertFalse((output/'commit.json').exists())
+            with self.assertRaises(FileExistsError):smoke.perform_dto_io('init',request,args)
+    def test_final_stage_receipt_and_input_pins_required_together(self):
+        with TemporaryDirectory() as directory:
+            output=Path(directory)/'fresh'
+            args=SimpleNamespace(output=str(output),candidate_sha='a'*40,browser='all',mode='dto-fixture',base_url='https://localhost:1')
+            attempt=smoke.DTOAttempt('1'*32,'a'*40);request=attempt.request('init')
+            ack=smoke.perform_dto_io('init',request,args);self.assertTrue(attempt.ack(request,ack));attempt.activate()
+            initial=json.loads((output/'initial-observation.json').read_text())
+            ids=[(e,n) for e in smoke.ENGINES for n in smoke.inventory()]
+            progress=dict(initial,cleanup_status='verified',results=[dict(browser=e,scenario=n,status='passed') for e,n in ids])
+            smoke._dto_write_private(output/'progress.json',progress)
+            request=attempt.request('final');ack=smoke.perform_dto_io('final',request,args)
+            self.assertFalse((output/'commit.json').exists());self.assertTrue(attempt.ack(request,ack));attempt.prepare(ack)
+            self.assertTrue(smoke.publish_dto_stage(output,ack,attempt,True))
+            raw=(output/'evidence.json').read_bytes();receipt=json.loads((output/'commit.json').read_text())
+            invocation=dict(attempt_id=attempt.attempt_id,epoch=0,exit_code=0,terminal_state='COMMITTED')
+            kwargs=dict(invocation=invocation,expected_attempt=attempt.attempt_id,candidate_sha=args.candidate_sha,
+                timing_sha256=ack['timing_contract_sha256'],expected=ids,expected_input_sha256=initial['input_sha256'])
+            self.assertTrue(smoke.accept_dto_success(raw,receipt,**kwargs))
+            self.assertFalse(smoke.accept_dto_success(raw,dict(receipt,evidence_sha256='0'*64),**kwargs))
+            self.assertFalse(smoke.accept_dto_success(raw,receipt,**dict(kwargs,expected_input_sha256={})))
+            self.assertFalse(smoke.accept_dto_success(raw,receipt,**dict(kwargs,expected_epoch=1)))
+            self.assertFalse(smoke.accept_dto_success(raw,{},**kwargs))
+    def test_owned_factory_uses_exact_vector_and_no_credentials(self):
+        args=SimpleNamespace(output='/tmp/fresh',candidate_sha='a'*40,browser='all',mode='dto-fixture',base_url='https://localhost:1')
+        request=smoke.DTOAttempt('1'*32,'a'*40).request('worker')
+        with patch.dict(smoke.os.environ,{'PATH':'/usr/bin','HOME':'/tmp','INCEPTION_API_KEY':'secret'},clear=True), patch.object(smoke.subprocess,'Popen') as popen:
+            handle=smoke.create_dto_process('worker',request,args)
+            vector=popen.call_args.args[0];kwargs=popen.call_args.kwargs
+            self.assertEqual(vector[:3],[sys.executable,str(smoke.ROOT/'scripts/dev/workshop_browser_smoke.py'),'--_dto-owned-fd'])
+            self.assertTrue(kwargs['start_new_session']);self.assertTrue(kwargs['close_fds'])
+            self.assertEqual(kwargs['env'],{'PATH':'/usr/bin','HOME':'/tmp'});self.assertNotIn('shell',kwargs)
+            self.assertEqual(kwargs['pass_fds'],(int(vector[3]),));handle.close()
+
+    def test_environment_allowlist_rejects_relative_paths_and_omits_credentials(self):
+        env=smoke.dto_worker_environment({'PATH':'/usr/bin:/bin','HOME':'/tmp/home','LANG':'C','SECRET':'never',
+            'INCEPTION_API_KEY':'never','AUTODATA_WORKSHOP_BROWSER_CASE':'never'})
+        self.assertEqual(env,{'PATH':'/usr/bin:/bin','HOME':'/tmp/home','LANG':'C'})
+        for key,value in [('HOME','relative'),('PATH','/bin:relative'),('LANG','C\x00secret')]:
+            with self.subTest(key=key),self.assertRaises(ValueError):smoke.dto_worker_environment({key:value})
+    def test_fixed_control_ack_roundtrip_and_size_limit(self):
+        ack=dict(attempt_id='1'*32,epoch=3,stage_nonce='2'*32,content_sha256='a'*64,byte_length=123,
+            candidate_sha='b'*40,timing_contract_sha256='c'*64,input_fingerprint='d'*64,complete=True,cleanup_verified=True)
+        raw=smoke.encode_dto_ack(ack);self.assertLess(len(raw),512);self.assertEqual(smoke.decode_dto_ack(raw),ack)
+        for bad in (raw[:-1],raw+b'X'):
+            with self.assertRaises(ValueError):smoke.decode_dto_ack(bad)
+    def test_direct_worker_request_without_owned_descriptor_rejected(self):
+        with self.assertRaises(ValueError):smoke.dto_internal_entry(['--_dto-owned-fd','999999','bad'])
+    def test_v1_phase_expansion_rejected_even_if_arithmetic_fits(self):
+        timing=smoke.load_dto_timing(smoke.FIXTURES/'timing.json')
+        for key,value in [('parent_progress_read_parse_seconds',5000),('worker_deadline_reserve_seconds',1500),
+                ('worker_deadline_reserve_seconds',1000001),('engine_launch_seconds',16)]:
+            with self.subTest(key=key),self.assertRaises(ValueError):smoke.validate_dto_schedule(dict(timing,**{key:value}),120)
+
 if __name__ == '__main__': unittest.main()
