@@ -1,0 +1,33 @@
+{
+  "goal": "Add one internal HTTP observation consistency layer for the two GrantBeforeWork bank cases, retaining unavailable/incomplete results, zero verified cases and every false authority flag.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-r6-paid-http-receipts.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+    "docs/superpowers/plans/2026-11-03-release-acceptance.md",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "todo": [
+    "Synchronize this HTTP-only family, exact producer-derived schema, three-path implementation allowlist and todo in Issue186/Project8/canonical plan/task/record/queue; commit/push B, pass pinned preflight and obtain independent exact-B review.",
+    "Independently construct failing synthetic 18\u00d72 HTTP observations and adversarial tests that repair enclosing copies/hashes to reach semantic validation.",
+    "Implement only internal inspect_paid_http_receipts chained after inspect_paid_selector_work, with closed projected bodies/headers/routes and counter/PG identity relationships; report only two target IDs and 36 diagnostic observations.",
+    "Preserve every missing family and append explicit wire-body/transport-authority gaps; keep unavailable/incomplete, no verified IDs, zero CLI counts, disabled profiles/tiers and every false flag.",
+    "Update runbook, run focused/developer/autonomy/syntax/confinement/allowlist checks, commit/push the coherent candidate and obtain independent exact-SHA review before any coordinator integration decision."
+  ],
+  "status": "pending",
+  "updated_at": "2026-11-04T05:12:10.039729+00:00",
+  "source_inspection_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
+  "tracking_status": "pending_authorized_writer_readback",
+  "tracking_writer": "integration_status_audit",
+  "implementation_dispatch_authorized": false,
+  "runtime_execution_authorized": false,
+  "cloud_execution_authorized": false,
+  "profile_promotion_authorized": false,
+  "release_state": "unverified",
+  "draft_review": {
+    "status": "coordinator_reported_pass",
+    "draft_sha256": "783f16baf8a3a97458841094e9dc9075785da32c8f4340d0854796c950e75fdd",
+    "exact_committed_gate_review": "pending"
+  }
+}
