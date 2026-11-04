@@ -983,7 +983,7 @@
       "record_ref": "docs/agents/records/2026-11-04-workshop-stateful-vm.json",
       "goal": "Implement transactional local installation and PostgreSQL/NATS/SeaweedFS boot, persistence and interruption/reboot recovery in a disposable offline VM while preserving every application, cloud staging and production execution boundary.",
       "source_integration_base_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
-      "state": "planning_synchronized_pending_exact_checkpoint_review",
+      "state": "planning_synchronized_pending_committed_gate_review",
       "planning_status": "synchronized",
       "tracking_status": "synchronized",
       "release_state": "unverified",
@@ -996,11 +996,11 @@
         "infra/deploy/lab/test_stateful_probe.py"
       ],
       "todo": [
-        "Independently review the additive local-only VM design, six-new-file implementation allowlist, closed approval/private-delivery/profile/probe/recovery contracts and unchanged production/guard boundaries.",
-        "Coordinator preserves then-current Issue186/Project8 history, synchronizes this exact goal/references/five todos/scope and actual readback hashes, commits/pushes the docs-only checkpoint, pins its full SHA, passes machine preflight and obtains independent exact-checkpoint review before fresh implementation dispatch.",
-        "Implement only the six new lab files with failing-first offline identity/transaction/private-delivery/start/seed/check/stop/recovery/denial/cancellation/false-authority tests; do not mutate any production or inert-host implementation file.",
-        "Run focused lab and unchanged hosting regressions, syntax/diff/scope and exact-base preflight checks; commit/push coherent validated milestones and independently review the exact final code SHA while VM/Docker/cloud/provider execution remains blocked.",
-        "Obtain a separate coordinator authorization for the concrete pre-provisioned offline disposable-VM run, execute the pinned install/boot/persistence/interruption/reboot drill if authorized, retain failed and successful receipts, and require separate owner inputs/gates for actual cloud staging or production deployment."
+        "Independently review the fixed Compose probe command correction: add only --interactive=false and --no-TTY; preserve all identity checks, fixed commands, six-file allowlist and false authority boundaries.",
+        "Coordinator preserves then-current Issue186/Project8 history and exact predecessor Source bytes, synchronizes this successor goal/references/five todos/scope with actual readback hashes, commits/pushes the six-doc checkpoint, pins its full SHA, passes machine preflight and obtains independent exact-checkpoint review before fresh dispatch.",
+        "After fresh coordinator dispatch, add failing-first intercepted tests in infra/deploy/lab/test_stateful_vm.py and change only the fixed probe run argv in infra/deploy/lab/stateful_vm.py to include --interactive=false and --no-TTY; retain Config.OpenStdin=false and Config.Tty=false readback requirements.",
+        "Run the focused offline lab suites and unchanged hosting regressions, syntax/diff/scope and exact-base preflight checks; commit/push a coherent validated milestone and obtain independent exact-code review while VM/Docker/cloud/provider execution remains blocked.",
+        "Keep any real disposable-VM/Docker execution behind a separate exact-code local-run authorization and independently approved VM/tool/cache identities; preserve all failed receipts and require separate owner gates for actual cloud staging or production deployment."
       ],
       "implementation_dispatch_authorized": false,
       "runtime_execution_authorized": false,
@@ -1009,55 +1009,163 @@
       "cutover_authorized": false,
       "tracking_sync": {
         "status": "synchronized",
-        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634690176",
-        "issue_comment_id": 6634690176,
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6635734278",
+        "issue_comment_id": 6635734278,
         "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
-        "issue_comment_sha256": "b452e911af91b8e4a117dd4cca54f278d3a08f7ea16610d48316426a7c1adee8",
+        "issue_comment_sha256": "53e1ad27cb3bcbeb45d6b7e59d5a6ee127ab93372cf6037a6c2c5dfc05f14a21",
         "project_id": "PVT_kwHOCSJ8cc4BiQ2B",
         "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
         "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
         "project_note_field": "Source or dependency reference",
-        "project_text": "Stateful VM: https://github.com/lucronn/autodata/issues/186#issuecomment-6634690176; source e5fed171; six new lab files; offline disposable KVM stateful drill only. Full exact predecessor Project Source + SHA256 preserved in linked detail and durable evidence; existing R6/index/PG/publisher authorities unchanged. Checkpoint/preflight/review/fresh dispatch pending; code + intercepted tests only, separate VM run gate. App/cloud staging/production/deployment/cutover authority false.",
-        "project_text_sha256": "46b8e75e2a62481d106c77c1b6677dd8c1f865ef53b5377c0d31950280c68a7b",
-        "project_utf8_bytes": 484,
-        "prior_project_text": "R6 HTTP code66781084 PR200 D6624255418: independent exact-SHA PASS; tests92/244/146. Two-bank18x2 diagnostics only; no CLI/profile/cases/runtime/merge/deploy authority. Gatea899eac8/plan receipt2ea5b696 D6623187020/P6623199160. PG17 PASS D6623105546/P6623119656; failed124e43a9 quarantined. Integration D6623150233/checkpointd2e2270/P6623168382 gate2728ac/R507e3d. API21 D6623222525 gatee0e50dee/P6623235715/Rb1ac3c7c. Recovery D6624161772/P6624174482/R2e55ccc; new API21 raw PASS D6624382132 audit8b809719; old run incomplete. No180/staging. R6HTTP completion C94a5809/P6624284510 PASS; history retained. #186 In Progress; release gated. R6scope D6624437136/G281ec742 C30ea7a0/PR209 D6634324284 reviewed16/108/260/146/17; zero cases/allfalse. Reader D6624605837 goal/todo5/2file source\u2192canonical retry fix; gate pending. Reader C4076ad3/PR206 D6633937350 reviewed59/59; final180/live still open. Index D6634018122 goal/todo6/6files current jobs\u2192ready; gate pending.",
-        "prior_project_text_sha256": "7988162779e1b526fef566c7288f0ab2a99dc7b34dd74650ce06c79673cbd2b5",
-        "predecessor_comments_inventoried": 137,
+        "project_text": "Stateful VM Compose probe fixed-argv correction: https://github.com/lucronn/autodata/issues/186#issuecomment-6635734278; gate929/code fd03cd7 history, `--interactive=false --no-TTY` successor docs pending committed preflight/review; no VM/Docker run. Prior Source eeaae585b5b8 archived verbatim in linked detail, including final-leaves publisher runtime correction https://github.com/lucronn/autodata/issues/186#issuecomment-6635699759. Final180/R3/live staging/release pending; all authorities false.",
+        "project_text_sha256": "32375b177a7c67e289b9d5a9252927d8886dc9213646cedebb98306ba9e66bba",
+        "project_utf8_bytes": 501,
+        "prior_project_text": "Final leaves publisher runtime correction: https://github.com/lucronn/autodata/issues/186#issuecomment-6635699759; reader/R6 pushed, index pending. Node22.23.4 archive/executable pins in linked six-doc draft; no acquisition until committed gate/preflight/review. Prior Source 06ff69384221 archived verbatim there (VM PG auth correction https://github.com/lucronn/autodata/issues/186#issuecomment-6635308060). Final180/R3/live staging/release pending; all authorities false.",
+        "prior_project_text_sha256": "eeaae585b5b815701f45d952701a79302796245782955d468ecab38ecf93892c",
+        "prior_project_utf8_bytes": 473,
+        "predecessor_comments_inventoried": 143,
+        "comments_verified": 144,
+        "issue_body_unchanged": true,
+        "predecessor_comments_unchanged": true,
         "other_project_fields_unchanged": true,
-        "verified_at": "2026-11-04T15:33:41.700000+00:00",
+        "coordinator_readback_at": "2026-11-04T16:16:14.183927+00:00",
+        "verified_at": "2026-11-04T16:17:11Z",
+        "project_status": "In Progress",
         "evidence_files": [
           {
-            "path": "/home/corp/autodata-evidence/stateful-vm-tracking-before.json",
-            "sha256": "4487759f31c6d4d583f41dc3e9624b8b7b2c71f40b36a2239bdf4aa13090f310"
+            "path": "/home/corp/autodata-evidence/stateful-vm-compose-tracking-before.json",
+            "sha256": "1d0881baf20fa0ecdc31417829fd5f293ceb0ef49c0f8824f488b8019891420d"
           },
           {
-            "path": "/home/corp/autodata-evidence/stateful-vm-tracking-readback.json",
-            "sha256": "4799ed6745ba733ea145313981e1e4cb53d7890958c54edf1da552a795e1d699"
-          },
-          {
-            "path": "/home/corp/autodata-evidence/stateful-vm-comment-correction-readback.json",
-            "sha256": "9cc1b859a663f623fbef0781a6cb737d091b0ca722b0561ff8fd4f09d23331ff"
+            "path": "/home/corp/autodata-evidence/stateful-vm-compose-tracking-readback.json",
+            "sha256": "136c079fc204c1e0acbc49068e682867a4520b006f8a2961fadbf06f1f9c3a16"
           }
         ],
-        "evidence_source": "Coordinator corrected and live-read the same Issue comment after independent gate review; local planner verified retained correction evidence and hashes without GitHub writes. Original before/readback snapshots remain historical.",
-        "correction_history": [
-          {
-            "checkpoint_sha": "71c8b255078f4f2dea01bbb714cd724f81a67586",
-            "old_issue_comment_sha256": "6a35d6ea11143901e11d7b42381ccf2b4635d87a5dbd0e84d34eb916140d0b86",
-            "new_issue_comment_sha256": "b452e911af91b8e4a117dd4cca54f278d3a08f7ea16610d48316426a7c1adee8",
-            "reason": "Independent gate review found stale pending-synchronization/not-synchronized wording in the live detail; coordinator corrected that same comment in place. Checkpoint71c8 is not builder-authorizing.",
-            "comment_updated_at": "2026-11-04T15:33:40Z",
-            "verified_at": "2026-11-04T15:33:41.700000+00:00",
-            "project_source_unchanged": true,
-            "issue_body_unchanged": true,
-            "other_project_fields_unchanged": true,
-            "evidence_path": "/home/corp/autodata-evidence/stateful-vm-comment-correction-readback.json",
-            "evidence_sha256": "9cc1b859a663f623fbef0781a6cb737d091b0ca722b0561ff8fd4f09d23331ff"
-          }
-        ]
+        "evidence_source": "Coordinator synchronized the fixed Compose command successor. Planner verified retained local before/readback snapshots byte-for-byte, including unchanged Issue body/all143 predecessor comment objects, new detail hash, exact473-byte prior Source archived verbatim in detail, new501-byte Source and all non-Source Project fields; no new live GitHub read or write by planner. Earlier receipts remain historical.",
+        "historical_tracking_ref": "predecessor_planning_record.tracking_sync"
       },
-      "superseded_checkpoint_sha": "71c8b255078f4f2dea01bbb714cd724f81a67586",
-      "superseded_checkpoint_builder_authorizing": false
+      "superseded_checkpoint_sha": "92953eb7df00ef348539fa9aaac3ead1e4e33162",
+      "superseded_checkpoint_builder_authorizing": false,
+      "predecessor_planning_record": {
+        "state": "planning_synchronized_pending_exact_checkpoint_review",
+        "planning_status": "synchronized",
+        "tracking_status": "synchronized",
+        "todo": [
+          "Independently review the additive local-only VM design, six-new-file implementation allowlist, closed approval/private-delivery/profile/probe/recovery contracts and unchanged production/guard boundaries.",
+          "Coordinator preserves then-current Issue186/Project8 history, synchronizes this exact goal/references/five todos/scope and actual readback hashes, commits/pushes the docs-only checkpoint, pins its full SHA, passes machine preflight and obtains independent exact-checkpoint review before fresh implementation dispatch.",
+          "Implement only the six new lab files with failing-first offline identity/transaction/private-delivery/start/seed/check/stop/recovery/denial/cancellation/false-authority tests; do not mutate any production or inert-host implementation file.",
+          "Run focused lab and unchanged hosting regressions, syntax/diff/scope and exact-base preflight checks; commit/push coherent validated milestones and independently review the exact final code SHA while VM/Docker/cloud/provider execution remains blocked.",
+          "Obtain a separate coordinator authorization for the concrete pre-provisioned offline disposable-VM run, execute the pinned install/boot/persistence/interruption/reboot drill if authorized, retain failed and successful receipts, and require separate owner inputs/gates for actual cloud staging or production deployment."
+        ],
+        "tracking_sync": {
+          "status": "synchronized",
+          "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634690176",
+          "issue_comment_id": 6634690176,
+          "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+          "issue_comment_sha256": "b452e911af91b8e4a117dd4cca54f278d3a08f7ea16610d48316426a7c1adee8",
+          "project_id": "PVT_kwHOCSJ8cc4BiQ2B",
+          "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+          "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+          "project_note_field": "Source or dependency reference",
+          "project_text": "Stateful VM: https://github.com/lucronn/autodata/issues/186#issuecomment-6634690176; source e5fed171; six new lab files; offline disposable KVM stateful drill only. Full exact predecessor Project Source + SHA256 preserved in linked detail and durable evidence; existing R6/index/PG/publisher authorities unchanged. Checkpoint/preflight/review/fresh dispatch pending; code + intercepted tests only, separate VM run gate. App/cloud staging/production/deployment/cutover authority false.",
+          "project_text_sha256": "46b8e75e2a62481d106c77c1b6677dd8c1f865ef53b5377c0d31950280c68a7b",
+          "project_utf8_bytes": 484,
+          "prior_project_text": "R6 HTTP code66781084 PR200 D6624255418: independent exact-SHA PASS; tests92/244/146. Two-bank18x2 diagnostics only; no CLI/profile/cases/runtime/merge/deploy authority. Gatea899eac8/plan receipt2ea5b696 D6623187020/P6623199160. PG17 PASS D6623105546/P6623119656; failed124e43a9 quarantined. Integration D6623150233/checkpointd2e2270/P6623168382 gate2728ac/R507e3d. API21 D6623222525 gatee0e50dee/P6623235715/Rb1ac3c7c. Recovery D6624161772/P6624174482/R2e55ccc; new API21 raw PASS D6624382132 audit8b809719; old run incomplete. No180/staging. R6HTTP completion C94a5809/P6624284510 PASS; history retained. #186 In Progress; release gated. R6scope D6624437136/G281ec742 C30ea7a0/PR209 D6634324284 reviewed16/108/260/146/17; zero cases/allfalse. Reader D6624605837 goal/todo5/2file source\u2192canonical retry fix; gate pending. Reader C4076ad3/PR206 D6633937350 reviewed59/59; final180/live still open. Index D6634018122 goal/todo6/6files current jobs\u2192ready; gate pending.",
+          "prior_project_text_sha256": "7988162779e1b526fef566c7288f0ab2a99dc7b34dd74650ce06c79673cbd2b5",
+          "predecessor_comments_inventoried": 137,
+          "other_project_fields_unchanged": true,
+          "verified_at": "2026-11-04T15:33:41.700000+00:00",
+          "evidence_files": [
+            {
+              "path": "/home/corp/autodata-evidence/stateful-vm-tracking-before.json",
+              "sha256": "4487759f31c6d4d583f41dc3e9624b8b7b2c71f40b36a2239bdf4aa13090f310"
+            },
+            {
+              "path": "/home/corp/autodata-evidence/stateful-vm-tracking-readback.json",
+              "sha256": "4799ed6745ba733ea145313981e1e4cb53d7890958c54edf1da552a795e1d699"
+            },
+            {
+              "path": "/home/corp/autodata-evidence/stateful-vm-comment-correction-readback.json",
+              "sha256": "9cc1b859a663f623fbef0781a6cb737d091b0ca722b0561ff8fd4f09d23331ff"
+            }
+          ],
+          "evidence_source": "Coordinator corrected and live-read the same Issue comment after independent gate review; local planner verified retained correction evidence and hashes without GitHub writes. Original before/readback snapshots remain historical.",
+          "correction_history": [
+            {
+              "checkpoint_sha": "71c8b255078f4f2dea01bbb714cd724f81a67586",
+              "old_issue_comment_sha256": "6a35d6ea11143901e11d7b42381ccf2b4635d87a5dbd0e84d34eb916140d0b86",
+              "new_issue_comment_sha256": "b452e911af91b8e4a117dd4cca54f278d3a08f7ea16610d48316426a7c1adee8",
+              "reason": "Independent gate review found stale pending-synchronization/not-synchronized wording in the live detail; coordinator corrected that same comment in place. Checkpoint71c8 is not builder-authorizing.",
+              "comment_updated_at": "2026-11-04T15:33:40Z",
+              "verified_at": "2026-11-04T15:33:41.700000+00:00",
+              "project_source_unchanged": true,
+              "issue_body_unchanged": true,
+              "other_project_fields_unchanged": true,
+              "evidence_path": "/home/corp/autodata-evidence/stateful-vm-comment-correction-readback.json",
+              "evidence_sha256": "9cc1b859a663f623fbef0781a6cb737d091b0ca722b0561ff8fd4f09d23331ff"
+            }
+          ]
+        },
+        "gate_sha": "92953eb7df00ef348539fa9aaac3ead1e4e33162"
+      },
+      "implementation_base_sha": "fd03cd7462842b1af3b3131fc6514046a0b77143",
+      "compose_probe_command_correction": {
+        "status": "synchronized",
+        "predecessor_gate_sha": "92953eb7df00ef348539fa9aaac3ead1e4e33162",
+        "implementation_base_sha": "fd03cd7462842b1af3b3131fc6514046a0b77143",
+        "reason": "Compose v2.40.3 run.go defaults interactive=true and overrides service StdinOpen; the prior fixed run argv cannot satisfy the existing Config.OpenStdin=false readback. TTY auto-detection is also replaced by an explicit false setting.",
+        "evidence_path": "/home/corp/autodata-evidence/stateful-vm-compose-command-block.json",
+        "evidence_sha256": "d0146f7273bc49fbd8f6313d26cb1e36a34a35c0464e105e0dc4ddb8abded72b",
+        "upstream_source_url": "https://raw.githubusercontent.com/docker/compose/v2.40.3/cmd/compose/run.go",
+        "upstream_source_sha256": "03428649aa4458324ebf2a44015d6daab4496d42309805853ffe9d236210df86",
+        "old_run_argv": [
+          "run",
+          "--no-deps",
+          "--pull",
+          "never",
+          "--name",
+          "<derived-probe-name>",
+          "probe",
+          "<fixed-command>"
+        ],
+        "corrected_run_argv": [
+          "run",
+          "--interactive=false",
+          "--no-TTY",
+          "--no-deps",
+          "--pull",
+          "never",
+          "--name",
+          "<derived-probe-name>",
+          "probe",
+          "<fixed-command>"
+        ],
+        "readback": {
+          "Config.OpenStdin": false,
+          "Config.Tty": false
+        },
+        "prospective_edit_paths": [
+          "infra/deploy/lab/stateful_vm.py",
+          "infra/deploy/lab/test_stateful_vm.py"
+        ],
+        "implementation_allowlist_change": false,
+        "required_offline_tests": [
+          "Assert exact complete probe run argv for ready, seed, check and deny, including both explicit false flags in fixed order and unchanged project/file/name/service/command/mode/run bindings.",
+          "Reject inspected Config.OpenStdin=true or Config.Tty=true independently; preserve existing image/labels/ID/network/security/mount/ownership checks and cleanup contracts.",
+          "Use intercepted executor responses only; do not invoke Docker, Compose or a VM to validate the command."
+        ],
+        "inherited_checkpoint_evidence": {
+          "source_sha": "fd03cd7462842b1af3b3131fc6514046a0b77143",
+          "lab_tests_passed": 54,
+          "hosting_tests_passed": 211,
+          "provenance": "Coordinator-reported prior offline checkpoint results; not newly run or independent runtime verification by this docs-only planner."
+        },
+        "limitation": "Read-only public upstream source confirms defaults. The independently approved owner-provisioned Compose binary is unavailable for execution/version verification; no Docker/VM operation was executed.",
+        "next_gate": "Coordinator live tracking synchronization/readback, committed full-SHA checkpoint and machine preflight, independent exact-checkpoint review and fresh dispatch; separate exact-code local-run authorization for real VM/Docker.",
+        "tracking_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6635734278",
+        "tracking_readback_sha256": "136c079fc204c1e0acbc49068e682867a4520b006f8a2961fadbf06f1f9c3a16",
+        "draft_review": "Independent draft PASS relayed by coordinator; independent exact synchronized committed-checkpoint review remains pending."
+      }
     }
   ],
   "execution": {
