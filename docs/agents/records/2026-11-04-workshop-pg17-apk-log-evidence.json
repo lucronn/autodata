@@ -1,0 +1,138 @@
+{
+  "retained_red": {
+    "source_base_sha": "6577207980f24e61c51ab0fcc8198ded18c0d1a4",
+    "raw_directory": "/home/corp/autodata-evidence/pg17-inspected-prep-20261104-01/evidence",
+    "raw_sha256": {
+      "task1a-blocker.json": "d276215bad457113ff5fddf554d5e2154f4a3e067001babc270e664265019d00",
+      "acquire-before-start.json": "8b04c1ae7c7a87118209ba1ab1a6d87380f50e6e1ca7412b232891fda6de3ad4",
+      "acquire-attach.stderr": "08af54a80425402b9f810ead614587aee02dbe2f095f5c491fcb2f1ab68585fc",
+      "acquire-attach.stdout": "8af31dc9a5b085b1c523524fda391d6c7f71bd57f5ae3603a0bfdfe27aad41dc"
+    },
+    "status": "blocked",
+    "exit_code": 99,
+    "reason": "apk update: ERROR: Unable to open log: Read-only file system",
+    "apk_count": 0,
+    "container_removed": true,
+    "volume_inventory_unchanged": true
+  },
+  "read_only_image_diagnosis": {
+    "base_image_id": "sha256:ab20e934b27ba3ff927c1b4c9ff8cf6c32f315f743efe68dd3441182a87fb085",
+    "files": {
+      "sbin/apk": {
+        "sha256": "80ac076736f35434f0df4a041578ec8f760eb545a71424fd6b6e1403a8a65312",
+        "log_strings": [
+          "logfile"
+        ]
+      },
+      "usr/lib/libapk.so.3.0.0": {
+        "sha256": "12a612195b5c7918ff48fa2aa84753025be7167f57d055353a81d338d3f1ae13",
+        "log_strings": [
+          "var/log/apk.log",
+          "var/log",
+          "Unable to open log: %s"
+        ]
+      }
+    },
+    "paths": [
+      {
+        "path": "usr/lib/libapk.so.3.0.0",
+        "type": "0",
+        "link": ""
+      },
+      {
+        "path": "var/log",
+        "type": "5",
+        "link": ""
+      },
+      {
+        "path": "var/log",
+        "type": "5",
+        "link": ""
+      },
+      {
+        "path": "var/log/apk.log",
+        "type": "0",
+        "link": ""
+      },
+      {
+        "path": "var/log",
+        "type": "5",
+        "link": ""
+      },
+      {
+        "path": "var/log/apk.log",
+        "type": "0",
+        "link": ""
+      }
+    ]
+  },
+  "guard_fixture": {
+    "method": "execute exact embedded pure guard with retained actual inspect and synthetic copies; no subprocess/container",
+    "fragment_sha256": "bbcffc66945873cc8edc06350c3a6838cb93d02e09f35d8fb2faf16110206bf4",
+    "cases": [
+      {
+        "case": "retained_actual_missing_log",
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "synthetic_exact_log",
+        "expected_pass": true,
+        "actual_pass": true
+      },
+      {
+        "case": "wrong_quota",
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "wrong_owner",
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "wrong_mode",
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "missing_noexec",
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "duplicate_rw",
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "log_bind",
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "log_child_bind",
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "unexpected_volume",
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "acquisition_writable_root",
+        "expected_pass": false,
+        "actual_pass": false
+      }
+    ],
+    "passed": 11,
+    "failed": 0
+  },
+  "planning_container_created": false,
+  "planning_download": false,
+  "planning_retry": false,
+  "runtime_verified": false,
+  "production_ready": false,
+  "verified_at": "2026-11-04T02:57:05.204633+00:00"
+}

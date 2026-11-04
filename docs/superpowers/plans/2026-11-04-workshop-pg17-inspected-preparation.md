@@ -86,13 +86,14 @@ docker create --pull=never --name "autodata-pg17-acquire-$RUN_ID" \
   --restart=no --no-healthcheck --stop-signal=SIGTERM --stop-timeout=10 \
   --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,nodev,size=16m,uid=1000,gid=1000,mode=0700 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m,uid=0,gid=0,mode=0700 \
+  --tmpfs /var/log:rw,noexec,nosuid,nodev,size=4m,uid=0,gid=0,mode=0700 \
   --tmpfs /var/cache/apk:rw,noexec,nosuid,nodev,size=128m,uid=0,gid=0,mode=0700 \
   --mount "type=bind,src=$PREP/apks,dst=/apks" \
   --mount "type=bind,src=$PREP/control,dst=/control,readonly" \
   --entrypoint /bin/sh "$BASE" /control/acquire.sh
 ```
 
-DAC_OVERRIDE is only for root to write the fresh uid1000 private output mount; no CHOWN/FOWNER/NET_ADMIN/SYS_ADMIN/NET_RAW/SETUID/SETGID capability. Exactly two binds are allowed: `/apks` writable, `/control` read-only; three bounded tmpfs targets; no source/evidence/secret/production bind. Inspect complete network/mount/capability/config before any start; cached image plus `--pull=never` must resolve or creation fails without registry access. Run only inspected ID, capture attach stdout/stderr and final zero exit, then stop/remove/verify as above. Host evidence is not mounted.
+DAC_OVERRIDE is only for root to write the fresh uid1000 private output mount; no CHOWN/FOWNER/NET_ADMIN/SYS_ADMIN/NET_RAW/SETUID/SETGID capability. Exactly two binds are allowed: `/apks` writable, `/control` read-only; four bounded tmpfs targets; no source/evidence/secret/production bind. Inspect complete network/mount/capability/config before any start; cached image plus `--pull=never` must resolve or creation fails without registry access. Run only inspected ID, capture attach stdout/stderr and final zero exit, then stop/remove/verify as above. Host evidence is not mounted.
 
 - [ ] Freeze APK files as read-only input: hashes, filenames/name/version/arch, signing-key hashes, signed repository index digests, exact repositories, baseline installed package versions and rootfs identity. Copy only acquisition receipts out before cleanup if needed via read-only `docker cp ID:/path DEST`; indices live in tmpfs and must be exported while the container is running only if already explicitly provided by fixed payload. Therefore the fixed payload must emit the signed-index hashes before exit; do not assume stopped tmpfs contents survive. Verify package SHA256 on host before/after install. No closure changes after freeze. Exact resolved versions become the immutable input manifest; this plan does not falsely invent versions before acquisition.
 
@@ -139,12 +140,13 @@ docker create --pull=never --name "autodata-pg17-install-$RUN_ID" \
   --restart=no --no-healthcheck --stop-signal=SIGTERM --stop-timeout=10 \
   --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,nodev,size=16m,uid=1000,gid=1000,mode=0700 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m,uid=0,gid=0,mode=0700 \
+  --tmpfs /var/log:rw,noexec,nosuid,nodev,size=4m,uid=0,gid=0,mode=0700 \
   --mount "type=bind,src=$PREP/apks,dst=/apks,readonly" \
   --mount "type=bind,src=$PREP/control,dst=/control,readonly" \
   --entrypoint /bin/sh "$BASE" /control/install.sh
 ```
 
-The installer intentionally has one writable isolated container root layer; it has no writable host mount. CHOWN/FOWNER/DAC_OVERRIDE are fixture package-install capabilities only, dropped entirely in the final runner. No SYS_ADMIN/mount/SETUID/SETGID/network capability or privileged mode. A missing capability is a blocker; do not add caps. Exactly two read-only binds/two tmpfs; no default PGDATA volume. Inspect before start; execute only the full inspected ID under180s deadline. Do not commit until stopped state has exit0, `OOMKilled=false`, empty State.Error and unchanged source/input hashes.
+The installer intentionally has one writable isolated container root layer; it has no writable host mount. CHOWN/FOWNER/DAC_OVERRIDE are fixture package-install capabilities only, dropped entirely in the final runner. No SYS_ADMIN/mount/SETUID/SETGID/network capability or privileged mode. A missing capability is a blocker; do not add caps. Exactly two read-only binds/three tmpfs; no default PGDATA volume. Inspect before start; execute only the full inspected ID under180s deadline. Do not commit until stopped state has exit0, `OOMKilled=false`, empty State.Error and unchanged source/input hashes.
 
 - [ ] Retain `docker diff ID`, inspect, `/lib/apk/db/installed`, `/etc/apk/world`, user/group files and package file manifests via `docker cp` from the stopped container's root layer. Reject changes to `/usr/local` PG tools/headers/libraries/configuration, signing keys/repositories or any baseline installed package version; allow only newly added signed-package-manifest paths plus APK database/world and probe passwd/group/shadow/home/source changes. Transient installation locks/cache files must be absent before commit. Mounted `/apks`, `/control`, `/tmp` and PGDATA must contribute no committed bytes. No logs/manifests/APKs/repository source/customer secrets are written into the root layer. Unexpected changes or unverifiable path/owner ancestry blocks commit. No symlink/path-escape acceptance.
 
@@ -258,3 +260,20 @@ Inspected PG17 preparation ICU review correction (plan-only): the fixed Python i
 Narrow ICU correction synchronized by live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6621225616 and Project8 readback at `2026-11-04T02:51:55.028338+00:00`; exact hashes in dedicated record. Full prior Project index preserved verbatim. Independent exact-checkpoint review/new preparation dispatch pending; all Docker/download/install/image/harness actions remain unexecuted.
 
 Pinned ICU-corrected inspected-preparation checkpoint: `6d65a512172f28a9f7f0960ecf41409db78455c2`; full-SHA preflight `status: synchronized`, `errors: []`, exit0. Receipt `docs/agents/records/2026-11-04-workshop-pg17-inspected-preparation-icu-preflight.json`; exact-pin Issue186/Project8 readback https://github.com/lucronn/autodata/issues/186#issuecomment-6621229238. Independent review/new preparation dispatch pending. No container/image/package/harness action or readiness claim.
+
+
+## PG17 APK default-log correction: plan-only
+
+Goal: Permit only an independently reviewed PG17 preparation retry with an explicit bounded private APK log tmpfs and pre-start guard, preserving the actual exit99 blocker, exact-owned cleanup, offline provenance and separate harness authority.
+
+Correction plan `docs/superpowers/plans/2026-11-04-workshop-pg17-apk-log.md`; task `docs/agents/tasks/2026-11-03-production-release/workshop-pg17-apk-log.json`; record `docs/agents/records/2026-11-04-workshop-pg17-apk-log.json`. Preserved red: approved Task1A under6d65a5 exited99 at apk update with read-only log error,0 APKs; exact-owned container removed and volume inventory unchanged (base65772079). Read-only cached libapk3.0.8 identifies default `/var/log/apk.log`. Later approved APK acquisition/simulation/install creates add only private `/var/log` tmpfs4MiB (`rw,noexec,nosuid,nodev,uid=0,gid=0,mode=0700`) and exact pre-start guard; acquisition root stays read-only, no capability/command/repository/host-volume expansion, logs cannot enter committed added layer. Original full mount/cleanup/provenance/Task2 boundaries remain. Guard fixtures are synthetic/pure and not retry evidence. Independent review/new coordinator Task1A dispatch pending; this planner creates/starts/downloads/retries nothing.
+
+Concrete todo:
+
+- [ ] Synchronize the exact APK log-path diagnosis, retained red proof, bounded tmpfs guard and unchanged preparation/harness limits in Issue186/Project8 and canonical docs; commit/push and pass pinned preflight for independent review.
+- [ ] After independent corrected-checkpoint review and a new coordinator Task1A dispatch only, create a fresh exact-base acquisition container with the additional private4MiB /var/log tmpfs and validate the complete original mount contract plus exact new log guard before start.
+- [ ] Execute only the unchanged approved signed-APK acquisition payload after its inspected log guard passes; preserve the previous exit99 and every new failure, bounded attach/log metadata and exact-owned stop/removal/volume-absence evidence.
+- [ ] Require the same private log tmpfs and guard for later approved offline simulation/install containers, with no log bytes entering the committed added layer; preserve no-upgrade/signature/package/file/layer/configuration and frozen-image review requirements.
+- [ ] Keep image/toolchain/sentinel/harness outcomes unverified until actually observed under their separate approved steps; preserve original Task2 authority and every production/runtime/grant/service/deployment/readiness denial.
+
+APK-log correction synchronized by live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6621303386 and Project8 readback at `2026-11-04T02:57:35.939965+00:00`; exact hashes in dedicated record. Full prior Project index preserved verbatim. Independent exact-checkpoint review/new preparation dispatch pending; all Docker/download/install/image/harness actions remain unexecuted.

@@ -1,0 +1,66 @@
+{
+  "task_id": "workshop-pg17-apk-log",
+  "goal": "Permit only an independently reviewed PG17 preparation retry with an explicit bounded private APK log tmpfs and pre-start guard, preserving the actual exit99 blocker, exact-owned cleanup, offline provenance and separate harness authority.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-apk-log.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-pg17-apk-log.json",
+  "source_integration_base_sha": "6577207980f24e61c51ab0fcc8198ded18c0d1a4",
+  "allowed_paths": [],
+  "status": "synchronized",
+  "pre_implementation": {
+    "goal": "Permit only an independently reviewed PG17 preparation retry with an explicit bounded private APK log tmpfs and pre-start guard, preserving the actual exit99 blocker, exact-owned cleanup, offline provenance and separate harness authority.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-apk-log.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-inspected-preparation.md",
+      "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+      "docs/operations/workshop-gcp.md",
+      "docs/architecture/infrastructure-and-dev.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/verification/2026-11-04-pg17-runner-preparation.md"
+    ],
+    "todo": [
+      "Synchronize the exact APK log-path diagnosis, retained red proof, bounded tmpfs guard and unchanged preparation/harness limits in Issue186/Project8 and canonical docs; commit/push and pass pinned preflight for independent review.",
+      "After independent corrected-checkpoint review and a new coordinator Task1A dispatch only, create a fresh exact-base acquisition container with the additional private4MiB /var/log tmpfs and validate the complete original mount contract plus exact new log guard before start.",
+      "Execute only the unchanged approved signed-APK acquisition payload after its inspected log guard passes; preserve the previous exit99 and every new failure, bounded attach/log metadata and exact-owned stop/removal/volume-absence evidence.",
+      "Require the same private log tmpfs and guard for later approved offline simulation/install containers, with no log bytes entering the committed added layer; preserve no-upgrade/signature/package/file/layer/configuration and frozen-image review requirements.",
+      "Keep image/toolchain/sentinel/harness outcomes unverified until actually observed under their separate approved steps; preserve original Task2 authority and every production/runtime/grant/service/deployment/readiness denial."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T02:57:35.939965+00:00",
+    "source_integration_base_sha": "6577207980f24e61c51ab0fcc8198ded18c0d1a4",
+    "harness_source_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
+    "implementation_allowlist": [],
+    "independent_review": "pending",
+    "preparation_retry_authorized": false,
+    "runtime_execution_authorized": false,
+    "runtime_verified": false,
+    "production_ready": false,
+    "evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-apk-log-evidence.json",
+    "tracking_sync": {
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621303386",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+      "project_note_field": "Source or dependency reference",
+      "verified_at": "2026-11-04T02:57:35.939965+00:00",
+      "issue_body_sha256": "a2c1577c50953d3a0deaa7c94a1c706478ecc9fde0e2f5cd0994f890672e1011",
+      "issue_comment_sha256": "a0ab29cda6bc554b827829e07cf390a45f8f27b085a8c6b18364f7e0daf009f6",
+      "project_text_sha256": "50bf922f8e09e0ceac17c96a843d89d189681ffa6a94907938dcdcd0dbff897a",
+      "prior_project_text_sha256": "57686e01498d0441bcbfe8a994d82b00c2f84cb1ff127b2ef0adac0db365f6e2",
+      "full_prior_project_index_preserved_in_issue_comment": true
+    }
+  },
+  "todo": [
+    "Synchronize the exact APK log-path diagnosis, retained red proof, bounded tmpfs guard and unchanged preparation/harness limits in Issue186/Project8 and canonical docs; commit/push and pass pinned preflight for independent review.",
+    "After independent corrected-checkpoint review and a new coordinator Task1A dispatch only, create a fresh exact-base acquisition container with the additional private4MiB /var/log tmpfs and validate the complete original mount contract plus exact new log guard before start.",
+    "Execute only the unchanged approved signed-APK acquisition payload after its inspected log guard passes; preserve the previous exit99 and every new failure, bounded attach/log metadata and exact-owned stop/removal/volume-absence evidence.",
+    "Require the same private log tmpfs and guard for later approved offline simulation/install containers, with no log bytes entering the committed added layer; preserve no-upgrade/signature/package/file/layer/configuration and frozen-image review requirements.",
+    "Keep image/toolchain/sentinel/harness outcomes unverified until actually observed under their separate approved steps; preserve original Task2 authority and every production/runtime/grant/service/deployment/readiness denial."
+  ],
+  "execution": {
+    "mode": "plan_only",
+    "retry": "blocked_pending_exact_gate_review_adoption_pinned_preflight_and_new_coordinator_dispatch",
+    "runtime": "original_task2_separately_unauthorized",
+    "implementation_changes": "none"
+  }
+}

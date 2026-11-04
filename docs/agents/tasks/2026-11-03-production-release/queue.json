@@ -543,6 +543,16 @@
       "implementation_changes_allowed": false,
       "preparation_executed": false,
       "runtime_verified": false
+    },
+    {
+      "id": "workshop-pg17-apk-log",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-pg17-apk-log.json",
+      "depends_on": [],
+      "state": "plan_only_pending_independent_review",
+      "release_state": "unverified",
+      "implementation_changes_allowed": false,
+      "preparation_retry_executed": false,
+      "runtime_verified": false
     }
   ],
   "execution": {
