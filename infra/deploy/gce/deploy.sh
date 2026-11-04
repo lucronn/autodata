@@ -1,10 +1,11 @@
 #!/bin/sh
-# Bounded passive check only. No caller env, config path, command or deployment.
+# Passive check or inert staging-material install. No caller-selected paths or commands.
 set +x
 set -eu
 exec /usr/bin/env -i /usr/bin/python3 -I - "$@" <<'PY'
 import importlib.util
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -32,9 +33,15 @@ def main(argv):
     if len(argv) != 2 or argv[0] not in verbs or re.fullmatch('[0-9a-f]{40}', argv[1]) is None:
         return 2, receipt('deploy.sh check', None, 2)
     operation = 'deploy.sh ' + argv[0]
-    if argv[0] != 'check':
+    if argv[0] not in ('check', 'install'):
         return 3, receipt(operation, argv[1], 3)
     try:
+        if argv[0] == 'install':
+            os.chdir('/')
+            spec = importlib.util.spec_from_file_location('autodata_install', '/opt/autodata/bin/host_install.py')
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module.install_cli(argv[1])
         return load_runtime().deploy_cli(argv)
     except Exception:
         # Redact import, filesystem and unexpected implementation details.

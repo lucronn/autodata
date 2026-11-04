@@ -648,6 +648,89 @@ Concrete todo:
 Tracking readback: [issuecomment-6621425159](https://github.com/lucronn/autodata/issues/186#issuecomment-6621425159), Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference`, verified `2026-11-04T03:06:38.051955+00:00`. Exact body/comment/Project/prior-index hashes are in the dedicated synchronized record. Full predecessor Project index SHA256 `4e26f3831956fb10f26a64e5b791e27f502a35e3ead19015622e118d22dfec20` is preserved verbatim in that comment. This synchronizes planning only; committed full-SHA preflight, independent exact-checkpoint review and coordinator dispatch still precede implementation. No staging or production activation.
 
 
+## Isolated staging bare-resource bootstrap M1: synchronized planning checkpoint
+
+Goal: Create and read back only owner-approved isolated staging IPv4 address, empty persistent data disk and bare VM; preserve all application, deployment and production denials.
+
+Canonical plan: `docs/superpowers/plans/2026-11-04-workshop-staging-lifecycle.md`; task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-bootstrap.json`; record `docs/agents/records/2026-11-04-workshop-staging-bootstrap.json`; preservation/evidence `docs/agents/records/2026-11-04-workshop-staging-bootstrap-evidence.json`. Source root `eddcf724028683dbb083191e4f8c42064b866bf0`; independently reviewed corrected draft `fb0c6f7a92b2580ae7bc993f827cfc2596a32743`.
+
+Status: `synchronized` after live [Issue186 detail6622232881](https://github.com/lucronn/autodata/issues/186#issuecomment-6622232881) and [Project8](https://github.com/users/lucronn/projects/8) readback at `2026-11-04T04:04:56.410962+00:00`. Commit/push, full-SHA pinned preflight, independent exact-checkpoint review and fresh coordinator dispatch still precede implementation. Synchronization does not authorize cloud or host operations.
+
+Exact prospective implementation allowlist:
+
+- `infra/deploy/gce/cloud-bootstrap.sh`
+- `infra/deploy/gce/staging_bootstrap.py`
+- `infra/deploy/gce/staging-bootstrap.schema.json`
+- `infra/deploy/gce/test_staging_bootstrap.py`
+
+Only dedicated staging address+empty data disk+bare VM against approved preexisting VPC/IAM/APIs/registry. Strict owner approval, inherited metadata/image/network/effective-policy readback, fixed Compute GET/three POST bodies, deterministic requestId, ownership/idempotency, bounds and redacted receipts are defined in the plan. Only exact default0.0.0.0/0 via default-internet-gateway is exempt from Docker overlap checking; selected subnet/additional destinations must be disjoint, and extra routes remain denied. No IAM mutation, package install, disk format, secret delivery, application startup, production apply or readiness authority. Actual owner-selected GCP/billing/region/pins/staging-origin inputs and separate live authorization remain mandatory. Publisher/schema contracts and separately reviewed installation/startup/recovery gates are still required.
+
+Concrete todo:
+
+- [ ] Synchronize the exact bare-resource goal, four-file allowlist, approval/request/network/receipt contract and concrete todo across Issue186/Project8 and canonical documents; preserve current PG/JS index/detail/pins verbatim with hashes, commit/push and pass full-SHA pinned preflight before independent checkpoint review.
+- [ ] After independent exact-checkpoint review and fresh coordinator dispatch, add offline failing tests for strict approval/token boundaries, exact request inventory, default-route exception and disjoint-subnet acceptance, overlapping-subnet/custom-next-hop rejection, ownership/idempotency, timeout/cancellation and redaction.
+- [ ] Implement only the four allowlisted bootstrap files for the fixed staging-only Compute GET and three POST operations, approved resource identity readback and bounded retained-resource failure receipts; keep production apply, IAM mutation, installation, formatting, secrets, application startup and readiness unavailable.
+- [ ] Run offline staging-bootstrap and existing host/cloud regression suites, syntax/scope/diff checks and pinned preflight; commit/push a coherent candidate and obtain independent exact-SHA review before integration or live use.
+- [ ] Keep all cloud execution blocked pending separate owner authorization of selected GCP projects/billing/region/VPC/IAM/pins/staging origin and concrete reviewed scripts; keep host install/readiness/recovery behind separate publisher/schema-dependent gates and preserve cars.tk/production blockers.
+
+Preservation: then-current full PG CapAdd Project index SHA256 `a67fb47f7973811904663fd8bba35a5c8ce6ad6164eb896adae83ea4dd39100d`, detail6622201950/pin6622210398, and prior JS Project index/detail6622115738/pin6622126651 remain verbatim with individual hashes in canonical evidence and the full synchronization comment. PG gate `cde9652c0e3dce9a9083540d15cb25b3682f144d` and JS gate `d105f8ae0747faa4bf4c6254e2dd1cd45ad0a830` retain their own review/dispatch/denial boundaries; no prior status is superseded.
+
+Pinned M1 checkpoint `52653deef3754972230801ac260875fe92e1a403` is pushed on `codex/workshop-staging-lifecycle-plan`; full-SHA preflight returned `{"status":"synchronized","errors":[]}`, exit0. [Pin/readback receipt6622247097](https://github.com/lucronn/autodata/issues/186#issuecomment-6622247097) and canonical evidence record Issue/Project/comment hashes at `2026-11-04T04:05:59.945032+00:00`. Independent exact-checkpoint review and fresh coordinator dispatch remain pending; implementation and cloud execution are unauthorized.
+
+
+## Staging boot attachment deviceName: synchronized corrective planning checkpoint
+
+Goal: Explicitly select the staging VM boot attachment deviceName and make the offline Compute fake distinguish attachment names from disk resource names, preserving strict readback and every existing authority boundary.
+
+Plan `docs/superpowers/plans/2026-11-04-workshop-staging-boot-device.md`; task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-boot-device.json`; record `docs/agents/records/2026-11-04-workshop-staging-boot-device.json`; evidence `docs/agents/records/2026-11-04-workshop-staging-boot-device-evidence.json`. Rejected candidate `188d6e66a3edff53bb84548d78876f8c98f6aec0`; independently reviewed local draft `b31de33a7907bf295d4c69c8df13a2b15ebabd53` PASS via coordinator.
+
+Status: `synchronized` after [Issue186 detail6622382607](https://github.com/lucronn/autodata/issues/186#issuecomment-6622382607) and [Project8](https://github.com/users/lucronn/projects/8) readback at `2026-11-04T04:15:55.867157+00:00`. Commit/push, full-SHA pinned preflight, independent exact-checkpoint review and fresh root dispatch still precede code. No implementation or cloud operation is authorized now.
+
+Exact prospective implementation allowlist:
+
+- `infra/deploy/gce/staging_bootstrap.py`
+- `infra/deploy/gce/test_staging_bootstrap.py`
+
+Narrow request amendment: select boot `AttachedDisk.deviceName=<instance>-boot` explicitly as a sibling of `initializeParams`; independently retain `initializeParams.diskName=<instance>-boot` for the disk resource. Preserve strict attachment-name/resource-ID/image readback and data deviceName `autodata-data`. Make fake echo explicit attachment name and choose representative `persistent-disk-0` when omitted, never derive it from diskName. Original omission must fail strict readback after3POSTs/resources retained; exact explicit request success and observed-name drift rejection are required. No launcher/schema/config/token/network/receipt/budget/authority change. Source188d6e6 remains rejected pending exact correction review; no historical gate is retroactive acceptance.
+
+Concrete todo:
+
+- [ ] After PG releases the serialized tracking slot and coordinator approves this draft, synchronize the exact boot-attachment correction goal, explicit POST amendment, two-file allowlist, regression cases and todo across Issue186/Project8 and canonical plan/task/record/notes; preserve then-current full PG/JS index/detail/pins verbatim with hashes, commit/push and pass full-SHA preflight before independent exact-checkpoint review.
+- [ ] Obtain independent review of that exact new checkpoint and fresh root dispatch before implementation; preserve rejected source `188d6e66a3edff53bb84548d78876f8c98f6aec0` and the prior M1 gate/receipt as distinct historical records without retrospective acceptance.
+- [ ] Change the fake's omitted-name behavior and add the exact request/default/drift regressions first; demonstrate a red complete-run failure on the uncorrected request, with all three POSTs and retained resources, using only intercepted transports.
+- [ ] Add only the explicit boot AttachedDisk.deviceName sibling field in staging_bootstrap.py; keep strict readback and all request/approval/config/FD3/network/receipt/authority boundaries unchanged; run focused bootstrap plus existing host/cloud regressions, syntax and diff/scope checks.
+- [ ] Commit/push the exact two-file candidate, retain red/green logs and independently review its full SHA before integration; no credentials/cloud/resource operations, installation, formatting, host startup, readiness, cars.tk or production authority follows from simulated success.
+
+Preservation: full then-current PG offline Project index SHA256 `8e678c075d383d11fa9a63e3df05040a3b8e721e068d0c38e590728b6d009aa1`, detail6622351785/pin6622361427, and Stage0/staging/older PG/JS index/detail/pin texts are retained verbatim with individual SHA256 in canonical evidence and the exact preserved-comment references in the synchronization detail. Their statuses/independent review/dispatch/denial boundaries remain unchanged. No credentials/cloud/Docker/host/provider/DNS/runtime action or readiness/production claim occurs on this documentation turn.
+
+
+## Staging M2A inert-install synchronized planning checkpoint
+
+Goal: Install only an owner-accepted authenticated release manifest and its exact migration runner/tree into a fixed root-owned staging release directory, without formatting disks, selecting a running release, delivering secrets or starting services.
+
+Plan `docs/superpowers/plans/2026-11-04-workshop-staging-m2-host-install.md`; record `docs/agents/records/2026-11-04-workshop-staging-m2-host-install.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-m2-host-install.json`; evidence `docs/agents/records/2026-11-04-workshop-staging-m2-host-install-evidence.json`. Source independently reviewed M1 candidate `ef536cc24478424efc3cc084425322cfb8056145`; independently approved corrected draft `f1558d526d87b9d48180f00be41835c65d9944fc` PASS via coordinator. No source merge/rebase is implied.
+
+Exact prospective implementation allowlist:
+
+- `infra/deploy/gce/deploy.sh`
+- `infra/deploy/gce/host_install.py`
+- `infra/deploy/gce/test_host_install.py`
+
+Fixed root-admin approval + local accepted inbox only: validate exact manifest/runner/SQL bytes with unchanged runtime validator; protect standard root-owned non-group/other-writable parents (0755 accepted), exact private0700 subtree; require already-approved mounted disk and tmpfs; bounded descriptor copy/no-replace inert install and redacted receipt. No formatting/mounting, remote ingress, package/unit changes, current-release selection, image pull, secrets or service startup. Publisher authentication and owner acceptance workflow remain external live-use dependencies; hashes never manufacture publisher authority. No activation/readiness/cloud authorization.
+
+Concrete todo:
+
+- [ ] Independently review this M2A split, exact three-file scope, trusted owner-acceptance boundary, immutable file/input/receipt contract and no-replace/cleanup primitives; synchronize goal/todo/references in Issue186/Project8/canonical docs with full then-current history preservation, commit/push and full-SHA preflight before builder dispatch.
+- [ ] Obtain independent exact synchronized-checkpoint review and fresh root dispatch; establish actual authenticated publisher and separate mounted-disk/tool prerequisites before any later live installation, without inventing a verifier or owner/cloud values.
+- [ ] Add failing fake-probe and temporary-inode tests for approval/publisher/mount/lock/inventory/no-replace/fault/redaction and reboot fail-closed invariants; then implement only deploy.sh, host_install.py and test_host_install.py for inert release-material installation.
+- [ ] Run focused host-install tests plus existing host/cloud/bootstrap regressions, syntax/diff/scope and pinned preflight; commit/push a coherent exact candidate for independent review, preserving all startup/readiness/cloud/secret/production denials.
+- [ ] Require separate decision-complete gates for authenticated remote ingress/private secret delivery, host packages/guard/units, image pull, start/schema/readiness and minimum recovery; no one may treat M2A success as completion of full M2 or live-operation authorization.
+
+Independent exact synchronized-checkpoint review and fresh root dispatch REQUIRED before any implementation. No cloud/Docker/credential/secret/runtime action. All prior Stage1A/Stage0/staging/PG/JS authorities/statuses/denials unchanged.
+
+Status: `synchronized` after [Issue186 detail6622589651](https://github.com/lucronn/autodata/issues/186#issuecomment-6622589651) and Project8 exact readback at `2026-11-04T04:30:30.706329+00:00`. Full then-current Project index, entire prior Issue body and all111 historical comment bodies are retained verbatim with SHA256 in `docs/agents/records/2026-11-04-workshop-staging-m2-host-install-evidence.json` and verified unchanged. Independent exact-checkpoint review and fresh root dispatch remain pending. This docs-only checkpoint authorizes no implementation or live action.
+
+
 ## Verified docs-only integration tracking synchronization
 
 This additive receipt supersedes only the local-draft tracking statements above. Coordinator explicitly released PG writer slot. Independent local draft review PASS pinned plan SHA256 ea42fcac66cc397482f985be8a26e6e73dc1fc22c0b4e008eec742d4e384e553 / bundle manifest ca34e3e8be70bac131aabf7b600032a9b4531f0d87b85f5a8fa5f75f03c94a63. https://github.com/lucronn/autodata/issues/186#issuecomment-6622915925 read back at 2026-11-04T04:54:35.010852+00:00. Entire current Issue body/all115 prior comment bodies and full current PG Project index preserved verbatim+hash in `docs/agents/records/2026-11-04-workshop-reviewed-leaves-integration-evidence.json`; independent API readback confirmed Issue/prior comments unchanged. PG gate74dfe57/receiptd662cb0, Stage1A and M2A details/pins/statuses/denials preserved. Project current index SHA256 20ab190a8c0e78eb994b5e99ba133e7df2cdebd1258f29c0680d0cb32422407c.
