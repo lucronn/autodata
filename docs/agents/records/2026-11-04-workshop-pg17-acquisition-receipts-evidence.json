@@ -1,0 +1,239 @@
+{
+  "raw_directory": "/home/corp/autodata-evidence/pg17-bind-target-prep-20261104-02/evidence",
+  "retained_result_sha256": "22e9fc0135d17df0848d2e868f0b5cdaf795ea801d27dfbb49bf0e4a140aaf26",
+  "retained_diagnosis_sha256": "38c51447e793b52ff4c59ba22d2ed42e14f3ba7197280838db6d39aff3d615f9",
+  "complete_raw_replay": {
+    "all_result_and_diagnosis_referenced_raw_hashes_verified": true,
+    "status_predicate_actual_pass": true,
+    "old_unanchored_substring_predicate_pass": false,
+    "all_complete_10field_ls_records_order_only_diagnostic_equivalent": true,
+    "diagnostic_complete_ls_hash": "5590cafce0fd41bd6fb97e8ade8a1fa350b0be3cf435eecaa42107234a744e1b",
+    "structured_volume_proof_missing_historical_guard_rejects": true,
+    "all_existing_18_mount_and_24_context_valid_negative_fixtures_replayed": true,
+    "baseline27_equal_and_prestart_order_verified": true,
+    "both_structural_and_mount_audits_verified": true,
+    "full_stopped_diff_context_pass": true,
+    "all33_signature_and_host_hash_lines_verified_without_acceptance": true,
+    "exact_owned_removal_absence_verified": true,
+    "historical_result": "failed_and_all33_quarantined_no_retrospective_acceptance"
+  },
+  "fixed_fragment_sha256": [
+    "2ca0dcb0d16639ec83d987ad0e3fdb5296985881cbc8c99b0f93b6f2aa3b19e3",
+    "d40fd4fe458d338258aaa5ac1ee71636faebe5638e11c355bcfa84fc6ba0c2b6"
+  ],
+  "new_predicate_cases": [
+    {
+      "case": "actual_complete_second_attempt_output",
+      "expected_pass": true,
+      "actual_pass": true
+    },
+    {
+      "case": "legitimate_baseline_error_description",
+      "expected_pass": true,
+      "actual_pass": true
+    },
+    {
+      "case": "anchored_WARNING: warning",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "anchored_ERROR: failure",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "anchored_UNTRUSTED package",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "anchored_BAD SIGNATURE",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "anchored_warning: caution",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "anchored_error : failure",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "anchored_bad signature: invalid",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "stderr_message",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "stderr_whitespace",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "malformed_utf8",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "nul",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "attach_returncode",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "attach_supervisor_failure",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "state_Status",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "state_Running",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "state_ExitCode",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "state_OOMKilled",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "state_Error",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "structured_complete_object_labels_key_order",
+      "expected_pass": true,
+      "actual_pass": true
+    },
+    {
+      "case": "volume_drift_Name_other",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_Driver_changed",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_Scope_global",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_Mountpoint_/other",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_CreatedAt_changed",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_Labels_{'alpha': 'changed', 'beta': '2'}",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_Options_{'new': 'value'}",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_ExtraCompleteField_{'stable': False}",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_Labels_alpha=1,beta=2",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_field_removed",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_field_added",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_required_field_missing",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "duplicate_volume_names",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "missing_volume",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "extra_volume",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "over_volume_count",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "duplicate_object_key",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "nonfinite",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "malformed",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "historical_second_attempt_missing_structured_inventory",
+      "expected_pass": false,
+      "actual_pass": false
+    }
+  ],
+  "new_cases_passed": 41,
+  "new_cases_failed": 0,
+  "inherited_mount_cases_passed": 18,
+  "inherited_context_cases_passed": 24,
+  "planning_docker_invoked": false,
+  "planning_retry": false,
+  "runtime_verified": false,
+  "production_ready": false
+}

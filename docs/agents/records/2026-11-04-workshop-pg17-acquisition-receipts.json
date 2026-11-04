@@ -1,0 +1,47 @@
+{
+  "goal": "Correct only acquisition diagnostic false positives and volume inventory serialization by anchored status checks and bounded structured complete-volume inspection, retaining all existing guards and failed-output quarantine.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-acquisition-receipts.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-acquisition-overlay.md",
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-inspected-preparation.md",
+    "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+    "docs/operations/workshop-gcp.md",
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/verification/2026-11-04-pg17-runner-preparation.md",
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-bind-targets.md",
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-mount-order.md"
+  ],
+  "todo": [
+    "Replay the revised fixed pure predicates against complete retained second-attempt evidence and all existing positive/negative fixtures; synchronize goal/plan/todo/red evidence/structured inventory authority with Issue186/Project8/canonical docs after coordinator slot release; commit/push and pin full-SHA preflight.",
+    "Require independent exact-gate review/adoption and root verification/fresh Task1A dispatch before any Docker/retry; use a new private exact-owned run, never historical quarantined APKs or failed containers.",
+    "Use unchanged bounded fixed acquisition payload and source/signature/index/hash checks; classify only empty stderr plus successful supervised attach/stopped status and reject anchored diagnostic forms, preserving full raw output and hashes.",
+    "Before create and after exact-owned removal, capture bounded volume ls names and one bounded read-only structured volume inspect per exact name; compare complete objects by unique Name preserving every field/value and ignoring JSON object key order only.",
+    "Keep mandatory27 prestart copies BEFORE first created export/diff, complete Mounts canonical guard, empty underlying target audits, full stopped diff/context/baseline/exit checks and owned cleanup unchanged; no offline/install/image/PG/harness/production readiness follows."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T03:33:51.920926+00:00",
+  "source_integration_base_sha": "9a0ea7e89915d72a9fd98eb963b52b8749801dc4",
+  "implementation_allowlist": [],
+  "independent_review": "pending",
+  "preparation_retry_authorized": false,
+  "new_volume_metadata_authority": "pending_review_adoption_root_dispatch",
+  "planning_docker_invoked": false,
+  "runtime_verified": false,
+  "production_ready": false,
+  "evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-acquisition-receipts-evidence.json",
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621817348",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_note_field": "Source or dependency reference",
+    "verified_at": "2026-11-04T03:33:51.920926+00:00",
+    "issue_body_sha256": "890e70273b7e4e64c94af946c6875d8004ceee980d896b1e9aab8b4b0e2121dc",
+    "issue_comment_sha256": "342b3a99a585c6693a847a4a5d3b784f4817be1ca13e9f0725b5ffd6e0d98c7b",
+    "project_text_sha256": "9aaa40be0a55fc64b1fd720e7af120505b53cf177a311bf48328edf4f71f8d0f",
+    "prior_project_text_sha256": "b07906999593fcc769ee632f6369ef99f5b25ca1d2f5841dcf9e6f6ab9385701",
+    "full_prior_project_index_preserved_in_issue_comment": true
+  }
+}
