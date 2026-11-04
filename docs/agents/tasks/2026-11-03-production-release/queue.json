@@ -587,6 +587,15 @@
         "prior_project_text_sha256": "6111a5425e53d4820d2942475a3dac29bb76273f44c0b2b621aeaa67d9fc1d23",
         "full_prior_project_index_preserved_in_issue_comment": true
       }
+    },
+    {
+      "id": "workshop-pg17-bind-targets",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-pg17-bind-targets.json",
+      "depends_on": [],
+      "state": "plan_only_pending_independent_review",
+      "release_state": "unverified",
+      "implementation_changes_allowed": false,
+      "runtime_verified": false
     }
   ],
   "execution": {
