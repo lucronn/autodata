@@ -390,3 +390,44 @@ runtime was executed for Stage D evidence. The coordinator subsequently
 reported parent PR232 exact-head CI success; this does not report successor
 CI or review success. Final immutable documentation/code head is sealed
 externally after this commit to avoid a self-referential SHA.
+
+### Stage D exact-type field-presence repair
+
+Independent review of `f476ba63068c7fc6a5be2d994874f4907b6daea5` found one P2:
+exact frozen dataclasses allocated without initialization could escape admission
+with `AttributeError` rather than the specified stable `AdapterError`. The
+review is retained externally at
+`/home/corp/autodata-evidence/final180-paid-exact-head-review/REVIEW.md`.
+
+The narrow repair milestone is
+`894f49b85dbabdf8f07c82074bc960f13d6910c1`. Required fields are now checked after
+exact class admission and before dereference, at their original validation
+stage. Missing context fields yield `context_invalid`; missing case identity,
+events, stderr or receipt fields yield `case_identity`, `input_type`,
+`stderr_type` or `receipt_invalid`, respectively. Incomplete exact
+`SimulatedExit` yields `receipt_invalid`; incomplete exact `PaidDiagnostic` or
+`PaidOutcome` yields `diagnostic_invalid`. Identity admission still precedes
+uniqueness, all byte admission precedes receipts, and event type/size checks
+still precede stderr. No catch-all exception conversion was added.
+
+Six failing-first regressions cover empty exact instances and each missing field
+across all five classes, plus conflicting invalid inputs for error precedence.
+Before repair they reproduced 37 `AttributeError` escapes in six tests; after
+repair, combined paid and unchanged Stage A/B1/B2 passed 138 tests in 21.373s
+(paid 38, unchanged 100). Both exact-gate preflights were rechecked as
+`status: synchronized`, `errors: []` before repair. The original three-path
+allowlist and all synthetic/payment/runtime/authority boundaries above remain
+in force. This repair adds no accepted credit or execution authority.
+
+Fresh post-repair verification passed against the repaired source: paid 38 tests
+in 4.065s, combined focused 138 in 21.373s, full developer discovery 398 in
+521.229s, and autonomy discovery 146 in 49.044s, all exit0 with no failures or
+errors. The five original independent-review probes now produce their exact
+stable `AdapterError` codes. Both new modules compile in memory; static imports,
+call boundaries, literal slots/refs/authority and all preserved-source checks
+remain intact. Exact final-head checks and SHA256-indexed red/green/broad-suite
+logs are retained in `/home/corp/autodata-evidence/final180-paid-build/`, with
+`checks.json` and `receipt.json` sealed externally after final commit/push.
+Independent successor-head review and CI readback remain coordinator-owned and
+pending at this documentation point. Credit remains 0; profiles/tiers remain
+disabled, runtime lock/run record null, and all nine authorities false.
