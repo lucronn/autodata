@@ -806,3 +806,5 @@ Concrete todo:
 - [ ] Keep original Task2 PG startup/harness separately unauthorized, all runtime/production/grants/services/deployment readiness unverified, and both historical33APK sets quarantined NEVER reusable.
 
 Frozen-input closure acceptance synchronized by live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6621963547 and Project8 readback at `2026-11-04T03:44:34.583302+00:00`; exact hashes in dedicated record. Full prior Project index preserved verbatim. Input closure independent approval recorded; NEW Task1B synchronized gate/review/root dispatch required; no Docker/install/image/PG/harness actions.
+
+Pinned frozen-input closure acceptance index checkpoint: `04093a5e176499e7d8de18e9573f9fea3abe9d3a`; full-SHA preflight `status: synchronized`, `errors: []`, exit0. Receipt `docs/agents/records/2026-11-04-workshop-pg17-closure-acceptance-preflight.json`; exact-pin Issue186/Project8 readback https://github.com/lucronn/autodata/issues/186#issuecomment-6621970383. Frozen input independently accepted only; NEW Task1B gate/review/root dispatch required. No container/image/package/harness action or readiness claim.
