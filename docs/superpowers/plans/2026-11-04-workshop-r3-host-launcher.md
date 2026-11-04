@@ -155,3 +155,14 @@ In the same two files, implement `build_initial_probe_plan`, `GuardedExecutor` a
 ### Task 3: Preserve code-only evidence and independent review
 
 Run the full fake unittest family with all host subprocess/network entrypoints denied and explicit owned temporary paths; retain every red/green command, exit, stdout/stderr, test name/count and fake receipt. Perform static syntax/AST/hash/scope checks without candidate/tool imports or compatibility probes. Rehash all immutable input bytes, freeze launcher/test hashes and exact command contract in owned handoff JSON, and obtain independent review of exact source bytes against every acceptance case above. Stop at the synthetic code-only handoff; all later execution/acceptance authorities remain false. No repository source commit or push is delegated by this plan.
+
+
+## Revision4 code-only completion receipt — 2026-11-04
+
+The external launcher revision4 at code checkpoint `c1a70fe488b3864098f1722da78b341c9fdde567` received an independent exact-source **PASS** with no material findings (coordinator-reported). The reviewer reran 39 nonwriting tests and verified the sealed 47-test synthetic `OK` log. The prior revision3 P2 credential-persistence finding is closed; the cumulative nonrenewable 30-second cleanup budget is sound. This documentation task rehashed the handoff, source/test, sealed test log and unchanged supervisor/probe inputs; it did not rerun the review or tests.
+
+Reviewed launcher SHA256: `8d611a882954675d6eff21b5f1e756898e246b748e40b9a5d9f61209497fa577`; test SHA256: `18899babcd78e06472cec71b6bca2eb0f658c9fc0ad62b303c65e3b0593096e6`. Preserved external `test-artifacts/launcher-handoff.json` SHA256: `3decaef678bdf0f2523ceed936d04fd035523b4a10507f3487f974e5783f3cd7`. The handoff's historical `ready_for_independent_exact_source_review` status is unchanged; this later receipt records the coordinator-reported review outcome. Full bindings and limitations are in `docs/agents/records/2026-11-04-workshop-r3-probe-launcher-code-review.json`.
+
+Completion is limited to reviewed external code and synthetic evidence (`trusted:false`). No Docker/runtime execution or acceptance follows. Actual Docker normalization, image environment, direct-container absence and CLI/Compose behavior remain unmeasured; unknown normalization blocks. A separately passing successor initial-probe gate, canonical record/preflight, exact-hash independent review/dispatch and fresh authorized preparation observations remain required. Parent PR219 fixture execution remains separately blocked; no accepted current manifest/probe, eight-root/42-tuple, final180 or release result exists. All evidence authorities remain false and release state remains `unverified`.
+
+This append-only receipt preserves the original synchronized gate record, task/spec, implementation and external files. Coordinator owns subsequent Issue/Project/PR synchronization; this documentation task performs no tracker writes.

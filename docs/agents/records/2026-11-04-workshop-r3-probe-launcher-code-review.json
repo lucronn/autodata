@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "status": "code_only_independent_review_pass",
+  "updated_at": "2026-11-04T18:14:24Z",
+  "goal": "Record independently reviewed revision4 external R3 host launcher code-only completion without runtime acceptance.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-r3-host-launcher.md",
+  "canonical_gate_record_ref": "docs/agents/records/2026-11-04-workshop-r3-host-launcher.json",
+  "code_checkpoint_sha": "c1a70fe488b3864098f1722da78b341c9fdde567",
+  "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "source_candidate_tree": "d9fb2a8f49beacd009374a76327d0736c1fc9b0a",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "revision": 4,
+  "handoff": {
+    "path": "/home/corp/autodata-evidence/r3-immutable-probe-launcher-4d82e413-implementation/test-artifacts/launcher-handoff.json",
+    "sha256": "3decaef678bdf0f2523ceed936d04fd035523b4a10507f3487f974e5783f3cd7",
+    "recorded_status": "ready_for_independent_exact_source_review",
+    "preserved_unchanged": true
+  },
+  "source_sha256": {
+    "launcher.py": "8d611a882954675d6eff21b5f1e756898e246b748e40b9a5d9f61209497fa577",
+    "test_launcher.py": "18899babcd78e06472cec71b6bca2eb0f658c9fc0ad62b303c65e3b0593096e6"
+  },
+  "immutable_sha256": {
+    "supervisor.py": "6c64cad2e3c490a2762367bdfe4e0bb662320d48f3f9cc7a3af831c6c356c0ed",
+    "offline_probe.py": "ec2850f3f463c724498ee8bbfd6c7fef5e7e693b56b424579389dfcb72a32947",
+    "test_supervisor.py": "d3d3f4a6e5aad509950b4a3ff85215eedb3407cfd68cad77e181404b7183b9fd",
+    "test-artifacts/offline-handoff-revision3.json": "41d94659a5211da0a66892898ab2b73efbf640b9da1cf297db924ff9eae56ef8"
+  },
+  "independent_review": {
+    "result": "PASS",
+    "material_findings": [],
+    "provenance": "Coordinator-reported independent exact-source review of the bound revision4 launcher/test bytes; this documentation task does not rerun that review.",
+    "nonwriting_tests_rerun": 39,
+    "sealed_test_count": 47,
+    "sealed_test_log_hash_verified": true,
+    "prior_revision3_P2_credential_leak": "closed in revision4",
+    "cleanup_budget": "sound: one cumulative nonrenewable 30-second cleanup allowance; ordinary admitted main work does not replenish it"
+  },
+  "sealed_tests": {
+    "origin": "synthetic_code_only",
+    "trusted": false,
+    "tests": 47,
+    "result": "OK",
+    "exit_code": 0,
+    "stderr": "/home/corp/autodata-evidence/r3-immutable-probe-launcher-4d82e413-implementation/test-artifacts/green-sealed-revision4.stderr",
+    "stderr_sha256": "41af11353d7fba94518009cd0c3c8817a28421234fa07fdda84a72e842ad12fc",
+    "verification_in_this_documentation_task": "Read sealed log and verified its hash and reported 47-test OK result; no tests rerun."
+  },
+  "command_contract": {
+    "path": "/home/corp/autodata-evidence/r3-immutable-probe-launcher-4d82e413-implementation/test-artifacts/frozen-command-contract.json",
+    "sha256": "e71e3a844de4bbdac7cd09d3a3316ed6e2f5251be17b5e15cc741f5606ad4de9"
+  },
+  "origin": "synthetic_code_only",
+  "trusted": false,
+  "authority": false,
+  "authorities": {
+    "implementation": false,
+    "github_write": false,
+    "commit": false,
+    "push": false,
+    "probe_execution": false,
+    "runtime": false,
+    "fixture": false,
+    "service_start": false,
+    "acquisition": false,
+    "build": false,
+    "pull": false,
+    "cloud": false,
+    "live_provider": false,
+    "live_payment": false,
+    "merge": false,
+    "release": false,
+    "deployment": false,
+    "production": false,
+    "final180": false
+  },
+  "authority_note": "Evidence authority flags remain false; the coordinator separately authorized this documentation-only commit/push. This receipt grants no implementation, execution or release permission.",
+  "release_state": "unverified",
+  "limitations": [
+    "No Docker/runtime, real tool/Go/container/service/network/provider/payment/cloud execution or runtime acceptance is established by this code-only receipt.",
+    "Actual Docker HostConfig/mount/network normalization, image-base environment, direct-container absence and CLI/Compose behavior remain unmeasured; unknown normalization blocks.",
+    "A separately synchronized committed successor initial-probe gate, canonical record/preflight and independent review/dispatch with exact hashes and fresh authorized preparation observations remain required before execution.",
+    "No accepted current runtime manifest/probe, fixture/eight-root/42-tuple, final180 or release result exists; parent PR219 remains separately blocked."
+  ],
+  "documentation_scope": {
+    "changed_paths": [
+      "docs/superpowers/plans/2026-11-04-workshop-r3-host-launcher.md",
+      "docs/agents/records/2026-11-04-workshop-r3-probe-launcher-code-review.json"
+    ],
+    "preserved": [
+      "Original synchronized gate record",
+      "Canonical task and spec",
+      "Repository implementation files",
+      "External sources and artifacts"
+    ],
+    "tracking": "Issue/Project/PR updates are owned by the coordinator; no such writes are performed by this documentation task."
+  }
+}
