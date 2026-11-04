@@ -1,0 +1,46 @@
+{
+  "goal": "Build offline signed owner-policy and GitHub OIDC verification primitives while leaving Actions runtime-bearer authentication, SDK import, upload, all CLI/workflow execution and cloud activation unavailable.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-publisher-stage1a-offline-trust.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-04-workshop-publisher-stage1a-offline-trust.md",
+    "docs/operations/workshop-gcp.md"
+  ],
+  "todo": [
+    "Independently review this Stage1A-only contract and exact four-file implementation allowlist; retain Stage0 source bytes and every CLI/workflow denial.",
+    "After the coordinator releases the serialized tracking slot, synchronize this goal, plan/spec/canonical notes and concrete todo across Issue186/Project8 without overwriting current PG or other lane evidence; commit the checkpoint and pass full-SHA preflight before coordinator dispatch.",
+    "After a passing synchronized gate and dispatch, add strict bounded trust-file/policy verification using built-in Node crypto and real local Ed25519 fixtures; commit and push the validated milestone.",
+    "Add bounded RS256 GitHub OIDC byte verification and installed-policy wrapper with exact claim/time checks, plus unconditional missing_dependency runtime-bearer authentication; commit and push the validated milestone.",
+    "Run new offline crypto/filesystem negative suites and unchanged Stage0 regressions, syntax, exact-scope and frozen-byte checks; obtain independent exact-SHA review with fixture-only evidence and every activation blocker retained."
+  ],
+  "status": "draft_unsynchronized",
+  "updated_at": "2026-11-04T04:22:18.910670+00:00",
+  "accepted_stage0_receipt_sha": "dde53d745f8422ce29d6e8b3d459f4a0b91ebd04",
+  "implementation_allowlist": [
+    "infra/deploy/gce/publisher_policy.mjs",
+    "infra/deploy/gce/test_publisher_policy.mjs",
+    "infra/deploy/gce/publisher_identity.mjs",
+    "infra/deploy/gce/test_publisher_identity.mjs"
+  ],
+  "draft_document_allowlist": [
+    "docs/superpowers/plans/2026-11-04-workshop-publisher-stage1a-offline-trust.md",
+    "docs/agents/specs/2026-11-04-workshop-publisher-stage1a-offline-trust.md",
+    "docs/agents/records/2026-11-04-workshop-publisher-stage1a-offline-trust.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-publisher-stage1a-offline-trust.json",
+    "docs/operations/workshop-gcp.md"
+  ],
+  "tracking_sync": {
+    "state": "not_attempted",
+    "writes_authorized": false
+  },
+  "builder_dispatch": "blocked_pending_independent_review_tracking_synchronization_committed_checkpoint_full_sha_preflight_and_coordinator_dispatch",
+  "runtime_execution_authorized": false,
+  "runtime_bearer_authenticated": false,
+  "sdk_import_authorized": false,
+  "upload_authorized": false,
+  "staging_activation_authorized": false,
+  "production_ready": false,
+  "deployment_authorized": false,
+  "owner_inputs": "Actual installed owner key, policy digest/epoch, numeric IDs, protected authority and authenticated JWKS snapshot remain absent; fixture keys never authorize activation."
+}
