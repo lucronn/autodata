@@ -565,6 +565,16 @@
         "prior_project_text_sha256": "45ae6a38f2a0a0b717a663b7cd66fc3ff0e19210ce1b9b3a621995faa019fe6e",
         "full_prior_project_index_preserved_in_issue_comment": true
       }
+    },
+    {
+      "id": "workshop-pg17-acquisition-overlay",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-pg17-acquisition-overlay.json",
+      "depends_on": [],
+      "state": "plan_only_pending_independent_review",
+      "release_state": "unverified",
+      "implementation_changes_allowed": false,
+      "preparation_retry_executed": false,
+      "runtime_verified": false
     }
   ],
   "execution": {

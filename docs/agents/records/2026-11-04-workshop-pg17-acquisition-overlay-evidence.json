@@ -1,0 +1,142 @@
+{
+  "retained_red": {
+    "raw_directory": "/home/corp/autodata-evidence/pg17-apk-log-prep-20261104-01/evidence",
+    "raw_sha256": {
+      "task1a-blocker.json": "76b0b24692aa3e62a317437cd87451a23d63ca296accfbe2f6de78aa6689b18f",
+      "before-start.json": "0aa3f5883caa8e68b38bb2ff246d7aab3511bfb089512b9ca291baf8099c2db6",
+      "attach.stderr": "3f97af8a9d79eec50e6291b7ea859fbcfd97160b3701badf1f61797b966780f4",
+      "attach.stdout": "8af31dc9a5b085b1c523524fda391d6c7f71bd57f5ae3603a0bfdfe27aad41dc",
+      "absence.json": "46f7f77b2ee2d2c857a4605550080169b3a152bec2681ba123f538baaaf0bcad",
+      "removal.json": "3e7f55d7e203e4892b74240d1cd32ddcabe5fd9089764e2c50033376c76db384"
+    },
+    "exit_code": 99,
+    "reason": [
+      "Unable to lock database: Read-only file system",
+      "Failed to open apk database: Read-only file system"
+    ],
+    "apk_count": 0,
+    "container_removed_and_absent": true,
+    "volume_inventory_unchanged": true
+  },
+  "pure_diff_fixture": {
+    "fragment_sha256": "0b512af6d85c381fac41cdef030b05719c38d342ef800a9b9761521349e4840f",
+    "cases": [
+      {
+        "case": "empty",
+        "rows": [],
+        "expected_pass": true,
+        "actual_pass": true
+      },
+      {
+        "case": "lock_added",
+        "rows": [
+          "A /lib/apk/db/lock"
+        ],
+        "expected_pass": true,
+        "actual_pass": true
+      },
+      {
+        "case": "metadata_baseline",
+        "rows": [
+          "C /lib",
+          "C /lib/apk/db",
+          "C /lib/apk/db/installed"
+        ],
+        "expected_pass": true,
+        "actual_pass": true
+      },
+      {
+        "case": "delete_lock",
+        "rows": [
+          "D /lib/apk/db/lock"
+        ],
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "code_write",
+        "rows": [
+          "C /usr/local/bin/postgres"
+        ],
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "repo_write",
+        "rows": [
+          "C /etc/apk/repositories"
+        ],
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "cache_overlay",
+        "rows": [
+          "A /var/cache/apk/new-index"
+        ],
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "log_overlay",
+        "rows": [
+          "A /var/log/apk.log"
+        ],
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "traversal",
+        "rows": [
+          "A /lib/apk/db/../lock"
+        ],
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "alias_path",
+        "rows": [
+          "A /lib//apk/db/lock"
+        ],
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "unknown_action",
+        "rows": [
+          "M /lib/apk/db/lock"
+        ],
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "duplicate",
+        "rows": [
+          "A /lib/apk/db/lock",
+          "C /lib/apk/db/lock"
+        ],
+        "expected_pass": false,
+        "actual_pass": false
+      },
+      {
+        "case": "over_rows",
+        "rows": "129 rows",
+        "expected_pass": false,
+        "actual_pass": false
+      }
+    ],
+    "passed": 13,
+    "failed": 0
+  },
+  "readonly_root_predicate_fixture": {
+    "retained_actual_requires_false_pass": false,
+    "synthetic_only_false_value_pass": true,
+    "runtime_proof": false
+  },
+  "planning_container_created": false,
+  "planning_download": false,
+  "planning_retry": false,
+  "runtime_verified": false,
+  "production_ready": false,
+  "verified_at": "2026-11-04T03:04:12.980960+00:00"
+}
