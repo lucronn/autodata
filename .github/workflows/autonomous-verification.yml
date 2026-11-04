@@ -19,6 +19,7 @@ on:
       - "infra/compose/**"
       - "infra/k8s/**"
       - "scripts/dev/**"
+      - "scripts/r3_preparation/**"
       - "scripts/contracts/**"
       - ".github/workflows/autonomous-verification.yml"
       - ".github/CODEOWNERS"
@@ -45,6 +46,7 @@ on:
       - "infra/compose/**"
       - "infra/k8s/**"
       - "scripts/dev/**"
+      - "scripts/r3_preparation/**"
       - "scripts/contracts/**"
       - ".github/workflows/autonomous-verification.yml"
       - ".github/CODEOWNERS"
@@ -245,3 +247,27 @@ jobs:
           path: ${{ env.WORKSHOP_DTO_EVIDENCE_DIR }}
           if-no-files-found: error
           retention-days: 14
+
+  r3-preparation-unit:
+    name: R3 preparation synthetic and owned-child tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run all 130 R3 preparation unit tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python - <<'PYTEST'
+          import sys
+          import unittest
+          suite = unittest.defaultTestLoader.discover("scripts/r3_preparation", pattern="test_*.py")
+          if suite.countTestCases() != 130:
+              raise SystemExit("expected exact reviewed 130-test inventory")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if result.testsRun != 130 or result.skipped or not result.wasSuccessful():
+              raise SystemExit(1)
+          PYTEST
