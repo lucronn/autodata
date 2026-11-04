@@ -172,3 +172,8 @@ This completion supplement grants no new implementation, fixture/CI rerun, SDK/u
 ### Verified additive completion tracking readback
 
 Completion detail https://github.com/lucronn/autodata/issues/186#issuecomment-6623150233 read back 2026-11-04T05:12:02.611072+00:00. Complete original Issue body/all121 prior comments unchanged; only Project source index changed to792 characters, SHA256 `833157f569a02e5d0aac2226f5ada599d5ce6088effcbeba86989e0dc481cc0c`; Status In Progress/all other fields unchanged. Full old1001-character field and PG detail6623105546/pin6623119656 bodies remain retained verbatim in tracking evidence. All12 evidence files and23/59 pins authenticated. Exact checkpoint/preflight pin follows; this is documentation/tracking completion only and authorizes no future implementation.
+
+
+### Exact docs-only completion checkpoint pin
+
+Checkpoint `d2e22706165b7082498138f827b583300bde1a0e` committed/pushed on `codex/workshop-integration-completion`; exact full-SHA preflight exit0, status synchronized/errors[], empty stderr. Pin https://github.com/lucronn/autodata/issues/186#issuecomment-6623168382 SHA256 `f7ac253d87279efb7a7786bb6770aed45f53fe0890e376b0a9cbd27152361754` read back 2026-11-04T05:13:01.839740+00:00. Complete original Issue body/all121 historical comments plus completion detail remain unchanged; only Project source index is now855 characters, SHA256 `590f40a9d207bc3fa410bb89391df828447dd98fbb9a9306fb32e663f14f873c`, Status In Progress/all other fields unchanged. Full preceding indexes retained verbatim. PG completion detail6623105546/pin6623119656 retained. Final receipt is documentation-only and grants no future implementation or runtime/release authority.
