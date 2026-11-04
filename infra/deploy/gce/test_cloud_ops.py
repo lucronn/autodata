@@ -904,7 +904,12 @@ class WorkflowTests(unittest.TestCase):
 
 
 class PublisherProducerTests(unittest.TestCase):
-    setUp = CloudTests.setUp
+    def setUp(self):
+        fixture = host_test.ContractTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        self.ops = load_ops()
+        self.rt, self.config, self.manifest = self.ops.rt, fixture.config, fixture.manifest
     # A missing digest/type/config check would allow altered release bytes.
     def producer_images(self):
         return {role: dict(image, platform='linux/amd64') for role, image in self.manifest['images'].items()}
