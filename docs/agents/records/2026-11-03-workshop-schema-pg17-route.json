@@ -18,31 +18,42 @@
     "Independently review exact source/image/raw evidence before accepting any disposable-harness result; fail closed on missing prerequisites or cases and keep production grants, runtime integration, services, deployment and readiness unavailable."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-04T02:36:36.976288+00:00",
+  "updated_at": "2026-11-04T02:41:59.189499+00:00",
   "source_integration_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
   "harness_source_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
   "implementation_allowlist": [],
-  "independent_review": "pending",
+  "independent_review": "corrected_plan_approved_by_coordinator",
   "preparation_execution_authorized": false,
   "runtime_execution_authorized": false,
   "runtime_verified": false,
   "production_ready": false,
   "tracking_sync": {
-    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621014641",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621086102",
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
     "project_note_field": "Source or dependency reference",
-    "verified_at": "2026-11-04T02:36:36.976288+00:00",
-    "issue_body_sha256": "5a5fe01ab2f7da7aa75bd6bebb9a9f06807e34b15b337cd0a0de6bb9d46e11c6",
-    "issue_comment_sha256": "6828c689501b8f9c57e253ab9a45eed5da405a4340ce1fb6e85731450f5a9ad3",
-    "project_text_sha256": "c590544b30070e44623996b2e726d683fd5241c02e5e04de547e27b59bb946e4",
-    "prior_project_text_sha256": "e7c1f502d4549d7accefc10c5f1f41ddfb31fa1c02b7b32405a3db0db2d6a250",
+    "verified_at": "2026-11-04T02:41:59.189499+00:00",
+    "issue_body_sha256": "a63ac66e99ecaec74f7fbe43d70bc3dd2827251f8b52b4274ea19f81e74bbb50",
+    "issue_comment_sha256": "90147a218e907068fccb97c8aaa79df3330707fa9f44f529845ae9442b3eccab",
+    "project_text_sha256": "e05d13f3c018713ea7200aa5d860d63355cee5d0576ed25836bed7cb30f4ac7d",
+    "prior_project_text_sha256": "c796f7369a6ce62f5b391a34a9496a6dfa2cc3875dcebb6725fbd9fad823d7a3",
     "full_prior_project_index_preserved_in_issue_comment": true
   },
   "review_correction": {
     "source_checkpoint_sha": "111e9c0324f9b89f36a3558911dc0708528ada5b",
     "finding": "P2 inherited PostgreSQL image VOLUME could allocate anonymous writable PGDATA and survive plain container removal",
     "resolution": "Every preparation/acquisition/inspection/execution launch requires bounded private tmpfs at /var/lib/postgresql/data, exact mount inventory, no anonymous/named volume and exact-owned cleanup proof",
-    "review_status": "pending_corrected_checkpoint_review"
+    "review_status": "approved_by_coordinator_at_corrected_gate"
+  },
+  "adoption": {
+    "reviewed_gate_sha": "7988c7de30e6de930d36a3b8d907cdb4e90264ba",
+    "review_receipt_sha": "79d5f089acbdcd09d490c5ca56f582da8bc24be6",
+    "documentation_adoption_sha": "80bec2bbb1b012ae311c6fed58accd8c97e5c395",
+    "parent_harness_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
+    "harness_paths_byte_identical": true,
+    "source_archive_sha256": "4666eec4f3575fcc4f12ec6956af41fe055c740f53430e0057d7163b85096b80",
+    "phase": "adopted_tracking_synchronized_preparation_held_for_pinned_preflight_and_root_go_ahead",
+    "preparation_executed": false,
+    "runtime_executed": false
   }
 }
