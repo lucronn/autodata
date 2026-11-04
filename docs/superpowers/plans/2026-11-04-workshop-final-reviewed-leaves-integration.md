@@ -1,10 +1,10 @@
 # Workshop final reviewed-leaf integration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans after coordinator synchronization, committed exact-base preflight, independent gate review and fresh dispatch. Steps use checkbox (`- [ ]`) syntax. This synchronized planning checkpoint authorizes no implementation dispatch.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans after coordinator synchronization, committed exact-base preflight, independent gate review and fresh dispatch. Steps use checkbox (`- [ ]`) syntax. This runtime-correction amendment is synchronized with coordinator-owned live tracking; commit/push, full-SHA preflight, independent review and fresh dispatch remain required. It authorizes no implementation dispatch or runtime acquisition now.
 
 **Goal:** Integrate the reviewed reader, R6 diagnostic and index leaves above the inert offline candidate while preserving history and requiring separate fresh final180 acceptance.
 
-**Architecture:** Perform three ordered history-preserving feature-branch merges at fixed full SHAs. Preserve selected source blobs, union the two independent client test additions and task queue entries, then verify the integrated exact head. Record final180 as a separate blocked acceptance obligation until a separately gated complete supervisor/profile set exists.
+**Architecture:** Preserve the completed ordered reader/R6 merges and complete only the pending index history-preserving merge at its fixed full SHA after the amended gate. Preserve selected source blobs, union the two independent client test additions and task queue entries, then verify the integrated exact head. Record final180 as a separate blocked acceptance obligation until a separately gated complete supervisor/profile set exists.
 
 **Tech Stack:** Git; existing Go/pgx, Python unittest/pytest, ES modules and reviewed Node runtime; existing fixed acceptance inventories. No new dependency.
 
@@ -12,13 +12,13 @@
 
 ## Global constraints
 
-- Source base: `e5fed171bb36fdb759c592cbcd0e15aea5490c97` exactly. Planning branch: `codex/workshop-final-leaves-plan`. Implementation begins from a later committed synchronized checkpoint containing all six planning documents; the coordinator pins its full SHA externally rather than claiming e5 authorizes new work.
-- Status: **synchronized** after coordinator-owned serialized tracking write and independent live readback. This checkpoint requires commit/push, full-SHA preflight, independent exact-checkpoint review and fresh dispatch before implementation. No implementation, Docker/VM/cloud action or deployment is authorized by this planning turn. The coordinator owns subsequent dispatch. Use GPT-6.1 Sol, medium reasoning, Fast/priority if available, per coordinator request.
+- Source base: `e5fed171bb36fdb759c592cbcd0e15aea5490c97` exactly. Original planning branch: `codex/workshop-final-leaves-plan`; runtime-correction branch: `codex/workshop-final-leaves-runtime-correction-plan` from exact R6 merge HEAD `54bc6b6882423b01d7a31cc8b6a548a6d41e6c65`. Implementation begins from a later committed synchronized checkpoint containing all six planning documents; the coordinator pins its full SHA externally rather than claiming e5 authorizes new work.
+- Current amendment status: **synchronized** after coordinator-owned serialized tracking writes and independent complete live readback; see current runtime-correction tracking evidence below. Prior gate59991df0 tracking synchronization remains historical evidence only. This checkpoint requires commit/push, full-SHA preflight, independent exact-checkpoint review and fresh dispatch before implementation. No implementation, Docker/VM/cloud action or deployment is authorized by this planning turn. The coordinator owns subsequent dispatch. Use GPT-6.1 Sol, medium reasoning, Fast/priority if available, per coordinator request.
 - Product constraints: $20 account-bound Workshop, both banks, one canonical rewrite per durable transformation key, readable source during processing, canonical publication and warm reuse. Preserve entitlement, authorization, read-only paid GET, descriptor-only index, media rights/provenance, retry/timeout/cancellation and no-store behavior.
 - The index code `23a2f3b` has independent exact-code review PASS and leaf-only isolated R3 PASS. The selected index completion checkpoint `df52326b2a12fd17db39d9368f66a28a366f38ad` has direct parent `23a2f3b2e12c0b14b1d4989ab13a075cf1bee084`; its independent exact docs/checkpoint review is PASS, with matching live Issue/Project readback, coordinator-reported. Retain its actual review and draft PR213 reference at handoff. Neither leaf-only PASS establishes final-head acceptance.
 - Keep paid scope and HTTP inspectors unselected and diagnostic-only. No profile/CLI enablement, validator trust promotion, complete paid12/DTO120 certification, new supervisor, schema, dependency, infrastructure, payment, provider, grant, model or credentials change.
 - Preserve e5 ancestry, all incoming histories, historical failed receipts, disabled profiles and every authority denial. No squash, cherry-pick, rebase, force push, master merge, source-PR retarget or released-history rewrite.
-- No charge, live provider request, runtime start, Docker/VM/cloud mutation, deployment, production/cutover readiness or release authority follows from this integration. A feature-branch merge is the sole proposed Git integration action after the gate.
+- No charge, live provider request, application/service runtime start, Docker/VM/cloud mutation, deployment, production/cutover readiness or release authority follows from this integration. A feature-branch merge is the sole proposed Git integration action after the gate.
 
 ## Tracking, exact source tuple and evidence
 
@@ -141,13 +141,13 @@ All implementation files outside the nine-path allowlist must equal e5 exactly. 
 
 ## Concrete todo
 
-- [ ] Obtain independent integration-draft review; retain the independent index completion df52326b checkpoint PASS, index23a2f3b code PASS and leaf-only R3 PASS, preserve Issue186/Project8 history, synchronize this goal, fixed source tuple, six-document checkpoint and six todos through the coordinator, then commit/push and pass full-SHA preflight plus independent committed-gate review before dispatch.
+- [ ] Review and synchronize the six-document publisher-runtime correction through coordinator-owned Issue186/Project8 writes and full live readback, preserving all history; commit/push the amended gate, pin its full SHA, pass machine preflight and independent committed-gate review before fresh dispatch or runtime acquisition.
 
-- [ ] Merge reader completion c44034d, R6 completion d8a640b and index completion df52326b in that order into a coordinator-assigned feature branch from the synchronized checkpoint, preserving full source histories and exact selected implementation blobs.
+- [ ] Preserve already committed/pushed reader merge 6645bf35a9926e6df48da034c7929c82dc3a8379 and R6 merge 54bc6b6882423b01d7a31cc8b6a548a6d41e6c65 as ancestors; after the amended committed gate passes, replay only pending index completion df52326b and its preserved staged implementation resolution, retaining all source histories and exact selected blobs.
 
 - [ ] Resolve only the Workshop client test union, queue task union and dataset-lifecycle amendment union; preserve all reader/index regressions, every predecessor task and unrelated queue metadata, then verify exact source ancestry and pinned file identities.
 
-- [ ] Run required combined offline Node, Go, contract, developer, autonomy and inert publisher/staging checks at the exact integrated candidate; commit and promptly push each validated coherent milestone to the assigned branch.
+- [ ] After the amended committed gate passes, acquire only the pinned official Node v22.23.4 archive in the external evidence cache, verify size/archive hash before extraction and executable hash/platform/version before publisher tests; retain v22.23.1 for client checks, preserve failed logs/staged tree, rerun required offline suites and promptly push validated milestones.
 
 - [ ] Obtain independent exact-head integration review and retain commands, counts, skips, artifact hashes, source bindings and authority denials; record final180 and exact-candidate isolated R3 as pending until separately gated runners execute.
 
@@ -168,25 +168,31 @@ python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026
 
 Expected: exit0, `status: synchronized`, `errors: []`. The variable must be the coordinator's actual full committed checkpoint SHA containing the plan/spec/record/task/queue/lifecycle amendment. An uncommitted plan, e5 source SHA, old reader/index/R6 gate or natural-language authorization cannot pass this boundary. Independent reviewer checks that exact committed checkpoint. Coordinator then assigns a new feature branch/worktree from it and dispatches integration only.
 
-## Task 2: Merge the fixed histories and preserve the test/queue union
+## Task 2: Preserve completed reader/R6 histories and replay only the pending index merge
 
-**Files:** imported source union plus checkpoint evidence paths only. **Consumes:** passing Task1 gate. **Produces:** three coherent feature-branch merge milestones with complete ancestry and preserved blobs. No new application behavior is designed in this task.
+**Files:** imported source union plus checkpoint evidence paths only. **Consumes:** passing Task1 gate. **Produces:** the pending index merge above the preserved reader/R6 milestones with complete ancestry and preserved blobs. Reader merge `6645bf35a9926e6df48da034c7929c82dc3a8379` and R6 merge `54bc6b6882423b01d7a31cc8b6a548a6d41e6c65` are already committed/pushed (coordinator-confirmed). Do not merge them again. The amended checkpoint descends from54bc6b. Replay only the index after the amended gate, preserving the old builder and staged tree as immutable historical evidence and reusing its implementation resolution without replacing amended gate documents. No new application behavior is designed in this task.
 
 - [ ] Verify clean assigned worktree, exact gate ancestry, all selected commit objects and each record's source manifest against `git show`/`git ls-tree`. Run the pinned gate preflight again before a merge. Record baseline node/Go/Python commands using the approved offline runtime; missing runtime is blocked, never an installation request hidden in this step.
-- [ ] Merge reader completion without committing automatically:
+**Historical completed reader milestone — do not execute this merge again.** The following original procedure explains merge6645bf, retained as history:
+
+- [x] Reader completion merged without automatic commit:
 
 ```sh
 git merge --no-ff --no-commit c44034d819f17521559a13a9a91c2ace25a869a1
 ```
 
-Union only the incoming `workshop-retryable-reader` queue object and preserve all checkpoint/base objects and metadata. Preserve `dataset-lifecycle.md` from reader plus this checkpoint's appended final-integration section. Verify the article reader equals4076ad3 bytes. Run reader/client tests, syntax and diff/pin checks. Commit `integrate: preserve reviewed retryable reader history` and promptly push the validated milestone to the assigned feature branch.
-- [ ] Merge R6 completion similarly:
+Historical procedure (already completed; no replay): union only the incoming `workshop-retryable-reader` queue object and preserve all checkpoint/base objects and metadata. Preserve `dataset-lifecycle.md` from reader plus this checkpoint's appended final-integration section. Verify the article reader equals4076ad3 bytes. Run reader/client tests, syntax and diff/pin checks. Commit `integrate: preserve reviewed retryable reader history` and promptly push the validated milestone to the assigned feature branch.
+**Historical completed R6 milestone — do not execute this merge again.** The following original procedure explains merge54bc6b, retained as history:
+
+- [x] R6 completion merged similarly:
 
 ```sh
 git merge --no-ff --no-commit d8a640bcfc701aa600e6a48a7baa7a82897460a1
 ```
 
-Union only `r6-paid-http-receipts` and `r6-paid-scope-receipts` queue objects, preserving all previous objects. Preserve both HTTP and scope completion evidence and immutable tracking archives. Verify both scripts equal30ea7a0 bytes. Run the release-acceptance module plus developer/autonomy checks, authority denials and pin/diff checks. Commit `integrate: preserve reviewed paid receipt diagnostic history` and promptly push the validated milestone.
+Historical procedure (already completed; no replay): union only `r6-paid-http-receipts` and `r6-paid-scope-receipts` queue objects, preserving all previous objects. Preserve both HTTP and scope completion evidence and immutable tracking archives. Verify both scripts equal30ea7a0 bytes. Run the release-acceptance module plus developer/autonomy checks, authority denials and pin/diff checks. Commit `integrate: preserve reviewed paid receipt diagnostic history` and promptly push the validated milestone.
+**Remaining index milestone — execute only after the amended gate.**
+
 - [ ] Verify the retained independent exactdf52326b completion-checkpoint PASS and code23a2f3b PASS match the selected SHAs, then merge the selected completion leaf:
 
 ```sh
@@ -201,7 +207,7 @@ Union only the `workshop-index-readiness` queue object from df52326b, including 
 
 **Consumes:** three ordered merges. **Produces:** raw command logs, exits/counts/skips, source/runtime hashes, independent exact-head review and a bounded offline-integration result. Prior totals are historical, never copied as fresh observations.
 
-- [ ] Confirm Node v22.23.1 at the pinned runtime `/home/corp/.hermes/node/bin/node` has SHA256 `93956de2e59480474a7b46571da1651180b1a050cdf32641ebec4ce6e478e068`. Missing/different runtime blocks; no download/install/ambient replacement. Use coordinator-approved offline Go/Python dependencies and caches. Run at the exact candidate, with network-dependent unavailable checks reported explicitly.
+- [ ] Complete the publisher runtime amendment gate and acquisition/verification procedure below before its publisher-only suite. Confirm Node v22.23.1 for client tests/syntax at the pinned runtime `/home/corp/.hermes/node/bin/node` has SHA256 `93956de2e59480474a7b46571da1651180b1a050cdf32641ebec4ce6e478e068`. Missing/different runtime blocks; no download/install/ambient replacement. Use coordinator-approved offline Go/Python dependencies and caches. Run at the exact candidate, with network-dependent unavailable checks reported explicitly.
 - [ ] From root run:
 
 ```sh
@@ -215,7 +221,7 @@ python3 -m unittest discover -s scripts/autonomy -p 'test_*.py'
 python3 -m unittest discover -s scripts/contracts -p 'test_*.py'
 python3 -m unittest discover -s infra/deploy/gce -p 'test_host_install.py' -v
 python3 -m unittest discover -s infra/deploy/gce -p 'test_staging_bootstrap.py' -v
-/home/corp/.hermes/node/bin/node --test infra/deploy/gce/test_publisher_artifact.mjs infra/deploy/gce/test_publisher_policy.mjs infra/deploy/gce/test_publisher_identity.mjs
+/home/corp/autodata-evidence/final-leaves-builder/runtime-cache/node-v22.23.4-linux-x64/bin/node --test infra/deploy/gce/test_publisher_artifact.mjs infra/deploy/gce/test_publisher_policy.mjs infra/deploy/gce/test_publisher_identity.mjs
 bash -n infra/deploy/gce/deploy.sh infra/deploy/gce/cloud-bootstrap.sh
 git diff --check "$FINAL_LEAVES_GATE_SHA" HEAD
 ```
@@ -234,7 +240,9 @@ git diff --check "$FINAL_LEAVES_GATE_SHA" HEAD
 - [ ] Exact-candidate index R3 reacceptance also needs a separate coordinator-owned runtime gate; use the unchanged fixture harness, both required-mode flags and candidate-SHA variables, fresh isolated databases, exact eight roots,42 SQL tuples and source/cleanup receipts. The already reviewed leaf-only8/8 audit is supporting history and does not prove the new head. No Docker/VM/cloud action is authorized here.
 - [ ] Even a complete fixture180 result grants no staging/provider/payment/deployment/cutover authority. All eight real staging gates, actual Firebase/Stripe TEST/both-bank enrollment, protected licensed-source/media evidence, model success and infrastructure acceptance remain separate. Mark only the actually evidenced bounded state; keep production_ready/deployment_authorized/cutover_verified false.
 
-## Planning handoff state
+## Historical original planning handoff state — gate59991df0 only
+
+The following prior tracking/review statements describe the original gate and remain preserved history. They do not synchronize or review this new publisher-runtime amendment; its current status is synchronized with new tracking, pending committed gate/preflight/independent review and fresh dispatch.
 
 The coordinator synchronized Issue186 detail https://github.com/lucronn/autodata/issues/186#issuecomment-6635062899 and Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`. Standalone and nested records are `status: synchronized`; the task and queue are `synchronized_pending_committed_gate_review`. All implementation/dispatch/runtime/cloud/deployment authorities remain false. The original independent draft review by `/root/final_leaves_draft_review` was PASS at e5fed171 (coordinator-reported; no artifact file). The runtime-amended draft independently passed review by `/root/final_leaves_amended_draft_review` (coordinator-reported; Node version/hash and55/55, live141-comment tracking, all38 manifests/35 paths, six documents,28 predecessor tasks and false authorities checked; no artifact file). The exact committed checkpoint still needs full-SHA machine preflight, independent gate review and fresh dispatch. No implementation is authorized by this document alone.
 
@@ -242,4 +250,55 @@ The current Issue detail SHA256 is `40b6af73448eca62dc5cf380d81c5a1597e8049d511f
 
 Readback: `/home/corp/autodata-evidence/final-leaves-tracking-readback.json`, SHA256 `2d8791d78ed21b30656225550131713092911acbb5dd86fb847423a92e2df80c`. Independent live verification: `/home/corp/autodata-evidence/final-leaves-gate-live-verification.json`. Runtime correction and current-detail readback: `/home/corp/autodata-evidence/final-leaves-runtime-tracking-correction.json`, SHA256 `2d44cf0d4a7c96fb34ca68c666001981b5147da0ad4541fde643b3571a2af9ef`.
 
-The absent temporary Node v22.23.4 path was corrected before commit to `/home/corp/.hermes/node/bin/node`, v22.23.1, SHA256 `93956de2e59480474a7b46571da1651180b1a050cdf32641ebec4ce6e478e068`. The documentation worker independently read its version/hash; the coordinator observed e5 baseline client55/55. Every Node command above uses this pinned binary; missing/mismatched bytes block, with no installation or ambient substitution. The fixed source histories, 38 manifest entries/35 union paths, nine implementation paths, six todos and three composite resolutions are unchanged. The final180 blocker remains a prerequisite for later acceptance and does not expand this integration.
+The absent temporary Node v22.23.4 path was corrected before commit to `/home/corp/.hermes/node/bin/node`, v22.23.1, SHA256 `93956de2e59480474a7b46571da1651180b1a050cdf32641ebec4ce6e478e068`. The documentation worker independently read its version/hash; the coordinator observed e5 baseline client55/55. At the original gate every Node command used this pinned binary; the current amendment retains it for client tests/syntax and replaces only the publisher-suite command with verified v22.23.4; missing/mismatched bytes block, with no installation or ambient substitution. The fixed source histories, 38 manifest entries/35 union paths, nine implementation paths, six todos and three composite resolutions are unchanged. The final180 blocker remains a prerequisite for later acceptance and does not expand this integration.
+
+## Publisher offline-test runtime correction draft — 2026-11-04
+
+Current status: **synchronized**, pending committed gate/preflight/independent review and fresh dispatch; see current tracking evidence below. This amendment is drafted at exact R6 merge HEAD `54bc6b6882423b01d7a31cc8b6a548a6d41e6c65`, preserving original synchronized gate `59991df0af175c9431b21328708cdd6f757b6b07` as history. Only the same six checkpoint documents change. The fixed e5 source base, three selected leaf SHAs, source manifests, nine implementation paths, three composite resolutions and six-item todo inventory remain binding. No loader, package, lockfile, implementation or dependency change is proposed.
+
+The required publisher suite produced 124 passed / 18 failed under `/home/corp/.hermes/node/bin/node`, v22.23.1, SHA256 `93956de2e59480474a7b46571da1651180b1a050cdf32641ebec4ce6e478e068`. The unchanged `publisher_artifact.mjs` loader requires v22.23.4, linux/x64 and executable SHA256 `94efd062ed066c1a0b332e18249859c905e920eeada5df55d24c99b919629a90`; weakening that check is prohibited. Preserve failed raw log `/home/corp/autodata-evidence/final-leaves-builder/integrated-other-07.log`, SHA256 `8a091a465b07b978d8a1156a7b3718d3cb80d9ab7e8cd9eb68b4bc9f55823042`, and staged index merge tree `d5f8a009fa27feb6c76f2098305f6f47fb5696d6` intact. This draft worker does not touch that builder worktree. Neither that staged tree nor this draft is a committed gate or final integrated SHA.
+
+Retain v22.23.1 at its original pinned path for Workshop client tests and syntax. Use v22.23.4 only for the unchanged offline publisher suite. A missing/mismatched client binary remains blocked, with no replacement. The sole proposed network exception is downloading official `https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.xz` into external cache `/home/corp/autodata-evidence/final-leaves-builder/runtime-cache`; expected archive size 31,029,996 bytes and SHA256 `1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce`. Verify archive size and hash before extraction. Verify executable SHA256 and static linux/x64 ELF platform before any execution; then allow only its version/platform/architecture probe and require `v22.23.4 linux x64` before running publisher tests. Any mismatch stops work and preserves evidence.
+
+Before download, extraction or execution, the coordinator must archive current complete Issue186/comments and Project8 Source, preserve every earlier reference/history, append a runtime-correction detail with exact refs/pins/six todos/denials, archive then replace only compact Project Source within 1024 UTF-8 bytes while preserving Status and all other fields, and independently read back the complete live tracking. Only then may current record/nested record/task/queue status be synchronized, followed by a committed/pushed six-document amendment, full-SHA machine preflight, independent exact-checkpoint review and fresh dispatch. Original tracking/reviews/preflight cannot authorize the amendment. The coordinator must bring the amended documents into the builder and pin the actual committed gate before resuming, preserving already committed reader/R6 history and staged index implementation resolution; the staged tree is evidence, not a base SHA for preflight.
+
+No application dependency installation, npm/pip/go acquisition, application/service runtime start, Docker/VM/cloud mutation, provider/payment/model call, deployment or profile enablement is authorized. The downloaded Node binary is an external offline-test tool only; its verified offline probe and test execution are specifically permitted after the amended gate. The amended checkpoint descends from already committed/pushed reader merge `6645bf35a9926e6df48da034c7929c82dc3a8379` and R6 merge `54bc6b6882423b01d7a31cc8b6a548a6d41e6c65`; do not merge reader or R6 again. After the amended gate, replay only pending index completion df52326b and its preserved staged implementation resolution in a clean coordinator-assigned worktree. Keep the old builder/staged tree object intact as historical evidence; preserve amended checkpoint document bytes when unioning the pending index queue/lifecycle changes. Publisher upload remains inert with existing missing dependencies. Re-run required offline checks against the preserved candidate, retain separate old/new raw logs with commands/exits/counts/runtime hashes and actual source bindings, and obtain independent exact-head review. Fresh final180 and exact-candidate R3 remain unavailable/pending separate gates; all production/deployment/cutover authorities stay false.
+
+### Post-gate acquisition and publisher verification procedure
+
+These commands are a future builder procedure, not permission to execute during this draft. First run the canonical preflight with the coordinator's actual amended full committed SHA containing all six documents; require exit 0 and `errors: []`. Retain its output and independent committed-gate review before acquisition. Do not use the original gate SHA or staged tree as the amended SHA.
+
+```sh
+python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026-11-04-workshop-final-reviewed-leaves-integration.json --base-sha "$FINAL_LEAVES_GATE_SHA" --repo-root .
+```
+
+After that boundary only, download to a fresh external cache; refuse pre-existing files rather than overwriting evidence. Require each command to succeed before the next; capture raw outputs/exits. Archive validation must precede extraction; executable validation must precede its first probe.
+
+```sh
+mkdir -p /home/corp/autodata-evidence/final-leaves-builder/runtime-cache
+cd /home/corp/autodata-evidence/final-leaves-builder/runtime-cache
+test ! -e node-v22.23.4-linux-x64.tar.xz
+test ! -e node-v22.23.4-linux-x64
+curl --fail --location --proto '=https' --tlsv1.2 --output node-v22.23.4-linux-x64.tar.xz https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.xz
+test "$(stat -c %s node-v22.23.4-linux-x64.tar.xz)" = 31029996
+printf '%s  %s\n' 1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce node-v22.23.4-linux-x64.tar.xz | sha256sum --check --strict
+tar -xJf node-v22.23.4-linux-x64.tar.xz
+printf '%s  %s\n' 94efd062ed066c1a0b332e18249859c905e920eeada5df55d24c99b919629a90 node-v22.23.4-linux-x64/bin/node | sha256sum --check --strict
+file node-v22.23.4-linux-x64/bin/node
+uname -s
+uname -m
+```
+
+Require `file` to identify ELF 64-bit LSB x86-64, host `Linux` and `x86_64` before executing the pinned binary. Then probe:
+
+```sh
+/home/corp/autodata-evidence/final-leaves-builder/runtime-cache/node-v22.23.4-linux-x64/bin/node -p 'process.version + " " + process.platform + " " + process.arch'
+```
+
+Require exactly `v22.23.4 linux x64`; any mismatch blocks. Return to the coordinator-assigned builder repository root, verify its source/staged bindings, then run the publisher command in Task3 with this exact absolute binary path. Preserve archive and binary hash/version/platform output and a new raw test log. Do not set ambient PATH, install packages, invoke publisher upload or start services. An existing cache may only be reused after repeating archive-size/hash, static executable hash/platform and exact probe validation and retaining its provenance; do not overwrite or silently substitute it.
+
+## Current runtime-correction tracking synchronization — 2026-11-04
+
+The coordinator synchronized [Issue186 runtime-correction detail](https://github.com/lucronn/autodata/issues/186#issuecomment-6635699759), SHA256 `ad81e9ea5c427fe3ff1741a3199a215199e3ab3f81d6ae8cd19d745f70b9f4de`, and Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`, Status In Progress. Current Project Source is 473 UTF-8 bytes, SHA256 `eeaae585b5b815701f45d952701a79302796245782955d468ecab38ecf93892c`. Its prior 510-byte Source, SHA256 `06ff69384221985298338518ba9d7e50b65b3ba8808a2926895173215fec0fec`, is archived verbatim in that detail, retaining the VM PG-auth correction and every historical reference. The complete Issue body/all 142 predecessor comments and all other Project fields are unchanged; complete current count is 143 comments. Original gate59991df0 tracking evidence remains preserved separately as history.
+
+The coordinator reports independent complete live readback. The documentation worker verified the local complete readback `/home/corp/autodata-evidence/final-leaves-runtime-tracking-readback.json`, SHA256 `aca5da4ba04c7b19cdb8eea04f80edbbc39c5572adb88ffb62d1fcd8eca0260e`, its 143 comments, exact detail/pins and preservation fields. Current standalone/nested records are `status: synchronized`; task/queue/amendment state is `synchronized_pending_committed_gate_review`. Independent synchronized-amendment review, docs-only commit/push, actual full committed-SHA machine preflight, independent exact committed-gate review and fresh coordinator dispatch remain required. No download, extraction, binary probe/test execution or implementation is authorized now. All implementation/dispatch/runtime/cloud/deployment/production/cutover flags remain false. The source tuple/allowlists, completed reader/R6 history, pending index boundary, two runtime pins, failed log/staged-tree evidence and all Task3 checks remain unchanged.

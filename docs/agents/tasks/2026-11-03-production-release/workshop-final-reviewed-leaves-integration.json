@@ -15,15 +15,15 @@
       "docs/architecture/dataset-lifecycle.md"
     ],
     "todo": [
-      "Obtain independent integration-draft review; retain the independent index completion df52326b checkpoint PASS, index23a2f3b code PASS and leaf-only R3 PASS, preserve Issue186/Project8 history, synchronize this goal, fixed source tuple, six-document checkpoint and six todos through the coordinator, then commit/push and pass full-SHA preflight plus independent committed-gate review before dispatch.",
-      "Merge reader completion c44034d, R6 completion d8a640b and index completion df52326b in that order into a coordinator-assigned feature branch from the synchronized checkpoint, preserving full source histories and exact selected implementation blobs.",
+      "Review and synchronize the six-document publisher-runtime correction through coordinator-owned Issue186/Project8 writes and full live readback, preserving all history; commit/push the amended gate, pin its full SHA, pass machine preflight and independent committed-gate review before fresh dispatch or runtime acquisition.",
+      "Preserve already committed/pushed reader merge 6645bf35a9926e6df48da034c7929c82dc3a8379 and R6 merge 54bc6b6882423b01d7a31cc8b6a548a6d41e6c65 as ancestors; after the amended committed gate passes, replay only pending index completion df52326b and its preserved staged implementation resolution, retaining all source histories and exact selected blobs.",
       "Resolve only the Workshop client test union, queue task union and dataset-lifecycle amendment union; preserve all reader/index regressions, every predecessor task and unrelated queue metadata, then verify exact source ancestry and pinned file identities.",
-      "Run required combined offline Node, Go, contract, developer, autonomy and inert publisher/staging checks at the exact integrated candidate; commit and promptly push each validated coherent milestone to the assigned branch.",
+      "After the amended committed gate passes, acquire only the pinned official Node v22.23.4 archive in the external evidence cache, verify size/archive hash before extraction and executable hash/platform/version before publisher tests; retain v22.23.1 for client checks, preserve failed logs/staged tree, rerun required offline suites and promptly push validated milestones.",
       "Obtain independent exact-head integration review and retain commands, counts, skips, artifact hashes, source bindings and authority denials; record final180 and exact-candidate isolated R3 as pending until separately gated runners execute.",
       "After separate synchronized acceptance-runner/profile and runtime gates, run fresh identity5 + catalog8 + commerce14 + paid12 + DTO120 + API21 = 180 logical cases and all support/CI/security/image evidence at the unchanged exact candidate; preserve failures and leave release/deployment/cutover unverified."
     ],
     "status": "synchronized",
-    "updated_at": "2026-11-04T15:47:12.295985+00:00",
+    "updated_at": "2026-11-04T16:15:27.600902+00:00",
     "source_integration_base_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
     "source_leaves": {
       "reader": "c44034d819f17521559a13a9a91c2ace25a869a1",
@@ -277,35 +277,36 @@
     "tracking_sync": {
       "state": "synchronized_live_readback",
       "issue_or_project_write_performed": true,
-      "write_actor": "coordinator; this documentation worker performed read-only verification",
-      "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6635062899",
-      "issue_detail_sha256": "40b6af73448eca62dc5cf380d81c5a1597e8049d511fe34acafac9a46bc32516",
-      "prior_issue_detail_sha256": "0e952e57c0f3f206be2623864922efd97f4217205887dd0045c07e0d844dbc04",
+      "write_actor": "coordinator; documentation worker verified supplied complete readback hash and fields; no GitHub writes by worker",
+      "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6635699759",
+      "issue_detail_sha256": "ad81e9ea5c427fe3ff1741a3199a215199e3ab3f81d6ae8cd19d745f70b9f4de",
       "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
       "project_status": "In Progress",
-      "project_source_sha256": "9d9de1637df45e21ea052af516a652c317a51d4272a228a3c6b2b890e3d3ede7",
-      "project_source_utf8_bytes": 785,
-      "previous_project_source_sha256": "df747b126a15288fadfb532f399d36d45cc45fee332ec86541b0824212ecd785",
-      "previous_project_source_utf8_bytes": 464,
+      "project_source_sha256": "eeaae585b5b815701f45d952701a79302796245782955d468ecab38ecf93892c",
+      "project_source_utf8_bytes": 473,
+      "previous_project_source_sha256": "06ff69384221985298338518ba9d7e50b65b3ba8808a2926895173215fec0fec",
+      "previous_project_source_utf8_bytes": 510,
       "previous_source_archived_verbatim": true,
-      "prior_issue_body_and_140_comments_unchanged": true,
-      "comment_count": 141,
+      "previous_source_archive_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6635699759",
+      "prior_issue_body_and_142_comments_unchanged": true,
+      "comment_count": 143,
       "recorded_other_project_fields_unchanged": true,
-      "before_archive_ref": "/home/corp/autodata-evidence/final-leaves-tracking-before.json",
-      "readback_ref": "/home/corp/autodata-evidence/final-leaves-tracking-readback.json",
-      "readback_sha256": "2d8791d78ed21b30656225550131713092911acbb5dd86fb847423a92e2df80c",
-      "independent_live_verification_ref": "/home/corp/autodata-evidence/final-leaves-gate-live-verification.json",
-      "runtime_correction_ref": "/home/corp/autodata-evidence/final-leaves-runtime-tracking-correction.json",
-      "runtime_correction_sha256": "2d44cf0d4a7c96fb34ca68c666001981b5147da0ad4541fde643b3571a2af9ef"
+      "before_archive_ref": "/home/corp/autodata-evidence/final-leaves-runtime-tracking-before.json",
+      "before_archive_sha256": "3ea36bc3cf0ff395523cf08ce3786b9df7e614573919fa8b153c899d2302b376",
+      "readback_ref": "/home/corp/autodata-evidence/final-leaves-runtime-tracking-readback.json",
+      "readback_sha256": "aca5da4ba04c7b19cdb8eea04f80edbbc39c5572adb88ffb62d1fcd8eca0260e",
+      "independent_live_readback": "coordinator-confirmed independent complete live readback; documentation worker independently verified local readback hash and fields",
+      "prior_original_gate_tracking_ref": "prior_synchronized_gate.tracking_sync"
     },
     "dependencies": {
       "index_exact_code_review": "PASS at 23a2f3b2e12c0b14b1d4989ab13a075cf1bee084; coordinator-reported independent review",
       "independent_draft_review": "PASS; reviewer /root/final_leaves_draft_review on six-document draft at e5fed171bb36fdb759c592cbcd0e15aea5490c97; 38 manifest entries/35 union paths, histories/queue/six todos checked; coordinator-reported, no artifact file",
-      "synchronized_committed_checkpoint_review": "pending",
+      "synchronized_committed_checkpoint_review": "pending amended committed checkpoint review and full-SHA preflight",
       "final180_runner_profile_gate": "separate_required_gate",
       "integrated_candidate_r3_runtime_gate": "separate_required_gate",
       "index_completion_checkpoint_review": "PASS at df52326b2a12fd17db39d9368f66a28a366f38ad; coordinator-reported independent exact checkpoint review and live tracking readback",
-      "runtime_amended_draft_review": "PASS; reviewer /root/final_leaves_amended_draft_review on amended six-document draft before commit; Node version/hash and 55/55, current live tracking/141 comments, 38 manifests/35 union paths, 28 predecessor queue tasks and false authorities checked; coordinator-reported, no artifact file"
+      "runtime_amended_draft_review": "PASS; reviewer /root/final_leaves_amended_draft_review on amended six-document draft before commit; Node version/hash and 55/55, current live tracking/141 comments, 38 manifests/35 union paths, 28 predecessor queue tasks and false authorities checked; coordinator-reported, no artifact file",
+      "publisher_runtime_amendment_review": "pending independent synchronized-amendment review"
     },
     "index_acceptance": {
       "code_sha": "23a2f3b2e12c0b14b1d4989ab13a075cf1bee084",
@@ -323,7 +324,87 @@
       "version": "v22.23.1",
       "sha256": "93956de2e59480474a7b46571da1651180b1a050cdf32641ebec4ce6e478e068",
       "baseline_client_tests": "55/55 at e5fed171; coordinator-observed",
-      "replacement_policy": "missing or mismatched binary blocks; no download/install/ambient replacement"
+      "replacement_policy": "missing or mismatched binary blocks; no download/install/ambient replacement",
+      "scope": "Workshop client tests and syntax only; publisher suite uses separately gated v22.23.4 executable"
+    },
+    "prior_synchronized_gate": {
+      "gate_sha": "59991df0af175c9431b21328708cdd6f757b6b07",
+      "status": "synchronized",
+      "updated_at": "2026-11-04T15:47:12.295985+00:00",
+      "tracking_sync": {
+        "state": "synchronized_live_readback",
+        "issue_or_project_write_performed": true,
+        "write_actor": "coordinator; this documentation worker performed read-only verification",
+        "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6635062899",
+        "issue_detail_sha256": "40b6af73448eca62dc5cf380d81c5a1597e8049d511fe34acafac9a46bc32516",
+        "prior_issue_detail_sha256": "0e952e57c0f3f206be2623864922efd97f4217205887dd0045c07e0d844dbc04",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_status": "In Progress",
+        "project_source_sha256": "9d9de1637df45e21ea052af516a652c317a51d4272a228a3c6b2b890e3d3ede7",
+        "project_source_utf8_bytes": 785,
+        "previous_project_source_sha256": "df747b126a15288fadfb532f399d36d45cc45fee332ec86541b0824212ecd785",
+        "previous_project_source_utf8_bytes": 464,
+        "previous_source_archived_verbatim": true,
+        "prior_issue_body_and_140_comments_unchanged": true,
+        "comment_count": 141,
+        "recorded_other_project_fields_unchanged": true,
+        "before_archive_ref": "/home/corp/autodata-evidence/final-leaves-tracking-before.json",
+        "readback_ref": "/home/corp/autodata-evidence/final-leaves-tracking-readback.json",
+        "readback_sha256": "2d8791d78ed21b30656225550131713092911acbb5dd86fb847423a92e2df80c",
+        "independent_live_verification_ref": "/home/corp/autodata-evidence/final-leaves-gate-live-verification.json",
+        "runtime_correction_ref": "/home/corp/autodata-evidence/final-leaves-runtime-tracking-correction.json",
+        "runtime_correction_sha256": "2d44cf0d4a7c96fb34ca68c666001981b5147da0ad4541fde643b3571a2af9ef"
+      },
+      "todo": [
+        "Obtain independent integration-draft review; retain the independent index completion df52326b checkpoint PASS, index23a2f3b code PASS and leaf-only R3 PASS, preserve Issue186/Project8 history, synchronize this goal, fixed source tuple, six-document checkpoint and six todos through the coordinator, then commit/push and pass full-SHA preflight plus independent committed-gate review before dispatch.",
+        "Merge reader completion c44034d, R6 completion d8a640b and index completion df52326b in that order into a coordinator-assigned feature branch from the synchronized checkpoint, preserving full source histories and exact selected implementation blobs.",
+        "Resolve only the Workshop client test union, queue task union and dataset-lifecycle amendment union; preserve all reader/index regressions, every predecessor task and unrelated queue metadata, then verify exact source ancestry and pinned file identities.",
+        "Run required combined offline Node, Go, contract, developer, autonomy and inert publisher/staging checks at the exact integrated candidate; commit and promptly push each validated coherent milestone to the assigned branch.",
+        "Obtain independent exact-head integration review and retain commands, counts, skips, artifact hashes, source bindings and authority denials; record final180 and exact-candidate isolated R3 as pending until separately gated runners execute.",
+        "After separate synchronized acceptance-runner/profile and runtime gates, run fresh identity5 + catalog8 + commerce14 + paid12 + DTO120 + API21 = 180 logical cases and all support/CI/security/image evidence at the unchanged exact candidate; preserve failures and leave release/deployment/cutover unverified."
+      ]
+    },
+    "runtime_correction_amendment": {
+      "state": "synchronized_pending_committed_gate_review",
+      "draft_base_sha": "54bc6b6882423b01d7a31cc8b6a548a6d41e6c65",
+      "prior_gate_sha": "59991df0af175c9431b21328708cdd6f757b6b07",
+      "planning_branch": "codex/workshop-final-leaves-runtime-correction-plan",
+      "preserved_staged_tree_oid": "d5f8a009fa27feb6c76f2098305f6f47fb5696d6",
+      "failed_publisher_run": {
+        "path": "/home/corp/autodata-evidence/final-leaves-builder/integrated-other-07.log",
+        "sha256": "8a091a465b07b978d8a1156a7b3718d3cb80d9ab7e8cd9eb68b4bc9f55823042",
+        "result": "124 passed, 18 failed under pinned Node v22.23.1; historical failed run, not final acceptance"
+      },
+      "publisher_test_runtime": {
+        "version": "v22.23.4",
+        "platform": "linux",
+        "arch": "x64",
+        "executable_sha256": "94efd062ed066c1a0b332e18249859c905e920eeada5df55d24c99b919629a90",
+        "archive_url": "https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.xz",
+        "archive_sha256": "1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce",
+        "archive_bytes": 31029996,
+        "cache_root": "/home/corp/autodata-evidence/final-leaves-builder/runtime-cache",
+        "executable_path": "/home/corp/autodata-evidence/final-leaves-builder/runtime-cache/node-v22.23.4-linux-x64/bin/node",
+        "scope": "publisher offline test suite only; no application dependency installation or loader/package/lock/policy changes"
+      },
+      "download_authorized_now": false,
+      "acquisition_gate": "coordinator tracking synchronization and live readback, committed six-document checkpoint at full SHA, passing machine preflight, independent exact-checkpoint review and fresh dispatch before download/extraction/execution",
+      "verification_order": [
+        "verify archive bytes and SHA256 before extraction",
+        "verify extracted executable SHA256 and static linux/x64 ELF platform before any execution",
+        "run only pinned executable version/platform/arch probe, require v22.23.4 linux x64 before publisher tests",
+        "run unchanged publisher offline suite; preserve raw log/exits/counts and failed prior log"
+      ],
+      "current_review": "pending independent amendment review; earlier draft PASS receipts apply only to prior gate",
+      "current_preflight": "pending committed amended gate; original preflight does not authorize this runtime amendment",
+      "resume_boundary": "Amendment is based on committed/pushed R6 HEAD54bc6b with reader merge6645bf already ancestral. After amended full-SHA gate/preflight/review/dispatch, replay only pending index merge and preserved staged implementation resolution in coordinator-assigned clean worktree; preserve original builder/staged tree object intact as historical evidence, carry amended checkpoint docs and union queue/lifecycle changes without reverting them. Never re-merge reader/R6 or use staged tree as gate SHA.",
+      "denials": "No npm/pip/go dependency acquisition, application/service runtime start, cloud/VM/Docker/provider/payment execution, profile enablement, final180/R3 acceptance or release/deployment/cutover authority. Only verified offline tests after amended gate. Verified offline Node probe/test execution is the sole runtime exception after the amended gate; no application process starts.",
+      "completed_merge_milestones": {
+        "reader": "6645bf35a9926e6df48da034c7929c82dc3a8379",
+        "r6": "54bc6b6882423b01d7a31cc8b6a548a6d41e6c65",
+        "state": "already committed and pushed; coordinator-confirmed; retain ancestry without replay"
+      },
+      "tracking_evidence_ref": "tracking_sync"
     }
   },
   "allowed_implementation_paths": [
@@ -393,10 +474,10 @@
     "index": "df52326b2a12fd17db39d9368f66a28a366f38ad"
   },
   "todo": [
-    "Obtain independent integration-draft review; retain the independent index completion df52326b checkpoint PASS, index23a2f3b code PASS and leaf-only R3 PASS, preserve Issue186/Project8 history, synchronize this goal, fixed source tuple, six-document checkpoint and six todos through the coordinator, then commit/push and pass full-SHA preflight plus independent committed-gate review before dispatch.",
-    "Merge reader completion c44034d, R6 completion d8a640b and index completion df52326b in that order into a coordinator-assigned feature branch from the synchronized checkpoint, preserving full source histories and exact selected implementation blobs.",
+    "Review and synchronize the six-document publisher-runtime correction through coordinator-owned Issue186/Project8 writes and full live readback, preserving all history; commit/push the amended gate, pin its full SHA, pass machine preflight and independent committed-gate review before fresh dispatch or runtime acquisition.",
+    "Preserve already committed/pushed reader merge 6645bf35a9926e6df48da034c7929c82dc3a8379 and R6 merge 54bc6b6882423b01d7a31cc8b6a548a6d41e6c65 as ancestors; after the amended committed gate passes, replay only pending index completion df52326b and its preserved staged implementation resolution, retaining all source histories and exact selected blobs.",
     "Resolve only the Workshop client test union, queue task union and dataset-lifecycle amendment union; preserve all reader/index regressions, every predecessor task and unrelated queue metadata, then verify exact source ancestry and pinned file identities.",
-    "Run required combined offline Node, Go, contract, developer, autonomy and inert publisher/staging checks at the exact integrated candidate; commit and promptly push each validated coherent milestone to the assigned branch.",
+    "After the amended committed gate passes, acquire only the pinned official Node v22.23.4 archive in the external evidence cache, verify size/archive hash before extraction and executable hash/platform/version before publisher tests; retain v22.23.1 for client checks, preserve failed logs/staged tree, rerun required offline suites and promptly push validated milestones.",
     "Obtain independent exact-head integration review and retain commands, counts, skips, artifact hashes, source bindings and authority denials; record final180 and exact-candidate isolated R3 as pending until separately gated runners execute.",
     "After separate synchronized acceptance-runner/profile and runtime gates, run fresh identity5 + catalog8 + commerce14 + paid12 + DTO120 + API21 = 180 logical cases and all support/CI/security/image evidence at the unchanged exact candidate; preserve failures and leave release/deployment/cutover unverified."
   ],
@@ -404,5 +485,47 @@
   "implementation_dispatch_authorized": false,
   "runtime_execution_authorized": false,
   "cloud_execution_authorized": false,
-  "deployment_authorized": false
+  "deployment_authorized": false,
+  "runtime_correction_amendment": {
+    "state": "synchronized_pending_committed_gate_review",
+    "draft_base_sha": "54bc6b6882423b01d7a31cc8b6a548a6d41e6c65",
+    "prior_gate_sha": "59991df0af175c9431b21328708cdd6f757b6b07",
+    "planning_branch": "codex/workshop-final-leaves-runtime-correction-plan",
+    "preserved_staged_tree_oid": "d5f8a009fa27feb6c76f2098305f6f47fb5696d6",
+    "failed_publisher_run": {
+      "path": "/home/corp/autodata-evidence/final-leaves-builder/integrated-other-07.log",
+      "sha256": "8a091a465b07b978d8a1156a7b3718d3cb80d9ab7e8cd9eb68b4bc9f55823042",
+      "result": "124 passed, 18 failed under pinned Node v22.23.1; historical failed run, not final acceptance"
+    },
+    "publisher_test_runtime": {
+      "version": "v22.23.4",
+      "platform": "linux",
+      "arch": "x64",
+      "executable_sha256": "94efd062ed066c1a0b332e18249859c905e920eeada5df55d24c99b919629a90",
+      "archive_url": "https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.xz",
+      "archive_sha256": "1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce",
+      "archive_bytes": 31029996,
+      "cache_root": "/home/corp/autodata-evidence/final-leaves-builder/runtime-cache",
+      "executable_path": "/home/corp/autodata-evidence/final-leaves-builder/runtime-cache/node-v22.23.4-linux-x64/bin/node",
+      "scope": "publisher offline test suite only; no application dependency installation or loader/package/lock/policy changes"
+    },
+    "download_authorized_now": false,
+    "acquisition_gate": "coordinator tracking synchronization and live readback, committed six-document checkpoint at full SHA, passing machine preflight, independent exact-checkpoint review and fresh dispatch before download/extraction/execution",
+    "verification_order": [
+      "verify archive bytes and SHA256 before extraction",
+      "verify extracted executable SHA256 and static linux/x64 ELF platform before any execution",
+      "run only pinned executable version/platform/arch probe, require v22.23.4 linux x64 before publisher tests",
+      "run unchanged publisher offline suite; preserve raw log/exits/counts and failed prior log"
+    ],
+    "current_review": "pending independent amendment review; earlier draft PASS receipts apply only to prior gate",
+    "current_preflight": "pending committed amended gate; original preflight does not authorize this runtime amendment",
+    "resume_boundary": "Amendment is based on committed/pushed R6 HEAD54bc6b with reader merge6645bf already ancestral. After amended full-SHA gate/preflight/review/dispatch, replay only pending index merge and preserved staged implementation resolution in coordinator-assigned clean worktree; preserve original builder/staged tree object intact as historical evidence, carry amended checkpoint docs and union queue/lifecycle changes without reverting them. Never re-merge reader/R6 or use staged tree as gate SHA.",
+    "denials": "No npm/pip/go dependency acquisition, application/service runtime start, cloud/VM/Docker/provider/payment execution, profile enablement, final180/R3 acceptance or release/deployment/cutover authority. Only verified offline tests after amended gate. Verified offline Node probe/test execution is the sole runtime exception after the amended gate; no application process starts.",
+    "completed_merge_milestones": {
+      "reader": "6645bf35a9926e6df48da034c7929c82dc3a8379",
+      "r6": "54bc6b6882423b01d7a31cc8b6a548a6d41e6c65",
+      "state": "already committed and pushed; coordinator-confirmed; retain ancestry without replay"
+    },
+    "tracking_evidence_ref": "tracking_sync"
+  }
 }

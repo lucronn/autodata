@@ -990,7 +990,15 @@
         "index": "df52326b2a12fd17db39d9368f66a28a366f38ad"
       },
       "implementation_dispatch_authorized": false,
-      "runtime_execution_authorized": false
+      "runtime_execution_authorized": false,
+      "runtime_correction_amendment": {
+        "state": "synchronized_pending_committed_gate_review",
+        "draft_base_sha": "54bc6b6882423b01d7a31cc8b6a548a6d41e6c65",
+        "prior_gate_sha": "59991df0af175c9431b21328708cdd6f757b6b07",
+        "record_ref": "docs/agents/records/2026-11-04-workshop-final-reviewed-leaves-integration.json",
+        "preserved_staged_tree_oid": "d5f8a009fa27feb6c76f2098305f6f47fb5696d6",
+        "download_authorized_now": false
+      }
     },
     {
       "id": "workshop-retryable-reader",
