@@ -1,0 +1,17 @@
+{
+  "name": "autodata-workshop-publisher-toolkit",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Reviewed dormant Actions artifact upload dependency; never install at workflow runtime",
+  "engines": {
+    "node": "22.23.4"
+  },
+  "dependencies": {
+    "@actions/artifact": "6.3.1"
+  },
+  "autodataPins": {
+    "nodeArchive": "node-v22.23.4-linux-x64.tar.xz",
+    "nodeArchiveSha256": "1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce",
+    "artifactIntegrity": "sha512-DBXgdB9T4yj2KSe0tFg+MTi9T5se+16bdrFQh+3Y6Nq1lZ3gYQk1BjHoTof+7Zf36bEAlfVMf+8ifRKeyGJugQ=="
+  }
+}
