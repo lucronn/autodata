@@ -1,0 +1,103 @@
+{
+  "task_id": "workshop-pg17-install",
+  "goal": "Design one fresh offline actual installation of the accepted33 closure/exact20 selection with a finite source-derived stopped-state audit and exact cleanup; image/PG/harness remain unauthorized.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-install.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-pg17-install.json",
+  "status": "synchronized",
+  "pre_implementation": {
+    "goal": "Design one fresh offline actual installation of the accepted33 closure/exact20 selection with a finite source-derived stopped-state audit and exact cleanup; image/PG/harness remain unauthorized.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-install.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/verification/2026-11-04-pg17-runner-preparation.md",
+      "docs/operations/workshop-gcp.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-offline.md",
+      "docs/architecture/infrastructure-and-dev.md",
+      "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Independent corrected local draft review PASS for exact planSHA a0a0ce8ac827d60b86f087d305b3a3fdc689edea8f91fb4404bc8a7bf2049387/evidenceSHA d49597e41cf6a65e43d51b84955212a0e8ed4d41974bc8c883ea4db6f411540c; retain all584 pure/replay checks and exact reviewed source/predicates.",
+      "Synchronize docs-only gate preserving COMPLETE current Issue body/all113 comments and full Project index plus Stage1A/M2A/Stage0/staging/PG/JS details/pins verbatim/hash; commit/push, pin full-SHA passing preflight and verify exact full tracking readback.",
+      "Obtain independent exact synchronized-checkpoint review, coordinator adoption/root full-SHA preflight and fresh ONE-attempt installation-only dispatch before any Docker operation.",
+      "Only after fresh dispatch: new empty PREP/new exact-owned container, same immutable33/exact20 offline add without --simulate, full prestart/stopped/database/world/script/payload/physical-header/diff/bounds/cleanup proofs; any discrepancy stops/quarantines/no retry/image/PG/harness."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T04:50:23.730780+00:00",
+    "source_base_sha": "3b67536c17db53064c79fc1f63d2cbda1d0fe935",
+    "implementation_allowlist": [],
+    "evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-install-evidence.json",
+    "blockers": [
+      "Independent exact synchronized-checkpoint review, coordinator adoption/root full-SHA preflight and fresh ONE-attempt installation-only dispatch remain required.",
+      "Actual installation is untested; any unexpected effect fails closed, no retry/image/PG/harness/readiness."
+    ],
+    "tracking_sync": {
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622859754",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+      "project_note_field": "Source or dependency reference",
+      "verified_at": "2026-11-04T04:50:23.730780+00:00",
+      "issue_body_sha256": "e44362ec943cd20617e9045df65a5b26e13f97c4975a8d0f5c10c8eb53cb6b9b",
+      "issue_comment_sha256": "edebf74747d5b8fbcadb3918c29cce2d6a6f3136349148eecfe467445ee5c13e",
+      "project_text_sha256": "7a6fa7f026d93090789d9e4ec21787c8e6f77649aeca74524a7003ca60b3ce78",
+      "prior_issue_body_sha256": "d1c1c828a7b3dccf3cbc518192aa8805629aaad06c8aa7bb8cbd01d888cdb5bd",
+      "prior_project_text_sha256": "dc64f5f296692376f8f8b0904eaae0339c58f0b45ddd037b192f160aaa3c3b59",
+      "prior_comments_count": 113,
+      "all_prior_comments_verbatim_readback": true,
+      "full_prior_project_index_preserved_verbatim": true,
+      "full_prior_issue_body_preserved_verbatim_prefix": true,
+      "preservation_evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-install-tracking.json"
+    },
+    "install_dispatch_authorized": false,
+    "image_commit_authorized": false,
+    "task2_authorized": false,
+    "runtime_verified": false,
+    "production_ready": false,
+    "research_blockers": [],
+    "research_cases_passed": 584,
+    "local_review_correction": {
+      "predecessor_plan_sha256": "38ca4a8669af0089cdbb4f6b7e687ea963a1890cbac9868386437e939a25411d",
+      "predecessor_evidence_sha256": "ca315b38201a379ac10c04dc4348ffdf369bc18c8fdd52e062be129e49a0aac8",
+      "review_result": "Historical predecessor blocked two P2s; corrected exact local draft PASS relayed by coordinator; exact synchronized gate review pending.",
+      "corrections": [
+        "exact cached image RepoDigest string",
+        "raw physical TAR validation/preservation/count before logical parsing, including the same hidden-header class in the bounded10-member script database"
+      ],
+      "red_counterexample": {
+        "prior_guard_sha256": "949b625d86344848f92f4c97b49c0b50df65fe821634e4a1a2f819adaf8458b1",
+        "case": "GNU_L_physical_header_hidden",
+        "physical_headers": 2,
+        "old_logical_entry_count": 1,
+        "old_retained_headers": 1,
+        "counterexample_sha256": "329681d62b6ea00b4017f1364e44674b41aebf9f672a108c00a4808174e8412a",
+        "runtime_executed": false
+      },
+      "guard_sha256": "d21da6de2796c88e5088a1924049f50e7db683bbfda14d47f285ce21ff3cb38f",
+      "all584_host_only_checks_passed": true,
+      "physical_export_caps": {
+        "bytes": 536870912,
+        "headers": 50000
+      },
+      "Docker_install_tracking_commit_push": false
+    },
+    "independent_review": {
+      "corrected_local_draft": "PASS directly relayed by coordinator; all584 independently replayed",
+      "reviewed_plan_sha256": "a0a0ce8ac827d60b86f087d305b3a3fdc689edea8f91fb4404bc8a7bf2049387",
+      "reviewed_evidence_sha256": "d49597e41cf6a65e43d51b84955212a0e8ed4d41974bc8c883ea4db6f411540c",
+      "exact_synchronized_checkpoint": "pending"
+    }
+  },
+  "todo": [
+    "Independent corrected local draft review PASS for exact planSHA a0a0ce8ac827d60b86f087d305b3a3fdc689edea8f91fb4404bc8a7bf2049387/evidenceSHA d49597e41cf6a65e43d51b84955212a0e8ed4d41974bc8c883ea4db6f411540c; retain all584 pure/replay checks and exact reviewed source/predicates.",
+    "Synchronize docs-only gate preserving COMPLETE current Issue body/all113 comments and full Project index plus Stage1A/M2A/Stage0/staging/PG/JS details/pins verbatim/hash; commit/push, pin full-SHA passing preflight and verify exact full tracking readback.",
+    "Obtain independent exact synchronized-checkpoint review, coordinator adoption/root full-SHA preflight and fresh ONE-attempt installation-only dispatch before any Docker operation.",
+    "Only after fresh dispatch: new empty PREP/new exact-owned container, same immutable33/exact20 offline add without --simulate, full prestart/stopped/database/world/script/payload/physical-header/diff/bounds/cleanup proofs; any discrepancy stops/quarantines/no retry/image/PG/harness."
+  ],
+  "execution": {
+    "mode": "synchronized_docs_only_pending_exact_review_adoption_dispatch",
+    "installation": "unauthorized",
+    "image": "unauthorized",
+    "task2": "unauthorized"
+  }
+}

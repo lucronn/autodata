@@ -712,6 +712,20 @@
       "implementation_changes_allowed": false,
       "simulation_dispatch_authorized": false,
       "runtime_verified": false
+    },
+    {
+      "id": "workshop-pg17-install",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-pg17-install.json",
+      "depends_on": [
+        "workshop-pg17-offline"
+      ],
+      "state": "synchronized_installation_only_plan_pending_exact_review_adoption_dispatch",
+      "release_state": "unverified",
+      "implementation_changes_allowed": false,
+      "install_dispatch_authorized": false,
+      "image_commit_authorized": false,
+      "task2_authorized": false,
+      "runtime_verified": false
     }
   ],
   "execution": {
