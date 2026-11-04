@@ -1,6 +1,6 @@
 # Stage1A offline publisher trust contract
 
-Status: local docs-only draft, unsynchronized, not an implementation or activation authorization. Baseline is accepted Stage0 receipt `dde53d745f8422ce29d6e8b3d459f4a0b91ebd04`. This spec narrows Stage1 in the research draft to passive offline trust primitives. The canonical gate remains `docs/agents/pre-implementation-gate.md`.
+Status: synchronized docs-only contract after independent corrected-draft review and verified Issue186/Project8 readback; committed full-SHA preflight, independent exact-checkpoint review and root dispatch remain required. This is not implementation or activation authorization. Baseline is accepted Stage0 receipt `dde53d745f8422ce29d6e8b3d459f4a0b91ebd04`. This spec narrows Stage1 in the research draft to passive offline trust primitives. The canonical gate remains `docs/agents/pre-implementation-gate.md`.
 
 ## Boundary and implementation shape
 

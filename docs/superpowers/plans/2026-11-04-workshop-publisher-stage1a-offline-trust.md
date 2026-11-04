@@ -12,9 +12,9 @@
 
 ## Planning and tracking status
 
-LOCAL DOCS-ONLY DRAFT; `status: draft_unsynchronized`. Accepted baseline: `dde53d745f8422ce29d6e8b3d459f4a0b91ebd04`. Proposed branch: `codex/workshop-publisher-stage1a-plan`. Issue reference: https://github.com/lucronn/autodata/issues/186. Project reference: https://github.com/users/lucronn/projects/8. These references identify future synchronization targets; no live write or synchronization is claimed. Current PG and other lane details must be preserved by the tracking owner after serialized-slot release.
+SYNCHRONIZED DOCS-ONLY CHECKPOINT; `status: synchronized` after verified Issue/Project readback. Committed full-SHA preflight, independent exact-checkpoint review and root dispatch remain required; this is not implementation authority. Accepted baseline: `dde53d745f8422ce29d6e8b3d459f4a0b91ebd04`. Proposed branch: `codex/workshop-publisher-stage1a-plan`. Issue reference: https://github.com/lucronn/autodata/issues/186. Project reference: https://github.com/users/lucronn/projects/8. These references are synchronized by additive Issue detail and the Project index; full previous records are preserved verbatim/hash. No implementation or activation authority follows. Current PG and other lane details must be preserved by the tracking owner after serialized-slot release.
 
-Record: `docs/agents/records/2026-11-04-workshop-publisher-stage1a-offline-trust.json`. Task: `docs/agents/tasks/2026-11-03-production-release/workshop-publisher-stage1a-offline-trust.json`. Canonical repository update: additive Stage1A planning-only section in `docs/operations/workshop-gcp.md`. No historical record or verified status is transplanted. Run machine preflight against this committed draft and retain its expected blocking result; a later synchronized checkpoint needs a new full-SHA preflight and independent review before any implementation.
+Record: `docs/agents/records/2026-11-04-workshop-publisher-stage1a-offline-trust.json`. Task: `docs/agents/tasks/2026-11-03-production-release/workshop-publisher-stage1a-offline-trust.json`. Canonical repository update: additive Stage1A planning-only section in `docs/operations/workshop-gcp.md`. No historical record or verified status is transplanted. The earlier local draft preflight was blocked as expected. Run machine preflight against the synchronized committed full SHA and retain the passing result; independent exact-checkpoint review and coordinator dispatch remain required before any implementation.
 
 ## Global constraints
 
@@ -72,7 +72,7 @@ Files: this plan, spec, Stage1A record/task and additive operations note only.
 
 - [ ] Review exact byte domain, Ed25519 backend, strict schema, bootstrap source, file/mount/cleanup rules, RS256 verification/claim lifetime, unsupported bearer and passive/installed type boundary against the spec.
 - [ ] Verify actual draft diff is exactly the five declared documentation paths and that its ancestry starts at accepted Stage0 receipt `dde53d745f8422ce29d6e8b3d459f4a0b91ebd04`.
-- [ ] Have the tracking owner preserve the immediately current PG and other lane index/detail evidence before synchronizing Stage1A. No Issue/Project writes are authorized in the current draft assignment.
+- [ ] Have the tracking owner preserve the immediately current PG and other lane index/detail evidence before synchronizing Stage1A. This docs-only tracking synchronization is authorized; it does not authorize implementation or provider operations.
 - [ ] Commit the independently accepted, genuinely synchronized checkpoint; pin its full SHA and pass canonical preflight. Obtain independent exact-checkpoint acceptance and coordinator code-only dispatch. A draft preflight failure is blocking, not a waiver.
 
 ## Task2: offline owner-policy bytes and installed source boundary
@@ -127,6 +127,9 @@ test('runtime authenticator cannot inspect or accept input', () => {
 - [ ] Run `git diff --check`, strict-parse the record/task, repeat pinned synchronized gate preflight for the eventual authorized implementation checkpoint, and record actual test counts/SHA without copying Stage0 counts.
 - [ ] Update only current Stage1A documentation with fixture-only evidence and exact verified SHA. Request independent exact-SHA review; no activation, root installation, positive bearer or provider acceptance claim follows. Any installer/factory/worker/runtime design is a separate future gate.
 
-## Current draft verification and implementation block
+## Current synchronized checkpoint and implementation block
 
-This planning pass performs only documentation JSON/scope/diff checks and the canonical machine preflight, which must reject `status: draft_unsynchronized`. It does not run new tests because the modules do not exist, and does not claim current Stage0 tests were rerun. The branch remains a local review draft. No Issue/Project write, SDK install/import, credential acquisition, protected API, workflow change, upload or cloud action is authorized.
+Corrected draft `9ff1a36fb5fc6837a8699dabea69287316847a9d` passed independent review. The tracking owner synchronized the offline-only goal/todo with Issue186/Project8 after staging boot released its slot. The prior complete index and twelve boot/PG offline/Stage0/earlier details and pins are preserved verbatim/hash in `docs/agents/records/2026-11-04-workshop-publisher-stage1a-offline-trust-evidence.json` and six read-back preservation comments. The Issue body is unchanged. This pass performs only documentation JSON/scope/diff checks and canonical full-SHA preflight; new modules do not exist and Stage0 suites are not claimed rerun. SDK installation/import, credential acquisition, provider APIs, workflow changes, upload and cloud activation remain unauthorized. Independent exact synchronized-checkpoint review and root code-only dispatch are required after committed preflight.
+
+
+Synchronization readback verified 2026-11-04T04:28:01.132963+00:00: https://github.com/lucronn/autodata/issues/186#issuecomment-6622550358. Prior Project index SHA256 `831c9c512f574c378ca88b9129fa2305a549a9a7062f3a67afecc7c865d1882e`; synchronized Project index SHA256 `069a03c4f9456f649c7b12a51d5f393ecc5d1f04b92e092121ab43d72e708b70`. Commit/push, full-SHA preflight and exact pin receipt follow. Actual owner trust provisioning and every activation blocker remain absent.
