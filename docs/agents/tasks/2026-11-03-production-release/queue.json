@@ -606,6 +606,48 @@
         "prior_project_index_sha256": "5ee0f595c306b31fbad80f4b5f4a0053e8fba8441b97277f2d2964a3f538d3b1",
         "full_prior_project_index_preserved_in_issue_comment": true
       }
+    },
+    {
+      "id": "workshop-migration-build-arg",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-migration-build-arg.json",
+      "depends_on": [
+        "workshop-publisher-transport"
+      ],
+      "state": "planned",
+      "release_state": "unverified",
+      "source_integration_base_sha": "30cab10e548a3e078055b08447253ea90cc36bdc",
+      "record_ref": "docs/agents/records/2026-11-03-workshop-migration-build-arg.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-migration-build-arg.md",
+      "tracking_status": "synchronized",
+      "dispatch_mode": "coordinator_direct",
+      "builder_dispatch": "blocked_pending_committed_preflight_independent_plan_review_and_dispatch",
+      "implementation_allowlist": [
+        "infra/deploy/gce/cloud-ops.py",
+        "infra/deploy/gce/test_cloud_ops.py",
+        "docs/operations/workshop-gcp.md"
+      ],
+      "runtime_execution_authorized": false,
+      "goal": "Correct only the disconnected publisher migration build argv to pass POSTGRES_IMAGE from the reviewed immutable manifest postgres reference before --file; preserve other-role argv, fake-only execution and every authority/readiness denial.",
+      "todo": [
+        "Synchronize this exact migration-only build-argument correction, three-path future scope and five todos in Issue186/Project8 and canonical documents, preserving the full prior Project index verbatim/hash; commit/push and pass pinned preflight before independent plan review and coordinator dispatch.",
+        "Add failing exact fake-executor argv tests proving only build_migration receives --build-arg POSTGRES_IMAGE=<manifest.images.postgres.reference> immediately before --file while api/ingestion retain their existing complete argv.",
+        "Implement the migration-only argument in cloud-ops.py from the already validated immutable manifest; reject missing/tag-only/malformed postgres references before callbacks and ignore all ambient/default POSTGRES_IMAGE or caller build-argument overrides.",
+        "Run fake digest-propagation, no-fallback and unchanged publisher/host regressions, document that no Docker build or PostgreSQL17 runtime compatibility is proved, and retain every red/green/failure receipt outside the checkout.",
+        "Run focused B/A suites, syntax, diff/scope and pinned preflight; commit/push a coherent three-path candidate for independent exact-SHA review without integrating, activating workflows, accessing credentials or running any real build/cloud/provider/host operation."
+      ],
+      "limits": "Migration-only fixed argv correction through fake executor; no real Docker/registry/provider/cloud/host/credentials; all authority/readiness denials preserved.",
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621206696",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-04T02:50:39.563760+00:00",
+        "issue_body_sha256": "b436ca2003bedee6e948019f70b1eaac0dd79718144c27b1b9f4ed75a3cabf91",
+        "issue_comment_sha256": "495a8fa36d7f65c6c74a048c4199372abf3748649e523dc4f3e34d8c23a8da93",
+        "project_text_sha256": "c33381d2d1d30b20763a4d6f51156bdb68d9de53b8560af402b0f7a3a006ec29",
+        "prior_project_index_sha256": "04db3248427cbaef71c2b2793ce1d674b048f1077e8a35dbdd5f59921e09e194",
+        "full_prior_project_index_preserved_in_issue_comment": true
+      }
     }
   ],
   "execution": {
