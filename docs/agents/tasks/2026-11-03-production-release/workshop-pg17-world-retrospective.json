@@ -91,6 +91,9 @@
     "installation_accepted": false,
     "runtime_verified": false,
     "production_ready": false,
-    "historical_pending_fields_are_retained_as_checkpoint_facts": true
+    "historical_pending_fields_are_retained_as_checkpoint_facts": true,
+    "completion_documentation_checkpoint_sha": "f021569257ebaf1a6e2be9e82e692b50ceba90c1",
+    "completion_preflight_ref": "docs/agents/records/2026-11-04-workshop-pg17-world-retrospective-completion-preflight.json",
+    "completion_pin_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6623119656"
   }
 }
