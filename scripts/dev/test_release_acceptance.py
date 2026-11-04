@@ -3214,8 +3214,8 @@ class API21RawInspectorTests(unittest.TestCase):
             region='US',status='revoked' if revoked else 'active',granted_at=now,
             revoked_at=now if revoked else None,revoke_reason='full_refund' if revoked else None)
         request=dict(dataset_request_id=u(21),dataset_product_id=u(22),organization_id=u(11),correlation_id=u(20),
-            vehicle_key=u(1),vehicle_id=u(4),region='US',idempotency_key='fixture-key',lane='canonical',
-            processing_version='v1',source_snapshot_id=None,status='completed',created_at=now,updated_at=now)
+            vehicle_key=u(1),vehicle_id=u(4),region='US',idempotency_key='workshop:'+u(20),lane='fast',
+            processing_version='workshop-v1',source_snapshot_id=None,status='purchased',created_at=now,updated_at=now)
         projection=dict(dataset_projection_id=u(25),dataset_request_id=u(21),dataset_product_id=u(22),
             entitlement_id=u(23),created_at=now)
         return dict(customer_accounts=accounts,auth_sessions=sessions,workshop_orders=[order],entitlements=[grant],
@@ -3247,8 +3247,8 @@ class API21RawInspectorTests(unittest.TestCase):
             selector_ensure=dict(entered=0,completed=0,active=0),selector_ensure_requests=[],
             provider_calls=zero(),source_calls=zero(),asset_calls=zero(),provider_traces=dict(bankone=[],banktwo=[]),
             model_calls=int(work),payment_calls=1,grant_calls=1,
-            proxy=dict(request_received=0,upstream_completed=0,downstream_completed=0,downstream_waiting=0,
-                response_captured=False,errors=[]),
+            proxy=dict(request_received=int(work),upstream_completed=int(work),downstream_completed=int(work),downstream_waiting=0,
+                response_captured=work,errors=[]),
             workers=[dict(kind='cli',alive=True,exit_code=None) for _ in range(2)] if work else [])
 
     def measurement(self, *, isolation=False, revoked=False):
@@ -3575,6 +3575,24 @@ class API21RawInspectorTests(unittest.TestCase):
             self.assertEqual(result['accepted_case_credit'],0)
         changed=raw.copy();changed.pop(prefix+'child.log');self.reject(raw=changed)
         changed=self.files(self.model());changed.pop(prefix+'browser/evidence.json');self.reject(raw=changed)
+
+    def test_large_finite_integer_duration_is_consistency_only(self):
+        model=self.model();model[0]['evidence']['results'][0]['elapsed_seconds']=10**400
+        self.assertEqual(self.inspect(model)['accepted_case_credit'],0)
+
+    def test_refund_reason_and_model_proxy_conservation(self):
+        for field,value in (('revocation_reason_code','chargeback_lost'),('revoked_at',None)):
+            model=self.model();snapshot=model[15]['result']['final_snapshot']
+            snapshot['paid_rows']['workshop_orders'][0][field]=value;self.reseal(snapshot)
+            self.reject(model)
+        model=self.model();model[15]['result']['final_snapshot']['paid_rows']['entitlements'][0]['revoke_reason']='other'
+        self.reject(model)
+        for position in ('final','before','after'):
+            model=self.model();snapshot=model[3]['result']['final_snapshot'] if position=='final' else model[3]['evidence']['results'][0]['warm'][position]
+            snapshot['proxy']['response_captured']=False
+            with self.subTest(position=position):self.reject(model)
+        model=self.model();model[3]['result']['final_snapshot']['model_calls']=2
+        self.reject(model)
 
 
 if __name__ == '__main__': unittest.main()

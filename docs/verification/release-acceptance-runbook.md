@@ -542,3 +542,9 @@ The focused fake-byte suite is
 It is parser evidence only. Full developer/autonomy and existing browser
 contract/evidence/supervisor/preparation fake checks must accompany exact-code
 review; none supplies browser execution or product acceptance credit.
+
+API21 counter checks also require a retained successful model proxy to have
+completed every counted request, no waiting delivery, and a captured response
+exactly when model calls are positive. Revoked refund rows retain the source's
+`full_refund` reason. Finite nonnegative integer durations are checked without
+floating-point conversion or a fabricated successful-runtime bound.

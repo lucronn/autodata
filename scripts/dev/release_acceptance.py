@@ -1877,7 +1877,8 @@ def _api21_identity(value, candidate, base, profile, version):
 
 
 def _api21_elapsed(value):
-    require(type(value) in (int, float) and math.isfinite(value) and value >= 0, 'api21_elapsed')
+    require(type(value) in (int, float) and value >= 0 and
+            (type(value) is int or math.isfinite(value)), 'api21_elapsed')
 
 
 def _api21_junit(raw):
@@ -1996,7 +1997,7 @@ def _api21_paid_rows(paid, scope, *, isolation, revoked):
         grant['status'] == ('revoked' if revoked else 'active'), 'api21_payment_binding')
     for row,key,reason in ((order,'revoked_at','revocation_reason_code'),(grant,'revoked_at','revoke_reason')):
         if revoked:
-            timestamp(row[key]); string(row[reason])
+            timestamp(row[key]); require(row[reason] == 'full_refund', 'api21_revocation')
         else:
             require(row[key] is None and row[reason] is None, 'api21_revocation')
     for row,key in ((order,'paid_at'),(order,'created_at'),(order,'updated_at'),(grant,'granted_at'),
@@ -2043,6 +2044,9 @@ def _api21_snapshot(snapshot, scope, *, work, isolation=False, revoked=False):
     require(type(proxy['response_captured']) is bool and proxy['errors'] == [] and
         proxy['request_received'] >= proxy['upstream_completed'] >= proxy['downstream_completed'] and
         proxy['downstream_waiting'] <= proxy['upstream_completed']-proxy['downstream_completed'], 'api21_proxy')
+    require(proxy['request_received'] == proxy['upstream_completed'] == proxy['downstream_completed'] ==
+        snapshot['model_calls'] and proxy['downstream_waiting'] == 0 and
+        proxy['response_captured'] is (snapshot['model_calls'] > 0), 'api21_proxy_conservation')
     workers=snapshot['workers']; array(workers)
     require(len(workers) == (2 if work else 0), 'api21_worker_inventory')
     for worker in workers:
