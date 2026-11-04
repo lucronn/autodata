@@ -64,3 +64,19 @@ Inspected PG17 preparation ICU review correction (plan-only): the fixed Python i
 Narrow ICU correction synchronized by live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6621225616 and Project8 readback at `2026-11-04T02:51:55.028338+00:00`; exact hashes in dedicated record. Full prior Project index preserved verbatim. Independent exact-checkpoint review/new preparation dispatch pending; all Docker/download/install/image/harness actions remain unexecuted.
 
 Pinned ICU-corrected inspected-preparation checkpoint: `6d65a512172f28a9f7f0960ecf41409db78455c2`; full-SHA preflight `status: synchronized`, `errors: []`, exit0. Receipt `docs/agents/records/2026-11-04-workshop-pg17-inspected-preparation-icu-preflight.json`; exact-pin Issue186/Project8 readback https://github.com/lucronn/autodata/issues/186#issuecomment-6621229238. Independent review/new preparation dispatch pending. No container/image/package/harness action or readiness claim.
+
+## Inspected preparation attempt 01: acquisition blocked
+
+Corrected gate `6d65a512172f28a9f7f0960ecf41409db78455c2` (receipt `7d993c6930792dbbc539deae5621b3139a1baed0`) passed pinned preflight and received independent coordinator Task1-only dispatch. Fresh private evidence: `/home/corp/autodata-evidence/pg17-inspected-prep-20261104-01`, owner1000:1000 mode0700; RUN_ID `inspected-20261104-01`. Earlier blocker evidence remains intact.
+
+Exact local-base creation with `--pull=never` passed complete created-state inspection: two approved binds, three bounded tmpfs including inherited PGDATA override, read-only root, user0:0, only DAC_OVERRIDE capability, bridge network, approved security/resource configuration and no unexpected mounts or allocated volumes. The unchanged fixed script emitted x86_64/apk-tools3.0.8-r0, baseline package inventory and signing-key hashes. `apk update` then failed with `ERROR: Unable to open log: Read-only file system`. Attach and independent stopped-state exit were99; OOMKilled=false, State.Error empty. APK directory remained empty. No simulation, install, image commit, compilation, PostgreSQL startup or harness execution followed. No fallback flags/mounts/caps were attempted.
+
+- Owned container: `5ea0276a7dbc38de2f3bbea2dfcb14605dd128fba13c486071316d933a910bdc`.
+- Blocker receipt SHA256: `d276215bad457113ff5fddf554d5e2154f4a3e067001babc270e664265019d00` (`evidence/task1a-blocker.json` in the private directory).
+- Fixed acquire script SHA256: `323d24180ae395abbfeb495a70678428336f8902cb00cf25e5d92654f321bdb7`.
+- Before-start inspect SHA256: `8b04c1ae7c7a87118209ba1ab1a6d87380f50e6e1ca7412b232891fda6de3ad4`.
+- Attach stdout SHA256: `8af31dc9a5b085b1c523524fda391d6c7f71bd57f5ae3603a0bfdfe27aad41dc`.
+- Attach stderr SHA256: `08af54a80425402b9f810ead614587aee02dbe2f095f5c491fcb2f1ab68585fc`.
+- Stopped inspect SHA256: `2c1908604051105ba68eb49847d142782c45589c7346c43c63f1a47375d8b406`.
+
+Exact container removal with `docker rm --volumes` succeeded; its ID absence is verified. Complete volume inventories match after normalizing row/label order; no owned container/volume resources remain. Preparation is blocked pending a reviewed read-only acquisition/log-write correction. No frozen runner artifact exists. All raw failure/cleanup evidence is preserved and all Task2/runtime/production/readiness denials remain in force.
