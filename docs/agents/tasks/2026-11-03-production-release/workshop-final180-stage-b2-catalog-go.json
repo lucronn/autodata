@@ -1,0 +1,185 @@
+{
+  "task_id": "production-release-workshop-final180-stage-b2-catalog-go",
+  "repository": "lucronn/autodata",
+  "status": "blocked",
+  "goal": "Add a bytes-only synthetic catalog8 Go-root adapter, with eight literal provider/root slots, no execution, zero accepted-case credit and every authority false.",
+  "dispatch_mode": "coordinator-direct-after-tracking-preflight-review-and-explicit-dispatch",
+  "allowed_paths": [
+    "scripts/dev/workshop_final180_catalog_adapter.py",
+    "scripts/dev/test_workshop_final180_catalog_adapter.py",
+    "docs/verification/workshop-final180-runbook.md"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-04-workshop-final180-stage-b2-catalog-go.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-stage-b2-catalog-go.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-inventory.json"
+  ],
+  "outputs": [
+    "scripts/dev/workshop_final180_catalog_adapter.py",
+    "scripts/dev/test_workshop_final180_catalog_adapter.py",
+    "docs/verification/workshop-final180-runbook.md"
+  ],
+  "pre_implementation": {
+    "authority": {
+      "cutover_verified": false,
+      "deployment_authorized": false,
+      "fixture_verified": false,
+      "implementation_authorized": false,
+      "merge_authorized": false,
+      "product_candidate_verified": false,
+      "profile_promotion_authorized": false,
+      "runtime_execution_authorized": false,
+      "staging_verified": false
+    },
+    "authorizing_checkpoint_sha": null,
+    "goal": "Add a bytes-only synthetic catalog8 Go-root adapter, with eight literal provider/root slots, no execution, zero accepted-case credit and every authority false.",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-stage-b2-catalog-go.md",
+    "planning_parent_sha": "54a7ca32eab80654310d862f0ac6957375d16e8b",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-04-workshop-final180-stage-b2-catalog-go.md",
+      "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+      "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md"
+    ],
+    "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "status": "synchronized",
+    "todo": [
+      "Synchronize B2 plan/spec/task/record and exact three-path implementation allowlist with Issue186 and Project8, preserving prior history; commit the checkpoint descending from reviewed B1 and pass exact-base standalone/nested preflight plus independent review before explicit dispatch.",
+      "Implement bytes-only eight-slot catalog Go-event translation using the pinned B1 public parser without altering it; freeze bank-context limitations, per-slot lifecycle rules, byte bounds, status precedence and strict serialization.",
+      "Add failing-first fake-only adversarial tests for grammar, exact IDs/slots, lifecycle, receipts, limits, serialization and unchanged B1/Stage A behavior.",
+      "Update the runbook; run focused/developer/autonomy and allowlist checks; commit/push validated milestones and obtain independent exact-code-head review.",
+      "Synchronize code-only verification at the exact implementation SHA while preserving null runtime lock/run record, disabled profiles and all authority false; retain separate blockers for complete catalog raw semantics and real runtime."
+    ],
+    "tracking_receipts": {
+      "status": "synchronized_live_readback",
+      "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6638148203",
+      "issue_preserved_comment_count": 156,
+      "issue_comment_count": 157,
+      "issue_body_unchanged": true,
+      "prior_comments_preserved": true,
+      "issue_readback_ref": "/home/corp/autodata-evidence/final180-b2-gate-tracking/issue-after.json",
+      "issue_readback_sha256": "36ac5feb361ee7ce677205148c46d81f03aab01b30d415c8a82ebf1f657abd8c",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+      "project_status": "In Progress",
+      "project_readback_ref": "/home/corp/autodata-evidence/final180-b2-gate-tracking/project-after.json",
+      "project_readback_sha256": "e58de8d627d5faf354aad1f6c3bda4ca128a3c1f9d3dcf0f15a63e4a9e4d80cd",
+      "project_source_sha256": "f210e9b9568dfa16b3725efb16c533f4722107693db9b74e2e403d018f3c7e30",
+      "prior_project_source_sha256": "dc72aeabd265ddcd9a61574f215f22ac2dd2a043d16aaa18970f3a5134e11b47",
+      "previous_source_archived_verbatim": true,
+      "other_project_fields_unchanged": true,
+      "writer": "coordinator sole serialized writer"
+    },
+    "updated_at": "2026-11-04T18:04:13.205947+00:00",
+    "external_draft_artifacts": {
+      "DRAFT.md": {
+        "bytes": 30745,
+        "sha256": "dbd9bcbd231d04c169675f8915c0568917073a162ae9431dc233dcbf1bca0c1a",
+        "historical_locator": "/home/corp/autodata-evidence/final180-b2-planning/DRAFT.md"
+      },
+      "report.json": {
+        "bytes": 3864,
+        "sha256": "dd3c0fddc747269b071b7e0fbc5fc10bec23bb653efa8dc1d0de6c59e7e99656",
+        "historical_locator": "/home/corp/autodata-evidence/final180-b2-planning/report.json"
+      },
+      "provenance.json": {
+        "bytes": 34245,
+        "sha256": "31c274bd666ea8b237ec095a272b0c4e935d5b6e471b75ea4ce61e499e2f7145",
+        "historical_locator": "/home/corp/autodata-evidence/final180-b2-planning/provenance.json"
+      },
+      "literal-mappings.json": {
+        "bytes": 13438,
+        "sha256": "ba7b32cc58b7d302034a4a41444e73c052c32e313938a87b75188697758b30d6",
+        "historical_locator": "/home/corp/autodata-evidence/final180-b2-planning/literal-mappings.json"
+      },
+      "gate-template.json": {
+        "bytes": 2398,
+        "sha256": "adf96cd71ea9faccbff8361157066af330c920b925cff868ffd64b7df4935010",
+        "historical_locator": "/home/corp/autodata-evidence/final180-b2-planning/gate-template.json"
+      },
+      "verification.json": {
+        "bytes": 903,
+        "sha256": "fd214ec174ce01728a741fba0444859e246badd348265a344ed182a2c77d7bcf",
+        "historical_locator": "/home/corp/autodata-evidence/final180-b2-planning/verification.json"
+      }
+    },
+    "draft_review": {
+      "status": "PASS",
+      "provenance": "Coordinator-reported independent approved external draft/report review with no findings; no separate saved receipt asserted.",
+      "draft_sha256": "dbd9bcbd231d04c169675f8915c0568917073a162ae9431dc233dcbf1bca0c1a",
+      "report_sha256": "dd3c0fddc747269b071b7e0fbc5fc10bec23bb653efa8dc1d0de6c59e7e99656"
+    },
+    "committed_gate_review": {
+      "status": "pending",
+      "checkpoint_sha": null
+    },
+    "implementation_allowlist": [
+      "scripts/dev/workshop_final180_catalog_adapter.py",
+      "scripts/dev/test_workshop_final180_catalog_adapter.py",
+      "docs/verification/workshop-final180-runbook.md"
+    ],
+    "reviewed_b1_head_sha": "54a7ca32eab80654310d862f0ac6957375d16e8b",
+    "historical_b1_gate_sha": "006fab0d1380c2506330bbc0b48397a32294b6cc",
+    "runtime_lock": null,
+    "run_record": null,
+    "accepted_case_credit": 0,
+    "profiles_enabled": false,
+    "enabled_tiers": []
+  },
+  "planning_parent_sha": "54a7ca32eab80654310d862f0ac6957375d16e8b",
+  "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "authorizing_checkpoint_sha": null,
+  "runtime_lock": null,
+  "run_record": null,
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast-if-available",
+    "fast_toggle_exposed": false,
+    "allow_fallback": false
+  },
+  "authority": {
+    "cutover_verified": false,
+    "deployment_authorized": false,
+    "fixture_verified": false,
+    "implementation_authorized": false,
+    "merge_authorized": false,
+    "product_candidate_verified": false,
+    "profile_promotion_authorized": false,
+    "runtime_execution_authorized": false,
+    "staging_verified": false
+  },
+  "product_evidence": {
+    "profiles_enabled": false,
+    "enabled_tiers": [],
+    "accepted_case_credit": 0
+  },
+  "todo": [
+    "Synchronize B2 plan/spec/task/record and exact three-path implementation allowlist with Issue186 and Project8, preserving prior history; commit the checkpoint descending from reviewed B1 and pass exact-base standalone/nested preflight plus independent review before explicit dispatch.",
+    "Implement bytes-only eight-slot catalog Go-event translation using the pinned B1 public parser without altering it; freeze bank-context limitations, per-slot lifecycle rules, byte bounds, status precedence and strict serialization.",
+    "Add failing-first fake-only adversarial tests for grammar, exact IDs/slots, lifecycle, receipts, limits, serialization and unchanged B1/Stage A behavior.",
+    "Update the runbook; run focused/developer/autonomy and allowlist checks; commit/push validated milestones and obtain independent exact-code-head review.",
+    "Synchronize code-only verification at the exact implementation SHA while preserving null runtime lock/run record, disabled profiles and all authority false; retain separate blockers for complete catalog raw semantics and real runtime."
+  ],
+  "blockers": [
+    "Live tracking synchronization, committed B2 checkpoint, exact-base standalone/nested preflight, independent committed-gate review and explicit coordinator dispatch remain required.",
+    "Full catalog JUnit/result/process/environment/manifest identity binding, nested raw semantics, typed dynamic support inventory and runtime/profile admission remain separately gated."
+  ],
+  "scope": "catalog8 synthetic caller-selected Go-root event translation only; no execution or bank authentication",
+  "blocked_successors": [
+    "complete catalog raw validator and all other remaining raw families",
+    "real runtime/process/Docker supervisor and admitted provenance",
+    "genuine final180 execution and profile promotion"
+  ],
+  "acceptance_tests": [
+    "Mandatory ten-part fake-only matrix and representative fake_stream construction in canonical spec and plan",
+    "Focused catalog/B1/Stage A, developer/autonomy suites, no-bytecode compile, AST import/call boundary and exact three-path/unchanged-predecessor checks"
+  ],
+  "forbidden_scope": [
+    "Stage A/B1 implementation/tests or gate identity changes",
+    "application/producer/SQL/Compose/workflow/assembler/evaluator/policy/profile/inventory/dependency/autonomy-runner changes",
+    "runtime/CLI/filesystem collection/process/Docker/browser/network/provider/payment execution",
+    "real bank attribution/full catalog acceptance/full180 output/accepted-case credit/profile enablement/any true authority"
+  ]
+}

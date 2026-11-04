@@ -366,3 +366,29 @@ Current concrete B1 todo (same text as B1 plan/task/record):
 3. Implement finite FakeFrame replay with total equal-time ordering, fixed 180s deadline/5s TERM grace/10s cleanup ceiling, bounded bytes and no process/filesystem/network execution; serialize exactly five ordered synthetic rows with zero credit and all authority false.
 4. Update only the runbook alongside the two new modules; run focused/Stage A/developer/autonomy/syntax/allowlist checks, commit/push coherent validated milestones and obtain independent exact-implementation-SHA review.
 5. Record code-only evidence while preserving disabled profiles/tiers, null runtime lock/run record and separate gates for other raw validators, real runtime/Docker supervision and actual final180 execution.
+
+
+### Blocked Stage B2 synthetic catalog8 Go-event successor (2026-11-04)
+
+**Status:** Issue186/Project8 planning synchronized at https://github.com/lucronn/autodata/issues/186#issuecomment-6638148203; committed B2 checkpoint, standalone/nested exact-base preflight, independent exact-checkpoint review and explicit coordinator dispatch remain pending. This document is planning only. No B2 implementation or runtime authority follows from this tracking update.
+
+**Goal:** Add a bytes-only synthetic catalog8 Go-root adapter, with eight literal provider/root slots, no execution, zero accepted-case credit and every authority false.
+
+**Issue:** https://github.com/lucronn/autodata/issues/186
+**Project:** https://github.com/users/lucronn/projects/8
+
+**Planning parent / reviewed B1 code head:** `54a7ca32eab80654310d862f0ac6957375d16e8b`. **Application candidate:** `4d82e413e04fb2401ac7bc28dc828375ac662180`. **Historical B1 gate:** `006fab0d1380c2506330bbc0b48397a32294b6cc`. These are distinct identities; the B1 gate does not authorize B2.
+
+The coordinator reports independent external draft/report review PASS with no findings, bound to draft SHA256 `dbd9bcbd231d04c169675f8915c0568917073a162ae9431dc233dcbf1bca0c1a` and report SHA256 `dd3c0fddc747269b071b7e0fbc5fc10bec23bb653efa8dc1d0de6c59e7e99656`. No saved reviewer receipt or committed-checkpoint review is invented. External paths below are historical audit locators; the technical contract, mappings and source pins are embedded here. Live tracking readback is https://github.com/lucronn/autodata/issues/186#issuecomment-6638148203; the prior Issue body/comments and all unrelated Project fields were preserved. Historical draft/report status fields describe their original creation, not current synchronization.
+
+The [B2 plan](2026-11-04-workshop-final180-stage-b2-catalog-go.md), [self-contained spec](../../agents/specs/2026-11-04-workshop-final180-stage-b2-catalog-go.md), task `docs/agents/tasks/2026-11-03-production-release/workshop-final180-stage-b2-catalog-go.json` and record `docs/agents/records/2026-11-04-workshop-final180-stage-b2-catalog-go.json` are the new synchronized planning index pending a committed gate. Prior Stage A/B1 gate text remains historical; this append-only entry does not amend prior gates. B1 exact code review PASS is coordinator-reported; no new exact-head review receipt is asserted here.
+
+Future implementation allowlist is exactly `scripts/dev/workshop_final180_catalog_adapter.py`, `scripts/dev/test_workshop_final180_catalog_adapter.py`, `docs/verification/workshop-final180-runbook.md`. Preserve all Stage A/B1 implementation/test bytes. Eight caller-selected catalog context rows are synthetic only; raw events cannot prove bank identity. Identical bank-slot input hashes are permitted and earn zero accepted-case credit. No JUnit/result binding, full catalog nested semantics, complete dynamic-support inventory, runtime lock, real runtime or genuine compatibility is supplied. Runtime_lock/run_record remain null, profiles/tiers disabled, all nine authorities false. Full final180/support/security/images/SDK/license/CI/reviewer and staging/live/release gates remain open.
+
+## Canonical todo
+
+1. Synchronize B2 plan/spec/task/record and exact three-path implementation allowlist with Issue186 and Project8, preserving prior history; commit the checkpoint descending from reviewed B1 and pass exact-base standalone/nested preflight plus independent review before explicit dispatch.
+2. Implement bytes-only eight-slot catalog Go-event translation using the pinned B1 public parser without altering it; freeze bank-context limitations, per-slot lifecycle rules, byte bounds, status precedence and strict serialization.
+3. Add failing-first fake-only adversarial tests for grammar, exact IDs/slots, lifecycle, receipts, limits, serialization and unchanged B1/Stage A behavior.
+4. Update the runbook; run focused/developer/autonomy and allowlist checks; commit/push validated milestones and obtain independent exact-code-head review.
+5. Synchronize code-only verification at the exact implementation SHA while preserving null runtime lock/run record, disabled profiles and all authority false; retain separate blockers for complete catalog raw semantics and real runtime.
