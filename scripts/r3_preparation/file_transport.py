@@ -6,6 +6,7 @@ owner containment and quarantine. No deletion, repair or retry is performed.
 """
 import errno
 import ctypes
+from dataclasses import dataclass
 import hashlib
 import os
 import resource
@@ -30,6 +31,25 @@ class TransportFault(Exception):
     def __init__(self,code='port_failure'):
         self.code=code if code in ('cancel','deadline','cap','storage','integrity','port_failure') else 'port_failure'
         super().__init__(self.code)
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerStartupOutcome:
+    file_worker_started: bool
+    file_worker_cleanup: str
+    worker_ipc_closed: bool
+    quarantine_required: bool
+
+
+class WorkerStartupFault(TransportFault):
+    """Safe lifecycle facts when construction fails before returning a worker.
+
+    No PID, process capability, raw exception or supplied path crosses this
+    boundary. Constructor cleanup already consumed its one owned allowance.
+    """
+    __slots__=('outcome',)
+    def __init__(self,code,outcome):
+        super().__init__(code);self.outcome=outcome
 
 
 def _check(deadline,cancel):
@@ -394,8 +414,25 @@ class FileWorker:
             ready=_receive(parent,2,0,deadline,cancel,self._account)
             if ready!=b'{"ready":true}' or os.getpgid(pid)!=pid:raise TransportFault('integrity')
             self._session=True
-        except BaseException:
-            child.close();parent.close();self.close();raise TransportFault('port_failure') from None
+        except BaseException as error:
+            reason=error.code if type(error) in (TransportFault,a.BudgetFault) else 'port_failure'
+            self._fault=reason;self.cancel.set()
+            sockets_closed=True
+            for endpoint in (child,parent):
+                try:
+                    if endpoint.fileno()>=0:endpoint.close()
+                    sockets_closed &= endpoint.fileno()<0
+                except BaseException:sockets_closed=False
+            try:cleanup=self.close()
+            except BaseException:cleanup='unconfirmed'
+            started=self._pid is not None
+            if cleanup not in (('reaped','unconfirmed') if started else ('not_started','unconfirmed')):
+                cleanup='unconfirmed'
+            ipc_closed=sockets_closed and self.ipc_closed
+            quarantine=cleanup=='unconfirmed' or not ipc_closed or self.quarantine_required
+            if quarantine:cleanup='unconfirmed'
+            outcome=WorkerStartupOutcome(started,cleanup,ipc_closed,quarantine)
+            raise WorkerStartupFault(reason,outcome) from None
         finally:self._file_ns+=time.monotonic_ns()-start
 
     @property

@@ -192,6 +192,37 @@ class WorkerTests(unittest.TestCase):
         w._account.bytes=2*40000*(65536+f._HEADER.size)+128*1024**2
         self.assertRaises(f.TransportFault,w.observe,'input');self.assertEqual(w._fault,'cap')
 
+    def test_startup_failure_preserves_owned_cleanup_and_primary_fault(self):
+        # Every process API is doubled: this value never reaches a real signal,
+        # wait, fork or getpgid operation.
+        for code,cleanup in (('deadline','unconfirmed'),('cancel','reaped'),('integrity','reaped')):
+            retired=[]
+            def close_double(worker):
+                retired.append(worker._pid is not None)
+                if worker._socket is not None:worker._socket.close();worker._socket=None
+                worker._ipc_closed=True;worker._cleanup=cleanup
+                worker.quarantine_required=cleanup=='unconfirmed'
+                return cleanup
+            with self.subTest(code=code,cleanup=cleanup):
+                with patch.object(f.os,'fork',return_value=987654321),patch.object(f,'_receive',side_effect=f.TransportFault(code)),patch.object(f.FileWorker,'close',close_double):
+                    with self.assertRaises(f.WorkerStartupFault) as caught:self.worker()
+                error=caught.exception
+                self.assertEqual(error.code,code);self.assertTrue(error.outcome.file_worker_started)
+                self.assertEqual(error.outcome.file_worker_cleanup,cleanup)
+                self.assertTrue(error.outcome.worker_ipc_closed)
+                self.assertEqual(error.outcome.quarantine_required,cleanup=='unconfirmed')
+                self.assertEqual(retired,[True])
+
+    def test_fork_failure_has_no_started_worker_but_preserves_fault(self):
+        with patch.object(f.os,'fork',side_effect=OSError('private sentinel')):
+            with self.assertRaises(f.WorkerStartupFault) as caught:self.worker()
+        self.assertEqual(caught.exception.code,'port_failure')
+        self.assertFalse(caught.exception.outcome.file_worker_started)
+        self.assertEqual(caught.exception.outcome.file_worker_cleanup,'not_started')
+        self.assertTrue(caught.exception.outcome.worker_ipc_closed)
+        self.assertFalse(caught.exception.outcome.quarantine_required)
+        self.assertNotIn('private sentinel',repr(caught.exception))
+
     def test_mount_id_mismatch_rejects_regular_and_parent(self):
         self.assertGreater(self.anchor.identity.mount_id,0)
         self.recipe=replace(self.recipe,identity=replace(self.recipe.identity,mount_id=self.recipe.identity.mount_id+1))

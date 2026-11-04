@@ -161,6 +161,29 @@ class HostTests(unittest.TestCase):
         os.dup2(self.readfd,self.writefd)  # Replace the sole writer with an owned read end.
         r=self.collect();self.assertIsNone(r.receipt);self.assertEqual(self.calls,[])
 
+    def test_worker_startup_failure_retains_cleanup_and_original_fault(self):
+        d=a.values(self.contract)
+        anchors=tuple(a.Anchor(row['reference'],100+i,a.FileIdentity(**row['identity'])) for i,row in enumerate(d['anchors']))
+        for code,cleanup in (('deadline','unconfirmed'),('cancel','reaped'),('integrity','reaped')):
+            retired=[]
+            def close_double(worker):
+                retired.append(worker._pid is not None)
+                if worker._socket is not None:worker._socket.close();worker._socket=None
+                worker._ipc_closed=True;worker._cleanup=cleanup
+                worker.quarantine_required=cleanup=='unconfirmed';return cleanup
+            with self.subTest(code=code,cleanup=cleanup):
+                with patch.object(h.f.os,'fork',return_value=987654321),patch.object(h.f,'_receive',side_effect=h.f.TransportFault(code)),patch.object(h.f.FileWorker,'close',close_double),patch.object(h,'_Monitor',side_effect=AssertionError('monitor started')):
+                    result=h._collect(self.contract,anchors,self.readfd,worker_type=h.f.FileWorker,runner=self.runner)
+                self.assertIsNone(result.receipt);self.assertEqual(self.calls,[])
+                self.assertEqual(result.problem,code);self.assertEqual(result.cleanup.primary_fault,code)
+                self.assertTrue(result.cleanup.file_worker_started)
+                self.assertEqual(result.cleanup.file_worker_cleanup,cleanup)
+                self.assertTrue(result.cleanup.worker_ipc_closed);self.assertTrue(result.cleanup.monitor_stopped)
+                self.assertEqual(result.cleanup.quarantine_required,cleanup=='unconfirmed')
+                self.assertEqual(result.cleanup.cleanup_status,'unconfirmed' if cleanup=='unconfirmed' else 'confirmed_local')
+                self.assertEqual(result.classification,'collection_incomplete')
+                self.assertEqual(retired,[True])
+
     def test_public_api_readmits_before_worker_or_commands(self):
         with patch.object(h.f,'FileWorker',side_effect=AssertionError('unexpected worker')):
             r=h.collect_preparation(replace(self.contract,commands=()),(),self.readfd)

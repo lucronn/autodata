@@ -151,7 +151,8 @@ class _Attempt:
     def __init__(self,contract,cancel_fd,deadline):
         self.contract=contract;self.cancel_fd=cancel_fd;self.deadline=deadline
         self.cancel=threading.Event();self.json=a.JsonBudget(deadline,self.cancel)
-        self.fault=None;self.worker=None;self.monitor=None;self.worker_cleanup='not_started'
+        self.fault=None;self.worker=None;self.worker_started=False;self.failed_worker_ipc_closed=True
+        self.monitor=None;self.worker_cleanup='not_started'
         self.monitor_stopped=True;self.monitor_retirement_attempted=False;self.commands=[];self.observations=[];self.binding=()
         self.quarantine=False;self.missing=False;self.d=None;self.outputs={};self.file_observations={}
 
@@ -190,11 +191,11 @@ class _Attempt:
         return True
 
     def cleanup_record(self,stage,issued=False):
-        started=self.worker is not None
+        started=self.worker_started
         pending=stage=='pre_finalization_snapshot'
         command_closed=all(c.cleanup=='reaped' for c in self.commands)
         uncertain=self.quarantine or (started and self.worker_cleanup=='unconfirmed') or not command_closed
-        ipc_closed=not started or self.worker.ipc_closed
+        ipc_closed=self.worker.ipc_closed if self.worker is not None else self.failed_worker_ipc_closed
         return CleanupRecord(1,stage,self.d['token'] if self.d else 'withheld',self.deadline,self.fault,
             len(self.commands),tuple(self.commands),started,'pending' if pending and started else self.worker_cleanup,
             command_closed,False if pending else ipc_closed,False if pending else self.monitor_stopped,
@@ -351,7 +352,7 @@ def _collect(contract,anchors,cancel_fd,*,worker_type,runner,checkpoint=None,val
         # This is the adapter's only direct Python worker fork. It precedes the
         # monitor; subsequent required PR241 Popen calls remain unchanged.
         attempt.worker=worker_type(anchors,contract.files,'root',attempt.deadline,attempt.cancel,json_budget=attempt.json)
-        attempt.worker_cleanup='pending'
+        attempt.worker_started=True;attempt.worker_cleanup='pending'
         attempt.monitor=_Monitor(cancel_fd,attempt.cancel,attempt.deadline);attempt.monitor_stopped=False
         attempt.check();attempt.worker.space()
         attempt.worker.inventory_outputs(p.OUTPUT_NAMES[:2])
@@ -395,12 +396,18 @@ def _collect(contract,anchors,cancel_fd,*,worker_type,runner,checkpoint=None,val
         classification='preparation_compatible_pending_execution_gate' if attempt.d['created_container_evidence'] else 'preparation_complete_execution_blocked'
         problem=None
     except (_Fault,f.TransportFault,a.BudgetFault,a._Rejected,MemoryError,RecursionError,UnicodeError,TypeError,ValueError,KeyError,AttributeError,OSError) as error:
+        if type(error) is f.WorkerStartupFault:
+            outcome=error.outcome
+            attempt.worker_started=outcome.file_worker_started
+            attempt.worker_cleanup=outcome.file_worker_cleanup
+            attempt.failed_worker_ipc_closed=outcome.worker_ipc_closed
+            attempt.quarantine |= outcome.quarantine_required
         code=getattr(error,'code','port_failure')
         if code=='blocked_missing_input':attempt.missing=True;problem='blocked_missing_input'
         else:
             if attempt.fault is None:attempt.fault=code if code in ('cancel','deadline','cap','storage','integrity','port_failure') else 'port_failure'
             attempt.cancel.set();problem=attempt.fault
-        classification='collection_incomplete' if attempt.commands or attempt.outputs else 'collection_blocked'
+        classification='collection_incomplete' if attempt.commands or attempt.outputs or attempt.worker_started else 'collection_blocked'
         if attempt.missing:classification='collection_blocked'
     finally:attempt.cleanup()
     if receipt is not None and (attempt.fault or attempt.quarantine or not attempt.monitor_stopped or attempt.worker_cleanup!='reaped'):
