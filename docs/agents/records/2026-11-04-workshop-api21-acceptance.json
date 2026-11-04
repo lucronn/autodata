@@ -17,13 +17,13 @@
     "Independently review exact candidate, 21 unique JUnit/receipt identities, assertion inventories, actual HTTP/PG/S3 and warm/restart facts, input/asset/SDK/TLS/browser/image provenance, private artifact hashes and owned cleanup; retain failures and require a separately narrowed synchronized gate for any fixture repair.",
     "Keep final-candidate 5+8+14+12+120+21=180 logical cases, supporting scans/images/SDK/license/CI/reviewer authority and all live staging/release gates separate; support and pilot evidence add zero cases and no release profile or authority flag is promoted."
   ],
-  "status": "pending_tracking",
-  "updated_at": "2026-11-04T05:15:15.952497+00:00",
+  "status": "synchronized",
+  "updated_at": "2026-11-04T05:17:24.198647+00:00",
   "source_integration_base_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
   "acceptance_candidate_sha": "e5fed171bb36fdb759c592cbcd0e15aea5490c97",
   "tracking_writer": "paid_evidence_plan",
-  "tracking_status": "pending",
-  "machine_preflight_status": "not_run_pending_tracking",
+  "tracking_status": "synchronized_pending_exact_checkpoint_review",
+  "machine_preflight_status": "pending_exact_committed_checkpoint",
   "independent_checkpoint_review": "pending",
   "implementation_authorized": false,
   "runtime_authorized": false,
@@ -38,7 +38,8 @@
     "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
     "docs/verification/workshop-customer-ui-runbook.md",
     "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
-    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+    "docs/agents/tasks/2026-11-03-production-release/queue.json",
+    "docs/agents/records/2026-11-04-workshop-api21-tracking-evidence.json"
   ],
   "execution_paths": {
     "source": "/home/corp/autodata-evidence/api21-e5fed17-source",
@@ -55,5 +56,20 @@
     "availability_only": true,
     "acceptance_proven": false,
     "launch_recheck_required": true
-  }
+  },
+  "tracking_sync": {
+    "detail_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6623222525",
+    "detail_comment_sha256": "982d1fd09ac60de966c68fdfcf8c27ea0ab6fd5a74bf403298ae342778c6d3a1",
+    "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "preserved_predecessor_comment_count": 125,
+    "all_predecessor_bodies_unchanged": true,
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_source_index_sha256": "13a3f3be5857257ad9594c051265b8cfb9971342e4f8d68bd2048e349df2d745",
+    "project_source_index_characters": 959,
+    "project_status": "In Progress",
+    "all_other_project_fields_unchanged": true,
+    "readback_at": "2026-11-04T05:17:24.198647+00:00"
+  },
+  "tracking_evidence_ref": "docs/agents/records/2026-11-04-workshop-api21-tracking-evidence.json"
 }

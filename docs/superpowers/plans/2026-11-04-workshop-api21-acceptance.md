@@ -8,11 +8,11 @@
 
 **Tech stack:** Go 1.26, Python/pytest, Playwright 1.64.1, Chromium/Firefox/WebKit, PostgreSQL17/pgvector, NATS JetStream, SeaweedFS S3, production Firebase browser/Admin SDK and commerce/reconciler/worker code with synthetic external transports.
 
-**Spec:** Candidate versions of `docs/verification/workshop-customer-ui-runbook.md`, `docs/superpowers/plans/2026-11-03-workshop-customer-ui.md`, `docs/verification/release-acceptance-runbook.md`, `docs/agents/pre-implementation-gate.md`. Issue: https://github.com/lucronn/autodata/issues/186 ; Project: https://github.com/users/lucronn/projects/8 . No live GitHub state was read or updated for this draft.
+**Spec:** Candidate versions of `docs/verification/workshop-customer-ui-runbook.md`, `docs/superpowers/plans/2026-11-03-workshop-customer-ui.md`, `docs/verification/release-acceptance-runbook.md`, `docs/agents/pre-implementation-gate.md`. Issue: https://github.com/lucronn/autodata/issues/186 ; Project: https://github.com/users/lucronn/projects/8 . Original draft performed no GitHub writes; the synchronized tracking readback below records the separately authorized writer update.
 
 ## 1. Status, authority, and exact identities
 
-This docs-only checkpoint adopts independently approved draft SHA256 `0b88f7cacdd073984f5cad809f72be9c818d5de2d22b29afba3850c8a08db1d9` and input-manifest SHA256 `ee87deb865c06a84df92c1a8b0481f5ebc35cfdbd051bf32d9e1bf264ec67f13`. Its status is **pending_tracking**: only paid_evidence_plan may write Issue186/Project8; no synchronization, preflight, checkpoint review, implementation dispatch or runtime authorization is claimed. Original research performed no application/service runtime or GitHub writes; this adoption changes only the eight named documentation paths below.
+This docs-only checkpoint adopts independently approved draft SHA256 `0b88f7cacdd073984f5cad809f72be9c818d5de2d22b29afba3850c8a08db1d9` and input-manifest SHA256 `ee87deb865c06a84df92c1a8b0481f5ebc35cfdbd051bf32d9e1bf264ec67f13`. Its tracking status is **synchronized**, read back in Issue186 detail6623222525 and Project8. Only paid_evidence_plan holds the writer slot for this synchronization. Independent exact synchronized-checkpoint review, exact committed preflight and separate coordinator runtime authorization remain required; no implementation or runtime dispatch is authorized. Original research performed no application/service runtime or GitHub writes; this adoption changes only the nine named documentation paths below (including canonical tracking evidence).
 
 Requested candidate is `e5fed171bb36fdb759c592cbcd0e15aea5490c97`. Research checkout HEAD was `eddcf724028683dbb083191e4f8c42064b866bf0`; it must not be passed directly as source to the frozen wrapper, whose prepare phase requires source HEAD equal requested candidate. Candidate files were inspected with `git show e5fed…:path`.
 
@@ -81,7 +81,7 @@ Canonical planning input manifest `docs/agents/records/2026-11-04-workshop-api21
 
 ## 5. Concrete execution checklist and commands (future only)
 
-- [ ] Coordinator approves this lane's exact draft hash, candidate and available serial capacity. Read back existing exact-candidate review/CI; acceptance success cannot repair their absence. Before code edits, synchronize the new plan/Issue186/Project8/canonical docs/concrete todo/task/record, commit the checkpoint and pass full-SHA preflight and independent gate review. Do not mark this draft synchronized.
+- [ ] Coordinator approves this lane's exact draft hash, candidate and available serial capacity. Read back existing exact-candidate review/CI; acceptance success cannot repair their absence. Before code edits, synchronize the new plan/Issue186/Project8/canonical docs/concrete todo/task/record, commit the checkpoint and pass full-SHA preflight and independent gate review. Tracking synchronization alone grants no implementation or runtime authorization.
 - [ ] Prepare a clean owned plain source clone at exact e5fed17 because the current checkout is ahead. Ensure destination absent; preserve source checkout and other agents' resources. Clone without hardlinks, remove remote, detach requested SHA and check clean status. The wrapper then creates its own separate plain clone.
 
 ```sh
@@ -205,12 +205,12 @@ R6 profiles remain disabled; current assembler unavailable results and false aut
 
 ## 10. Hard blockers at handoff
 
-1. This docs-only checkpoint remains pending_tracking with no synchronized Issue/Project readback or machine preflight; it authorizes no fixture repair or runtime dispatch. paid_evidence_plan is the sole tracking writer; coordinator must commit/pin the synchronized successor and obtain preflight and independent exact-checkpoint review before any later dispatch.
+1. Tracking is synchronized by the readback below; this docs-only checkpoint authorizes no fixture repair or runtime dispatch. The committed checkpoint still requires full-SHA preflight, independent exact synchronized-checkpoint review and separate coordinator runtime authorization before any later dispatch.
 2. Source HEAD currently differs from requested candidate. Wrapper rejects direct use; an owned clean exact-e5fed17 source clone is required.
 3. The planner performed no runtime checks; the coordinator-reported read-only disk-space/path scout in section 6 supplies limited availability observations only. Broader runtime capacity, Docker availability, current immutable image presence, actual service image identities and current engine launch remain unverified by this planning task. Historical original build receipt remains failed; the later successful probe is now located, hashed and read back, but its different settings and earlier source do not prove current availability or exact-candidate acceptance. Preserve both. Do not silently replace image or versions if missing.
 4. No fresh full exact-e5fed17 API21 evidence, cleanup proof, independent acceptance review or final-candidate180/support/CI completeness was collected in this task. These remain unresolved acceptance obligations, not a code defect diagnosis.
 
-## 11. Docs-only checkpoint and pending gate record
+## 11. Docs-only checkpoint and synchronized tracking record
 
 This task edits only the following documentation paths; its allowed implementation path list is empty. The five contingent repair paths in section 8 are a maximum planning boundary, never an authorized allowlist for this checkpoint. Tracking synchronization belongs exclusively to paid_evidence_plan. Preserve all existing queue entries and top-level authority.
 
@@ -218,6 +218,7 @@ This task edits only the following documentation paths; its allowed implementati
 - `docs/agents/records/2026-11-04-workshop-api21-acceptance.json`
 - `docs/agents/tasks/2026-11-03-production-release/workshop-api21-acceptance.json`
 - `docs/agents/records/2026-11-04-workshop-api21-inputs.json`
+- `docs/agents/records/2026-11-04-workshop-api21-tracking-evidence.json`
 - `docs/superpowers/plans/2026-11-03-workshop-customer-ui.md`
 - `docs/verification/workshop-customer-ui-runbook.md`
 - `docs/superpowers/plans/2026-11-03-production-release-orchestration.md`
@@ -232,7 +233,7 @@ This task edits only the following documentation paths; its allowed implementati
 - [ ] Independently review exact candidate, 21 unique JUnit/receipt identities, assertion inventories, actual HTTP/PG/S3 and warm/restart facts, input/asset/SDK/TLS/browser/image provenance, private artifact hashes and owned cleanup; retain failures and require a separately narrowed synchronized gate for any fixture repair.
 - [ ] Keep final-candidate 5+8+14+12+120+21=180 logical cases, supporting scans/images/SDK/license/CI/reviewer authority and all live staging/release gates separate; support and pilot evidence add zero cases and no release profile or authority flag is promoted.
 
-The required gate record is deliberately pending and must fail the canonical synchronized-only condition until the sole tracking writer completes readback and the coordinator records the committed successor. No implementation base SHA is invented: the acceptance application SHA stays e5fed17; a later synchronized planning checkpoint SHA is separately pinned. Independent PASS for the temporary draft is not approval of this later committed checkpoint.
+The required gate record is synchronized only after the sole tracking writer verified the complete readback below; exact committed preflight and independent synchronized-checkpoint review remain separate. No implementation base SHA is invented: the acceptance application SHA stays e5fed17; a later synchronized planning checkpoint SHA is separately pinned. Independent PASS for the temporary draft is not approval of this later committed checkpoint.
 
 ```json
 {
@@ -254,7 +255,12 @@ The required gate record is deliberately pending and must fail the canonical syn
     "Independently review exact candidate, 21 unique JUnit/receipt identities, assertion inventories, actual HTTP/PG/S3 and warm/restart facts, input/asset/SDK/TLS/browser/image provenance, private artifact hashes and owned cleanup; retain failures and require a separately narrowed synchronized gate for any fixture repair.",
     "Keep final-candidate 5+8+14+12+120+21=180 logical cases, supporting scans/images/SDK/license/CI/reviewer authority and all live staging/release gates separate; support and pilot evidence add zero cases and no release profile or authority flag is promoted."
   ],
-  "status": "pending_tracking",
-  "updated_at": "2026-11-04T05:15:15.952497+00:00"
+  "status": "synchronized",
+  "updated_at": "2026-11-04T05:17:24.198647+00:00"
 }
 ```
+
+
+### API21 tracking synchronization readback (2026-11-04)
+
+Authorized sole writer `paid_evidence_plan` synchronized the unchanged exact-e5fed171 API21 goal and six todos from independently reviewed docs-only checkpoint `a3a48dae1467e6d346715252a2f824599b2ee9f5`. Detail [6623222525](https://github.com/lucronn/autodata/issues/186#issuecomment-6623222525) SHA256 `982d1fd09ac60de966c68fdfcf8c27ea0ab6fd5a74bf403298ae342778c6d3a1`; Source index959 characters SHA256 `13a3f3be5857257ad9594c051265b8cfb9971342e4f8d68bd2048e349df2d745`; read back `2026-11-04T05:17:24.198647+00:00`. Complete original Issue body/all125 predecessor comments/current Project values are preserved verbatim with SHA256 in `docs/agents/records/2026-11-04-workshop-api21-tracking-evidence.json`. Issue body/all prior comments and all other Project fields remain unchanged, Status In Progress; latest PG/integration/paid pointers retained. Canonical record/task/queue now say synchronized after readback; exact committed preflight and independent exact synchronized-checkpoint review remain required. All implementation/runtime authorization remains false and implementation allowlist empty. No Docker/browser/provider/runtime execution, API21 outcome, final180 acceptance, profile promotion or live/release authority is claimed. Six original todos, frozen input manifest/hash, application candidate, approved supervisor/image, persistent evidence roots and every runtime limit remain unchanged.
