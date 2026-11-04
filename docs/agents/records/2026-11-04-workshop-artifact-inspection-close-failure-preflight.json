@@ -1,0 +1,61 @@
+{
+  "checkpoint_sha": "d105f8ae0747faa4bf4c6254e2dd1cd45ad0a830",
+  "branch": "codex/workshop-publisher-artifact",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-artifact-inspection-close-failure.json",
+  "record_sha256": "134f380024cd63c3812dada169ba4045d04a58f1a25ffee90792b282f230fe85",
+  "plan_sha256": "811f418eec4782355ab3695d942361d95629a7bac30d055bf31040f60ab9f563",
+  "command": [
+    "python3",
+    "scripts/autonomy/pre_implementation.py",
+    "--record",
+    "docs/agents/records/2026-11-04-workshop-artifact-inspection-close-failure.json",
+    "--base-sha",
+    "d105f8ae0747faa4bf4c6254e2dd1cd45ad0a830"
+  ],
+  "exit_code": 0,
+  "stdout": {
+    "status": "synchronized",
+    "errors": []
+  },
+  "stderr": "",
+  "verified_at": "2026-11-04T03:56:34.672351+00:00",
+  "tracking_readback": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622115738",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_note_field": "Source or dependency reference",
+    "verified_at": "2026-11-04T03:56:17.962371+00:00",
+    "issue_comment_sha256": "affd26968bac339f3c9f21612a53b1cf6373b40c4eeff797474c02720e838431",
+    "project_text_sha256": "482b45c905f220e9ea587b5b0e84e196ea912eeefaee4d1809aa2e949b44a071",
+    "prior_project_index_sha256": "b659ea4027bf30ac2eb7f2f1baec139efeff9b924d5d0a8b5566980d595896c8",
+    "full_prior_project_index_preserved_in_issue_comment": true,
+    "preserved_pg_details": [
+      {
+        "ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622084338",
+        "sha256": "c4041847f4cc28d87c02845af6a412f145dc463855d98134d55c58d2f67ef543",
+        "preserved_verbatim": true
+      },
+      {
+        "ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622103154",
+        "sha256": "a181a454e5dea24737d4c2bd9587ced6097742c2bc1ae072bfaec8f64cc11bd2",
+        "preserved_verbatim": true
+      }
+    ],
+    "tracking_slot_release_receipt": "c16f40a2730e7bc8a5fb3afd3ac2d10abf551637",
+    "github_mutations_performed": true
+  },
+  "implementation_delta_from_source": [],
+  "independent_checkpoint_review": "pending",
+  "runtime_execution_authorized": false,
+  "staging_activation_authorized": false,
+  "production_publication_authorized": false,
+  "deployment_authorized": false,
+  "exact_pin_readback": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622126651",
+    "issue_comment_sha256": "4df25e25e1fb1d373c14102d1de2ce6ce32c9f22f7dff2b40cbee068ac1a6e99",
+    "project_text_sha256": "22bacb1d3d279c34ff7b1cfc4ca977ebf65755c24a98fefa0874a5106c746be9",
+    "prior_project_text_sha256": "482b45c905f220e9ea587b5b0e84e196ea912eeefaee4d1809aa2e949b44a071",
+    "full_gate_sha_in_project": true,
+    "verified_at": "2026-11-04T03:56:54.385905+00:00"
+  }
+}

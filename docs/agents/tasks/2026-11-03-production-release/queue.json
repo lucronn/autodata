@@ -641,6 +641,142 @@
       }
     },
     {
+      "id": "workshop-publisher-transport",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-publisher-transport.json",
+      "depends_on": [
+        "workshop-hosting"
+      ],
+      "state": "planned",
+      "release_state": "unverified",
+      "source_integration_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+      "record_ref": "docs/agents/records/2026-11-03-workshop-publisher-transport.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-publisher-transport.md",
+      "tracking_status": "synchronized",
+      "dispatch_mode": "coordinator_direct",
+      "builder_dispatch": "blocked_pending_committed_pinned_preflight_and_independent_review",
+      "implementation_allowlist": [
+        "infra/deploy/gce/cloud-ops.py",
+        "infra/deploy/gce/test_cloud_ops.py",
+        "docs/operations/workshop-gcp.md"
+      ],
+      "runtime_execution_authorized": false,
+      "goal": "Implement concrete disconnected publisher orchestration for fixed checkout, three image builds/pushes, SBOM/provenance verification and release artifact upload through injected executor/transports, plus a bounded fixed IAP host check; preserve all live execution and readiness denials.",
+      "todo": [
+        "Synchronize this exact publisher-orchestration/host-check goal, three-path allowlist, fixed checkout/build/push/evidence/upload operations, trust/DTOs and five todos in Issue186/Project8 and canonical documents; preserve prior Project index, commit/push and pass pinned preflight before independent coordinator gate review.",
+        "Add failing fake-executor publisher sequencing tests and implement fixed source checkout, three digest-bound build/push operations and post-build registry identity verification; no real executable, network or credential discovery may run.",
+        "Implement deterministic inner release.zip production, bounded SBOM/provenance publish/verify and artifact upload/readback through injected interfaces, with versioned independent transport/payload/member/manifest digests and adversarial identity/subject/signature fixtures.",
+        "Add failing fixed IAP host-check tests and implement only the configured VM deploy.sh check SHA request with strict failed-readiness receipt handling; keep every mutation, schema/service/runtime readiness and CLI/workflow activation unavailable.",
+        "Run focused B and unchanged A regressions, syntax, scope/diff and pinned preflight; commit/push coherent candidates for independent exact-SHA review, retaining red/green evidence and actual authentication/archive compatibility, owner/provider, staging and paid-product gates."
+      ],
+      "limits": "Concrete fixed checkout/build/push/evidence/upload/host-check orchestration through injected fakes only; CLI/workflow/readiness deny; real authenticated adapters and publication evidence separately gated.",
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621071257",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-04T02:40:50.163236+00:00",
+        "issue_body_sha256": "e7c66e46b6ddea09ad6bb9283ca4d12789a584877b9331b8ced74b5a31660277",
+        "issue_comment_sha256": "9ae4e9238132c5bc9dfe24def6d0b7b4759d9cb01d8a87db280e9965b2d329c5",
+        "project_text_sha256": "c796f7369a6ce62f5b391a34a9496a6dfa2cc3875dcebb6725fbd9fad823d7a3",
+        "prior_project_index_sha256": "5ee0f595c306b31fbad80f4b5f4a0053e8fba8441b97277f2d2964a3f538d3b1",
+        "full_prior_project_index_preserved_in_issue_comment": true
+      }
+    },
+    {
+      "id": "workshop-migration-build-arg",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-migration-build-arg.json",
+      "depends_on": [
+        "workshop-publisher-transport"
+      ],
+      "state": "planned",
+      "release_state": "unverified",
+      "source_integration_base_sha": "30cab10e548a3e078055b08447253ea90cc36bdc",
+      "record_ref": "docs/agents/records/2026-11-03-workshop-migration-build-arg.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-migration-build-arg.md",
+      "tracking_status": "synchronized",
+      "dispatch_mode": "coordinator_direct",
+      "builder_dispatch": "blocked_pending_committed_preflight_independent_plan_review_and_dispatch",
+      "implementation_allowlist": [
+        "infra/deploy/gce/cloud-ops.py",
+        "infra/deploy/gce/test_cloud_ops.py",
+        "docs/operations/workshop-gcp.md"
+      ],
+      "runtime_execution_authorized": false,
+      "goal": "Correct only the disconnected publisher migration build argv to pass POSTGRES_IMAGE from the reviewed immutable manifest postgres reference before --file; preserve other-role argv, fake-only execution and every authority/readiness denial.",
+      "todo": [
+        "Synchronize this exact migration-only build-argument correction, three-path future scope and five todos in Issue186/Project8 and canonical documents, preserving the full prior Project index verbatim/hash; commit/push and pass pinned preflight before independent plan review and coordinator dispatch.",
+        "Add failing exact fake-executor argv tests proving only build_migration receives --build-arg POSTGRES_IMAGE=<manifest.images.postgres.reference> immediately before --file while api/ingestion retain their existing complete argv.",
+        "Implement the migration-only argument in cloud-ops.py from the already validated immutable manifest; reject missing/tag-only/malformed postgres references before callbacks and ignore all ambient/default POSTGRES_IMAGE or caller build-argument overrides.",
+        "Run fake digest-propagation, no-fallback and unchanged publisher/host regressions, document that no Docker build or PostgreSQL17 runtime compatibility is proved, and retain every red/green/failure receipt outside the checkout.",
+        "Run focused B/A suites, syntax, diff/scope and pinned preflight; commit/push a coherent three-path candidate for independent exact-SHA review without integrating, activating workflows, accessing credentials or running any real build/cloud/provider/host operation."
+      ],
+      "limits": "Migration-only fixed argv correction through fake executor; no real Docker/registry/provider/cloud/host/credentials; all authority/readiness denials preserved.",
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621206696",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-04T02:50:39.563760+00:00",
+        "issue_body_sha256": "b436ca2003bedee6e948019f70b1eaac0dd79718144c27b1b9f4ed75a3cabf91",
+        "issue_comment_sha256": "495a8fa36d7f65c6c74a048c4199372abf3748649e523dc4f3e34d8c23a8da93",
+        "project_text_sha256": "c33381d2d1d30b20763a4d6f51156bdb68d9de53b8560af402b0f7a3a006ec29",
+        "prior_project_index_sha256": "04db3248427cbaef71c2b2793ce1d674b048f1077e8a35dbdd5f59921e09e194",
+        "full_prior_project_index_preserved_in_issue_comment": true
+      }
+    },
+    {
+      "id": "workshop-authenticated-publisher",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-authenticated-publisher.json",
+      "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-authenticated-publisher.md",
+      "record_ref": "docs/agents/records/2026-11-03-workshop-authenticated-publisher.json",
+      "goal": "Build bounded real GitHub Actions artifact, registry/evidence and fixed IAP check adapters behind an independently controlled activation boundary, preserving all production and runtime readiness denials.",
+      "todo": [
+        "After accepted migration review and root tracking release, synchronize the authenticated adapter-only goal, v3 identity/digest contracts, exact allowlist, five todos and activation exclusions across Issue186/Project8/canonical docs; commit/push, pin and independently review a machine-passing checkpoint before implementation.",
+        "Implement bounded authenticated I/O, strict real-wire projections, separate workflow/source identity, official-toolkit single-file upload, original outer ZIP decoding and post-upload signed originating-attempt binding with terminal digestMismatch/expiry/digest/older-attempt rejection; retain every existing v2 and CLI denial.",
+        "Implement actual build-once registry candidate push/SBOM/provenance verification, independent manifest approval and rebuild-free finalization plus separate fixed IAP check library, preserving independently supplied bounded v1 rollback_manifest through every phase and migration POSTGRES_IMAGE, credential/issuer/audience separation, pinned trust/tooling and bounded cleanup; reject candidate/approved-manifest/rollback mismatch without rewriting approval.",
+        "Add adversarial fake/local contract tests and a dormant protected staging workflow definition with unconditional precredential blocker; preserve unchanged production jobs, false readiness and all existing application/schema/deploy authority boundaries.",
+        "Run focused regressions, syntax/scope/diff and pinned preflight; commit/push coherent candidates for independent exact-SHA review, document missing owner/tool/origin/host/staging evidence and stop before any activation or live operation until a separate synchronized gate authorizes it."
+      ],
+      "allowed_paths": [
+        "infra/deploy/gce/publisher_adapters.py",
+        "infra/deploy/gce/publisher_artifact.mjs",
+        "infra/deploy/gce/publisher-toolkit/package.json",
+        "infra/deploy/gce/publisher-toolkit/package-lock.json",
+        "infra/deploy/gce/test_publisher_adapters.py",
+        "infra/deploy/gce/test_publisher_artifact.mjs",
+        "infra/deploy/gce/test_release_workshop_contract.py",
+        ".github/workflows/release-workshop.yml",
+        "docs/operations/workshop-gcp.md"
+      ],
+      "state": "planning_synchronized_awaiting_exact_checkpoint_review",
+      "planning_status": "synchronized",
+      "tracking_status": "synchronized",
+      "source_integration_base_sha": "1a0e2740171e6e0a2aa0bbc97a36299ecbf2106c",
+      "depends_on": [
+        "workshop-publisher-transport",
+        "workshop-migration-build-arg"
+      ],
+      "dispatch_mode": "coordinator_direct_after_exact_checkpoint_review",
+      "release_state": "unverified",
+      "needs_scope_refinement": false,
+      "dispatch_prerequisite": "Issue186 comment6621425159 and Project8 field read back with exact goal/five todos/nine-path allowlist, reviewed design2e17c0e1 and full predecessor index. Commit/push and full-SHA preflight, independent exact-checkpoint review and explicit root dispatch remain required. Adapter implementation only; every live activation and readiness claim separately gated.",
+      "tracking_sync": {
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621425159",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+        "project_note_field": "Source or dependency reference",
+        "verified_at": "2026-11-04T03:06:38.051955+00:00",
+        "issue_body_sha256": "2647a4706442a3770dea66d9cd94d914889f9f5e8f7f7059d3b2da1367123a24",
+        "issue_comment_sha256": "ea8ee6cabae61f67284e6db8d503bf7eb4d6b1ca23b99059f2cbcbd125bb7ca1",
+        "project_text_sha256": "e97b0707a188aa6203b0d32fffffb1652f1569c598ca16d25cb708f5ce0a9319",
+        "prior_project_index_sha256": "4e26f3831956fb10f26a64e5b791e27f502a35e3ead19015622e118d22dfec20",
+        "full_prior_project_index_preserved_in_issue_comment": true
+      },
+      "runtime_execution_authorized": false,
+      "staging_activation_authorized": false,
+      "production_ready": false
+    },
+    {
       "id": "workshop-reviewed-leaves-integration",
       "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-reviewed-leaves-integration.json",
       "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-reviewed-leaves-integration.md",

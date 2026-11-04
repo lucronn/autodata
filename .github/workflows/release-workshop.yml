@@ -9,7 +9,9 @@
           "type": "choice",
           "options": [
             "publish",
-            "deploy"
+            "deploy",
+            "staging-build-candidate",
+            "staging-finalize"
           ]
         },
         "source_sha": {
@@ -34,6 +36,26 @@
         },
         "manifest_sha256": {
           "description": "Deploy only: exact reviewed release manifest digest",
+          "required": false,
+          "type": "string"
+        },
+        "candidate_digest": {
+          "description": "Staging finalize only: independently approved immutable candidate OCI reference",
+          "required": false,
+          "type": "string"
+        },
+        "candidate_run_id": {
+          "description": "Staging finalize only: successful candidate run ID",
+          "required": false,
+          "type": "string"
+        },
+        "candidate_run_attempt": {
+          "description": "Staging finalize only: exact candidate upload attempt",
+          "required": false,
+          "type": "string"
+        },
+        "approval_record_sha256": {
+          "description": "Staging finalize only: independently signed approval record SHA256",
           "required": false,
           "type": "string"
         }
@@ -139,6 +161,128 @@
           "name": "Block until separately reviewed live capability exists",
           "shell": "bash",
           "run": "printf '%s\\n' 'missing_dependency: reviewed WIF and immutable published-run/artifact/digest verification adapter required' >&2\nexit 3"
+        }
+      ]
+    },
+    "staging-build-candidate": {
+      "name": "staging-build-candidate definition (activation and toolchain blocked)",
+      "if": "${{ vars.WORKSHOP_STAGING_PUBLISH_ENABLED == 'true' && github.repository == 'lucronn/autodata' && github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch' && inputs.operation == 'staging-build-candidate' }}",
+      "runs-on": "ubuntu-24.04",
+      "environment": "workshop-staging-publish",
+      "permissions": {
+        "contents": "read",
+        "actions": "read",
+        "id-token": "write"
+      },
+      "timeout-minutes": 125,
+      "env": {
+        "EVENT_NAME": "${{ github.event_name }}",
+        "REPOSITORY": "${{ github.repository }}",
+        "REPOSITORY_ID": "${{ github.repository_id }}",
+        "REPOSITORY_OWNER_ID": "${{ github.repository_owner_id }}",
+        "EXPECTED_REPOSITORY_ID": "${{ vars.WORKSHOP_REPOSITORY_ID }}",
+        "EXPECTED_OWNER_ID": "${{ vars.WORKSHOP_OWNER_ID }}",
+        "REF": "${{ github.ref }}",
+        "WORKFLOW_REF": "${{ github.workflow_ref }}",
+        "WORKFLOW_SHA": "${{ github.workflow_sha }}",
+        "RUN_ID": "${{ github.run_id }}",
+        "RUN_ATTEMPT": "${{ github.run_attempt }}",
+        "OPERATION": "staging-build-candidate",
+        "SOURCE_SHA": "${{ inputs.source_sha }}",
+        "CONFIG_SHA256": "${{ vars.WORKSHOP_STAGING_CONFIG_SHA256 }}",
+        "ACTIVATION_SHA256": "${{ vars.WORKSHOP_STAGING_ACTIVATION_SHA256 }}",
+        "TOOLCHAIN_SHA256": "${{ vars.WORKSHOP_STAGING_TOOLCHAIN_SHA256 }}",
+        "TRUST_POLICY_SHA256": "${{ vars.WORKSHOP_STAGING_TRUST_POLICY_SHA256 }}",
+        "CANDIDATE_DIGEST": "${{ inputs.candidate_digest }}",
+        "CANDIDATE_RUN_ID": "${{ inputs.candidate_run_id }}",
+        "CANDIDATE_RUN_ATTEMPT": "${{ inputs.candidate_run_attempt }}",
+        "APPROVAL_RECORD_SHA256": "${{ inputs.approval_record_sha256 }}"
+      },
+      "steps": [
+        {
+          "id": "validate",
+          "name": "Validate nonsecret staging identity and phase inputs",
+          "shell": "bash",
+          "run": "python3 -I - <<'PYVALIDATE'\nimport os\nimport re\nimport sys\n\ndef require(condition):\n    if not condition:\n        sys.stderr.write('invalid_input: Workshop staging dispatch rejected\\n')\n        raise SystemExit(2)\n\ndef matches(name, pattern):\n    return re.fullmatch(pattern, os.environ.get(name, '')) is not None\n\nrequire(os.environ.get('EVENT_NAME') == 'workflow_dispatch')\nrequire(os.environ.get('REPOSITORY') == 'lucronn/autodata')\nrequire(os.environ.get('REF') == 'refs/heads/master')\nrequire(os.environ.get('WORKFLOW_REF') == 'lucronn/autodata/.github/workflows/release-workshop.yml@refs/heads/master')\nrequire(os.environ.get('OPERATION') == 'staging-build-candidate')\nfor actual, expected in [('REPOSITORY_ID', 'EXPECTED_REPOSITORY_ID'), ('REPOSITORY_OWNER_ID', 'EXPECTED_OWNER_ID')]:\n    require(matches(expected, r'[1-9][0-9]{0,19}'))\n    require(os.environ.get(actual) == os.environ.get(expected))\nfor name in ('SOURCE_SHA', 'WORKFLOW_SHA'):\n    require(matches(name, r'[0-9a-f]{40}'))\nfor name in ('CONFIG_SHA256', 'ACTIVATION_SHA256', 'TOOLCHAIN_SHA256', 'TRUST_POLICY_SHA256'):\n    require(matches(name, r'[0-9a-f]{64}'))\nrequire(matches('RUN_ID', r'[1-9][0-9]{0,19}'))\nrequire(matches('RUN_ATTEMPT', r'[1-9][0-9]{0,3}'))\nrequire(int(os.environ['RUN_ATTEMPT']) <= 1000)\nfinalize = os.environ['OPERATION'] == 'staging-finalize'\nif finalize:\n    require(matches('CANDIDATE_DIGEST', r'[a-z0-9-]+-docker\\.pkg\\.dev/[a-z][a-z0-9-]{4,61}[a-z0-9]/[a-z][a-z0-9._-]*/candidate@sha256:[0-9a-f]{64}'))\n    require(matches('CANDIDATE_RUN_ID', r'[1-9][0-9]{0,19}'))\n    require(matches('CANDIDATE_RUN_ATTEMPT', r'[1-9][0-9]{0,3}'))\n    require(int(os.environ['CANDIDATE_RUN_ATTEMPT']) <= 1000)\n    require(matches('APPROVAL_RECORD_SHA256', r'[0-9a-f]{64}'))\nelse:\n    for name in ('CANDIDATE_DIGEST', 'CANDIDATE_RUN_ID', 'CANDIDATE_RUN_ATTEMPT', 'APPROVAL_RECORD_SHA256'):\n        require(not os.environ.get(name))\n# Shape only. Runtime identity, approval signature, owner policy and tool pins\n# must be authenticated by separately activated reviewed control code.\nsys.stdout.write('Workshop staging inputs validated; execution remains blocked\\n')\nPYVALIDATE"
+        },
+        {
+          "id": "activation-blocker",
+          "name": "Block before checkout, credentials, toolkit upload or cleanup hooks",
+          "shell": "bash",
+          "run": "printf '%s\\n' 'missing_dependency: separately reviewed staging activation and complete toolkit/runtime/action pins required' >&2\nexit 3"
+        },
+        {
+          "name": "Reviewed control checkout (unreachable until separate activation)",
+          "uses": "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+          "with": {
+            "ref": "${{ github.workflow_sha }}",
+            "path": "control",
+            "persist-credentials": false,
+            "fetch-depth": 1,
+            "submodules": false,
+            "lfs": false
+          }
+        }
+      ]
+    },
+    "staging-finalize": {
+      "name": "staging-finalize definition (activation and toolchain blocked)",
+      "if": "${{ vars.WORKSHOP_STAGING_PUBLISH_ENABLED == 'true' && github.repository == 'lucronn/autodata' && github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch' && inputs.operation == 'staging-finalize' }}",
+      "runs-on": "ubuntu-24.04",
+      "environment": "workshop-staging-publish",
+      "permissions": {
+        "contents": "read",
+        "actions": "read",
+        "id-token": "write"
+      },
+      "timeout-minutes": 125,
+      "env": {
+        "EVENT_NAME": "${{ github.event_name }}",
+        "REPOSITORY": "${{ github.repository }}",
+        "REPOSITORY_ID": "${{ github.repository_id }}",
+        "REPOSITORY_OWNER_ID": "${{ github.repository_owner_id }}",
+        "EXPECTED_REPOSITORY_ID": "${{ vars.WORKSHOP_REPOSITORY_ID }}",
+        "EXPECTED_OWNER_ID": "${{ vars.WORKSHOP_OWNER_ID }}",
+        "REF": "${{ github.ref }}",
+        "WORKFLOW_REF": "${{ github.workflow_ref }}",
+        "WORKFLOW_SHA": "${{ github.workflow_sha }}",
+        "RUN_ID": "${{ github.run_id }}",
+        "RUN_ATTEMPT": "${{ github.run_attempt }}",
+        "OPERATION": "staging-finalize",
+        "SOURCE_SHA": "${{ inputs.source_sha }}",
+        "CONFIG_SHA256": "${{ vars.WORKSHOP_STAGING_CONFIG_SHA256 }}",
+        "ACTIVATION_SHA256": "${{ vars.WORKSHOP_STAGING_ACTIVATION_SHA256 }}",
+        "TOOLCHAIN_SHA256": "${{ vars.WORKSHOP_STAGING_TOOLCHAIN_SHA256 }}",
+        "TRUST_POLICY_SHA256": "${{ vars.WORKSHOP_STAGING_TRUST_POLICY_SHA256 }}",
+        "CANDIDATE_DIGEST": "${{ inputs.candidate_digest }}",
+        "CANDIDATE_RUN_ID": "${{ inputs.candidate_run_id }}",
+        "CANDIDATE_RUN_ATTEMPT": "${{ inputs.candidate_run_attempt }}",
+        "APPROVAL_RECORD_SHA256": "${{ inputs.approval_record_sha256 }}"
+      },
+      "steps": [
+        {
+          "id": "validate",
+          "name": "Validate nonsecret staging identity and phase inputs",
+          "shell": "bash",
+          "run": "python3 -I - <<'PYVALIDATE'\nimport os\nimport re\nimport sys\n\ndef require(condition):\n    if not condition:\n        sys.stderr.write('invalid_input: Workshop staging dispatch rejected\\n')\n        raise SystemExit(2)\n\ndef matches(name, pattern):\n    return re.fullmatch(pattern, os.environ.get(name, '')) is not None\n\nrequire(os.environ.get('EVENT_NAME') == 'workflow_dispatch')\nrequire(os.environ.get('REPOSITORY') == 'lucronn/autodata')\nrequire(os.environ.get('REF') == 'refs/heads/master')\nrequire(os.environ.get('WORKFLOW_REF') == 'lucronn/autodata/.github/workflows/release-workshop.yml@refs/heads/master')\nrequire(os.environ.get('OPERATION') == 'staging-finalize')\nfor actual, expected in [('REPOSITORY_ID', 'EXPECTED_REPOSITORY_ID'), ('REPOSITORY_OWNER_ID', 'EXPECTED_OWNER_ID')]:\n    require(matches(expected, r'[1-9][0-9]{0,19}'))\n    require(os.environ.get(actual) == os.environ.get(expected))\nfor name in ('SOURCE_SHA', 'WORKFLOW_SHA'):\n    require(matches(name, r'[0-9a-f]{40}'))\nfor name in ('CONFIG_SHA256', 'ACTIVATION_SHA256', 'TOOLCHAIN_SHA256', 'TRUST_POLICY_SHA256'):\n    require(matches(name, r'[0-9a-f]{64}'))\nrequire(matches('RUN_ID', r'[1-9][0-9]{0,19}'))\nrequire(matches('RUN_ATTEMPT', r'[1-9][0-9]{0,3}'))\nrequire(int(os.environ['RUN_ATTEMPT']) <= 1000)\nfinalize = os.environ['OPERATION'] == 'staging-finalize'\nif finalize:\n    require(matches('CANDIDATE_DIGEST', r'[a-z0-9-]+-docker\\.pkg\\.dev/[a-z][a-z0-9-]{4,61}[a-z0-9]/[a-z][a-z0-9._-]*/candidate@sha256:[0-9a-f]{64}'))\n    require(matches('CANDIDATE_RUN_ID', r'[1-9][0-9]{0,19}'))\n    require(matches('CANDIDATE_RUN_ATTEMPT', r'[1-9][0-9]{0,3}'))\n    require(int(os.environ['CANDIDATE_RUN_ATTEMPT']) <= 1000)\n    require(matches('APPROVAL_RECORD_SHA256', r'[0-9a-f]{64}'))\nelse:\n    for name in ('CANDIDATE_DIGEST', 'CANDIDATE_RUN_ID', 'CANDIDATE_RUN_ATTEMPT', 'APPROVAL_RECORD_SHA256'):\n        require(not os.environ.get(name))\n# Shape only. Runtime identity, approval signature, owner policy and tool pins\n# must be authenticated by separately activated reviewed control code.\nsys.stdout.write('Workshop staging inputs validated; execution remains blocked\\n')\nPYVALIDATE"
+        },
+        {
+          "id": "activation-blocker",
+          "name": "Block before checkout, credentials, toolkit upload or cleanup hooks",
+          "shell": "bash",
+          "run": "printf '%s\\n' 'missing_dependency: separately reviewed staging activation and complete toolkit/runtime/action pins required' >&2\nexit 3"
+        },
+        {
+          "name": "Reviewed control checkout (unreachable until separate activation)",
+          "uses": "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+          "with": {
+            "ref": "${{ github.workflow_sha }}",
+            "path": "control",
+            "persist-credentials": false,
+            "fetch-depth": 1,
+            "submodules": false,
+            "lfs": false
+          }
         }
       ]
     }
