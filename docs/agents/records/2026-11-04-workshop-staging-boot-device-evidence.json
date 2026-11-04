@@ -131,5 +131,24 @@
     "transport_only_explicit_name": "simulated passed after3POSTs; no implementation edited",
     "readiness_evidence": false
   },
-  "checkpoint_verification": "Pending exact committed full-SHA preflight and independent checkpoint review; later receipt records results."
+  "checkpoint_verification": {
+    "checkpoint_sha": "97421b26f59c1aa90a15f11aa4af3e6c57a15191",
+    "branch": "codex/workshop-staging-boot-device-plan",
+    "preflight": {
+      "status": "synchronized",
+      "errors": [],
+      "exit_code": 0,
+      "base_sha": "97421b26f59c1aa90a15f11aa4af3e6c57a15191"
+    },
+    "pin_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622394314",
+    "pin_comment_sha256": "8b7b30a48746316226163f31012cdf03bc74864de478475b5375f03a7390c762",
+    "issue_body_sha256": "c51217881cd51b3ec44510aeff89a1e77a5763595f1dbe9da87fb6aa0cfb7831",
+    "project_text_sha256": "831c9c512f574c378ca88b9129fa2305a549a9a7062f3a67afecc7c865d1882e",
+    "verified_at": "2026-11-04T04:16:45.106565+00:00",
+    "independent_exact_checkpoint_review": "pending",
+    "implementation_dispatch_authorized": false,
+    "cloud_execution_authorized": false
+  },
+  "pinned_project_index": "Staging boot deviceName corrective detail6622382607: source188d6e66a3edff53bb84548d78876f8c98f6aec0 rejected; reviewed draftb31de33 PASS. ONLY staging_bootstrap.py+test_staging_bootstrap.py: explicit boot AttachedDisk.deviceName=<instance>-boot; fake explicit echo/omitted persistent-disk-0; strict readback retained. Red omission/default after3POSTs/resources retained; success+drift negatives. Checkpoint/preflight then independent exact review/root dispatch REQUIRED before code; no cloud/credentials/runtime. Full CURRENT PG offline gate3e4d1b0b index/detail6622351785+pin6622361427 plus Stage0/staging/older PG/JS text preserved verbatim+hash in detail/canonical evidence; their review/dispatch/denials unchanged. No launcher/schema/input changes, no readiness/production. Gate 97421b26f59c1aa90a15f11aa4af3e6c57a15191 preflight synchronized/errors[]; pin6622394314.",
+  "pin_comment_text": "Staging boot attachment corrective gate `97421b26f59c1aa90a15f11aa4af3e6c57a15191` pushed on `codex/workshop-staging-boot-device-plan`. Full-SHA preflight exit0 synchronized/errors[]. Detail https://github.com/lucronn/autodata/issues/186#issuecomment-6622382607 records exact two-file scope/todo and rejected source188d6e66a3edff53bb84548d78876f8c98f6aec0. Explicit boot AttachedDisk.deviceName=<instance>-boot is separate from initializeParams.diskName; realistic fake echo/default plus original-omission/drift regressions, strict readback retained. Source remains rejected until independent correction review. Full CURRENT PG offline index/detail6622351785/pin6622361427 and Stage0/staging/older PG/JS texts preserved verbatim+individual hashes in canonical evidence/detail preservation links. Independent exact-checkpoint review, root verification and fresh dispatch REQUIRED before any code. No launcher/schema/input expansion, no credentials/cloud/resource/Docker/host/provider/DNS/runtime action, no readiness/production authority. PG/Stage0/JS/history statuses and denials unchanged.\n"
 }

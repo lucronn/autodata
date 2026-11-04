@@ -57,7 +57,25 @@
     "implementation_dispatch_authorized": false,
     "cloud_execution_authorized": false,
     "runtime_verified": false,
-    "production_ready": false
+    "production_ready": false,
+    "checkpoint_verification": {
+      "checkpoint_sha": "97421b26f59c1aa90a15f11aa4af3e6c57a15191",
+      "branch": "codex/workshop-staging-boot-device-plan",
+      "preflight": {
+        "status": "synchronized",
+        "errors": [],
+        "exit_code": 0,
+        "base_sha": "97421b26f59c1aa90a15f11aa4af3e6c57a15191"
+      },
+      "pin_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622394314",
+      "pin_comment_sha256": "8b7b30a48746316226163f31012cdf03bc74864de478475b5375f03a7390c762",
+      "issue_body_sha256": "c51217881cd51b3ec44510aeff89a1e77a5763595f1dbe9da87fb6aa0cfb7831",
+      "project_text_sha256": "831c9c512f574c378ca88b9129fa2305a549a9a7062f3a67afecc7c865d1882e",
+      "verified_at": "2026-11-04T04:16:45.106565+00:00",
+      "independent_exact_checkpoint_review": "pending",
+      "implementation_dispatch_authorized": false,
+      "cloud_execution_authorized": false
+    }
   },
   "status": "synchronized",
   "execution": {
@@ -72,5 +90,23 @@
     "Change the fake's omitted-name behavior and add the exact request/default/drift regressions first; demonstrate a red complete-run failure on the uncorrected request, with all three POSTs and retained resources, using only intercepted transports.",
     "Add only the explicit boot AttachedDisk.deviceName sibling field in staging_bootstrap.py; keep strict readback and all request/approval/config/FD3/network/receipt/authority boundaries unchanged; run focused bootstrap plus existing host/cloud regressions, syntax and diff/scope checks.",
     "Commit/push the exact two-file candidate, retain red/green logs and independently review its full SHA before integration; no credentials/cloud/resource operations, installation, formatting, host startup, readiness, cars.tk or production authority follows from simulated success."
-  ]
+  ],
+  "checkpoint_verification": {
+    "checkpoint_sha": "97421b26f59c1aa90a15f11aa4af3e6c57a15191",
+    "branch": "codex/workshop-staging-boot-device-plan",
+    "preflight": {
+      "status": "synchronized",
+      "errors": [],
+      "exit_code": 0,
+      "base_sha": "97421b26f59c1aa90a15f11aa4af3e6c57a15191"
+    },
+    "pin_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622394314",
+    "pin_comment_sha256": "8b7b30a48746316226163f31012cdf03bc74864de478475b5375f03a7390c762",
+    "issue_body_sha256": "c51217881cd51b3ec44510aeff89a1e77a5763595f1dbe9da87fb6aa0cfb7831",
+    "project_text_sha256": "831c9c512f574c378ca88b9129fa2305a549a9a7062f3a67afecc7c865d1882e",
+    "verified_at": "2026-11-04T04:16:45.106565+00:00",
+    "independent_exact_checkpoint_review": "pending",
+    "implementation_dispatch_authorized": false,
+    "cloud_execution_authorized": false
+  }
 }
