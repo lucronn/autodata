@@ -158,5 +158,41 @@
     "github_writes_by_docs_worker": false,
     "status": "coordinator_completion_sync_pending",
     "writer": "coordinator only"
+  },
+  "exact_head_ci_success_addendum": {
+    "recorded_at": "2026-11-04T19:50:44Z",
+    "head_sha": "2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7",
+    "run_id": 41894466041,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/lucronn/autodata/actions/runs/41894466041",
+    "completed_at": "2026-11-04T19:49:28Z",
+    "provenance": "Fresh independent GitHub REST run and jobs readback by docs-only worker; original pending-CI snapshot and all prior fields preserved.",
+    "jobs": [
+      {
+        "id": 126800174854,
+        "name": "Validate autonomy policy and evidence contract",
+        "head_sha": "2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7",
+        "status": "completed",
+        "conclusion": "success",
+        "completed_at": "2026-11-04T19:28:38Z",
+        "url": "https://github.com/lucronn/autodata/actions/runs/41894466041/job/126800174854"
+      },
+      {
+        "id": 126800175471,
+        "name": "Workshop DTO browser inventory (not real API acceptance)",
+        "head_sha": "2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7",
+        "status": "completed",
+        "conclusion": "success",
+        "completed_at": "2026-11-04T19:49:28Z",
+        "url": "https://github.com/lucronn/autodata/actions/runs/41894466041/job/126800175471"
+      }
+    ],
+    "coordinator_source_ci_and_integration_dispatch_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6640496477",
+    "coordinator_receipt": "/home/corp/autodata-evidence/final180-cd-integration-dispatch/receipt.json",
+    "evidence_receipt": "/home/corp/autodata-evidence/final180-paid-completion-docs/ci-readback.json",
+    "scope": "CI success at the reviewed source code head only; historical pending states remain preserved. Zero accepted-case credit, disabled profiles/tiers, null runtime lock/run record and all nine false authority values remain unchanged. No runtime, merge, release, profile promotion, deployment, cutover or full final180 acceptance follows.",
+    "github_writes_by_docs_worker": false
   }
 }

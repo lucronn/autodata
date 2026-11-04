@@ -205,3 +205,35 @@ and `payment_calls == 0` prove no real Stripe charge or settlement. Full raw pai
 actual Go compatibility, complete final180 and staging/release acceptance remain
 separately blocked. This code review grants no merge, runtime, profile promotion,
 deployment, cutover or accepted-case credit.
+
+## Exact-head CI success addendum — original run completed
+
+Fresh independent GitHub REST run/jobs readback on 2026-11-04T19:50:44Z confirms
+[run 41894466041](https://github.com/lucronn/autodata/actions/runs/41894466041),
+attempt 1, **completed/success** at the independently reviewed source code head
+`2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7`. Both required jobs completed
+successfully: **Validate autonomy policy and evidence contract**
+(job 126800174854, completed `2026-11-04T19:28:38Z`) and
+**Workshop DTO browser inventory (not real API acceptance)**
+(job 126800175471, completed `2026-11-04T19:49:28Z`). The browser job's exact
+fixture-runtime installation and all 120 DTO browser-case exercise steps also
+completed successfully. This is the original run's final result; the earlier
+pending-CI snapshot and original P2 finding/repair history remain preserved.
+
+The coordinator recorded source-CI completion and separate C/D integration
+[dispatch](https://github.com/lucronn/autodata/issues/186#issuecomment-6640496477);
+its external receipt is
+`/home/corp/autodata-evidence/final180-cd-integration-dispatch/receipt.json`.
+This docs-only worker made no Issue or Project writes. Fresh run/jobs snapshots,
+coordinator-comment readback and preservation checks are sealed in
+`/home/corp/autodata-evidence/final180-paid-completion-docs/ci-readback.json`.
+The completion JSON gains a separate additive CI-success object; its original
+status, pending-CI object, remaining-blocker history, review evidence and all other
+prior fields remain unchanged.
+
+This success records verification at the source code head only. Credit remains
+exact int 0, profiles/tiers disabled, runtime lock/run record null and all nine
+authority values false. DTO browser inventory grants no real API acceptance.
+Full raw paid semantics, real bank/payment/runtime, actual Go compatibility,
+complete final180, staging/release, merge, deployment, profile promotion and
+cutover remain separately gated.
