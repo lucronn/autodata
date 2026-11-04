@@ -1,0 +1,65 @@
+{
+  "task_id": "workshop-schema-pg17-route",
+  "goal": "Prepare and independently freeze a disposable PostgreSQL17 Alpine runner for the exact disconnected schema-probe candidate, then permit only separately approved actual harness execution; preserve production runtime, grants and all readiness denials.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-schema-pg17-route.md",
+  "record_ref": "docs/agents/records/2026-11-03-workshop-schema-pg17-route.json",
+  "source_integration_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+  "harness_source_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
+  "allowed_paths": [],
+  "status": "synchronized",
+  "pre_implementation": {
+    "goal": "Prepare and independently freeze a disposable PostgreSQL17 Alpine runner for the exact disconnected schema-probe candidate, then permit only separately approved actual harness execution; preserve production runtime, grants and all readiness denials.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-schema-pg17-route.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-03-workshop-schema-observation-harness.md",
+      "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+      "docs/operations/workshop-gcp.md",
+      "docs/architecture/infrastructure-and-dev.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Synchronize the PG17 route decision, exact source/base pins, staged authority and concrete todo in Issue186/Project8 and canonical documentation; commit/push and pass exact-checkpoint preflight for independent review.",
+      "After coordinator approval only, prepare the cached-digest Alpine derivative with Python3 and a C compiler; retain package versions, APK hashes, build inputs, base identity and immutable image identity without starting PostgreSQL.",
+      "Independently inspect the frozen runner artifact and exact harness54ab source archive, verify matching PG17 tools/headers, ICU and non-root identity, then obtain separate exact-image execution authorization and re-pin the adopted gate.",
+      "Only after the execution boundary is approved, run the unchanged complete PG17 adversarial harness in one network-disabled disposable container; retain every failure, sentinel control, case inventory and server/session/lock/container cleanup receipt.",
+      "Independently review exact source/image/raw evidence before accepting any disposable-harness result; fail closed on missing prerequisites or cases and keep production grants, runtime integration, services, deployment and readiness unavailable."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T00:44:26.593707+00:00",
+    "source_integration_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+    "harness_source_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
+    "implementation_allowlist": [],
+    "independent_review": "pending",
+    "preparation_execution_authorized": false,
+    "runtime_execution_authorized": false,
+    "runtime_verified": false,
+    "production_ready": false,
+    "tracking_sync": {
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6619358812",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+      "project_note_field": "Source or dependency reference",
+      "verified_at": "2026-11-04T00:44:26.593707+00:00",
+      "issue_body_sha256": "98700fd8e02ee50e643174337ce9a9895736c809fd60a0720fcf0e4b8faee833",
+      "issue_comment_sha256": "f3de73a13d8b33b9719bdf5d397ae6ae723d225ccbd2c521f93f818da1ac6373",
+      "project_text_sha256": "e7c1f502d4549d7accefc10c5f1f41ddfb31fa1c02b7b32405a3db0db2d6a250",
+      "prior_project_text_sha256": "293ca347ec9b6848b5e8e339b8dce6a0c5bdbe02019ef5feae45e0cbc5db4f93",
+      "full_prior_project_index_preserved_in_issue_comment": true
+    }
+  },
+  "todo": [
+    "Synchronize the PG17 route decision, exact source/base pins, staged authority and concrete todo in Issue186/Project8 and canonical documentation; commit/push and pass exact-checkpoint preflight for independent review.",
+    "After coordinator approval only, prepare the cached-digest Alpine derivative with Python3 and a C compiler; retain package versions, APK hashes, build inputs, base identity and immutable image identity without starting PostgreSQL.",
+    "Independently inspect the frozen runner artifact and exact harness54ab source archive, verify matching PG17 tools/headers, ICU and non-root identity, then obtain separate exact-image execution authorization and re-pin the adopted gate.",
+    "Only after the execution boundary is approved, run the unchanged complete PG17 adversarial harness in one network-disabled disposable container; retain every failure, sentinel control, case inventory and server/session/lock/container cleanup receipt.",
+    "Independently review exact source/image/raw evidence before accepting any disposable-harness result; fail closed on missing prerequisites or cases and keep production grants, runtime integration, services, deployment and readiness unavailable."
+  ],
+  "execution": {
+    "mode": "plan_only",
+    "preparation": "blocked_pending_exact_gate_independent_review_and_coordinator_approval",
+    "runtime": "blocked_pending_frozen_runner_independent_review_and_separate_coordinator_dispatch",
+    "implementation_changes": "none"
+  }
+}

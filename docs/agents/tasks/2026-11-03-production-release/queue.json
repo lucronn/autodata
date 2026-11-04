@@ -564,6 +564,17 @@
         "project_text_sha256": "0a1d7564da5b9e26b365fc471272c5fc0c092e409abe53efbbf8fe185cb7089d",
         "project_index_note": "921-character index retains prior reference IDs; full original 994-character field is preserved verbatim in the scoped Issue comment."
       }
+    },
+    {
+      "id": "workshop-schema-pg17-route",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-schema-pg17-route.json",
+      "depends_on": [],
+      "state": "plan_only_pending_independent_review",
+      "release_state": "unverified",
+      "harness_source_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
+      "implementation_changes_allowed": false,
+      "preparation_executed": false,
+      "runtime_verified": false
     }
   ],
   "execution": {

@@ -198,3 +198,20 @@ Concrete todo:
 - [ ] Run focused regressions, scope/diff and exact-base preflight; commit/push a coherent candidate for independent exact-SHA review, keeping production grants, collector integration, authenticated publication, services, deployment and cars.tk cutover behind later gates.
 
 Tracking synchronized by live Issue186 body/comment6618084753 and Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference` readback at `2026-11-03T23:26:27.924126+00:00`. Exact goal, five todos and five-path scope match the full issue body/comment; the compact Project index links that comment and retains historical DTO/A/B/R6 references, with its previous text preserved verbatim there. Dedicated record stores SHA256 readback hashes. Independent checkpoint review remains pending; synchronized tracking does not authorize a builder or live operation.
+
+
+## PG17 disposable runner route successor: plan-only
+
+Goal: Prepare and independently freeze a disposable PostgreSQL17 Alpine runner for the exact disconnected schema-probe candidate, then permit only separately approved actual harness execution; preserve production runtime, grants and all readiness denials.
+
+Canonical route plan: `docs/superpowers/plans/2026-11-03-workshop-schema-pg17-route.md`; task `docs/agents/tasks/2026-11-03-production-release/workshop-schema-pg17-route.json`; record `docs/agents/records/2026-11-03-workshop-schema-pg17-route.json`. Planning root `eddcf724028683dbb083191e4f8c42064b866bf0`; immutable harness source `54ab7dce19c36ce7ea3403259dd1ecc66bf323aa` on `codex/workshop-schema-probe`. The route plan supersedes only the earlier native-only/no-Docker/no-download test prerequisite: a cached official PG17.11 Alpine derivative may later acquire Python3/C toolchain in a bounded preparation stage after exact-gate independent review and coordinator approval. Source-image history/cache is insufficient; exact toolchain/package/image/source identities require independent artifact review before a separately authorized network-disabled disposable harness run. No tracked implementation changes or integration are allowed by this route. Native hostPG18 cannot replace PG17. Preparation and actual harness are unexecuted; production grants/collector/services/readiness remain unchanged and unavailable.
+
+Concrete todo:
+
+- [ ] Synchronize the PG17 route decision, exact source/base pins, staged authority and concrete todo in Issue186/Project8 and canonical documentation; commit/push and pass exact-checkpoint preflight for independent review.
+- [ ] After coordinator approval only, prepare the cached-digest Alpine derivative with Python3 and a C compiler; retain package versions, APK hashes, build inputs, base identity and immutable image identity without starting PostgreSQL.
+- [ ] Independently inspect the frozen runner artifact and exact harness54ab source archive, verify matching PG17 tools/headers, ICU and non-root identity, then obtain separate exact-image execution authorization and re-pin the adopted gate.
+- [ ] Only after the execution boundary is approved, run the unchanged complete PG17 adversarial harness in one network-disabled disposable container; retain every failure, sentinel control, case inventory and server/session/lock/container cleanup receipt.
+- [ ] Independently review exact source/image/raw evidence before accepting any disposable-harness result; fail closed on missing prerequisites or cases and keep production grants, runtime integration, services, deployment and readiness unavailable.
+
+Tracking synchronized by live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6619358812 and Project8 readback at `2026-11-04T00:44:26.593707+00:00`; dedicated record retains SHA256 hashes and the complete prior Project index is preserved verbatim in that comment. Independent plan review pending; preparation and actual harness remain unexecuted and unauthorized.
