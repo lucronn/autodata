@@ -6,7 +6,7 @@ Status: planning synchronized; implementation remains blocked pending committed 
 
 Consolidate the independently gated restricted synthetic commerce14 and paid12 libraries while preserving predecessor bytes, original receipts and zero real accepted-case credit.
 
-C_FINAL `c4dd59b3ac6a1afb74f7ad1d4f54ef1eb6e7fdad` is the exact direct parent of the new planning checkpoint. D_FINAL `2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7` is the sole source for the two D implementation files and D runbook suffix. Common parent `fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc` remains the runbook/index split point. C_GATE `cd9e8355a0ccb055b4327bbbd1ecaf97e7cddbe9` and D_GATE `70c9a6ebb2cec338f938122c8c570fd5b22a6f28` are historical authorizing gates; the four D planning files are adopted exclusively from D_GATE, with their bytes and modes preserved. The independent exact-source reviews are PASS, as frozen by the pinned external receipts. The coordinator permits planning while both source CI runs are pending; source CI PASS must be recorded before adoption dispatch. This checkpoint does not claim CI success or combined behavior.
+C_FINAL `c4dd59b3ac6a1afb74f7ad1d4f54ef1eb6e7fdad` is the exact source-tree baseline and direct parent of the initial planning commit. Exactly one forward-only planning correction follows initial commit 2e3b1c7f3dcf8b0ddd36f8098feda5b6494bd16c; the final sealed checkpoint is the second commit in this planning-only chain, with the same nine-path cumulative scope. D_FINAL `2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7` is the sole source for the two D implementation files and D runbook suffix. Common parent `fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc` remains the runbook/index split point. C_GATE `cd9e8355a0ccb055b4327bbbd1ecaf97e7cddbe9` and D_GATE `70c9a6ebb2cec338f938122c8c570fd5b22a6f28` are historical authorizing gates; the four D planning files are adopted exclusively from D_GATE, with their bytes and modes preserved. The independent exact-source reviews are PASS, as frozen by the pinned external receipts. The coordinator permits planning while both source CI runs are pending; source CI PASS must be recorded before adoption dispatch. This checkpoint does not claim CI success or combined behavior.
 
 Original technical contracts remain authoritative and byte-identical: `docs/agents/specs/2026-11-04-workshop-final180-stage-c-commerce.md` at C_GATE and `docs/agents/specs/2026-11-04-workshop-final180-stage-d-paid.md` at D_GATE. Read them together with this integration spec; this spec changes adoption context only. All source symbols, literal row identities, grammar/reason ordering and serialization contracts remain exactly as implemented and independently reviewed at the frozen sources. No new parser, API, synthetic envelope or code repair is permitted.
 
@@ -42,7 +42,16 @@ Every diagnostic remains exact integer accepted_case_credit=0, profiles_enabled=
 
 ## 5. Tracking, checkpoint and exact-head seals
 
-Issue https://github.com/lucronn/autodata/issues/186 and Project https://github.com/users/lucronn/projects/8 contain the exact five-item todo from plan/standalone/nested record. Live readback detail https://github.com/lucronn/autodata/issues/186#issuecomment-6639755403 is newly synchronized; exact receipt SHA256 `cff205865bfc29f993fd860ea770d3185deb9c406684484854af055878ecd398` and raw before/after/preservation fields are recorded in both equal records. Coordinator remains sole GitHub writer. Original C/D comments/receipts remain historical and unchanged; source code-only completion comment6639738283 is separate. Save committed checkpoint SHA externally, then load committed record/task/policy with git show; require standalone=nested and validate_record errors=[]/status=synchronized at that SHA. Obtain independent review of the exact checkpoint and explicit coordinator dispatch after source exact-head CI PASS. Any missing/failing/pending condition blocks adoption.
+Issue https://github.com/lucronn/autodata/issues/186 and Project https://github.com/users/lucronn/projects/8 contain the exact five-item todo from plan/standalone/nested record. Live readback detail https://github.com/lucronn/autodata/issues/186#issuecomment-6639755403 is newly synchronized; exact receipt SHA256 `cff205865bfc29f993fd860ea770d3185deb9c406684484854af055878ecd398` and raw before/after/preservation fields are recorded in both equal records. Coordinator remains sole GitHub writer.
+
+Canonical todo, literally identical to the plan, standalone/nested records, task and synchronized receipt:
+
+1. Freeze independently verified C/D source SHAs, source/append pins and historical receipts; synchronize this integration plan/spec/task/record and allowlist with Issue186/Project8, commit checkpoint, pass standalone/nested exact-base preflight and independent checkpoint review before explicit dispatch.
+2. Adopt only the exact reviewed D adapter and constructed-byte tests onto the pinned C checkpoint; preserve C and every A/B1/B2/CI/inventory/historical gate byte.
+3. Append the exact pinned D runbook section after the untouched C runbook and add a combined synthetic-only note preserving source/checkpoint identities, limitations and measured checks.
+4. Run combined C/D and predecessor focused suites, full developer/autonomy discovery, no-bytecode compile, AST/import boundary, exact-diff and all source/prefix/suffix checks; commit/push coherent validated milestone and obtain independent exact-code-head review.
+5. Read back exact integration-head CI and synchronize code-only receipts without overwriting history; retain integer0 credit, disabled profiles/tiers, null runtime records, all nine false authorities and separate real fixture/runtime/payment/final180/release blockers.
+ Original C/D comments/receipts remain historical and unchanged; source code-only completion comment6639738283 is separate. Save committed checkpoint SHA externally, then load committed record/task/policy with git show; require standalone=nested and validate_record errors=[]/status=synchronized at that SHA. Obtain independent review of the exact checkpoint and explicit coordinator dispatch after source exact-head CI PASS. Any missing/failing/pending condition blocks adoption.
 
 After adoption, require focused/full offline suites, compile/import checks, complete tracked/untracked scope verification, read-only object checker and independent exact-code-head review. Read exact integration-head Autonomous Verification, preserving URL/headSha/event/ref/conclusion/all required job states. Pending/failure is not a pass; parent/aggregate/local success is not a substitute. Coordinator appends code-only receipts without overwriting history. No merge or promotion is implied.
 
@@ -3339,6 +3348,7 @@ if phase != 'draft':
     assert checkpoint and re.fullmatch('[0-9a-f]{40}', checkpoint)
     assert head and re.fullmatch('[0-9a-f]{40}', head)
 root = Path.cwd()
+sys.path.insert(0, str(root))
 def git(*args):
     return subprocess.check_output(['git', *args], cwd=root)
 def blob(ref, path):
@@ -3391,7 +3401,14 @@ if phase == 'draft':
         assert not (root / path).is_symlink()
         assert stat.S_IMODE((root / path).stat().st_mode) == 0o644
 else:
-    assert git('rev-parse', f'{checkpoint}^').decode().strip() == C
+    chain = git('rev-list', '--first-parent', '--reverse', f'{C}..{checkpoint}').decode().splitlines()
+    assert len(chain) == 2 and chain[0] == '2e3b1c7f3dcf8b0ddd36f8098feda5b6494bd16c' and chain[-1] == checkpoint
+    previous = C
+    for revision in chain:
+        assert git('rev-list', '--parents', '-n', '1', revision).decode().split() == [revision, previous]
+        delta = set(git('diff', '--name-only', previous, revision).decode().splitlines())
+        assert delta and delta <= planning, sorted(delta - planning)
+        previous = revision
     ktree, htree = tree(checkpoint), tree(head)
     changes = {p for p in set(ctree) | set(ktree) if ctree.get(p) != ktree.get(p)}
     assert changes == planning, sorted(changes ^ planning)
@@ -3469,6 +3486,8 @@ assert task['product_evidence'] == {'accepted_case_credit': 0, 'profiles_enabled
 plan_text = current(r['plan_ref']).decode()
 for item in r['todo'] + [r['issue_ref'], r['project_ref'], r['goal']]:
     assert item in plan_text
+    assert item in text
+assert json.loads(Path(r['tracking_receipts']['receipt_ref']).read_text())['todo'] == r['todo']
 if phase == 'draft':
     assert r['status'] in ('blocked', 'synchronized')
 else:

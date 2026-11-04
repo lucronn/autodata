@@ -57,7 +57,7 @@ The record is synchronized for planning. Task status stays blocked until the new
 - [ ] Retain every C tree byte/mode; add only the four new integration files and exact original D plan/spec/record/task blobs from D_GATE. Never substitute the D completion-document head or rewrite old parent/receipt fields.
 - [ ] Construct index bytes as complete C_FINAL index + D_GATE index suffix after the exact common 83750-byte prefix + separately pinned new integration entry. The C/D historical entries retain their own scope/parent wording.
 - [ ] Verify equality of standalone and nested new records, exact todo across plan/task/live receipt, exact allowlists, source and external evidence pins. Run spec checker in draft mode; confirm zero implementation/runbook edits.
-- [ ] Commit only the nine explicit paths and promptly push the assigned planning branch. Preserve C_FINAL as the direct parent and save full checkpoint SHA externally. No implementation edit is allowed at this stage.
+- [ ] Commit only the nine explicit paths and promptly push the assigned planning branch. Preserve C_FINAL as the initial planning commit parent; any forward-only planning corrections must retain the exact cumulative nine-path scope. Save the final full checkpoint SHA externally. No implementation edit is allowed at this stage.
 - [ ] From a clean checkout of the committed SHA run the spec checker in checkpoint mode, which loads record/task/policy with git show and calls validate_record for standalone and nested records at that exact SHA. Require both errors=[] and status=synchronized; retain full stdout externally.
 - [ ] Obtain independent exact-checkpoint review of all nine paths, source/prefix pins, fresh tracking receipt and blocked authority. Coordinator confirms both source exact-head CI PASS and explicitly dispatches a separate owned build branch at this checkpoint. A missing condition blocks Task 2.
 
@@ -113,6 +113,8 @@ These are future gated verification commands; planning has not run combined sour
 - [ ] Coordinator appends local/review/exact-head CI receipts to Issue186 and archives Project Source before updating only its intended field. Read back exact goal/references/head/evidence and preserve body, prior comments and unrelated fields/status.
 - [ ] Retain accepted_case_credit integer0, profiles disabled/tiers empty, null runtime records and all nine false authority flags. Restricted constructed-byte library coexistence supplies no 26 real accepted cases, browser120/API21 coverage or genuine final180 execution.
 - [ ] Retain original receipts and exact source SHAs. A separate merge/release authority is required for any later branch integration, staging, payment, fixture/runtime execution, deployment or promotion.
+
+The initial nine-path planning commit is 2e3b1c7f3dcf8b0ddd36f8098feda5b6494bd16c, directly parented by C_FINAL. A forward-only planning correction adds literal spec todo/equality and fixes the external verifier import path; the final corrected SHA is sealed externally and remains the sole future builder base. No published history is rewritten.
 
 ## Plan self-review
 
