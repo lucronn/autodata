@@ -421,3 +421,172 @@ run passed 146 tests in 52.383s; the final focused run passed 131 tests in
 full discovery. The intermediate source milestone and final documentation
 commit preserve the exact three-path implementation boundary. Independent
 exact-final-head review and CI remain separate coordinator checks.
+
+## Stage D: restricted synthetic paid12 adapter
+
+Stage D was dispatched from exact synchronized checkpoint
+`70c9a6ebb2cec338f938122c8c570fd5b22a6f28`, descending from reviewed CI code
+`fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc`. Standalone and nested preflights
+both returned `status: synchronized` and `errors: []` before implementation;
+all nine baseline source pins matched. The adapter/test implementation milestone
+is `bff8e62c0e3aea0f99f3854152b70ec753e18122` on
+`codex/workshop-final180-stage-d-paid-build`. The selected application candidate
+remains `4d82e413e04fb2401ac7bc28dc828375ac662180`. This branch-local note requires
+coordinator reconciliation with parallel Stage C runbook changes under a new
+integration gate; Stage C supplies no predecessor code or authority here.
+
+`workshop_final180_paid_adapter.py` accepts twelve in-memory caller-selected
+bank/root slots: GrantBeforeWork, ExactScopeAndOwnerIsolation,
+PrepareSourceThenCanonicalReuse, ContextualMediaAndRevocation,
+HistoricalSourceAndRights and CustomerLegacyRoutesDenied, each with the literal
+`TestPostgresPaidCatalog` prefix and bankone/banktwo suffix. Each slot retains
+only the literal `paid-access/<bank>/<root>/go-events.jsonl` and
+`paid-access/<bank>/<root>/go-stderr.log` labels, byte hashes, ordered failure
+codes and synthetic status. The library opens no files and launches no runtime.
+Its only repository dependency is the unchanged B1 public parser/types. All
+outer input admission completes before any parse or hash, and slots translate
+independently in the twelve-slot canonical order.
+
+The constructed tests establish first-raised parser control flow, including
+`b' ' * 1048576 + b'\r'` yielding only `line_delimiter` with a clean receipt;
+the CR-free oversized line yields `line_size`. Parser errors plus receipt flags
+retain only that parser code and applicable receipt codes. Interruption takes
+top-status precedence; a skip combined with poison fails. Strict serialization
+revalidates caller-created diagnostics, exact primitive/container types, every
+literal row/ref/code/status and all nine false authority claims before emitting
+compact sorted ASCII JSON with one LF and the 65536-byte bound. Output/stderr
+text never becomes evidence or appears in the diagnostic.
+
+The inputs are constructed fake bytes and simulated receipts only. Identical
+bytes across both bank slots are admitted because bank attribution is caller
+context. Hash syntax and canonical serialization authenticate no manifest,
+process, candidate, bank, real Go execution or payment. The source fixture seeds
+paid orders/entitlements directly, and `payment_grants_persist` asserts
+`payment_calls == 0`; these grants establish no real Stripe charge, settlement,
+TEST/LIVE transaction, webhook or funds movement. Commerce remains separate.
+
+Initial paid tests failed because the module was absent; the strict serializer
+existence check then failed before its implementation. Four deliberate temporary
+mutations were detected for parser precedence, outer admission, top interruption
+precedence and exact primitive validation, after which the correct source was
+restored. The expanded focused suite passed 132 tests: paid 32, unchanged
+Stage A 52, B1 25 and B2 23. Negative CLI usage messages in unchanged Stage A
+are expected test output, not runtime execution.
+
+Full raw paid acceptance still needs independently admitted result/JUnit/
+manifest/process/environment/receipt binding, the complete minimum 344-ref raw
+inventory and dynamic support, migrations/SQL/HTTP/media/nested semantic
+validation, actual Go compatibility and authorized owned runtime execution.
+Genuine bank/payment evidence, trusted profile promotion, complete final180,
+staging and release acceptance remain separate blockers.
+`accepted_case_credit=0`, `profiles_enabled=false`, `enabled_tiers=[]`,
+`runtime_lock=null` and `run_record=null` remain invariant. All nine authority
+flags remain false: fixture_verified, product_candidate_verified,
+staging_verified, deployment_authorized, cutover_verified,
+implementation_authorized, runtime_execution_authorized,
+profile_promotion_authorized and merge_authorized. Runtime lock/run record are
+planning/report metadata and are absent from the diagnostic schema.
+
+Independent exact-successor-head review and CI readback remain pending at this
+branch-local documentation point. Parent CI was pending at the gate's recorded
+readback; this note asserts no parent or successor CI success. The coordinator
+records exact final SHA, independent review and CI job states externally.
+
+Final offline verification passed: paid 32 tests in 4.111s; combined paid and
+unchanged Stage A/B1/B2 132 tests in 13.186s; complete developer discovery 392
+tests in 499.409s; complete autonomy discovery 146 tests in 48.258s. All exited
+zero with no failures/errors. Twelve additional literal status-overlap checks
+also passed. The exact import/call AST boundary and public field/type checks,
+in-memory compile of both new modules, eight unchanged source pins,
+append-only runbook baseline, exact three-path checkpoint diff and
+`git diff --check` passed. Commands used were:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/dev/test_workshop_final180_paid_adapter.py -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/dev/test_workshop_final180_paid_adapter.py scripts/dev/test_workshop_final180_runner.py scripts/dev/test_workshop_final180_identity_adapter.py scripts/dev/test_workshop_final180_catalog_adapter.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/dev -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/autonomy -p 'test_*.py'
+git diff --check
+```
+
+These are offline code/constructed-profile checks. No producer fixture,
+application, provider, payment, browser, Docker/VM/cloud or secret-bearing
+runtime was executed for Stage D evidence. The coordinator subsequently
+reported parent PR232 exact-head CI success; this does not report successor
+CI or review success. Final immutable documentation/code head is sealed
+externally after this commit to avoid a self-referential SHA.
+
+### Stage D exact-type field-presence repair
+
+Independent review of `f476ba63068c7fc6a5be2d994874f4907b6daea5` found one P2:
+exact frozen dataclasses allocated without initialization could escape admission
+with `AttributeError` rather than the specified stable `AdapterError`. The
+review is retained externally at
+`/home/corp/autodata-evidence/final180-paid-exact-head-review/REVIEW.md`.
+
+The narrow repair milestone is
+`894f49b85dbabdf8f07c82074bc960f13d6910c1`. Required fields are now checked after
+exact class admission and before dereference, at their original validation
+stage. Missing context fields yield `context_invalid`; missing case identity,
+events, stderr or receipt fields yield `case_identity`, `input_type`,
+`stderr_type` or `receipt_invalid`, respectively. Incomplete exact
+`SimulatedExit` yields `receipt_invalid`; incomplete exact `PaidDiagnostic` or
+`PaidOutcome` yields `diagnostic_invalid`. Identity admission still precedes
+uniqueness, all byte admission precedes receipts, and event type/size checks
+still precede stderr. No catch-all exception conversion was added.
+
+Six failing-first regressions cover empty exact instances and each missing field
+across all five classes, plus conflicting invalid inputs for error precedence.
+Before repair they reproduced 37 `AttributeError` escapes in six tests; after
+repair, combined paid and unchanged Stage A/B1/B2 passed 138 tests in 21.373s
+(paid 38, unchanged 100). Both exact-gate preflights were rechecked as
+`status: synchronized`, `errors: []` before repair. The original three-path
+allowlist and all synthetic/payment/runtime/authority boundaries above remain
+in force. This repair adds no accepted credit or execution authority.
+
+Fresh post-repair verification passed against the repaired source: paid 38 tests
+in 4.065s, combined focused 138 in 21.373s, full developer discovery 398 in
+521.229s, and autonomy discovery 146 in 49.044s, all exit0 with no failures or
+errors. The five original independent-review probes now produce their exact
+stable `AdapterError` codes. Both new modules compile in memory; static imports,
+call boundaries, literal slots/refs/authority and all preserved-source checks
+remain intact. Exact final-head checks and SHA256-indexed red/green/broad-suite
+logs are retained in `/home/corp/autodata-evidence/final180-paid-build/`, with
+`checks.json` and `receipt.json` sealed externally after final commit/push.
+Independent successor-head review and CI readback remain coordinator-owned and
+pending at this documentation point. Credit remains 0; profiles/tiers remain
+disabled, runtime lock/run record null, and all nine authorities false.
+
+
+## Stage C/D integration verification and limits
+
+This restricted synthetic adoption preserves C_FINAL `c4dd59b3ac6a1afb74f7ad1d4f54ef1eb6e7fdad` and adopts the exact paid adapter/test from D_FINAL `2774cdfe44e7c99a0cae5606ad1ea5f20863c0d7`, authorized by checkpoint `4fe49f7f533aef94fd66c11ea735fef932f5b268`. The preceding `Stage C: restricted synthetic commerce14 adapter` and `Stage D: restricted synthetic paid12 adapter` sections remain their original standalone-stage receipts, with their original historical scope, gate identities and results. They are not combined execution receipts.
+
+The first 29905 bytes remain the complete C runbook; the next 8753 bytes are the exact D suffix after the shared 22069-byte prefix. The resulting historical 38658-byte prefix has SHA256 `61d0f6234606977618d007c39028bf34f349c9d60514b9f2f914a1429de3eecf`. No separator was inserted inside that prefix. The D adapter/test bytes and Git 100644 modes match the frozen source exactly; all C/predecessor/checkpoint planning/index/inventory/workflow bytes are protected.
+
+Fresh source-CI prerequisite readback confirmed [C run41894074351](https://github.com/lucronn/autodata/actions/runs/41894074351) and [D run41894466041](https://github.com/lucronn/autodata/actions/runs/41894466041), each at its full source SHA above, completed/success with both required jobs completed/success. Standalone and nested preflights at the authorizing checkpoint returned `status: synchronized`, `errors: []`. These source receipts do not establish integration-head CI.
+
+Measured local checks on the combined adopted tree (2026-11-04; each suite used `PYTHONDONTWRITEBYTECODE=1`, with independent suites launched concurrently):
+
+- Combined C/D and predecessor focused: `python3 -m unittest scripts.dev.test_workshop_final180_commerce_adapter scripts.dev.test_workshop_final180_paid_adapter scripts.dev.test_workshop_final180_runner scripts.dev.test_workshop_final180_identity_adapter scripts.dev.test_workshop_final180_catalog_adapter -v` — 169 tests, 0 skips, unittest duration 18.612s, wall duration 18.843s, exit code 0, `OK`.
+
+- Full developer discovery: `python3 -m unittest discover -s scripts/dev -p 'test_*.py' -v` — 429 tests, 0 skips, unittest duration 455.515s, wall duration 456.564s, exit code 0, `OK`.
+
+- Full autonomy discovery: `python3 -m unittest discover -s scripts/autonomy -p 'test_*.py' -v` — 146 tests, 0 skips, unittest duration 49.890s, wall duration 50.114s, exit code 0, `OK`.
+
+- In-memory syntax compilation of commerce adapter/test and paid adapter/test: four files, 0.020655s wall duration, exit code 0; no bytecode written. The command body was:
+
+```python
+from pathlib import Path
+for name in ("workshop_final180_commerce_adapter.py", "test_workshop_final180_commerce_adapter.py", "workshop_final180_paid_adapter.py", "test_workshop_final180_paid_adapter.py"):
+    path = Path("scripts/dev") / name
+    compile(path.read_bytes(), str(path), "exec")
+```
+
+- AST/import/call review passed: C retains dataclass/hashlib/json/re/expat, D retains dataclass/hashlib/json/re, and both import only the four public B1 symbols `parse_identity_events`, `GoEvent`, `AdapterError`, `SimulatedExit`. No cross-adapter/private import, module I/O, CLI, filesystem/process/network/clock/payment/provider behavior is introduced. Exact source bytes preserve the independently reviewed bodies. Static checks establish scope, not a hostile-code sandbox.
+
+- Exact working-tree allowlist, D source-byte/mode identity and historical-prefix checks passed; `git diff --check` returned exit code 0. Full external logs/results are retained at `/home/corp/autodata-evidence/final180-cd-integration-build/`. The clean committed code-head object checker, independent exact-head review and exact integration-head CI are separate subsequent receipts; no future self-referential code SHA is claimed here. Skips would remain unexecuted coverage; these three local suites reported none.
+
+Diagnostics remain exact integer accepted_case_credit=0, profiles_enabled=false, enabled_tiers=[], runtime_lock=null, run_record=null. All nine authorities remain false: fixture_verified=false, product_candidate_verified=false, staging_verified=false, deployment_authorized=false, cutover_verified=false, implementation_authorized=false, runtime_execution_authorized=false, profile_promotion_authorized=false, merge_authorized=false. External dispatch permits only the scoped source adoption and leaves these diagnostics unchanged.
+
+Fourteen commerce rows plus twelve paid rows remain restricted constructed-byte library observations and earn no 26 real accepted cases. This does not establish real fixtures, actual pytest/JUnit/Go provenance or runtime compatibility, full raw financial semantics, process/artifact/tool/environment/manifest provenance, authenticated bank identity, real payments/Stripe settlement, browser120/API21 or genuine same-head final180 execution. Bank-context ambiguity remains. No runtime supervision, enabled profile/evaluator/assembler promotion, staging, release, deployment, cutover or merge authority follows. No runtime/provider/payment/secret/actual fixture operation was performed for this adoption.
