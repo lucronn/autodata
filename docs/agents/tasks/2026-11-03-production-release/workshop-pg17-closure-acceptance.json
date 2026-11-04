@@ -1,0 +1,81 @@
+{
+  "task_id": "workshop-pg17-closure-acceptance",
+  "goal": "Record independent acceptance of the exact Task1A frozen signed33APK closure as input only, preserve acquisition/cleanup evidence and keep Task1B/image/Task2 unauthorized pending a new gate/review/root dispatch.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-closure-acceptance.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-pg17-closure-acceptance.json",
+  "allowed_paths": [],
+  "status": "synchronized",
+  "pre_implementation": {
+    "goal": "Record independent acceptance of the exact Task1A frozen signed33APK closure as input only, preserve acquisition/cleanup evidence and keep Task1B/image/Task2 unauthorized pending a new gate/review/root dispatch.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-closure-acceptance.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-acquisition-receipts.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-acquisition-overlay.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-inspected-preparation.md",
+      "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+      "docs/operations/workshop-gcp.md",
+      "docs/architecture/infrastructure-and-dev.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/verification/2026-11-04-pg17-runner-preparation.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-bind-targets.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-mount-order.md",
+      "docs/superpowers/plans/2026-11-04-workshop-pg17-control-filter.md"
+    ],
+    "todo": [
+      "After JS deadline coordinator releases Issue186/Project8 slot, synchronize exact reviewed closure/result/manifest/hash acceptance in Issue186/Project8 and canonical docs, preserving CURRENT full index/detail verbatim/hash; commit/push and pin docs-only full-SHA preflight.",
+      "Keep raw Task1A receipts and accepted-apk-manifest bytes immutable; use this adjacent acceptance index to record independent review without rewriting the original pending-review manifest status or either failed/quarantined attempt.",
+      "Accept only exact33APK filenames/versions/architectures/hashes in the pinned manifest as future input; verify all host hashes again before any later authorized consumer and reject mutation or substitution.",
+      "Require a NEW decision-complete synchronized Task1B gate, independent review, root verification and fresh dispatch before offline simulation/install/image commit or toolchain inspection; no execution authority follows from closure acceptance.",
+      "Keep original Task2 PG startup/harness separately unauthorized, all runtime/production/grants/services/deployment readiness unverified, and both historical33APK sets quarantined NEVER reusable."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T03:44:34.583302+00:00",
+    "source_integration_base_sha": "9f5c3850c9dd390f5243d7ed73713307d0fa8e70",
+    "implementation_allowlist": [],
+    "independent_closure_review": {
+      "status": "approved_exact_frozen_input_only",
+      "source": "saved_independent_audit_report_and_coordinator_relay",
+      "executed_gate_sha": "691f187302440509c23da99f4fb9e1adb9cd52a4",
+      "result_sha256": "19002cbf07ce2879e277e1a3e7bc1d69ac28ae8e919e29a85bc4d7a415ee3d43",
+      "manifest_sha256": "cfdcb2b2c2fd4d4c449397a8c7c3c38f1cc8247d891d8aa89effb6039ca31238",
+      "report_path": "/tmp/autodata-pg17-task1a-closure-review.md",
+      "report_sha256": "bb0173a6f7a46f52fd7a4c3bfbcfcf00d2db5714f179abfe1124675a69616b5b"
+    },
+    "input_acceptance_only": true,
+    "task1b_authorized": false,
+    "task2_authorized": false,
+    "runtime_verified": false,
+    "production_ready": false,
+    "evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-closure-acceptance-evidence.json",
+    "tracking_sync": {
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621963547",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+      "project_note_field": "Source or dependency reference",
+      "verified_at": "2026-11-04T03:44:34.583302+00:00",
+      "issue_body_sha256": "22b0000f41665fd7a0056c28ffd7c3e0246abd3276dec622396ef227d140ca41",
+      "issue_comment_sha256": "c9f9adecc3b4f7ae164d62823aaa90af5d9a777f8200654f899d37e2167da8be",
+      "project_text_sha256": "62e664623573de0c2c73eae39e34f8a6e4ffadf912f2b555f6eefe5d7842ed37",
+      "prior_project_text_sha256": "18cb29e9df58881ba2e10584a80a4394ea5346ff5a9493e2eb4967c5592a8ea7",
+      "full_prior_project_index_preserved_in_issue_comment": true,
+      "prior_js_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621946752",
+      "prior_js_detail_sha256": "f7f42d03cdd473674828c3d12f3fb7baebcf4283b67e55db1c750f9c70696669",
+      "full_prior_js_detail_preserved_verbatim_in_issue_comment": true
+    }
+  },
+  "todo": [
+    "After JS deadline coordinator releases Issue186/Project8 slot, synchronize exact reviewed closure/result/manifest/hash acceptance in Issue186/Project8 and canonical docs, preserving CURRENT full index/detail verbatim/hash; commit/push and pin docs-only full-SHA preflight.",
+    "Keep raw Task1A receipts and accepted-apk-manifest bytes immutable; use this adjacent acceptance index to record independent review without rewriting the original pending-review manifest status or either failed/quarantined attempt.",
+    "Accept only exact33APK filenames/versions/architectures/hashes in the pinned manifest as future input; verify all host hashes again before any later authorized consumer and reject mutation or substitution.",
+    "Require a NEW decision-complete synchronized Task1B gate, independent review, root verification and fresh dispatch before offline simulation/install/image commit or toolchain inspection; no execution authority follows from closure acceptance.",
+    "Keep original Task2 PG startup/harness separately unauthorized, all runtime/production/grants/services/deployment readiness unverified, and both historical33APK sets quarantined NEVER reusable."
+  ],
+  "execution": {
+    "mode": "closure_input_acceptance_docs_only",
+    "tracking": "synchronized",
+    "task1b": "requires_new_gate_review_root_dispatch",
+    "task2": "unauthorized"
+  }
+}

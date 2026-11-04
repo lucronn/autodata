@@ -442,3 +442,20 @@ Concrete adoption todo:
 Reviewed Cc-safe acquisition receipt adoption synchronized by live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6621879747 and Project8 readback at `2026-11-04T03:38:22.919883+00:00`; exact hashes in dedicated record. Full prior Project index preserved verbatim. Source exact-plan independent review approved; new coordinator preparation dispatch required; all adoption Docker/download/install/image/harness actions remain unexecuted.
 
 Pinned reviewed Cc-safe acquisition receipt adoption checkpoint: `691f187302440509c23da99f4fb9e1adb9cd52a4`; full-SHA preflight `status: synchronized`, `errors: []`, exit0. Receipt `docs/agents/records/2026-11-04-workshop-pg17-receipts-adoption-preflight.json`; exact-pin Issue186/Project8 readback https://github.com/lucronn/autodata/issues/186#issuecomment-6621883014. Reviewed source plan approved; fresh coordinator preparation dispatch required. No container/image/package/harness action or readiness claim.
+
+
+## PG17 independently approved frozen closure: docs-only index
+
+Record independent acceptance of the exact Task1A frozen signed33APK closure as input only, preserve acquisition/cleanup evidence and keep Task1B/image/Task2 unauthorized pending a new gate/review/root dispatch.
+
+Acceptance plan `docs/superpowers/plans/2026-11-04-workshop-pg17-closure-acceptance.md`; record `docs/agents/records/2026-11-04-workshop-pg17-closure-acceptance.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-pg17-closure-acceptance.json`; exact evidence index `docs/agents/records/2026-11-04-workshop-pg17-closure-acceptance-evidence.json`. Executed691f187 result SHA19002cbf07ce2879e277e1a3e7bc1d69ac28ae8e919e29a85bc4d7a415ee3d43; frozen33APK manifest SHAcfdcb2b2c2fd4d4c449397a8c7c3c38f1cc8247d891d8aa89effb6039ca31238. Independent audit approval saved at `/tmp/autodata-pg17-task1a-closure-review.md`, SHA256 `bb0173a6f7a46f52fd7a4c3bfbcfcf00d2db5714f179abfe1124675a69616b5b`, and relayed directly by coordinator; all174receipt refs/33host hashes verified, exact cleanup/absence/four-volume equality passed. Accepted as frozen input only; raw pending-review status remains immutable. NEW Task1B gate/review/root dispatch required; offline simulation/install/image/Task2 remain unauthorized/unexecuted, both prior33APK quarantines NEVER reusable. JS deadline slot released; frozen-input acceptance index synchronized. No Docker/install/harness.
+
+Concrete todo:
+
+- [ ] After JS deadline coordinator releases Issue186/Project8 slot, synchronize exact reviewed closure/result/manifest/hash acceptance in Issue186/Project8 and canonical docs, preserving CURRENT full index/detail verbatim/hash; commit/push and pin docs-only full-SHA preflight.
+- [ ] Keep raw Task1A receipts and accepted-apk-manifest bytes immutable; use this adjacent acceptance index to record independent review without rewriting the original pending-review manifest status or either failed/quarantined attempt.
+- [ ] Accept only exact33APK filenames/versions/architectures/hashes in the pinned manifest as future input; verify all host hashes again before any later authorized consumer and reject mutation or substitution.
+- [ ] Require a NEW decision-complete synchronized Task1B gate, independent review, root verification and fresh dispatch before offline simulation/install/image commit or toolchain inspection; no execution authority follows from closure acceptance.
+- [ ] Keep original Task2 PG startup/harness separately unauthorized, all runtime/production/grants/services/deployment readiness unverified, and both historical33APK sets quarantined NEVER reusable.
+
+Frozen-input closure acceptance synchronized by live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6621963547 and Project8 readback at `2026-11-04T03:44:34.583302+00:00`; exact hashes in dedicated record. Full prior Project index preserved verbatim. Input closure independent approval recorded; NEW Task1B synchronized gate/review/root dispatch required; no Docker/install/image/PG/harness actions.
