@@ -465,3 +465,16 @@ See `docs/agents/records/2026-11-04-r6-paid-scope-completion.json` for the three
 milestones, exact commands/log hashes, todo disposition, fresh full tracking
 readback and retained release blockers. These parser-tool checks add zero verified
 cases and grant no runtime, profile, merge or deployment authority.
+
+
+## 2026-11-04 proposed browser execution-contract addendum
+
+Status: Issue/Project tracking synchronized at 2026-11-04T20:03:11Z; executable contract blocked and exact documentation checkpoint review pending. Candidate `4d82e413e04fb2401ac7bc28dc828375ac662180` / tree `d9fb2a8f49beacd009374a76327d0736c1fc9b0a`. Canonical proposed contract: `docs/verification/2026-11-04-workshop-browser-execution-contract.md` and `docs/agents/specs/2026-11-04-workshop-browser-execution-contract.json`. This dated addendum grants no execution, implementation or release authority and preserves every preceding byte.
+
+Exact inventories remain API21 and DTO40×3=120 (141 browser; full180=5+8+14+12+120+21), zero new accepted-case credit and all verification/authority flags false. Missing supervisor/runtime/ownership/readiness/scheduling/evidence/recovery/cleanup bindings fail closed. DTO4400s fixture versus4440s browser needs finite proof or separate timer gate;4560s outer does not repair it. API2100s is proposed, distinct from historical2350s/3300s.
+
+Producer `/artifacts/workshop-browser-api.xml` is retained; proposed byte-preserving `workshop-browser-tests.xml` transport adapter is separately gated and disabled. DTO source16MiB trace versus assembler8MiB per-file ceiling is incompatible; preserve complete raw failed/interrupted diagnostics outside disabled promotion pending separate transport gate. No historical evidence is rewritten.
+
+Coordinator-only actual tracking readback, exact-checkpoint preflight and independent review precede any separate code/probe/acquisition/fixture service gate. All eight authentic staging slots remain distinct later2 protected collector/enrollment obligations; no admitted live browser command, no fixture-to-authentic credit, no deployment/cutover.
+
+Tracking readback: https://github.com/lucronn/autodata/issues/186#issuecomment-6640772107. Draft preservation/inventory review PASS; closed executable contract BLOCKED on supervisor static bindings, support/probe schemas, DTO timer proof and 16MiB/8MiB transport. No browser execution credit or authority.

@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "status": "blocked_static_contract_pending_exact_checkpoint_review",
+  "goal": "Freeze the candidate-bound API21/DTO120 browser execution contract as documentation only, preserving exact fixture inventories and zero accepted-case credit while withholding implementation, runtime, host, network, provider, payment and release authority.",
+  "todo": [
+    "Pin product candidate 4d82e413e04fb2401ac7bc28dc828375ac662180 and tree d9fb2a8f49beacd009374a76327d0736c1fc9b0a; preserve historical API21/DTO120 evidence and all current false verification and authority flags.",
+    "Write the exact browser supervisor, command/environment, runtime preparation, ownership, readiness, timeout, durable interruption/recovery, evidence, transport and cleanup contract in the five new canonical documents; keep execution blocked wherever a required static decision or independently admitted runtime binding is absent.",
+    "Append only the browser-contract addenda to the existing customer UI and release acceptance runbooks, and append exactly one browser-contract queue task while preserving every predecessor queue value and entry.",
+    "Have the coordinator preserve and append the identical goal, todo, eight documentation paths, candidate/tree and references in Issue186 and Project8; retain before/readback hashes and synchronize the canonical record and nested task record only after actual readback.",
+    "Commit and promptly push the validated documentation-only checkpoint on codex/workshop-browser-execution-contract-gate; bind the actual full checkpoint SHA externally, run committed-base machine preflight, and obtain independent exact-checkpoint scope and contract review before any next-gate decision.",
+    "Return the reviewed documentation checkpoint and remaining blockers to the coordinator; require separate exact-path synchronized gates for code, timer or transport repairs, initial runtime probes, acquisition, fixture service execution, authentic staging, deployment or cutover."
+  ],
+  "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "source_candidate_tree": "d9fb2a8f49beacd009374a76327d0736c1fc9b0a",
+  "authorities": {
+    "implementation_dispatch": false,
+    "host_execution": false,
+    "runtime_preparation_probe": false,
+    "image_build_pull_install": false,
+    "service_start": false,
+    "fixture_execution": false,
+    "network": false,
+    "provider": false,
+    "payment": false,
+    "account_mutation": false,
+    "cloud": false,
+    "trust_profile_promotion": false,
+    "merge": false,
+    "release": false,
+    "deployment": false,
+    "cutover": false
+  },
+  "verification_state": {
+    "current_source_browser_acceptance": false,
+    "fixture_api21": false,
+    "fixture_dto120": false,
+    "final180": false,
+    "staging": false,
+    "all_trust_profiles_enabled": false
+  },
+  "accepted_new_case_credit": 0,
+  "allowed_implementation_paths": [],
+  "task_id": "2026-11-04-workshop-browser-execution-contract",
+  "repository": "lucronn/autodata",
+  "allowed_paths": [],
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-browser-execution-contract.md",
+    "docs/agents/specs/2026-11-04-workshop-browser-execution-contract.json",
+    "docs/agents/records/2026-11-04-workshop-browser-execution-contract.json",
+    "docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-execution-contract.json",
+    "docs/verification/2026-11-04-workshop-browser-execution-contract.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json",
+    "docs/verification/workshop-customer-ui-runbook.md",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-04-workshop-browser-execution-contract.md",
+    "docs/agents/specs/2026-11-04-workshop-browser-execution-contract.json"
+  ],
+  "outputs": [
+    "docs/superpowers/plans/2026-11-04-workshop-browser-execution-contract.md",
+    "docs/agents/specs/2026-11-04-workshop-browser-execution-contract.json",
+    "docs/agents/records/2026-11-04-workshop-browser-execution-contract.json",
+    "docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-execution-contract.json",
+    "docs/verification/2026-11-04-workshop-browser-execution-contract.md"
+  ],
+  "pre_implementation": {
+    "goal": "Freeze the candidate-bound API21/DTO120 browser execution contract as documentation only, preserving exact fixture inventories and zero accepted-case credit while withholding implementation, runtime, host, network, provider, payment and release authority.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-browser-execution-contract.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-04-workshop-browser-execution-contract.json",
+      "docs/verification/2026-11-04-workshop-browser-execution-contract.md",
+      "docs/verification/workshop-customer-ui-runbook.md",
+      "docs/verification/release-acceptance-runbook.md"
+    ],
+    "todo": [
+      "Pin product candidate 4d82e413e04fb2401ac7bc28dc828375ac662180 and tree d9fb2a8f49beacd009374a76327d0736c1fc9b0a; preserve historical API21/DTO120 evidence and all current false verification and authority flags.",
+      "Write the exact browser supervisor, command/environment, runtime preparation, ownership, readiness, timeout, durable interruption/recovery, evidence, transport and cleanup contract in the five new canonical documents; keep execution blocked wherever a required static decision or independently admitted runtime binding is absent.",
+      "Append only the browser-contract addenda to the existing customer UI and release acceptance runbooks, and append exactly one browser-contract queue task while preserving every predecessor queue value and entry.",
+      "Have the coordinator preserve and append the identical goal, todo, eight documentation paths, candidate/tree and references in Issue186 and Project8; retain before/readback hashes and synchronize the canonical record and nested task record only after actual readback.",
+      "Commit and promptly push the validated documentation-only checkpoint on codex/workshop-browser-execution-contract-gate; bind the actual full checkpoint SHA externally, run committed-base machine preflight, and obtain independent exact-checkpoint scope and contract review before any next-gate decision.",
+      "Return the reviewed documentation checkpoint and remaining blockers to the coordinator; require separate exact-path synchronized gates for code, timer or transport repairs, initial runtime probes, acquisition, fixture service execution, authentic staging, deployment or cutover."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T20:03:11Z",
+    "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "source_candidate_tree": "d9fb2a8f49beacd009374a76327d0736c1fc9b0a",
+    "allowed_gate_document_paths": [
+      "docs/superpowers/plans/2026-11-04-workshop-browser-execution-contract.md",
+      "docs/agents/specs/2026-11-04-workshop-browser-execution-contract.json",
+      "docs/agents/records/2026-11-04-workshop-browser-execution-contract.json",
+      "docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-execution-contract.json",
+      "docs/verification/2026-11-04-workshop-browser-execution-contract.md",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json",
+      "docs/verification/workshop-customer-ui-runbook.md",
+      "docs/verification/release-acceptance-runbook.md"
+    ],
+    "allowed_implementation_paths": [],
+    "authorities": {
+      "implementation_dispatch": false,
+      "host_execution": false,
+      "runtime_preparation_probe": false,
+      "image_build_pull_install": false,
+      "service_start": false,
+      "fixture_execution": false,
+      "network": false,
+      "provider": false,
+      "payment": false,
+      "account_mutation": false,
+      "cloud": false,
+      "trust_profile_promotion": false,
+      "merge": false,
+      "release": false,
+      "deployment": false,
+      "cutover": false
+    },
+    "accepted_new_case_credit": 0,
+    "tracking_sync": {
+      "status": "synchronized_live_readback",
+      "coordinator_only": true,
+      "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6640772107"
+    },
+    "checkpoint_sha": null,
+    "tracking_receipts": {
+      "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6640772107",
+      "receipt_path": "/home/corp/autodata-evidence/api21-browser-contract-tracking/receipt.json",
+      "receipt_sha256": "b927fb31b6121e5d58b2eb1553ff00d58c11681b1fc13ae84ae65483cae06315",
+      "issue_before_sha256": "13840d883538e4d3e8c7cf0e1d04881629a9fbf55acc9ed59de9972455436c5b",
+      "issue_after_sha256": "13c083250c24527abfc7c3f161fc40f06f00bb1c8b54f3f442b2a60480fffba4",
+      "project_before_sha256": "2c9ba1bad47df766201799cfacdf4e4addd7e76553606844c65ed0c9250e263a",
+      "project_after_sha256": "d6a65e70df089eaf5875a527a64190ef0ca5e7834d68be9cdee93faf3dd8bafe",
+      "prior_comments_preserved": true,
+      "other_project_fields_unchanged": true,
+      "literal_goal_todo_paths_in_comment": true,
+      "literal_goal_in_project_source": true
+    },
+    "verification_state": {
+      "current_source_browser_acceptance": false,
+      "fixture_api21": false,
+      "fixture_dto120": false,
+      "final180": false,
+      "staging": false,
+      "all_trust_profiles_enabled": false
+    },
+    "scope_proposal_review": "PASS_external_scope_only_aef27cc9d22f15b3d9b7a089a3c63686e6031dab7da6741607637804ca605799",
+    "closed_executable_contract": "blocked_missing_supervisor_static_bindings_support_schemas_timer_and_transport",
+    "draft_preservation_review": "PASS_external_draft_only_8f0428446cc5d77659002dd55e758d5e6ab312310c73e58d859cafa4e0e589e0"
+  },
+  "dispatch_mode": "none_static_contract_blocked",
+  "independent_review_required": true,
+  "acceptance_tests": [
+    "Exact eight-path authoring boundary, five new files, two original-byte-prefix-preserved runbooks and one coordinator-only semantic queue append.",
+    "Literal goal/todo/eight paths/refs/candidate/tree equal across plan/spec/record/task/queue proposal and tracking readback.",
+    "Exact API21 and DTO40x3 inventory; zero credit and all authorities/verification false.",
+    "Full supervisor/readiness/deadline/ownership/durable recovery/evidence/transport/cleanup contract fails closed on unresolved fields.",
+    "Committed clean exact-checkpoint record equality and canonical machine preflight after synchronization; independent exact-checkpoint review."
+  ],
+  "tracking_sync": {
+    "status": "synchronized_live_readback",
+    "coordinator_only": true,
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6640772107"
+  }
+}

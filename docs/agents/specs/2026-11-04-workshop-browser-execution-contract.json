@@ -1,0 +1,1395 @@
+{
+  "schema_version": 1,
+  "status": "blocked_static_contract_pending_exact_checkpoint_review",
+  "goal": "Freeze the candidate-bound API21/DTO120 browser execution contract as documentation only, preserving exact fixture inventories and zero accepted-case credit while withholding implementation, runtime, host, network, provider, payment and release authority.",
+  "todo": [
+    "Pin product candidate 4d82e413e04fb2401ac7bc28dc828375ac662180 and tree d9fb2a8f49beacd009374a76327d0736c1fc9b0a; preserve historical API21/DTO120 evidence and all current false verification and authority flags.",
+    "Write the exact browser supervisor, command/environment, runtime preparation, ownership, readiness, timeout, durable interruption/recovery, evidence, transport and cleanup contract in the five new canonical documents; keep execution blocked wherever a required static decision or independently admitted runtime binding is absent.",
+    "Append only the browser-contract addenda to the existing customer UI and release acceptance runbooks, and append exactly one browser-contract queue task while preserving every predecessor queue value and entry.",
+    "Have the coordinator preserve and append the identical goal, todo, eight documentation paths, candidate/tree and references in Issue186 and Project8; retain before/readback hashes and synchronize the canonical record and nested task record only after actual readback.",
+    "Commit and promptly push the validated documentation-only checkpoint on codex/workshop-browser-execution-contract-gate; bind the actual full checkpoint SHA externally, run committed-base machine preflight, and obtain independent exact-checkpoint scope and contract review before any next-gate decision.",
+    "Return the reviewed documentation checkpoint and remaining blockers to the coordinator; require separate exact-path synchronized gates for code, timer or transport repairs, initial runtime probes, acquisition, fixture service execution, authentic staging, deployment or cutover."
+  ],
+  "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "source_candidate_tree": "d9fb2a8f49beacd009374a76327d0736c1fc9b0a",
+  "authorities": {
+    "implementation_dispatch": false,
+    "host_execution": false,
+    "runtime_preparation_probe": false,
+    "image_build_pull_install": false,
+    "service_start": false,
+    "fixture_execution": false,
+    "network": false,
+    "provider": false,
+    "payment": false,
+    "account_mutation": false,
+    "cloud": false,
+    "trust_profile_promotion": false,
+    "merge": false,
+    "release": false,
+    "deployment": false,
+    "cutover": false
+  },
+  "verification_state": {
+    "current_source_browser_acceptance": false,
+    "fixture_api21": false,
+    "fixture_dto120": false,
+    "final180": false,
+    "staging": false,
+    "all_trust_profiles_enabled": false
+  },
+  "accepted_new_case_credit": 0,
+  "allowed_implementation_paths": [],
+  "contract_id": "api21-dto120-browser-contract-v1-blocked",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-browser-execution-contract.md",
+    "docs/agents/specs/2026-11-04-workshop-browser-execution-contract.json",
+    "docs/agents/records/2026-11-04-workshop-browser-execution-contract.json",
+    "docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-execution-contract.json",
+    "docs/verification/2026-11-04-workshop-browser-execution-contract.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json",
+    "docs/verification/workshop-customer-ui-runbook.md",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "checkpoint_sha": null,
+  "source_sha256": {
+    "workers/ingestion-python/tests/test_workshop_browser_integration.py": "b16ab3953b863a2c7156cf57936a2bca4f56f2c3078c68f93ba616318793e801",
+    "workers/ingestion-python/tests/lifecycle_support.py": "746eba57bfffb760e2f779d0d0494125f8b559b07de5ff6ec11099d517bf76dc",
+    "workers/ingestion-python/tests/test_paid_catalog_api_integration.py": "efd3098953dde54d3fc38c167db1f56ab97225c185fb73f032fe7f3289b70198",
+    "scripts/dev/workshop_browser_smoke.py": "45299888e56a78679148f575ac071856f0a3c1941faf059cd586ff2980069de8",
+    "scripts/dev/fixtures/workshop_customer/scenarios.json": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+    "scripts/dev/fixtures/workshop_customer/firebase_transport.js": "96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63",
+    "scripts/dev/fixtures/workshop_customer/hostile_source.json": "076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1",
+    "scripts/dev/fixtures/workshop_customer/stripe_checkout.html": "26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083",
+    "apps/api-go/workshop_browser_fixture_test.go": "7cf50daeb190686dc55c33c90056b87a62eece96640759b180f1282a0a1a6dd2",
+    "apps/api-go/workshop/firebase-web.mjs": "bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1",
+    "infra/compose/compose.article-lifecycle-test.yaml": "c9c0c6f58d7e60efe574c33000b97c087834163bffd8bc92ed16322587d2dd4e"
+  },
+  "identities": {
+    "product_source": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "product_tree": "d9fb2a8f49beacd009374a76327d0736c1fc9b0a",
+    "proposed_branch": "codex/workshop-browser-execution-contract-gate",
+    "proposed_parent": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "documentation_checkpoint": null,
+    "supervisor_tooling_checkpoint": null,
+    "runtime_image": null,
+    "independent_runtime_admission": null,
+    "rule": "Identity roles are separate. Missing or mismatched identity blocks; no adoption of C/D/R3 tooling or primary HEAD."
+  },
+  "inventory": {
+    "api_count": 21,
+    "api_cases": [
+      {
+        "id": "test_browser_google_exchange_checkout_library_real_api[chromium]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_google_exchange_checkout_library_real_api[chromium]",
+        "test": "test_browser_google_exchange_checkout_library_real_api",
+        "browser": "chromium",
+        "provider": "bankone",
+        "case_dir": "/artifacts/workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone"
+      },
+      {
+        "id": "test_browser_google_exchange_checkout_library_real_api[firefox]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_google_exchange_checkout_library_real_api[firefox]",
+        "test": "test_browser_google_exchange_checkout_library_real_api",
+        "browser": "firefox",
+        "provider": "bankone",
+        "case_dir": "/artifacts/workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone"
+      },
+      {
+        "id": "test_browser_google_exchange_checkout_library_real_api[webkit]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_google_exchange_checkout_library_real_api[webkit]",
+        "test": "test_browser_google_exchange_checkout_library_real_api",
+        "browser": "webkit",
+        "provider": "bankone",
+        "case_dir": "/artifacts/workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone"
+      },
+      {
+        "id": "test_browser_owned_source_canonical_and_media_real_api[chromium-bankone]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_owned_source_canonical_and_media_real_api[chromium-bankone]",
+        "test": "test_browser_owned_source_canonical_and_media_real_api",
+        "browser": "chromium",
+        "provider": "bankone",
+        "case_dir": "/artifacts/workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone"
+      },
+      {
+        "id": "test_browser_owned_source_canonical_and_media_real_api[chromium-banktwo]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_owned_source_canonical_and_media_real_api[chromium-banktwo]",
+        "test": "test_browser_owned_source_canonical_and_media_real_api",
+        "browser": "chromium",
+        "provider": "banktwo",
+        "case_dir": "/artifacts/workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo"
+      },
+      {
+        "id": "test_browser_owned_source_canonical_and_media_real_api[firefox-bankone]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_owned_source_canonical_and_media_real_api[firefox-bankone]",
+        "test": "test_browser_owned_source_canonical_and_media_real_api",
+        "browser": "firefox",
+        "provider": "bankone",
+        "case_dir": "/artifacts/workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone"
+      },
+      {
+        "id": "test_browser_owned_source_canonical_and_media_real_api[firefox-banktwo]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_owned_source_canonical_and_media_real_api[firefox-banktwo]",
+        "test": "test_browser_owned_source_canonical_and_media_real_api",
+        "browser": "firefox",
+        "provider": "banktwo",
+        "case_dir": "/artifacts/workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo"
+      },
+      {
+        "id": "test_browser_owned_source_canonical_and_media_real_api[webkit-bankone]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_owned_source_canonical_and_media_real_api[webkit-bankone]",
+        "test": "test_browser_owned_source_canonical_and_media_real_api",
+        "browser": "webkit",
+        "provider": "bankone",
+        "case_dir": "/artifacts/workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone"
+      },
+      {
+        "id": "test_browser_owned_source_canonical_and_media_real_api[webkit-banktwo]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_owned_source_canonical_and_media_real_api[webkit-banktwo]",
+        "test": "test_browser_owned_source_canonical_and_media_real_api",
+        "browser": "webkit",
+        "provider": "banktwo",
+        "case_dir": "/artifacts/workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo"
+      },
+      {
+        "id": "test_browser_account_scope_and_revocation_real_api[chromium-bankone]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_account_scope_and_revocation_real_api[chromium-bankone]",
+        "test": "test_browser_account_scope_and_revocation_real_api",
+        "browser": "chromium",
+        "provider": "bankone",
+        "case_dir": "/artifacts/workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone"
+      },
+      {
+        "id": "test_browser_account_scope_and_revocation_real_api[chromium-banktwo]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_account_scope_and_revocation_real_api[chromium-banktwo]",
+        "test": "test_browser_account_scope_and_revocation_real_api",
+        "browser": "chromium",
+        "provider": "banktwo",
+        "case_dir": "/artifacts/workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo"
+      },
+      {
+        "id": "test_browser_account_scope_and_revocation_real_api[firefox-bankone]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_account_scope_and_revocation_real_api[firefox-bankone]",
+        "test": "test_browser_account_scope_and_revocation_real_api",
+        "browser": "firefox",
+        "provider": "bankone",
+        "case_dir": "/artifacts/workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone"
+      },
+      {
+        "id": "test_browser_account_scope_and_revocation_real_api[firefox-banktwo]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_account_scope_and_revocation_real_api[firefox-banktwo]",
+        "test": "test_browser_account_scope_and_revocation_real_api",
+        "browser": "firefox",
+        "provider": "banktwo",
+        "case_dir": "/artifacts/workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo"
+      },
+      {
+        "id": "test_browser_account_scope_and_revocation_real_api[webkit-bankone]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_account_scope_and_revocation_real_api[webkit-bankone]",
+        "test": "test_browser_account_scope_and_revocation_real_api",
+        "browser": "webkit",
+        "provider": "bankone",
+        "case_dir": "/artifacts/workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone"
+      },
+      {
+        "id": "test_browser_account_scope_and_revocation_real_api[webkit-banktwo]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_account_scope_and_revocation_real_api[webkit-banktwo]",
+        "test": "test_browser_account_scope_and_revocation_real_api",
+        "browser": "webkit",
+        "provider": "banktwo",
+        "case_dir": "/artifacts/workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo"
+      },
+      {
+        "id": "test_browser_signed_refund_blocks_old_links_real_api[chromium-bankone]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_signed_refund_blocks_old_links_real_api[chromium-bankone]",
+        "test": "test_browser_signed_refund_blocks_old_links_real_api",
+        "browser": "chromium",
+        "provider": "bankone",
+        "case_dir": "/artifacts/workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone"
+      },
+      {
+        "id": "test_browser_signed_refund_blocks_old_links_real_api[chromium-banktwo]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_signed_refund_blocks_old_links_real_api[chromium-banktwo]",
+        "test": "test_browser_signed_refund_blocks_old_links_real_api",
+        "browser": "chromium",
+        "provider": "banktwo",
+        "case_dir": "/artifacts/workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo"
+      },
+      {
+        "id": "test_browser_signed_refund_blocks_old_links_real_api[firefox-bankone]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_signed_refund_blocks_old_links_real_api[firefox-bankone]",
+        "test": "test_browser_signed_refund_blocks_old_links_real_api",
+        "browser": "firefox",
+        "provider": "bankone",
+        "case_dir": "/artifacts/workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone"
+      },
+      {
+        "id": "test_browser_signed_refund_blocks_old_links_real_api[firefox-banktwo]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_signed_refund_blocks_old_links_real_api[firefox-banktwo]",
+        "test": "test_browser_signed_refund_blocks_old_links_real_api",
+        "browser": "firefox",
+        "provider": "banktwo",
+        "case_dir": "/artifacts/workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo"
+      },
+      {
+        "id": "test_browser_signed_refund_blocks_old_links_real_api[webkit-bankone]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_signed_refund_blocks_old_links_real_api[webkit-bankone]",
+        "test": "test_browser_signed_refund_blocks_old_links_real_api",
+        "browser": "webkit",
+        "provider": "bankone",
+        "case_dir": "/artifacts/workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone"
+      },
+      {
+        "id": "test_browser_signed_refund_blocks_old_links_real_api[webkit-banktwo]",
+        "pytest_node": "workers/ingestion-python/tests/test_workshop_browser_integration.py::test_browser_signed_refund_blocks_old_links_real_api[webkit-banktwo]",
+        "test": "test_browser_signed_refund_blocks_old_links_real_api",
+        "browser": "webkit",
+        "provider": "banktwo",
+        "case_dir": "/artifacts/workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo"
+      }
+    ],
+    "dto_scenario_count": 40,
+    "dto_scenarios": [
+      "bankone-cascade",
+      "banktwo-cascade",
+      "dual-bank-coverage",
+      "one-bank-unavailable",
+      "pending-no-content",
+      "source-to-canonical",
+      "source-rewrite-failure",
+      "review-required",
+      "warm-reload",
+      "selection-change-in-flight",
+      "source-review-change-in-flight",
+      "cancel-and-retry",
+      "history-restore",
+      "document-only",
+      "missing-media",
+      "withdrawal",
+      "keyboard-print-mobile",
+      "source-media-isolation",
+      "auth-cookie-reload",
+      "google-popup-exchange",
+      "google-popup-blocked",
+      "google-popup-cancelled",
+      "google-stale-reauthentication",
+      "firebase-memory-persistence",
+      "signin-unavailable-local",
+      "signin-malformed-config",
+      "session-expired",
+      "session-blocked",
+      "auth-dependency-unavailable",
+      "quote-exact-scope",
+      "terms-config-unavailable",
+      "checkout-double-click-retry",
+      "checkout-processing-return",
+      "checkout-untrusted-return",
+      "checkout-expired",
+      "already-owned-no-pay",
+      "library-pagination-and-states",
+      "paid-prepare-before-poll",
+      "media-renew-coalesced",
+      "logout-and-bfcache-clear"
+    ],
+    "engines": [
+      "chromium",
+      "firefox",
+      "webkit"
+    ],
+    "dto_count": 120,
+    "dto_cases": [
+      {
+        "id": "chromium/bankone-cascade",
+        "browser": "chromium",
+        "scenario": "bankone-cascade"
+      },
+      {
+        "id": "chromium/banktwo-cascade",
+        "browser": "chromium",
+        "scenario": "banktwo-cascade"
+      },
+      {
+        "id": "chromium/dual-bank-coverage",
+        "browser": "chromium",
+        "scenario": "dual-bank-coverage"
+      },
+      {
+        "id": "chromium/one-bank-unavailable",
+        "browser": "chromium",
+        "scenario": "one-bank-unavailable"
+      },
+      {
+        "id": "chromium/pending-no-content",
+        "browser": "chromium",
+        "scenario": "pending-no-content"
+      },
+      {
+        "id": "chromium/source-to-canonical",
+        "browser": "chromium",
+        "scenario": "source-to-canonical"
+      },
+      {
+        "id": "chromium/source-rewrite-failure",
+        "browser": "chromium",
+        "scenario": "source-rewrite-failure"
+      },
+      {
+        "id": "chromium/review-required",
+        "browser": "chromium",
+        "scenario": "review-required"
+      },
+      {
+        "id": "chromium/warm-reload",
+        "browser": "chromium",
+        "scenario": "warm-reload"
+      },
+      {
+        "id": "chromium/selection-change-in-flight",
+        "browser": "chromium",
+        "scenario": "selection-change-in-flight"
+      },
+      {
+        "id": "chromium/source-review-change-in-flight",
+        "browser": "chromium",
+        "scenario": "source-review-change-in-flight"
+      },
+      {
+        "id": "chromium/cancel-and-retry",
+        "browser": "chromium",
+        "scenario": "cancel-and-retry"
+      },
+      {
+        "id": "chromium/history-restore",
+        "browser": "chromium",
+        "scenario": "history-restore"
+      },
+      {
+        "id": "chromium/document-only",
+        "browser": "chromium",
+        "scenario": "document-only"
+      },
+      {
+        "id": "chromium/missing-media",
+        "browser": "chromium",
+        "scenario": "missing-media"
+      },
+      {
+        "id": "chromium/withdrawal",
+        "browser": "chromium",
+        "scenario": "withdrawal"
+      },
+      {
+        "id": "chromium/keyboard-print-mobile",
+        "browser": "chromium",
+        "scenario": "keyboard-print-mobile"
+      },
+      {
+        "id": "chromium/source-media-isolation",
+        "browser": "chromium",
+        "scenario": "source-media-isolation"
+      },
+      {
+        "id": "chromium/auth-cookie-reload",
+        "browser": "chromium",
+        "scenario": "auth-cookie-reload"
+      },
+      {
+        "id": "chromium/google-popup-exchange",
+        "browser": "chromium",
+        "scenario": "google-popup-exchange"
+      },
+      {
+        "id": "chromium/google-popup-blocked",
+        "browser": "chromium",
+        "scenario": "google-popup-blocked"
+      },
+      {
+        "id": "chromium/google-popup-cancelled",
+        "browser": "chromium",
+        "scenario": "google-popup-cancelled"
+      },
+      {
+        "id": "chromium/google-stale-reauthentication",
+        "browser": "chromium",
+        "scenario": "google-stale-reauthentication"
+      },
+      {
+        "id": "chromium/firebase-memory-persistence",
+        "browser": "chromium",
+        "scenario": "firebase-memory-persistence"
+      },
+      {
+        "id": "chromium/signin-unavailable-local",
+        "browser": "chromium",
+        "scenario": "signin-unavailable-local"
+      },
+      {
+        "id": "chromium/signin-malformed-config",
+        "browser": "chromium",
+        "scenario": "signin-malformed-config"
+      },
+      {
+        "id": "chromium/session-expired",
+        "browser": "chromium",
+        "scenario": "session-expired"
+      },
+      {
+        "id": "chromium/session-blocked",
+        "browser": "chromium",
+        "scenario": "session-blocked"
+      },
+      {
+        "id": "chromium/auth-dependency-unavailable",
+        "browser": "chromium",
+        "scenario": "auth-dependency-unavailable"
+      },
+      {
+        "id": "chromium/quote-exact-scope",
+        "browser": "chromium",
+        "scenario": "quote-exact-scope"
+      },
+      {
+        "id": "chromium/terms-config-unavailable",
+        "browser": "chromium",
+        "scenario": "terms-config-unavailable"
+      },
+      {
+        "id": "chromium/checkout-double-click-retry",
+        "browser": "chromium",
+        "scenario": "checkout-double-click-retry"
+      },
+      {
+        "id": "chromium/checkout-processing-return",
+        "browser": "chromium",
+        "scenario": "checkout-processing-return"
+      },
+      {
+        "id": "chromium/checkout-untrusted-return",
+        "browser": "chromium",
+        "scenario": "checkout-untrusted-return"
+      },
+      {
+        "id": "chromium/checkout-expired",
+        "browser": "chromium",
+        "scenario": "checkout-expired"
+      },
+      {
+        "id": "chromium/already-owned-no-pay",
+        "browser": "chromium",
+        "scenario": "already-owned-no-pay"
+      },
+      {
+        "id": "chromium/library-pagination-and-states",
+        "browser": "chromium",
+        "scenario": "library-pagination-and-states"
+      },
+      {
+        "id": "chromium/paid-prepare-before-poll",
+        "browser": "chromium",
+        "scenario": "paid-prepare-before-poll"
+      },
+      {
+        "id": "chromium/media-renew-coalesced",
+        "browser": "chromium",
+        "scenario": "media-renew-coalesced"
+      },
+      {
+        "id": "chromium/logout-and-bfcache-clear",
+        "browser": "chromium",
+        "scenario": "logout-and-bfcache-clear"
+      },
+      {
+        "id": "firefox/bankone-cascade",
+        "browser": "firefox",
+        "scenario": "bankone-cascade"
+      },
+      {
+        "id": "firefox/banktwo-cascade",
+        "browser": "firefox",
+        "scenario": "banktwo-cascade"
+      },
+      {
+        "id": "firefox/dual-bank-coverage",
+        "browser": "firefox",
+        "scenario": "dual-bank-coverage"
+      },
+      {
+        "id": "firefox/one-bank-unavailable",
+        "browser": "firefox",
+        "scenario": "one-bank-unavailable"
+      },
+      {
+        "id": "firefox/pending-no-content",
+        "browser": "firefox",
+        "scenario": "pending-no-content"
+      },
+      {
+        "id": "firefox/source-to-canonical",
+        "browser": "firefox",
+        "scenario": "source-to-canonical"
+      },
+      {
+        "id": "firefox/source-rewrite-failure",
+        "browser": "firefox",
+        "scenario": "source-rewrite-failure"
+      },
+      {
+        "id": "firefox/review-required",
+        "browser": "firefox",
+        "scenario": "review-required"
+      },
+      {
+        "id": "firefox/warm-reload",
+        "browser": "firefox",
+        "scenario": "warm-reload"
+      },
+      {
+        "id": "firefox/selection-change-in-flight",
+        "browser": "firefox",
+        "scenario": "selection-change-in-flight"
+      },
+      {
+        "id": "firefox/source-review-change-in-flight",
+        "browser": "firefox",
+        "scenario": "source-review-change-in-flight"
+      },
+      {
+        "id": "firefox/cancel-and-retry",
+        "browser": "firefox",
+        "scenario": "cancel-and-retry"
+      },
+      {
+        "id": "firefox/history-restore",
+        "browser": "firefox",
+        "scenario": "history-restore"
+      },
+      {
+        "id": "firefox/document-only",
+        "browser": "firefox",
+        "scenario": "document-only"
+      },
+      {
+        "id": "firefox/missing-media",
+        "browser": "firefox",
+        "scenario": "missing-media"
+      },
+      {
+        "id": "firefox/withdrawal",
+        "browser": "firefox",
+        "scenario": "withdrawal"
+      },
+      {
+        "id": "firefox/keyboard-print-mobile",
+        "browser": "firefox",
+        "scenario": "keyboard-print-mobile"
+      },
+      {
+        "id": "firefox/source-media-isolation",
+        "browser": "firefox",
+        "scenario": "source-media-isolation"
+      },
+      {
+        "id": "firefox/auth-cookie-reload",
+        "browser": "firefox",
+        "scenario": "auth-cookie-reload"
+      },
+      {
+        "id": "firefox/google-popup-exchange",
+        "browser": "firefox",
+        "scenario": "google-popup-exchange"
+      },
+      {
+        "id": "firefox/google-popup-blocked",
+        "browser": "firefox",
+        "scenario": "google-popup-blocked"
+      },
+      {
+        "id": "firefox/google-popup-cancelled",
+        "browser": "firefox",
+        "scenario": "google-popup-cancelled"
+      },
+      {
+        "id": "firefox/google-stale-reauthentication",
+        "browser": "firefox",
+        "scenario": "google-stale-reauthentication"
+      },
+      {
+        "id": "firefox/firebase-memory-persistence",
+        "browser": "firefox",
+        "scenario": "firebase-memory-persistence"
+      },
+      {
+        "id": "firefox/signin-unavailable-local",
+        "browser": "firefox",
+        "scenario": "signin-unavailable-local"
+      },
+      {
+        "id": "firefox/signin-malformed-config",
+        "browser": "firefox",
+        "scenario": "signin-malformed-config"
+      },
+      {
+        "id": "firefox/session-expired",
+        "browser": "firefox",
+        "scenario": "session-expired"
+      },
+      {
+        "id": "firefox/session-blocked",
+        "browser": "firefox",
+        "scenario": "session-blocked"
+      },
+      {
+        "id": "firefox/auth-dependency-unavailable",
+        "browser": "firefox",
+        "scenario": "auth-dependency-unavailable"
+      },
+      {
+        "id": "firefox/quote-exact-scope",
+        "browser": "firefox",
+        "scenario": "quote-exact-scope"
+      },
+      {
+        "id": "firefox/terms-config-unavailable",
+        "browser": "firefox",
+        "scenario": "terms-config-unavailable"
+      },
+      {
+        "id": "firefox/checkout-double-click-retry",
+        "browser": "firefox",
+        "scenario": "checkout-double-click-retry"
+      },
+      {
+        "id": "firefox/checkout-processing-return",
+        "browser": "firefox",
+        "scenario": "checkout-processing-return"
+      },
+      {
+        "id": "firefox/checkout-untrusted-return",
+        "browser": "firefox",
+        "scenario": "checkout-untrusted-return"
+      },
+      {
+        "id": "firefox/checkout-expired",
+        "browser": "firefox",
+        "scenario": "checkout-expired"
+      },
+      {
+        "id": "firefox/already-owned-no-pay",
+        "browser": "firefox",
+        "scenario": "already-owned-no-pay"
+      },
+      {
+        "id": "firefox/library-pagination-and-states",
+        "browser": "firefox",
+        "scenario": "library-pagination-and-states"
+      },
+      {
+        "id": "firefox/paid-prepare-before-poll",
+        "browser": "firefox",
+        "scenario": "paid-prepare-before-poll"
+      },
+      {
+        "id": "firefox/media-renew-coalesced",
+        "browser": "firefox",
+        "scenario": "media-renew-coalesced"
+      },
+      {
+        "id": "firefox/logout-and-bfcache-clear",
+        "browser": "firefox",
+        "scenario": "logout-and-bfcache-clear"
+      },
+      {
+        "id": "webkit/bankone-cascade",
+        "browser": "webkit",
+        "scenario": "bankone-cascade"
+      },
+      {
+        "id": "webkit/banktwo-cascade",
+        "browser": "webkit",
+        "scenario": "banktwo-cascade"
+      },
+      {
+        "id": "webkit/dual-bank-coverage",
+        "browser": "webkit",
+        "scenario": "dual-bank-coverage"
+      },
+      {
+        "id": "webkit/one-bank-unavailable",
+        "browser": "webkit",
+        "scenario": "one-bank-unavailable"
+      },
+      {
+        "id": "webkit/pending-no-content",
+        "browser": "webkit",
+        "scenario": "pending-no-content"
+      },
+      {
+        "id": "webkit/source-to-canonical",
+        "browser": "webkit",
+        "scenario": "source-to-canonical"
+      },
+      {
+        "id": "webkit/source-rewrite-failure",
+        "browser": "webkit",
+        "scenario": "source-rewrite-failure"
+      },
+      {
+        "id": "webkit/review-required",
+        "browser": "webkit",
+        "scenario": "review-required"
+      },
+      {
+        "id": "webkit/warm-reload",
+        "browser": "webkit",
+        "scenario": "warm-reload"
+      },
+      {
+        "id": "webkit/selection-change-in-flight",
+        "browser": "webkit",
+        "scenario": "selection-change-in-flight"
+      },
+      {
+        "id": "webkit/source-review-change-in-flight",
+        "browser": "webkit",
+        "scenario": "source-review-change-in-flight"
+      },
+      {
+        "id": "webkit/cancel-and-retry",
+        "browser": "webkit",
+        "scenario": "cancel-and-retry"
+      },
+      {
+        "id": "webkit/history-restore",
+        "browser": "webkit",
+        "scenario": "history-restore"
+      },
+      {
+        "id": "webkit/document-only",
+        "browser": "webkit",
+        "scenario": "document-only"
+      },
+      {
+        "id": "webkit/missing-media",
+        "browser": "webkit",
+        "scenario": "missing-media"
+      },
+      {
+        "id": "webkit/withdrawal",
+        "browser": "webkit",
+        "scenario": "withdrawal"
+      },
+      {
+        "id": "webkit/keyboard-print-mobile",
+        "browser": "webkit",
+        "scenario": "keyboard-print-mobile"
+      },
+      {
+        "id": "webkit/source-media-isolation",
+        "browser": "webkit",
+        "scenario": "source-media-isolation"
+      },
+      {
+        "id": "webkit/auth-cookie-reload",
+        "browser": "webkit",
+        "scenario": "auth-cookie-reload"
+      },
+      {
+        "id": "webkit/google-popup-exchange",
+        "browser": "webkit",
+        "scenario": "google-popup-exchange"
+      },
+      {
+        "id": "webkit/google-popup-blocked",
+        "browser": "webkit",
+        "scenario": "google-popup-blocked"
+      },
+      {
+        "id": "webkit/google-popup-cancelled",
+        "browser": "webkit",
+        "scenario": "google-popup-cancelled"
+      },
+      {
+        "id": "webkit/google-stale-reauthentication",
+        "browser": "webkit",
+        "scenario": "google-stale-reauthentication"
+      },
+      {
+        "id": "webkit/firebase-memory-persistence",
+        "browser": "webkit",
+        "scenario": "firebase-memory-persistence"
+      },
+      {
+        "id": "webkit/signin-unavailable-local",
+        "browser": "webkit",
+        "scenario": "signin-unavailable-local"
+      },
+      {
+        "id": "webkit/signin-malformed-config",
+        "browser": "webkit",
+        "scenario": "signin-malformed-config"
+      },
+      {
+        "id": "webkit/session-expired",
+        "browser": "webkit",
+        "scenario": "session-expired"
+      },
+      {
+        "id": "webkit/session-blocked",
+        "browser": "webkit",
+        "scenario": "session-blocked"
+      },
+      {
+        "id": "webkit/auth-dependency-unavailable",
+        "browser": "webkit",
+        "scenario": "auth-dependency-unavailable"
+      },
+      {
+        "id": "webkit/quote-exact-scope",
+        "browser": "webkit",
+        "scenario": "quote-exact-scope"
+      },
+      {
+        "id": "webkit/terms-config-unavailable",
+        "browser": "webkit",
+        "scenario": "terms-config-unavailable"
+      },
+      {
+        "id": "webkit/checkout-double-click-retry",
+        "browser": "webkit",
+        "scenario": "checkout-double-click-retry"
+      },
+      {
+        "id": "webkit/checkout-processing-return",
+        "browser": "webkit",
+        "scenario": "checkout-processing-return"
+      },
+      {
+        "id": "webkit/checkout-untrusted-return",
+        "browser": "webkit",
+        "scenario": "checkout-untrusted-return"
+      },
+      {
+        "id": "webkit/checkout-expired",
+        "browser": "webkit",
+        "scenario": "checkout-expired"
+      },
+      {
+        "id": "webkit/already-owned-no-pay",
+        "browser": "webkit",
+        "scenario": "already-owned-no-pay"
+      },
+      {
+        "id": "webkit/library-pagination-and-states",
+        "browser": "webkit",
+        "scenario": "library-pagination-and-states"
+      },
+      {
+        "id": "webkit/paid-prepare-before-poll",
+        "browser": "webkit",
+        "scenario": "paid-prepare-before-poll"
+      },
+      {
+        "id": "webkit/media-renew-coalesced",
+        "browser": "webkit",
+        "scenario": "media-renew-coalesced"
+      },
+      {
+        "id": "webkit/logout-and-bfcache-clear",
+        "browser": "webkit",
+        "scenario": "logout-and-bfcache-clear"
+      }
+    ],
+    "browser_count": 141,
+    "final180_components": [
+      5,
+      8,
+      14,
+      12,
+      120,
+      21
+    ],
+    "final180_count": 180,
+    "accepted_new_case_credit": 0,
+    "rule": "Exact set and cardinality equality; every case exactly once. Any missing/unknown/duplicate/extra/skip/unavailable/timed-out/cancelled/failed tuple is nonpass. No automatic retry; a new attempt never erases an earlier attempt."
+  },
+  "supervisor": {
+    "status": "blocked_missing_implementation_and_binding",
+    "proposed_future_source_path": "scripts/dev/workshop_browser_execution_supervisor.py",
+    "source_sha256": null,
+    "source_checkpoint": null,
+    "host_executable_absolute_path": null,
+    "host_executable_sha256": null,
+    "host_argv": null,
+    "host_cwd": null,
+    "host_merged_environment": null,
+    "host_docker_executable_absolute_path": null,
+    "host_docker_executable_sha256": null,
+    "docker_create_argv": null,
+    "container_image_id": null,
+    "container_platform": null,
+    "container_config_sha256": null,
+    "container_rootfs_manifest_sha256": null,
+    "container_entrypoint_absolute_path": null,
+    "container_executable_sha256": null,
+    "container_merged_environment": null,
+    "rule": "The proposed path names a future independently gated implementation; it is absent/unreviewed and must not be invoked. This document is not a runnable launcher. Before service dispatch, a separate exact-path gate must freeze the full immutable supervisor bytes and every host/container argv element, cwd and allowlisted merged environment. No shell -c, ambient shell expansion, inherited env or unspecified supervisor filename. R3 initial-probe launcher is not this supervisor."
+  },
+  "command_graph": {
+    "status": "nonexecutable_template_until_all_bindings_admitted",
+    "container_cwd": "/workspace",
+    "api_producer_argv": [
+      "<admitted-absolute-python>",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "--junitxml=/artifacts/workshop-browser-api.xml",
+      "workers/ingestion-python/tests/test_workshop_browser_integration.py"
+    ],
+    "api_environment": {
+      "AUTODATA_LIFECYCLE_TEST": "1",
+      "AUTODATA_CATALOG_INTEGRATION_REQUIRED": "1",
+      "AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION": "1",
+      "AUTODATA_R3_CANDIDATE_SHA": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "/workspace/workers/ingestion-python/src:/workspace/workers/enrichment-python/src:/workspace/packages/contracts/python:/workspace/workers/ingestion-python/tests",
+      "GOTOOLCHAIN": "local",
+      "GOPROXY": "off",
+      "GOFLAGS": "-mod=readonly",
+      "CGO_ENABLED": "0",
+      "GOMODCACHE": "/opt/go-module-cache",
+      "GOCACHE": "/tmp/go-cache",
+      "GOTMPDIR": "/tmp/go-tmp"
+    },
+    "api_child_go_argv": [
+      "<admitted-absolute-go>",
+      "test",
+      "-count=1",
+      "-run",
+      "^TestWorkshopBrowserFixtureHTTP$",
+      "-timeout=85s",
+      "."
+    ],
+    "api_child_go_cwd": "/workspace/apps/api-go",
+    "api_child_browser_argv": [
+      "<same-admitted-python>",
+      "/workspace/scripts/dev/workshop_browser_smoke.py",
+      "--base-url",
+      "<owned-ready.json.origin>",
+      "--mode",
+      "api-fixture",
+      "--browser",
+      "<exact-case-engine>",
+      "--candidate-sha",
+      "4d82e413e04fb2401ac7bc28dc828375ac662180",
+      "--output",
+      "<exact-case-dir>/browser"
+    ],
+    "dto_go_argv": null,
+    "dto_go_cwd": "/workspace/apps/api-go",
+    "dto_required_environment": {
+      "AUTODATA_WORKSHOP_BROWSER_FIXTURE": "1",
+      "AUTODATA_WORKSHOP_BROWSER_READY": "/artifacts/dto/ready.json"
+    },
+    "dto_forbidden_environment": [
+      "AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION",
+      "AUTODATA_REQUIRE_PAID_CATALOG_INTEGRATION",
+      "AUTODATA_CATALOG_INTEGRATION_REQUIRED",
+      "AUTODATA_LIFECYCLE_TEST"
+    ],
+    "dto_browser_argv": [
+      "<admitted-absolute-python>",
+      "scripts/dev/workshop_browser_smoke.py",
+      "--base-url",
+      "<owned-loopback-https-ready.origin>",
+      "--mode",
+      "dto-fixture",
+      "--browser",
+      "all",
+      "--candidate-sha",
+      "4d82e413e04fb2401ac7bc28dc828375ac662180",
+      "--output",
+      "/artifacts/browser"
+    ],
+    "unbound_environment_keys": [
+      "PATH",
+      "HOME",
+      "TMPDIR",
+      "PLAYWRIGHT_BROWSERS_PATH",
+      "XDG_CACHE_HOME",
+      "XDG_CONFIG_HOME",
+      "XDG_DATA_HOME",
+      "XDG_RUNTIME_DIR"
+    ],
+    "rule": "Placeholders are typed unresolved bindings, never shell syntax or permission to choose values. DTO launch timeout/argv is withheld pending scheduling proof or separate timer gate. API children filter their inherited environment exactly as pinned source; do not inject provider credentials or bypass private per-case 0700 HOME. Exact generated synthetic DSNs, scope/control values and ownership receipts are retained confidentially in the isolated evidence store, with no live credentials."
+  },
+  "runtime": {
+    "availability": "unobserved",
+    "clone": "clean remote-free plain clone at exact product SHA/tree; no .git replacement/grafts/alternates, hooks or remote fetch",
+    "mounts": {
+      "/workspace": "candidate read-only",
+      "/artifacts": "attempt-private writable 0700 owner",
+      "/tmp": "private exec tmpfs, quotas bound before dispatch",
+      "/opt/go-module-cache": "immutable admitted read-only offline cache"
+    },
+    "image_policy": "exact local image ID and platform; no pull/build/install at probe or execution; pin Config, RootFS, entrypoint and dependency manifests; PG17/NATS/pinned SeaweedFS IDs must independently be admitted rather than raw tags",
+    "network": "fixture lane internal isolated network, no published host ports, no Docker socket mount or external route; loopback TLS origin inside owned runner only",
+    "tool_versions": {
+      "go": "1.26 (patch/build bytes must be admitted)",
+      "playwright": "1.64.1",
+      "engines": [
+        "chromium",
+        "firefox",
+        "webkit"
+      ]
+    },
+    "required_manifests": [
+      "OS/kernel/architecture/runtime and Docker client/server versions",
+      "runner image ID/RepoDigests/platform/config/RootFS and all service image IDs",
+      "Python executable/distribution/file manifests incl pytest psycopg worker dependencies",
+      "Go executable/version offline module cache full manifest",
+      "Playwright distribution browsers.json and each installed engine cache full manifest",
+      "candidate source full manifest, fixtures, SDK and embedded served asset SHA256/length",
+      "exact merged env, mounts, permissions, private HOME/XDG/tmp/cache paths",
+      "finite CPU/memory/PID/tmp/artifact disk budgets and independent capacity admission"
+    ],
+    "rule": "Null/missing dependency, capacity, path or exact immutable binding blocks. No current runtime/tool/cache/image availability is asserted."
+  },
+  "preparation_probe": {
+    "authorized": false,
+    "status": "interface_only_not_implemented_or_run",
+    "input_schema": [
+      "candidate_sha/tree and local source hashes",
+      "separate authorized probe checkpoint/executable hash/absolute argv/cwd/env",
+      "preexisting local immutable image IDs, offline cache/tool path declarations",
+      "owned evidence-root allocation and finite limits; explicit read-only operation allowlist"
+    ],
+    "self_dependency": "No accepted runtime result is an input to the first probe. Static probe authorization and executable admission precede it; independently reviewed output admission follows it.",
+    "operation_limit": {
+      "wall_seconds": 180,
+      "per_subprocess_seconds": 10,
+      "max_subprocesses": 18,
+      "artifact_bytes": 33554432,
+      "retry_count": 0
+    },
+    "allowed_future_measurements": [
+      "local version/file/hash/permissions metadata",
+      "existing image inspect and platform/config/RootFS metadata without container start",
+      "read-only cache/dependency presence and local capacity measurements"
+    ],
+    "forbidden": [
+      "services/containers/browser start",
+      "network/port/provider requests",
+      "Docker exec",
+      "build/pull/install/download",
+      "secret-file access",
+      "writing candidate/cache/image files"
+    ],
+    "output_schema": [
+      "probe attempt ID/source/probe/tool hashes",
+      "UTC/monotonic start/end/deadline, complete argv/env and operation exits",
+      "raw stdout/stderr and content manifest",
+      "observed image/tool/dependency/cache/capacity fields with missing/mismatch reasons",
+      "before/after source/cache manifests proving no changes",
+      "independent reviewer identity/verdict/full raw manifest hash and admission timestamp"
+    ],
+    "failure": "Any failure/timeout/missing measurement/nonimmutable image/no capacity is blocked. Acquisition/build is a separate explicit gate; the probe cannot self-admit or start fixtures."
+  },
+  "ownership": {
+    "attempt_id": "128-bit random value allocated once; never reused",
+    "exclusive_lock": "owned non-symlink 0700 evidence root with O_EXCL lock and fsynced lease; a second writer or existing attempt blocks",
+    "labels": [
+      "autodata.contract=api21-dto120-v1",
+      "autodata.attempt=<attempt_id>",
+      "autodata.candidate=4d82e413e04fb2401ac7bc28dc828375ac662180"
+    ],
+    "resources": [
+      "runner and isolated PG/NATS/SeaweedFS containers",
+      "one internal network",
+      "private volumes/buckets/DBs",
+      "all process groups and browser/worker descendants",
+      "artifact/cache/tmp/HOME/XDG roots"
+    ],
+    "required_identity_fields": [
+      "attempt UUID",
+      "exact container/network/volume IDs and labels",
+      "PID plus process start identity/process group, namespace and executable hash",
+      "mount/storage realpath device/inode/uid/mode",
+      "creation monotonic/UTC timestamp and candidate/tool hashes"
+    ],
+    "rule": "Persist creation intent before launch; persist returned IDs immediately before next mutation. Never kill/delete by name, port, PID alone or broad Compose down/prune. Every cleanup checks complete ownership tuple and live identity. Ambiguity blocks destructive cleanup and escalates to owner."
+  },
+  "readiness": {
+    "deadline_seconds": 120,
+    "poll_interval_seconds": 1,
+    "per_probe_timeout_seconds": 2,
+    "max_rounds": 60,
+    "retry_policy": "readiness polls only, no restart or test retry",
+    "required": [
+      "all owned service processes running with expected IDs/images",
+      "PG authenticated synthetic fixture database query and migration manifest 001-040 exact sorted names/checksums and application schema checks",
+      "NATS owned connection + bounded request/reply",
+      "S3 owned private bucket bounded put/get/hash/delete and TLS/endpoint binding where selected",
+      "API ready file regular 0600 owned file with v1 expected kind and loopback https origin, exact certificate SHA256 and SDK SHA256",
+      "Go fixture process alive; served SDK/assets bytes equal candidate, no origin swap; API scope config/adjacent/other_region/vehicle/article/unscoped/provider expected",
+      "DTO ready kind dto-fixture and absence of API/paid/catalog selectors"
+    ],
+    "rule": "These are FUTURE service-execution probes, not initial preparation. No secret/public/provider endpoint. API source retains its own readiness loop; this outer policy cannot change child timers. Missing/malformed/stale readiness or one failed service blocks all browser launch."
+  },
+  "deadlines": {
+    "api_child_body_seconds": 78,
+    "api_parent_wait_seconds": 84,
+    "api_term_seconds": 2,
+    "api_kill_wait_seconds": 2,
+    "api_go_timeout_seconds": 85,
+    "api_browser_case_seconds": 65,
+    "api_outer_proposal_seconds": 2100,
+    "historical_api_outer_seconds": [
+      2350,
+      3300
+    ],
+    "dto_fixture_lifetime_seconds": 4400,
+    "dto_browser_global_seconds": 4440,
+    "dto_outer_proposal_seconds": 4560,
+    "dto_case_execution_seconds": 20,
+    "dto_case_cleanup_seconds": 3,
+    "dto_browser_close_seconds": 3,
+    "outer_cleanup_seconds": 120,
+    "readiness_seconds": 120,
+    "all_dispatch_blocked_until_proof": true,
+    "proof_required": [
+      "monotonic launch/ready/first-case/last-case/stop/reap milestones and finite margins",
+      "account for image/service readiness, browser engine launch, every 40x3 case, tracing, evidence flush and cleanup",
+      "prove fixture remains alive until every case completes and normal owned stop succeeds",
+      "identify unbounded awaited operations and enforce them only through separately gated supervisor or source repair"
+    ],
+    "dto_finding": "4400 < 4440: 4560s outer timer alone does not repair early fixture expiration. No accepted scheduling proof currently exists. Separate exact-path timer/source repair gate required unless independently verified finite scheduling proof closes all paths. Do not alter source timers here.",
+    "api_finding": "2100 is a proposal, never historical execution authority. 21 child groups at 84+2+2=88s is 1848s before outer preparation/cleanup and other overhead; a full finite proof within 2100 remains required. Source cleanup timeouts are not silently extended."
+  },
+  "state_machine": {
+    "states": [
+      "draft_blocked",
+      "static_bound",
+      "probe_authorized",
+      "probe_running",
+      "probe_complete_unadmitted",
+      "runtime_admitted",
+      "fixture_gate_authorized",
+      "ownership_reserved",
+      "services_starting",
+      "services_ready",
+      "api_running",
+      "dto_running",
+      "stopping",
+      "reaping",
+      "cleanup_check",
+      "sealed_unreviewed",
+      "reviewed_fixture_only",
+      "failed",
+      "interrupted",
+      "recovery_blocked"
+    ],
+    "transition_rule": "Each forward transition requires explicit prerequisite receipts. This draft starts and remains draft_blocked. All service mutations require a separate authorized fixture gate after admitted runtime. API and DTO run serially in separate owned resource generations; no concurrent resource sharing.",
+    "journal": "append-only sequence-numbered JSONL, each entry previous-entry SHA256 plus exact action/attempt/resource/state/UTC/monotonic deadline; fsync file and parent directory before acknowledged mutation; immutable final content manifest. Journal is durable outside container and independent of operator terminal.",
+    "interruption": "On SIGINT/SIGTERM, lost operator/session, deadline, supervisor crash, service exit or unjournaled mutation: stop dispatch, persist interrupted intent if possible, retain stdout/stderr/result partials; independent watchdog owns finite termination and sealing. Watchdog executable/hash/process identity and heartbeat/lease interval must be bound before launch; absence blocks execution.",
+    "watchdog": {
+      "implementation": null,
+      "heartbeat_seconds": 1,
+      "lease_seconds": 5,
+      "term_grace_seconds": 2,
+      "kill_wait_seconds": 2,
+      "total_recovery_deadline_seconds": 120
+    },
+    "recovery": "Do not resume cases. A separately authorized read-only recovery first reconciles journal creation intents against live exact resource IDs/labels/start identities and evidence file ownership. Unknown/orphan/mismatched identity means recovery_blocked, no guessed kill/delete. After independent ownership admission only, bounded owned stop/reap/removal can execute under explicit cleanup authority. Preserve original attempt as interrupted/nonpass and record any later attempt separately.",
+    "rule": "No natural-language approval or status file self-grants any missing authority."
+  },
+  "evidence": {
+    "root": "attempt-private /artifacts mirrored durably outside container; no symlink/hardlink/device/FIFO/path escape",
+    "file_policy": "raw bytes immutable after seal, regular 0600 owner; directories 0700; SHA256/byte-length manifest, exact path/cardinality, no duplicate ZIP names; no secret/live token content; retain failed/interrupted complete output outside disabled assembler",
+    "required_attempt_files": {
+      "attempt.json": 1,
+      "journal.jsonl": 1,
+      "commands.json": 1,
+      "source.before.json": 1,
+      "source.after.json": 1,
+      "tools.before.json": 1,
+      "tools.after.json": 1,
+      "cache.before.json": 1,
+      "cache.after.json": 1,
+      "runtime-admission.json": 1,
+      "ownership.json": 1,
+      "service-readiness.json": 1,
+      "migrations.json": 1,
+      "service-exits.json": 1,
+      "cleanup.json": 1,
+      "terminal.json": 1,
+      "manifest.json": 1
+    },
+    "api": {
+      "junit_path": "/artifacts/workshop-browser-api.xml",
+      "junit_count": 1,
+      "case_directories": [
+        "/artifacts/workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone",
+        "/artifacts/workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone",
+        "/artifacts/workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone",
+        "/artifacts/workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone",
+        "/artifacts/workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo",
+        "/artifacts/workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone",
+        "/artifacts/workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo",
+        "/artifacts/workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone",
+        "/artifacts/workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo",
+        "/artifacts/workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone",
+        "/artifacts/workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo",
+        "/artifacts/workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone",
+        "/artifacts/workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo",
+        "/artifacts/workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone",
+        "/artifacts/workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo",
+        "/artifacts/workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone",
+        "/artifacts/workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo",
+        "/artifacts/workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone",
+        "/artifacts/workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo",
+        "/artifacts/workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone",
+        "/artifacts/workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo"
+      ],
+      "per_case_success": {
+        "child.log": 1,
+        "go-fixture.log": 1,
+        "ready.json": 1,
+        "browser.stdout.log": 1,
+        "browser.stderr.log": 1,
+        "result.json": 1,
+        "browser/evidence.json": 1
+      },
+      "per_case_evidence_rows": 1,
+      "conditional_files": "browser/<engine>/<test>-failure.png: 0..1 only on failure; 0 success. Browser-home is private runtime scratch, separately manifested before owned cleanup; never accepted as source evidence. No API trace is promised by current source.",
+      "failure_rule": "For each expected path record produced, absent(reason), or not_started(reason) in terminal manifest. Missing raw or partial result is nonpass, never fabricate success files. Retain child/go/browser logs and all surviving failed bytes.",
+      "result_required": [
+        "version=v1",
+        "mode=api-fixture",
+        "candidate_sha exact",
+        "browser/provider/test exact tuple",
+        "fixture_database identity",
+        "passed=true",
+        "final_snapshot proxy errors empty and ensure.active=0",
+        "worker_exits all expected owned workers stopped successfully"
+      ],
+      "browser_semantics": [
+        "Google actual public fixture session exchange, checkout/library; synthetic upstream explicitly labeled",
+        "owned source/canonical/media rights and isolation for each bank",
+        "account scope/logout/revocation with old-content denial",
+        "signed full refund, exact owner/configuration/region entitlement and old-link denial",
+        "exact source-defined assertion keys all true, no transport.unexpected/errors, sdk_unexpected=0, restart and warm receipts source-consistent"
+      ]
+    },
+    "dto": {
+      "evidence_path": "/artifacts/browser/evidence.json",
+      "evidence_count": 1,
+      "required_rows": 120,
+      "stdout": "/artifacts/dto/browser.stdout.log",
+      "stderr": "/artifacts/dto/browser.stderr.log",
+      "fixture_stdout_stderr": "/artifacts/dto/go-fixture.log",
+      "ready": "/artifacts/dto/ready.json",
+      "conditional_per_tuple": {
+        "/artifacts/browser/<engine>/<scenario>-failure.json": "0..1; required for source diagnostic failure when write succeeds, missing write is a recorded nonpass",
+        "/artifacts/browser/<engine>/<scenario>-failure.png": "0..1; conditional screenshot attempt, omission has diagnostic reason",
+        "/artifacts/browser/<engine>/<scenario>-failure-trace.zip": "0..1; retained nonempty raw trace <=16777216 bytes iff trace_status=retained; diagnostic failure/missing/oversize is nonpass"
+      },
+      "semantic_requirements": [
+        "exact scenario x engine equality and source-defined assertions, never status-only proof",
+        "version/mode/candidate/sdk/input/Playwright/engine versions and revisions bound to admitted immutable manifests",
+        "ready certificate and served assets independently measured and source-equal",
+        "per-row bounded requests/DTO assertions match pinned source; no unexpected endpoint, credentials or live calls",
+        "preserve timeout failure_kind/stage elapsed/cleanup/trace_status/diagnostic_errors, with no rerun to hide failure"
+      ],
+      "success_diagnostics": "No failure trace retained on successful case; no unexpected residual files. Source may create/delete staging trace during cleanup; account via journal/manifests."
+    },
+    "closed_support_schema": "One service record per owned PG/NATS/S3/runner generation; one worker record per actually spawned worker with creation/exit IDs and status. migrations.json exactly the candidate 001-040 sorted paths/hashes and observed applied versions. Every before/after manifest has path,type,mode,uid,size,sha256 and absence/change classification. Any unknown support path/cardinality requires a new reviewed schema; complete failure bytes go to sealed quarantine, not deletion.",
+    "completeness_rule": "Success requires all required artifacts plus exact semantic invariants, process exits, ownership and cleanup. Failed/interrupted attempts retain complete actually produced raw output and a missing/partial/not-started map. No fabricated JUnit/row/exit/cleanup receipt. Exact field schemas/size ceilings for still-unbound service/worker implementation output remain a blocking static gap."
+  },
+  "transport": {
+    "api_producer": "/artifacts/workshop-browser-api.xml",
+    "documentary_consumer_name": "workshop-browser-tests.xml",
+    "proposed_mapping": {
+      "mode": "byte-preserving copy into separately owned transport tree",
+      "source": "/artifacts/workshop-browser-api.xml",
+      "destination": "workshop-browser-tests.xml",
+      "required_equal": [
+        "SHA256",
+        "byte length",
+        "raw byte equality"
+      ],
+      "retain_source": true,
+      "adapter_implementation_authorized": false,
+      "runtime_use_authorized": false
+    },
+    "dto_source_trace_max_bytes": 16777216,
+    "current_assembler_per_file_max_bytes": 8388608,
+    "compatible": false,
+    "promotion_authorized": false,
+    "rule": "A valid source DTO trace can exceed current assembler ceiling. Preserve raw trace up to source limit and complete failed output outside disabled promotion. Do not truncate/drop/split/relabel/recompress historical bytes, raise assembler ceiling or pretend profiles are enabled. Separate reviewed partition/profile design with reconstruction and authenticity proof, or exact-path assembler transport repair gate, is prerequisite. A copied JUnit is not independent evidence or an extra case."
+  },
+  "cleanup": {
+    "normal": "After complete browser inventory, stop only owned fixture via bound loopback POST /__fixture/stop (2s response bound), then wait/reap; API source keeps 3s normal Go wait. Stop owned workers/services using frozen argv; collect exit codes and final DB/NATS/S3/source/cache snapshots before removal.",
+    "abnormal": "journal failure; stop launching; preserve evidence; ownership-checked TERM all owned process groups, wait 2s, KILL remaining owned groups, wait 2s; finite outer cleanup 120s. Container stop/remove/network/volume commands require separately frozen exact argv and admitted IDs.",
+    "receipt_required": [
+      "attempt/source/tool IDs",
+      "each resource expected/observed ownership tuple",
+      "stop request/response and UTC/monotonic times",
+      "TERM/KILL/reap status for each process group",
+      "worker/service exit code and signal/reason",
+      "storage/object identities and final snapshots",
+      "exact retained evidence manifest",
+      "post-cleanup no owned process/container/network/volume/db/bucket remains, or explicit residuals with owner escalation",
+      "source/tool/immutable caches unchanged, private writable roots disposition and permission receipt"
+    ],
+    "failure": "Any inability to establish ownership, reap, flush, preserve evidence or remove an owned resource is nonpass. Do not call cleanup success when leftovers are unknown. Preserve root for review; no broad prune/deletion or automatic retry."
+  },
+  "authentic_staging": {
+    "distinct_gate": "later2 protected collector/enrollment; no admitted live browser collector command",
+    "collector_proposal": "scripts/dev/collect_staging_provenance.py",
+    "collector_test_proposal": "scripts/dev/test_collect_staging_provenance.py",
+    "implemented_or_admitted": false,
+    "slots": [
+      "staging.population",
+      "staging.firebase_google",
+      "staging.stripe_test",
+      "staging.banks_model",
+      "staging.host_isolation",
+      "staging.restore_recovery",
+      "staging.alert_delivery",
+      "staging.independent_review"
+    ],
+    "required_inputs": {
+      "population": "owner-approved nonempty per-bank frozen cohort/configurations/regions/cutoff, licensed source/media rights and immutable revisions, trusted ingestion enrollment and all pending/failed/quarantine/withdrawn denominator outcomes; independently measured completeness 1.0 per bank and combined",
+      "firebase_google": "registered project/app authorized HTTPS origin, enabled Google and official Admin ADC/IAM, no emulator; two consented dedicated Google accounts and separately authorized revocation/disable/delete owner procedure; actual popup/session/cookie/logout/revocation across replicas",
+      "stripe_test": "authorized test merchant, protected sk_test/webhook/account refs, exact active price 2000 USD cents livemode=false, hosted test instrument, signed delivery/settlement/reordered duplicate/refund owner procedure; persisted exact entitlement then denial; browser return is insufficient",
+      "banks_model": "two independently authenticated licensed Bankone/Banktwo source connectors, protected separate key refs and provider identity/capabilities/pagination/rights; protected Inception endpoint/model/Mercury config, finite call/cost authority, authenticated rewrite provenance and warm reads without new upstream work",
+      "host_isolation": "dedicated approved HTTPS staging origin, candidate API/worker images/served assets, DB/NATS/S3/versioning and full migrations, no production data, isolated volumes/capacity/evidence access/retention",
+      "restore_recovery": "named authorized outage/restart/restore owner, backup evidence and measured RPO/RTO, reboot/TLS recovery",
+      "alert_delivery": "actual destination and authorized delivered alert evidence",
+      "independent_review": "reviewer access to protected raw enrollment/capture/source/host evidence and exact candidate/tool receipts"
+    },
+    "rule": "Fixture IDs, mocks, synthetic=false flags, defaults or plain hashes cannot prove authentic origin. Separate collector/enrollment, source/config/hosting/live-browser and network/account/payment gates precede operations. Starting configured Stripe TEST service can itself call merchant/price network readiness. No secrets are read here. Staging PASS remains distinct from fixture/full180/release and grants no deployment/cutover."
+  },
+  "blocking_static_or_runtime_bindings": [
+    "independent scope-freeze adoption and actual Issue186/Project8 tracking readback",
+    "documentation checkpoint commit plus exact-base machine preflight and independent review",
+    "full supervisor/watchdog executable source/tool hashes and host/container argv/cwd/env",
+    "complete per-support closed field/size schema matching future implementation",
+    "DTO complete finite scheduling proof or separate timer/source repair",
+    "all immutable local images/tools/cache/platform/capacity manifests and independent admission",
+    "separate initial read-only preparation probe gate and implementation admission",
+    "separate fixture service ownership/execution gate",
+    "assembler 16MiB versus 8MiB transport closure gate",
+    "distinct authentic staging inputs/enrollment/collector/live automation gates"
+  ],
+  "tracking_sync": {
+    "status": "synchronized_live_readback",
+    "coordinator_only": true,
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6640772107"
+  },
+  "closed_executable_contract": "blocked_missing_supervisor_static_bindings_support_schemas_timer_and_transport"
+}
