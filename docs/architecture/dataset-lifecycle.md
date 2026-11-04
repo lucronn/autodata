@@ -184,6 +184,34 @@ sequenceDiagram
     Reconcile->>DB: mark fulfillment scheduled
 ```
 
+## Workshop retryable reader amendment — reviewed development fix, 2026-11-04
+
+Current result: the reader fix is implemented at `4076ad3a197a6e520269f3dabd2a14f9b2e3d50f` ([draft PR #206](https://github.com/lucronn/autodata/pull/206)) after the synchronized gate `4f007d040da9834ead006d48aa2d641b3df412a7` passed full-SHA preflight. Focused Node tests passed 8/8; full Workshop Node tests passed 59/59; both syntax and exact two-file diff checks passed. Independent exact-code review PASS was relayed by the coordinator from `/root/reader_code_review`; the reviewer reproduced the parent defect, reran the checks and found no actionable issues. No saved review receipt/hash exists.
+
+Completion tracking: [Issue #186 completion comment](https://github.com/lucronn/autodata/issues/186#issuecomment-6633937350), Project #8 still In Progress. Record/task/queue `completion` fields retain fresh complete Issue/all 135 comments/current Project evidence, exact hashes and todo disposition. Items 1–4 and implementation verification/review are complete; independent docs checkpoint review remains pending.
+
+Synthetic Node reader fix at the e5fed171bb36fdb759c592cbcd0e15aea5490c97 lineage only. Final integrated candidate acceptance for 180 distinct cases (identity 5, catalog 8, commerce 14, paid 12, DTO 120, API 21), support/CI/security/image/SDK/license checks, and real staging Firebase/Stripe TEST/both-bank/model/recovery/cars.tk remain unverified and separately gated. No merge, deployment or production-readiness claim.
+
+The original synchronized planning text below is retained as history; its proposed/pending status describes the gate before dispatch. The current result above supersedes that status only for this bounded development fix.
+
+**Goal:** Keep readable Workshop source visible and continue bounded sequential article GET polling through retryable job failures until canonical publication or a terminal outcome, without scheduling another rewrite.
+
+This reader-only amendment is based on `e5fed171bb36fdb759c592cbcd0e15aea5490c97`. Its exact goal, two-file scope, five todos and references are **synchronized** in [Issue #186 detail comment](https://github.com/lucronn/autodata/issues/186#issuecomment-6624605837) and [Project #8](https://github.com/users/lucronn/projects/8) item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`, read back at `2026-11-04T14:54:42Z`. Implementation still requires a committed pinned checkpoint, passing full-SHA machine preflight and independent coordinator gate handoff. This describes proposed behavior; it reports no implemented fix and authorizes no dispatch, merge or deployment.
+
+For an opened article with a durable job ID, `processing.state=failed` and `processing.retryable=true` means the browser should retain readable source and continue sequential GET observation, honoring the existing retry-after/backoff and 120-second maximum absolute budget. `failed` without exactly `retryable=true`, `completed`, `needs_review` and `withdrawn` remain terminal. Navigation cancellation must prevent subsequent requests and updates. The browser must not call prepare again or dispatch another canonical rewrite to recover; backend transformation ownership, source/media rights and warm publication reuse remain authoritative.
+
+Implementation is restricted to `apps/api-go/workshop/article-read.mjs` and `apps/api-go/workshop-client.test.mjs`. Pending/failed article-index hydration, purchase labels, payment/entitlement, backend retry/scheduling, media handling, bundles, fixtures, acceptance inventories and release authority require separate scopes. Existing 55 passing Node tests and the deterministic early-exit reproduction establish helper behavior only; they prove no production Firebase, Stripe, connector or model outcome.
+
+Plan: [docs/superpowers/plans/2026-11-04-workshop-retryable-reader.md](../superpowers/plans/2026-11-04-workshop-retryable-reader.md). Task: `docs/agents/tasks/2026-11-03-production-release/workshop-retryable-reader.json`. Record: `docs/agents/records/2026-11-04-workshop-retryable-reader.json`. Queue: `docs/agents/tasks/2026-11-03-production-release/queue.json`. The new queue entry awaits gate handoff and both records are synchronized; implementation_authorized remains false. Exact comment/Project hashes, prior Project Source text, and full Issue body/all 134 comments are retained by the tracking_sync record and its hashed `/home/corp/.codex/worktrees/workshop-retryable-reader-plan/reader-gate-live-tracking.json` readback archive. Prior queue entries and live Issue body/comments are preserved. The original before-item snapshot was lost; unrelated Project-field preservation is the coordinator-confirmed original assertion, while the fresh archive proves the complete current state. Prior Source text/hash remain verbatim in tracking_sync; no full before-item snapshot was reconstructed.
+
+Concrete todo, identical to the synchronized Issue/Project and gate record:
+
+1. Synchronize this reader-only goal, exact two-file scope, five todos, plan/task/record/queue and dataset lifecycle document in existing Issue #186 and Project #8; read back live tracking, commit and push the planning checkpoint, pin its full SHA and pass machine preflight before implementation.
+2. Add a failing deterministic Node regression for readable source with failed/retryable=true and retry_after_seconds transitioning through queued and rewriting to completed canonical; assert source updates, sequential GET reads, honored delay and one terminal canonical update.
+3. Change processingArticle only so failed is active exactly when retryable===true and job_id exists; preserve completed, needs_review, withdrawn and nonretryable failure as terminal, with no additional prepare POST or rewrite scheduling.
+4. Add deterministic boundary tests for failed with false or missing retryable, persistent retryable failure reaching the existing absolute budget with source retained, and navigation abort during backoff preventing a later read or update.
+5. Run focused red/green tests, the full Workshop Node suite, syntax and diff/scope checks; commit and promptly push the coherent validated fix to the coordinator-assigned branch, obtain independent exact-commit review and record evidence without merge, deployment or live-payment authority.
+
 
 ## Synchronized final reviewed Workshop leaf integration gate — 2026-11-04
 

@@ -174,6 +174,124 @@ test('reader is sequential, retains source during transient failure and stops at
   const result = await readArticle(async () => { calls++; const value=versions.shift();if(value instanceof Error)throw value;return value; }, { now: () => now, wait: async ms => { waits.push(ms);now += ms; }, onUpdate: r => updates.push(r.data.article) });
   assert.equal(calls,3);assert.equal(updates.length,2);assert.deepEqual(waits,[1000,2000]);assert.equal(result.timedOut,false);
 });
+test('reader retries failed jobs until canonical without losing source', async () => {
+  const { readArticle, processingArticle, readableArticle } = await import('./workshop/article-read.mjs');
+  let now = 0, reads = 0, inFlight = 0, maxInFlight = 0;
+  const waits = [], updates = [];
+  const source = {
+    content_origin: 'source', body: 'Stored source remains readable',
+    processing: { job_id: 'job', state: 'failed', retryable: true, retry_after_seconds: 3 },
+  };
+  const responses = [source,
+    { ...source, processing: { job_id: 'job', state: 'queued' } },
+    { ...source, processing: { job_id: 'job', state: 'rewriting' } },
+    { content_origin: 'canonical', body: 'Published canonical', processing: { job_id: 'job', state: 'completed', retryable: false } },
+  ];
+  const result = await readArticle(async () => {
+    reads++; inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+    try {
+      await Promise.resolve();
+      assert.ok(responses.length, 'must stop after canonical completion');
+      return { status: 200, data: { article: responses.shift() } };
+    } finally { inFlight--; }
+  }, {
+    now: () => now,
+    wait: async ms => { waits.push(ms); now += ms; },
+    onUpdate: response => updates.push(response.data.article),
+  });
+  assert.equal(processingArticle(source), true);
+  assert.equal(reads, 4);
+  assert.equal(maxInFlight, 1);
+  assert.deepEqual(waits, [3000, 2000, 4000]);
+  assert.equal(updates.length, 4);
+  assert.ok(updates.slice(0, 3).every(readableArticle));
+  assert.ok(updates.slice(0, 3).every(article => article.body === source.body));
+  assert.equal(updates.filter(article => article.content_origin === 'canonical').length, 1);
+  assert.equal(result.data.article.content_origin, 'canonical');
+  assert.equal(result.timedOut, false);
+});
+test('reader keeps nonretryable failures and completed outcomes terminal', async () => {
+  const { readArticle, processingArticle } = await import('./workshop/article-read.mjs');
+  for (const processing of [
+    { job_id: 'job', state: 'failed', retryable: false },
+    { job_id: 'job', state: 'failed' },
+    { job_id: 'job', state: 'failed', retryable: 'true' },
+    ...['completed', 'needs_review', 'withdrawn'].map(state => ({ job_id: 'job', state, retryable: true })),
+    { state: 'failed', retryable: true },
+  ]) {
+    const source = { content_origin: 'source', body: 'Retained source', processing };
+    let reads = 0;
+    const updates = [];
+    const result = await readArticle(async () => {
+      reads++;
+      return { status: 200, data: { article: source } };
+    }, {
+      now: () => 0,
+      wait: async () => assert.fail('terminal outcomes must not wait for another read'),
+      onUpdate: response => updates.push(response.data.article),
+    });
+    assert.equal(processingArticle(source), false);
+    assert.equal(reads, 1);
+    assert.deepEqual(updates, [source]);
+    assert.equal(result.data.article, source);
+    assert.equal(result.timedOut, false);
+  }
+});
+test('reader retains retryable failed source when the absolute budget expires', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const source = {
+    content_origin: 'source', body: 'Retained source',
+    processing: { job_id: 'job', state: 'failed', retryable: true, retry_after_seconds: 9 },
+  };
+  let now = 0, reads = 0;
+  const waits = [], updates = [];
+  const result = await readArticle(async () => {
+    reads++;
+    return { status: 200, data: { article: source } };
+  }, {
+    budgetMs: 5000, now: () => now,
+    wait: async ms => { waits.push(ms); now += ms; },
+    onUpdate: response => updates.push(response.data.article),
+  });
+  assert.equal(reads, 1);
+  assert.equal(now, 5000);
+  assert.deepEqual(waits, [5000]);
+  assert.deepEqual(updates, [source]);
+  assert.equal(result.data.article, source);
+  assert.equal(result.timedOut, true);
+});
+test('reader navigation abort during retryable failure backoff prevents later reads and updates', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const navigation = new NavigationGeneration();
+  const generation = navigation.next();
+  const source = {
+    content_origin: 'source', body: 'Retained source',
+    processing: { job_id: 'job', state: 'failed', retryable: true, retry_after_seconds: 3 },
+  };
+  let reads = 0, waits = 0;
+  const updates = [];
+  await assert.rejects(readArticle(async () => {
+    reads++;
+    return { status: 200, data: { article: source } };
+  }, {
+    signal: generation.signal, now: () => 0,
+    wait: async (ms, signal) => {
+      waits++;
+      assert.equal(ms, 3000);
+      assert.equal(signal, generation.signal);
+      navigation.clear();
+      signal.throwIfAborted();
+    },
+    onUpdate: response => updates.push(response.data.article),
+  }), { name: 'AbortError' });
+  assert.equal(reads, 1);
+  assert.equal(waits, 1);
+  assert.deepEqual(updates, [source]);
+  assert.equal(generation.current(), false);
+  const later = navigation.next();
+  assert.equal(later.current(), true);
+  assert.equal(later.signal.aborted, false);
+});
 test('reader honors retry-after and absolute budget without extra request', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs'); let now=0,calls=0;
   const result = await readArticle(async () => {calls++;return {status:202,data:{article:{processing:{job_id:'job',state:'queued'}}},retryAfterSeconds:9};}, {budgetMs:5000,now:()=>now,wait:async ms=>{now+=ms;}});
