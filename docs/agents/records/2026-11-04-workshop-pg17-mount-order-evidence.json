@@ -1,0 +1,111 @@
+{
+  "raw_directory": "/home/corp/autodata-evidence/pg17-bind-target-prep-20261104-01/evidence",
+  "retained_raw_sha256": {
+    "task1a-result.json": "6db4e39f3b01adb90b42985b44a6949b6670774fc8fc9e0f84ab7be96c4f5c4d",
+    "task1a-diagnosis.json": "5654ed1637e63f2facb6ee2b52a8589fb685e7996bac0e44498b130db2376695",
+    "created-export-before.stdout": "67bc8ce15fc8b8b98c69e7a827f36eafd2ce4d1b330c40addbe09bb78cd07f3e",
+    "created-export-after.stdout": "cf66f6a4aa14ace4a810c5ca67d2833ea48ca7bf7eb902616284c2de38e0ac76"
+  },
+  "old_list_equality_passed": false,
+  "canonical_complete_mount_sha256": "7692124c79b10f42cb12fa67a67ed6215f8c8fccaf2328d81fa9c8157c475c94",
+  "fragment_sha256": "0cd61226ab5828b3603089594779494ab6b98e4441569248a5d29e3b0684cc40",
+  "pure_fixture_cases": [
+    {
+      "case": "retained_actual_reordered_complete_records",
+      "expected_pass": true,
+      "actual_pass": true
+    },
+    {
+      "case": "same_complete_records",
+      "expected_pass": true,
+      "actual_pass": true
+    },
+    {
+      "case": "duplicate_destination",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "missing_destination",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "extra_destination",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "field_drift_Destination_/extra",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "field_drift_Source_/other",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "field_drift_Type_volume",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "field_drift_RW_False",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "field_drift_RW_1",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "field_drift_Mode_ro",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "field_drift_Propagation_shared",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "field_drift_ExtraField_unexpected",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "missing_record_field",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "duplicate_json_key",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "nonfinite_json",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "malformed_json",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "wrong_shape",
+      "expected_pass": false,
+      "actual_pass": false
+    }
+  ],
+  "passed": 18,
+  "failed": 0,
+  "historical_result": "still_failed_missing_new_full_structural_audit_receipts",
+  "planning_docker_invoked": false,
+  "planning_retry": false,
+  "runtime_verified": false,
+  "production_ready": false
+}

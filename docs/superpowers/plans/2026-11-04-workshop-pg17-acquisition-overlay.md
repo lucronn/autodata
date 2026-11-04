@@ -147,3 +147,20 @@ Concrete adoption todo:
 Reviewed bind-target adoption synchronized by live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6621594414 and Project8 readback at `2026-11-04T03:18:09.877892+00:00`; exact hashes in dedicated record. Full prior Project index preserved verbatim. Source exact-plan independent review approved; new coordinator preparation dispatch required; all adoption Docker/download/install/image/harness actions remain unexecuted.
 
 Pinned reviewed bind-target adoption checkpoint: `76fd86e5a356ae611d643e621f9ae03660d50206`; full-SHA preflight `status: synchronized`, `errors: []`, exit0. Receipt `docs/agents/records/2026-11-04-workshop-pg17-bind-target-adoption-preflight.json`; exact-pin Issue186/Project8 readback https://github.com/lucronn/autodata/issues/186#issuecomment-6621597936. Reviewed source plan approved; fresh coordinator preparation dispatch required. No container/image/package/harness action or readiness claim.
+
+
+## PG17 complete mount-record ordering successor: plan only
+
+Correct only order-sensitive acquisition Mounts inspection comparison using complete records keyed by unique exact Destination, retaining all raw/canonical hashes, red receipts and unchanged acquisition guards.
+
+Plan `docs/superpowers/plans/2026-11-04-workshop-pg17-mount-order.md`; record `docs/agents/records/2026-11-04-workshop-pg17-mount-order.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-pg17-mount-order.json`. Base da1f42a; actual fresh acquisition attempt stopped before startup on inspect Mounts array order only,0 APKs, exact-owned cleanup/absence and unchanged volume inventory. Preserve red result/diagnosis exact hashes in dedicated evidence. Replace only top-level Mounts array order-sensitive equality with complete-record canonical JSON by unique exact Destination; duplicates/missing/extra paths or any field drift reject. All original config/structural/baseline/signature/diff/payload/cleanup and offline/Task2 limits unchanged. Live tracking synchronized; independent exact-checkpoint review/root dispatch remain pending. No retry authority. No planning Docker/retry/download/harness.
+
+Concrete todo:
+
+- [ ] Synchronize the narrow mount-order plan, exact red receipts and complete-record fixtures with Issue186/Project8/canonical docs only after coordinator releases tracking slot; commit/push and pin passing full-SHA preflight for independent review.
+- [ ] Require independent exact-checkpoint review/adoption and fresh coordinator Task1A dispatch before any new Docker operation; use a new private run and never restart/reuse prior failed containers or APKs.
+- [ ] Retain raw before/after inspect bytes and SHA256; canonicalize only top-level Mounts array record order by unique exact Destination, require exactly /apks and /control and preserve every complete record field/value.
+- [ ] Require original complete config/mount predicates plus canonical equality at every acquisition Mounts comparison; duplicate/missing/extra destinations, field/type/value drift, invalid JSON or ambiguous input fail closed.
+- [ ] Keep all predecessor created-copy/export/diff ordering, structural/exit/signature/baseline/resource/network/payload/cleanup bounds and offline/Task2 separation unchanged; no planning Docker/retry/download/harness or readiness claim.
+
+Mount-order successor synchronized by live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6621665171 and Project8 readback at `2026-11-04T03:23:07.931845+00:00`; exact hashes in dedicated record. Full prior Project index preserved verbatim. Independent exact-checkpoint review/new preparation dispatch pending; all Docker/download/install/image/harness actions remain unexecuted.
