@@ -96,6 +96,7 @@ def _valid_request(request):
             return False
         if not all(_text(p) and os.path.isabs(p) for p in (request.executable, request.cwd)):
             return False
+        request.cwd.encode('utf-8')
         argv, env = request.argv, request.env
         if type(argv) is not tuple or not 1 <= len(argv) <= 128:
             return False
@@ -308,7 +309,10 @@ def _run(request, budget, cancel, backend):
                     code = _returncode(info)
                     if not open_pipes:
                         # No future group signal after this successful branch.
-                        code = backend.reap(proc)
+                        try:
+                            code = backend.reap(proc)
+                        except InterruptedError:
+                            continue
                         if code is None:
                             fault = 'capture_failed'
                         else:
@@ -356,14 +360,20 @@ def _run(request, budget, cancel, backend):
                 pipe.close()
             except OSError:
                 closed = False
+                if fault is None:
+                    fault = 'capture_failed'
         if selector is not None:
             try:
                 selector.close()
             except OSError:
                 closed = False
+                if fault is None:
+                    fault = 'capture_failed'
         if proc is not None and not reaped:
             try:
-                code, reaped = _cleanup(backend, proc, state.deadline, not open_pipes)
+                cleanup_code, reaped = _cleanup(backend, proc, state.deadline, not open_pipes)
+                if cleanup_code is not None:
+                    code = cleanup_code
             except Exception:
                 reaped = False
         if fault is not None or (proc is not None and (not reaped or not closed)):
