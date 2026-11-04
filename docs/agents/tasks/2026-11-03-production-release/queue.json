@@ -509,6 +509,17 @@
         "project_text_sha256": "be3c2181472276259233a1a3f2e016dc5b72fa19b16795bed9f15e8822625fe9",
         "full_prior_project_index_preserved_in_issue_comment": true
       }
+    },
+    {
+      "id": "workshop-schema-pg17-route",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-schema-pg17-route.json",
+      "depends_on": [],
+      "state": "plan_only_pending_independent_review",
+      "release_state": "unverified",
+      "harness_source_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
+      "implementation_changes_allowed": false,
+      "preparation_executed": false,
+      "runtime_verified": false
     }
   ],
   "execution": {

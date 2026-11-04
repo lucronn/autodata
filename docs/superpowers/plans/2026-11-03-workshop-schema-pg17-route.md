@@ -1,0 +1,110 @@
+# Workshop Schema PG17 Disposable Runner Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans for an explicitly approved later preparation/execution dispatch. This checkpoint is plan-only; it dispatches no builder, download, image build, container or PostgreSQL process.
+
+**Goal:** Prepare and independently freeze a disposable PostgreSQL17 Alpine runner for the exact disconnected schema-probe candidate, then permit only separately approved actual harness execution; preserve production runtime, grants and all readiness denials.
+
+**Architecture:** Use the cached official PostgreSQL17 Alpine image as an immutable base for a disposable Python/C runner. Preparation is a bounded new download/build capability requiring coordinator approval after this plan's independent review; actual PostgreSQL execution has a second exact-image approval boundary. Run the unchanged harness at `54ab7dce19c36ce7ea3403259dd1ecc66bf323aa` in a network-disabled container with only a read-only source snapshot and a private evidence mount.
+
+**Tech Stack:** Docker, PostgreSQL17.11, Alpine APK, Python3 standard library/unittest, GCC/musl, existing C sentinel and SQL fixtures. No pgvector extension is required.
+
+**Spec:** `docs/superpowers/plans/2026-11-03-workshop-schema-observation-harness.md`; `docs/agents/pre-implementation-gate.md`.
+
+Issue: https://github.com/lucronn/autodata/issues/186
+Project: https://github.com/users/lucronn/projects/8, item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`.
+Planning root: `eddcf724028683dbb083191e4f8c42064b866bf0`.
+Harness source: `codex/workshop-schema-probe` at `54ab7dce19c36ce7ea3403259dd1ecc66bf323aa` (not integrated by this task).
+Original planning checkpoint: `5d0571c` is historical only; the exact harness pin above is authoritative for this route.
+
+## Global constraints and precedence
+
+This successor supersedes only the original harness plan's local-native-only/no-Docker/no-download prerequisite for a later explicitly approved disposable test runner. All observation protocol, privilege, sentinel positive-control, hostile matrix, concurrency, timeout, bounded output, independent cleanup and denial semantics remain normative. This is not a new authorization for the original implementation allowlist. **Tracked implementation changes allowed by this route: none.** If the immutable harness fails, preserve the failure and obtain a separate repair gate before changing any of its five paths or weakening assertions.
+
+The original local toolchain runner is a supported future alternative only through a revised gate; do not silently fall back to host PG18 or another image. No package installation on the host, production PostgreSQL use, existing PGDATA/DSN/socket, host network, published port, production mount/secret, Docker socket inside the container, privileged container, cloud/provider/application/Compose/DNS operation or integration is authorized. The test-only SELECT+MAINTAIN role remains inside the harness-owned disposable cluster. Production autodata_metrics, runtime-grants.sql and catalog-only v2 collector are unchanged; schema/services/runtime_evidence/production_ready/deployment_authorized remain false.
+
+`status: synchronized` describes tracking consistency only. Three separate states must remain visible: plan approval pending; runner preparation unexecuted; actual harness unexecuted. A machine preflight, cached image, successful image build, package history, pure tests or preflight version output is not actual harness evidence.
+
+## Inherited PGDATA volume and exact-owned cleanup
+
+The pinned official base declares `VOLUME /var/lib/postgresql/data`; its derivative inherits that declaration. An otherwise read-only root filesystem does not prevent Docker allocating an anonymous writable volume there. Every later acquisition, preparation, toolchain inspection, sentinel-compilation inspection and harness execution container launch must explicitly override that exact destination with `--tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,nodev,size=16m,uid=1000,gid=1000,mode=0700`. This private bounded tmpfs is unused by the harness, which creates PGDATA under its private `/tmp`; never start the image's default PostgreSQL entrypoint. No launch may rely on the inherited VOLUME/default PGDATA.
+
+Before executing any preparation/inspection/harness payload, create the exact owned named container without starting it, retain its ID and inspect its complete mount inventory and HostConfig.Tmpfs. Require `/var/lib/postgresql/data` to be precisely the declared tmpfs, the phase-specific `/tmp` tmpfs and only that phase's explicitly approved bind mounts; reject any unexpected mount, anonymous/named Docker volume, duplicate/overlapping destination or writable source mount. Start only that inspected container ID. Retain before/after identities and stopped/removal proof for every launch, including failed/cancelled prerequisite runs. Build sandbox handling must likewise be verified not to leave an inherited PGDATA volume; if the selected builder cannot prove bounded private handling and cleanup, block preparation rather than fall back silently.
+
+After each launch, bounded stop/kill only the exact owned container, inspect stopped state and mount inventory, then use `docker rm --volumes <exact-owned-container-ID>` defensively and verify that container is absent. Because the approved inventory contains no Docker volume, no persistent PGDATA volume may be created or remain; retain the inventory and cleanup check as evidence. If unexpected volume allocation is detected, fail the attempt, retain the exact volume name/creation ownership from that container's inspection and remove only that proven-owned volume after the container stops; verify its absence. Never use prune/bulk volume deletion or infer ownership from a name prefix. Tmpfs cleanup and container absence supplement the harness's independent server/session/lock cleanup proof; they cannot replace it.
+
+## Read-only prerequisite findings and route decision
+
+Findings were collected without starting a container, installing a package, executing the harness or editing implementation. Native `pg_config --version` reports PostgreSQL18.3; `/usr/lib/postgresql` contains18, PG17 server headers are absent, and ICU development headers are absent. Host cc/make exist. Native isolated PG17 therefore needs a verified upstream download/build plus ICU development dependencies (or a compatible binary package closure). It avoids Docker at execution time but requires more toolchain acquisition and ABI/prefix checks; system package replacement is excluded. Native PG18 cannot prove PG17 MAINTAIN/locking/catalog behavior.
+
+Read-only `docker image inspect` and layer-archive inspection show:
+
+| Candidate | Immutable identity | Relevant finding |
+| --- | --- | --- |
+| `postgres:17-alpine` | local image `sha256:ab20e934b27ba3ff927c1b4c9ff8cf6c32f315f743efe68dd3441182a87fb085`; repo digest `postgres@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b` | linux/amd64, PG_VERSION17.11; `/usr/local/bin` PG tools, matching server headers and ICU runtime libraries present; Python3/cc absent. |
+| `pgvector/pgvector:pg17` | local image `sha256:151aa1c2e849e7828ed8aef2183ae15f692cbe887d2f28921d8b44b26e154d7e`; digest `pgvector/pgvector@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d` | PG_VERSION17.11-1.pgdg12+2; Python3/cc/core server headers absent after build-package removal. Adds unnecessary extension provenance and header reacquisition. |
+
+**Decision:** bounded derivative of cached official Alpine base is fastest and narrows acquired dependencies to Python3 and a C compiler. It retains same-build PG17 server/client/headers and ICU runtime already present. Image-cache history is discovery evidence, not proof of executable prerequisites or harness correctness. Layer inspection does not replace version, ABI, ICU and sentinel verification inside the exact frozen runner. If digest resolution would pull, the cache differs, or a prerequisite is missing, stop rather than use a tag/fallback image.
+
+## File ownership and adoption boundary
+
+This planning task creates this plan, `docs/agents/tasks/2026-11-03-production-release/workshop-schema-pg17-route.json`, and `docs/agents/records/2026-11-03-workshop-schema-pg17-route.json`; updates the five canonical references in that record and the coordinator queue. There are no code, Dockerfile, workflow, package-lock or SQL changes. Future runner Dockerfile/package manifest/logs live only in a newly owned private preparation directory named by the coordinator; they are review artifacts, not an implicit repository-file allowlist.
+
+The coordinator must first review this exact pushed gate SHA, then adopt the planning documents on a clean successor of harness54ab and re-run the pinned machine preflight at that full adopted SHA. Verify the five harness files byte-for-byte against54ab, record the source/archive hashes, and explicitly authorize preparation only. This planner must not merge/cherry-pick/integrate. Execution remains blocked until the frozen runner and source artifact pass independent review and a second explicit coordinator dispatch names their exact identities. No build or run command below is executed during planning.
+
+## Task1: Bounded preparation after independent plan approval
+
+**Consumes:** exact adopted synchronized checkpoint, source54ab and cached base identities above.
+**Produces:** immutable derivative image, exact package/APK manifest, build-input hashes and preparation-only receipt; no PostgreSQL startup.
+
+- [ ] Verify cached local image ID and repo digest match the table. Require a builder that resolves the exact cached local image ID without registry access; an unsupported local-ID base blocks rather than substituting a tag. Use the local image ID as Dockerfile FROM; use `docker build --pull=false --network=none`, a private context containing only the reviewed Dockerfile and frozen APK directory, and no repository/credential/SSH build secret. Retain the base identity, Docker engine version/platform and effective base APK repository configuration.
+- [ ] Download only Python3, GCC, musl-dev and binutils plus their APK dependency closure from the inherited official Alpine version repositories; allow only their official `dl-cdn.alpinelinux.org` HTTPS main/community paths. No curl-pipe-shell, third-party repository, source checkout, image pull or package upgrade. Use `apk fetch --recursive --output /owned/prep/apks python3 gcc musl-dev binutils` in a preparation container with the default postgres entrypoint replaced by `/bin/sh`; no PostgreSQL command. Constrain this acquisition container to the official APK download task, override its default entrypoint with `/bin/sh`, use no repository/secret/production mounts, and write only the new private preparation APK directory. Its network access is preparation-only; apply the inherited-PGDATA tmpfs/mount-inventory contract above and destroy only the exact inspected acquisition container with cleanup proof, without PostgreSQL startup after download. APK signatures must validate. Record every exact resolved package name/version/architecture, SHA256 and configured repository before image construction. A resolver failure blocks; do not broaden mirrors or packages.
+- [ ] Construct the final image offline from those frozen APKs using `apk add --no-network --allow-untrusted` is **forbidden**. Use `apk add --no-network /apks/*.apk` with normal trusted-key signature validation; repository index resolution must not be needed. Freeze the exact Dockerfile, APK hashes, sorted `apk info -vv`, interpreter/compiler version, matching PG17 binaries/header hash and immutable resulting image ID. Remove APK archives from the final image after installation; retain external copies for review.
+
+The final Dockerfile structure is fixed (render the cached local image ID literally, never a mutable tag):
+
+```dockerfile
+FROM sha256:ab20e934b27ba3ff927c1b4c9ff8cf6c32f315f743efe68dd3441182a87fb085
+COPY apks/ /apks/
+RUN apk add --no-network /apks/*.apk && rm -rf /apks \
+ && addgroup -g 1000 probe \
+ && adduser -D -u 1000 -G probe probe
+USER 1000:1000
+WORKDIR /source
+ENTRYPOINT ["/usr/bin/python3"]
+```
+
+- [ ] Any collision with UID/GID1000, compiler/header mismatch, failed signature, missing ICU support or inability to install the frozen offline closure blocks preparation. Host uid/gid1000 is the observed planning account; execution under another account requires a revised ownership decision, not chmod777 or root harness execution.
+- [ ] Preparation-only verification may execute Python/compiler/version commands in the derivative with `--network=none`, no source/evidence/production mounts and default entrypoint overridden and the inherited-PGDATA tmpfs/mount-inventory/cleanup contract above. Check pg_config/postgres/initdb/pg_ctl/psql all report identical17.x, `/usr/local/include/postgresql/server/{pg_config.h,postgres.h}` match17, `cc` resolves under `/usr/bin:/bin`, `pwd.getpwuid(1000)` resolves, `pg_config --configure` includes ICU, and non-root process uid/gid are1000. Compile the unchanged C sentinel from the read-only exact-source snapshot only after source review; no initdb/pg_ctl/postgres invocation beyond `--version` during preparation. Retain bounded return codes and hashes, not an acceptance receipt.
+- [ ] Commit/push only any coordinator-authorized planning/evidence index, then request independent runner artifact review. Do not start PostgreSQL or count a preparation check as a case. No image replacement after this boundary without re-review.
+
+## Task2: Separately approved exact-image actual harness execution
+
+**Consumes:** independent plan/artifact reviews, full adopted checkpoint SHA, immutable derivative image ID, exact source54ab archive/hash, explicit execution dispatch.
+**Produces:** bounded raw pass/failure receipts and independent cleanup evidence; no product/runtime deployment changes.
+
+- [ ] Create a fresh mode0700 host evidence directory owned1000:1000, outside the checkout; export exact54ab source with `git archive` to a separate private directory and make the source read-only. Record exact source SHA and hashes of all five harness paths; no sibling checkout/dirty source or unreviewed wrapper substitution.
+- [ ] Run one named container with image by immutable `sha256:` ID; `--pull=never --network=none --read-only --user=1000:1000 --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=256 --memory=1g --cpus=2`. Publish no ports, attach no existing network/volume, set no env-file. Mount only the exact source read-only at `/source` and the private evidence directory at `/evidence`; provide private executable `/tmp` tmpfs with mode0700/uid1000/gid1000,size512m and no host path. Explicitly add the separate bounded `/var/lib/postgresql/data` tmpfs above, inspect the exact created container before start and reject any inherited anonymous volume. Override the image entrypoint with `/usr/bin/python3`; never run its postgres startup entrypoint.
+- [ ] Set only `AUTODATA_SCHEMA_PROBE_PG17=1`, `AUTODATA_PG17_ROOT=/usr/local`, `AUTODATA_SCHEMA_PROBE_EVIDENCE=/evidence`, `PYTHONDONTWRITEBYTECODE=1`; invoke `-B -m unittest discover -s infra/deploy/gce -p test_schema_probe_pg17.py -v` at `/source`. Do not pass DSN, host/service credentials, HOME mounts or arbitrary SQL. The owned harness creates its own Unix-socket-only cluster under private `/tmp` and clears subprocess environment. Retain inspect proving actual image ID/user/network/mounts/entrypoint and exact argv/environment allowlist; no Docker socket mount.
+- [ ] Use a host outer supervisor deadline of1200s for the complete adversarial suite (not an altered per-case deadline); retain stdout/stderr and exit status in the private evidence directory, preserve every attempt. On deadline/cancel/failure send bounded stop then kill to this exact owned container ID only, retain timed-out failure, inspect stopped state, then remove only that container with `docker rm --volumes <exact-owned-container-ID>` and retain mount/absence proof under the inherited-volume contract above. Do not use Compose down, prune, bulk pkill or delete unrelated directories.
+- [ ] Require all existing mandatory PG17 case IDs with no skipped/missing case, actual positive C sentinel controls, safe ledger baseline, real MAINTAIN-vs-SELECT lock proof, hostile rejection before ledger bytes, prelock snapshot/queued DDL barriers, bounded ledger values/framing/lifecycle and independent pg_stat_activity/pg_locks cleanup. Runtime ICU collation setup is mandatory; missing support is failure. Existing pure/fake tests do not substitute. Do not edit harness source or assert success from an exit code without inspecting raw case receipts.
+- [ ] Independently inspect raw receipt hashes/case inventory and `runtime_verified` facts, sentinel offsets/counts, server-stop and zero residual sessions/locks; additionally inspect the owned container exited and was removed. Container removal cannot retroactively prove server idle-timeout/session-cleanup cases. A killed/failed run remains failed even when Docker cleanup succeeds. Retain failed evidence; rerun only after a separately approved identified correction.
+- [ ] Publish a redacted exact-source/exact-image verification report through coordinator-owned evidence paths, then independently review it before integration/acceptance. A passing disposable protocol still attests only the bounded fixture ledger protocol: production grants, auth/config/HBA, runtime transport/full-schema/services, full product acceptance and all deployment/readiness gates remain unverified.
+
+## Concrete todo record
+
+- [ ] Synchronize the PG17 route decision, exact source/base pins, staged authority and concrete todo in Issue186/Project8 and canonical documentation; commit/push and pass exact-checkpoint preflight for independent review.
+- [ ] After coordinator approval only, prepare the cached-digest Alpine derivative with Python3 and a C compiler; retain package versions, APK hashes, build inputs, base identity and immutable image identity with private tmpfs covering inherited PGDATA, verified mount inventory and exact-owned cleanup; do not start PostgreSQL.
+- [ ] Independently inspect the frozen runner artifact and exact harness54ab source archive, verify matching PG17 tools/headers, ICU and non-root identity, then obtain separate exact-image execution authorization and re-pin the adopted gate.
+- [ ] Only after the execution boundary is approved, run the unchanged complete PG17 adversarial harness in one network-disabled disposable container with private PGDATA tmpfs and verified mount inventory; retain every failure, sentinel control, case inventory and server/session/lock/container cleanup receipt.
+- [ ] Independently review exact source/image/raw evidence before accepting any disposable-harness result; fail closed on missing prerequisites or cases and keep production grants, runtime integration, services, deployment and readiness unavailable.
+
+## Plan-only machine boundary
+
+The dedicated record and task carry identical goal/todo and live tracking readback hashes. Commit the checkpoint first, run `python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026-11-03-workshop-schema-pg17-route.json --base-sha <full-checkpoint-SHA>`, retain stdout and exit code, then commit a separate pinned receipt and push. The receipt is evidence of the earlier checkpoint, not a self-referential authorization. At adoption, the coordinator reruns at the new full SHA with the exact record bytes verified from Git. Independent review remains pending until explicitly recorded; preparation/runtime execution remain unexecuted and unauthorized during this task.
+
+Tracking synchronized by live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6619358812 and Project8 readback at `2026-11-04T00:44:26.593707+00:00`; dedicated record retains SHA256 hashes and the complete prior Project index is preserved verbatim in that comment. Independent plan review pending; preparation and actual harness remain unexecuted and unauthorized.
+
+
+PG17 route inherited-volume review correction (plan-only): the pinned official base declares `VOLUME /var/lib/postgresql/data`. Every later preparation/acquisition/inspection/execution container must override that exact path with private bounded tmpfs (`rw,noexec,nosuid,nodev,size=16m,uid=1000,gid=1000,mode=0700`), retain complete mount inventory before payload start and cleanup/absence proof afterward, reject unexpected anonymous/named volumes, and remove only exact-owned containers/volumes. Build sandbox cleanup must also be demonstrated; inability blocks preparation. The harness cluster remains under private `/tmp`; Docker cleanup does not substitute for server/session/lock cleanup evidence. Canonical corrected plan/task/record: `docs/superpowers/plans/2026-11-03-workshop-schema-pg17-route.md`, `docs/agents/tasks/2026-11-03-production-release/workshop-schema-pg17-route.json`, `docs/agents/records/2026-11-03-workshop-schema-pg17-route.json`. Independent corrected-checkpoint review remains pending; no preparation, image build, PostgreSQL/container execution, implementation modification or readiness claim.
+
+Corrected PGDATA route tracking synchronized by https://github.com/lucronn/autodata/issues/186#issuecomment-6621014641 and Project8 readback at `2026-11-04T02:36:36.976288+00:00`; exact hashes in dedicated record. Independent review pending; all execution remains unexecuted.
