@@ -501,6 +501,49 @@ def evaluate_backup(manifest, config, run_id, policy, claims, fake_cli, *, now, 
     return result
 
 
+
+# Disconnected publication v2: no adapter defaults, subprocess or network paths.
+_OWNED_IMAGES = ('api', 'ingestion', 'migration')
+_ENVELOPE_FIELDS = ('protocol_version', 'source_sha', 'service_config_sha256', 'archive_sha256',
+                    'archive_bytes', 'member_sha256', 'member_bytes', 'manifest_sha256')
+
+
+def _same(actual, expected):
+    require(rt.canonical_bytes(actual) == rt.canonical_bytes(expected))
+
+
+def _image_observations(manifest):
+    return {role: dict(image, platform=manifest['platform']) for role, image in manifest['images'].items()}
+
+
+def produce_release_archive(manifest: dict, config: dict, images: dict, *,
+                            rollback_manifest: dict | None = None) -> tuple[bytes, dict]:
+    """Produce deterministic inner ZIP bytes, not GitHub publication evidence."""
+    rt.validate_manifest(manifest, config, rollback_manifest)
+    _same(images, _image_observations(manifest))
+    members = (rt.canonical_bytes(manifest), rt.canonical_bytes(images))
+    local, central, hashes, sizes = bytearray(), bytearray(), {}, {}
+    for name, data in zip(_RELEASE_MEMBERS, members):
+        require(0 < len(data) <= rt.MAX_JSON_BYTES)
+        crc, size, offset = binascii.crc32(data), len(data), len(local)
+        local.extend(struct.pack('<4s5H3I2H', b'PK\x03\x04', 10, 0, 0, 0, 33,
+                                 crc, size, size, len(name), 0))
+        local.extend(name); local.extend(data)
+        central.extend(struct.pack('<4s6H3I5H2I', b'PK\x01\x02', 10, 10, 0, 0, 0, 33,
+                                   crc, size, size, len(name), 0, 0, 0, 0, 0, offset))
+        central.extend(name)
+        hashes[name.decode()] = hashlib.sha256(data).hexdigest()
+        sizes[name.decode()] = size
+    end = struct.pack('<4s4H2IH', b'PK\x05\x06', 0, 0, 2, 2, len(central), len(local), 0)
+    archive = bytes(local + central + end)
+    require(len(archive) <= _MAX_RELEASE_ARCHIVE)
+    envelope = {'protocol_version': 2, 'source_sha': manifest['source_sha'],
+                'service_config_sha256': manifest['service_config_sha256'],
+                'archive_sha256': hashlib.sha256(archive).hexdigest(), 'archive_bytes': len(archive),
+                'member_sha256': hashes, 'member_bytes': sizes, 'manifest_sha256': rt.sha256(manifest)}
+    return archive, envelope
+
+
 if __name__ == '__main__':
     code, receipt = cli(sys.argv[1:])
     sys.stdout.buffer.write(rt.canonical_bytes(receipt) + b'\n')

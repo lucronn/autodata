@@ -902,4 +902,50 @@ class WorkflowTests(unittest.TestCase):
                 self.assertNotIn('success', result.stdout)
 
 
+
+class PublisherProducerTests(unittest.TestCase):
+    setUp = CloudTests.setUp
+    # A missing digest/type/config check would allow altered release bytes.
+    def producer_images(self):
+        return {role: dict(image, platform='linux/amd64') for role, image in self.manifest['images'].items()}
+
+    def test_producer_is_deterministic_and_compatible_with_reviewed_inner_zip(self):
+        self.assertTrue(hasattr(self.ops, 'produce_release_archive'), 'producer missing')
+        archive, envelope = self.ops.produce_release_archive(self.manifest, self.config, self.producer_images())
+        again, repeated = self.ops.produce_release_archive(self.manifest, self.config, self.producer_images())
+        self.assertEqual((archive, envelope), (again, repeated))
+        self.assertEqual(envelope['archive_sha256'], hashlib.sha256(archive).hexdigest())
+        self.assertEqual(envelope['source_sha'], self.manifest['source_sha'])
+        self.assertEqual(envelope['protocol_version'], 2)
+        result = self.ops.verify_release_archive(archive, self.manifest,
+            expected_archive_sha256=envelope['archive_sha256'], expected_member_sha256=envelope['member_sha256'])
+        self.assertEqual(result['status'], 'archive_consistent')
+        with zipfile.ZipFile(io.BytesIO(archive)) as z:
+            self.assertEqual(z.namelist(), ['release.json', 'images.json'])
+            self.assertEqual(z.read('release.json'), self.rt.canonical_bytes(self.manifest))
+            for info in z.infolist():
+                self.assertEqual((info.create_system, info.extract_version, info.flag_bits, info.compress_type,
+                                  info.extra, info.comment, info.internal_attr, info.external_attr),
+                                 (0, 10, 0, 0, b'', b'', 0, 0))
+                self.assertEqual(info.date_time, (1980, 1, 1, 0, 0, 0))
+                self.assertEqual(envelope['member_bytes'][info.filename], info.file_size)
+                self.assertEqual(envelope['member_sha256'][info.filename], hashlib.sha256(z.read(info)).hexdigest())
+
+    def test_producer_rejects_image_shape_platform_and_config_drift(self):
+        self.assertTrue(hasattr(self.ops, 'produce_release_archive'), 'producer missing')
+        for field, value in [('platform', 'linux/arm64'), ('image_id', 'sha256:'+'0'*64), ('extra', True)]:
+            images = self.producer_images(); images['api'][field] = value
+            with self.subTest(field=field), self.assertRaises(self.ops.ContractError):
+                self.ops.produce_release_archive(self.manifest, self.config, images)
+        images=self.producer_images(); images.pop('api')
+        with self.assertRaises(self.ops.ContractError):
+            self.ops.produce_release_archive(self.manifest, self.config, images)
+        manifest=copy.deepcopy(self.manifest);manifest['service_config_sha256']='0'*64
+        with self.assertRaises(self.ops.ContractError):
+            self.ops.produce_release_archive(manifest,self.config,self.producer_images())
+        manifest=copy.deepcopy(self.manifest);manifest['rollback_source_sha']='d'*40
+        with self.assertRaises(self.ops.ContractError):
+            self.ops.produce_release_archive(manifest,self.config,self.producer_images())
+
+
 if __name__ == '__main__': unittest.main()
