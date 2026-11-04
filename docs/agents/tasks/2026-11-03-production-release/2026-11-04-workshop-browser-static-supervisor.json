@@ -200,7 +200,7 @@
     "all_trust_profiles_enabled": false
   },
   "accepted_new_case_credit": 0,
-  "dispatch_mode": "none_draft_blocked",
+  "dispatch_mode": "none_until_exact_checkpoint_review_and_coordinator_dispatch",
   "independent_review_required": true,
   "tracking_sync": {
     "status": "synchronized_live_readback",

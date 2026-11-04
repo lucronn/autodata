@@ -1904,7 +1904,7 @@
       "accepted_new_case_credit": 0,
       "implementation_dispatch_authorized": false,
       "runtime_execution_authorized": false,
-      "dispatch_prerequisite": "Conditional draft only. Bound independent revision3 static review, current tracking readback, committed synchronized six-document checkpoint, exact-SHA preflight and coordinator handoff remain required; offline eight-path scope only after that gate. No runtime authority."
+      "dispatch_prerequisite": "Live Issue186/Project8 readback, six-document synchronized checkpoint and exact-SHA preflight are recorded. No code dispatch until independent exact-checkpoint review and explicit coordinator handoff; offline eight-path scope only. No runtime authority."
     }
   ],
   "execution": {
