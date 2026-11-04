@@ -392,3 +392,27 @@ Future implementation allowlist is exactly `scripts/dev/workshop_final180_catalo
 3. Add failing-first fake-only adversarial tests for grammar, exact IDs/slots, lifecycle, receipts, limits, serialization and unchanged B1/Stage A behavior.
 4. Update the runbook; run focused/developer/autonomy and allowlist checks; commit/push validated milestones and obtain independent exact-code-head review.
 5. Synchronize code-only verification at the exact implementation SHA while preserving null runtime lock/run record, disabled profiles and all authority false; retain separate blockers for complete catalog raw semantics and real runtime.
+
+
+### Synchronized final180 CI fixture integration planning successor (2026-11-04)
+
+**Status:** Issue186/Project8 planning `synchronized` with live readback at https://github.com/lucronn/autodata/issues/186#issuecomment-6638503013. The coordinator preserved all 160 prior comments, now 161, the Issue body and unrelated Project fields, and archived the prior Project Source verbatim. Independent pre-sync five-file draft review PASS with no findings is coordinator-reported. Committed-checkpoint preflight, independent exact-checkpoint review and explicit builder dispatch remain required; none is asserted by tracking synchronization.
+
+**Goal:** Carry the exact Stage A CI Git-metadata test-fixture isolation repair into the reviewed B2 stack without changing production behavior or earning runtime acceptance credit.
+
+**Issue:** https://github.com/lucronn/autodata/issues/186
+**Project:** https://github.com/users/lucronn/projects/8
+
+**Exact planning parent / reviewed B2 head:** `0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471` on `codex/workshop-final180-stage-b2-build`, draft PR https://github.com/lucronn/autodata/pull/230. Independent exact-head review PASS with no findings is coordinator-reported; this successor requires a separate exact-checkpoint review. **Application candidate remains:** `4d82e413e04fb2401ac7bc28dc828375ac662180`. This CI integration changes tooling tests, not candidate identity.
+
+The [CI-integration plan](2026-11-04-workshop-final180-ci-integration.md), [spec](../../agents/specs/2026-11-04-workshop-final180-ci-integration.md), task `docs/agents/tasks/2026-11-03-production-release/workshop-final180-ci-integration.json` and record `docs/agents/records/2026-11-04-workshop-final180-ci-integration.json` define only the exact Stage A fixture repair `93b0bf4ed18737a7e57c0de6a8ea1fa0f5bdba0a` versus `2ac80344abe855d8dcbfcc6ccd309cc3c7128a3e`, patch SHA256 `c4567a3b03db9d8bb56af43a701f56ebaf15d68149ff6cadd326c93ecfb921eb` /stable patch-id `87df9ca6f05a0bbdf9f5c98bcc549fef1be6b3fc`. B2 inherits the ancestor test blob; ProductionGitTests must read owned passive metadata instead of CI checkout configuration. No production Git admission loosening or Stage A/B1/B2 adapter edits are permitted. Future implementation allowlist is exactly `scripts/dev/test_workshop_final180_runner.py` and `docs/verification/workshop-final180-runbook.md`. Prior entries remain historical; this append-only entry does not retroactively authorize predecessor work.
+
+Stage A exact source CI [41880058587](https://github.com/lucronn/autodata/actions/runs/41880058587) passed; B1 [41881056411](https://github.com/lucronn/autodata/actions/runs/41881056411) and [41881112326](https://github.com/lucronn/autodata/actions/runs/41881112326) failed ten ProductionGitTests setup git_config errors; B2 exact-head runs41884839700/41884762336 were pending at planning readback. These are predecessor observations, not successor validation. accepted_case_credit=0, profiles_enabled=false, enabled_tiers=[], runtime_lock=null, run_record=null and all nine authority flags false. Synthetic/tooling results supply no genuine final180/raw/bank/runtime evidence or merge/deploy/cutover authority.
+
+Current concrete CI-integration todo (same text as plan/task/record):
+
+1. Synchronize this CI-integration plan/spec/record/task and exact two-path implementation allowlist with Issue186 and Project8, preserving history; commit/push the checkpoint descending from reviewed B2 0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471 and pass exact-checkpoint standalone/nested preflight plus independent gate review before explicit builder dispatch.
+2. Reproduce the ten ProductionGitTests setup failures with harmless forbidden checkout metadata, then apply only the pinned Stage A test-file patch from ancestor 2ac80344abe855d8dcbfcc6ccd309cc3c7128a3e to source 93b0bf4ed18737a7e57c0de6a8ea1fa0f5bdba0a; keep every production and adapter byte unchanged.
+3. Update the final180 runbook to distinguish CI fixture isolation and code-only synthetic checks from genuine raw-fixture and runtime acceptance; preserve accepted_case_credit0, disabled profiles/tiers, null runtime lock/run record and all nine authority flags false.
+4. Run the contaminated-checkout regression, 52 Stage A plus 25 B1 plus 23 B2 focused tests, complete developer/autonomy discovery, no-bytecode syntax and exact patch/two-path/unchanged-source checks; commit/push validated milestones and obtain independent exact-code-head review.
+5. Read back exact-successor-head Autonomous Verification results and synchronize code-only evidence with Issue186/Project8; retain any pending or failed CI and every runtime/profile/release blocker without inferring acceptance or authority.
