@@ -453,7 +453,8 @@ class Bootstrap:
     def instance_body(self):
         return {'name': self.config['resources']['instance_name'], 'labels': self.labels,
                 'machineType': self.z + '/machineTypes/e2-standard-4',
-                'disks': [{'boot': True, 'type': 'PERSISTENT', 'autoDelete': False, 'initializeParams': {
+                'disks': [{'boot': True, 'type': 'PERSISTENT', 'autoDelete': False,
+                           'deviceName': self.config['resources']['instance_name'] + '-boot', 'initializeParams': {
                     'diskName': self.config['resources']['instance_name'] + '-boot', 'sourceImage': self.image,
                     'diskSizeGb': '20', 'diskType': self.z + '/diskTypes/pd-balanced', 'labels': self.labels}},
                     {'boot': False, 'type': 'PERSISTENT', 'source': self.paths['disk'], 'mode': 'READ_WRITE', 'autoDelete': False, 'deviceName': 'autodata-data'}],

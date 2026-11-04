@@ -129,6 +129,68 @@ class BootstrapTests(unittest.TestCase):
         self.assertTrue(all(method in ('GET', 'POST') for method, _, _ in fake.calls))
         self.assertEqual(set(engine.resources), {'address', 'disk', 'instance', 'boot_disk'})
 
+    def test_boot_attachment_device_name_is_explicit(self):
+        fake = self.fake(); engine = self.engine(fake)
+        failure = None
+        try: result = engine.run()
+        except self.m.Denied as error: failure = error
+        posts = [body for method, path, body in fake.calls if method == 'POST']
+        self.assertEqual(len(posts), 3)
+        self.assertEqual(set(engine.resources), {'address', 'disk', 'instance', 'boot_disk'})
+        self.assertEqual(engine.receipt['cleanup'], 'resources-retained')
+        body = posts[-1]
+        self.assertEqual(body['disks'][0], {
+            'boot': True, 'type': 'PERSISTENT', 'autoDelete': False,
+            'deviceName': 'workshop-stage-boot',
+            'initializeParams': {
+                'diskName': 'workshop-stage-boot', 'sourceImage': self.image,
+                'diskSizeGb': '20', 'diskType': self.z + '/diskTypes/pd-balanced',
+                'labels': engine.labels}})
+        self.assertIsNone(failure, 'explicit boot attachment request must pass strict readback')
+        self.assertEqual(result['status'], 'passed')
+        self.assertEqual(body['disks'][1]['deviceName'], 'autodata-data')
+        observed = fake.objects[self.z + '/instances/workshop-stage']['disks'][0]
+        self.assertEqual(observed['deviceName'], 'workshop-stage-boot')
+        self.assertEqual(observed['source'], self.z + '/disks/workshop-stage-boot')
+
+    def test_fake_missing_attachment_name_uses_independent_default(self):
+        fake = self.fake()
+        def omitted(method, path, body, timeout):
+            if method == 'POST' and '/instances?' in path:
+                body = copy.deepcopy(body); body['disks'][0].pop('deviceName', None)
+            return fake(method, path, body, timeout)
+        engine = self.engine(omitted)
+        with self.assertRaises(self.m.Denied): engine.run()
+        posts = [body for method, path, body in fake.calls if method == 'POST']
+        self.assertEqual(len(posts), 3)
+        self.assertNotIn('deviceName', posts[-1]['disks'][0])
+        self.assertEqual(posts[-1]['disks'][0]['initializeParams']['diskName'], 'workshop-stage-boot')
+        self.assertEqual(fake.objects[self.z + '/instances/workshop-stage']['disks'][0]['deviceName'], 'persistent-disk-0')
+        self.assertEqual(fake.objects[self.z + '/disks/workshop-stage-boot']['name'], 'workshop-stage-boot')
+        self.assertEqual(set(engine.resources), {'address', 'disk', 'instance', 'boot_disk'})
+        self.assertEqual(engine.receipt['cleanup'], 'resources-retained')
+        self.assertEqual(engine.receipt['status'], 'failed')
+
+    def test_boot_attachment_name_drift_rejected(self):
+        for name in ('persistent-disk-0', 'unrelated-attachment'):
+            fake = self.fake()
+            def drift(method, path, body, timeout):
+                response = fake(method, path, body, timeout)
+                if method == 'POST' and '/instances?' in path:
+                    fake.objects[self.z + '/instances/workshop-stage']['disks'][0]['deviceName'] = name
+                return response
+            engine = self.engine(drift)
+            with self.subTest(name=name), self.assertRaises(self.m.Denied): engine.run()
+            posts = [body for method, path, body in fake.calls if method == 'POST']
+            self.assertEqual(len(posts), 3)
+            self.assertEqual(posts[-1]['disks'][0]['deviceName'], 'workshop-stage-boot')
+            boot = fake.objects[self.z + '/disks/workshop-stage-boot']
+            self.assertEqual(boot['name'], 'workshop-stage-boot')
+            self.assertEqual(boot['id'], '900')
+            self.assertEqual(set(engine.resources), {'address', 'disk', 'instance', 'boot_disk'})
+            self.assertEqual(engine.receipt['cleanup'], 'resources-retained')
+            self.assertEqual(engine.receipt['status'], 'failed')
+
     def test_bare_vm_has_no_startup_script_or_format_action(self):
         fake = self.fake(); self.engine(fake).run()
         body = [b for m, p, b in fake.calls if m == 'POST'][-1]
@@ -379,7 +441,8 @@ class FakeCompute:
         else:
             boot = body['disks'][0]['initializeParams']; boot_path = self.t.z + '/disks/' + boot['diskName']
             self.objects[boot_path] = {'id': '900', 'selfLink': boot_path, 'name': boot['diskName'], 'labels': boot['labels'], 'sizeGb': '20', 'type': boot['diskType'], 'status': 'READY', 'sourceImage': boot['sourceImage'], 'sourceImageId': '101', 'users': [target]}
-            observed['disks'][0].pop('initializeParams'); observed['disks'][0].update(source=boot_path, deviceName=boot['diskName'], mode='READ_WRITE')
+            boot_attachment_name = body['disks'][0].get('deviceName', 'persistent-disk-0')
+            observed['disks'][0].pop('initializeParams'); observed['disks'][0].update(source=boot_path, deviceName=boot_attachment_name, mode='READ_WRITE')
             observed['disks'][1]['index'] = 1
             observed.update(status='RUNNING')
             self.objects[self.t.z + '/disks/workshop-data']['users'] = [target]
