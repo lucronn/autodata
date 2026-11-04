@@ -1356,6 +1356,14 @@
     {
       "kind": "update_project_source_index",
       "sha256": "13a3f3be5857257ad9594c051265b8cfb9971342e4f8d68bd2048e349df2d745"
+    },
+    {
+      "kind": "add_pin_comment",
+      "id": 6623235715
+    },
+    {
+      "kind": "append_gate_pin_to_project_source_index",
+      "sha256": "34ec4999d518265a3c63075d6369d7d9cfcdad8f60112666fa2bc254b288e66c"
     }
   ],
   "implementation_authorized": false,
@@ -1578,5 +1586,242 @@
     "all_other_project_fields_unchanged": true,
     "readback_at": "2026-11-04T05:17:24.198647+00:00"
   },
-  "readback_verified": true
+  "readback_verified": true,
+  "checkpoint_verification": {
+    "gate_sha": "e0e50dee3a5f985dd1f7586fc7a4d681aaf77323",
+    "branch": "codex/workshop-api21-acceptance-plan",
+    "remote_gate_sha": "e0e50dee3a5f985dd1f7586fc7a4d681aaf77323",
+    "preflight": {
+      "command": [
+        "python3",
+        "scripts/autonomy/pre_implementation.py",
+        "--record",
+        "docs/agents/records/2026-11-04-workshop-api21-acceptance.json",
+        "--base-sha",
+        "e0e50dee3a5f985dd1f7586fc7a4d681aaf77323",
+        "--repo-root",
+        "/home/corp/.codex/worktrees/workshop-api21-acceptance-plan/autodata"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"status\": \"synchronized\", \"errors\": []}\n"
+    },
+    "pin_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6623235715",
+    "pin_comment_sha256": "d7d4e31888f1ac1b1aca74254feaa2d337b5eee819097717685cb869dc3f05ea",
+    "project_source_index": "API21 plan detail6623222525: docs a3a48dae, exact application PR198 e5fed171bb36fdb759c592cbcd0e15aea5490c97;21 real-API fixture cases after separate zero-case Chromium pilot. Goal/six todos/frozen inputs/owned persistent roots/3300s+180s reserve in canonical plan/task/record; no runtime/implementation dispatch or acceptance claim. PG17 retrospective PASS detail6623105546/pin6623119656; failed124e43a9 unchanged/quarantined, no retry/image/PG authority. Integration completion detail6623150233/checkpointd2e2270/pin6623168382,gate2728ac/receipt507e3d. Paid HTTP detail6623187020/gatea899eac8/pin6623199160/receipt2ea5b696,18x2 diagnostics only. Complete prior Issue body/all125 comments/988-char Source index preserved verbatim+SHA256 in API21 tracking evidence; Status In Progress/all other fields unchanged. Exact synchronized-gate preflight/review and separate coordinator runtime authorization required; no profile/staging/deployment/cutover authority. Gate e0e50dee3a5f985dd1f7586fc7a4d681aaf77323 pin6623235715.",
+    "project_source_index_sha256": "34ec4999d518265a3c63075d6369d7d9cfcdad8f60112666fa2bc254b288e66c",
+    "project_source_index_characters": 1020,
+    "readback_at": "2026-11-04T05:18:05.547775+00:00",
+    "issue_body_unchanged": true,
+    "all_125_predecessor_comments_unchanged": true,
+    "detail_comment_unchanged": true,
+    "project_status": "In Progress",
+    "all_other_project_fields_unchanged": true,
+    "independent_exact_synchronized_gate_review": "required",
+    "implementation_authorized": false,
+    "runtime_authorized": false,
+    "acceptance_claim": false
+  },
+  "pin_comment": {
+    "id": 6623235715,
+    "url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6623235715",
+    "body": "API21 acceptance planning gate pin \u2014 no runtime dispatch\n\nImmutable synchronized gate `e0e50dee3a5f985dd1f7586fc7a4d681aaf77323` was pushed and remote-read back on `codex/workshop-api21-acceptance-plan`. Exact application/acceptance candidate remains PR198 `e5fed171bb36fdb759c592cbcd0e15aea5490c97`; never relabel evidence to the planning gate.\n\nExecuted full-SHA machine preflight:\n```text\npython3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026-11-04-workshop-api21-acceptance.json --base-sha e0e50dee3a5f985dd1f7586fc7a4d681aaf77323 --repo-root /home/corp/.codex/worktrees/workshop-api21-acceptance-plan/autodata\nexit_code=0\n{\"status\": \"synchronized\", \"errors\": []}\n```\n\nDetail https://github.com/lucronn/autodata/issues/186#issuecomment-6623222525 SHA256 `982d1fd09ac60de966c68fdfcf8c27ea0ab6fd5a74bf403298ae342778c6d3a1`. Canonical `docs/agents/records/2026-11-04-workshop-api21-tracking-evidence.json` preserves COMPLETE predecessor Issue body/all125 comments/Project fields/Source index verbatim with SHA256. Current body and every predecessor comment unchanged; Status In Progress, all other Project fields unchanged. Pre-pin Source index959chars SHA256 `13a3f3be5857257ad9594c051265b8cfb9971342e4f8d68bd2048e349df2d745`; PG/integration/paid pointers retained.\n\nThe docs-only gate retains six identical todos, approved input manifest hash `ee87deb865c06a84df92c1a8b0481f5ebc35cfdbd051bf32d9e1bf264ec67f13`, exact candidate, frozen supervisor/image/inputs, private persistent roots and all resource/deadline/cleanup limits. Implementation allowlist EMPTY, implementation_authorized=false, runtime_authorized=false. Independent exact synchronized-gate review and separate coordinator runtime authorization remain required. No Docker/browser/provider/runtime execution, pilot/API21 acceptance outcome, enabled R6 profile, final180/staging/product/deployment/readiness/cutover or production action is authorized or claimed. A later docs-only receipt retains this pin/readback without changing the immutable gate or granting execution.\n",
+    "body_sha256": "d7d4e31888f1ac1b1aca74254feaa2d337b5eee819097717685cb869dc3f05ea"
+  },
+  "final_project_readback": {
+    "id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "fieldValues": {
+      "nodes": [
+        {
+          "__typename": "ProjectV2ItemFieldUserValue",
+          "users": {
+            "nodes": [
+              {
+                "id": "U_kgDOCSJ8cQ",
+                "login": "lucronn"
+              }
+            ]
+          },
+          "field": {
+            "id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhZI",
+            "name": "Assignees"
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldRepositoryValue",
+          "repository": {
+            "id": "R_kgDOULgSQg",
+            "nameWithOwner": "lucronn/autodata"
+          },
+          "field": {
+            "id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhZc",
+            "name": "Repository"
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldTextValue",
+          "text": "Launch the paid Workshop with permanent vehicle access and dual-bank canonical content",
+          "field": {
+            "id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhZE",
+            "name": "Title"
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldSingleSelectValue",
+          "name": "In Progress",
+          "optionId": "c30fd112",
+          "field": {
+            "id": "PVTSSF_lAHOCSJ8cc4BiQ2BzhhJhZM",
+            "name": "Status",
+            "options": [
+              {
+                "id": "315fff77",
+                "name": "Backlog"
+              },
+              {
+                "id": "25a3faee",
+                "name": "Ready"
+              },
+              {
+                "id": "c30fd112",
+                "name": "In Progress"
+              },
+              {
+                "id": "ccfee95f",
+                "name": "Blocked"
+              },
+              {
+                "id": "ca00ea4d",
+                "name": "Review"
+              },
+              {
+                "id": "4daa91f5",
+                "name": "Done"
+              },
+              {
+                "id": "4eed210d",
+                "name": "Canceled"
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldSingleSelectValue",
+          "name": "P1",
+          "optionId": "c69538a9",
+          "field": {
+            "id": "PVTSSF_lAHOCSJ8cc4BiQ2BzhhJhwQ",
+            "name": "Priority",
+            "options": [
+              {
+                "id": "781cd5f6",
+                "name": "P0"
+              },
+              {
+                "id": "c69538a9",
+                "name": "P1"
+              },
+              {
+                "id": "78f3fa27",
+                "name": "P2"
+              },
+              {
+                "id": "9cca821c",
+                "name": "P3"
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldSingleSelectValue",
+          "name": "Platform",
+          "optionId": "031775c0",
+          "field": {
+            "id": "PVTSSF_lAHOCSJ8cc4BiQ2BzhhJhwU",
+            "name": "Area",
+            "options": [
+              {
+                "id": "effec121",
+                "name": "Product"
+              },
+              {
+                "id": "14eac552",
+                "name": "API"
+              },
+              {
+                "id": "85bcb89c",
+                "name": "Data Model"
+              },
+              {
+                "id": "b9116f89",
+                "name": "Fast Lane"
+              },
+              {
+                "id": "ac372cd4",
+                "name": "Deep Lane"
+              },
+              {
+                "id": "acf6fde1",
+                "name": "Search"
+              },
+              {
+                "id": "1865cea1",
+                "name": "Billing"
+              },
+              {
+                "id": "a56d755d",
+                "name": "Dev Infra"
+              },
+              {
+                "id": "031775c0",
+                "name": "Platform"
+              },
+              {
+                "id": "51a0cf13",
+                "name": "Security"
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldSingleSelectValue",
+          "name": "High",
+          "optionId": "0db4ceae",
+          "field": {
+            "id": "PVTSSF_lAHOCSJ8cc4BiQ2BzhhJhwg",
+            "name": "Risk",
+            "options": [
+              {
+                "id": "879e6243",
+                "name": "Low"
+              },
+              {
+                "id": "94610eff",
+                "name": "Medium"
+              },
+              {
+                "id": "0db4ceae",
+                "name": "High"
+              },
+              {
+                "id": "c0be6314",
+                "name": "Critical"
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "ProjectV2ItemFieldTextValue",
+          "text": "API21 plan detail6623222525: docs a3a48dae, exact application PR198 e5fed171bb36fdb759c592cbcd0e15aea5490c97;21 real-API fixture cases after separate zero-case Chromium pilot. Goal/six todos/frozen inputs/owned persistent roots/3300s+180s reserve in canonical plan/task/record; no runtime/implementation dispatch or acceptance claim. PG17 retrospective PASS detail6623105546/pin6623119656; failed124e43a9 unchanged/quarantined, no retry/image/PG authority. Integration completion detail6623150233/checkpointd2e2270/pin6623168382,gate2728ac/receipt507e3d. Paid HTTP detail6623187020/gatea899eac8/pin6623199160/receipt2ea5b696,18x2 diagnostics only. Complete prior Issue body/all125 comments/988-char Source index preserved verbatim+SHA256 in API21 tracking evidence; Status In Progress/all other fields unchanged. Exact synchronized-gate preflight/review and separate coordinator runtime authorization required; no profile/staging/deployment/cutover authority. Gate e0e50dee3a5f985dd1f7586fc7a4d681aaf77323 pin6623235715.",
+          "field": {
+            "id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+            "name": "Source or dependency reference"
+          }
+        }
+      ]
+    },
+    "project": {
+      "id": "PVT_kwHOCSJ8cc4BiQ2B",
+      "number": 8
+    }
+  }
 }

@@ -1025,7 +1025,41 @@
         "all_other_project_fields_unchanged": true,
         "readback_at": "2026-11-04T05:17:24.198647+00:00"
       },
-      "tracking_evidence_ref": "docs/agents/records/2026-11-04-workshop-api21-tracking-evidence.json"
+      "tracking_evidence_ref": "docs/agents/records/2026-11-04-workshop-api21-tracking-evidence.json",
+      "checkpoint_verification": {
+        "gate_sha": "e0e50dee3a5f985dd1f7586fc7a4d681aaf77323",
+        "branch": "codex/workshop-api21-acceptance-plan",
+        "remote_gate_sha": "e0e50dee3a5f985dd1f7586fc7a4d681aaf77323",
+        "preflight": {
+          "command": [
+            "python3",
+            "scripts/autonomy/pre_implementation.py",
+            "--record",
+            "docs/agents/records/2026-11-04-workshop-api21-acceptance.json",
+            "--base-sha",
+            "e0e50dee3a5f985dd1f7586fc7a4d681aaf77323",
+            "--repo-root",
+            "/home/corp/.codex/worktrees/workshop-api21-acceptance-plan/autodata"
+          ],
+          "exit_code": 0,
+          "stdout": "{\"status\": \"synchronized\", \"errors\": []}\n"
+        },
+        "pin_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6623235715",
+        "pin_comment_sha256": "d7d4e31888f1ac1b1aca74254feaa2d337b5eee819097717685cb869dc3f05ea",
+        "project_source_index": "API21 plan detail6623222525: docs a3a48dae, exact application PR198 e5fed171bb36fdb759c592cbcd0e15aea5490c97;21 real-API fixture cases after separate zero-case Chromium pilot. Goal/six todos/frozen inputs/owned persistent roots/3300s+180s reserve in canonical plan/task/record; no runtime/implementation dispatch or acceptance claim. PG17 retrospective PASS detail6623105546/pin6623119656; failed124e43a9 unchanged/quarantined, no retry/image/PG authority. Integration completion detail6623150233/checkpointd2e2270/pin6623168382,gate2728ac/receipt507e3d. Paid HTTP detail6623187020/gatea899eac8/pin6623199160/receipt2ea5b696,18x2 diagnostics only. Complete prior Issue body/all125 comments/988-char Source index preserved verbatim+SHA256 in API21 tracking evidence; Status In Progress/all other fields unchanged. Exact synchronized-gate preflight/review and separate coordinator runtime authorization required; no profile/staging/deployment/cutover authority. Gate e0e50dee3a5f985dd1f7586fc7a4d681aaf77323 pin6623235715.",
+        "project_source_index_sha256": "34ec4999d518265a3c63075d6369d7d9cfcdad8f60112666fa2bc254b288e66c",
+        "project_source_index_characters": 1020,
+        "readback_at": "2026-11-04T05:18:05.547775+00:00",
+        "issue_body_unchanged": true,
+        "all_125_predecessor_comments_unchanged": true,
+        "detail_comment_unchanged": true,
+        "project_status": "In Progress",
+        "all_other_project_fields_unchanged": true,
+        "independent_exact_synchronized_gate_review": "required",
+        "implementation_authorized": false,
+        "runtime_authorized": false,
+        "acceptance_claim": false
+      }
     }
   ],
   "execution": {
