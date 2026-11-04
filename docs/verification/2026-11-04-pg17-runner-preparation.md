@@ -139,3 +139,26 @@ Acquisition-overlay adoption: approved checkpoint `26989e1de7a71ac4f7c23da043dd3
 
 
 Pinned overlay-adoption receipt: full checkpoint `7f0201cc2b26cc8fbcd0637386f5cf047320c970`, exact record SHA256 `8a38bfbfabb9252f3a81dd2fd42252454090d454342d4b17c85c33012e7a61d6`; machine preflight exit0, `{"status": "synchronized", "errors": []}`. Record bytes checked against Git at the pinned SHA. Raw tracking/preflight receipts: `/home/corp/autodata-evidence/pg17-overlay-adoption-20261104`. No retry/Docker/download action; root verification/new Task1A dispatch required, offline and Task2 separately held.
+
+## Acquisition overlay attempt 01: stopped diff guard blocked
+
+Coordinator verified adopted overlay gate `7f0201cc2b26cc8fbcd0637386f5cf047320c970` and dispatched a fresh Task1A-only acquisition. Private directory `/home/corp/autodata-evidence/pg17-overlay-prep-20261104-01`, owner1000:1000 mode0700; RUN_ID `overlay-20261104-01`. Exact owned container `102eb97013e3b69e567b0179b59dc14416a167748bbd81200d5c9fabb30d1f17` passed complete before-start image/config/mount/capability/network/overlay validation. Twenty-seven baseline file/directory records from the created root matched the saved pinned base image, including APK DB/world, trust repositories/keys and fixed PG tools/headers.
+
+The unchanged fixed payload exited0, with bounded attached output. Signed official repository update and all33 downloaded APK signature checks succeeded. Host APK SHA256 values match fixed-payload output. Stopped exit0 was independently confirmed, OOMKilled=false and State.Error empty. All27 baseline records remained unchanged. The complete stopped diff was exactly:
+
+```text
+A /apks
+A /control
+```
+
+The exact approved diff guard rejects these added bind-target directories. No ad hoc filtering/normalization/allowlist exception was applied;33 APKs remain quarantined failure evidence, not an accepted dependency closure and never eligible for downstream reuse under this attempt. No simulation/install/image commit/compilation/PostgreSQL/harness action occurred.
+
+- Attached stdout/stderr:8898/0 bytes;4096-byte reads,1MiB cap each, no overflow/timeout.
+- Blocker receipt SHA256: `36ea1490633250d79fddf2f5c1f7b92abe19f043e8ab4544dc1519f3afd9ee52` (`evidence/task1a-blocker.json`).
+- Quarantined APK manifest SHA256: `bc44b2eb0cede2db890e8b09ffbdf673bb3ef0e98c1ffd94a9c9e0a9c7ef8c55`.
+- Complete stopped diff SHA256: `f644241d7c563ce99a81d3cf0ba36af3582bc221b19054fc1f509fea8cad221d`.
+- Stopped audit SHA256: `17c03aab7df37281f535e5e2f32d0d28c7afc88191a169087a3ec8589f2d7754`.
+- Before-start inspect SHA256: `0d655fcb331127f737bf9c7223e6fcb88dc139acbe60f39ae1f2ec99a86d2470`.
+- Attach stdout/stderr SHA256: `e3fefb66656dac54d848ba5b734f508f6402e1e6772dd7d242bd3e523d4cb398` / `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+
+Exact `docker rm --volumes` succeeded and captured ID absence was verified. Complete normalized before/after volume inventories match; no owned container/volume resources remain. Raw snapshots/argv/inspection/signature/hash/diff/failure/cleanup receipts are retained privately. Preparation is blocked pending a reviewed guard correction; all production/runtime/Task2/readiness denials remain in force.
