@@ -1,0 +1,66 @@
+{
+  "task_id": "workshop-pg17-inspected-preparation",
+  "goal": "Replace the blocked opaque-builder PG17 preparation step with inspected exact-ID acquisition and offline-install containers plus a stopped-container commit; preserve the separate exact-image harness authorization and every production/readiness denial.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-inspected-preparation.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-pg17-inspected-preparation.json",
+  "source_integration_base_sha": "79ce883458c1ac41e385cabc8d1f582b0b28cab1",
+  "harness_source_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
+  "allowed_paths": [],
+  "status": "synchronized",
+  "pre_implementation": {
+    "goal": "Replace the blocked opaque-builder PG17 preparation step with inspected exact-ID acquisition and offline-install containers plus a stopped-container commit; preserve the separate exact-image harness authorization and every production/readiness denial.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-inspected-preparation.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-03-workshop-schema-pg17-route.md",
+      "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+      "docs/operations/workshop-gcp.md",
+      "docs/architecture/infrastructure-and-dev.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/verification/2026-11-04-pg17-runner-preparation.md"
+    ],
+    "todo": [
+      "Synchronize the inspected-create/offline-install/commit amendment, exact source/base pins, mount and cleanup contracts in Issue186/Project8 and canonical docs; commit/push and pass pinned preflight for independent plan review.",
+      "After separate coordinator approval, create and inspect the exact cached-base acquisition container with bounded private PGDATA tmpfs, signed official APK-only networking and one private output mount; freeze the signed dependency closure and clean only its exact owned resources.",
+      "Create and inspect a network-disabled offline installer with read-only frozen inputs, private PGDATA tmpfs and an isolated writable root layer; reject package upgrades, untrusted signatures, unexpected mounts or file changes before committing its stopped state.",
+      "Commit only the reviewed exited-zero installer ID with explicit non-root image configuration and provenance labels; inspect exact base-layer ancestry, configuration, package/toolchain/source hashes and cleanup, then request independent frozen-image review.",
+      "Keep actual PostgreSQL startup and harness Task2 unexecuted and unauthorized until separate exact-image/source dispatch; preserve all blocker/failure receipts and production runtime/grants/services/deployment/readiness denials."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T02:48:06.281627+00:00",
+    "source_integration_base_sha": "79ce883458c1ac41e385cabc8d1f582b0b28cab1",
+    "harness_source_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
+    "implementation_allowlist": [],
+    "independent_review": "pending",
+    "preparation_execution_authorized": false,
+    "runtime_execution_authorized": false,
+    "runtime_verified": false,
+    "production_ready": false,
+    "tracking_sync": {
+      "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621173398",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+      "project_note_field": "Source or dependency reference",
+      "verified_at": "2026-11-04T02:48:06.281627+00:00",
+      "issue_body_sha256": "1d9f24745e09f0e1f70b41d821a85ece25bf3a69e7ec29978293fe70b3e3a1be",
+      "issue_comment_sha256": "cd8019166a924845fc71495323b4dfadcd5a26e200b0421c87ab25ace305e0a1",
+      "project_text_sha256": "271af5cf8b7cff01dbd88467a8e0587e76cc49a87e2a39cc999ee6a015cab448",
+      "prior_project_text_sha256": "f6b01dc0fe6cb7909d045b567505549909e71d4fe8853ac40d55f1a6d649e6b0",
+      "full_prior_project_index_preserved_in_issue_comment": true
+    }
+  },
+  "todo": [
+    "Synchronize the inspected-create/offline-install/commit amendment, exact source/base pins, mount and cleanup contracts in Issue186/Project8 and canonical docs; commit/push and pass pinned preflight for independent plan review.",
+    "After separate coordinator approval, create and inspect the exact cached-base acquisition container with bounded private PGDATA tmpfs, signed official APK-only networking and one private output mount; freeze the signed dependency closure and clean only its exact owned resources.",
+    "Create and inspect a network-disabled offline installer with read-only frozen inputs, private PGDATA tmpfs and an isolated writable root layer; reject package upgrades, untrusted signatures, unexpected mounts or file changes before committing its stopped state.",
+    "Commit only the reviewed exited-zero installer ID with explicit non-root image configuration and provenance labels; inspect exact base-layer ancestry, configuration, package/toolchain/source hashes and cleanup, then request independent frozen-image review.",
+    "Keep actual PostgreSQL startup and harness Task2 unexecuted and unauthorized until separate exact-image/source dispatch; preserve all blocker/failure receipts and production runtime/grants/services/deployment/readiness denials."
+  ],
+  "execution": {
+    "mode": "plan_only",
+    "preparation": "blocked_pending_exact_gate_independent_review_and_new_coordinator_dispatch",
+    "runtime": "original_task2_unchanged_separately_unauthorized",
+    "implementation_changes": "none"
+  }
+}

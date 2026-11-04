@@ -532,6 +532,17 @@
         "prior_project_text_sha256": "c796f7369a6ce62f5b391a34a9496a6dfa2cc3875dcebb6725fbd9fad823d7a3",
         "full_prior_project_index_preserved_in_issue_comment": true
       }
+    },
+    {
+      "id": "workshop-pg17-inspected-preparation",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-pg17-inspected-preparation.json",
+      "depends_on": [],
+      "state": "plan_only_pending_independent_review",
+      "release_state": "unverified",
+      "harness_source_sha": "54ab7dce19c36ce7ea3403259dd1ecc66bf323aa",
+      "implementation_changes_allowed": false,
+      "preparation_executed": false,
+      "runtime_verified": false
     }
   ],
   "execution": {
