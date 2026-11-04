@@ -148,7 +148,7 @@
     "closed_executable_contract": "blocked_missing_supervisor_static_bindings_support_schemas_timer_and_transport",
     "draft_preservation_review": "PASS_external_draft_only_8f0428446cc5d77659002dd55e758d5e6ab312310c73e58d859cafa4e0e589e0"
   },
-  "dispatch_mode": "none_documentation_draft",
+  "dispatch_mode": "none_static_contract_blocked",
   "independent_review_required": true,
   "acceptance_tests": [
     "Exact eight-path authoring boundary, five new files, two original-byte-prefix-preserved runbooks and one coordinator-only semantic queue append.",

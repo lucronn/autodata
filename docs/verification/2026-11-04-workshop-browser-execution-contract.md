@@ -4,9 +4,9 @@
 
 Goal: Freeze the candidate-bound API21/DTO120 browser execution contract as documentation only, preserving exact fixture inventories and zero accepted-case credit while withholding implementation, runtime, host, network, provider, payment and release authority.
 
-Issue: https://github.com/lucronn/autodata/issues/186. Project: https://github.com/users/lucronn/projects/8. Historical item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` and field `PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU` are references only; no current readback is claimed.
+Issue: https://github.com/lucronn/autodata/issues/186. Project: https://github.com/users/lucronn/projects/8. Project item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` and Source field `PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU` have current tracking readback at https://github.com/lucronn/autodata/issues/186#issuecomment-6640772107; this synchronizes tracking only.
 
-Product candidate `4d82e413e04fb2401ac7bc28dc828375ac662180`, tree `d9fb2a8f49beacd009374a76327d0736c1fc9b0a`; proposed branch `codex/workshop-browser-execution-contract-gate` from exactly this candidate. Documentation checkpoint SHA is unbound and must be recorded externally after an actual commit. Source identity never substitutes for the future checkpoint or supervisor identity. All authorities and verification flags are false; accepted new case credit is 0.
+Product candidate `4d82e413e04fb2401ac7bc28dc828375ac662180`, tree `d9fb2a8f49beacd009374a76327d0736c1fc9b0a`; branch `codex/workshop-browser-execution-contract-gate` descends from exactly this candidate. The full pushed documentation-checkpoint SHA is bound in external readback evidence to avoid a self-reference in this document. Source identity never substitutes for checkpoint or supervisor identity. All authorities and verification flags are false; accepted new case credit is 0.
 
 ## Exact eight documentation paths
 
@@ -31,7 +31,7 @@ Product candidate `4d82e413e04fb2401ac7bc28dc828375ac662180`, tree `d9fb2a8f49be
 
 ## Contract authority and static acceptance
 
-The adjacent JSON spec is the closed proposed contract and materializes all 21 API pytest IDs and all 120 browser/scenario tuples. It records pinned source hashes from candidate objects. The proposed supervisor filename is explicit but absent, its executable hashes, host argv and immutable runtime bindings are unresolved. No executable browser dispatch is admitted by this documentation. Unknown fields fail closed; they are never operator discretion. Existing R3 initial-probe tooling is not a fixture supervisor.
+The adjacent JSON spec is a fail-closed partial contract and materializes all 21 API pytest IDs and all 120 browser/scenario tuples. It does not close the executable supervisor or support/probe schemas. It records pinned source hashes from candidate objects. The proposed supervisor filename is explicit but absent, its executable hashes, host argv and immutable runtime bindings are unresolved. No executable browser dispatch is admitted by this documentation. Unknown fields fail closed; they are never operator discretion. Existing R3 initial-probe tooling is not a fixture supervisor.
 
 This is 141 browser cases; full180 remains 5+8+14+12+120+21. All eight staging slots remain separately unverified. Historical evidence and failed attempts remain unchanged. No number in this document is accepted-case credit.
 
@@ -78,6 +78,6 @@ Committed-checkpoint machine command (run only after the exact checkpoint is pus
 python3 scripts/autonomy/pre_implementation.py --repo-root <clean-checkpoint-clone> --record docs/agents/records/2026-11-04-workshop-browser-execution-contract.json --base-sha <actual-full-documentation-checkpoint-SHA>
 ```
 
-No current checkpoint, tracking readback, machine PASS, runtime admission, service result or independent contract PASS is claimed.
+The pushed checkpoint and tracking readback exist, and standalone/nested record-shape preflight passed at its exact SHA. Neither preflight nor the external draft review establishes closed executable contract, runtime admission, service result, browser acceptance or independent runtime PASS.
 
 Tracking readback: https://github.com/lucronn/autodata/issues/186#issuecomment-6640772107. External draft preservation review passed 73 checks; it explicitly blocked a closed executable contract pending static supervisor argv/cwd/env/command graph and typed support/probe schemas. This documentation checkpoint must not be described as runnable.

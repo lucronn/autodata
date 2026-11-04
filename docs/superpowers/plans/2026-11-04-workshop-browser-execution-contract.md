@@ -6,7 +6,7 @@ Goal: Freeze the candidate-bound API21/DTO120 browser execution contract as docu
 
 Issue: https://github.com/lucronn/autodata/issues/186. Project: https://github.com/users/lucronn/projects/8. Project item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` and field `PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU` were read back with Issue/Project tracking receipt [Issue comment](https://github.com/lucronn/autodata/issues/186#issuecomment-6640772107); this establishes tracking only.
 
-Product candidate `4d82e413e04fb2401ac7bc28dc828375ac662180`, tree `d9fb2a8f49beacd009374a76327d0736c1fc9b0a`; proposed branch `codex/workshop-browser-execution-contract-gate` from exactly this candidate. Documentation checkpoint SHA is unbound and must be recorded externally after an actual commit. Source identity never substitutes for the future checkpoint or supervisor identity. All authorities and verification flags are false; accepted new case credit is 0.
+Product candidate `4d82e413e04fb2401ac7bc28dc828375ac662180`, tree `d9fb2a8f49beacd009374a76327d0736c1fc9b0a`; branch `codex/workshop-browser-execution-contract-gate` descends from exactly this candidate. The full pushed documentation-checkpoint SHA is bound in external readback evidence to avoid a self-reference in this document. Source identity never substitutes for checkpoint or supervisor identity. All authorities and verification flags are false; accepted new case credit is 0.
 
 ## Exact eight documentation paths
 
