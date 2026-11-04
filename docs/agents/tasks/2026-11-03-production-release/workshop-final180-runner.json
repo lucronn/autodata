@@ -1,0 +1,94 @@
+{
+  "task_id": "production-release-workshop-final180-runner",
+  "repository": "lucronn/autodata",
+  "goal": "Implement only offline final180 source admission and normalized claim reconciliation; keep the executable runner backend blocked and every authority false.",
+  "dispatch_mode": "coordinator-direct-after-tracking-preflight-review-and-explicit-dispatch",
+  "allowed_paths": [
+    "scripts/dev/workshop_final180_runner.py",
+    "scripts/dev/test_workshop_final180_runner.py",
+    "docs/verification/workshop-final180-runbook.md"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-04-workshop-final180-runner.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-runner.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-inventory.json"
+  ],
+  "outputs": [
+    "scripts/dev/workshop_final180_runner.py",
+    "scripts/dev/test_workshop_final180_runner.py",
+    "docs/verification/workshop-final180-runbook.md"
+  ],
+  "pre_implementation": {
+    "goal": "Implement only offline final180 source admission and normalized claim reconciliation; keep the executable runner backend blocked and every authority false.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-runner.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-04-workshop-final180-runner.md",
+      "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+      "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md"
+    ],
+    "todo": [
+      "Implement Stage A strict immutable inventory loading and clean pinned-candidate source inspection within the three-path allowlist.",
+      "Implement Stage A normalized observation schema, exact literal-ID multiset reconciliation and private offline diagnostic output with all authority false.",
+      "Run adversarial offline unit tests and independent exact-SHA review; document blocked Stage B runtime/backend and separately gated raw validators."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T16:44:43.143960+00:00",
+    "tracking_receipts": {
+      "status": "synchronized_live_readback",
+      "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6636377383",
+      "issue_detail_sha256": "8c4db00c37ddab95350e62a88c70db2df9c00dd37953ff0483b8e5c3b05da38b",
+      "issue_readback_sha256": "6e83fe07e22244ca393ab12bb406c9684e1e1756881a6fed6768679ecc189feb",
+      "issue_readback_ref": "/home/corp/autodata-evidence/issue186-stage-a-readback.json",
+      "issue_preserved_comment_count": 146,
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+      "project_status": "In Progress",
+      "project_source_sha256": "d64a750cdb07a0248175aee083f5c017878a19659e551a1ff7ba6d133483484f",
+      "project_source_bytes": 453,
+      "previous_project_source_sha256": "f6b38c2c3c5ec3fe81de0404f4f1b4babd37d8bf8c27ab883c24957a65abae57",
+      "previous_source_archived_verbatim": true,
+      "project_readback_sha256": "808c459e94eb31d8a52d6db4110406d61b4c987866feaacd9082045a720b0af4",
+      "project_readback_ref": "/home/corp/autodata-evidence/project8-stage-a-readback.json",
+      "other_project_fields_unchanged": true,
+      "writer": "coordinator serialized writer"
+    },
+    "planning_parent_sha": "d8579c824eb1ebf546b46b13a0f69079890ad44e",
+    "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "source_inspection_sha": "df52326b2a12fd17db39d9368f66a28a366f38ad",
+    "authorizing_checkpoint_sha": null,
+    "promoted_tooling_base_sha": null
+  },
+  "planning_parent_sha": "d8579c824eb1ebf546b46b13a0f69079890ad44e",
+  "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "runtime_lock": null,
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "allow_fallback": false
+  },
+  "authority": {
+    "fixture_verified": false,
+    "product_candidate_verified": false,
+    "staging_verified": false,
+    "deployment_authorized": false,
+    "cutover_verified": false,
+    "implementation_authorized": false,
+    "runtime_execution_authorized": false,
+    "profile_promotion_authorized": false,
+    "merge_authorized": false
+  },
+  "product_evidence": {
+    "profiles_enabled": false,
+    "enabled_tiers": []
+  },
+  "blockers": [
+    "Stage A committed checkpoint, exact-base preflight and independent committed-gate review are required before implementation dispatch.",
+    "Stage B remains implementation-blocked on exact producer schemas/mappings, concrete Docker templates and complete runtime/run-record contracts; actual host/image/cache/tool/storage/operator facts remain execution-blocked."
+  ],
+  "scope": "Stage A offline admission and normalized claim reconciliation only",
+  "blocked_successor": "Stage B full executable supervisor and producer raw parsers",
+  "stage_a_contract_revision": "review-repair-1"
+}
