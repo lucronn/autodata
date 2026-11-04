@@ -1,0 +1,51 @@
+{
+  "checkpoint_sha": "3e4d1b0b728c81ce8dd1ae84d207df645e6bfbf1",
+  "branch": "codex/workshop-pg17-offline-plan",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-pg17-offline.json",
+  "record_sha256": "7c0231053939527e0c3ac902d80a5ff1d77c0b70362fd00313f66e0df04f469f",
+  "command": [
+    "python3",
+    "scripts/autonomy/pre_implementation.py",
+    "--record",
+    "docs/agents/records/2026-11-04-workshop-pg17-offline.json",
+    "--base-sha",
+    "3e4d1b0b728c81ce8dd1ae84d207df645e6bfbf1"
+  ],
+  "exit_code": 0,
+  "stdout": {
+    "status": "synchronized",
+    "errors": []
+  },
+  "stderr": "",
+  "verified_at": "2026-11-04T04:14:23.612626+00:00",
+  "tracking_readback": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622361427",
+    "issue_body_sha256": "0220f77b1a669266d5330145f3b9f9818d122c392cfe14c4b4be33e08e80dc49",
+    "issue_comment_sha256": "f0d67613ce1ca488b4315e144f7ee7da73e5240c3c1e297a196a345059c173eb",
+    "project_text": "PG17 offline/OOM SIMULATION-ONLY successor detail6622351785: one NEW empty PREP/container needs exact review/adoption/root preflight/fresh dispatch. All5 apk argv no-network+empty-repositories override; original repositories/keys/33 signatures/empty stderr unchanged. Only exact-engine OomKillDisable createdfalse/stoppednull plus prior CapAdd order; other full fields/guards strict.473pure checks; failed c1f6af1f/0660472e remain FAILED; no retrospective acceptance. Full CURRENT Stage0 gate dc1ba895 index/detail6622268742+pin6622281057, staging detail6622232881+pin6622247097, PG6622201950+pin6622210398, JS6622115738+pin6622126651 preserved verbatim/hash via detail. Their authority/status unchanged. Gate 3e4d1b0b728c81ce8dd1ae84d207df645e6bfbf1 preflight synchronized/errors[]; pin6622361427. No Docker/retry/install/image/PG/harness/readiness; both33 quarantines forbidden.",
+    "project_text_sha256": "8e678c075d383d11fa9a63e3df05040a3b8e721e068d0c38e590728b6d009aa1",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "full_sha_in_project_text": true,
+    "detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622351785",
+    "detail_body_sha256": "2dc9ff6192b6d73843f477fd85608574d0358ca01bbd954b5ac3c4f5c025e77d",
+    "all_nine_preservation_comments_exact_readback_verified": true,
+    "prior_project_text_sha256": "2d8c4a31f378c74200ec22a5ebc0f44876c1e02b287a9ddcb5c48d15a7413e24",
+    "preservation_evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-offline-tracking.json"
+  },
+  "plan_sha256_at_gate": "766823229a8e3c49381f5299b5edee3ad392d48bbaf004be472d6d2ec6cf91ee",
+  "reviewed_local_draft_sha": "d3edce5094896dc4c11cc6e186ce4738418ac6c2",
+  "pure_cases_passed": 473,
+  "new_cases": 107,
+  "unchanged_predecessor_cases": 366,
+  "reviewed_script_and_predicate_unchanged": true,
+  "failed_history_immutable": true,
+  "simulation_dispatch_authorized": false,
+  "independent_review": "pending_exact_synchronized_checkpoint",
+  "installation_authorized": false,
+  "image_commit_authorized": false,
+  "task2_authorized": false,
+  "implementation_modified": false,
+  "docker_invoked": false,
+  "runtime_verified": false,
+  "production_ready": false
+}
