@@ -367,3 +367,101 @@ registered supervisor/reviewer authority all remain explicitly missing. The Go
 log and SDK provenance JSON contents are not interpreted as proof. DTO transport
 mocks cannot satisfy API21 or real Firebase/Stripe/bank acceptance. Existing paid
 inspectors and every disabled profile remain unchanged.
+
+
+## Internal paid HTTP projections
+
+`inspect_paid_http_receipts` is an explicit internal successor to the common,
+PG, migration and selector-work inspectors. No raw kind, filename, profile or CLI
+command selects it. It checks exactly 18 retained HTTP observations for each of
+`TestPostgresPaidCatalogGrantBeforeWork-bankone` and `...-banktwo`: closed JSON
+bodies and header projections, configuration/article PG bindings, exact redacted
+routes and the declared reader/identity counter sequence. The two measurement
+copies and existing result/collector hashes remain required. Other paid cases
+retain their predecessor validation depth.
+
+The only new diagnostics are `observed_http_case_ids` (those two IDs in bank
+order) and `observed_http_observation_count: 36`. These are zero additional
+verified cases. Every inherited diagnostic and missing family stays present;
+`paid_http_wire_body_provenance` and `paid_http_transport_authority` are appended.
+The result remains unavailable/incomplete with no verified IDs and all authority
+flags false. CLI counts remain zero, tiers remain disabled, and `r6-release.json`
+is unchanged.
+
+`body_sha256` and `body_size` are typed retained declarations. Original response
+bytes are unavailable, so the inspector does not reconstruct their digest or
+length from projected JSON. Body key ordering, arbitrary valid declared digests
+and sizes 1 through 262144 do not establish wire provenance. The observer retained
+only selected headers; validating this projection does not establish the absence
+of unrecorded wire headers. Redacted media paths are not usable capabilities or
+proof of media rights. Counter relationships do not establish actual request
+timing, authenticated capture, supervisor authority, licensed enrollment, model
+execution, fixture/staging acceptance or release authority.
+
+Synthetic regression coverage constructs both banks independently of production
+helpers and private historical evidence. Semantic negatives repair measurement,
+phase, immutable-row, migration and result/collector seams to reach the closed
+checks; separate copy/hash and confined-store negatives preserve transport guards.
+
+## Internal paid exact-scope projections
+
+`inspect_paid_scope_receipts` extends the unselected common → PG → migration →
+selector-work → HTTP chain for only
+`TestPostgresPaidCatalogExactScopeAndOwnerIsolation-bankone` and `...-banktwo`.
+It checks 11 projected GET observations per bank and the isolated/final snapshot
+pair per bank. No profile, raw kind or CLI command dispatches this API.
+
+The only added diagnostics are `observed_scope_case_ids` in bankone/banktwo order,
+`observed_scope_http_observation_count: 22` and
+`observed_scope_snapshot_count: 4`. Every inherited field and missing family is
+preserved, with `paid_scope_temporal_entitlement_provenance` appended. The result
+is unavailable and incomplete, verified IDs remain empty, all authority flags
+remain false and CLI derived counts remain zero. Tiers and profiles stay disabled.
+
+The inspector binds exactly eight canonical articles across the two banks and
+selected, adjacent, third and null configuration roles, without historical UUID
+or title constants. It checks the complete two-owner order/request/projection/
+entitlement chains, their organizations and shared declared product identity.
+Each terminal snapshot must retain the active legacy-null owner-a grant and
+structured active owner-b grant, matching immutable/paid/article copies, zero
+work and nine grant calls. The isolated counters are reader 0 and identity 11;
+the final snapshot intentionally has neither counter key. Every route, owner,
+status, header projection, error, progress and descriptor schema is closed.
+
+These are terminal consistency predicates. The active legacy-null grant follows
+revocation and unscoping in the producer; terminal rows cannot establish the
+earlier revoked database state. `PAID_PG_TABLES` retains no vehicle configuration
+region row, so the third configuration's other-region/CA role is only a frozen
+producer contract label. The literal `?region=CA` denial and order/request US
+scopes are checked, without claiming independent region proof. Synthetic paid
+orders and shared product UUIDs establish neither Stripe settlement nor an
+independently retained dataset-product row or licensed-source rights.
+
+As with the predecessor HTTP inspector, declared body hashes and sizes cannot be
+reconstructed from projected bodies, selected header projections cannot prove
+unobserved header absence, and counters cannot establish request timing or
+supervisor/capture authority. Existing PG row-semantic, media-rights, wire and
+transport gaps remain. This adds zero logical acceptance cases and supplies no
+fixture, staging, release, merge, deployment or cutover authority. Paid12,
+DTO120, final-head180, supporting contracts, CI provenance, security, images,
+SDK/license, reviewer proof and all eight real staging gates remain blockers.
+
+Synthetic tests build both banks inline, independently of the new validators,
+and repair repeated measurement/result/collector copies, immutable digests and
+populated migration seams before semantic mutations. Separate malformed-copy,
+hash, reserved-identity and confined-store freshness tests retain transport
+boundaries. Randomized valid UUIDs/titles and unordered descriptors are accepted;
+secret sentinel errors remain static codes. These tests verify the parser tool,
+never application ancestry or runtime acceptance.
+
+
+Exact-code completion: `30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe` passed focused16,
+full module108, developer260, autonomy146 and fresh shallow-clone plus disabled-CLI17.
+Independent code review PASS is coordinator-relayed and repeated in
+[Issue186 detail6634324284](https://github.com/lucronn/autodata/issues/186#issuecomment-6634324284);
+no separate reviewer receipt or completion-docs PASS is invented. Final code adds
+the explicit canonical configuration-column guard after a demonstrated red test.
+See `docs/agents/records/2026-11-04-r6-paid-scope-completion.json` for the three
+milestones, exact commands/log hashes, todo disposition, fresh full tracking
+readback and retained release blockers. These parser-tool checks add zero verified
+cases and grant no runtime, profile, merge or deployment authority.

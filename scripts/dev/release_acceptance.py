@@ -1186,6 +1186,384 @@ def inspect_paid_selector_work(store, *, candidate_sha, trusted_base_sha, profil
     return result
 
 
+def _paid_http_exact(value, fields, code='paid_http_body'):
+    require(type(value) is dict and set(value) == set(fields), code)
+
+
+def _paid_http_equal(value, expected, code='paid_http_body'):
+    """Compare closed JSON projections without Python's bool/int equivalence."""
+    require(type(value) is type(expected), code)
+    if type(expected) is dict:
+        _paid_http_exact(value, expected, code)
+        for key in expected: _paid_http_equal(value[key], expected[key], code)
+    elif type(expected) is list:
+        require(len(value) == len(expected), code)
+        for item, wanted in zip(value, expected): _paid_http_equal(item, wanted, code)
+    else:
+        require(value == expected, code)
+
+
+def _paid_http_uuid(value, code='paid_http_binding'):
+    try: _paid_uuid(value)
+    except ContractError: raise ContractError(code) from None
+
+
+def _paid_http_bodies(rows, selected, canonical_rows, configuration, vehicle, article):
+    """Interpret retained JSON projections only; raw body hashes remain declarations."""
+    _paid_http_equal(rows[0]['body'], dict(items=[dict(year=2024)], version='v1'))
+    for index, ident, name in ((1, 'example', 'Example'), (2, 'car', 'Car')):
+        _paid_http_equal(rows[index]['body'], dict(complete=False, hydrating=True,
+            items=[dict(id=ident, name=name)], version='v1'))
+    configs = rows[3]['body']
+    _paid_http_exact(configs, ('complete', 'hydrating', 'items', 'version'))
+    _paid_http_equal({key:configs[key] for key in ('complete', 'hydrating', 'version')},
+                     dict(complete=False, hydrating=False, version='v1'))
+    require(type(configs['items']) is list and len(configs['items']) == 3, 'paid_http_body')
+    ids = []; scopes = []
+    for config in configs['items']:
+        _paid_http_exact(config, ('complete', 'id', 'make', 'model', 'region', 'trim', 'vehicle_id', 'year'))
+        _paid_http_uuid(config['id']); ids.append(config['id'])
+        scope = (config['trim'], config['region'])
+        require(type(config['trim']) is str and type(config['region']) is str,
+                'paid_http_binding')
+        scopes.append(scope)
+        _paid_http_equal({key:config[key] for key in ('complete', 'make', 'model', 'year', 'vehicle_id')},
+            dict(complete=True, make='Example', model='Car', year=2024, vehicle_id=vehicle), 'paid_http_binding')
+        require(config['id'] != vehicle and (config['id'] == configuration) ==
+                (scope == ('Paid selected', 'US')), 'paid_http_binding')
+    require(len(set(ids)) == 3 and set(scopes) == {('Paid selected', 'US'),
+            ('Paid adjacent', 'US'), ('Paid other region', 'CA')}, 'paid_http_body')
+
+    listing = rows[14]['body']
+    _paid_http_exact(listing, ('complete', 'hydrating', 'items', 'progress', 'version'))
+    _paid_http_equal({key:listing[key] for key in ('complete', 'hydrating', 'version')},
+                     dict(complete=True, hydrating=False, version='v1'))
+    _paid_http_equal(listing['progress'], dict(complete=True, percent=100, phase='indexing',
+        processed=2, retryable=False, status='completed', total=2))
+    scoped = [row for row in canonical_rows if row.get('vehicle_configuration_id') == configuration]
+    require(len(scoped) == 2 and {row['provider_slug'] for row in scoped} == {'bankone', 'banktwo'},
+            'paid_http_binding')
+    by_id = {row['canonical_article_id']:row for row in scoped}
+    require(article in by_id and by_id[article] == selected, 'paid_http_binding')
+    for row in scoped:
+        require(type(row.get('title')) is str and all(key in row and row[key] is None for key in
+            ('current_source_revision_id', 'current_canonical_revision_id', 'current_job_id')),
+            'paid_http_binding')
+    require(type(listing['items']) is list and len(listing['items']) == 2, 'paid_http_body')
+    listed = []
+    fields = ('availability', 'canonical_article_id', 'canonical_revision_id', 'complete',
+        'content_origin', 'content_status', 'id', 'images', 'processing', 'review_status',
+        'source_revision_id', 'title', 'vehicle_id', 'view_revision')
+    for item in listing['items']:
+        _paid_http_exact(item, fields)
+        _paid_http_uuid(item['id']); listed.append(item['id'])
+        require(item['id'] in by_id, 'paid_http_binding')
+        _paid_http_equal(item, dict(availability='unavailable', canonical_article_id=item['id'],
+            canonical_revision_id=None, complete=False, content_origin=None, content_status='list_only',
+            id=item['id'], images=[], processing=None, review_status='UNREVIEWED', source_revision_id=None,
+            title=by_id[item['id']]['title'], vehicle_id=configuration, view_revision=None), 'paid_http_binding')
+    require(len(set(listed)) == 2 and set(listed) == set(by_id), 'paid_http_body')
+
+    request_ids = []
+    for index in (*range(4, 14), 15, 16, 17):
+        body = rows[index]['body']; _paid_http_exact(body, ('error',))
+        error = body['error']; _paid_http_exact(error, ('code', 'details', 'message', 'request_id', 'retryable'))
+        _paid_http_uuid(error['request_id'], 'paid_http_body'); request_ids.append(error['request_id'])
+        if index < 8:
+            code, message, details, retryable = ('ENTITLEMENT_REQUIRED',
+                'Purchase access to this vehicle configuration.', {}, False)
+        elif index == 8:
+            code, message, details, retryable = ('CATALOG_NOT_FOUND', 'Catalog resource was not found.', {}, False)
+        elif index < 14:
+            code, message, details, retryable = ('UNAUTHENTICATED', 'Authentication is required.',
+                                                dict(login_available=True), False)
+        elif index == 15:
+            code, message, details, retryable = ('CATALOG_SOURCE_UNAVAILABLE',
+                'Article is temporarily unavailable.', dict(article_id=article, retry_after_seconds=2), True)
+        elif index == 16:
+            code, message, details, retryable = ('CATALOG_UNAVAILABLE', 'Catalog is temporarily unavailable.', {}, True)
+        else:
+            code, message, details, retryable = ('AUTHENTICATION_UNAVAILABLE',
+                'Authentication is temporarily unavailable.', dict(login_available=True), True)
+        if index == 15:
+            _paid_http_exact(error['details'], ('article_id', 'retry_after_seconds'))
+            require(error['details']['article_id'] == article, 'paid_http_binding')
+        _paid_http_equal(error, dict(code=code, message=message, details=details,
+            request_id=error['request_id'], retryable=retryable))
+    require(len(set(request_ids)) == 13, 'paid_http_body')
+
+
+def inspect_paid_http_receipts(store, *, candidate_sha, trusted_base_sha, profile_sha256,
+        input_manifest_sha256, host_before_sha256, expected_driver_sha256,
+        profile_version='paid-selector-v2'):
+    """Unselected 18×2 HTTP projection consistency, never wire or transport authority."""
+    result = inspect_paid_selector_work(store, candidate_sha=candidate_sha,
+        trusted_base_sha=trusted_base_sha, profile_sha256=profile_sha256,
+        input_manifest_sha256=input_manifest_sha256, host_before_sha256=host_before_sha256,
+        expected_driver_sha256=expected_driver_sha256, profile_version=profile_version)
+
+    def document(ref):
+        require(ref in store.by_ref, 'paid_missing_raw')
+        return ArtifactStore._read_bound_json(store, store.by_ref[ref]['artifact_id'],
+            lambda raw: _strict_json(raw, MAX_RAW_JSON_BYTES, 'raw_json_size', exact_floats=True),
+            candidate_sha, trusted_base_sha, profile_sha256)
+
+    name = 'TestPostgresPaidCatalogGrantBeforeWork'; observed = []
+    fields = ('method', 'path', 'owner_index', 'status', 'headers', 'body', 'body_sha256',
+        'body_size', 'body_truncated', 'reader_before', 'reader_after', 'identity_before', 'identity_after')
+    counts = [(0, 0)]*4 + [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)] + [(5, 5)]*5 + [
+        (5, 6), (6, 7), (7, 8), (8, 9)]
+    for bank in ('bankone', 'banktwo'):
+        prefix = 'paid-access/'+bank+'/'+name+'/'
+        measured = document(prefix+'measured-runtime.json')
+        measurement = document(prefix+'go-measurement.json')
+        rows = measured['http_observations']
+        require(type(rows) is list and len(rows) == 18, 'paid_http_inventory')
+        require(rows == measurement['http_observations'] and measured['reader_calls'] ==
+                measurement['reader_calls'] and measured['identity_checks'] == measurement['identity_checks'],
+                'paid_measurement_mismatch')
+        require(measured['reader_calls'] == 0 and measured['identity_checks'] == 9 and
+                measured['held_model_receipt'] is None, 'paid_http_counter')
+        snapshot = measured['snapshots']['selectors']; article = snapshot['article']
+        configuration, vehicle, aid = (article.get(key) for key in
+            ('vehicle_configuration_id', 'vehicle_id', 'canonical_article_id'))
+        for value in (configuration, vehicle, aid): _paid_http_uuid(value)
+        require(configuration != vehicle, 'paid_http_binding')
+        canonical_rows = snapshot['immutable_rows']['canonical_articles']
+        selected = [row for row in canonical_rows if row['canonical_article_id'] == aid and
+                    row['provider_slug'] == bank]
+        require(len(selected) == 1 and selected[0].get('vehicle_configuration_id') == configuration and
+                selected[0].get('vehicle_id') == vehicle, 'paid_http_binding')
+        listing = '/v1/catalog/vehicles/'+configuration+'/articles'; detail = listing+'/'+aid
+        media = '/v1/catalog/images/[sha256:e0b1bb59f4515880aab8a8b144d8f4e20236fcac5bbf55768f92fe3d17c02f01]'
+        paths = ['/v1/catalog/years', '/v1/catalog/years/2024/makes',
+            '/v1/catalog/years/2024/makes/example/models',
+            '/v1/catalog/years/2024/makes/example/models/car/configurations',
+            listing, detail, detail+'/source', detail+'/prepare', media,
+            listing, detail, detail+'/source', detail+'/prepare', media, listing, detail, detail, detail]
+        for index, row in enumerate(rows):
+            _paid_http_exact(row, fields, 'paid_http_row')
+            require(type(row['method']) is str and type(row['path']) is str and
+                all(type(row[key]) is int for key in ('owner_index', 'status', 'body_size',
+                    'reader_before', 'reader_after', 'identity_before', 'identity_after')) and
+                type(row['body_sha256']) is str and re.fullmatch(r'[a-f0-9]{64}', row['body_sha256']) is not None and
+                1 <= row['body_size'] <= 262144 and row['body_truncated'] is False, 'paid_http_row')
+            require((row['method'], row['path'], row['owner_index'], row['status']) == (
+                'POST' if index in (7, 12) else 'GET', paths[index],
+                -1 if index < 4 else 1 if 9 <= index <= 13 else 0,
+                200 if index < 4 or index == 14 else 403 if index < 8 else 404 if index == 8 else
+                401 if index < 14 else 503), 'paid_http_route')
+            require(row['reader_before'] == row['reader_after'] == 0 and
+                (row['identity_before'], row['identity_after']) == counts[index], 'paid_http_counter')
+            headers = {'Content-Type':'application/json'}
+            if index >= 4: headers.update({'Cache-Control':'private, no-store', 'X-Content-Type-Options':'nosniff'})
+            if index == 15: headers['Retry-After'] = '2'
+            _paid_http_equal(row['headers'], headers, 'paid_http_headers')
+            require(type(row['body']) is dict, 'paid_http_body')
+        for phase, identity in zip(('before', 'selectors', 'unpaid', 'expired', 'paid_cold', 'unavailable'),
+                                   (0, 0, 5, 5, 7, 9)):
+            require(measured['snapshots'][phase]['reader_calls'] == 0 and
+                    measured['snapshots'][phase]['identity_checks'] == identity, 'paid_http_counter')
+        _paid_http_bodies(rows, selected[0], canonical_rows, configuration, vehicle, aid)
+        observed.append(name+'-'+bank)
+    store.recheck()
+    result['observed_http_case_ids'] = observed
+    result['observed_http_observation_count'] = 36
+    result['missing_validation_families'].extend(('paid_http_wire_body_provenance',
+                                                 'paid_http_transport_authority'))
+    return result
+
+
+def _paid_scope_binding(snapshot, bank):
+    """Bind terminal fixture chains; the third configuration has no retained region row."""
+    code = 'paid_scope_binding'
+    article = snapshot['article']
+    configuration, vehicle, aid = (article.get(key) for key in
+        ('vehicle_configuration_id', 'vehicle_id', 'canonical_article_id'))
+    for value in (configuration, vehicle, aid): _paid_http_uuid(value, code)
+    require(configuration != vehicle, code)
+    paid = snapshot['paid_rows']; accounts = paid['customer_accounts']
+    require({row['firebase_uid'] for row in accounts} == {'paid-owner-a', 'paid-owner-b'}, code)
+    require(all(row['status'] == 'active' and row['firebase_project_id'] == 'fixture-project'
+                for row in accounts), code)
+    primary = {'workshop_orders':'order_id', 'dataset_requests':'dataset_request_id',
+        'dataset_projections':'dataset_projection_id', 'entitlements':'entitlement_id'}
+    for table, key in primary.items():
+        rows = paid[table]
+        require(len(rows) == 2, code)
+        for row in rows: _paid_http_uuid(row[key], code)
+        require(len({row[key] for row in rows}) == 2, code)
+    scopes = []; products = []; used = {table:[] for table in primary}
+    for owner in ('paid-owner-a', 'paid-owner-b'):
+        account = next(row for row in accounts if row['firebase_uid'] == owner)
+        organization = account['personal_organization_id']; _paid_http_uuid(organization, code)
+        matches = [row for row in paid['workshop_orders'] if row['customer_account_id'] == account['customer_account_id']]
+        require(len(matches) == 1, code); order = matches[0]
+        for key in ('dataset_request_id', 'entitlement_id', 'dataset_product_id', 'organization_id', 'configuration_id'):
+            _paid_http_uuid(order[key], code)
+        require(order['organization_id'] == organization and order['amount_minor'] == 2000 and
+            order['currency'] == 'USD' and order['livemode'] is False and order['status'] == 'paid' and
+            order['region'] == 'US', code)
+        requests = [row for row in paid['dataset_requests'] if row['dataset_request_id'] == order['dataset_request_id']]
+        grants = [row for row in paid['entitlements'] if row['entitlement_id'] == order['entitlement_id']]
+        require(len(requests) == len(grants) == 1, code)
+        request, grant = requests[0], grants[0]
+        projections = [row for row in paid['dataset_projections'] if
+            row['dataset_request_id'] == request['dataset_request_id'] and row['entitlement_id'] == grant['entitlement_id']]
+        require(len(projections) == 1, code); projection = projections[0]
+        for row, keys in ((request, ('dataset_product_id','organization_id','correlation_id')),
+                (grant, ('dataset_request_id','organization_id')),
+                (projection, ('dataset_request_id','entitlement_id','dataset_product_id'))):
+            for key in keys: _paid_http_uuid(row[key], code)
+        require(request['correlation_id'] == order['order_id'] and
+            request['organization_id'] == grant['organization_id'] == organization and
+            grant['dataset_request_id'] == request['dataset_request_id'] and
+            order['dataset_product_id'] == request['dataset_product_id'] == projection['dataset_product_id'] and
+            request['vehicle_key'] == order['configuration_id'] and request['region'] == 'US', code)
+        require(grant['status'] == 'active' and grant['revoked_at'] is None, code)
+        if owner == 'paid-owner-a':
+            require(order['configuration_id'] == configuration and all(grant[key] is None for key in
+                ('customer_account_id', 'configuration_id', 'region', 'commerce_order_id')) and
+                grant['revoke_reason'] == 'fixture', code)
+        else:
+            require(grant['customer_account_id'] == account['customer_account_id'] and
+                grant['configuration_id'] == order['configuration_id'] and grant['region'] == 'US' and
+                grant['commerce_order_id'] == order['order_id'] and grant['revoke_reason'] is None, code)
+        scopes.append(order['configuration_id']); products.append(order['dataset_product_id'])
+        for table, row in zip(primary, (order, request, projection, grant)):
+            used[table].append(row[primary[table]])
+    require(len(set(scopes)) == 2 and len(set(products)) == 1 and all(
+        len(set(values)) == 2 and set(values) == {row[primary[table]] for row in paid[table]}
+        for table, values in used.items()), code)
+    canonical_rows = snapshot['immutable_rows']['canonical_articles']
+    require(len(canonical_rows) == 8, code)
+    configurations = set()
+    for row in canonical_rows:
+        require(row.get('vehicle_id') == vehicle, code)
+        require('vehicle_configuration_id' in row, code)
+        config = row['vehicle_configuration_id']
+        if config is not None: _paid_http_uuid(config, code); configurations.add(config)
+    require(len(configurations) == 3 and set(scopes) <= configurations and vehicle not in configurations, code)
+    other = next(iter(configurations-set(scopes)))
+    by_scope = {}
+    for provider in ('bankone', 'banktwo'):
+        for config in (*scopes, other, None):
+            matches = [row for row in canonical_rows if row['provider_slug'] == provider and
+                       row.get('vehicle_configuration_id') == config]
+            require(len(matches) == 1, code); by_scope[provider, config] = matches[0]
+    require(by_scope[bank, configuration]['canonical_article_id'] == aid, code)
+    selected = [by_scope[provider, configuration] for provider in ('bankone', 'banktwo')]
+    for row in selected:
+        require(type(row.get('title')) is str and all(key in row and row[key] is None for key in
+            ('current_source_revision_id','current_canonical_revision_id','current_job_id')), code)
+    return configuration, vehicle, scopes[1], other, by_scope, selected
+
+
+def _paid_scope_work(snapshot, *, final=False):
+    code = 'paid_scope_work'
+    for group in ('counts', 'ensure', 'selector_ensure', 'provider_calls', 'source_calls', 'asset_calls'):
+        require(all(type(value) is int and value == 0 for value in snapshot[group].values()), code)
+    for key in ('ensure_requests','selector_ensure_requests','workers'):
+        require(snapshot[key] == [], code)
+    require(snapshot['provider_traces'] == dict(bankone=[],banktwo=[]) and
+        snapshot['model_calls'] == snapshot['payment_calls'] == 0 and snapshot['grant_calls'] == 9, code)
+    _paid_http_equal(snapshot['proxy'], dict(request_received=0,upstream_completed=0,
+        downstream_completed=0,downstream_waiting=0,response_captured=False,errors=[]), code)
+    if not final:
+        require(snapshot['reader_calls'] == 0 and snapshot['identity_checks'] == 11, 'paid_scope_counter')
+
+
+def _paid_scope_bodies(rows, selected, configuration):
+    code = 'paid_scope_body'; binding = 'paid_scope_binding'
+    body = rows[0]['body']; _paid_http_exact(body, ('complete','hydrating','items','progress','version'), code)
+    _paid_http_equal({key:body[key] for key in ('complete','hydrating','version')},
+        dict(complete=True,hydrating=False,version='v1'), code)
+    _paid_http_equal(body['progress'],dict(complete=True,percent=100,phase='indexing',processed=2,
+        retryable=False,status='completed',total=2),code)
+    require(type(body['items']) is list and len(body['items']) == 2, code)
+    by_id = {row['canonical_article_id']:row for row in selected}; ids = []
+    fields = ('availability','canonical_article_id','canonical_revision_id','complete','content_origin',
+        'content_status','id','images','processing','review_status','source_revision_id','title','vehicle_id','view_revision')
+    for item in body['items']:
+        _paid_http_exact(item,fields,code); _paid_http_uuid(item['id'],binding)
+        require(item['id'] in by_id,binding); ids.append(item['id'])
+        _paid_http_equal(item,dict(availability='unavailable',canonical_article_id=item['id'],canonical_revision_id=None,
+            complete=False,content_origin=None,content_status='list_only',id=item['id'],images=[],processing=None,
+            review_status='UNREVIEWED',source_revision_id=None,title=by_id[item['id']]['title'],
+            vehicle_id=configuration,view_revision=None),binding)
+    require(set(ids) == set(by_id) and len(set(ids)) == 2,code)
+    request_ids = []
+    for index in range(1,11):
+        body = rows[index]['body']; _paid_http_exact(body,('error',),code)
+        error = body['error']; _paid_http_exact(error,('code','details','message','request_id','retryable'),code)
+        _paid_http_uuid(error['request_id'],code); request_ids.append(error['request_id'])
+        if index in (1,3,4,10):
+            error_code,message = 'ENTITLEMENT_REQUIRED','Purchase access to this vehicle configuration.'
+        elif index == 9:
+            error_code,message = 'ENTITLEMENT_REVOKED','Access to this vehicle configuration was revoked.'
+        else:
+            error_code,message = 'CATALOG_NOT_FOUND','Catalog resource was not found.'
+        _paid_http_equal(error,dict(code=error_code,details={},message=message,request_id=error['request_id'],retryable=False),code)
+    require(len(set(request_ids)) == 10,code)
+
+
+def inspect_paid_scope_receipts(store, *, candidate_sha, trusted_base_sha, profile_sha256,
+        input_manifest_sha256, host_before_sha256, expected_driver_sha256,
+        profile_version='paid-selector-v2'):
+    """Unselected two-case terminal/projection consistency; no revocation-history authority."""
+    result = inspect_paid_http_receipts(store, candidate_sha=candidate_sha,
+        trusted_base_sha=trusted_base_sha,profile_sha256=profile_sha256,input_manifest_sha256=input_manifest_sha256,
+        host_before_sha256=host_before_sha256,expected_driver_sha256=expected_driver_sha256,profile_version=profile_version)
+    def document(ref):
+        require(ref in store.by_ref,'paid_missing_raw')
+        return ArtifactStore._read_bound_json(store,store.by_ref[ref]['artifact_id'],
+            lambda raw:_strict_json(raw,MAX_RAW_JSON_BYTES,'raw_json_size',exact_floats=True),
+            candidate_sha,trusted_base_sha,profile_sha256)
+    name = 'TestPostgresPaidCatalogExactScopeAndOwnerIsolation'; observed = []
+    fields = ('method','path','owner_index','status','headers','body','body_sha256','body_size',
+        'body_truncated','reader_before','reader_after','identity_before','identity_after')
+    for bank in ('bankone','banktwo'):
+        prefix = 'paid-access/'+bank+'/'+name+'/'
+        measured = document(prefix+'measured-runtime.json'); measurement = document(prefix+'go-measurement.json')
+        rows = measured['http_observations']
+        require(type(rows) is list and len(rows) == 11,'paid_scope_inventory')
+        require(rows == measurement['http_observations'] and measured['reader_calls'] == measurement['reader_calls'] and
+            measured['identity_checks'] == measurement['identity_checks'],'paid_measurement_mismatch')
+        require(measured['reader_calls'] == 0 and measured['identity_checks'] == 11 and
+            measured['held_model_receipt'] is None,'paid_scope_counter')
+        isolated = measured['snapshots']['isolated']; final = measured['final_snapshot']
+        for snapshot, terminal in ((isolated,False),(final,True)):
+            _paid_scope_work(snapshot,final=terminal); _paid_scope_binding(snapshot,bank)
+        _paid_http_equal(final,{key:value for key,value in isolated.items() if key not in
+            ('reader_calls','identity_checks')},'paid_scope_work')
+        configuration, vehicle, adjacent, other, by_scope, selected = _paid_scope_binding(isolated,bank)
+        listing = '/v1/catalog/vehicles/'+configuration+'/articles'
+        paths = [listing,listing,'/v1/catalog/vehicles/'+vehicle+'/articles',
+            '/v1/catalog/vehicles/'+adjacent+'/articles','/v1/catalog/vehicles/'+other+'/articles',
+            listing+'?region=CA',listing+'/'+by_scope[bank,adjacent]['canonical_article_id'],
+            listing+'/'+by_scope[bank,None]['canonical_article_id'],listing+'/legacy',listing,listing]
+        for index,row in enumerate(rows):
+            _paid_http_exact(row,fields,'paid_scope_row')
+            require(type(row['method']) is str and type(row['path']) is str and all(type(row[key]) is int for key in
+                ('owner_index','status','body_size','reader_before','reader_after','identity_before','identity_after')) and
+                type(row['body_sha256']) is str and re.fullmatch(r'[a-f0-9]{64}',row['body_sha256']) is not None and
+                1 <= row['body_size'] <= 262144 and row['body_truncated'] is False,'paid_scope_row')
+            require((row['method'],row['path'],row['owner_index'],row['status']) == ('GET',paths[index],
+                1 if index == 1 else 0,200 if index == 0 else 403 if index in (1,3,4,9,10) else 404),'paid_scope_route')
+            require(row['reader_before'] == row['reader_after'] == 0 and
+                (row['identity_before'],row['identity_after']) == (index,index+1),'paid_scope_counter')
+            _paid_http_equal(row['headers'],{'Content-Type':'application/json','Cache-Control':'private, no-store',
+                'X-Content-Type-Options':'nosniff'},'paid_scope_headers')
+            require(type(row['body']) is dict,'paid_scope_body')
+        _paid_scope_bodies(rows,selected,configuration); observed.append(name+'-'+bank)
+    store.recheck()
+    result['observed_scope_case_ids'] = observed
+    result['observed_scope_http_observation_count'] = 22
+    result['observed_scope_snapshot_count'] = 4
+    result['missing_validation_families'].append('paid_scope_temporal_entitlement_provenance')
+    return result
+
+
 def _dto_member_identity(value, candidate_sha, trusted_base_sha, profile_sha256):
     """Apply the existing reserved-identity rule to parsed archive members."""
     expected = dict(candidate_sha=candidate_sha, trusted_base_sha=trusted_base_sha,

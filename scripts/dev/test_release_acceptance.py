@@ -613,6 +613,7 @@ class RawPrimitiveTests(unittest.TestCase):
                         paid_case_identities=DEFAULT, dto_case_identities=DEFAULT,
                         inspect_paid_common=DEFAULT, inspect_paid_pg_snapshots=DEFAULT,
                         inspect_paid_migration_receipts=DEFAULT, inspect_paid_selector_work=DEFAULT,
+                        inspect_paid_http_receipts=DEFAULT, inspect_paid_scope_receipts=DEFAULT,
                         inspect_dto_receipts=DEFAULT) as mocks:
                     for mock in mocks.values(): mock.side_effect = AssertionError('raw dispatch forbidden')
                     with patch.object(assembler, 'ArtifactStore', side_effect=AssertionError('plan root I/O')):
@@ -1552,6 +1553,345 @@ class PaidSelectorWorkTests(unittest.TestCase):
                     assembler.inspect_paid_selector_work(store,**self.invocation())
 
 
+class PaidHTTPReceiptTests(unittest.TestCase):
+    """Independent projected HTTP receipts, never raw wire or runtime evidence."""
+    root = 'TestPostgresPaidCatalogGrantBeforeWork'
+    phases = ('before', 'selectors', 'unpaid', 'expired', 'paid_cold', 'unavailable')
+    configuration = '00000000-0000-0000-0000-000000000030'
+    vehicle = '00000000-0000-0000-0000-000000000040'
+    article_ids = ('00000000-0000-0000-0000-000000000001',
+                   '00000000-0000-0000-0000-000000000002')
+    media = '/v1/catalog/images/[sha256:e0b1bb59f4515880aab8a8b144d8f4e20236fcac5bbf55768f92fe3d17c02f01]'
+    invocation = PaidSelectorWorkTests.invocation
+    real_store = PaidSelectorWorkTests.real_store
+
+    @classmethod
+    def setUpClass(cls):
+        PaidSelectorWorkTests.setUpClass()
+        cls.baseline = dict(PaidSelectorWorkTests.baseline)
+        for bank in ('bankone', 'banktwo'):
+            def populate(m):
+                articles = [dict(canonical_article_id=aid, provider_slug=provider,
+                    vehicle_configuration_id=cls.configuration, vehicle_id=cls.vehicle, title='Pump',
+                    current_source_revision_id=None, current_canonical_revision_id=None,
+                    current_job_id=None) for aid,provider in zip(cls.article_ids,('bankone','banktwo'))]
+                for snap in [*m['snapshots'].values(),m['final_snapshot']]:
+                    snap['article'] = copy.deepcopy(articles[0 if bank=='bankone' else 1])
+                    snap['immutable_rows']['canonical_articles'] = copy.deepcopy(articles)
+                for phase,count in zip(cls.phases,(0,0,5,5,7,9)):
+                    m['snapshots'][phase]['identity_checks'] = count
+                m['identity_checks'] = 9
+                m['http_observations'] = cls.observations(bank)
+            cls.alter(cls.baseline, populate, bank=bank)
+
+    @classmethod
+    def observations(cls, bank):
+        # Literal test schema, independent of production validators/builders.
+        aid=cls.article_ids[0 if bank=='bankone' else 1]
+        listing='/v1/catalog/vehicles/'+cls.configuration+'/articles'; detail=listing+'/'+aid
+        paths=['/v1/catalog/years','/v1/catalog/years/2024/makes',
+            '/v1/catalog/years/2024/makes/example/models',
+            '/v1/catalog/years/2024/makes/example/models/car/configurations',
+            listing,detail,detail+'/source',detail+'/prepare',cls.media,
+            listing,detail,detail+'/source',detail+'/prepare',cls.media,listing,detail,detail,detail]
+        bodies=[dict(items=[dict(year=2024)],version='v1'),
+            dict(complete=False,hydrating=True,items=[dict(id='example',name='Example')],version='v1'),
+            dict(complete=False,hydrating=True,items=[dict(id='car',name='Car')],version='v1')]
+        configs=[dict(complete=True,id=cid,make='Example',model='Car',region=region,trim=trim,
+            vehicle_id=cls.vehicle,year=2024) for cid,trim,region in
+            [(cls.configuration,'Paid selected','US'),('00000000-0000-0000-0000-000000000031','Paid adjacent','US'),
+             ('00000000-0000-0000-0000-000000000032','Paid other region','CA')]]
+        bodies.append(dict(complete=False,hydrating=False,items=configs,version='v1'))
+        error_specs=[('ENTITLEMENT_REQUIRED','Purchase access to this vehicle configuration.',{},False)]*4
+        error_specs += [('CATALOG_NOT_FOUND','Catalog resource was not found.',{},False)]
+        error_specs += [('UNAUTHENTICATED','Authentication is required.',dict(login_available=True),False)]*5
+        for index,(code,message,details,retryable) in enumerate(error_specs):
+            bodies.append(dict(error=dict(code=code,message=message,details=copy.deepcopy(details),
+                retryable=retryable,request_id='00000000-0000-0000-0000-'+format(index+100,'012x'))))
+        items=[dict(availability='unavailable',canonical_article_id=article,canonical_revision_id=None,
+            complete=False,content_origin=None,content_status='list_only',id=article,images=[],processing=None,
+            review_status='UNREVIEWED',source_revision_id=None,title='Pump',vehicle_id=cls.configuration,
+            view_revision=None) for article in cls.article_ids]
+        bodies.append(dict(complete=True,hydrating=False,items=items,version='v1',
+            progress=dict(complete=True,percent=100,phase='indexing',processed=2,retryable=False,status='completed',total=2)))
+        for index,(code,message,details) in enumerate([
+            ('CATALOG_SOURCE_UNAVAILABLE','Article is temporarily unavailable.',dict(article_id=aid,retry_after_seconds=2)),
+            ('CATALOG_UNAVAILABLE','Catalog is temporarily unavailable.',{}),
+            ('AUTHENTICATION_UNAVAILABLE','Authentication is temporarily unavailable.',dict(login_available=True))]):
+            bodies.append(dict(error=dict(code=code,message=message,details=details,retryable=True,
+                request_id='00000000-0000-0000-0000-'+format(index+200,'012x'))))
+        counts=[(0,0)]*4+[(0,1),(1,2),(2,3),(3,4),(4,5)]+[(5,5)]*5+[(5,6),(6,7),(7,8),(8,9)]
+        rows=[]
+        for i,(path,body,(before,after)) in enumerate(zip(paths,bodies,counts)):
+            headers={'Content-Type':'application/json'}
+            if i>=4:headers.update({'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'})
+            if i==15:headers['Retry-After']='2'
+            rows.append(dict(method='POST' if i in (7,12) else 'GET',path=path,
+                owner_index=-1 if i<4 else 1 if 9<=i<=13 else 0,
+                status=200 if i<4 or i==14 else 403 if i<8 else 404 if i==8 else 401 if i<14 else 503,
+                headers=headers,body=body,body_sha256='a'*64,body_size=1,body_truncated=False,
+                reader_before=0,reader_after=0,identity_before=before,identity_after=after))
+        return rows
+
+    @classmethod
+    def alter(cls, raw, mutation, *, bank='bankone'):
+        """Repair all semantic copies, PG row hashes, migration and result seams."""
+        prefix='paid-access/'+bank+'/'+cls.root+'/'
+        m=json.loads(raw[prefix+'measured-runtime.json']);mutation(m)
+        for snap in [*m['snapshots'].values(),m['final_snapshot']]:
+            snap['immutable_sha256']=PaidMigrationReceiptTests().rows_hash(snap['immutable_rows'])
+        rows=m['final_snapshot']['immutable_rows']
+        for name in ('migration-replay-populated.rows.json','populated-before.rows.json'):
+            raw[prefix+name]=json.dumps(rows).encode()
+        for side in ('before','after'):
+            m['migrations']['populated_replay']['data_'+side+'_sha256']=PaidMigrationReceiptTests().rows_hash(rows)
+        raw[prefix+'measured-runtime.json']=json.dumps(m).encode()
+        measurement=json.loads(raw[prefix+'go-measurement.json'])
+        measurement['phase_snapshots']=copy.deepcopy(m['snapshots'])
+        for key in ('http_observations','identity_checks','reader_calls','held_model_receipt','observed_views'):
+            measurement[key]=copy.deepcopy(m[key])
+        raw[prefix+'go-measurement.json']=json.dumps(measurement).encode()
+        collector=json.loads(raw['workshop-paid-access.json'])
+        collector['case_results'][cls.root+'-'+bank]['phase_snapshots']=copy.deepcopy(m['snapshots'])
+        raw['workshop-paid-access.json']=json.dumps(collector).encode()
+        PaidPGSnapshotTests().reseal(raw)
+
+    def inspect(self, raw, **overrides):
+        class Store:
+            by_ref={ref:dict(artifact_id=ref) for ref in raw}
+            def read(self, artifact_id):return raw[artifact_id]
+            def read_raw_json(self, artifact_id, **_):return assembler.strict_raw_json(raw[artifact_id])
+            def recheck(self):pass
+        self.assertTrue(callable(getattr(assembler,'inspect_paid_http_receipts',None)),
+            'explicit internal HTTP receipt inspector is missing')
+        return assembler.inspect_paid_http_receipts(Store(),**self.invocation(**overrides))
+
+    def assert_unavailable(self, result, raw):
+        previous=PaidSelectorWorkTests().inspect(raw)
+        self.assertEqual(set(result)-set(previous),{'observed_http_case_ids','observed_http_observation_count'})
+        for key,value in previous.items():
+            self.assertEqual(result[key],value if key!='missing_validation_families' else value+
+                ['paid_http_wire_body_provenance','paid_http_transport_authority'])
+        self.assertEqual(result['observed_http_case_ids'],[self.root+'-bankone',self.root+'-banktwo'])
+        self.assertEqual(result['observed_http_observation_count'],36)
+        self.assertEqual(result['status'],'unavailable');self.assertIs(result['complete'],False)
+        self.assertEqual(result['verified_case_ids'],[])
+        self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+
+    def test_projected_receipts_add_only_incomplete_diagnostics(self):
+        self.assert_unavailable(self.inspect(self.baseline),self.baseline)
+
+    def check_mutations(self, mutations, code):
+        for name,mutation in mutations:
+            raw=dict(self.baseline);self.alter(raw,mutation)
+            with self.subTest(mutation=name),self.assertRaisesRegex(assembler.ContractError,'^'+code+'$'):
+                self.inspect(raw)
+
+    def test_observation_inventory_and_closed_fields(self):
+        self.check_mutations([
+            ('missing',lambda m:m['http_observations'].pop()),
+            ('extra',lambda m:m['http_observations'].append(copy.deepcopy(m['http_observations'][0])))], 'paid_http_inventory')
+        fields=tuple(self.observations('bankone')[0])
+        self.check_mutations([(key,lambda m,k=key:m['http_observations'][0].pop(k)) for key in fields]+
+            [('extra',lambda m:m['http_observations'][0].update(secret='x'))], 'paid_http_row')
+        self.check_mutations([(str(v),lambda m,v=v:m['http_observations'].__setitem__(0,v))
+            for v in (None,[],1)],'paid_http_shape')
+
+    def test_declared_digest_size_and_primitive_types(self):
+        mutations=[]
+        for field in ('owner_index','status','body_size','reader_before','reader_after','identity_before','identity_after'):
+            for v in (True,'1',None,0.5):
+                mutations.append((field+str(v),lambda m,f=field,v=v:m['http_observations'][0].update({f:v})))
+        for field,values in [('body_sha256',('A'*64,'','x'*64,None)),('body_size',(0,262145,-1)),
+                             ('body_truncated',(True,0,None)),('method',(None,1)),('path',(None,1))]:
+            for v in values:mutations.append((field+str(v),lambda m,f=field,v=v:m['http_observations'][0].update({f:v})))
+        self.check_mutations(mutations,'paid_http_row')
+        for size in (1,262144):
+            raw=dict(self.baseline)
+            self.alter(raw,lambda m:[r.update(body_size=size,body_sha256='f'*64,
+                body=dict(reversed(list(r['body'].items())))) for r in m['http_observations']])
+            self.assert_unavailable(self.inspect(raw),raw)
+        for token in ('NaN','Infinity','1e999'):
+            raw=dict(self.baseline);self.alter(raw,lambda m:m['http_observations'][0].update(body_size='TOKEN'))
+            raw={ref:data.replace(b'"TOKEN"',token.encode()) for ref,data in raw.items()}
+            PaidPGSnapshotTests().reseal(raw)
+            with self.subTest(token=token),self.assertRaisesRegex(assembler.ContractError,'nonfinite_number'):
+                self.inspect(raw)
+
+    def test_every_route_owner_status_method_and_order_transition(self):
+        mutations=[]
+        for i in range(18):
+            for field,value in [('method','DELETE'),('owner_index',2),('status',201)]:
+                mutations.append((str(i)+field,lambda m,i=i,f=field,v=value:m['http_observations'][i].update({f:v})))
+        route=self.observations('bankone')[5]['path']
+        for value in ('https://example.invalid'+route,route.replace(self.configuration,self.vehicle),
+            route.replace(self.article_ids[0],self.article_ids[1]),route.replace(self.configuration,'00000000-0000-0000-0000-000000000031'),
+            route.replace('00000000','%300000000',1),route+'/',route+'?x=1',route+'#x',route.upper()):
+            mutations.append((value,lambda m,v=value:m['http_observations'][5].update(path=v)))
+        for value in (self.media.replace('e0b1','e0b2'),'/v1/catalog/images/invalid-token'):
+            mutations.append((value,lambda m,v=value:m['http_observations'][8].update(path=v)))
+        mutations += [('duplicate',lambda m:m['http_observations'].__setitem__(1,copy.deepcopy(m['http_observations'][0]))),
+            ('reordered',lambda m:m['http_observations'].reverse())]
+        self.check_mutations(mutations,'paid_http_route')
+
+    def test_http_and_phase_counters_bind_without_implying_timing(self):
+        mutations=[]
+        for i in range(18):
+            for field in ('reader_before','reader_after','identity_before','identity_after'):
+                mutations.append((str(i)+field,lambda m,i=i,f=field:m['http_observations'][i].update({f:99})))
+        for i in (0,):
+            for field in ('reader_before','reader_after','identity_before','identity_after'):
+                mutations.append((str(i)+field+'negative',lambda m,i=i,f=field:m['http_observations'][i].update({f:-1})))
+        mutations += [('total',lambda m:m.update(identity_checks=10)),
+            ('reader-total',lambda m:m.update(reader_calls=1)),('held',lambda m:m.update(held_model_receipt={})),
+            ('phase',lambda m:m['snapshots']['expired'].update(identity_checks=6))]
+        self.check_mutations(mutations,'paid_http_counter')
+
+    def test_header_projection_is_closed_and_phase_specific(self):
+        mutations=[]
+        for i in range(18):
+            headers=self.observations('bankone')[i]['headers']
+            for key in headers:
+                mutations.append((str(i)+key,lambda m,i=i,k=key:m['http_observations'][i]['headers'].pop(k)))
+            for value in (None,[],{'content-type':'application/json'},dict(headers,Secret='x')):
+                mutations.append((str(i)+str(value),lambda m,i=i,v=value:m['http_observations'][i].update(headers=v)))
+            for key in headers:
+                for value in (None,1,'wrong'):
+                    mutations.append((str(i)+key+str(value),lambda m,i=i,k=key,v=value:m['http_observations'][i]['headers'].update({k:v})))
+        for i in (16,17):mutations.append((str(i)+'retry',lambda m,i=i:m['http_observations'][i]['headers'].update({'Retry-After':'2'})))
+        self.check_mutations(mutations,'paid_http_headers')
+
+    def test_closed_nested_body_inventories(self):
+        # Catch omission/extension at every distinct nested closed schema.
+        locations=[(0,()),(0,('items',0)),(1,()),(1,('items',0)),(2,()),(2,('items',0)),
+            (3,()),(3,('items',0)),(4,()),(4,('error',)),(4,('error','details')),(9,('error','details')),
+            (14,()),(14,('progress',)),(14,('items',0)),(15,('error','details'))]
+        mutations=[]
+        def at(m,i,path):
+            v=m['http_observations'][i]['body']
+            for key in path:v=v[key]
+            return v
+        for i,path in locations:
+            value=self.observations('bankone')[i]['body']
+            for key in path:value=value[key]
+            for key in value:
+                mutations.append((str((i,path,key)),lambda m,i=i,p=path,k=key:at(m,i,p).pop(k)))
+            mutations.append((str((i,path,'extra')),lambda m,i=i,p=path:at(m,i,p).update(secret='x')))
+            if path:
+                for replacement in (None,[]):
+                    def replace(m,i=i,p=path,v=replacement):
+                        parent=at(m,i,p[:-1]);parent[p[-1]]=copy.deepcopy(v)
+                    mutations.append((str((i,path,replacement)),replace))
+        for i in range(18):
+            for value in (None,[],1):mutations.append((str(i)+str(value),lambda m,i=i,v=value:m['http_observations'][i].update(body=v)))
+        self.check_mutations(mutations,'paid_http_body')
+
+    def test_body_scalars_cardinality_and_error_semantics(self):
+        mutations=[('year',lambda m:m['http_observations'][0]['body']['items'][0].update(year=True)),
+            ('version',lambda m:m['http_observations'][0]['body'].update(version='v2')),
+            ('extra-year',lambda m:m['http_observations'][0]['body']['items'].append(dict(year=2025))),
+            ('progress',lambda m:m['http_observations'][14]['body']['progress'].update(percent=True)),
+            ('progress-total',lambda m:m['http_observations'][14]['body']['progress'].update(total=3)),
+            ('config-duplicate',lambda m:m['http_observations'][3]['body']['items'].__setitem__(1,copy.deepcopy(m['http_observations'][3]['body']['items'][0]))),
+            ('config-extra',lambda m:m['http_observations'][3]['body']['items'].pop()),
+            ('descriptor-duplicate',lambda m:m['http_observations'][14]['body']['items'].__setitem__(1,copy.deepcopy(m['http_observations'][14]['body']['items'][0]))),
+            ('descriptor-extra',lambda m:m['http_observations'][14]['body']['items'].append(copy.deepcopy(m['http_observations'][14]['body']['items'][0])))]
+        for i in (1,2):
+            for field in ('id','name'):
+                mutations.append((str(i)+field,lambda m,i=i,f=field:m['http_observations'][i]['body']['items'][0].update({f:'wrong'})))
+        for i in (0,1,2):
+            mutations.append((str(i)+'empty-items',lambda m,i=i:m['http_observations'][i]['body'].update(items=[])))
+        for field,value in [('complete',1),('hydrating',0),('version','v2')]:
+            mutations.append(('listing-'+field,lambda m,f=field,v=value:m['http_observations'][14]['body'].update({f:v})))
+        for i in (1,2,3):
+            for field,value in [('complete',0),('hydrating',0),('version','v2')]:
+                mutations.append((str(i)+field,lambda m,i=i,f=field,v=value:m['http_observations'][i]['body'].update({f:v})))
+        for i in (*range(4,14),15,16,17):
+            for field,value in [('code','OTHER'),('message','wrong'),('retryable',1),('request_id',''),
+                                ('request_id','A0000000-0000-0000-0000-000000000000'),('details',None)]:
+                mutations.append((str(i)+field+str(value),lambda m,i=i,f=field,v=value:m['http_observations'][i]['body']['error'].update({f:v})))
+        mutations += [('duplicate-request',lambda m:m['http_observations'][5]['body']['error'].update(request_id=m['http_observations'][4]['body']['error']['request_id'])),
+            ('retry-type',lambda m:m['http_observations'][15]['body']['error']['details'].update(retry_after_seconds=True)),
+            ('retry-value',lambda m:m['http_observations'][15]['body']['error']['details'].update(retry_after_seconds=3))]
+        self.check_mutations(mutations,'paid_http_body')
+
+    def test_config_descriptor_and_pg_bindings(self):
+        mutations=[]
+        for field,value in [('id',self.vehicle),('vehicle_id',self.configuration),('trim','Paid adjacent'),('region','CA'),('year',2025),('complete',1),('make','Other'),('model','Other')]:
+            mutations.append(('config-'+field,lambda m,f=field,v=value:m['http_observations'][3]['body']['items'][0].update({f:v})))
+        for field,value in [('id',self.article_ids[1]),('canonical_article_id',self.article_ids[1]),('vehicle_id',self.vehicle),
+            ('title','Other'),('availability','ready'),('complete',True),('images',[{}]),('source_revision_id','x'),
+            ('content_origin','source'),('processing',{}),('canonical_revision_id','x'),('review_status','APPROVED'),('content_status','ready'),('view_revision',1)]:
+            mutations.append(('descriptor-'+field,lambda m,f=field,v=value:m['http_observations'][14]['body']['items'][0].update({f:v})))
+        mutations += [('source-article',lambda m:m['http_observations'][15]['body']['error']['details'].update(article_id=self.article_ids[1])),
+            ('selected-physical',lambda m:m['snapshots']['selectors']['article'].update(vehicle_id=self.configuration)),
+            ('pg-title',lambda m:m['snapshots']['selectors']['immutable_rows']['canonical_articles'][0].update(title='Other')),
+            ('pg-current',lambda m:m['snapshots']['selectors']['immutable_rows']['canonical_articles'][0].update(current_source_revision_id=self.article_ids[0])),
+            ('pg-scope',lambda m:m['snapshots']['selectors']['immutable_rows']['canonical_articles'][1].update(vehicle_configuration_id=self.vehicle)),
+            ('pg-provider',lambda m:m['snapshots']['selectors']['immutable_rows']['canonical_articles'][1].update(provider_slug='bankone'))]
+        self.check_mutations(mutations,'paid_http_binding')
+        raw=dict(self.baseline)
+        self.alter(raw,lambda m:(m['http_observations'][3]['body']['items'].reverse(),m['http_observations'][14]['body']['items'].reverse()))
+        self.assert_unavailable(self.inspect(raw),raw)
+
+    def test_parent_identity_copy_and_hash_guards(self):
+        for key,value in [('candidate_sha','2'*40),('trusted_base_sha','invalid'),('profile_sha256','invalid'),('profile_version','other')]:
+            with self.subTest(key=key),self.assertRaises(assembler.ContractError):self.inspect(self.baseline,**{key:value})
+        prefix='paid-access/bankone/'+self.root+'/'
+        for name in ('hash','copy','missing','candidate','bank','base','profile','schema'):
+            raw=dict(self.baseline)
+            if name=='hash':raw[prefix+'measured-runtime.json']+=b' '
+            elif name=='missing':del raw[prefix+'go-measurement.json']
+            elif name=='copy':
+                m=json.loads(raw[prefix+'go-measurement.json']);m['http_observations'][0]['status']=201
+                raw[prefix+'go-measurement.json']=json.dumps(m).encode();PaidPGSnapshotTests().reseal(raw)
+            else:
+                key,value={'candidate':('candidate_sha','2'*40),'bank':('provider','banktwo'),
+                    'base':('trusted_base_sha','2'*40),'profile':('profile_sha256','2'*64),'schema':('schema_version',2)}[name]
+                self.alter(raw,lambda m:m.update({key:value}) if name in ('candidate','bank','schema') else m['snapshots']['selectors']['article'].update({key:value}))
+            with self.subTest(name=name),self.assertRaises(assembler.ContractError):self.inspect(raw)
+
+    def test_confined_store_major_semantic_groups_and_recheck(self):
+        mutations=[(None,None),
+            (lambda m:m['http_observations'].pop(),'paid_http_inventory'),
+            (lambda m:m['http_observations'][0].update(body_size=0),'paid_http_row'),
+            (lambda m:m['http_observations'][0].update(path='/wrong'),'paid_http_route'),
+            (lambda m:m['http_observations'][0].update(reader_after=1),'paid_http_counter'),
+            (lambda m:m['http_observations'][0]['headers'].update(Secret='x'),'paid_http_headers'),
+            (lambda m:m['http_observations'][0]['body'].update(version='v2'),'paid_http_body'),
+            (lambda m:m['http_observations'][14]['body']['items'][0].update(title='Other'),'paid_http_binding')]
+        for mutation,code in mutations:
+            raw=dict(self.baseline)
+            if mutation:self.alter(raw,mutation)
+            with tempfile.TemporaryDirectory() as directory,self.real_store(raw,directory) as store:
+                if mutation:
+                    with self.assertRaisesRegex(assembler.ContractError,'^'+code+'$'):
+                        assembler.inspect_paid_http_receipts(store,**self.invocation())
+                else:self.assert_unavailable(assembler.inspect_paid_http_receipts(store,**self.invocation()),raw)
+        ref='paid-access/bankone/'+self.root+'/measured-runtime.json'
+        for mutation in ('missing','symlink','post-read'):
+            with tempfile.TemporaryDirectory() as directory,self.real_store(self.baseline,directory) as store:
+                path=Path(directory)/ref
+                if mutation=='missing':path.unlink()
+                elif mutation=='symlink':path.unlink();path.symlink_to(Path(directory)/'host-before.json')
+                else:
+                    # Common and selector read this copy first. Change an already
+                    # consumed file on the third read, in the new HTTP layer,
+                    # after all inherited rechecks have completed.
+                    original=store.read;reads=0
+                    measurement_ref='paid-access/bankone/'+self.root+'/go-measurement.json'
+                    def changed(artifact_id):
+                        nonlocal reads
+                        value=original(artifact_id)
+                        if artifact_id==store.by_ref[measurement_ref]['artifact_id']:
+                            reads+=1
+                            if reads==3:path.write_bytes(path.read_bytes()+b' ')
+                        return value
+                    store.read=changed
+                with self.subTest(mutation=mutation),self.assertRaises(assembler.ContractError):
+                    assembler.inspect_paid_http_receipts(store,**self.invocation())
+
+
 class DTOReceiptTests(unittest.TestCase):
     """Synthetic DTO consistency only; constants copied from the reviewed plan."""
     inputs = {'apps/api-go/workshop_browser_fixture_test.go': '7cf50daeb190686dc55c33c90056b87a62eece96640759b180f1282a0a1a6dd2',
@@ -1916,5 +2256,371 @@ class DTOReceiptTests(unittest.TestCase):
                     with self.subTest(mutation=mutation),self.assertRaises(assembler.ContractError):
                         assembler.inspect_dto_receipts(store,**self.invocation())
 
+
+
+class PaidScopeReceiptTests(unittest.TestCase):
+    """Closed producer projections, built independently from the new inspector."""
+    root = 'TestPostgresPaidCatalogExactScopeAndOwnerIsolation'
+    configuration = PaidHTTPReceiptTests.configuration
+    vehicle = PaidHTTPReceiptTests.vehicle
+    invocation = PaidSelectorWorkTests.invocation
+    real_store = PaidSelectorWorkTests.real_store
+    alter = classmethod(PaidHTTPReceiptTests.alter.__func__)
+
+    @staticmethod
+    def uid(n): return '00000000-0000-0000-0000-'+format(n,'012x')
+
+    @classmethod
+    def setUpClass(cls):
+        PaidHTTPReceiptTests.setUpClass()
+        cls.baseline = dict(PaidHTTPReceiptTests.baseline)
+        for bank in ('bankone','banktwo'):
+            def populate(m):
+                s=m['snapshots']['isolated'];paid=s['paid_rows']
+                for i,a in enumerate(paid['customer_accounts']):a['firebase_uid']='paid-owner-'+('a' if i==0 else 'b')
+                orders=[];requests=[];projections=[];entitlements=[]
+                # Literal producer row schemas; do not import validator contracts.
+                fields={
+                    'o':'amount_minor checkout_session_id checkout_url configuration_id created_at currency customer_account_id dataset_product_id dataset_request_id entitlement_id expected_price_id first_create_attempt_at last_reconciled_at livemode order_id organization_id paid_at payment_intent_id preparation_attempts preparation_index_job_ids preparation_last_error_code preparation_lease_expires_at preparation_lease_owner preparation_next_attempt_at preparation_state provider_expires_at provider_idempotency_key region revocation_reason_code revoked_at status stripe_account_id terms_version updated_at',
+                    'r':'correlation_id created_at dataset_product_id dataset_request_id idempotency_key lane organization_id processing_version region source_snapshot_id status updated_at vehicle_id vehicle_key',
+                    'p':'created_at dataset_product_id dataset_projection_id dataset_request_id entitlement_id',
+                    'e':'commerce_order_id configuration_id customer_account_id dataset_request_id entitlement_id granted_at organization_id payment_event_id provider_event_id region revoke_reason revoked_at status'}
+                for i,a in enumerate(paid['customer_accounts']):
+                    oid,rid,eid,pid=[cls.uid(100+i*10+j) for j in range(4)]
+                    config=cls.uid(48+i); org=a['personal_organization_id'];account=a['customer_account_id']
+                    o={k:'fixture' for k in fields['o'].split()};o.update(order_id=oid,configuration_id=config,
+                        customer_account_id=account,organization_id=org,dataset_request_id=rid,entitlement_id=eid,
+                        dataset_product_id=cls.uid(200),amount_minor=2000,currency='USD',livemode=False,status='paid',region='US',
+                        stripe_account_id='acct_fixture',expected_price_id='price_fixture',preparation_attempts=0,preparation_index_job_ids=[])
+                    r={k:'fixture' for k in fields['r'].split()};r.update(dataset_request_id=rid,correlation_id=oid,
+                        organization_id=org,dataset_product_id=cls.uid(200),vehicle_key=config,region='US')
+                    p={k:'fixture' for k in fields['p'].split()};p.update(dataset_projection_id=pid,dataset_request_id=rid,
+                        entitlement_id=eid,dataset_product_id=cls.uid(200))
+                    e={k:'fixture' for k in fields['e'].split()};e.update(entitlement_id=eid,dataset_request_id=rid,
+                        organization_id=org,status='active',revoked_at=None,granted_at='2026-11-03T00:00:00Z',
+                        customer_account_id=None if i==0 else account,configuration_id=None if i==0 else config,
+                        commerce_order_id=None if i==0 else oid,region=None if i==0 else 'US',revoke_reason='fixture' if i==0 else None)
+                    orders.append(o);requests.append(r);projections.append(p);entitlements.append(e)
+                paid.update(workshop_orders=orders,dataset_requests=requests,dataset_projections=projections,entitlements=entitlements)
+                canonical=[]
+                for i,config in enumerate((cls.uid(48),cls.uid(49),cls.uid(50),None)):
+                    for j,provider in enumerate(('bankone','banktwo')):
+                        canonical.append(dict(canonical_article_id=cls.uid(300+i*2+j),provider_slug=provider,
+                            vehicle_configuration_id=config,vehicle_id=cls.vehicle,title='Pump '+str(i*2+j),
+                            current_source_revision_id=None,current_canonical_revision_id=None,current_job_id=None))
+                s['article']=copy.deepcopy(canonical[0 if bank=='bankone' else 1])
+                s['article']['producer_extra']='retained view field'
+                s['immutable_rows']['canonical_articles']=canonical
+                for table in ('customer_accounts','auth_sessions','workshop_orders'):s['immutable_rows'][table]=copy.deepcopy(paid[table])
+                s.update(reader_calls=0,identity_checks=11,grant_calls=9)
+                m['final_snapshot']=copy.deepcopy(s)
+                del m['final_snapshot']['reader_calls'];del m['final_snapshot']['identity_checks']
+                m.update(reader_calls=0,identity_checks=11,http_observations=cls.observations(bank))
+            cls.alter(cls.baseline,populate,bank=bank)
+
+    @classmethod
+    def observations(cls,bank):
+        c=cls.configuration;l='/v1/catalog/vehicles/'+c+'/articles';j=0 if bank=='bankone' else 1
+        paths=[l,l,'/v1/catalog/vehicles/'+cls.vehicle+'/articles','/v1/catalog/vehicles/'+cls.uid(49)+'/articles',
+            '/v1/catalog/vehicles/'+cls.uid(50)+'/articles',l+'?region=CA',l+'/'+cls.uid(302+j),l+'/'+cls.uid(306+j),l+'/legacy',l,l]
+        items=[dict(availability='unavailable',canonical_article_id=cls.uid(300+k),canonical_revision_id=None,
+            complete=False,content_origin=None,content_status='list_only',id=cls.uid(300+k),images=[],processing=None,
+            review_status='UNREVIEWED',source_revision_id=None,title='Pump '+str(k),vehicle_id=c,view_revision=None) for k in range(2)]
+        bodies=[dict(complete=True,hydrating=False,items=items,progress=dict(complete=True,percent=100,phase='indexing',
+            processed=2,retryable=False,status='completed',total=2),version='v1')]
+        for i in range(1,11):
+            code,message=('ENTITLEMENT_REQUIRED','Purchase access to this vehicle configuration.') if i in (1,3,4,10) else (
+                ('ENTITLEMENT_REVOKED','Access to this vehicle configuration was revoked.') if i==9 else
+                ('CATALOG_NOT_FOUND','Catalog resource was not found.'))
+            bodies.append(dict(error=dict(code=code,details={},message=message,request_id=cls.uid(400+i),retryable=False)))
+        return [dict(method='GET',path=path,owner_index=1 if i==1 else 0,status=200 if i==0 else 403 if i in (1,3,4,9,10) else 404,
+            headers={'Content-Type':'application/json','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'},
+            body=bodies[i],body_sha256='a'*64,body_size=1,body_truncated=False,reader_before=0,reader_after=0,
+            identity_before=i,identity_after=i+1) for i,path in enumerate(paths)]
+
+    def inspect(self,raw,**overrides):
+        class Store:
+            by_ref={ref:dict(artifact_id=ref) for ref in raw}
+            def read(self,artifact_id):return raw[artifact_id]
+            def read_raw_json(self,artifact_id,**_):return assembler.strict_raw_json(raw[artifact_id])
+            def recheck(self):pass
+        self.assertTrue(callable(getattr(assembler,'inspect_paid_scope_receipts',None)), 'scope inspector is missing')
+        return assembler.inspect_paid_scope_receipts(Store(),**self.invocation(**overrides))
+
+    def assert_unavailable(self,result,raw):
+        previous=PaidHTTPReceiptTests().inspect(raw)
+        self.assertEqual(set(result)-set(previous),{'observed_scope_case_ids','observed_scope_http_observation_count','observed_scope_snapshot_count'})
+        for key,value in previous.items():self.assertEqual(result[key],value if key!='missing_validation_families' else value+['paid_scope_temporal_entitlement_provenance'])
+        self.assertEqual(result['observed_scope_case_ids'],[self.root+'-bankone',self.root+'-banktwo'])
+        self.assertEqual(result['observed_scope_http_observation_count'],22);self.assertEqual(result['observed_scope_snapshot_count'],4)
+        self.assertEqual(result['status'],'unavailable');self.assertIs(result['complete'],False);self.assertEqual(result['verified_case_ids'],[])
+        self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
+
+    def test_closed_receipts_add_only_unavailable_diagnostics(self):
+        self.assert_unavailable(self.inspect(self.baseline),self.baseline)
+
+
+    def check_mutations(self,mutations,code=None):
+        for name,mutation in mutations:
+            raw=dict(self.baseline);self.alter(raw,mutation)
+            with self.subTest(mutation=name):
+                if code:
+                    with self.assertRaisesRegex(assembler.ContractError,'^'+code+'$'):self.inspect(raw)
+                else:
+                    with self.assertRaises(assembler.ContractError):self.inspect(raw)
+
+    @staticmethod
+    def terminal(m,mutation):
+        for s in (m['snapshots']['isolated'],m['final_snapshot']):
+            mutation(s)
+            for table in ('customer_accounts','auth_sessions','workshop_orders'):
+                s['immutable_rows'][table]=copy.deepcopy(s['paid_rows'][table])
+
+    def test_every_route_owner_status_method_and_counter(self):
+        mutations=[];counters=[]
+        for i in range(11):
+            for field,value in [('method','POST'),('owner_index',2),('status',201)]:
+                mutations.append((str(i)+field,lambda m,i=i,f=field,v=value:m['http_observations'][i].update({f:v})))
+            for field in ('reader_before','reader_after','identity_before','identity_after'):
+                counters.append((str(i)+field,lambda m,i=i,f=field:m['http_observations'][i].update({f:99})))
+        for i,row in enumerate(self.observations('bankone')):
+            for path in (row['path']+'/',row['path']+'?extra=1',row['path']+'#x','https://example.invalid'+row['path'],
+                row['path'].replace(self.configuration,self.vehicle)):
+                if path!=row['path']:mutations.append((str(i)+path,lambda m,i=i,p=path:m['http_observations'][i].update(path=p)))
+        for path in ('?region=%43A','?region=CA&x=1','?region=ca'):
+            mutations.append((path,lambda m,p=path:m['http_observations'][5].update(path='/v1/catalog/vehicles/'+self.configuration+'/articles'+p)))
+        mutations += [('reorder',lambda m:m['http_observations'].reverse()),('duplicate',lambda m:m['http_observations'].__setitem__(2,copy.deepcopy(m['http_observations'][1])))]
+        self.check_mutations(mutations,'paid_scope_route');self.check_mutations(counters,'paid_scope_counter')
+        self.check_mutations([('total',lambda m:m.update(identity_checks=12)),('reader',lambda m:m.update(reader_calls=1)),
+            ('phase',lambda m:m['snapshots']['isolated'].update(identity_checks=12)),('held',lambda m:m.update(held_model_receipt={}))],'paid_scope_counter')
+
+    def test_inventory_closed_row_and_strict_primitive_types(self):
+        self.check_mutations([('missing',lambda m:m['http_observations'].pop()),('extra',lambda m:m['http_observations'].append(copy.deepcopy(m['http_observations'][0])))],'paid_scope_inventory')
+        mutations=[]
+        for key in self.observations('bankone')[0]:mutations.append((key,lambda m,k=key:m['http_observations'][0].pop(k)))
+        mutations.append(('extra',lambda m:m['http_observations'][0].update(secret='SCOPE_SECRET_SENTINEL')))
+        for key in ('owner_index','status','body_size','reader_before','reader_after','identity_before','identity_after'):
+            for v in (True,'1',None,0.5):mutations.append((key+str(v),lambda m,k=key,v=v:m['http_observations'][0].update({k:v})))
+        for key,values in [('body_size',(0,262145)),('body_sha256',('A'*64,'x'*64,None)),('body_truncated',(True,0,None)),('method',(None,1)),('path',(None,1))]:
+            for value in values:mutations.append((key+str(value),lambda m,k=key,v=value:m['http_observations'][0].update({k:v})))
+        self.check_mutations(mutations,'paid_scope_row')
+        for size in (1,262144):
+            raw=dict(self.baseline);self.alter(raw,lambda m:[r.update(body_size=size,body_sha256='f'*64) for r in m['http_observations']])
+            self.assert_unavailable(self.inspect(raw),raw)
+
+    def test_headers_and_every_closed_nested_schema(self):
+        headers=[];bodies=[]
+        def at(m,index,path):
+            value=m['http_observations'][index]['body']
+            for k in path:value=value[k]
+            return value
+        for i in range(11):
+            for key in self.observations('bankone')[i]['headers']:
+                headers.append((str(i)+key,lambda m,i=i,k=key:m['http_observations'][i]['headers'].pop(k)))
+                for v in (None,1,'wrong'):headers.append((str(i)+key+str(v),lambda m,i=i,k=key,v=v:m['http_observations'][i]['headers'].update({k:v})))
+            headers.append((str(i)+'extra',lambda m,i=i:m['http_observations'][i]['headers'].update(Secret='SCOPE_SECRET_SENTINEL')))
+            for v in (None,[],1):bodies.append((str(i)+str(v),lambda m,i=i,v=v:m['http_observations'][i].update(body=v)))
+        for index,path in [(0,()),(0,('progress',)),(0,('items',0)),(1,()),(1,('error',)),(1,('error','details'))]:
+            value=self.observations('bankone')[index]['body']
+            for k in path:value=value[k]
+            for key in value:bodies.append((str((index,path,key)),lambda m,i=index,p=path,k=key:at(m,i,p).pop(k)))
+            bodies.append((str((index,path,'extra')),lambda m,i=index,p=path:at(m,i,p).update(secret='SCOPE_SECRET_SENTINEL')))
+        self.check_mutations(headers,'paid_scope_headers');self.check_mutations(bodies,'paid_scope_body')
+
+    def test_error_progress_and_descriptor_values(self):
+        bodies=[];bindings=[]
+        for i in range(1,11):
+            for key,value in [('code','WRONG'),('message','wrong'),('details',None),('retryable',1),('request_id','bad')]:
+                bodies.append((str(i)+key,lambda m,i=i,k=key,v=value:m['http_observations'][i]['body']['error'].update({k:v})))
+        bodies.append(('duplicate request',lambda m:m['http_observations'][2]['body']['error'].update(request_id=self.uid(401))))
+        for key,value in [('complete',1),('hydrating',0),('version','v2')]:bodies.append((key,lambda m,k=key,v=value:m['http_observations'][0]['body'].update({k:v})))
+        for key,value in [('complete',1),('percent',True),('phase','other'),('processed',3),('retryable',0),('status','other'),('total',3)]:
+            bodies.append((key,lambda m,k=key,v=value:m['http_observations'][0]['body']['progress'].update({k:v})))
+        for key,value in [('availability','ready'),('canonical_article_id',self.uid(302)),('canonical_revision_id',self.uid(1)),('complete',1),('content_origin','source'),('content_status','ready'),('id',self.uid(302)),('images',[{}]),('processing',{}),('review_status','APPROVED'),('source_revision_id',self.uid(1)),('title','Other'),('vehicle_id',self.vehicle),('view_revision',1)]:
+            bindings.append((key,lambda m,k=key,v=value:m['http_observations'][0]['body']['items'][0].update({k:v})))
+        bodies += [('missing descriptor',lambda m:m['http_observations'][0]['body']['items'].pop()),('extra descriptor',lambda m:m['http_observations'][0]['body']['items'].append({})),('duplicate descriptor',lambda m:m['http_observations'][0]['body']['items'].__setitem__(1,copy.deepcopy(m['http_observations'][0]['body']['items'][0])))]
+        self.check_mutations(bodies,'paid_scope_body');self.check_mutations(bindings,'paid_scope_binding')
+
+    def test_complete_chains_reject_repaired_cross_owner_and_dangling_joins(self):
+        mutations=[]
+        for table,keys in [
+            ('workshop_orders',('dataset_request_id','entitlement_id','dataset_product_id','organization_id','configuration_id')),
+            ('dataset_requests',('dataset_product_id','organization_id','correlation_id','vehicle_key')),
+            ('dataset_projections',('dataset_request_id','entitlement_id','dataset_product_id')),
+            ('entitlements',('dataset_request_id','organization_id'))]:
+            for i in (0,1):
+                for key in keys:
+                    for v in (self.uid(999),None):
+                        mutations.append((table+str(i)+key+str(v),lambda m,t=table,i=i,k=key,v=v:self.terminal(m,lambda s:s['paid_rows'][t][i].update({k:v}))))
+        for table,key in [('workshop_orders','order_id'),('dataset_requests','dataset_request_id'),('dataset_projections','dataset_projection_id'),('entitlements','entitlement_id')]:
+            for value in (None,'BAD',self.uid(100 if table=='workshop_orders' else 101 if table=='dataset_requests' else 103 if table=='dataset_projections' else 102)):
+                mutations.append((table+str(value),lambda m,t=table,k=key,v=value:self.terminal(m,lambda s:s['paid_rows'][t][1].update({k:v}))))
+            mutations += [(table+'missing',lambda m,t=table:self.terminal(m,lambda s:s['paid_rows'][t].pop())),
+                (table+'duplicate',lambda m,t=table:self.terminal(m,lambda s:s['paid_rows'][t].append(copy.deepcopy(s['paid_rows'][t][0]))))]
+        # Some malformed rows are intentionally rejected by inherited strict PG checks first.
+        self.check_mutations(mutations)
+        semantic=[]
+        for table,keys in [('workshop_orders',('dataset_request_id','entitlement_id','dataset_product_id','organization_id')),
+                ('dataset_requests',('dataset_product_id','organization_id','correlation_id','vehicle_key')),
+                ('dataset_projections',('dataset_request_id','entitlement_id','dataset_product_id')),
+                ('entitlements',('dataset_request_id','organization_id'))]:
+            for i in (0,1):
+                for key in keys:semantic.append((table+str(i)+key,lambda m,t=table,i=i,k=key:self.terminal(m,lambda s:s['paid_rows'][t][i].update({k:self.uid(999)}))))
+        self.check_mutations(semantic,'paid_scope_binding')
+
+    def test_terminal_owner_scopes_and_order_facts(self):
+        mutations=[]
+        for i in (0,1):
+            for key,value in [('amount_minor',2001),('currency','EUR'),('livemode',True),('status','pending'),('region','CA')]:
+                mutations.append((str(i)+key,lambda m,i=i,k=key,v=value:self.terminal(m,lambda s:s['paid_rows']['workshop_orders'][i].update({k:v}))))
+            for key,value in [('firebase_uid','unknown'),('firebase_project_id','other'),('status','inactive')]:
+                mutations.append((str(i)+key,lambda m,i=i,k=key,v=value:self.terminal(m,lambda s:s['paid_rows']['customer_accounts'][i].update({k:v}))))
+        mutations += [('request region',lambda m:self.terminal(m,lambda s:s['paid_rows']['dataset_requests'][0].update(region='CA'))),
+            ('legacy reason',lambda m:self.terminal(m,lambda s:s['paid_rows']['entitlements'][0].update(revoke_reason=None))),
+            ('legacy revoked',lambda m:self.terminal(m,lambda s:s['paid_rows']['entitlements'][0].update(status='revoked'))),
+            ('owner-b reason',lambda m:self.terminal(m,lambda s:s['paid_rows']['entitlements'][1].update(revoke_reason='fixture')))]
+        self.check_mutations(mutations)
+        def restore_legacy(s):
+            o=s['paid_rows']['workshop_orders'][0];s['paid_rows']['entitlements'][0].update(customer_account_id=o['customer_account_id'],configuration_id=o['configuration_id'],region='US',commerce_order_id=o['order_id'])
+        self.check_mutations([('rescoped legacy',lambda m:self.terminal(m,restore_legacy)),
+            ('unscoped owner-b',lambda m:self.terminal(m,lambda s:s['paid_rows']['entitlements'][1].update(customer_account_id=None,configuration_id=None,region=None,commerce_order_id=None)))],'paid_scope_binding')
+
+    def test_canonical_inventory_and_article_roles(self):
+        mutations=[]
+        for index in range(8):
+            mutations.append(('missing'+str(index),lambda m,i=index:self.terminal(m,lambda s:s['immutable_rows']['canonical_articles'].pop(i))))
+            mutations.append(('scope'+str(index),lambda m,i=index:self.terminal(m,lambda s:s['immutable_rows']['canonical_articles'][i].update(vehicle_configuration_id=self.uid(999)))))
+        for key,value in [('vehicle_configuration_id',self.vehicle),('vehicle_id',self.configuration),('canonical_article_id',self.uid(301))]:
+            mutations.append((key,lambda m,k=key,v=value:self.terminal(m,lambda s:s['article'].update({k:v}))))
+        for key in ('current_source_revision_id','current_canonical_revision_id','current_job_id'):
+            mutations.append((key,lambda m,k=key:self.terminal(m,lambda s:s['immutable_rows']['canonical_articles'][0].update({k:self.uid(999)}))))
+        self.check_mutations(mutations)
+        self.check_mutations([('other bank adjacent',lambda m:m['http_observations'][6].update(path='/v1/catalog/vehicles/'+self.configuration+'/articles/'+self.uid(303))),
+            ('selected adjacent',lambda m:m['http_observations'][6].update(path='/v1/catalog/vehicles/'+self.configuration+'/articles/'+self.uid(300)))],'paid_scope_route')
+
+    def test_no_work_even_when_all_terminal_copies_agree(self):
+        mutations=[]
+        def add(m,f):self.terminal(m,f)
+        for group in ('source_calls','asset_calls'):
+            mutations.append((group,lambda m,g=group:add(m,lambda s:s[g].update(bankone=1))))
+        for field in ('model_calls','grant_calls'):
+            mutations.append((field,lambda m,f=field:add(m,lambda s:s.update({f:1}))))
+        mutations += [('provider',lambda m:add(m,lambda s:(s['provider_calls'].update(bankone=1),s['provider_traces'].update(bankone=['/work'])))),
+            ('ensure',lambda m:add(m,lambda s:s.update(ensure=dict(entered=1,completed=1,active=0),ensure_requests=[dict(work=True)]))),
+            ('selector',lambda m:add(m,lambda s:s.update(selector_ensure=dict(entered=1,completed=1,active=0),selector_ensure_requests=[dict(work=True)]))),
+            ('worker',lambda m:add(m,lambda s:s['workers'].append(dict(kind='cli',alive=True,exit_code=None)))),
+            ('proxy',lambda m:add(m,lambda s:s['proxy'].update(request_received=1))),
+            ('captured',lambda m:add(m,lambda s:s['proxy'].update(response_captured=True))),
+            ('final drift',lambda m:m['final_snapshot']['article'].update(producer_extra='changed'))]
+        self.check_mutations(mutations,'paid_scope_work')
+        self.check_mutations([('payment',lambda m:add(m,lambda s:s.update(payment_calls=1)))],'paid_pg_payment_work')
+
+    def test_randomized_valid_uuid_titles_and_unordered_descriptors(self):
+        raw=dict(self.baseline)
+        for bank in ('bankone','banktwo'):
+            self.alter(raw,lambda m:(m['http_observations'][0]['body']['items'].reverse(),self.terminal(m,lambda s:s['immutable_rows']['canonical_articles'].reverse())),bank=bank)
+        # UUIDs are identities, not frozen historical constants. Replace every occurrence,
+        # then repair hashes and populated replay seams through the fixture resealer.
+        import uuid
+        import re
+        replacements={v:str(uuid.uuid4()) for data in raw.values() for v in re.findall(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',data.decode())}
+        def randomize(m):
+            data=json.dumps(m)
+            for old,new in replacements.items():data=data.replace(old,new)
+            updated=json.loads(data.replace('Pump ','Random title '))
+            m.clear();m.update(updated)
+        for bank in ('bankone','banktwo'):self.alter(raw,randomize,bank=bank)
+        self.assert_unavailable(self.inspect(raw),raw)
+
+    def test_parent_hash_copy_identity_and_confined_freshness_guards(self):
+        prefix='paid-access/bankone/'+self.root+'/'
+        for mutation in ('hash','copy','missing','identity'):
+            raw=dict(self.baseline)
+            if mutation=='hash':raw[prefix+'measured-runtime.json']+=b' '
+            elif mutation=='missing':del raw[prefix+'go-measurement.json']
+            elif mutation=='copy':
+                value=json.loads(raw[prefix+'go-measurement.json']);value['identity_checks']=99
+                raw[prefix+'go-measurement.json']=json.dumps(value).encode();PaidPGSnapshotTests().reseal(raw)
+            else:self.alter(raw,lambda m:m['snapshots']['isolated']['article'].update(candidate_sha='2'*40))
+            with self.subTest(mutation=mutation),self.assertRaises(assembler.ContractError):self.inspect(raw)
+        for mutation in ('positive','missing','symlink','hash','post-read'):
+            with tempfile.TemporaryDirectory() as directory,self.real_store(self.baseline,directory) as store:
+                path=Path(directory)/prefix/'measured-runtime.json'
+                if mutation=='missing':path.unlink()
+                elif mutation=='symlink':path.unlink();path.symlink_to(Path(directory)/'host-before.json')
+                elif mutation=='hash':path.write_bytes(path.read_bytes()+b' ')
+                elif mutation=='post-read':
+                    original=store.read;count=[0]
+                    # Determine by ref without depending on ArtifactStore internals.
+                    target=store.by_ref[prefix+'measured-runtime.json']['artifact_id']
+                    def changed(artifact_id):
+                        value=original(artifact_id)
+                        if artifact_id==target:
+                            count[0]+=1
+                            if count[0]==5:path.write_bytes(value+b' ')
+                        return value
+                    store.read=changed
+                with self.subTest(mutation=mutation):
+                    if mutation=='positive':self.assert_unavailable(assembler.inspect_paid_scope_receipts(store,**self.invocation()),self.baseline)
+                    else:
+                        with self.assertRaises(assembler.ContractError):assembler.inspect_paid_scope_receipts(store,**self.invocation())
+
+
+    def test_owner_one_cannot_be_replaced_by_owner_zero(self):
+        self.check_mutations([('wrong owner',lambda m:m['http_observations'][1].update(owner_index=0))],'paid_scope_route')
+
+    def test_all_zero_counts_and_secret_values_have_static_errors(self):
+        def work(s):
+            s['immutable_rows']['canonical_article_source_revisions'].append(dict(canonical_article_id=s['article']['canonical_article_id']))
+            s['counts']['source_revisions']=1
+        self.check_mutations([('source row and matching count',lambda m:self.terminal(m,work))],'paid_scope_work')
+        sentinel='SCOPE_SECRET_SENTINEL'
+        for mutation,code in [(lambda m:m['http_observations'][0]['body']['items'][0].update(title=sentinel),'paid_scope_binding'),
+                (lambda m:m['http_observations'][0].update(path='/'+sentinel),'paid_scope_route')]:
+            raw=dict(self.baseline);self.alter(raw,mutation)
+            with self.assertRaises(assembler.ContractError) as caught:self.inspect(raw)
+            self.assertEqual(str(caught.exception),code);self.assertNotIn(sentinel,str(caught.exception))
+
+    def test_region_configuration_label_has_no_independent_region_row(self):
+        prefix='paid-access/bankone/'+self.root+'/'
+        snapshot=json.loads(self.baseline[prefix+'measured-runtime.json'])['snapshots']['isolated']
+        self.assertNotIn('vehicle_configurations',snapshot['immutable_rows'])
+        rows=[r for r in snapshot['immutable_rows']['canonical_articles'] if r['vehicle_configuration_id']==self.uid(50)]
+        self.assertEqual(len(rows),2);self.assertTrue(all('region' not in row for row in rows))
+        # Only the literal CA denial and request/order US facts are retained.
+        self.assert_unavailable(self.inspect(self.baseline),self.baseline)
+
+
+    def test_consistently_repaired_owner_and_chain_swaps_reach_scope_binding(self):
+        def swap_owners(s):
+            a,b=s['paid_rows']['customer_accounts'];a['firebase_uid'],b['firebase_uid']=b['firebase_uid'],a['firebase_uid']
+        def swap_order_accounts(s):
+            a,b=s['paid_rows']['workshop_orders'];a['customer_account_id'],b['customer_account_id']=b['customer_account_id'],a['customer_account_id']
+            s['paid_rows']['entitlements'][1]['customer_account_id']=b['customer_account_id']
+        def swap_configs(s):
+            a,b=s['paid_rows']['workshop_orders'];a['configuration_id'],b['configuration_id']=b['configuration_id'],a['configuration_id']
+            for i,o in enumerate((a,b)):s['paid_rows']['dataset_requests'][i]['vehicle_key']=o['configuration_id']
+            s['paid_rows']['entitlements'][1]['configuration_id']=b['configuration_id']
+        def swap_grants(s):
+            a,b=s['paid_rows']['workshop_orders'];a['entitlement_id'],b['entitlement_id']=b['entitlement_id'],a['entitlement_id']
+            for i,o in enumerate((a,b)):s['paid_rows']['dataset_projections'][i]['entitlement_id']=o['entitlement_id']
+        def change_region(s):
+            for t in ('workshop_orders','dataset_requests'):
+                for row in s['paid_rows'][t]:row['region']='CA'
+            s['paid_rows']['entitlements'][1]['region']='CA'
+        def different_product(s):
+            for table in ('workshop_orders','dataset_requests','dataset_projections'):s['paid_rows'][table][1]['dataset_product_id']=self.uid(999)
+        def swap_organizations(s):
+            a,b=s['paid_rows']['customer_accounts'];a['personal_organization_id'],b['personal_organization_id']=b['personal_organization_id'],a['personal_organization_id']
+        self.check_mutations([(name,lambda m,f=f:self.terminal(m,f)) for name,f in
+            [('owners',swap_owners),('accounts',swap_order_accounts),('configs',swap_configs),('grants',swap_grants),
+             ('region',change_region),('product',different_product),('organizations',swap_organizations),
+             ('owner-b revoked',lambda s:s['paid_rows']['entitlements'][1].update(status='revoked'))]],'paid_scope_binding')
+
+
+    def test_canonical_unscoped_configuration_is_explicit_null(self):
+        self.check_mutations([('missing scope '+str(i),lambda m,i=i:self.terminal(m,
+            lambda s:s['immutable_rows']['canonical_articles'][i].pop('vehicle_configuration_id')))
+            for i in range(8)],'paid_scope_binding')
 
 if __name__ == '__main__': unittest.main()
