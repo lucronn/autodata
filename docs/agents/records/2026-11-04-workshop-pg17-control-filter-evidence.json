@@ -1,0 +1,652 @@
+{
+  "raw_directory": "/home/corp/autodata-evidence/pg17-bind-target-prep-20261104-02/evidence",
+  "retained_result_sha256": "22e9fc0135d17df0848d2e868f0b5cdaf795ea801d27dfbb49bf0e4a140aaf26",
+  "retained_diagnosis_sha256": "38c51447e793b52ff4c59ba22d2ed42e14f3ba7197280838db6d39aff3d615f9",
+  "complete_raw_replay": {
+    "all_result_and_diagnosis_referenced_raw_hashes_verified": true,
+    "status_predicate_actual_pass": true,
+    "old_unanchored_substring_predicate_pass": false,
+    "all_complete_10field_ls_records_order_only_diagnostic_equivalent": true,
+    "diagnostic_complete_ls_hash": "5590cafce0fd41bd6fb97e8ade8a1fa350b0be3cf435eecaa42107234a744e1b",
+    "structured_volume_proof_missing_historical_guard_rejects": true,
+    "all_existing_18_mount_and_24_context_valid_negative_fixtures_replayed": true,
+    "baseline27_equal_and_prestart_order_verified": true,
+    "both_structural_and_mount_audits_verified": true,
+    "full_stopped_diff_context_pass": true,
+    "all33_signature_and_host_hash_lines_verified_without_acceptance": true,
+    "exact_owned_removal_absence_verified": true,
+    "historical_result": "failed_and_all33_quarantined_no_retrospective_acceptance"
+  },
+  "fixed_fragment_sha256": [
+    "ddb4f838a05440fa3aaff9f9b70528ba54240c9618ab5cae32fc062e6576d724",
+    "d40fd4fe458d338258aaa5ac1ee71636faebe5638e11c355bcfa84fc6ba0c2b6"
+  ],
+  "new_predicate_cases": [
+    {
+      "case": "actual_complete_second_attempt_output",
+      "expected_pass": true,
+      "actual_pass": true
+    },
+    {
+      "case": "legitimate_baseline_error_description",
+      "expected_pass": true,
+      "actual_pass": true
+    },
+    {
+      "case": "anchored_WARNING: warning",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "anchored_ERROR: failure",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "anchored_UNTRUSTED package",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "anchored_BAD SIGNATURE",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "anchored_warning: caution",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "anchored_error : failure",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "anchored_bad signature: invalid",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "stderr_message",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "stderr_whitespace",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "malformed_utf8",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "nul",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "attach_returncode",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "attach_supervisor_failure",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "state_Status",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "state_Running",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "state_ExitCode",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "state_OOMKilled",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "state_Error",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "structured_complete_object_labels_key_order",
+      "expected_pass": true,
+      "actual_pass": true
+    },
+    {
+      "case": "volume_drift_Name_other",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_Driver_changed",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_Scope_global",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_Mountpoint_/other",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_CreatedAt_changed",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_Labels_{'alpha': 'changed', 'beta': '2'}",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_Options_{'new': 'value'}",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_ExtraCompleteField_{'stable': False}",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_drift_Labels_alpha=1,beta=2",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_field_removed",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_field_added",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "volume_required_field_missing",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "duplicate_volume_names",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "missing_volume",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "extra_volume",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "over_volume_count",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "duplicate_object_key",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "nonfinite",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "malformed",
+      "expected_pass": false,
+      "actual_pass": false
+    },
+    {
+      "case": "historical_second_attempt_missing_structured_inventory",
+      "expected_pass": false,
+      "actual_pass": false
+    }
+  ],
+  "new_cases_passed": 41,
+  "new_cases_failed": 0,
+  "inherited_mount_cases_passed": 18,
+  "inherited_context_cases_passed": 24,
+  "planning_docker_invoked": false,
+  "planning_retry": false,
+  "runtime_verified": false,
+  "production_ready": false,
+  "blocked_gate_sha": "4bc40e26ca12521be8f20282b897f5af68d0195e",
+  "blocked_plan_sha256": "6de537cf729d612bd0d19d520a777350477d8e382dbbfe5ca050f8ebea2a5cf3",
+  "review_red_probes": [
+    {
+      "codepoint": "U+007F",
+      "category": "Cc",
+      "expected_accept": false,
+      "blocked_predicate_actual_accept": true
+    },
+    {
+      "codepoint": "U+0085",
+      "category": "Cc",
+      "expected_accept": false,
+      "blocked_predicate_actual_accept": true
+    }
+  ],
+  "unicode_cc_cases": [
+    {
+      "codepoint": "U+0000",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0001",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0002",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0003",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0004",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0005",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0006",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0007",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0008",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0009",
+      "category": "Cc",
+      "expected_accept": true,
+      "actual_accept": true
+    },
+    {
+      "codepoint": "U+000A",
+      "category": "Cc",
+      "expected_accept": true,
+      "actual_accept": true
+    },
+    {
+      "codepoint": "U+000B",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+000C",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+000D",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+000E",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+000F",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0010",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0011",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0012",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0013",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0014",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0015",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0016",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0017",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0018",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0019",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+001A",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+001B",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+001C",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+001D",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+001E",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+001F",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+007F",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0080",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0081",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0082",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0083",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0084",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0085",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0086",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0087",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0088",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0089",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+008A",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+008B",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+008C",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+008D",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+008E",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+008F",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0090",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0091",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0092",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0093",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0094",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0095",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0096",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0097",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0098",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+0099",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+009A",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+009B",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+009C",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+009D",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+009E",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    },
+    {
+      "codepoint": "U+009F",
+      "category": "Cc",
+      "expected_accept": false,
+      "actual_accept": false
+    }
+  ],
+  "unicode_cc_cases_passed": 65,
+  "all_pure_cases_passed": 148,
+  "all_pure_cases_failed": 0,
+  "correction_scope": "add unicodedata import and replace only control character predicate; LF/tab sole Cc exceptions",
+  "unicode_database_version": "16.0.0"
+}
