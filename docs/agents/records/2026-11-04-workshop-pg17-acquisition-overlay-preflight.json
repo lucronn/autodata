@@ -22,8 +22,10 @@
     "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621404413",
     "issue_body_sha256": "43d3605c47f4a55a84ba02ee336bf2b9c83b965658cd6f091a2618d7abf68f44",
     "issue_comment_sha256": "b3ac59c771158c81169c62508ded07fb947014c081ad56f9722e0c0c96af1f19",
-    "project_text_sha256": "0e7e4e9fe723808c4587d12c85bc0486089d3d842db1ca158dd2667e4b49aecf",
-    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4"
+    "project_text_sha256": "4e26f3831956fb10f26a64e5b791e27f502a35e3ead19015622e118d22dfec20",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_exact_gate_sha": "26989e1de7a71ac4f7c23da043dd367548e2ba45",
+    "project_pin_verified_at": "2026-11-04T03:05:14.934497+00:00"
   },
   "independent_checkpoint_review": "pending",
   "implementation_modified": false,
