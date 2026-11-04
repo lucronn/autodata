@@ -255,7 +255,10 @@ class ProductionGitTests(unittest.TestCase):
         self.root=Path(self.tmp.name)
         # Production command construction is tested using a real immutable host
         # executable and intercepted read-only command output, never fixture tools.
-        self.git=r.ProductionGitReader(ROOT);self.addCleanup(self.git.close)
+        # The checkout used to run tests may have CI-only credential configuration;
+        # the metadata under test must be our owned, passive fixture instead.
+        self.metadata()
+        self.git=r.ProductionGitReader(self.root);self.addCleanup(self.git.close)
 
     def test_fixed_path_discovery_version_and_exact_isolated_argv(self):
         identity=self.git.tool_identity()
@@ -263,36 +266,36 @@ class ProductionGitTests(unittest.TestCase):
         with mock.patch.object(self.git,'_capture',return_value=b'blob') as capture:
             self.assertEqual(self.git.read_blob(CANDIDATE,'safe/file'),b'blob')
         argv=capture.call_args.args[0]
-        self.assertEqual(argv,(identity.path,'--no-optional-locks','-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false','-c','protocol.file.allow=never','-C',str(ROOT),'cat-file','blob',CANDIDATE+':safe/file'))
+        self.assertEqual(argv,(identity.path,'--no-optional-locks','-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false','-c','protocol.file.allow=never','-C',str(self.root),'cat-file','blob',CANDIDATE+':safe/file'))
         self.assertEqual(set(self.git.env),{'PATH','HOME','GIT_CONFIG_NOSYSTEM','GIT_CONFIG_GLOBAL','GIT_TERMINAL_PROMPT','GIT_NO_REPLACE_OBJECTS','GIT_NO_LAZY_FETCH'})
         self.assertEqual(self.git.env['PATH'],r.FIXED_PATH)
         self.assertEqual(list(Path(self.git.env['HOME']).iterdir()),[])
         with mock.patch.object(r.shutil,'which',return_value=None) as which:
-            with self.assertRaises(r.ContractError):r.ProductionGitReader(ROOT)
+            with self.assertRaises(r.ContractError):r.ProductionGitReader(self.root)
         which.assert_called_once_with('git',path='/usr/local/bin:/usr/bin:/bin')
 
     def test_version_argv_is_only_special_command(self):
         with mock.patch.object(r.ProductionGitReader,'_capture',return_value=b'git version unit\n') as cap:
-            git=r.ProductionGitReader(ROOT)
+            git=r.ProductionGitReader(self.root)
             try:self.assertEqual(git.tool_identity().version,'git version unit')
             finally:git.close()
         self.assertEqual(cap.call_args.args[0],(str(Path(self.git.identity.path)),'--version'))
         for version in (b'',b'x\ny\n',b'x\r\n',b'x'*257,b'\xff'):
             with self.subTest(version=version),mock.patch.object(r.ProductionGitReader,'_capture',return_value=version),self.assertRaises(r.ContractError):
-                r.ProductionGitReader(ROOT)
+                r.ProductionGitReader(self.root)
 
     def test_git_executable_changed_or_symlinked_after_discovery(self):
         executable=self.root/'git';executable.write_bytes(Path(self.git.identity.path).read_bytes());executable.chmod(0o755)
         with mock.patch.object(r.shutil,'which',return_value=str(executable)),mock.patch.object(r.ProductionGitReader,'_capture',return_value=b'git version unit\n'):
-            git=r.ProductionGitReader(ROOT)
+            git=r.ProductionGitReader(self.root)
         self.addCleanup(git.close)
         executable.write_bytes(b'drift');self.assertRaises(r.ContractError,git.tool_identity)
         executable.unlink();executable.symlink_to(self.git.identity.path)
         self.assertRaises(r.ContractError,git.tool_identity)
 
     def metadata(self):
-        gitdir=self.root/'.git';gitdir.mkdir();(gitdir/'config').write_text('[core]\n repositoryformatversion = 0\n')
-        (gitdir/'hooks').mkdir();(gitdir/'objects/info').mkdir(parents=True)
+        gitdir=self.root/'.git';gitdir.mkdir(exist_ok=True);(gitdir/'config').write_text('[core]\n repositoryformatversion = 0\n')
+        (gitdir/'hooks').mkdir(exist_ok=True);(gitdir/'objects/info').mkdir(parents=True,exist_ok=True)
         return gitdir
 
     def checkout_git(self,root,command,**kw):

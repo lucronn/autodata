@@ -235,3 +235,64 @@ The catalog tests use constructed fake JSONL/receipts and audit the adapter's
 static import/call boundary. Before handing off, compile changed Python source
 in memory without bytecode, check the exact three-path diff allowlist against
 the B2 checkpoint, and verify Stage A/B1 modules and tests remain byte-identical.
+
+
+## CI Git-metadata fixture isolation integration
+
+The CI integration starts at independently reviewed checkpoint
+`8bc9371a2715f34f06f261c8abae4194be2e1ea0`, on reviewed B2 head
+`0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471`. It applies only the Stage A
+test-file repair from ancestor `2ac80344abe855d8dcbfcc6ccd309cc3c7128a3e`
+to source `93b0bf4ed18737a7e57c0de6a8ea1fa0f5bdba0a`. The exact patch
+SHA256 is `c4567a3b03db9d8bb56af43a701f56ebaf15d68149ff6cadd326c93ecfb921eb`;
+the repaired test file is byte-identical to that source. The application
+candidate remains `4d82e413e04fb2401ac7bc28dc828375ac662180`.
+
+`ProductionGitTests` now initializes owned passive metadata in its temporary
+root before constructing the reader. Constructor and argv assertions use that
+root, and metadata directory creation is idempotent. CI checkout credential
+configuration therefore cannot break test setup. ProductionGitReader, the
+Stage A runner, both adapters, B1/B2 tests and workflow remain unchanged.
+Existing configuration/helper, hook, attribute, alternate, worktree, executable
+and limit rejection tests remain active; production admission stays strict.
+
+The specification's contaminated-checkout regression imports the test module,
+sets its ROOT to a temporary checkout containing an inert forbidden credential
+helper marker, and runs ProductionGitTests. Before editing, all ten tests errored
+in setup with `git_config` (0.078s, exit 1). After the exact repair, the same ten
+tests passed (0.114s, exit 0). The marker was never executed. Standalone and nested
+preflights at the exact checkpoint both returned `status: synchronized` with
+empty errors before implementation.
+
+Fresh offline focused checks passed: Stage A 52 in 1.105s, B1 25 in 3.747s, and
+B2 23 in 3.911s, using the three unittest commands above with `-v`. Complete
+autonomy discovery passed 146 tests in 46.363s. Complete developer discovery
+passed 360 tests in 494.258s; both suites exited zero with no failures or errors.
+The in-memory Python compile, exact pinned patch/source comparison, unchanged
+predecessor source pins, exact two-path diff and `git diff --check` also passed.
+Commands are:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/dev -p 'test_*.py' -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/autonomy -p 'test_*.py' -v
+```
+
+These synthetic/tooling results prove only test-fixture isolation and unchanged
+restricted diagnostic behavior. B1 fake identity rows and B2 unauthenticated
+bank-context rows earn no real accepted IDs. Real raw fixtures, full catalog
+semantics, real Go compatibility and genuine final180 execution remain unproven.
+Complete raw validators and JUnit/result/process/environment/manifest bindings,
+dynamic-support inventory, real supervisor provenance and all profile, staging
+and release gates remain separate. `accepted_case_credit=0`,
+`profiles_enabled=false`, `enabled_tiers=[]`, `runtime_lock=null` and
+`run_record=null`. All nine authority flags remain false: fixture_verified,
+product_candidate_verified, staging_verified, deployment_authorized,
+cutover_verified, implementation_authorized, runtime_execution_authorized,
+profile_promotion_authorized and merge_authorized.
+
+Exact-successor-head independent review and Autonomous Verification readback
+are pending at this pre-commit documentation point; no successor CI success is
+asserted. The coordinator records the immutable code SHA, review and exact-head
+CI job states externally after commit/push. Stage A predecessor CI success and
+B1 predecessor CI failures described in the pinned plan remain predecessor
+evidence, not successor results.
