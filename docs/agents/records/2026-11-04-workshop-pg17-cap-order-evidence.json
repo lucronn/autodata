@@ -1,0 +1,1648 @@
+{
+  "status": "plan_only_no_runtime_authority",
+  "base_receipt_sha": "c16f40a2730e7bc8a5fb3afd3ac2d10abf551637",
+  "failed_run_directory": "/home/corp/autodata-evidence/pg17-task1b-simulation-20261104-01/evidence",
+  "failed_result_sha256": "f870e36f11b4eea70478f0932ea446aa904631bcda8f89b28e65dbbc6bea8224",
+  "failed_diagnosis_sha256": "067a4cb3284da093479301eada2519a7944a07c36839e9262a2e241f8218e37d",
+  "raw_evidence_sha256": {
+    "before-start.stdout": "ddd1acec82befcd6b12a18a5370164ba3b27a0eb2388b7ea9295bd8b1a6e6dbf",
+    "expected-full-config.json": "47a6a30bfd7792f433820fd30f9181a890d3b2082709bc2990c6c0d734ea3393",
+    "create-argv.json": "bc85cdac0d1641e40811fbe5281ab139960961acd37886a0aa2794ec31bd66d0",
+    "absence.json": "de5c64fd02234dd74e17132d959954f27b0e21be52ddd8f5d27f54697b030780",
+    "complete-volume-comparison.json": "9c35d6ae8c333d5c81214159a85b026c7c8f3acbdf85d8ff231e21a1f0a5a16a",
+    "input-after-removal.json": "c8a189c5586efced1ea71135ae03e3851448f9a41a000e2755d37d471f95a2d8"
+  },
+  "failed_container_id": "582ebd012879d9d5116c6691d2f9942409a291836142b538988bc1c02a3c0583",
+  "payload_started": false,
+  "retained_raw_references_reverified": true,
+  "exact_expected_capadd": [
+    "CAP_CHOWN",
+    "CAP_FOWNER",
+    "CAP_DAC_OVERRIDE"
+  ],
+  "exact_observed_capadd": [
+    "CAP_CHOWN",
+    "CAP_DAC_OVERRIDE",
+    "CAP_FOWNER"
+  ],
+  "guard_fragment": "import copy, hashlib, json\nAPPROVED_CAP_ADD = frozenset({\"CAP_CHOWN\", \"CAP_FOWNER\", \"CAP_DAC_OVERRIDE\"})\ndef canonical_hostconfig_capadd(value):\n    assert type(value) is dict and \"CapAdd\" in value\n    caps = value[\"CapAdd\"]\n    assert type(caps) is list and len(caps) == 3\n    assert all(type(cap) is str for cap in caps)\n    assert len(set(caps)) == 3 and set(caps) == APPROVED_CAP_ADD\n    result = copy.deepcopy(value)\n    result[\"CapAdd\"] = sorted(caps)\n    # No other array, field, value or type is discarded or reordered.\n    return json.dumps(result, sort_keys=True, separators=(\",\", \":\"),\n                      ensure_ascii=False, allow_nan=False).encode(\"utf-8\")\ndef compare_complete_hostconfig_capadd(expected, actual):\n    left = canonical_hostconfig_capadd(expected)\n    right = canonical_hostconfig_capadd(actual)\n    assert left == right\n    return hashlib.sha256(left).hexdigest()\n",
+  "guard_fragment_sha256": "7f860500f4c9cde06f4097c9c3a75538d68c9522f4d67ad07e9c34e949ae24ee",
+  "offline_complete_hostconfig_canonical_sha256": "fa0e657691e79f85f4b9d9c22fc72f36dbf94a03e1414a79cf34bf04accbfb2a",
+  "pure_cases": [
+    {
+      "name": "permutation_CAP_CHOWN_CAP_FOWNER_CAP_DAC_OVERRIDE",
+      "expected_accept": true,
+      "passed": true
+    },
+    {
+      "name": "permutation_CAP_CHOWN_CAP_DAC_OVERRIDE_CAP_FOWNER",
+      "expected_accept": true,
+      "passed": true
+    },
+    {
+      "name": "permutation_CAP_FOWNER_CAP_CHOWN_CAP_DAC_OVERRIDE",
+      "expected_accept": true,
+      "passed": true
+    },
+    {
+      "name": "permutation_CAP_FOWNER_CAP_DAC_OVERRIDE_CAP_CHOWN",
+      "expected_accept": true,
+      "passed": true
+    },
+    {
+      "name": "permutation_CAP_DAC_OVERRIDE_CAP_CHOWN_CAP_FOWNER",
+      "expected_accept": true,
+      "passed": true
+    },
+    {
+      "name": "permutation_CAP_DAC_OVERRIDE_CAP_FOWNER_CAP_CHOWN",
+      "expected_accept": true,
+      "passed": true
+    },
+    {
+      "name": "duplicate",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "missing",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "extra",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "wrong_membership",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "integer_member",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "boolean_member",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "null_member",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "lowercase_member",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "unprefixed_member",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "tuple_type",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "string_type",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "null_type",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "map_type",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "CapAdd_field_missing",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_AutoRemove",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_Binds",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_BlkioDeviceReadBps",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_BlkioDeviceReadIOps",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_BlkioDeviceWriteBps",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_BlkioDeviceWriteIOps",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_BlkioWeight",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_BlkioWeightDevice",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_CapDrop",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_Cgroup",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_CgroupParent",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_CgroupnsMode",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_ConsoleSize",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_ContainerIDFile",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_CpuCount",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_CpuPercent",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_CpuPeriod",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_CpuQuota",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_CpuRealtimePeriod",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_CpuRealtimeRuntime",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_CpuShares",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_CpusetCpus",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_CpusetMems",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_DeviceCgroupRules",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_DeviceRequests",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_Devices",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_Dns",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_DnsOptions",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_DnsSearch",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_ExtraHosts",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_GroupAdd",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_IOMaximumBandwidth",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_IOMaximumIOps",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_IpcMode",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_Isolation",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_Links",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_LogConfig",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_MaskedPaths",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_Memory",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_MemoryReservation",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_MemorySwap",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_MemorySwappiness",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_Mounts",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_NanoCpus",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_NetworkMode",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_OomKillDisable",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_OomScoreAdj",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_PidMode",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_PidsLimit",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_PortBindings",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_Privileged",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_PublishAllPorts",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_ReadonlyPaths",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_ReadonlyRootfs",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_RestartPolicy",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_Runtime",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_SecurityOpt",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_ShmSize",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_Tmpfs",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_UTSMode",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_Ulimits",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_UsernsMode",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_VolumeDriver",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_field_drift_VolumesFrom",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "extra_HostConfig_field",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "missing_other_HostConfig_field",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_array_mutation",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_array_order_Mounts",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_array_order_MaskedPaths",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "non_CapAdd_array_order_ReadonlyPaths",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_AttachStderr",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_AttachStdin",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_AttachStdout",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_Cmd",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_Domainname",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_Entrypoint",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_Env",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_ExposedPorts",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_Healthcheck",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_Hostname",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_Image",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_Labels",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_OnBuild",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_OpenStdin",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_StdinOnce",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_StopSignal",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_StopTimeout",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_Tty",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_User",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_Volumes",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Config_drift_WorkingDir",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Mounts_drift_0_Destination",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Mounts_drift_0_Mode",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Mounts_drift_0_Propagation",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Mounts_drift_0_RW",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Mounts_drift_0_Source",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Mounts_drift_0_Type",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Mounts_drift_1_Destination",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Mounts_drift_1_Mode",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Mounts_drift_1_Propagation",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Mounts_drift_1_RW",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Mounts_drift_1_Source",
+      "expected_accept": false,
+      "passed": true
+    },
+    {
+      "name": "strict_Mounts_drift_1_Type",
+      "expected_accept": false,
+      "passed": true
+    }
+  ],
+  "new_cases_passed": 123,
+  "old148_checks": {
+    "passed": 148,
+    "Cc_cases": [
+      {
+        "codepoint": 0,
+        "accepted": false
+      },
+      {
+        "codepoint": 1,
+        "accepted": false
+      },
+      {
+        "codepoint": 2,
+        "accepted": false
+      },
+      {
+        "codepoint": 3,
+        "accepted": false
+      },
+      {
+        "codepoint": 4,
+        "accepted": false
+      },
+      {
+        "codepoint": 5,
+        "accepted": false
+      },
+      {
+        "codepoint": 6,
+        "accepted": false
+      },
+      {
+        "codepoint": 7,
+        "accepted": false
+      },
+      {
+        "codepoint": 8,
+        "accepted": false
+      },
+      {
+        "codepoint": 9,
+        "accepted": true
+      },
+      {
+        "codepoint": 10,
+        "accepted": true
+      },
+      {
+        "codepoint": 11,
+        "accepted": false
+      },
+      {
+        "codepoint": 12,
+        "accepted": false
+      },
+      {
+        "codepoint": 13,
+        "accepted": false
+      },
+      {
+        "codepoint": 14,
+        "accepted": false
+      },
+      {
+        "codepoint": 15,
+        "accepted": false
+      },
+      {
+        "codepoint": 16,
+        "accepted": false
+      },
+      {
+        "codepoint": 17,
+        "accepted": false
+      },
+      {
+        "codepoint": 18,
+        "accepted": false
+      },
+      {
+        "codepoint": 19,
+        "accepted": false
+      },
+      {
+        "codepoint": 20,
+        "accepted": false
+      },
+      {
+        "codepoint": 21,
+        "accepted": false
+      },
+      {
+        "codepoint": 22,
+        "accepted": false
+      },
+      {
+        "codepoint": 23,
+        "accepted": false
+      },
+      {
+        "codepoint": 24,
+        "accepted": false
+      },
+      {
+        "codepoint": 25,
+        "accepted": false
+      },
+      {
+        "codepoint": 26,
+        "accepted": false
+      },
+      {
+        "codepoint": 27,
+        "accepted": false
+      },
+      {
+        "codepoint": 28,
+        "accepted": false
+      },
+      {
+        "codepoint": 29,
+        "accepted": false
+      },
+      {
+        "codepoint": 30,
+        "accepted": false
+      },
+      {
+        "codepoint": 31,
+        "accepted": false
+      },
+      {
+        "codepoint": 127,
+        "accepted": false
+      },
+      {
+        "codepoint": 128,
+        "accepted": false
+      },
+      {
+        "codepoint": 129,
+        "accepted": false
+      },
+      {
+        "codepoint": 130,
+        "accepted": false
+      },
+      {
+        "codepoint": 131,
+        "accepted": false
+      },
+      {
+        "codepoint": 132,
+        "accepted": false
+      },
+      {
+        "codepoint": 133,
+        "accepted": false
+      },
+      {
+        "codepoint": 134,
+        "accepted": false
+      },
+      {
+        "codepoint": 135,
+        "accepted": false
+      },
+      {
+        "codepoint": 136,
+        "accepted": false
+      },
+      {
+        "codepoint": 137,
+        "accepted": false
+      },
+      {
+        "codepoint": 138,
+        "accepted": false
+      },
+      {
+        "codepoint": 139,
+        "accepted": false
+      },
+      {
+        "codepoint": 140,
+        "accepted": false
+      },
+      {
+        "codepoint": 141,
+        "accepted": false
+      },
+      {
+        "codepoint": 142,
+        "accepted": false
+      },
+      {
+        "codepoint": 143,
+        "accepted": false
+      },
+      {
+        "codepoint": 144,
+        "accepted": false
+      },
+      {
+        "codepoint": 145,
+        "accepted": false
+      },
+      {
+        "codepoint": 146,
+        "accepted": false
+      },
+      {
+        "codepoint": 147,
+        "accepted": false
+      },
+      {
+        "codepoint": 148,
+        "accepted": false
+      },
+      {
+        "codepoint": 149,
+        "accepted": false
+      },
+      {
+        "codepoint": 150,
+        "accepted": false
+      },
+      {
+        "codepoint": 151,
+        "accepted": false
+      },
+      {
+        "codepoint": 152,
+        "accepted": false
+      },
+      {
+        "codepoint": 153,
+        "accepted": false
+      },
+      {
+        "codepoint": 154,
+        "accepted": false
+      },
+      {
+        "codepoint": 155,
+        "accepted": false
+      },
+      {
+        "codepoint": 156,
+        "accepted": false
+      },
+      {
+        "codepoint": 157,
+        "accepted": false
+      },
+      {
+        "codepoint": 158,
+        "accepted": false
+      },
+      {
+        "codepoint": 159,
+        "accepted": false
+      }
+    ],
+    "complete_replay": {
+      "raw_directory": "/home/corp/autodata-evidence/pg17-bind-target-prep-20261104-02/evidence",
+      "retained_result_sha256": "22e9fc0135d17df0848d2e868f0b5cdaf795ea801d27dfbb49bf0e4a140aaf26",
+      "retained_diagnosis_sha256": "38c51447e793b52ff4c59ba22d2ed42e14f3ba7197280838db6d39aff3d615f9",
+      "complete_raw_replay": {
+        "all_result_and_diagnosis_referenced_raw_hashes_verified": true,
+        "status_predicate_actual_pass": true,
+        "old_unanchored_substring_predicate_pass": false,
+        "all_complete_10field_ls_records_order_only_diagnostic_equivalent": true,
+        "diagnostic_complete_ls_hash": "5590cafce0fd41bd6fb97e8ade8a1fa350b0be3cf435eecaa42107234a744e1b",
+        "structured_volume_proof_missing_historical_guard_rejects": true,
+        "all_existing_18_mount_and_24_context_valid_negative_fixtures_replayed": true,
+        "baseline27_equal_and_prestart_order_verified": true,
+        "both_structural_and_mount_audits_verified": true,
+        "full_stopped_diff_context_pass": true,
+        "all33_signature_and_host_hash_lines_verified_without_acceptance": true,
+        "exact_owned_removal_absence_verified": true,
+        "historical_result": "failed_and_all33_quarantined_no_retrospective_acceptance"
+      },
+      "fixed_fragment_sha256": [
+        "ddb4f838a05440fa3aaff9f9b70528ba54240c9618ab5cae32fc062e6576d724",
+        "d40fd4fe458d338258aaa5ac1ee71636faebe5638e11c355bcfa84fc6ba0c2b6"
+      ],
+      "new_predicate_cases": [
+        {
+          "case": "actual_complete_second_attempt_output",
+          "expected_pass": true,
+          "actual_pass": true
+        },
+        {
+          "case": "legitimate_baseline_error_description",
+          "expected_pass": true,
+          "actual_pass": true
+        },
+        {
+          "case": "anchored_WARNING: warning",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "anchored_ERROR: failure",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "anchored_UNTRUSTED package",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "anchored_BAD SIGNATURE",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "anchored_warning: caution",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "anchored_error : failure",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "anchored_bad signature: invalid",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "stderr_message",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "stderr_whitespace",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "malformed_utf8",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "nul",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "attach_returncode",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "attach_supervisor_failure",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "state_Status",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "state_Running",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "state_ExitCode",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "state_OOMKilled",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "state_Error",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "structured_complete_object_labels_key_order",
+          "expected_pass": true,
+          "actual_pass": true
+        },
+        {
+          "case": "volume_drift_Name_other",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "volume_drift_Driver_changed",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "volume_drift_Scope_global",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "volume_drift_Mountpoint_/other",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "volume_drift_CreatedAt_changed",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "volume_drift_Labels_{'alpha': 'changed', 'beta': '2'}",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "volume_drift_Options_{'new': 'value'}",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "volume_drift_ExtraCompleteField_{'stable': False}",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "volume_drift_Labels_alpha=1,beta=2",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "volume_field_removed",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "volume_field_added",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "volume_required_field_missing",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "duplicate_volume_names",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "missing_volume",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "extra_volume",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "over_volume_count",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "duplicate_object_key",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "nonfinite",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "malformed",
+          "expected_pass": false,
+          "actual_pass": false
+        },
+        {
+          "case": "historical_second_attempt_missing_structured_inventory",
+          "expected_pass": false,
+          "actual_pass": false
+        }
+      ],
+      "new_cases_passed": 41,
+      "new_cases_failed": 0,
+      "inherited_mount_cases_passed": 18,
+      "inherited_context_cases_passed": 24,
+      "planning_docker_invoked": false,
+      "planning_retry": false,
+      "runtime_verified": false,
+      "production_ready": false
+    }
+  },
+  "old95_checks": {
+    "passed": 95,
+    "cases": [
+      {
+        "name": "synthetic20_action_valid_fixture_not_runtime",
+        "expected_accept": true,
+        "passed": true
+      },
+      {
+        "name": "solver_order_is_set_not_manifest_order",
+        "expected_accept": true,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0000",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0001",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0002",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0003",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0004",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0005",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0006",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0007",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0008",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+000B",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+000C",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+000D",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+000E",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+000F",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0010",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0011",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0012",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0013",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0014",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0015",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0016",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0017",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0018",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0019",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+001A",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+001B",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+001C",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+001D",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+001E",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+001F",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+007F",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0080",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0081",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0082",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0083",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0084",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0085",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0086",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0087",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0088",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0089",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+008A",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+008B",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+008C",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+008D",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+008E",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+008F",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0090",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0091",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0092",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0093",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0094",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0095",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0096",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0097",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0098",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+0099",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+009A",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+009B",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+009C",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+009D",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+009E",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "Cc_U+009F",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "anchored_WARNING: ignored",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "anchored_ERROR: unresolved",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "anchored_UNTRUSTED package",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "anchored_BAD SIGNATURE package",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "anchored_  WARNING: ignored",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "forbidden_Reinstalling",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "forbidden_Purging",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "forbidden_Replacing",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "forbidden_Upgrading",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "forbidden_Downgrading",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "forbidden_Updating pinning",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "forbidden_Executing",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "wrong_version",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "extra_action",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "missing_action",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "bad_counter",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "duplicate_package",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "wrong_package_total",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "unknown_line",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "triggers",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "baseline_action",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "nonempty_stderr",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "invalid_utf8",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "truncated",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "oversize",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "missing_marker",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "extra_marker",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "baseline_description_drift",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "signature_drift",
+        "expected_accept": false,
+        "passed": true
+      },
+      {
+        "name": "apk_missing",
+        "expected_accept": false,
+        "passed": true
+      }
+    ],
+    "parser_sha256": "f2a0c79a1c27acbdb66a4d269ff3e922b49c628989487229e31bad55bea04dca",
+    "script_sha256": "068cb46037387a6d38491f2fbcf1d71c99797223dfce7649c015d7bc61d114de"
+  },
+  "review_source": {
+    "kind": "coordinator_direct_relay",
+    "text": "Coordinator independently reviewed the failed-run diagnosis and cleanup and ACCEPTED those only; Task1B remains blocked. New exact-gate review/adoption/root dispatch is required for one fresh simulation. No separate saved reviewer report path was supplied.",
+    "sha256": "475ef24f44f20c8c1f7dbead2af84d13e7e54a76bd7a1c8cc8a4f9a28f698f6e",
+    "scope": "failed_diagnosis_and_cleanup_only_not_simulation_success"
+  },
+  "historical_run_still_failed": true,
+  "no_retrospective_acceptance": true,
+  "planning_docker_invoked": false,
+  "simulation_executed": false,
+  "install_executed": false,
+  "image_committed": false,
+  "harness_executed": false
+}

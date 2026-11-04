@@ -1,0 +1,63 @@
+{
+  "goal": "Correct only full HostConfig.CapAdd array order comparison while preserving exact three approved unique capabilities and all other simulation guards; gate ONE fresh offline Task1B simulation after exact review/adoption/root dispatch.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-pg17-cap-order.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-acquisition-receipts.md",
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-acquisition-overlay.md",
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-inspected-preparation.md",
+    "docs/superpowers/plans/2026-11-03-workshop-hosting.md",
+    "docs/operations/workshop-gcp.md",
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/verification/2026-11-04-pg17-runner-preparation.md",
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-bind-targets.md",
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-mount-order.md",
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-control-filter.md",
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-closure-acceptance.md",
+    "docs/superpowers/plans/2026-11-04-workshop-pg17-task1b-simulation.md"
+  ],
+  "todo": [
+    "Synchronize this docs-only CapAdd successor with Issue186/Project8/canonical notes and preserve CURRENT complete prior index/detail verbatim plus SHA256; commit/push then pin full-SHA passing preflight.",
+    "Obtain independent exact-checkpoint review, coordinator adoption/root full-SHA preflight and fresh ONE-attempt simulation-only dispatch before Docker; use NEW empty private PREP, unique name/cidfile and newly created exact-owned container.",
+    "Compare only HostConfig.CapAdd order-insensitively with exactly three unique strings CAP_CHOWN/CAP_FOWNER/CAP_DAC_OVERRIDE; retain all complete raw objects/hashes and reject any missing/extra/duplicate/type or non-CapAdd field drift.",
+    "Retain and rerun all95 simulation parser plus148 predecessor fixtures and the new six-permutation/negative suite; preserve immutable failed-run result/diagnosis and all accepted/quarantined APK boundaries.",
+    "On separately dispatched simulation, retain unchanged exact script/hash,33 verification/20 selection, offline caps/resources, created-copy-before-export/diff, stopped baseline/lock/trigger/mount/diff, cleanup/absence/full-volume proofs; any discrepancy stops with no retry, installation/image/PG/harness unauthorized."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T04:02:37.852702+00:00",
+  "source_integration_base_sha": "c16f40a2730e7bc8a5fb3afd3ac2d10abf551637",
+  "implementation_allowlist": [],
+  "evidence_ref": "docs/agents/records/2026-11-04-workshop-pg17-cap-order-evidence.json",
+  "simulation_dispatch_authorized": false,
+  "independent_review": "pending_exact_checkpoint",
+  "historical_simulation_result": "blocked_before_start_diagnosis_cleanup_only_accepted",
+  "install_authorized": false,
+  "image_commit_authorized": false,
+  "task2_authorized": false,
+  "runtime_verified": false,
+  "production_ready": false,
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622201950",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_note_field": "Source or dependency reference",
+    "verified_at": "2026-11-04T04:02:37.852702+00:00",
+    "issue_body_sha256": "53cb430690323b9026ef980a81de9f2948fbe33b03ed0f3d921b150d89344e31",
+    "issue_comment_sha256": "af708e9a6ab99236a4bdea3c2f49af0a20b916b9bafc611d32a0b4ac46d4e8ad",
+    "project_text_sha256": "5d88ac387eda0d5ff5a093c8b499781fd8918758bcb9e7dcf6a8cb4ec9a1c91a",
+    "prior_project_text_sha256": "22bacb1d3d279c34ff7b1cfc4ca977ebf65755c24a98fefa0874a5106c746be9",
+    "full_prior_project_index_preserved_verbatim_in_issue_comment": true,
+    "prior_js_full_detail": {
+      "6622115738": {
+        "sha256": "affd26968bac339f3c9f21612a53b1cf6373b40c4eeff797474c02720e838431",
+        "preserved_verbatim_in_new_comment": true
+      },
+      "6622126651": {
+        "sha256": "4df25e25e1fb1d373c14102d1de2ce6ce32c9f22f7dff2b40cbee068ac1a6e99",
+        "preserved_verbatim_in_new_comment": true
+      }
+    }
+  }
+}

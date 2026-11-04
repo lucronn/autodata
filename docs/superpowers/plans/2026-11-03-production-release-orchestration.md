@@ -829,3 +829,20 @@ Task1B simulation-only successor synchronized by exact live Issue186 body/commen
 Pinned Task1B simulation-only successor gate: `808225f5fa14ca0c7dc308a5d39cd65396c694f7`; full-SHA preflight `status: synchronized`, `errors: []`, exit0; receipt `docs/agents/records/2026-11-04-workshop-pg17-task1b-simulation-preflight.json`; exact Issue186/Project8 readback https://github.com/lucronn/autodata/issues/186#issuecomment-6622095482. Independent review/adoption/root verification/fresh dispatch required before simulation. No Docker/solver/install/image/PG/harness or readiness claim.
 
 Pinned Task1B simulation-only successor gate: `dafbdea85477437e8cf20969b3c6571aa59c2c50`; full-SHA preflight `status: synchronized`, `errors: []`, exit0; receipt `docs/agents/records/2026-11-04-workshop-pg17-task1b-simulation-corrected-preflight.json`; exact Issue186/Project8 readback https://github.com/lucronn/autodata/issues/186#issuecomment-6622103154. Independent review/adoption/root verification/fresh dispatch required before simulation. No Docker/solver/install/image/PG/harness or readiness claim.
+
+
+## PG17 Task1B CapAdd-only ordering successor: plan only
+
+Correct only full HostConfig.CapAdd array order comparison while preserving exact three approved unique capabilities and all other simulation guards; gate ONE fresh offline Task1B simulation after exact review/adoption/root dispatch.
+
+Plan `docs/superpowers/plans/2026-11-04-workshop-pg17-cap-order.md`; record `docs/agents/records/2026-11-04-workshop-pg17-cap-order.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-pg17-cap-order.json`; evidence `docs/agents/records/2026-11-04-workshop-pg17-cap-order-evidence.json`. Failed resultSHAf870e36f11b4eea70478f0932ea446aa904631bcda8f89b28e65dbbc6bea8224/diagnosisSHA067a4cb3284da093479301eada2519a7944a07c36839e9262a2e241f8218e37d: never started, exact cleanup/absence/all33 inputs/full4volumes unchanged; independent diagnosis/cleanup acceptance ONLY. Only HostConfig.CapAdd order may normalize after proving exact3unique approved strings; all other complete comparisons/95+148 guards unchanged. 123 new pure cases pass incl6 permutations and negative field/type/duplication drift. NEW empty PREP/container and exact review/adoption/root preflight/fresh ONE-attempt dispatch required. No planning Docker/simulation/install/image/PG/harness; all readiness false, both prior33APK quarantines NEVER reusable.
+
+Concrete todo:
+
+- [ ] Synchronize this docs-only CapAdd successor with Issue186/Project8/canonical notes and preserve CURRENT complete prior index/detail verbatim plus SHA256; commit/push then pin full-SHA passing preflight.
+- [ ] Obtain independent exact-checkpoint review, coordinator adoption/root full-SHA preflight and fresh ONE-attempt simulation-only dispatch before Docker; use NEW empty private PREP, unique name/cidfile and newly created exact-owned container.
+- [ ] Compare only HostConfig.CapAdd order-insensitively with exactly three unique strings CAP_CHOWN/CAP_FOWNER/CAP_DAC_OVERRIDE; retain all complete raw objects/hashes and reject any missing/extra/duplicate/type or non-CapAdd field drift.
+- [ ] Retain and rerun all95 simulation parser plus148 predecessor fixtures and the new six-permutation/negative suite; preserve immutable failed-run result/diagnosis and all accepted/quarantined APK boundaries.
+- [ ] On separately dispatched simulation, retain unchanged exact script/hash,33 verification/20 selection, offline caps/resources, created-copy-before-export/diff, stopped baseline/lock/trigger/mount/diff, cleanup/absence/full-volume proofs; any discrepancy stops with no retry, installation/image/PG/harness unauthorized.
+
+CapAdd-only successor synchronized by exact live Issue186 body/comment https://github.com/lucronn/autodata/issues/186#issuecomment-6622201950 and Project8 readback at `2026-11-04T04:02:37.852702+00:00`; full CURRENT JS index/detail/pin retained verbatim/hash in comment and record. Independent exact-checkpoint review/adoption/root preflight/fresh dispatch required; no Docker/simulation/install/image/PG/harness and no retrospective acceptance.
