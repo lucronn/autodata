@@ -707,7 +707,7 @@
       "depends_on": [
         "workshop-pg17-cap-order"
       ],
-      "state": "local_draft_offline_and_OOM_pending_review_before_sync",
+      "state": "synchronized_offline_OOM_plan_pending_exact_review_adoption_dispatch",
       "release_state": "unverified",
       "implementation_changes_allowed": false,
       "simulation_dispatch_authorized": false,

@@ -96,3 +96,20 @@ Concrete todo:
 - [ ] Only after coordinator authorizes tracking: preserve full CURRENT Project index/detail verbatim/hash, synchronize Issue186/Project8/canonical docs/task, commit/push a new gate and pin full-SHA passing preflight.
 - [ ] Only after independent exact synchronized-gate review/adoption/root verification/fresh dispatch: one NEW empty PREP/container, exact33 verification/20 selected simulation, every apk invocation explicitly offline with pinned empty override, unchanged original repositories/keys, empty stderr.
 - [ ] Require created/stopped empty bind target/export/diff/27+45 baseline/lock/BusyBox/Config/Mounts/CapAdd/cleanup/volume proofs; normalize only exact false-created to null-stopped on exact unsupported engine context; any other discrepancy stops/no retry. Installation/image/Task2 remain unauthorized.
+
+
+## PG17 offline/OOM successor synchronized planning checkpoint
+
+Propose one fresh offline Task1B simulation with explicit no-network/empty-repository APK argv and only source-proven created-false to stopped-null OomKillDisable lifecycle comparison; preserve all stderr/signature/state/cleanup guards.
+
+Reviewed local draft `d3edce5094896dc4c11cc6e186ce4738418ac6c2`: coordinator relayed independent read-only draft PASS, all473 pure checks, no blockers. This is not runtime approval. Plan `docs/superpowers/plans/2026-11-04-workshop-pg17-offline.md`; record `docs/agents/records/2026-11-04-workshop-pg17-offline.json`; evidence `docs/agents/records/2026-11-04-workshop-pg17-offline-evidence.json`; branch `codex/workshop-pg17-offline-plan`. Failed result `c1f6af1f8242eff80da993cef370e8bdd7cbd47da2a7f4fc5c2731bbf36d9c29`/diagnosis `0660472e7f2a2a72403cd609ce60ef615e0e301c830e4c08f5e2e2c279edf4ab` immutable FAILED; diagnosis/cleanup only accepted. One NEW empty PREP/container is conditional on independent exact-checkpoint review, root preflight/adoption and fresh dispatch. All five apk invocations explicitly no-network with pinned zero-byte repository override; original repositories cmp/keys/all33 signatures and empty stderr unchanged. Only exact-source-proven OomKillDisable created false/stopped null on pinned unsupported engine context, plus prior CapAdd-order rule; all other complete fields and lifecycle/source/mount/export/baseline/cleanup/volume guards unchanged. Historical results cannot be accepted retrospectively; both33 APK quarantines remain forbidden. No Docker/retry/install/image/PG/harness/production/readiness authority.
+
+Concrete todo:
+
+- [ ] Independent local draft review PASS at d3edce5094896dc4c11cc6e186ce4738418ac6c2 (473 pure checks); synchronize only this reviewed docs-only scope, preserving all prior histories and denials.
+- [ ] Obtain independent exact synchronized-checkpoint review, root full-SHA preflight/adoption and fresh ONE-attempt simulation dispatch before any Docker operation.
+- [ ] Preserve CURRENT Stage0/staging/PG/JS Project index and all detail/pin bodies verbatim/hash; verify exact Issue186/Project8 readback and pin committed full-SHA passing preflight.
+- [ ] Only after independent exact synchronized-gate review/adoption/root verification/fresh dispatch: one NEW empty PREP/container, exact33 verification/20 selected simulation, every apk invocation explicitly offline with pinned empty override, unchanged original repositories/keys, empty stderr.
+- [ ] Require created/stopped empty bind target/export/diff/27+45 baseline/lock/BusyBox/Config/Mounts/CapAdd/cleanup/volume proofs; normalize only exact false-created to null-stopped on exact unsupported engine context; any other discrepancy stops/no retry. Installation/image/Task2 remain unauthorized.
+
+Exact live Issue186 body/detail https://github.com/lucronn/autodata/issues/186#issuecomment-6622351785 and Project8 readback verified at `2026-11-04T04:13:41.594272+00:00`; source preservation/index/detail/pin bodies and hashes in `docs/agents/records/2026-11-04-workshop-pg17-offline-tracking.json`. This supersedes earlier LOCAL DRAFT/UNSYNCHRONIZED lifecycle text only; technical predicates unchanged. Exact committed checkpoint/full-SHA preflight follows; no runtime authority.
