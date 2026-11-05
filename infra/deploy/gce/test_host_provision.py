@@ -112,3 +112,52 @@ class JournalAndPolicyTests(unittest.TestCase):
             os.link(original,root/'hardlink')
             with p.Pins() as pins:
                 with self.assertRaises(ValueError): pins.read(str(original))
+
+class ProvisionOrderingTests(unittest.TestCase):
+    def test_mount_and_actual_guard_precede_docker_and_failure_stops(self):
+        from contextlib import nullcontext
+        from types import SimpleNamespace
+        p = load('host_provision')
+        for guard_ok in (True,False):
+            with self.subTest(guard_ok=guard_ok):
+                events = []
+                class Files:
+                    def read(self,*args,**kwargs): return b'approved template'
+                    def directory(self,*args,**kwargs): pass
+                class Journal:
+                    def __init__(self,a): self.value = {'status':'incomplete'}
+                    def stage(self,name): events.append(('stage',name))
+                    def success(self): self.value['status']='passed'
+                class Runtime:
+                    def validate_mount_observations(self,*args): events.append(('validated','mount'))
+                    def validate_guard_tables(self,*args):
+                        events.append(('validated','guard'))
+                        if not guard_ok: raise ValueError('synthetic missing guard')
+                op = p.Provision(Files(),{'packages':[],'data_filesystem_uuid':'a'}, {},[])
+                def run(argv,*args,**kwargs):
+                    events.append(('command',argv))
+                    if 'findmnt' in argv[0]: return b'{"filesystems":[{"fstype":"ext4","options":"rw,nodev,nosuid"}]}'
+                    if 'nft' in argv[0]: return b'{}'
+                    if 'version' in argv: return b'1'
+                    return b''
+                # Package verification includes a pinned Compose plugin version.
+                op.a['packages'] = [{'name':'docker-compose-plugin','version':'1','filename':'plugin.deb','architecture':'amd64'}]
+                def verified_run(argv,*args,**kwargs):
+                    if 'dpkg-query' in argv[0]: return b'docker-compose-plugin\t1\tamd64\tinstalled'
+                    return run(argv,*args,**kwargs)
+                original_stat = os.stat
+                def binaries(path,*args,**kwargs):
+                    if str(path) in ('/usr/bin/docker','/usr/sbin/nft','/usr/bin/findmnt','/usr/sbin/mkfs.ext4','/usr/bin/python3'):
+                        return SimpleNamespace(st_mode=0o100755,st_uid=0)
+                    return original_stat(path,*args,**kwargs)
+                with patch.object(op,'observe'),patch.object(op,'device',return_value='/dev/accepted'),patch.object(op,'run',side_effect=verified_run),patch.object(p,'inhibit_starts',return_value=nullcontext()),patch.object(p,'Journal',Journal),patch.object(p,'make_directory',side_effect=lambda path,*args: events.append(('directory',path))),patch.object(p,'write_new'),patch.object(p,'load_module',return_value=Runtime()),patch.object(p.os,'stat',side_effect=binaries):
+                    if guard_ok: self.assertEqual(op.apply()['status'],'passed')
+                    else:
+                        with self.assertRaises(ValueError): op.apply()
+                start = ('command',['/usr/bin/systemctl','start','docker.service'])
+                if guard_ok:
+                    self.assertLess(events.index(('validated','mount')),events.index(('directory',p.DATA+'/postgres')))
+                    self.assertLess(events.index(('validated','guard')),events.index(start))
+                else: self.assertNotIn(start,events)
+                formatting = [argv for kind,argv in events if kind == 'command' and 'mkfs.ext4' in argv[0]]
+                self.assertEqual(formatting,[['/usr/sbin/mkfs.ext4','-U','a','/dev/accepted']])

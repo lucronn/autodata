@@ -41,6 +41,7 @@ def require(value):
     if not value: raise Rejected()
 
 def digest(data): return hashlib.sha256(data).hexdigest()
+def metadata(value): return (value.st_dev,value.st_ino,value.st_mode,value.st_uid,value.st_gid,value.st_nlink,value.st_size,value.st_mtime_ns,value.st_ctime_ns)
 def canonical(value): return json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False).encode()
 def match(value, pattern): return type(value) is str and re.fullmatch(pattern,value) is not None
 
@@ -169,7 +170,7 @@ class Pins:
                 part = os.read(fd,min(65536,maximum+1-len(data)))
                 if not part: break
                 data.extend(part)
-            require(len(data) == before.st_size and before == os.fstat(fd) and before == os.stat(name,dir_fd=directory,follow_symlinks=False))
+            require(len(data) == before.st_size and metadata(before) == metadata(os.fstat(fd)) == metadata(os.stat(name,dir_fd=directory,follow_symlinks=False)))
             if pin: self.files.append((path,mode,maximum,uid,gid,before,bytes(data)))
             return bytes(data)
         finally: os.close(fd)
@@ -179,7 +180,7 @@ class Pins:
             identity = lambda value:(value.st_dev,value.st_ino,value.st_mode,value.st_uid,value.st_gid)
             require(identity(after) == identity(before) == identity(named))
         for path,mode,maximum,uid,gid,before,data in self.files:
-            require(os.stat(path,follow_symlinks=False) == before and self.read(path,mode,maximum,uid,gid,False) == data)
+            require(metadata(os.stat(path,follow_symlinks=False)) == metadata(before) and self.read(path,mode,maximum,uid,gid,False) == data)
 
 # Only these installed destinations may be accepted, regardless of self hashes.
 def allowed_path(path):
@@ -293,6 +294,7 @@ class Provision:
         require(digest(Path('/etc/machine-id').read_bytes()) == a['machine_id_sha256'])
         self.device()
         require(not os.path.exists('/var/run/docker.sock'))
+        require(self.run(['/usr/bin/systemctl','is-active','docker.service'],allowed_codes=(3,4)).strip() in (b'inactive',b'unknown'))
         # A persistent prior journal must be explicitly recovered, never retried.
         require(not any(strict_json(self.pins.read(str(path))).get('operation') == 'prepare-new-empty-staging-host' for path in Path(RECEIPTS).glob('*.json')))
         require(not os.path.lexists('/usr/sbin/policy-rc.d.autodata-saved'))
@@ -311,7 +313,7 @@ class Provision:
             require(len(data) == item['bytes'] and digest(data) == item['sha256'])
             facts = self.run(['/usr/bin/dpkg-deb','--show','--showformat=${Package}\t${Version}\t${Architecture}',package]).decode().split('\t')
             require(facts == [item['name'],item['version'],item['architecture']])
-        self.run(['/usr/bin/dpkg','--no-act','--install']+[PACKAGES+'/'+item['filename'] for item in a['packages']])
+        self.run(['/usr/bin/dpkg','--no-act','--install']+sorted(PACKAGES+'/'+item['filename'] for item in a['packages']))
     def device(self):
         # The fixed GCE udev alias is the only permitted link; target is no-follow.
         require(stat.S_ISLNK(os.lstat(DEVICE).st_mode))
@@ -340,14 +342,16 @@ class Provision:
     def apply(self):
         self.observe(); journal = Journal(self.a)
         with inhibit_starts(self.pins):
-            self.run(['/usr/bin/dpkg','--install']+[PACKAGES+'/'+item['filename'] for item in self.a['packages']])
+            self.run(['/usr/bin/dpkg','--install']+sorted(PACKAGES+'/'+item['filename'] for item in self.a['packages']))
         journal.stage('packages-installed')
         for item in self.a['packages']:
             facts = self.run(['/usr/bin/dpkg-query','--show','--showformat=${Package}\t${Version}\t${Architecture}\t${db:Status-Status}',item['name']]).decode().split('\t')
             require(facts == [item['name'],item['version'],item['architecture'],'installed'])
         for binary in ('/usr/bin/docker','/usr/sbin/nft','/usr/bin/findmnt','/usr/sbin/mkfs.ext4','/usr/bin/python3'):
             value = os.stat(binary); require(stat.S_ISREG(value.st_mode) and value.st_uid == 0 and not value.st_mode & 0o022)
-        self.run(DOCKER+['compose','version','--short'])
+        plugin = self.run(DOCKER+['compose','version','--short']).decode().strip().removeprefix('v')
+        package_version = next(item['version'] for item in self.a['packages'] if item['name'] == 'docker-compose-plugin').split(':')[-1].split('-')[0]
+        require(plugin == package_version)
         path = self.device(); self.run(['/usr/sbin/mkfs.ext4','-U',self.a['data_filesystem_uuid'],path]); journal.stage('formatted')
         make_directory('/opt/autodata'); make_directory('/opt/autodata/bin',0o755); make_directory('/opt/autodata/releases'); make_directory('/opt/compose',0o755)
         for item in self.inventory:
