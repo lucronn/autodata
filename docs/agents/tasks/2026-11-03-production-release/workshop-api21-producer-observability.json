@@ -24,10 +24,11 @@
       "Write red offline tests first; implement API-only observation buffering/failure-safe publication as one small validated milestone and owned process/worker mapping as another. Promptly commit/push coherent validated milestones under coordinator branch ownership.",
       "Verify exact four-code-path diff, 21/120 inventory, original JUnit name, deadlines, provenance and disabled CLI/profiles; run frozen fake suites without services/provider/browser/Go. Independently review exact code and honestly read source/actual-checkout CI, failures and skips.",
       "Leave v2 consumer/profile, authentic capture/containment, outer launcher/engine exits, finite API schedule, static compiler rebinding, original JUnit/worker-log transport, independent raw review and all final180/release work separately gated with zero case credit.",
-      "Resolve URL fragment, phase attempt and body classification conflicts prospectively; synchronize/reseal K3b and pass independent exact-checkpoint review before affected code integration"
+      "Resolve URL fragment, phase attempt and body classification conflicts prospectively; synchronize/reseal K3b and pass independent exact-checkpoint review before affected code integration",
+      "Repair only scripts/dev/test_workshop_browser_environment.py by private actual-module loading, observable deny-by-default call ledgers, real inherited parent binding and failed-boundary HOME/collision/handoff tests; freshly synchronize, seal and independently review K3c before one-file dispatch, then record genuine focused/full supplemental pytest collection, outcomes and zero skips without runtime/capture/acceptance credit"
     ],
     "status": "synchronized",
-    "updated_at": "2026-11-05T00:43:58Z",
+    "updated_at": "2026-11-05T01:18:54Z",
     "source_binding": {
       "source_integration_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
       "source_integration_tree": "e4b51785e612f9a1e0e744237a8cdc0f28cb96af",
@@ -172,14 +173,14 @@
       "project_ref": "https://github.com/users/lucronn/projects/8",
       "ownership_verified": true,
       "literal_readback_verified": true,
-      "observed_at": "2026-11-05T00:43:58Z",
-      "planning_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646372232",
+      "observed_at": "2026-11-05T01:18:54Z",
+      "planning_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646931569",
       "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
       "readback_receipt": {
-        "path": "/home/corp/autodata-evidence/api21-k3b-tracking-receipt.json",
-        "sha256": "55efcc10ad2e83cefdc3a0312a45806331fd9c39670edd7f68af94fa7225f251"
+        "path": "/home/corp/autodata-evidence/api21-k3c-synchronized/tracking-receipt.json",
+        "sha256": "de855b1aea5c3cf84c45bede51584dff0cb30cb63591bbfaa7699d59d3fb7d70"
       },
-      "clarification": "Coordinator-owned prospective K3b Issue186 correction and Project8 Source pointer were freshly read back; exact literal comment, prior comments/Issue body and unrelated Project fields preserved per receipt. Planning synchronization only; no implementation dispatch, runtime/capture/acceptance authority."
+      "clarification": "Coordinator-owned genuine K3c literal comment/Project Source write and fresh readback verified from supplied before/after snapshots. Prior231 comments, Issue body and unrelated Project fields unchanged; media K4 dispatch pointer preserved. Planning only; no implementation dispatch/preflight/runtime/capture/acceptance authority."
     },
     "allowed_gate_document_paths": [
       "docs/superpowers/plans/2026-11-04-workshop-api21-producer-observability.md",
@@ -193,7 +194,8 @@
       "scripts/dev/workshop_browser_smoke.py",
       "scripts/dev/test_workshop_browser_smoke.py",
       "workers/ingestion-python/tests/test_workshop_browser_integration.py",
-      "workers/ingestion-python/tests/test_workshop_browser_observability.py"
+      "workers/ingestion-python/tests/test_workshop_browser_observability.py",
+      "scripts/dev/test_workshop_browser_environment.py"
     ],
     "current_implementation_allowlist": [],
     "accepted_case_credit": 0,
@@ -236,27 +238,22 @@
       "release_authorized": false,
       "capture_admission": false
     },
-    "draft_revision": "K3b-proposed-spec-conflict-correction",
+    "draft_revision": "K3c-proposed-environment-harness-only",
     "checkpoint_sealing": {
       "status": "synchronized",
-      "historical_K3a_sha": "046b141f80dbb0a28bfeb3e0ab7f9635f4ab349c",
-      "checkpoint_K3b": null,
+      "historical_K3b_sha": "a788f110e57de13b1b876df0e148df4705db591e",
+      "checkpoint_K3c": null,
       "implementation_base_sha": null,
       "external_seal_ref": null,
-      "rule": "Planning tracking synchronized by genuine K3b correction receipt. K3b SHA/tree/implementation base/CI/preflight remain unobserved/null until reviewed six files are committed/pushed and externally sealed. Extract exact committed records/policy and pass both machine preflights plus independent exact-checkpoint review before narrow dispatch. Historical K3/K3a structural passes do not authorize K3b implementation; no self-SHA amendment.",
-      "tracking_synchronized_at": "2026-11-05T00:43:58Z"
+      "rule": "K3c genuine planning readback is present. K3c commit/SHA/tree/seal/preflight/exact-checkpoint review and dispatch remain unclaimed/null. Commit/push reviewed six documents, seal externally and pass both exact-record machine preflights and independent exact-checkpoint review before one-file dispatch. No self-SHA amendment.",
+      "tracking_synchronized_at": "2026-11-05T01:18:54Z"
     },
     "provisional_materialization": {
       "status": "synchronized",
-      "materialization_kind": "external_full_file_synchronized_planning_package_only",
-      "checkpoint_K3b": null,
-      "implementation_base_sha": null,
+      "materialization_kind": "external_six_file_synchronized_planning_package_only",
+      "checkpoint_K3c": null,
       "tracking_sync": "synchronized",
-      "accepted_case_credit": 0,
-      "accepted_new_case_credit": 0,
-      "verified_case_ids": [],
-      "release_state": "unverified",
-      "rule": "Genuine correction tracking readback is present. No repository materialization by this drafting agent, K3b commit/seal/preflight, implementation dispatch or runtime/acceptance authority. Source-only M5 history remains unchanged."
+      "rule": "Genuine K3c planning/tracking readback verified. No repository/GitHub changes by this package agent or implementation authority. Media task50 retains synchronized planning/tracking and blocked implementation; its complete object is preserved unchanged."
     },
     "historical_K3a_metadata": {
       "status": "synchronized",
@@ -424,6 +421,156 @@
         ],
         "correction_todo": "Resolve URL fragment, phase attempt and body classification conflicts prospectively; synchronize/reseal K3b and pass independent exact-checkpoint review before affected code integration"
       }
+    },
+    "historical_K3b_metadata": {
+      "status": "synchronized",
+      "updated_at": "2026-11-05T00:43:58Z",
+      "draft_revision": "K3b-proposed-spec-conflict-correction",
+      "tracking_sync": {
+        "status": "synchronized",
+        "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "ownership_verified": true,
+        "literal_readback_verified": true,
+        "observed_at": "2026-11-05T00:43:58Z",
+        "planning_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646372232",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "readback_receipt": {
+          "path": "/home/corp/autodata-evidence/api21-k3b-tracking-receipt.json",
+          "sha256": "55efcc10ad2e83cefdc3a0312a45806331fd9c39670edd7f68af94fa7225f251"
+        },
+        "clarification": "Coordinator-owned prospective K3b Issue186 correction and Project8 Source pointer were freshly read back; exact literal comment, prior comments/Issue body and unrelated Project fields preserved per receipt. Planning synchronization only; no implementation dispatch, runtime/capture/acceptance authority."
+      },
+      "checkpoint_sealing": {
+        "status": "synchronized",
+        "historical_K3a_sha": "046b141f80dbb0a28bfeb3e0ab7f9635f4ab349c",
+        "checkpoint_K3b": null,
+        "implementation_base_sha": null,
+        "external_seal_ref": null,
+        "rule": "Planning tracking synchronized by genuine K3b correction receipt. K3b SHA/tree/implementation base/CI/preflight remain unobserved/null until reviewed six files are committed/pushed and externally sealed. Extract exact committed records/policy and pass both machine preflights plus independent exact-checkpoint review before narrow dispatch. Historical K3/K3a structural passes do not authorize K3b implementation; no self-SHA amendment.",
+        "tracking_synchronized_at": "2026-11-05T00:43:58Z"
+      },
+      "provisional_materialization": {
+        "status": "synchronized",
+        "materialization_kind": "external_full_file_synchronized_planning_package_only",
+        "checkpoint_K3b": null,
+        "implementation_base_sha": null,
+        "tracking_sync": "synchronized",
+        "accepted_case_credit": 0,
+        "accepted_new_case_credit": 0,
+        "verified_case_ids": [],
+        "release_state": "unverified",
+        "rule": "Genuine correction tracking readback is present. No repository materialization by this drafting agent, K3b commit/seal/preflight, implementation dispatch or runtime/acceptance authority. Source-only M5 history remains unchanged."
+      }
+    },
+    "prospective_K3c_harness": {
+      "revision": "K3c-proposed-environment-harness-only",
+      "status": "synchronized",
+      "tracking_status": "synchronized",
+      "drafted_at": "2026-11-05T01:15:19Z",
+      "source_reconciliation": {
+        "planning_document_base_sha": "d012fb74f2f9a5d5fc728d76796b1c83723f1780",
+        "planning_document_base_tree": "5b3db2cbccb90e763fefd633cb90011b400b0291",
+        "integrated_code_reference_sha": "47166d2b17165dcd7bae435b2e6957f6fabc6734",
+        "integrated_code_reference_tree": "1e12e09eb1ea1f697cc530538fdf029fb6b8bc76",
+        "fresh_seven_input_sha256": {
+          "scripts/dev/workshop_browser_smoke.py": "e5424bfeb412d321638ebab31362774226d49caeacd53ffc929a54c00bbf9a7a",
+          "scripts/dev/fixtures/workshop_customer/scenarios.json": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+          "scripts/dev/fixtures/workshop_customer/firebase_transport.js": "96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63",
+          "scripts/dev/fixtures/workshop_customer/hostile_source.json": "076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1",
+          "scripts/dev/fixtures/workshop_customer/stripe_checkout.html": "26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083",
+          "apps/api-go/workshop_browser_fixture_test.go": "7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33",
+          "workers/ingestion-python/tests/test_workshop_browser_integration.py": "1d83bcaa7e57b59cc2a6b8e64d9e4ab9dc327389c21a905b85dbec7267bc976b"
+        },
+        "selected_materialization_base_sha": "d012fb74f2f9a5d5fc728d76796b1c83723f1780",
+        "selected_materialization_base_tree": "5b3db2cbccb90e763fefd633cb90011b400b0291",
+        "expected_materialization_base": "Exact committed/reviewed K4 d012fb74f2f9a5d5fc728d76796b1c83723f1780 selected; task50 preserved. Five producer gate docs reconcile byte-identically from K3b to K4. Seven producer input hashes measured at47166d2b17165dcd7bae435b2e6957f6fabc6734. Fresh K3c tracking/readback still pending; no code authority.",
+        "planning_base_seven_input_sha256": {
+          "scripts/dev/workshop_browser_smoke.py": "95f95f25de9c1718901f1dc99580a89d5588a17dd43b8a3a013f8b459e6ba2bc",
+          "scripts/dev/fixtures/workshop_customer/scenarios.json": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+          "scripts/dev/fixtures/workshop_customer/firebase_transport.js": "96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63",
+          "scripts/dev/fixtures/workshop_customer/hostile_source.json": "076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1",
+          "scripts/dev/fixtures/workshop_customer/stripe_checkout.html": "26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083",
+          "apps/api-go/workshop_browser_fixture_test.go": "7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33",
+          "workers/ingestion-python/tests/test_workshop_browser_integration.py": "b16ab3953b863a2c7156cf57936a2bca4f56f2c3078c68f93ba616318793e801"
+        },
+        "source_reconciliation_rule": "K4 is the selected six-document planning/materialization baseline;47166d2 is integrated producer code reference. Their smoke.py and integration.py bytes differ. Preserve separate hash maps; do not claim equal trees/bytes or silently integrate code. Before prospective K3c checkpoint/dispatch coordinator must reconcile actual selected checkout with reviewed integrated producer code and refresh exact code hashes/tracking. No authorization follows from this draft.",
+        "checkpoint_K3c": null,
+        "checkpoint_K3c_tree": null,
+        "implementation_base_sha": null,
+        "external_seal_ref": null,
+        "rule": "Selected planning/source base K4 and integrated code reference47166d2 are distinct; neither is future K3c self-identity. Reconcile actual selected materialization source again; do not relabel historical bytes or hashes. No self-hash amendment."
+      },
+      "narrow_dispatch_paths": [
+        "scripts/dev/test_workshop_browser_environment.py"
+      ],
+      "cumulative_implementation_paths": [
+        "scripts/dev/workshop_browser_smoke.py",
+        "scripts/dev/test_workshop_browser_smoke.py",
+        "workers/ingestion-python/tests/test_workshop_browser_integration.py",
+        "workers/ingestion-python/tests/test_workshop_browser_observability.py",
+        "scripts/dev/test_workshop_browser_environment.py"
+      ],
+      "historical_todo_count": 8,
+      "harness_todo": "Repair only scripts/dev/test_workshop_browser_environment.py by private actual-module loading, observable deny-by-default call ledgers, real inherited parent binding and failed-boundary HOME/collision/handoff tests; freshly synchronize, seal and independently review K3c before one-file dispatch, then record genuine focused/full supplemental pytest collection, outcomes and zero skips without runtime/capture/acceptance credit",
+      "historical_wording_rule": "The retained eight historical todo strings describe earlier four-path/K3/K3b work. K3c current scope is five cumulative paths, exactly one new harness path; current queue operation is task49-only overlay. Historical no-fifth-path and unittest supplemental assertions are superseded only as explicitly stated here.",
+      "required_sequence": [
+        "Coordinator reviews this external proposed package and independently reviews changed six-file content",
+        "Exact committed/reviewed K4 d012fb74f2f9a5d5fc728d76796b1c83723f1780 tree5b3db2cbccb90e763fefd633cb90011b400b0291 is selected materialization/source base; five nonqueue gate docs reconcile unchanged from K3b. Preserve all K4 queue root fields/tasks1\u201348 and complete media task50/index/order. Integrated code reference47166d2b17165dcd7bae435b2e6957f6fabc6734 has fresh seven-input hashes. Obtain fresh K3c tracking/readback; no code authority",
+        "Freshly synchronize literal goal, nine todos, six gate paths, five cumulative prospective paths, harness-only dispatch intent and selected source in existing Issue186/Project8; freshly read back and preserve prior history/unrelated fields",
+        "Overlay task49 only onto selected current queue; preserve all root fields/tasks1\u201348/media task50 complete object and index/order; retain standalone/nested record equality; set synchronized only after genuine readback",
+        "Commit/push new K3c checkpoint without rewriting K3/K3a/K3b; externally seal exact SHA/tree/remote readback; leave self identity null in own tree",
+        "Extract standalone/nested records, policy and validator from exact K3c; both machine preflights must pass at externally resolved K3c base; independent exact-checkpoint review then explicit harness-only dispatch",
+        "After valid dispatch reproduce red, repair only harness, execute frozen focused/full supplemental commands and observability regressions with zero skips, compile harness in memory, verify one-file diff/four producer files unchanged and static21/190/120/JUnit/timing preservation",
+        "Commit/push coherent validated code; independent exact-code review; coordinator-owned fresh exact-source and actual-checkout CI readback including failures/skips; runtime/capture/acceptance/release stay blocked"
+      ],
+      "harness_steps": [
+        "Privately load actual integration module with spec_from_file_location/module_from_spec/exec_module; retain module.__file__/ROOT and do not export decorated required21 functions. Stub lifecycle_support and test_paid_catalog_api_integration before execution; PaidBridge is a real class; Repository/LifecycleRuntime/fresh_database/configure_scoped_runtime/serve deny on use unless sanctioned fake. No AST/copied helpers, dependency install, real conftest or skip.",
+        "Load urllib.request/ssl before socket guard. Guard subprocess.Popen/run, socket.socket, os.killpg, urllib.request.urlopen AND integration-bound urlopen with external spies/counters whose call state survives child BaseException sanitization. Assert forbidden calls zero after _child; sanctioned fake Repository/runtime/bridge/serve/Go/browser calls have separate ledgers. Restore sys.modules/patches/environment on every path.",
+        "Set ARTIFACT_ROOT to owned temporary root; retain real ROOT and actual seven source hashes. Select test_browser_google_exchange_checkout_library_real_api/chromium/bankone. Use fake candidate a*40/source tree b*40 as correlation only. Call real _binding(...,parent-pytest), require complete, then real _binding_env(parent,child-pytest); never monkeypatch identity helpers or mint child IDs.",
+        "Inject explicit fake Repository, Google runtime workers=[]/logs=[]/barrier=None with stop_workers/close, bridge.stop returning [], fake server, and stateful fake Go Popen poll/wait/terminate/kill. Temporary ready/log files only; no actual Go/browser/database. Fake browser run captures argv/env/timeout then raises deliberate BrowserBoundary; never returns browser exit0 or emits passed evidence.",
+        "For four HOME positive subtests require exactly one intended fake Go start and one browser boundary call, explicit fake Go wait0, sanitized API21 RuntimeError, failed result/sidecar and null browser return code. Assert complete parent-inherited run/attempt/tree/JSON binding and fresh seven hashes. Retain absolute/owned0700/writable/distinct HOME, inherited-host-HOME exclusion, cache forwarding, secret exclusion and numeric UID Path.home/pwd.getpwuid test.",
+        "For directory/file/symlink collisions require sanitized API21 RuntimeError, failed safe receipt with complete handoff, zero browser calls and unchanged original type/inode/content or symlink target. Record sanctioned versus forbidden calls explicitly; do not expect raw FileExistsError or weaken producer sanitization.",
+        "Add exactly one unittest method with seven identity negatives: absent all three BINDING/RUN_ID/ATTEMPT_ID, missing binding, empty binding, missing run, missing attempt, malformed run, malformed attempt. Retain fake candidate/source-tree and real seven input facts. Invoke real _child with fail-on-use dependencies plus retained counters; assert zero Repository/runtime/bridge/serve/Go/browser/network/group-signal calls, failed/partial receipt, null unavailable identifiers only and preserved known identifiers/source facts. Existing observability missing-handoff regression unchanged."
+      ],
+      "verification_commands": {
+        "focused": "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=scripts/dev python3 -B -m pytest -q -p no:cacheprovider scripts/dev/test_workshop_browser_environment.py",
+        "supplemental": "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=scripts/dev python3 -B -m pytest -q -p no:cacheprovider scripts/dev/test_workshop_browser_environment.py scripts/dev/test_workshop_browser_execution_contract.py scripts/dev/test_workshop_browser_execution_evidence.py scripts/dev/test_workshop_browser_execution_supervisor.py scripts/dev/test_workshop_browser_preparation_probe.py",
+        "collect_only": "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=scripts/dev python3 -B -m pytest -q -p no:cacheprovider --collect-only scripts/dev/test_workshop_browser_environment.py scripts/dev/test_workshop_browser_execution_contract.py scripts/dev/test_workshop_browser_execution_evidence.py scripts/dev/test_workshop_browser_execution_supervisor.py scripts/dev/test_workshop_browser_preparation_probe.py",
+        "focused_unittest": "python3 -B -m unittest scripts.dev.test_workshop_browser_environment -v",
+        "observability": "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -B -m pytest -q -p no:cacheprovider --confcutdir=workers/ingestion-python/tests workers/ingestion-python/tests/test_workshop_browser_observability.py"
+      },
+      "counting": {
+        "historical_collected_pytest_items": 147,
+        "historical_environment_methods": 3,
+        "historical_environment_subtests": 7,
+        "other_modules_parametrized_pytest_items": 144,
+        "other_modules_top_level_definitions": [
+          13,
+          21,
+          25,
+          15
+        ],
+        "planned_environment_methods": 4,
+        "planned_environment_subtests": 14,
+        "planned_collected_pytest_items": 148,
+        "normal_all_green_outcome_display": 162,
+        "rule": "Collection items and unittest subtest outcomes are separate. Record actual collection/results/tool versions and skips; 162 is expectation only, never required fabricated evidence. Focused unittest is not full supplemental coverage."
+      },
+      "independent_plan_review": {
+        "path": "/home/corp/autodata-evidence/api21-harness-plan-review/report.md",
+        "sha256": "53fc87c89add4a9f3cb6dcb128691a5093a780d6ab6f227f8ba104c9d5e90283"
+      },
+      "source_tree_erratum": "Original harness-plan opening incorrectly pairs 2073d324dd97b962a53a7256c9284bb5067befcd with cd875fa6bec39124b6a2aef9e9b038cce884779c. Correct 2073 tree is 90a57b81ffcddf378929a6a9bfa2523d00429284; cd875fa6 is 51e08a3b01f9f8616af62c32388d65b5f3c0eb6b tree. Historical files/hashes unchanged; current source identity is measured separately.",
+      "accepted_case_credit": 0,
+      "verified_case_ids": [],
+      "release_state": "unverified",
+      "tracking_synchronized_at": "2026-11-05T01:18:54Z",
+      "tracking_readback_receipt": {
+        "path": "/home/corp/autodata-evidence/api21-k3c-synchronized/tracking-receipt.json",
+        "sha256": "de855b1aea5c3cf84c45bede51584dff0cb30cb63591bbfaa7699d59d3fb7d70"
+      },
+      "tracking_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646931569"
     }
   },
   "state": "synchronized",
@@ -582,7 +729,8 @@
     "scripts/dev/workshop_browser_smoke.py",
     "scripts/dev/test_workshop_browser_smoke.py",
     "workers/ingestion-python/tests/test_workshop_browser_integration.py",
-    "workers/ingestion-python/tests/test_workshop_browser_observability.py"
+    "workers/ingestion-python/tests/test_workshop_browser_observability.py",
+    "scripts/dev/test_workshop_browser_environment.py"
   ],
   "todo": [
     "Finish independent exact-final G1 review and inspect exact-source plus actual PR merge-checkout CI; reconcile source/parent graph and pin source-integration SHA/tree only after that evidence. Keep K2/C immutable and resolve shared smoke-source drift.",
@@ -592,7 +740,8 @@
     "Write red offline tests first; implement API-only observation buffering/failure-safe publication as one small validated milestone and owned process/worker mapping as another. Promptly commit/push coherent validated milestones under coordinator branch ownership.",
     "Verify exact four-code-path diff, 21/120 inventory, original JUnit name, deadlines, provenance and disabled CLI/profiles; run frozen fake suites without services/provider/browser/Go. Independently review exact code and honestly read source/actual-checkout CI, failures and skips.",
     "Leave v2 consumer/profile, authentic capture/containment, outer launcher/engine exits, finite API schedule, static compiler rebinding, original JUnit/worker-log transport, independent raw review and all final180/release work separately gated with zero case credit.",
-    "Resolve URL fragment, phase attempt and body classification conflicts prospectively; synchronize/reseal K3b and pass independent exact-checkpoint review before affected code integration"
+    "Resolve URL fragment, phase attempt and body classification conflicts prospectively; synchronize/reseal K3b and pass independent exact-checkpoint review before affected code integration",
+    "Repair only scripts/dev/test_workshop_browser_environment.py by private actual-module loading, observable deny-by-default call ledgers, real inherited parent binding and failed-boundary HOME/collision/handoff tests; freshly synchronize, seal and independently review K3c before one-file dispatch, then record genuine focused/full supplemental pytest collection, outcomes and zero skips without runtime/capture/acceptance credit"
   ],
   "tracking_sync": {
     "status": "synchronized",
@@ -600,14 +749,14 @@
     "project_ref": "https://github.com/users/lucronn/projects/8",
     "ownership_verified": true,
     "literal_readback_verified": true,
-    "observed_at": "2026-11-05T00:43:58Z",
-    "planning_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646372232",
+    "observed_at": "2026-11-05T01:18:54Z",
+    "planning_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646931569",
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "readback_receipt": {
-      "path": "/home/corp/autodata-evidence/api21-k3b-tracking-receipt.json",
-      "sha256": "55efcc10ad2e83cefdc3a0312a45806331fd9c39670edd7f68af94fa7225f251"
+      "path": "/home/corp/autodata-evidence/api21-k3c-synchronized/tracking-receipt.json",
+      "sha256": "de855b1aea5c3cf84c45bede51584dff0cb30cb63591bbfaa7699d59d3fb7d70"
     },
-    "clarification": "Coordinator-owned prospective K3b Issue186 correction and Project8 Source pointer were freshly read back; exact literal comment, prior comments/Issue body and unrelated Project fields preserved per receipt. Planning synchronization only; no implementation dispatch, runtime/capture/acceptance authority."
+    "clarification": "Coordinator-owned genuine K3c literal comment/Project Source write and fresh readback verified from supplied before/after snapshots. Prior231 comments, Issue body and unrelated Project fields unchanged; media K4 dispatch pointer preserved. Planning only; no implementation dispatch/preflight/runtime/capture/acceptance authority."
   },
   "current_implementation_allowlist": [],
   "accepted_case_credit": 0,
@@ -650,29 +799,24 @@
     "release_authorized": false,
     "capture_admission": false
   },
-  "draft_revision": "K3b-proposed-spec-conflict-correction",
+  "draft_revision": "K3c-proposed-environment-harness-only",
   "checkpoint_sealing": {
     "status": "synchronized",
-    "historical_K3a_sha": "046b141f80dbb0a28bfeb3e0ab7f9635f4ab349c",
-    "checkpoint_K3b": null,
+    "historical_K3b_sha": "a788f110e57de13b1b876df0e148df4705db591e",
+    "checkpoint_K3c": null,
     "implementation_base_sha": null,
     "external_seal_ref": null,
-    "rule": "Planning tracking synchronized by genuine K3b correction receipt. K3b SHA/tree/implementation base/CI/preflight remain unobserved/null until reviewed six files are committed/pushed and externally sealed. Extract exact committed records/policy and pass both machine preflights plus independent exact-checkpoint review before narrow dispatch. Historical K3/K3a structural passes do not authorize K3b implementation; no self-SHA amendment.",
-    "tracking_synchronized_at": "2026-11-05T00:43:58Z"
+    "rule": "K3c genuine planning readback is present. K3c commit/SHA/tree/seal/preflight/exact-checkpoint review and dispatch remain unclaimed/null. Commit/push reviewed six documents, seal externally and pass both exact-record machine preflights and independent exact-checkpoint review before one-file dispatch. No self-SHA amendment.",
+    "tracking_synchronized_at": "2026-11-05T01:18:54Z"
   },
   "provisional_materialization": {
     "status": "synchronized",
-    "materialization_kind": "external_full_file_synchronized_planning_package_only",
-    "checkpoint_K3b": null,
-    "implementation_base_sha": null,
+    "materialization_kind": "external_six_file_synchronized_planning_package_only",
+    "checkpoint_K3c": null,
     "tracking_sync": "synchronized",
-    "accepted_case_credit": 0,
-    "accepted_new_case_credit": 0,
-    "verified_case_ids": [],
-    "release_state": "unverified",
-    "rule": "Genuine correction tracking readback is present. No repository materialization by this drafting agent, K3b commit/seal/preflight, implementation dispatch or runtime/acceptance authority. Source-only M5 history remains unchanged."
+    "rule": "Genuine K3c planning/tracking readback verified. No repository/GitHub changes by this package agent or implementation authority. Media task50 retains synchronized planning/tracking and blocked implementation; its complete object is preserved unchanged."
   },
-  "updated_at": "2026-11-05T00:43:58Z",
+  "updated_at": "2026-11-05T01:18:54Z",
   "historical_K3a_metadata": {
     "state": "synchronized",
     "planning_status": "synchronized",
@@ -843,5 +987,157 @@
       ],
       "correction_todo": "Resolve URL fragment, phase attempt and body classification conflicts prospectively; synchronize/reseal K3b and pass independent exact-checkpoint review before affected code integration"
     }
+  },
+  "historical_K3b_metadata": {
+    "state": "synchronized",
+    "planning_status": "synchronized",
+    "tracking_status": "synchronized",
+    "updated_at": "2026-11-05T00:43:58Z",
+    "draft_revision": "K3b-proposed-spec-conflict-correction",
+    "tracking_sync": {
+      "status": "synchronized",
+      "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+      "project_ref": "https://github.com/users/lucronn/projects/8",
+      "ownership_verified": true,
+      "literal_readback_verified": true,
+      "observed_at": "2026-11-05T00:43:58Z",
+      "planning_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646372232",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "readback_receipt": {
+        "path": "/home/corp/autodata-evidence/api21-k3b-tracking-receipt.json",
+        "sha256": "55efcc10ad2e83cefdc3a0312a45806331fd9c39670edd7f68af94fa7225f251"
+      },
+      "clarification": "Coordinator-owned prospective K3b Issue186 correction and Project8 Source pointer were freshly read back; exact literal comment, prior comments/Issue body and unrelated Project fields preserved per receipt. Planning synchronization only; no implementation dispatch, runtime/capture/acceptance authority."
+    },
+    "checkpoint_sealing": {
+      "status": "synchronized",
+      "historical_K3a_sha": "046b141f80dbb0a28bfeb3e0ab7f9635f4ab349c",
+      "checkpoint_K3b": null,
+      "implementation_base_sha": null,
+      "external_seal_ref": null,
+      "rule": "Planning tracking synchronized by genuine K3b correction receipt. K3b SHA/tree/implementation base/CI/preflight remain unobserved/null until reviewed six files are committed/pushed and externally sealed. Extract exact committed records/policy and pass both machine preflights plus independent exact-checkpoint review before narrow dispatch. Historical K3/K3a structural passes do not authorize K3b implementation; no self-SHA amendment.",
+      "tracking_synchronized_at": "2026-11-05T00:43:58Z"
+    },
+    "provisional_materialization": {
+      "status": "synchronized",
+      "materialization_kind": "external_full_file_synchronized_planning_package_only",
+      "checkpoint_K3b": null,
+      "implementation_base_sha": null,
+      "tracking_sync": "synchronized",
+      "accepted_case_credit": 0,
+      "accepted_new_case_credit": 0,
+      "verified_case_ids": [],
+      "release_state": "unverified",
+      "rule": "Genuine correction tracking readback is present. No repository materialization by this drafting agent, K3b commit/seal/preflight, implementation dispatch or runtime/acceptance authority. Source-only M5 history remains unchanged."
+    }
+  },
+  "prospective_K3c_harness": {
+    "revision": "K3c-proposed-environment-harness-only",
+    "status": "synchronized",
+    "tracking_status": "synchronized",
+    "drafted_at": "2026-11-05T01:15:19Z",
+    "source_reconciliation": {
+      "planning_document_base_sha": "d012fb74f2f9a5d5fc728d76796b1c83723f1780",
+      "planning_document_base_tree": "5b3db2cbccb90e763fefd633cb90011b400b0291",
+      "integrated_code_reference_sha": "47166d2b17165dcd7bae435b2e6957f6fabc6734",
+      "integrated_code_reference_tree": "1e12e09eb1ea1f697cc530538fdf029fb6b8bc76",
+      "fresh_seven_input_sha256": {
+        "scripts/dev/workshop_browser_smoke.py": "e5424bfeb412d321638ebab31362774226d49caeacd53ffc929a54c00bbf9a7a",
+        "scripts/dev/fixtures/workshop_customer/scenarios.json": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+        "scripts/dev/fixtures/workshop_customer/firebase_transport.js": "96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63",
+        "scripts/dev/fixtures/workshop_customer/hostile_source.json": "076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1",
+        "scripts/dev/fixtures/workshop_customer/stripe_checkout.html": "26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083",
+        "apps/api-go/workshop_browser_fixture_test.go": "7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33",
+        "workers/ingestion-python/tests/test_workshop_browser_integration.py": "1d83bcaa7e57b59cc2a6b8e64d9e4ab9dc327389c21a905b85dbec7267bc976b"
+      },
+      "selected_materialization_base_sha": "d012fb74f2f9a5d5fc728d76796b1c83723f1780",
+      "selected_materialization_base_tree": "5b3db2cbccb90e763fefd633cb90011b400b0291",
+      "expected_materialization_base": "Exact committed/reviewed K4 d012fb74f2f9a5d5fc728d76796b1c83723f1780 selected; task50 preserved. Five producer gate docs reconcile byte-identically from K3b to K4. Seven producer input hashes measured at47166d2b17165dcd7bae435b2e6957f6fabc6734. Fresh K3c tracking/readback still pending; no code authority.",
+      "planning_base_seven_input_sha256": {
+        "scripts/dev/workshop_browser_smoke.py": "95f95f25de9c1718901f1dc99580a89d5588a17dd43b8a3a013f8b459e6ba2bc",
+        "scripts/dev/fixtures/workshop_customer/scenarios.json": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+        "scripts/dev/fixtures/workshop_customer/firebase_transport.js": "96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63",
+        "scripts/dev/fixtures/workshop_customer/hostile_source.json": "076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1",
+        "scripts/dev/fixtures/workshop_customer/stripe_checkout.html": "26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083",
+        "apps/api-go/workshop_browser_fixture_test.go": "7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33",
+        "workers/ingestion-python/tests/test_workshop_browser_integration.py": "b16ab3953b863a2c7156cf57936a2bca4f56f2c3078c68f93ba616318793e801"
+      },
+      "source_reconciliation_rule": "K4 is the selected six-document planning/materialization baseline;47166d2 is integrated producer code reference. Their smoke.py and integration.py bytes differ. Preserve separate hash maps; do not claim equal trees/bytes or silently integrate code. Before prospective K3c checkpoint/dispatch coordinator must reconcile actual selected checkout with reviewed integrated producer code and refresh exact code hashes/tracking. No authorization follows from this draft.",
+      "checkpoint_K3c": null,
+      "checkpoint_K3c_tree": null,
+      "implementation_base_sha": null,
+      "external_seal_ref": null,
+      "rule": "Selected planning/source base K4 and integrated code reference47166d2 are distinct; neither is future K3c self-identity. Reconcile actual selected materialization source again; do not relabel historical bytes or hashes. No self-hash amendment."
+    },
+    "narrow_dispatch_paths": [
+      "scripts/dev/test_workshop_browser_environment.py"
+    ],
+    "cumulative_implementation_paths": [
+      "scripts/dev/workshop_browser_smoke.py",
+      "scripts/dev/test_workshop_browser_smoke.py",
+      "workers/ingestion-python/tests/test_workshop_browser_integration.py",
+      "workers/ingestion-python/tests/test_workshop_browser_observability.py",
+      "scripts/dev/test_workshop_browser_environment.py"
+    ],
+    "historical_todo_count": 8,
+    "harness_todo": "Repair only scripts/dev/test_workshop_browser_environment.py by private actual-module loading, observable deny-by-default call ledgers, real inherited parent binding and failed-boundary HOME/collision/handoff tests; freshly synchronize, seal and independently review K3c before one-file dispatch, then record genuine focused/full supplemental pytest collection, outcomes and zero skips without runtime/capture/acceptance credit",
+    "historical_wording_rule": "The retained eight historical todo strings describe earlier four-path/K3/K3b work. K3c current scope is five cumulative paths, exactly one new harness path; current queue operation is task49-only overlay. Historical no-fifth-path and unittest supplemental assertions are superseded only as explicitly stated here.",
+    "required_sequence": [
+      "Coordinator reviews this external proposed package and independently reviews changed six-file content",
+      "Exact committed/reviewed K4 d012fb74f2f9a5d5fc728d76796b1c83723f1780 tree5b3db2cbccb90e763fefd633cb90011b400b0291 is selected materialization/source base; five nonqueue gate docs reconcile unchanged from K3b. Preserve all K4 queue root fields/tasks1\u201348 and complete media task50/index/order. Integrated code reference47166d2b17165dcd7bae435b2e6957f6fabc6734 has fresh seven-input hashes. Obtain fresh K3c tracking/readback; no code authority",
+      "Freshly synchronize literal goal, nine todos, six gate paths, five cumulative prospective paths, harness-only dispatch intent and selected source in existing Issue186/Project8; freshly read back and preserve prior history/unrelated fields",
+      "Overlay task49 only onto selected current queue; preserve all root fields/tasks1\u201348/media task50 complete object and index/order; retain standalone/nested record equality; set synchronized only after genuine readback",
+      "Commit/push new K3c checkpoint without rewriting K3/K3a/K3b; externally seal exact SHA/tree/remote readback; leave self identity null in own tree",
+      "Extract standalone/nested records, policy and validator from exact K3c; both machine preflights must pass at externally resolved K3c base; independent exact-checkpoint review then explicit harness-only dispatch",
+      "After valid dispatch reproduce red, repair only harness, execute frozen focused/full supplemental commands and observability regressions with zero skips, compile harness in memory, verify one-file diff/four producer files unchanged and static21/190/120/JUnit/timing preservation",
+      "Commit/push coherent validated code; independent exact-code review; coordinator-owned fresh exact-source and actual-checkout CI readback including failures/skips; runtime/capture/acceptance/release stay blocked"
+    ],
+    "harness_steps": [
+      "Privately load actual integration module with spec_from_file_location/module_from_spec/exec_module; retain module.__file__/ROOT and do not export decorated required21 functions. Stub lifecycle_support and test_paid_catalog_api_integration before execution; PaidBridge is a real class; Repository/LifecycleRuntime/fresh_database/configure_scoped_runtime/serve deny on use unless sanctioned fake. No AST/copied helpers, dependency install, real conftest or skip.",
+      "Load urllib.request/ssl before socket guard. Guard subprocess.Popen/run, socket.socket, os.killpg, urllib.request.urlopen AND integration-bound urlopen with external spies/counters whose call state survives child BaseException sanitization. Assert forbidden calls zero after _child; sanctioned fake Repository/runtime/bridge/serve/Go/browser calls have separate ledgers. Restore sys.modules/patches/environment on every path.",
+      "Set ARTIFACT_ROOT to owned temporary root; retain real ROOT and actual seven source hashes. Select test_browser_google_exchange_checkout_library_real_api/chromium/bankone. Use fake candidate a*40/source tree b*40 as correlation only. Call real _binding(...,parent-pytest), require complete, then real _binding_env(parent,child-pytest); never monkeypatch identity helpers or mint child IDs.",
+      "Inject explicit fake Repository, Google runtime workers=[]/logs=[]/barrier=None with stop_workers/close, bridge.stop returning [], fake server, and stateful fake Go Popen poll/wait/terminate/kill. Temporary ready/log files only; no actual Go/browser/database. Fake browser run captures argv/env/timeout then raises deliberate BrowserBoundary; never returns browser exit0 or emits passed evidence.",
+      "For four HOME positive subtests require exactly one intended fake Go start and one browser boundary call, explicit fake Go wait0, sanitized API21 RuntimeError, failed result/sidecar and null browser return code. Assert complete parent-inherited run/attempt/tree/JSON binding and fresh seven hashes. Retain absolute/owned0700/writable/distinct HOME, inherited-host-HOME exclusion, cache forwarding, secret exclusion and numeric UID Path.home/pwd.getpwuid test.",
+      "For directory/file/symlink collisions require sanitized API21 RuntimeError, failed safe receipt with complete handoff, zero browser calls and unchanged original type/inode/content or symlink target. Record sanctioned versus forbidden calls explicitly; do not expect raw FileExistsError or weaken producer sanitization.",
+      "Add exactly one unittest method with seven identity negatives: absent all three BINDING/RUN_ID/ATTEMPT_ID, missing binding, empty binding, missing run, missing attempt, malformed run, malformed attempt. Retain fake candidate/source-tree and real seven input facts. Invoke real _child with fail-on-use dependencies plus retained counters; assert zero Repository/runtime/bridge/serve/Go/browser/network/group-signal calls, failed/partial receipt, null unavailable identifiers only and preserved known identifiers/source facts. Existing observability missing-handoff regression unchanged."
+    ],
+    "verification_commands": {
+      "focused": "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=scripts/dev python3 -B -m pytest -q -p no:cacheprovider scripts/dev/test_workshop_browser_environment.py",
+      "supplemental": "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=scripts/dev python3 -B -m pytest -q -p no:cacheprovider scripts/dev/test_workshop_browser_environment.py scripts/dev/test_workshop_browser_execution_contract.py scripts/dev/test_workshop_browser_execution_evidence.py scripts/dev/test_workshop_browser_execution_supervisor.py scripts/dev/test_workshop_browser_preparation_probe.py",
+      "collect_only": "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=scripts/dev python3 -B -m pytest -q -p no:cacheprovider --collect-only scripts/dev/test_workshop_browser_environment.py scripts/dev/test_workshop_browser_execution_contract.py scripts/dev/test_workshop_browser_execution_evidence.py scripts/dev/test_workshop_browser_execution_supervisor.py scripts/dev/test_workshop_browser_preparation_probe.py",
+      "focused_unittest": "python3 -B -m unittest scripts.dev.test_workshop_browser_environment -v",
+      "observability": "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -B -m pytest -q -p no:cacheprovider --confcutdir=workers/ingestion-python/tests workers/ingestion-python/tests/test_workshop_browser_observability.py"
+    },
+    "counting": {
+      "historical_collected_pytest_items": 147,
+      "historical_environment_methods": 3,
+      "historical_environment_subtests": 7,
+      "other_modules_parametrized_pytest_items": 144,
+      "other_modules_top_level_definitions": [
+        13,
+        21,
+        25,
+        15
+      ],
+      "planned_environment_methods": 4,
+      "planned_environment_subtests": 14,
+      "planned_collected_pytest_items": 148,
+      "normal_all_green_outcome_display": 162,
+      "rule": "Collection items and unittest subtest outcomes are separate. Record actual collection/results/tool versions and skips; 162 is expectation only, never required fabricated evidence. Focused unittest is not full supplemental coverage."
+    },
+    "independent_plan_review": {
+      "path": "/home/corp/autodata-evidence/api21-harness-plan-review/report.md",
+      "sha256": "53fc87c89add4a9f3cb6dcb128691a5093a780d6ab6f227f8ba104c9d5e90283"
+    },
+    "source_tree_erratum": "Original harness-plan opening incorrectly pairs 2073d324dd97b962a53a7256c9284bb5067befcd with cd875fa6bec39124b6a2aef9e9b038cce884779c. Correct 2073 tree is 90a57b81ffcddf378929a6a9bfa2523d00429284; cd875fa6 is 51e08a3b01f9f8616af62c32388d65b5f3c0eb6b tree. Historical files/hashes unchanged; current source identity is measured separately.",
+    "accepted_case_credit": 0,
+    "verified_case_ids": [],
+    "release_state": "unverified",
+    "tracking_synchronized_at": "2026-11-05T01:18:54Z",
+    "tracking_readback_receipt": {
+      "path": "/home/corp/autodata-evidence/api21-k3c-synchronized/tracking-receipt.json",
+      "sha256": "de855b1aea5c3cf84c45bede51584dff0cb30cb63591bbfaa7699d59d3fb7d70"
+    },
+    "tracking_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646931569"
   }
 }
