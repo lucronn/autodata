@@ -1,0 +1,50 @@
+{
+  "goal": "Version corrected source projections and support bounded source-only offline reprojection from retained body bytes without provider/model calls.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-source-projection-v2.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/325",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/normalized-article-document.md"
+  ],
+  "todo": [
+    "Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; verify populated upgrade and migration-driver rerun.",
+    "Carry explicit projection identity through captured/stored sources and version-aware dedupe; preserve raw fingerprint/snapshot hashes and immutable history.",
+    "Keep legacy v1 transformation-key bytes stable, domain-separate v2 keys, and atomically switch current source with stale canonical cleared.",
+    "Prove identical-byte v1-to-v2 append, repeat-v2 reuse, historical reads, terminal/published v1 isolation, readable fallback before model and stale-worker rejection; run focused and isolated PostgreSQL regressions.",
+    "Add bounded body-only offline preview/apply from verified retained bytes, with atomic exact-job source-only storage, NULL transformation key, no provider/model calls and fail-closed reconstruction tests.",
+    "Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T16:16:07.156205+00:00",
+  "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGUxxM",
+  "inspected_source_sha": "140fdf132afb9d6efad0164e5c67d7e4a836200d",
+  "branch": "codex/source-projection-v2",
+  "checkpoint_kind": "planning_only",
+  "implementation_allowlist": [
+    "db/migrations/041_article_source_projection_v2.sql",
+    "workers/ingestion-python/src/autodata_ingestion/source_article_capture.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle_types.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle_store.py",
+    "workers/ingestion-python/tests/test_source_article_capture.py",
+    "workers/ingestion-python/tests/test_article_lifecycle_types.py",
+    "workers/ingestion-python/tests/test_article_lifecycle_schema.py",
+    "workers/ingestion-python/tests/test_article_lifecycle_migrations.py",
+    "workers/ingestion-python/tests/test_article_lifecycle_integration.py",
+    "workers/ingestion-python/src/autodata_ingestion/source_revision_reprojection.py",
+    "workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py",
+    "workers/ingestion-python/src/autodata_ingestion/worker.py",
+    "workers/ingestion-python/tests/test_source_revision_reprojection.py",
+    "scripts/dev/reproject_article_source.py"
+  ],
+  "provider_calls_authorized": false,
+  "model_calls_authorized": false,
+  "stage_data_mutation_authorized": false,
+  "production_activation_authorized": false,
+  "tracking": {
+    "issue_body_sha256": "54f9f29c92322aab47aa133dc79582a62c7ce31b894d9000724ae95101e468b1",
+    "project_source_sha256": "4b02b39e8292d1adb54b5832e51c8b1301efd49f477893b629a8a4c01fa7dce2",
+    "project_status": "Ready",
+    "verified_at": "2026-11-05T16:16:07.156205+00:00"
+  }
+}

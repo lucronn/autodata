@@ -285,3 +285,79 @@ realistic acceptance credit. Authentic per-bank baseline, held-out coverage, all
 verb presence and independent content review remain unmeasured. The purchased-
 dataset outcome and production activation remain blocked on that evidence and
 unsupported-family remediation. See `docs/verification/2026-11-05-article-rewrite-v2.md`.
+
+
+## Source projection v2 — planned, not activated
+
+Issue: https://github.com/lucronn/autodata/issues/325. Project: https://github.com/users/lucronn/projects/8; item `PVTI_lAHOCSJ8cc4BiQ2BzhGUxxM`.
+Plan: `docs/superpowers/plans/2026-11-05-source-projection-v2.md`.
+Record: `docs/agents/records/2026-11-05-source-projection-v2.json`.
+
+Version corrected source projections and support bounded source-only offline reprojection from retained body bytes without provider/model calls.
+
+This is a prospective amendment to the original source-projection-v1 contract in
+`docs/superpowers/specs/2026-11-03-canonical-article-lifecycle-design.md`.
+The historical v1 spec and rows remain immutable. A parser fix can change readable
+projection while provider bytes remain identical; raw fingerprint alone therefore
+cannot identify a projection revision. Migration 041 permits v1 and v2 and keys
+source revisions by `(canonical_article_id, source_fingerprint, projection_version)`.
+Raw fingerprint calculation, resource content hashes and raw snapshot identities
+are preserved. New capture explicitly selects source-projection-v2; historical
+captures/readback expose their stored version. Same-version recapture dedupes the
+source row and appends the existing immutable observation for each new capture job.
+
+Legacy v1 transformation keys keep the exact existing four-field digest payload.
+For v2, the payload additionally carries `projection_version: source-projection-v2`
+and `domain: autodata:article-transformation:v2`; unknown versions reject. No stored
+key is recomputed. New v2 work cannot reuse published or terminal v1 transformations.
+Source persistence, observation, transformation ownership and source/canonical
+pointer transition stay atomic under existing lease/generation locks. A v2 source
+clears stale v1 canonical publication from the current pointer while retaining all
+historical rows; readable source is available before any model work. Only matching
+v2 publication/reuse may populate the canonical pointer.
+
+The store rejects v1 capture when the locked article currently points to v2; a
+database pointer guard also rejects direct v2-to-v1 downgrade. Separately authorized
+rollout must drain all old workers before migration, migrate, replace every worker,
+then resume. Removing the old unique pair makes old two-column ON CONFLICT SQL fail
+closed. Mixed binaries and schema/binary rollback against v2 state are unsupported;
+retain history and forward-fix. No read-time reprojection, automatic refresh or bulk
+recapture is introduced. Existing API/current-source view remains the reader contract.
+
+Concrete todo:
+
+- [ ] Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; verify populated upgrade and migration-driver rerun.
+- [ ] Carry explicit projection identity through captured/stored sources and version-aware dedupe; preserve raw fingerprint/snapshot hashes and immutable history.
+- [ ] Keep legacy v1 transformation-key bytes stable, domain-separate v2 keys, and atomically switch current source with stale canonical cleared.
+- [ ] Prove identical-byte v1-to-v2 append, repeat-v2 reuse, historical reads, terminal/published v1 isolation, readable fallback before model and stale-worker rejection; run focused and isolated PostgreSQL regressions.
+- [ ] Add bounded body-only offline preview/apply from verified retained bytes, with atomic exact-job source-only storage, NULL transformation key, no provider/model calls and fail-closed reconstruction tests.
+- [ ] Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.
+
+The bounded offline projector supports exactly one saved body resource (max 1 MiB,
+30-second deadline), complete immutable observation context/provenance and matching
+manifest/snapshot/content-addressed SHA. Reconstruct the saved SourceEnvelopeV1 and
+reuse current capture through an exact-ref OfflineClient and verify-only object
+sink. Preserve fingerprint, body snapshot, manifest, provenance, evidence and original
+captured_at. Missing/extra/optional resources, discovered images/assets, identity or
+hash drift fail closed; no real connector/model or object write is permitted.
+Preview is default and reports hashes/counts/IDs only. Apply binds explicit article,
+expected revision and preview hashes; actor/reason are required. In one transaction,
+lock/check current source and inactive prior job, increment generation, create/mark
+and exact-claim a source-only job, append v2/observation and switch pointers. Generic
+queue claim/sweeps exclude source-only jobs. Finish needs_review with nonretryable
+SOURCE_ONLY_REPROJECTION, no lease and NULL transformation_key; normal future v2
+refresh can still own a canonical transformation. Repeat exact apply is idempotent;
+races/failures roll back the complete transaction. Historical rows remain unchanged.
+
+Read-only stage audit proved feasibility for the retained 3853-byte Banktwo body:
+current capture replay produced 29 blocks/no images with identical raw identity and
+saved provenance, no provider call, S3 put or database mutation. This is not a
+repaired stage article. Implementation tests, review, explicit stage apply and
+browser acceptance are still required. CANARY_REQUEST_LIMIT blocks reliance on
+provider refetch; offline apply does not need it.
+
+This checkpoint authorizes bounded source/schema/tests and offline projector/CLI
+implementation after committed preflight and coordinator dispatch. No live
+provider/model call, stage mutation, deployment, UI/auth/payment/rewrite-model
+change is authorized. Exact checkpoint SHA/preflight are pinned externally after
+this docs-only commit; runtime apply requires separate authorization after review.
