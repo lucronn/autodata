@@ -1,0 +1,29 @@
+{
+  "goal": "Bound, pace and cancel background selector deepening so catalog browsing leaves connector capacity for source-article ingestion.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-catalog-selector-pacing.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/329",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/provider-neutral-catalog-api.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Verify the pinned planning-checkpoint preflight before implementation.",
+    "Add deterministic regression tests for single-flight, per-page pacing, budgets, cancellation and foreground isolation.",
+    "Add minimal bounded/cancelable controls to the existing selector-deepening path, preserving rows and completeness semantics.",
+    "Run focused catalog/connector tests and full ingestion tests; commit/push validated milestones.",
+    "Synchronize exact-SHA evidence and operational limits in canonical docs and GitHub; do not merge or deploy."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T17:32:17.674646+00:00",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGWCKk",
+  "planning_source_sha": "c1c2a8cfddd155617d0889cfc556e5468b654eca",
+  "implementation_paths": [
+    "workers/ingestion-python/src/autodata_ingestion/catalog_service.py",
+    "workers/ingestion-python/src/autodata_ingestion/source_connector_client.py",
+    "workers/ingestion-python/src/autodata_ingestion/http_service.py",
+    "workers/ingestion-python/tests/test_selector_deepening.py",
+    "workers/ingestion-python/tests/test_source_connector_client.py",
+    "workers/ingestion-python/tests/test_http_service.py"
+  ]
+}

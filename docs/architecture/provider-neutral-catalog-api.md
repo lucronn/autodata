@@ -63,3 +63,34 @@ Required Go/Python acceptance crosses actual internal HTTP, workers, PostgreSQL,
 S3 and JetStream. Only the coordinator's bounded supervisor against a clean
 immutable plain clone can certify its eight cases; unit tests and skipped
 integration cases do not. Production identity/media revocation remains R5/R6.
+
+## Selector-deepening traffic guard (planned, Issue #329)
+
+Goal: bound, pace and cancel background selector deepening so browsing leaves
+connector capacity for source-article ingestion. TEST observed approximately
+100 Bankone selector calls in 52 seconds; the current makes/models daemon walks
+all scopes without pacing and can compete with the shared 60/min bank limit.
+This is a planning checkpoint, not an implemented or deployed mitigation.
+
+The focused fix targets the existing single ingestion HTTP process: one active
+background thread, six-second spacing between actual connector attempts
+(including paginated reads), twelve total attempts and a 120-second deadline
+per run. Cancellation interrupts pacing waits and prevents subsequent calls or
+writes; in-flight HTTP remains bounded by its existing timeout and remaining
+deadline. Busy requests do not queue additional daemons. Foreground selectors
+and articles keep their existing path; successful canonical rows/provenance
+remain available, and interrupted work must not establish completeness. There
+is no durable traversal-resume mechanism today; this change adds none.
+Multiple ingestion processes require an aggregate-budget review before rollout.
+
+Tracking: [Issue #329](https://github.com/lucronn/autodata/issues/329),
+[Project #8](https://github.com/users/lucronn/projects/8),
+[implementation plan](../superpowers/plans/2026-11-05-catalog-selector-pacing.md),
+and [gate record](../agents/records/2026-11-05-catalog-selector-pacing.json).
+
+Todo:
+- [ ] Verify the pinned planning-checkpoint preflight before implementation.
+- [ ] Add deterministic regression tests for single-flight, per-page pacing, budgets, cancellation and foreground isolation.
+- [ ] Add minimal bounded/cancelable controls to the existing selector-deepening path, preserving rows and completeness semantics.
+- [ ] Run focused catalog/connector tests and full ingestion tests; commit/push validated milestones.
+- [ ] Synchronize exact-SHA evidence and operational limits in canonical docs and GitHub; do not merge or deploy.
