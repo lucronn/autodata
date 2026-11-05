@@ -109,4 +109,19 @@ Concrete todo:
 - [ ] Run focused source capture/adapter regressions and offline replay of all 20 privately retained authentic Banktwo resources; record hashes, normalization and remaining media/rewrite blockers.
 - [ ] Obtain independent exact-SHA review and synchronize Issue/Project evidence; keep activation and deployment disabled.
 
-Implementation checkpoint `5d9fc1ad60cf899c46017417d7122914be6924ea` accepts all 20 retained authentic Banktwo HAL resources without changing original payload or envelope hashes. Focused tests passed (157 tests and six subtests); 11 raw normalized documents passed strict validation and nine retain unresolved image errors. The supported capture path records unavailable optional assets explicitly and yielded strict-valid source fallback for all 40 retained cross-bank resources in offline replay. This does not establish live asset availability, rewrite eligibility, lifecycle completion or production release readiness. Independent review and exact-head CI are pending.
+Implementation checkpoint `5d9fc1ad60cf899c46017417d7122914be6924ea` accepts all 20 retained authentic Banktwo HAL resources without changing original payload or envelope hashes. Focused tests passed (157 tests and six subtests); 11 raw normalized documents passed strict validation and nine retain unresolved image errors. The supported capture path records unavailable optional assets explicitly and yielded strict-valid source fallback for all 40 retained cross-bank resources in offline replay. Independent review found no P1/P2; exact-head CI is pending. This does not establish live asset availability, rewrite eligibility, lifecycle completion or production release readiness.
+
+## Bankone CLI timeout compatibility
+
+Goal: Restore Bankone ingestion CLI construction by passing --timeout-seconds to the existing SourceConnectorClient timeout parameter.
+
+Issue: https://github.com/lucronn/autodata/issues/318; parent #186; Project https://github.com/users/lucronn/projects/8. Plan: `docs/superpowers/plans/2026-11-05-bankone-cli-timeout-compatibility.md`; record: `docs/agents/records/2026-11-05-bankone-cli-timeout-compatibility.json`.
+
+The public --timeout-seconds flag forwards its float to SourceConnectorClient timeout; default30.0 and existing client validation stay authoritative. Scope is only the CLI constructor keyword plus a focused offline test using the real constructor and mocked traversal/persistence. Credentials, selectors, output and persistence behavior remain intact. No live ingestion, shared-client alias, deployment or unrelated compatibility work is authorized.
+
+Concrete todo:
+- [ ] Add a focused offline CLI regression using the real SourceConnectorClient constructor and mocked traversal/persistence.
+- [ ] Change only the CLI constructor keyword from timeout_seconds to timeout, retaining the flag, default, credentials and persist behavior.
+- [ ] Run red/green focused checks, Bankone batch regressions and diff checks; commit/push the validated two-file fix for independent exact-SHA review.
+
+Bankone CLI implementation `f15ce05bd29d0f5a0cceb9ab8f3642c6f73b268c` changes only the connector constructor keyword to `timeout`. Three real-constructor CLI regressions and ten Bankone batch tests passed after the original TypeError was reproduced. Exact-head GitHub verification passed in run `42044574931`; PR #320 merged as `ccdfbbedab0a90957ddb077595bcc8f050373c02`. The bounded real-source staging rerun remains a separate acceptance step.
