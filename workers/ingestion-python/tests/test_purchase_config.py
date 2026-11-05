@@ -132,3 +132,55 @@ class PurchaseConfigTests(unittest.TestCase):
     def test_notice_cannot_be_only_ecmascript_whitespace(self):
         for notice in ('\ufeff',' \ufeff '):
             self.assertTrue(parse_purchase_config(json.dumps(dict(enabled_public(),tax_notice=notice)))[1])
+
+
+class PurchaseArtifactTests(unittest.TestCase):
+    def test_exports_hash_sessions_urls_and_private_tokens_without_mutating_rows(self):
+        import copy
+        import hashlib
+        import tempfile
+        from test_purchase_config_postgres import write_artifact
+        session='cs_test_session_fixture'
+        url='https://checkout.stripe.com/c/pay/'+session+'#fixture-fragment'
+        secrets=('task59-fixture-private-token','browser-session-fixture','csrf-fixture-value')
+        row={'order_id':'order-fixture','checkout_session_id':session,'checkout_url':url,
+            'amount_minor':2000,'currency':'USD','status':'open','provider_expires_at':'2026-11-05T12:00:00Z'}
+        rows={'workshop_orders':[json.dumps(row)],'workshop_checkout_requests':[],
+            'entitlements':[],'dataset_requests':[],'dataset_projections':[]}
+        artifacts={'authority-before.json':rows,'authority-after.json':copy.deepcopy(rows),
+            'paid-pause.json':{'before':rows,'after':rows,'provider_create_count':1},
+            'late-recovery.json':{'rows':rows,'provider_create_count':1},
+            'provider-trace.json':{'create_attempts':[{'order_id':'order-fixture','session_id':session,'provider_idempotency_key_sha256':'existing-hash'}],
+                'create_before':1,'create_after':1,'timed_out':False,'calls':[['post','/v1/checkout/sessions']]},
+            'synthetic-private-fields.json':{'private_token':secrets[0],'session':secrets[1],'csrf_token':secrets[2]}}
+        original=copy.deepcopy(artifacts)
+        with tempfile.TemporaryDirectory() as temporary,patch.dict('os.environ',{'AUTODATA_PURCHASE_CONFIG_ARTIFACT_DIR':temporary}):
+            for name,value in artifacts.items():write_artifact(name,value)
+            for path in Path(temporary).iterdir():
+                raw=path.read_text()
+                for forbidden in (session,url,'cs_test_','https://checkout.stripe.com/',*secrets):
+                    self.assertNotIn(forbidden,raw)
+            before=json.loads((Path(temporary)/'authority-before.json').read_text())
+            after=json.loads((Path(temporary)/'authority-after.json').read_text())
+            self.assertEqual(before,after)
+            saved=json.loads(before['workshop_orders'][0])
+            self.assertEqual(saved,{k:v for k,v in row.items() if k not in ('checkout_session_id','checkout_url')}|{
+                'checkout_session_id_sha256':hashlib.sha256(session.encode()).hexdigest(),
+                'checkout_url_sha256':hashlib.sha256(url.encode()).hexdigest()})
+            trace=json.loads((Path(temporary)/'provider-trace.json').read_text())
+            self.assertEqual(trace['create_attempts'][0]['session_id_sha256'],saved['checkout_session_id_sha256'])
+            self.assertEqual(trace['create_before'],trace['create_after'])
+            self.assertEqual(trace['calls'],artifacts['provider-trace.json']['calls'])
+            changed=copy.deepcopy(rows);changed_row=dict(row,checkout_url=url+'-changed');changed['workshop_orders']=[json.dumps(changed_row)]
+            write_artifact('changed.json',changed)
+            self.assertNotEqual(json.loads((Path(temporary)/'changed.json').read_text()),before)
+        self.assertEqual(artifacts,original)
+
+    def test_export_rejects_unclassified_session_material_before_writing(self):
+        import tempfile
+        from test_purchase_config_postgres import write_artifact
+        with tempfile.TemporaryDirectory() as temporary,patch.dict('os.environ',{'AUTODATA_PURCHASE_CONFIG_ARTIFACT_DIR':temporary}):
+            for value in ('cs_test_unclassified','https://checkout.stripe.com/c/pay/other','task59-fixture-unclassified'):
+                with self.assertRaisesRegex(ValueError,'unsafe Task59 artifact'):
+                    write_artifact('rejected.json',{'unexpected':value})
+                self.assertFalse((Path(temporary)/'rejected.json').exists())

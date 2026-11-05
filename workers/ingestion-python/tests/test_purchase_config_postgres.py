@@ -81,9 +81,49 @@ def snapshot(f):
             for table in ('workshop_orders','workshop_checkout_requests','entitlements','dataset_requests','dataset_projections')}
 
 
+_SNAPSHOT_TABLES = frozenset(('workshop_orders', 'workshop_checkout_requests',
+    'entitlements', 'dataset_requests', 'dataset_projections'))
+_ARTIFACT_PRIVATE_FIELDS = frozenset(('checkout_session_id', 'checkout_url', 'session_id',
+    'session', 'token', 'private_token', 'internal_token', 'csrf_token',
+    'X-CSRF-Token', 'X-Autodata-Internal-Token', '__Host-autodata_session'))
+
+
+def artifact_projection(value):
+    # snapshot() and all equality assertions retain original full SQL rows in
+    # memory. Only this detached export projection replaces sensitive values;
+    # deterministic complete-value hashes still expose any before/after change
+    # and bind provider create attempts to the corresponding stored session.
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            if key in _ARTIFACT_PRIVATE_FIELDS:
+                if item is not None and not isinstance(item, str):
+                    raise ValueError('unsafe Task59 artifact')
+                hashed_key = key + '_sha256'
+                if hashed_key in value:
+                    raise ValueError('unsafe Task59 artifact')
+                result[hashed_key] = hashlib.sha256(item.encode()).hexdigest() if item is not None else None
+            elif key in _SNAPSHOT_TABLES:
+                # Keep the established JSON-encoded row format and every other
+                # financial/state field, including nulls, dates and row counts.
+                result[key] = [json.dumps(artifact_projection(json.loads(row)),sort_keys=True)
+                    for row in item]
+            else:
+                result[key] = artifact_projection(item)
+        return result
+    if isinstance(value, (list, tuple)):
+        return [artifact_projection(item) for item in value]
+    return value
+
+
 def write_artifact(name, value):
     target = Path(os.environ['AUTODATA_PURCHASE_CONFIG_ARTIFACT_DIR']) / name
-    target.write_text(json.dumps(value,indent=2,sort_keys=True,default=str)+'\n')
+    serialized = json.dumps(artifact_projection(value),indent=2,sort_keys=True,default=str)+'\n'
+    # Fail before writing if an unexpected field bypasses the classified export.
+    if any(marker in serialized for marker in ('cs_test_', 'cs_live_',
+            'https://checkout.stripe.com/', 'task59-fixture-')):
+        raise ValueError('unsafe Task59 artifact')
+    target.write_text(serialized)
 
 
 def pause(f):
