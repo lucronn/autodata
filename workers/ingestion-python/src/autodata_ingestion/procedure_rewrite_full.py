@@ -274,7 +274,11 @@ def validate_full(source, candidate, *, response=None):
         "validator_version": VALIDATOR_VERSION, "profile_version": PROFILE,
         "token_grammar_version": TOKEN_GRAMMAR_VERSION,
         "content_acceptance_required": True, "complete_rewrite": False,
-        "changed_slots": changed, "retained_paths": retained, "retention_reasons": reasons,
+        # /introduction is a logical response path, distinct from original
+        # source-leaf paths. Count it only after its server-owned identity,
+        # evidence, source support and full document integrity were checked.
+        "changed_slots": (["/introduction"] if not errors else []) + changed,
+        "changed_prose_slots": changed, "retained_paths": retained, "retention_reasons": reasons,
         "prose_slots": len(slots), "evidence_ids": _evidence(source) if source_valid else [],
         "error_codes": errors, "source_hash": digest_json(source), "candidate_hash": digest_json(candidate),
         "source_protected_hash": source_protected, "target_protected_hash": target_protected,
