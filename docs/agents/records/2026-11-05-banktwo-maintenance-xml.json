@@ -1,0 +1,34 @@
+{
+  "goal": "Preserve authentic Banktwo custom maintenance XML as ordered, readable source content without changing rewrite eligibility.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-banktwo-maintenance-xml.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/321",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/source-connector-api-compatibility.md"
+  ],
+  "todo": [
+    "Add failing synthetic regressions for maintenance XML structure, mixed content, source identity and fail-closed rejection.",
+    "Add the bounded maintenance_schedule parser and route direct XML and nested HAL XML through it without changing eligibility policy.",
+    "Run focused adapter/capture/normalization regressions and replay retained authentic resources with unchanged hashes; report source fidelity and eligibility separately.",
+    "Obtain independent exact-SHA review and synchronize plan, canonical documentation, Issue and Project evidence before integration."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T15:13:31.661063+00:00",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGTyPY",
+  "inspected_source_sha": "e8c1993dc317d8f05f73b5610123c90bde767b46",
+  "branch": "codex/banktwo-maintenance-xml-plan",
+  "checkpoint_kind": "planning_only",
+  "implementation_allowlist": [
+    "workers/ingestion-python/src/autodata_ingestion/source_adapters.py",
+    "workers/ingestion-python/tests/test_source_article_capture.py",
+    "workers/ingestion-python/tests/test_source_adapters.py"
+  ],
+  "provider_calls_authorized": false,
+  "production_activation_authorized": false,
+  "tracking": {
+    "issue_body_sha256": "97266a4153c610b91d6fa59ff64b1bf32f157d9877b8e22436c09dbec02318fb",
+    "project_source_sha256": "6c288c01528af1f47ae1834730778fe65febc1a1b655111955b2bb068e7e0909",
+    "project_status": "Ready",
+    "verified_at": "2026-11-05T15:13:31.661107+00:00"
+  }
+}
