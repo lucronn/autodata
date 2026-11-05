@@ -1,7 +1,7 @@
 # Production outbox relay verification — 2026-11-05
 
-Issue: https://github.com/lucronn/autodata/issues/303  
-Project: https://github.com/users/lucronn/projects/8  
+Issue: https://github.com/lucronn/autodata/issues/303
+Project: https://github.com/users/lucronn/projects/8
 Plan: `docs/superpowers/plans/2026-11-05-production-outbox-relay.md`
 
 ## Exact candidate and boundary
