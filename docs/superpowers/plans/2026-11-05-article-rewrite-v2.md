@@ -116,7 +116,9 @@ The durable worker now checks the lease profile and retains specific unsupported
 prose failures; result/validation/publication reconstruct saved v2 operation
 selections under existing locks. Independent review identified mixed safety/ordinary
 leaf masking and the worker's v1-only eligibility preflight; both have red/green
-regressions and narrowed behavior. No source-job, schema or UI files were changed.
+regressions and narrowed behavior. A second review demonstrated colon/dash/ellipsis
+bypasses in the interim retention rule; retention now uses a finite full-match
+grammar, with unknown safety prose retained through whole-source fallback. No source-job, schema or UI files were changed.
 
 The four global todo items above remain open as acceptance items. Task 1's authentic
 retained corpus, pre-tuning holdout, per-bank improvement and full content review

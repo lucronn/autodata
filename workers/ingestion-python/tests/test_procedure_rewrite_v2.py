@@ -218,3 +218,17 @@ def test_validation_reports_whole_document_classification_counts_even_on_fallbac
     assert report.get("unsupported_clauses") == 1
     assert report["retained_protected_clauses"] == 1 and report["changed_clauses"] == 0
     assert not report["complete_rewrite"]
+
+
+@pytest.mark.parametrize("text", ["Never reuse the gasket: inspect the special widget.",
+    "Do not start the engine — remove the special widget.",
+    "Do not start the engine: remove the cover.",
+    "Do not start the engine – remove the cover.",
+    "Do not start the engine…remove the cover."])
+def test_protected_clause_cannot_hide_unparsed_directives_behind_separators(text):
+    source = document("Inspect the pump.", text)
+    model = Selector()
+    result = rewrite.rewrite_ordered_document(source, client=model, context={}, profile_version=PROFILE)
+    assert result.error_code == "REWRITE_UNSUPPORTED_PROSE"
+    assert result.document == source and model.calls == 0
+    assert not rewrite.validate_article_rewrite(source, source, profile_version=PROFILE).report["complete_rewrite"]

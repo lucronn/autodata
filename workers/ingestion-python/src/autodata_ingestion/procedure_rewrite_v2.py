@@ -35,23 +35,22 @@ _CLAUSE = re.compile(
     r"(?P<adjunct> to " + _NUMBER + r"(?:–" + _NUMBER + r")? (?:Nm|N·m|N m|lb-ft|lb-in))?\.",
     re.ASCII,
 )
-# These clauses are deliberately retained, never transformed. A number alone is
-# not a safety classification and cannot hide an unsupported ordinary directive.
-_PROTECTED_START = re.compile(
-    r"^(?:warning|caution|danger|note|notice|never|no|do not|if|unless|except|only|always)\b", re.I,
+# Retention is also a finite full-match grammar. A broad safety keyword or
+# punctuation deny-list can hide an independent ordinary directive. Unrecognized
+# safety/conditional prose instead takes whole-source fallback, still verbatim.
+_RETENTION_ACTION = "(?:" + "|".join(_VERBS) + "|start)"
+_RETENTION_OBJECT = "(?:" + "|".join(re.escape(n) for n in [*_NOUNS, "engine"]) + ")"
+_RETENTION_CORE = _RETENTION_ACTION + " the " + _RETENTION_OBJECT
+_RETAINED_CLAUSE = re.compile(
+    r"(?:(?:do not|never|always) " + _RETENTION_CORE
+    + r"|if equipped, (?:do not )?" + _RETENTION_CORE
+    + r"|(?:warning|caution|danger|note|notice): (?:do not |never |always )?" + _RETENTION_CORE + r")\.",
+    re.I | re.ASCII,
 )
-_SINGLE_SENTENCE = re.compile(r"[^.!?;\n\r]+[.!?]")
-_COORDINATION = re.compile(r"\b(?:and|or|then)\b", re.I)
 
 
 def _protected_clause(text):
-    # A marker cannot exempt an entire mixed prose leaf from complete rewriting.
-    # Only a single marked safety/conditional clause is intentionally verbatim.
-    # Other modality/technical structures remain readable via whole-source fallback.
-    return bool(_PROTECTED_START.match(text) and _SINGLE_SENTENCE.fullmatch(text)
-                and not _COORDINATION.search(text)
-                and ("," not in text or (text.count(",") == 1
-                     and re.match(r"^(?:if|unless|except)\b", text, re.I))))
+    return _RETAINED_CLAUSE.fullmatch(text) is not None
 
 
 

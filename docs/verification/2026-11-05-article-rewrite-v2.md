@@ -134,3 +134,20 @@ both store-validation and publication reject a rehashed foreign operation.
 Final focused pure suite with explicit classification-count reports: **95 passed**.
 These results cover synthetic fixture lifecycle correctness, not authentic corpus
 acceptance. Full exact-commit harness and final independent code review follow.
+
+### Second independent fidelity correction
+
+Review of `ba4bbfbfb380df2e7216f113d75ccd090dd77d49` found that the interim
+punctuation-based retention rule still admitted independent ordinary directives
+behind colons, em/en dashes and Unicode ellipsis. Five added tests failed before
+the correction. Retention now uses a finite full-match grammar too: reviewed
+negative/mandatory directives and `If equipped` forms with the finite verb/object
+vocabulary (plus the tested `start the engine` safety context), optionally in
+explicit Warning/Caution/Danger/Note/Notice forms. Arbitrary safety prose is not
+classified complete by keywords or delimiter exclusions. It remains verbatim via
+whole-source fallback. Callout/table/link/title/media blocks remain wholly immutable.
+Final pure suite after correction: **100 passed**.
+
+The intermediate exact-ba4bbfb full harness was deliberately interrupted when this
+code correction was required. Its partial log earns no exact-SHA acceptance credit.
+The complete harness will run against the subsequent committed corrected code.

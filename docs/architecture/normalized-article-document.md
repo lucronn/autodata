@@ -271,8 +271,9 @@ canonical preflight before implementation. Development uses source-hash/path/spa
 grammar-bound operation identifiers and deterministic complete directive rendering.
 The initial vocabulary is finite and exercised only on synthetic regressions;
 unknown components or ordinary clauses make the whole article ineligible.
-Intentionally verbatim prose is restricted to one marked safety/conditional clause;
-a marker cannot exempt mixed ordinary prose or multiple sentences from rewriting.
+Intentionally verbatim prose also uses a finite full-match safety/conditional
+grammar; a marker or punctuation rule cannot exempt unparsed ordinary prose.
+Unrecognized safety/conditional prose takes whole-source fallback.
 All other block members, evidence and media remain immutable. v2 is explicitly
 routed by the lease profile; the v1 default and validator behavior remain unchanged.
 Result storage, validation and publication bind the saved v2 selector operations
