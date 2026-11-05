@@ -1,0 +1,40 @@
+{
+  "contract": "workshop-staging-private-material-code-only-review-v1",
+  "candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "gate_sha": "b9208fb5967aeafc5e1048a4073beeffd5867e28",
+  "implementation_sha": "b46217747f103f08a144f9474047a7f2a857f73f",
+  "implementation_branch": "codex/workshop-gce-private-material-build",
+  "pull_request": "https://github.com/lucronn/autodata/pull/227",
+  "review": {
+    "result": "PASS",
+    "kind": "independent_read_only_exact_head",
+    "actionable_findings": [],
+    "scope_exact_two_new_files": true,
+    "preflight_status": "synchronized",
+    "preflight_errors": [],
+    "external_evidence_hashes_verified": 27,
+    "python_tests_passed": {
+      "focused": 38,
+      "host_install": 40,
+      "host_runtime": 81,
+      "cloud_ops": 57,
+      "staging_bootstrap": 33,
+      "workshop_contract": 5,
+      "publisher_adapters": 45,
+      "total": 299
+    },
+    "syntax_passed": true,
+    "diff_check_passed": true
+  },
+  "node_regression": {
+    "passed": 124,
+    "failed": 18,
+    "failure": "existing loadOfficialToolkit missing_dependency descriptor fixture",
+    "status": "failed_retained"
+  },
+  "evidence_manifest": "/home/corp/autodata-evidence/gce-private-material-builder/hashes.json",
+  "evidence_manifest_sha256": "436cf8c8f2a1826d83481158ee46170c44b1db6008e85dd541681b1ea4f05efc",
+  "operation_executed": false,
+  "runtime_verified": false,
+  "production_ready": false
+}
