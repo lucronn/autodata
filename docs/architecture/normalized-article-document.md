@@ -199,3 +199,55 @@ absent. The ordered document remains authoritative for display order. Step
 images use the same safe public metadata and local-reference transformation as
 article images; storage keys and provider URLs are not exposed, and rotating
 media URLs do not change the view revision.
+
+
+## Retained list and callout block images — proposed consumer contract
+
+Status: synchronized tracking contract in external package; exact-source K3b Actions PASS, full external Vercel rollup failure. Exact K3b source admitted by coordinator for this six-document planning checkpoint only; awaiting committed K4, exact-base preflights and independent review. No implementation or product-acceptance claim.
+
+Issue: https://github.com/lucronn/autodata/issues/186
+Project: https://github.com/users/lucronn/projects/8
+Goal: Render retained ordered-list, unordered-list and callout block images in Workshop source, canonical and stored-source views through the existing authorized-media helper, preserving native list semantics, callout context, source evidence and rights fallback.
+Status: synchronized tracking contract (external package awaiting committed checkpoint). Issue186 comment `https://github.com/lucronn/autodata/issues/186#issuecomment-6646734485` and Project8 Source pointer were read back at `2026-11-05T01:06:29Z`. Selected planning base K3b `a788f110e57de13b1b876df0e148df4705db591e` (tree `9a3d2e449c42085a384950118e9c7c7a28bbb873`), exact planning-checkpoint review PASS; exact-source Actions audit PASS. Full check rollup remains failure due to external Vercel. K4 SHA/tree unknown; implementation/preflight/operational/release authorities remain false; accepted-case credit 0.
+
+Concrete todo:
+1. Preserve current Issue186/Project8 history; synchronize the combined goal, six gate-document paths, two implementation paths, list sibling/callout content-container DOM contract, exact helper fallback, todo and all false authorities; retain fresh readback and independent committed-gate review.
+2. Add production-function DOM tests for normalized ordered/unordered string-item lists and callouts with direct/item-flattened retained block images; observe intended missing-figure failures on frozen M5 application bytes and retain exact red logs.
+3. Add only list block-image emission and callout second-grid-child content grouping/image emission through the existing resolver/addImage helper; preserve item images, text/label count, source links and unavailable-media behavior.
+4. Verify mixed-document placement, source/canonical actual renderArticle and stored-source actual loadSource entry paths, ID aliases, safe/missing media, exact alt/caption, empty media and object-item compatibility; add explicitly new bounded actual renewMedia/reconcile/invalidation coverage and run focused/full Node, syntax, embedded Go and diff/scope checks with exact-SHA logs.
+5. Record exact-code independent review, source hashes, measured test results and unresolved browser/accessibility/product-acceptance limits; commit and promptly push validated coherent milestones only to the coordinator-assigned branch when separately authorized; keep every runtime/release/provider/payment/acceptance authority false.
+
+Six prospective gate paths:
+- `docs/superpowers/plans/2026-11-04-workshop-list-callout-media.md`
+- `docs/superpowers/specs/2026-11-04-workshop-list-callout-media-design.md`
+- `docs/agents/records/2026-11-04-workshop-list-callout-media.json`
+- `docs/agents/tasks/2026-11-03-production-release/workshop-list-callout-media.json`
+- `docs/agents/tasks/2026-11-03-production-release/queue.json`
+- `docs/architecture/normalized-article-document.md`
+
+Two prospective implementation paths:
+- `apps/api-go/workshop/app.mjs`
+- `apps/api-go/workshop-client.test.mjs`
+
+Current implementation allowlist: []. All authorities false. Accepted-case credit: 0.
+
+Normalized ordered/unordered lists retain string items and block-level image references. Render `ol`/`ul` with only `li` element children and unchanged item count; emit block figures immediately after the list in retained reference order. Preserve object-item images inside their existing `li`. Item associations flattened by normalization cannot be reconstructed from the global image pool; do not invent placement or deduplicate across contexts.
+
+Callouts retain `aside.article-callout > strong + div`; the content div contains one text span followed by retained figures, so figures stay in the second grid column and within callout context. Keep figures outside the span; empty image lists preserve the two grid children and original label/text. CSS changes are outside this gate.
+
+Use the existing ID-alias resolver and `addImage` only. Nonempty reference alt produces image alt and caption; absent/empty reference alt uses resolved-image alt or `Article illustration` without a caption. Missing or unsafe authorized media produces the existing `Illustration unavailable.` figure text without img/caption. Inline/provider URLs never act as a fallback. Preserve existing renewal limits, revision reconciliation, invalidation and rights suppression.
+
+The same contract applies to source/canonical `renderArticle` and actual stored-source `loadSource`, retaining source/processing labels and Source links. Future production-function DOM tests cover lists/callouts/mixed placements, ID aliases, safe/missing media, alt/caption, object/empty compatibility, renewal/reconcile and 401/403/410 clearing/stale generations. Native accessibility-tree, diagram interpretation/order, narrow-screen grid, print layout and stored-source visual observations remain separately authorized browser work. Historical evidence elsewhere in this document remains historical.
+
+
+## K4 tracking and CI checkpoint evidence
+
+Status: synchronized tracking contract (external package awaiting committed checkpoint). Issue186 comment `https://github.com/lucronn/autodata/issues/186#issuecomment-6646734485` and Project8 Source pointer were read back at `2026-11-05T01:06:29Z`. Selected planning base K3b `a788f110e57de13b1b876df0e148df4705db591e` (tree `9a3d2e449c42085a384950118e9c7c7a28bbb873`), exact planning-checkpoint review PASS; exact-source Actions audit PASS. Full check rollup remains failure due to external Vercel. K4 SHA/tree unknown; implementation/preflight/operational/release authorities remain false; accepted-case credit 0.
+
+Canonical core status is `synchronized` for the literal goal, five todos and path contract. The external package does not constitute committed K4 or a passing implementation gate. All 48 authority booleans stay false; factual tracking readback and source-only CI observations do not grant new action authority. The coordinator explicitly admitted exact K3b as source for the six-document K4 planning checkpoint only; code/runtime/acceptance/release authority remains false.
+
+Tracking before snapshot: `/home/corp/autodata-evidence/article-media-k4-before-tracking.json`, SHA-256 `dcae6d1cff722fe1fc42a2065b2e1bc5c605f2a150d2398efa93a8df88929295`. Tracking after snapshot: `/home/corp/autodata-evidence/article-media-k4-after-tracking.json`, SHA-256 `e326e6f387ec8b8dd9b4a236511e7d470b700476ba1feef83b5bf58ac2261229`. Exact added Issue comment SHA-256: `4103436ee9185599ab5d71ce93f9aa2bf08d7ff9304cd5db87dd8ca2fabeb286`. Project Source pointer SHA-256: `411f7b8cb52202960f155ad2df89829f593c5921183e4d7e0195009bd9de3421`. Independent retained-snapshot verification: `/home/corp/autodata-evidence/article-media-k4-ci-rebind/tracking-readback-verification.json`, SHA-256 `6f2330c2a6b15998c3fe8954482d670c0310d12153a1342708baed3899cc62f6`. Issue body, all 229 prior comments and other Project fields were preserved; the prior Project Source field is archived verbatim in the before snapshot. Historical proposed/unverified wording in the additive comment describes preparation time and is superseded for factual readback only by these receipts.
+
+Source-only Actions receipt: `/home/corp/autodata-evidence/api21-k3b-ci-final/receipt.json`, SHA-256 `ef2689c464617b84a6ad0a671bc3c2932d345a81714774b58eaf517475cdbfe6`. Push run https://github.com/lucronn/autodata/actions/runs/41943766277 checked out exact K3b `a788f110e57de13b1b876df0e148df4705db591e`. PR run https://github.com/lucronn/autodata/actions/runs/41943811298 checked out `0e7e6050a0588d19870dd95c2410c343ef591f5a`; its parents are `046b141f80dbb0a28bfeb3e0ab7f9635f4ab349c` and K3b. Both runs completed successfully; the source and merge trees equal `9a3d2e449c42085a384950118e9c7c7a28bbb873`. The full check rollup remains failure because external Vercel reports `Deployment rate limited — retry in 24 hours.`; the cause is not independently established. Cursor Bugbot is neutral. No wholly green rollup, media CI authority, acceptance or release credit is claimed.
+
+K4 SHA/tree, implementation base, execution gate and branch assignment remain null. Preflights have not run. The coordinator must recheck source/queue concurrency, preserve the coordinator admission limited to six-file planning materialization, commit and externally seal actual K4, pass standalone and nested canonical preflights at exact K4, obtain independent exact-K4 review and issue explicit two-path implementation dispatch. No code or runtime work is authorized by this external package. The prior K3b package PASS covers its original six hashes only; new synchronized bytes require independent exact-K4 review.
