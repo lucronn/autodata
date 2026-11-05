@@ -1752,6 +1752,24 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
         buffer.complete_case(smoke.API_CASES[0])
         self.assertEqual(buffer.snapshot()['status'],'failed')
 
+    def test_publication_never_removes_an_unowned_colliding_temporary(self):
+        with TemporaryDirectory() as temp:
+            root=Path(temp);foreign=root/('.api21-'+(b'a'*16).hex()+'.tmp');foreign.write_bytes(b'foreign')
+            with patch.object(smoke.os,'urandom',return_value=b'a'*16),self.assertRaises(FileExistsError):
+                smoke.api21_write(root/'evidence.json',{'safe':True})
+            self.assertEqual(foreign.read_bytes(),b'foreign')
+
+    def test_publication_detects_replaced_temporary_without_deleting_replacement(self):
+        with TemporaryDirectory() as temp:
+            root=Path(temp);temporary=root/('.api21-'+(b'a'*16).hex()+'.tmp')
+            def swap(descriptor):
+                temporary.unlink();temporary.write_bytes(b'foreign replacement')
+            with patch.object(smoke.os,'urandom',return_value=b'a'*16), \
+                    patch.object(smoke.os,'fsync',side_effect=swap),self.assertRaises(OSError):
+                smoke.api21_write(root/'evidence.json',{'safe':True})
+            self.assertFalse((root/'evidence.json').exists())
+            self.assertEqual(temporary.read_bytes(),b'foreign replacement')
+
     def test_safe_routes_exclude_auth_and_all_capabilities_queries_hosts(self):
         self.assertIsNone(smoke.api21_route('https://local/v1/auth/session'))
         self.assertEqual(smoke.api21_route('https://local/v1/catalog/images/v2.secret?token=secret'),
