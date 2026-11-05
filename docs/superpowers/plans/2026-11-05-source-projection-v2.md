@@ -30,7 +30,7 @@ Source capture/store/schema/types, a bounded offline body-only projector/CLI and
 - [x] Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.
 
 
-- [ ] Repair PR #326 required CI by changing only the current GCE bundle and SQL-ledger migration-count assertions from 40 to 41 in host_provision.py, test_host_provision.py and test_host_prepare_release.py; run focused and full GCE tests plus driver/diff checks, then obtain exact-SHA review and fresh CI.
+- [x] Repair PR #326 required CI by changing only the current GCE bundle and SQL-ledger migration-count assertions from 40 to 41 in host_provision.py, test_host_provision.py and test_host_prepare_release.py; run focused and full GCE tests plus driver/diff checks and obtain exact-SHA repair review. Track fresh final-head required CI separately as pending.
 
 ## Exact implementation allowlist
 
@@ -146,3 +146,7 @@ This amendment adds exactly `infra/deploy/gce/test_host_prepare_release.py` to t
 
 - [ ] Run `python3 -m unittest discover -s infra/deploy/gce -p test_host_prepare_release.py -k test_real_migrations_roles_ledger_grants_and_malformed_refusal` to retain red/green evidence around the single count change.
 - [ ] Run `python3 -m unittest discover -s infra/deploy/gce -p 'test_*.py'`, driver unittests and diff checks. Record skips explicitly. Commit/push only the one-line test repair, obtain exact-SHA review and fresh required CI; the seventh repair todo remains open until verified. No runtime/merge authority is added.
+
+## Post-CI-repair development evidence
+
+Repair candidate `66efbf55ac3658e7a86d3adb2341b512453bb047` contains exactly three current GCE migration-count assertions changed40→41, in gated commits `7aa1961` and `66efbf5`. Original source implementation/review at `e45541c` is preserved. Failed required run42065098477 was a stale current bundle count; broader local verification additionally found the current SQL-ledger count. Final focused real-DB regression passed one test/no skips (2.752 s); full GCE suite ran559 tests, OK with seven root/environment skips (50.233 s); migration-driver25 tests passed before the final test-only line. See `docs/verification/2026-11-05-source-projection-v2.md` for precise bindings and red/green evidence. The coordinator confirmed independent exact-SHA repair review of `66efbf55ac3658e7a86d3adb2341b512453bb047` with zero actionable findings. Seventh local repair/review todo is complete; fresh final-head required CI remains pending. Fresh required CI and stage/browser acceptance remain separate open follow-ups.

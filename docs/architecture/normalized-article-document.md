@@ -334,7 +334,7 @@ Concrete todo:
 - [x] Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.
 
 
-- [ ] Repair PR #326 required CI by changing only the current GCE bundle and SQL-ledger migration-count assertions from 40 to 41 in host_provision.py, test_host_provision.py and test_host_prepare_release.py; run focused and full GCE tests plus driver/diff checks, then obtain exact-SHA review and fresh CI.
+- [x] Repair PR #326 required CI by changing only the current GCE bundle and SQL-ledger migration-count assertions from 40 to 41 in host_provision.py, test_host_provision.py and test_host_prepare_release.py; run focused and full GCE tests plus driver/diff checks and obtain exact-SHA repair review. Track fresh final-head required CI separately as pending.
 
 The bounded offline projector supports exactly one saved body resource (max 1 MiB,
 30-second deadline), complete immutable observation context/provenance and matching
@@ -409,3 +409,16 @@ that current count40→41 assertion after committed preflight and coordinator
 dispatch. Preserve all role/grant/ledger/refusal checks and historical receipts.
 Focused/full GCE tests, review and fresh required CI remain pending; no runtime
 or merge authority is added.
+
+### Post-CI-repair evidence
+
+Candidate `66efbf55ac3658e7a86d3adb2341b512453bb047` repairs exactly three current
+GCE migration-count assertions40→41 in the gated two commits; source lifecycle
+behavior and historical frozen receipts are unchanged. Failed required CI run
+42065098477 traced to stale current bundle validation; broader local tests found
+the same stale count in current real SQL-ledger verification. Final focused real-DB
+regression passed1/no skips; full GCE559 tests OK with7 root/environment skips;
+driver25 tests OK before the final test-only line. Original lifecycle113 earlier
+isolated cases, exact-source-candidate33 focused/no skips and independent review
+remain separately bound evidence. The coordinator confirmed independent exact-SHA repair review of `66efbf55ac3658e7a86d3adb2341b512453bb047` with zero actionable findings. Seventh local repair/review todo is complete; fresh final-head required CI, stage apply and browser acceptance remain open.
+See `docs/verification/2026-11-05-source-projection-v2.md` for exact SHAs and limits.

@@ -65,3 +65,34 @@ The builder removed both owned Compose projects (`autodata-source-projection-v2`
 Fresh CI status and any runtime activation remain open. No PR or merge is authorized by this record.
 
 The prior read-only stage feasibility audit found a 3853-byte Banktwo body and replayed it to 29 blocks with no images while preserving raw identity/provenance. That audit is not an apply of this implementation. No migration, stage database mutation, provider/model call, provider refetch, deployment or authenticated browser acceptance occurred in this development verification. Drain old workers before a separately authorized migration/activation; mixed binaries and rollback against v2 state remain unsupported. Actual stage offline apply, readable fallback and browser acceptance remain open.
+
+
+## Required-CI count repair evidence
+
+Current repair candidate: `66efbf55ac3658e7a86d3adb2341b512453bb047` for PR https://github.com/lucronn/autodata/pull/326. The original source-lifecycle candidate/test/review evidence above remains bound to `e45541ca2058e9fa25b70b6eace329922ee96ca5`; no application lifecycle behavior changed in the CI repair.
+
+Required run https://github.com/lucronn/autodata/actions/runs/42065098477 failed because migration 041 makes the current GCE bundle contain 41 migrations while current provisioning validation and its inventory test still expected 40. A broader local GCE run then exposed the same stale expectation in the real SQL-ledger test: exact ledger contents already matched the sorted manifest, but the separate length assertion required 40.
+
+Only three existing assertions changed from 40 to 41: `infra/deploy/gce/host_provision.py:221`, `infra/deploy/gce/test_host_provision.py:29`, and `infra/deploy/gce/test_host_prepare_release.py:89`. Two-path fix `7aa196122953b3ba150f434dd10decfb5ce79a1d` followed gate `34f22c0e1c679fc532cc5a6570ff6bfc2972a6f0`; final one-test fix `66efbf55ac3658e7a86d3adb2341b512453bb047` followed gate `473cb0d7682d69d39bfd1277f737e228b8701e4c`. Both gates passed exact-SHA machine preflight before their implementation edits. Bundle integrity/security checks, role/grant/ledger validation, malformed-input refusal and historical frozen receipt collectors remain unchanged.
+
+| Local run | Result | Binding |
+| --- | --- | --- |
+| Host-provision tests before two-path repair | 15 run, one failure, one error, four skips | 41-versus-40 inventory and bundle-validator rejection reproduced |
+| Host-provision tests after two-path repair | 15 run, OK, four skips | `7aa1961` two-path repair |
+| Full GCE before final ledger-count repair | 559 run, one failure, seven skips; 44.977 s | Sole stale SQL-ledger count, actual 41 versus expected 40 |
+| Focused real SQL-ledger red | One test failed, zero skips; 2.425 s | `7aa196122953b3ba150f434dd10decfb5ce79a1d` |
+| Focused real SQL-ledger green | One test passed, zero skips; 2.752 s | Final one-line repair working tree |
+| Full GCE green | 559 run, OK, seven root/environment skips; 50.233 s | Final repair working tree, committed unchanged as `66efbf55ac3658e7a86d3adb2341b512453bb047` |
+| Migration-driver unittest | 25 run, OK | Two-path repair; unchanged by the final ledger-test assertion |
+
+Commands:
+
+```sh
+python3 -m unittest discover -s infra/deploy/gce -p test_host_provision.py
+python3 -m unittest discover -s infra/deploy/gce -p test_host_prepare_release.py -k test_real_migrations_roles_ledger_grants_and_malformed_refusal
+python3 -m unittest discover -s infra/deploy/gce -p 'test_*.py'
+python3 -m unittest discover -s scripts/dev -p test_migrations.py
+git diff 62c5c9f 66efbf5 --check
+```
+
+The seven full-suite skips are retained as root/environment limitations; they are not passing checks. The focused real-database regression executed without skips. Local diff/scope checks confirm exactly three one-line count repairs in the three authorized files. The coordinator confirmed independent exact-SHA review at `66efbf55ac3658e7a86d3adb2341b512453bb047` with zero actionable findings. Review confirmed exactly three authorized40→41 literals, unchanged strict inventory security checks and no frozen receipt collector changes. A fresh required-CI result remains pending and must not be inferred from the local green suite. No runtime/stage/provider/model/deployment or merge action was performed by this repair.
