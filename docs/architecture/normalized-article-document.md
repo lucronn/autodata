@@ -334,6 +334,8 @@ Concrete todo:
 - [x] Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.
 
 
+- [ ] Repair PR #326 required CI by changing only the GCE bundle migration-count assertions from 40 to 41 in host_provision.py and test_host_provision.py; run the host-provision tests and diff/scope checks, then obtain exact-SHA review and a fresh CI result.
+
 The bounded offline projector supports exactly one saved body resource (max 1 MiB,
 30-second deadline), complete immutable observation context/provenance and matching
 manifest/snapshot/content-addressed SHA. Reconstruct the saved SourceEnvelopeV1 and
@@ -380,3 +382,17 @@ zero actionable findings; reviewer migration-driver unittests passed 25. All six
 development work items are complete; fresh CI/runtime acceptance remain open. See
 `docs/verification/2026-11-05-source-projection-v2.md` for run bindings and limitations.
 This does not establish stage application or authenticated browser acceptance.
+
+### Required-CI bundle-count repair gate
+
+PR https://github.com/lucronn/autodata/pull/326 required CI failed at
+https://github.com/lucronn/autodata/actions/runs/42065098477 because current GCE
+bundle validation and its test expect 40 migrations while migration 041 makes 41.
+Only `infra/deploy/gce/host_provision.py` and
+`infra/deploy/gce/test_host_provision.py` are added to the source-projection scope
+(18 total historical/current implementation paths; the active repair allowlist is
+these two). Change only the two current count assertions from 40 to 41; preserve
+all bundle integrity checks and historical frozen receipt collectors. The first
+six development items retain prior evidence; the new CI-repair item is pending
+committed checkpoint/preflight, coordinator dispatch, focused tests, exact-SHA
+review and fresh required CI. This gate grants no runtime or merge authority.

@@ -30,6 +30,8 @@ Source capture/store/schema/types, a bounded offline body-only projector/CLI and
 - [x] Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.
 
 
+- [ ] Repair PR #326 required CI by changing only the GCE bundle migration-count assertions from 40 to 41 in host_provision.py and test_host_provision.py; run the host-provision tests and diff/scope checks, then obtain exact-SHA review and a fresh CI result.
+
 ## Exact implementation allowlist
 
 - `db/migrations/041_article_source_projection_v2.sql` (new schema migration)
@@ -48,6 +50,8 @@ Source capture/store/schema/types, a bounded offline body-only projector/CLI and
 - `scripts/dev/reproject_article_source.py` (new preview-by-default single-article CLI)
 - `scripts/dev/migrate_sql.sh` (extend pinned migration chain through 041 only)
 - `scripts/dev/test_migrations.py` (migration-driver 041 chain/restart regressions)
+- `infra/deploy/gce/host_provision.py` (current bundle migration-count assertion only)
+- `infra/deploy/gce/test_host_provision.py` (current inventory-count expectation only)
 
 Gate/evidence documents: this plan, its JSON record, `docs/architecture/normalized-article-document.md`, and new `docs/verification/2026-11-05-source-projection-v2.md`. No API/view/worker-runner/normalizer/adapter behavior changes are required; worker.py is limited to the object-store read helper. If a new implementation path is necessary, amend and revalidate the gate first.
 
@@ -122,3 +126,13 @@ Amends checkpoint `dff1a1cda2c8e48433edec1d38a1d61816746391`: the driver hardcod
 ## Development implementation evidence
 
 Candidate `e45541ca2058e9fa25b70b6eace329922ee96ca5` implements the first five concrete work items. See `docs/verification/2026-11-05-source-projection-v2.md` for separately bound earlier broad and final focused test runs, fixture limitations and the exact-candidate review status. The detailed task checklists above are retained as original execution instructions, rather than additional release acceptance. The coordinator confirmed independent exact-SHA review with zero actionable findings. The exact committed-candidate focused run passed 33 tests, 45 deselected and zero skips (21.07 s); independent migration-driver unittests passed 25. All six development work items are complete. Stage application, fresh CI and browser acceptance remain open and receive no acceptance credit here.
+
+## Required-CI repair amendment — two paths only
+
+PR: https://github.com/lucronn/autodata/pull/326. Failed run: https://github.com/lucronn/autodata/actions/runs/42065098477. Inspected base: `62c5c9fb1168a7b136234f3234c3a8afcbb111ed`.
+
+Migration 041 correctly makes the current GCE bundle contain 41 migration files. Current production-bundle validation in `infra/deploy/gce/host_provision.py:221` and its inventory assertion in `infra/deploy/gce/test_host_provision.py:29` still require 40. This amendment authorizes exactly those two current assertions, prospectively after committed checkpoint/preflight and coordinator dispatch. It does not modify historical frozen receipt collectors, bundle contents, deployment logic, credentials or any runtime state. The first six development todos remain verified history; the seventh CI-repair item is open.
+
+- [ ] Reproduce the inventory assertion with `python3 -m unittest discover -s infra/deploy/gce -p test_host_provision.py`; retain the real 41-versus-40 failure.
+- [ ] In only the two allowlisted files, change the current migration-count expected value from 40 to 41. Preserve all required-file, hash, permission, credential, symlink and inventory checks; do not generalize or weaken validation.
+- [ ] Rerun the host-provision unittest command, `python3 -m unittest discover -s scripts/dev -p test_migrations.py`, and `git diff --check`; verify exactly the two authorized paths changed. Commit/push the validated repair, obtain exact-SHA independent review and fresh required-CI evidence before claiming CI repaired. No PR merge, stage apply or deployment follows from this gate.
