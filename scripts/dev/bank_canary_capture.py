@@ -164,6 +164,17 @@ class Evidence:
             runtime={'python':sys.version.split()[0],'platform':sys.platform},limits=LIMITS,started_at=clock.utcnow().isoformat(),
             intended={bank:{'selected_articles':1,'required_resources':len({r['ref'] for r in doc['banks'][bank]['resources']['items'] if r['required']})} for bank in BANKS}))
         self.attempts=exclusive(self.root/'attempts.jsonl')
+        try:
+            for bank in BANKS:
+                b=doc['banks'][bank]
+                self.attempt(dict(event='planned',bank=bank,capabilities=1,
+                    catalog_branches=['years','makes','models','configurations'],pages_per_branch=10,
+                    resolution_posts=1,selector=b['selector'],article_index_pages=10,
+                    source_vehicle_ref=b['source_vehicle_ref'],article_ref=b['article_ref'],
+                    resources=b['resources']['items'],utc=clock.utcnow().isoformat()))
+        except OSError:
+            self.attempts.close()
+            raise
     def attempt(self,row):
         self.attempts.write(_canonical(row)+b'\n');os.fsync(self.attempts.fileno())
     def capture(self,bank,sequence,transport):

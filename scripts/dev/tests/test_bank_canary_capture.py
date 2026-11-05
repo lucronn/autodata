@@ -315,6 +315,13 @@ class FailureTests(unittest.TestCase):
 
 class BoundTests(unittest.TestCase):
     run_fixture=GraphTests.run_fixture
+    def test_unattempted_graph_and_fixed_roles_are_recorded_before_calls(self):
+        def failure(bank,request,env):return Response(b'inert failed start',request.full_url,401)
+        _,files=self.run_fixture(Fixture(mutate=failure))
+        planned=[json.loads(line) for line in files['attempts.jsonl'].splitlines() if json.loads(line)['event']=='planned']
+        self.assertEqual(len(planned),2)
+        self.assertEqual(planned[0]['resources'][0]['role'],'body')
+        self.assertEqual(planned[0]['resolution_posts'],1)
     def test_summary_unknown_fields_are_rejected(self):
         from bank_canary_capture import validate_summary
         _,files=self.run_fixture(Fixture());summary=json.loads(files['summary.json']);summary['path']='private'
