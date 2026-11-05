@@ -264,3 +264,26 @@ def test_postgres_synthetic_reviewer_requires_explicit_isolated_fixture_mode(dra
     with args['repo'].connect() as conn:
         reason=json.loads(conn.execute('SELECT reason FROM canonical_article_reviews').fetchone()['reason'])
     assert reason['reviewer_kind']=='synthetic'
+
+
+@pytest.mark.parametrize('test_flag,database_name', [
+    (None, 'lifecycle_test_review_guard'),
+    ('1', 'application_database'),
+    (None, 'application_database'),
+], ids=['missing-flag-test-database', 'test-flag-nontest-database', 'missing-both'])
+def test_fixture_mode_rejects_missing_isolation_guards(monkeypatch,test_flag,database_name):
+    if test_flag is None:
+        monkeypatch.delenv('AUTODATA_LIFECYCLE_TEST',raising=False)
+    else:
+        monkeypatch.setenv('AUTODATA_LIFECYCLE_TEST',test_flag)
+
+    class DatabaseIdentity:
+        """Only the current-database lookup is needed by this guard."""
+        def execute(self,query):
+            return self
+
+        def fetchone(self):
+            return {'name':database_name}
+
+    with pytest.raises(ValueError,match='^CONTENT_REVIEW_FIXTURE_FORBIDDEN$'):
+        review._fixture_allowed(DatabaseIdentity(),True)
