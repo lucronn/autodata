@@ -22,7 +22,7 @@ Source capture/store/schema/types, a bounded offline body-only projector/CLI and
 
 ## Concrete todo
 
-- [ ] Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; verify populated upgrade and migration-driver rerun.
+- [ ] Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; extend the migration driver and its tests through 041, then verify populated upgrade and migration-driver rerun.
 - [ ] Carry explicit projection identity through captured/stored sources and version-aware dedupe; preserve raw fingerprint/snapshot hashes and immutable history.
 - [ ] Keep legacy v1 transformation-key bytes stable, domain-separate v2 keys, and atomically switch current source with stale canonical cleared.
 - [ ] Prove identical-byte v1-to-v2 append, repeat-v2 reuse, historical reads, terminal/published v1 isolation, readable fallback before model and stale-worker rejection; run focused and isolated PostgreSQL regressions.
@@ -45,6 +45,8 @@ Source capture/store/schema/types, a bounded offline body-only projector/CLI and
 - `workers/ingestion-python/src/autodata_ingestion/worker.py` (ArticleObjectStore bounded read method only)
 - `workers/ingestion-python/tests/test_source_revision_reprojection.py` (new projector/CLI/transaction tests)
 - `scripts/dev/reproject_article_source.py` (new preview-by-default single-article CLI)
+- `scripts/dev/migrate_sql.sh` (extend pinned migration chain through 041 only)
+- `scripts/dev/test_migrations.py` (migration-driver 041 chain/restart regressions)
 
 Gate/evidence documents: this plan, its JSON record, `docs/architecture/normalized-article-document.md`, and new `docs/verification/2026-11-05-source-projection-v2.md`. No API/view/worker-runner/normalizer/adapter behavior changes are required; worker.py is limited to the object-store read helper. If a new implementation path is necessary, amend and revalidate the gate first.
 
@@ -53,7 +55,7 @@ Gate/evidence documents: this plan, its JSON record, `docs/architecture/normaliz
 - [ ] Add failing types/schema/migration regressions before changing behavior. Freeze an explicit expected v1 key digest for a fixed article UUID/fingerprint/profile tuple; require omitted selector and explicit v1 to match that exact digest. Require v2 key to differ and unknown versions to reject. On populated schema through 040, seed a v1 revision and immutable observation/publication; apply 041, compare old rows byte-for-byte, append same-article/same-fingerprint v2, reject duplicate same-version rows and unknown versions, and assert immutable update/delete protections still hold.
 - [ ] Add 041 only; do not edit 037/038. Replace v1-only projection CHECK with allowlist `source-projection-v1`, `source-projection-v2`; replace two-column UNIQUE with `(canonical_article_id, source_fingerprint, projection_version)`. Keep v1 default for historical fixture compatibility; production capture always supplies v2 explicitly. Add a `canonical_articles` pointer-update trigger rejecting a move from v2 to v1 (SQLSTATE 23514); do not disable existing identity or immutable triggers. Null pointer resets are not a supported rollback path.
 - [ ] Add `CapturedSource.projection_version` at the end with v1 compatibility default; capture returns explicit `source-projection-v2`. Add `transformation_key(..., *, projection_version="source-projection-v1")`: v1 keeps the exact existing four-field digest payload, v2 adds `projection_version: source-projection-v2` and `domain: autodata:article-transformation:v2` to that payload, unknown versions raise ValueError. Never recompute stored job/revision keys.
-- [ ] Verify migration driver restart skips 041 and preserves populated rows/schema; update only migration-count/latest-chain expectations in the allowlisted migration test. Run focused unit tests and required PostgreSQL checks below; commit/push the validated schema/types milestone.
+- [ ] Extend scripts/dev/migrate_sql.sh expected pinned migration list through 041 without changing ledger validation, ordering, lock/transaction handling or failure behavior. Add scripts/dev/test_migrations.py regressions that 041 is accepted/applied in order and skipped on restart; run `python3 -m unittest discover -s scripts/dev -p test_migrations.py`. Verify migration driver restart skips 041 and preserves populated rows/schema; update only migration-count/latest-chain expectations in the allowlisted migration test. Run focused unit tests and required PostgreSQL checks below; commit/push the validated schema/types milestone.
 
 ## Task 2: atomic source transition and regressions
 
@@ -111,3 +113,7 @@ python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026
 ```
 
 Required result: `{"status": "synchronized", "errors": []}`. Live Issue body, Project Source field and Ready status must be read back before commit; their hashes are in the record. Coordinator owns builder dispatch; this checkpoint contains no implementation.
+
+## Migration-driver scope amendment
+
+Amends checkpoint `dff1a1cda2c8e48433edec1d38a1d61816746391`: the driver hardcodes the chain through 040, so 041 cannot run without adding its exact expected name. Only `scripts/dev/migrate_sql.sh` and `scripts/dev/test_migrations.py` are added to implementation scope; all prior invariants and runtime restrictions remain binding. This docs-only amendment must be committed, pushed and pass exact-SHA preflight before editing those paths.

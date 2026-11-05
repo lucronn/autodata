@@ -7,7 +7,7 @@
     "docs/architecture/normalized-article-document.md"
   ],
   "todo": [
-    "Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; verify populated upgrade and migration-driver rerun.",
+    "Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; extend the migration driver and its tests through 041, then verify populated upgrade and migration-driver rerun.",
     "Carry explicit projection identity through captured/stored sources and version-aware dedupe; preserve raw fingerprint/snapshot hashes and immutable history.",
     "Keep legacy v1 transformation-key bytes stable, domain-separate v2 keys, and atomically switch current source with stale canonical cleared.",
     "Prove identical-byte v1-to-v2 append, repeat-v2 reuse, historical reads, terminal/published v1 isolation, readable fallback before model and stale-worker rejection; run focused and isolated PostgreSQL regressions.",
@@ -15,7 +15,7 @@
     "Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-05T16:16:07.156205+00:00",
+  "updated_at": "2026-11-05T16:21:31.278302+00:00",
   "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
   "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGUxxM",
   "inspected_source_sha": "140fdf132afb9d6efad0164e5c67d7e4a836200d",
@@ -35,16 +35,20 @@
     "workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py",
     "workers/ingestion-python/src/autodata_ingestion/worker.py",
     "workers/ingestion-python/tests/test_source_revision_reprojection.py",
-    "scripts/dev/reproject_article_source.py"
+    "scripts/dev/reproject_article_source.py",
+    "scripts/dev/migrate_sql.sh",
+    "scripts/dev/test_migrations.py"
   ],
   "provider_calls_authorized": false,
   "model_calls_authorized": false,
   "stage_data_mutation_authorized": false,
   "production_activation_authorized": false,
   "tracking": {
-    "issue_body_sha256": "54f9f29c92322aab47aa133dc79582a62c7ce31b894d9000724ae95101e468b1",
-    "project_source_sha256": "4b02b39e8292d1adb54b5832e51c8b1301efd49f477893b629a8a4c01fa7dce2",
+    "issue_body_sha256": "8cc7c78eb639a633c27f4c47cf2aa0a01161752a8aa9ce87c75b597b02252b6f",
+    "project_source_sha256": "3786bade5e4a2dec4e51796bafa253960770c69d9db2adae725d8090315bda0f",
     "project_status": "Ready",
-    "verified_at": "2026-11-05T16:16:07.156205+00:00"
-  }
+    "verified_at": "2026-11-05T16:21:31.278302+00:00"
+  },
+  "amends_checkpoint_sha": "dff1a1cda2c8e48433edec1d38a1d61816746391",
+  "amendment_reason": "The migration driver pins its expected chain through 040; include 041 recognition and driver regression tests before implementing those two paths."
 }

@@ -326,7 +326,7 @@ recapture is introduced. Existing API/current-source view remains the reader con
 
 Concrete todo:
 
-- [ ] Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; verify populated upgrade and migration-driver rerun.
+- [ ] Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; extend the migration driver and its tests through 041, then verify populated upgrade and migration-driver rerun.
 - [ ] Carry explicit projection identity through captured/stored sources and version-aware dedupe; preserve raw fingerprint/snapshot hashes and immutable history.
 - [ ] Keep legacy v1 transformation-key bytes stable, domain-separate v2 keys, and atomically switch current source with stale canonical cleared.
 - [ ] Prove identical-byte v1-to-v2 append, repeat-v2 reuse, historical reads, terminal/published v1 isolation, readable fallback before model and stale-worker rejection; run focused and isolated PostgreSQL regressions.
@@ -361,3 +361,11 @@ implementation after committed preflight and coordinator dispatch. No live
 provider/model call, stage mutation, deployment, UI/auth/payment/rewrite-model
 change is authorized. Exact checkpoint SHA/preflight are pinned externally after
 this docs-only commit; runtime apply requires separate authorization after review.
+
+### Source projection v2 migration-driver scope amendment
+
+The driver currently pins its expected migration chain through 040. The v2 plan
+prospectively adds only `scripts/dev/migrate_sql.sh` and `scripts/dev/test_migrations.py`
+to recognize 041 and verify ordered apply/restart behavior. Preserve ledger checks,
+ordering, locking, transaction and failure semantics. All prior source identity,
+offline-only implementation and separate stage-activation boundaries remain binding.
