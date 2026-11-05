@@ -26,7 +26,7 @@ func NewHTTPCommerceClient(baseURL, token string) (*HTTPCommerceClient, error) {
 }
 func commerceTimeout(op string) time.Duration {
 	switch op {
-	case "quote", "library", "grants/check":
+	case "quote", "library", "grants/check", "purchase-config":
 		return 2 * time.Second
 	default:
 		return 20 * time.Second
@@ -34,7 +34,7 @@ func commerceTimeout(op string) time.Duration {
 }
 func (c *HTTPCommerceClient) Do(ctx context.Context, operation string, body []byte, signature string) (int, []byte, error) {
 	switch operation {
-	case "quote", "checkouts", "orders/status", "library", "grants/check", "stripe/webhook":
+	case "quote", "checkouts", "orders/status", "library", "grants/check", "stripe/webhook", "purchase-config":
 	default:
 		return 0, nil, fmt.Errorf("invalid commerce operation")
 	}

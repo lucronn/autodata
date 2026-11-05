@@ -247,3 +247,26 @@ func TestCommerceFixtureLibraryTerminalCursorProjection(t *testing.T) {
 		})
 	}
 }
+
+func TestCommercePurchaseConfigPrivateBoundary(t *testing.T) {
+	private := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		if r.URL.Path != "/internal/commerce/purchase-config" || r.Method != "POST" || r.Header.Get("X-Autodata-Internal-Token") != "fixture-token" || string(b) != "{}" || r.Header.Get("Stripe-Signature") != "" {
+			t.Error("invalid config operation")
+		}
+		io.WriteString(w, purchaseEnabled)
+	}))
+	defer private.Close()
+	c, _ := NewHTTPCommerceClient(private.URL, "fixture-token")
+	c.client.Transport = commerceRoundTrip(func(r *http.Request) (*http.Response, error) {
+		deadline, ok := r.Context().Deadline()
+		if !ok || time.Until(deadline) > 2*time.Second {
+			t.Error("unbounded config deadline")
+		}
+		return http.DefaultTransport.RoundTrip(r)
+	})
+	status, b, e := c.Do(context.Background(), "purchase-config", []byte(`{}`), "")
+	if e != nil || status != 200 || string(b) != purchaseEnabled {
+		t.Fatal(status, string(b), e)
+	}
+}

@@ -229,11 +229,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /workshop", func(response http.ResponseWriter, request *http.Request) {
 		http.Redirect(response, request, "/workshop/", http.StatusMovedPermanently)
 	})
+	mux.HandleFunc("/workshop", func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Allow", "GET, HEAD")
+		http.Error(response, "Method Not Allowed", http.StatusMethodNotAllowed)
+	})
+	mux.HandleFunc("/workshop/purchase-config.json", s.workshopPurchaseConfig)
 	workshopAssets, err := fs.Sub(dashboardFiles, "workshop")
 	if err != nil {
 		panic("embedded workshop assets unavailable: " + err.Error())
 	}
-	mux.Handle("GET /workshop/", http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+	mux.Handle("/workshop/", http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			response.Header().Set("Allow", "GET, HEAD")
+			http.Error(response, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		response.Header().Set("Cache-Control", "no-cache")
 		http.StripPrefix("/workshop/", http.FileServer(http.FS(workshopAssets))).ServeHTTP(response, request)
 	}))
