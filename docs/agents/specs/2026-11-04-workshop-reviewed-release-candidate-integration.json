@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "task_id": "workshop-reviewed-release-candidate-integration",
+  "tracking_sync": {
+    "status": "synchronized",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "ownership_verified": true,
+    "literal_readback_verified": true,
+    "observed_at": "2026-11-05T01:33:03Z",
+    "planning_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6647140468",
+    "readback_receipt": {
+      "before_snapshot_ref": "/home/corp/autodata-evidence/release-task51-before-tracking.json",
+      "after_snapshot_ref": "/home/corp/autodata-evidence/release-task51-after-tracking.json",
+      "verification": "Planning agent independently checked retained snapshots for exact goal, six todos, six checkpoint paths, seven media paths, Issue/Project identity, preserved Issue body/prior235 comments/other Project fields, and prior Source archived verbatim in additive comment."
+    },
+    "rule": "Actual coordinator-owned literal Issue186/Project8 write and fresh retained-snapshot readback verified. Synchronization grants no implementation or release authority; exact committed checkpoint seal, both positive preflights, independent review and explicit dispatch remain required.",
+    "synchronized_at": "2026-11-05T01:32:52Z",
+    "issue_comment_sha256": "0818026fabee6f7229a06549942c45f35f31df67816106989b3abb5415e2d329",
+    "before_snapshot_ref": "/home/corp/autodata-evidence/release-task51-before-tracking.json",
+    "before_snapshot_sha256": "a418f9e4e2b40c42639b57bf10e97e8823714edbf937e4de08ac25dcc2d4a2d0",
+    "after_snapshot_ref": "/home/corp/autodata-evidence/release-task51-after-tracking.json",
+    "after_snapshot_sha256": "d6e9819fb476e0992c02decd6136b7590350f468a316b28f5c6a474df7ff2c42",
+    "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "prior_comment_count": 235,
+    "prior_comments_preserved": true,
+    "other_project_fields_preserved": true,
+    "prior_project_source_archived_verbatim": true,
+    "prior_project_source_sha256": "491929cb523e8ce49c6b82f012e46988ef641d1b7453c4213f91090215450bd4",
+    "project_source_sha256": "4da9563dc267c50c5958aa89bf14a772dbc42bb4d2926db408329289d1bd12af"
+  },
+  "source_binding": {
+    "common_base_sha": "d012fb74f2f9a5d5fc728d76796b1c83723f1780",
+    "common_base_tree": "5b3db2cbccb90e763fefd633cb90011b400b0291",
+    "planning_source_sha": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+    "api21": {
+      "branch": "codex/api21-harness-code",
+      "pr": "https://github.com/lucronn/autodata/pull/269",
+      "sha": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+      "tree": "2300acbac301355338237c5cd9a649d8f5e35fe5",
+      "process_fix_sha": "47166d2b17165dcd7bae435b2e6957f6fabc6734",
+      "K3c_sha": "37c01c6ce5351aca767f4f41c63ca6fa083b0425",
+      "preserve_manifest": [
+        {
+          "path": "docs/agents/records/2026-11-04-workshop-api21-producer-observability.json",
+          "git_blob": "6086913b281ca3bfbfb4d7c712391fffcc2c8ca5",
+          "sha256": "8e00e00ffb4bb6e440514f4f594aedb7970bce4938bc4b7a5cf763f4f701ad62"
+        },
+        {
+          "path": "docs/agents/specs/2026-11-04-workshop-api21-producer-observability.json",
+          "git_blob": "3f0aebff6a9a370528df5ae08ea8dd361e15181f",
+          "sha256": "b3b77a7be196772ee8f9301b3c529670e38656f91ea35a0b9f8c6d97025a799f"
+        },
+        {
+          "path": "docs/agents/tasks/2026-11-03-production-release/workshop-api21-producer-observability.json",
+          "git_blob": "69230fc8c5174b89ec4c926eb6f7389ff8e121b0",
+          "sha256": "85914cc2d9251ee185ff049d58802f72652f86a2f0aaa996e52e230d7245d293"
+        },
+        {
+          "path": "docs/superpowers/plans/2026-11-04-workshop-api21-producer-observability.md",
+          "git_blob": "13ba85905d6eb253d18f0f248e00e8b165cfade3",
+          "sha256": "e47b07a19314502c2e1a5cbbb8e467dd9d029f62e4ea62c2db006e05b8ae6347"
+        },
+        {
+          "path": "docs/verification/2026-11-04-workshop-api21-producer-observability.md",
+          "git_blob": "e9b88dde80700fe371ab8ed1e8316508f3b8a20b",
+          "sha256": "fc6d370377d39e79c7c64a3170616f11ac30810843cf9ea3654677fb4df96622"
+        },
+        {
+          "path": "scripts/dev/test_workshop_browser_environment.py",
+          "git_blob": "030ac978fa1ddd983f2db13f7c9511d093de584f",
+          "sha256": "770b29386cbd8a04fa517065c395a76ea4f508376e33fab63e06d685aa37d5e8"
+        },
+        {
+          "path": "scripts/dev/test_workshop_browser_smoke.py",
+          "git_blob": "fc3722c27d677a4f9efa1e278c61c01bf58a4d74",
+          "sha256": "8b86b5aaba6ddc4766fb261b68f0ebaf55ba8b03cc2fdcc66e0606b2f5a59ee6"
+        },
+        {
+          "path": "scripts/dev/workshop_browser_smoke.py",
+          "git_blob": "24bbd65d42d5edc4e9184b52173004ef1a5efb42",
+          "sha256": "e5424bfeb412d321638ebab31362774226d49caeacd53ffc929a54c00bbf9a7a"
+        },
+        {
+          "path": "workers/ingestion-python/tests/test_workshop_browser_integration.py",
+          "git_blob": "075b3d1bea3e94eaaa8393955cd7eb887a755e0b",
+          "sha256": "1d83bcaa7e57b59cc2a6b8e64d9e4ab9dc327389c21a905b85dbec7267bc976b"
+        },
+        {
+          "path": "workers/ingestion-python/tests/test_workshop_browser_observability.py",
+          "git_blob": "19863c213e1da8490cad49308793e6164cd29918",
+          "sha256": "c998af5373f4aad083493336fad82f6f6e89f821d957fbec66ff8956f852c47d"
+        }
+      ]
+    },
+    "media": {
+      "branch": "codex/workshop-list-callout-media-k4a-code",
+      "pr": "https://github.com/lucronn/autodata/pull/268",
+      "sha": "50269b207e707a9c927ed1d71c92a2de57e311b6",
+      "tree": "b420c3661c48ce55af92ae3fc0c716cf11fb8da5",
+      "initial_media_fix_sha": "cd64be80867fd223cf05d2ca94f90ce6b48d47de",
+      "K4a_sha": "b43e953833e57d3622dbb51503d6a174a1556e19",
+      "import_manifest": [
+        {
+          "path": "apps/api-go/workshop-client.test.mjs",
+          "git_blob": "7f134dadcae81fa5ea8657a09384482a2f2759b1",
+          "sha256": "6014eb2f82255c12bfc6bc4ed0c792c7ba92f379c49fa2725056eec2c8923113"
+        },
+        {
+          "path": "apps/api-go/workshop/app.mjs",
+          "git_blob": "963eca5d2a559986bd062e34d6187af6ada7b876",
+          "sha256": "2bfe85a3f5e0b77bc55fe0c18b50b35a9bab6444f6a640bf6a6a36bd57ab4c46"
+        },
+        {
+          "path": "docs/agents/records/2026-11-04-workshop-list-callout-media.json",
+          "git_blob": "bd510a2c5de7f7bc041e9391a8313abfbb537b2b",
+          "sha256": "f43031213011e2f30ecc3bd5bd117b0181bcf5e638048d3402a37861141df2e6"
+        },
+        {
+          "path": "docs/agents/tasks/2026-11-03-production-release/workshop-list-callout-media.json",
+          "git_blob": "df7a37ea98ac3d07acb883db8604ba781dd2cf52",
+          "sha256": "95a731b9c57224cf5f2256f26cde8e5521b39cdfcdc0f2806f024d504f0a0bf1"
+        },
+        {
+          "path": "docs/architecture/normalized-article-document.md",
+          "git_blob": "c974bc64fef633be05a7129e977ed6eb033995b4",
+          "sha256": "2ec231ef757d1538747ff8550ee2002ab3e50295b8356d356c9c54bb14d6dbd7"
+        },
+        {
+          "path": "docs/superpowers/plans/2026-11-04-workshop-list-callout-media.md",
+          "git_blob": "834cda393f112f38fe33b77334e9d52ed3bb2507",
+          "sha256": "e12d91e16be53c59f255e2696aa2ca820a46982c46d518cbfd6292e4eb0f5d4f"
+        },
+        {
+          "path": "docs/superpowers/specs/2026-11-04-workshop-list-callout-media-design.md",
+          "git_blob": "0a2a692078d9a73c1c1548c03035737162dfb6a3",
+          "sha256": "84c09419b7dc19d23a7c9486790bd1fb5893fccf519f814c9a53390131f1c6cc"
+        }
+      ]
+    },
+    "source_review_status": "Coordinator supplied reviewed source heads; this planning agent has not independently rerun exact-source review or CI. Require retained exact-head evidence before dispatch.",
+    "source_ci_status": "unverified_by_this_draft",
+    "actual_merge_checkout_ci_status": "not_run_for_new_candidate",
+    "checkpoint_sha": null,
+    "checkpoint_tree": null,
+    "external_seal_ref": null
+  },
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-reviewed-release-candidate-integration.md",
+    "docs/agents/specs/2026-11-04-workshop-reviewed-release-candidate-integration.json",
+    "docs/agents/records/2026-11-04-workshop-reviewed-release-candidate-integration.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-reviewed-release-candidate-integration.json",
+    "docs/verification/2026-11-04-workshop-reviewed-release-candidate-integration.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_integration_paths": [
+    "apps/api-go/workshop-client.test.mjs",
+    "apps/api-go/workshop/app.mjs",
+    "docs/agents/records/2026-11-04-workshop-list-callout-media.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-list-callout-media.json",
+    "docs/architecture/normalized-article-document.md",
+    "docs/superpowers/plans/2026-11-04-workshop-list-callout-media.md",
+    "docs/superpowers/specs/2026-11-04-workshop-list-callout-media-design.md"
+  ],
+  "current_implementation_allowlist": [],
+  "accepted_case_credit": 0,
+  "accepted_new_case_credit": 0,
+  "verified_case_ids": [],
+  "release_state": "unverified",
+  "authorities": {
+    "implementation_dispatch": false,
+    "github_write": false,
+    "code_approval": false,
+    "ci_success": false,
+    "merge": false,
+    "host_execution": false,
+    "service_start": false,
+    "docker_execution": false,
+    "provider": false,
+    "payment": false,
+    "account_mutation": false,
+    "cloud": false,
+    "secrets": false,
+    "cli_enablement": false,
+    "profiles_enabled": false,
+    "capture_admission": false,
+    "current_source_browser_acceptance": false,
+    "fixture_api21": false,
+    "fixture_dto120": false,
+    "final180": false,
+    "staging": false,
+    "deployment": false,
+    "dns_change": false,
+    "cutover": false,
+    "release": false
+  },
+  "updated_at": "2026-11-05T01:32:52Z",
+  "status": "synchronized",
+  "goal": "Combine the exact reviewed API21 process, browser and harness source with the exact reviewed Workshop list and callout media source into one independently verified source candidate, preserving queue history and all runtime, acceptance and release gates",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-reviewed-release-candidate-integration.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-reviewed-release-candidate-integration.json",
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-reviewed-release-candidate-integration.json",
+  "verification_ref": "docs/verification/2026-11-04-workshop-reviewed-release-candidate-integration.md",
+  "todo": [
+    "Independently review the exact two source heads and this six-document task51 proposal; preserve source provenance and the resolved queue, and synchronize Issue186/Project8 with the literal goal, six todo items, six gate paths, seven immutable media imports and bounded authority contract using fresh before/after readback.",
+    "Commit the synchronized six-document checkpoint rooted at exact API21 head 7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3, seal its actual SHA/tree externally, extract standalone and nested records and policy from that checkpoint, and require both canonical machine preflights plus independent exact-checkpoint review before explicit integration dispatch.",
+    "Merge exactly media head 50269b207e707a9c927ed1d71c92a2de57e311b6 into the checkpoint-rooted API21 branch with history preserved; resolve only the anticipated queue conflict by restoring the checkpoint-resolved queue, require seven exact media blobs and unchanged API21 blobs, and stop on any other conflict or drift.",
+    "Run the frozen offline API21 observability and harness suites, real production-renderer Node media regressions, JavaScript syntax and embedded Go tests on the integrated tree; retain actual collection, outcomes, skips, exits and source identities without converting offline checks into any required-case acceptance.",
+    "Commit and promptly push one coherent validated source-integration milestone under assigned branch ownership, obtain independent exact-code review and fresh source-push plus actual PR merge-checkout CI evidence, and reconcile every failure, skip and external Vercel status honestly in Issue186/Project8.",
+    "Preserve credit0 and unverified release status; record cars.tk as Vercel-managed DNS with owner ability to change Vercel DNS, identify stale Cloudflare documentation for separately scoped correction, and keep staging, authentic capture, real API21/DTO120/final180 acceptance, production deployment and DNS cutover behind their own measured release gates."
+  ],
+  "integration_strategy": {
+    "method": "history-preserving-exact-merge",
+    "base": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+    "source": "50269b207e707a9c927ed1d71c92a2de57e311b6",
+    "paths": [
+      "apps/api-go/workshop-client.test.mjs",
+      "apps/api-go/workshop/app.mjs",
+      "docs/agents/records/2026-11-04-workshop-list-callout-media.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-list-callout-media.json",
+      "docs/architecture/normalized-article-document.md",
+      "docs/superpowers/plans/2026-11-04-workshop-list-callout-media.md",
+      "docs/superpowers/specs/2026-11-04-workshop-list-callout-media-design.md"
+    ],
+    "queue_conflict_resolution": "Restore the entire exact task51 synchronized-checkpoint queue blob, which already preserves API root/first48/task49 and exact media task50 plus new51.",
+    "rule": "After gate dispatch, merge exact media head using --no-ff --no-commit into the checkpoint-rooted API21 branch. Only queue.json conflict is anticipated and authorized. Stop on any other conflict, unexpected path or source-blob mismatch; do not repair or broaden this scope. Require both pinned source heads are ancestors of final candidate and seven media source blobs remain exact."
+  },
+  "queue_resolution": {
+    "root_fields": "preserve all fields and values from API21 head",
+    "first48": "preserve objects and order from API21 head; independently confirmed equal to media head",
+    "task49": "preserve entire exact API21-head object",
+    "task50": "replace stale API21-head task50 with entire exact media-head object",
+    "task51": "append new draft object with task_ref; do not edit historical source task statuses",
+    "expected_task_count": 51,
+    "rule": "The resolved queue is created in planning checkpoint and must remain unchanged by seven-path source import."
+  },
+  "dns_context": {
+    "domain": "cars.tk",
+    "dns_manager": "Vercel",
+    "owner_can_change_vercel_dns": true,
+    "source": "Coordinator relayed current user instruction",
+    "verified_live_dns": false,
+    "staging_claimed": false,
+    "dns_changes_authorized_by_this_gate": false,
+    "later_scoped_documentation_review": [
+      {
+        "path": "docs/architecture/workshop-commerce.md",
+        "line": 15,
+        "reason": "Direct stale DNS-managed-through-Cloudflare statement."
+      },
+      {
+        "path": "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+        "line": 299,
+        "reason": "Historical cars.tk/Cloudflare domain description."
+      },
+      {
+        "path": "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+        "line": 359,
+        "reason": "GCE/Cloudflare persistence wording needs scoped topology review; do not assume DNS correction removes proxy/CDN requirements."
+      },
+      {
+        "path": "docs/superpowers/plans/2026-11-03-workshop-firebase-identity.md",
+        "line": 159,
+        "reason": "Cloudflare header acceptance prerequisite needs scoped topology review."
+      }
+    ]
+  },
+  "prohibited_changes": [
+    "Any implementation behavior adaptation beyond exact source merge of seven media paths",
+    "Queue overwrite with either branch wholesale",
+    "Modification of preserved API21 source files or historical source records",
+    "Global Cloudflare replacement or unrelated architecture edits",
+    "DNS edits, live staging or production execution, release/cutover claims",
+    "Treating source CI, offline tests, reviewed code or plan synchronization as authentic product acceptance"
+  ]
+}
