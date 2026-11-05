@@ -172,6 +172,7 @@ def test_parent_publishes_after_actual_child_wait(producer,monkeypatch,tmp_path,
 
 def test_child_setup_failure_retains_failed_sidecar_without_services(producer,monkeypatch,tmp_path):
     configure_case(producer,monkeypatch,tmp_path)
+    for name,value in producer._binding_env(producer._binding(ROOT_NAME,'chromium','bankone','parent-pytest'),'child-pytest').items():monkeypatch.setenv(name,value)
     monkeypatch.setenv('AUTODATA_WORKSHOP_BROWSER_DATABASE','fake')
     monkeypatch.setattr(producer,'Repository',lambda name:types.SimpleNamespace(database_name=name))
     def fail_setup(*args):raise RuntimeError('secret-sentinel')
@@ -188,6 +189,7 @@ def fake_child_dependencies(producer,monkeypatch,tmp_path,browser_code=0,stale=F
     import contextlib
     import threading
     configure_case(producer,monkeypatch,tmp_path)
+    for name,value in producer._binding_env(producer._binding(root,'chromium','bankone','parent-pytest'),'child-pytest').items():monkeypatch.setenv(name,value)
     monkeypatch.setenv('AUTODATA_WORKSHOP_BROWSER_DATABASE','fake')
     for key,value in {'GOTOOLCHAIN':'local','GOPROXY':'off','GOCACHE':str(tmp_path/'cache'),'GOTMPDIR':str(tmp_path/'gotmp')}.items():monkeypatch.setenv(key,value)
     monkeypatch.setattr(producer,'Repository',lambda name:types.SimpleNamespace(database_name=name))
@@ -543,3 +545,109 @@ def test_failure_publication_releases_preallocated_reserve_before_retry(producer
     value={'status':'failed','primary_failure':'timeout','publication_failure':None}
     assert producer._safe_publish(tmp_path,'parent-process.json',value,65536,reserve=reserve) is False
     assert json.loads((tmp_path/'parent-process.json').read_text())['primary_failure']=='timeout'
+
+
+def test_runtime_close_retry_preserves_completed_original_worker_exits(producer,monkeypatch,tmp_path):
+    root='test_browser_owned_source_canonical_and_media_real_api'
+    runtime,bridge=fake_child_dependencies(producer,monkeypatch,tmp_path,root=root)
+    original_browser=subprocess.run;stop_calls=0;close_calls=0
+    def browser(*args,**kwargs):
+        result=original_browser(*args,**kwargs)
+        for n in (1,2):
+            runtime.logs.append((tmp_path/('worker-'+str(n)*32+'.log')).open('w'))
+            runtime.logs[-1].write('original worker\n');runtime.workers.append(Process([-15]))
+        return result
+    monkeypatch.setattr(subprocess,'run',browser)
+    def stop():
+        nonlocal stop_calls
+        stop_calls+=1;outcomes=[]
+        for worker in runtime.workers:
+            outcomes.append(dict(kind='cli',exit_code=worker.wait(3),terminated=True,intentional_cleanup=True,alive_before_cleanup=True))
+        runtime.workers=[]
+        return outcomes
+    def close():
+        nonlocal close_calls
+        close_calls+=1
+        if close_calls==1:raise RuntimeError('private-close-failure')
+        for log in runtime.logs:log.close()
+    bridge.stop=stop;runtime.close=close
+    capture=producer._capture_workers
+    monkeypatch.setattr(producer,'_capture_workers',lambda runtime,google:capture(runtime,google,artifact_root=tmp_path))
+    with pytest.raises(RuntimeError,match='API21'):producer._child(root,'chromium','bankone',tmp_path,monkeypatch)
+    result=json.loads((tmp_path/'result.json').read_text());sidecar=json.loads((tmp_path/'child-processes.json').read_text())
+    assert result['passed'] is False and sidecar['status']=='failed'
+    assert [row['exit_code'] for row in result['worker_exits']]==[-15,-15]
+    assert sidecar['worker_mapping_status']=='observed'
+    assert len(sidecar['workers'])==2 and all(row['log_finalized'] for row in sidecar['workers'])
+    assert all(row['log_hash']['sha256']==hashlib.sha256(b'original worker\n').hexdigest() for row in sidecar['workers'])
+    assert stop_calls==1 and close_calls==2
+
+
+@pytest.mark.parametrize('owner',['parent','child'])
+def test_minimal_receipt_removes_dangling_references_and_stale_availability(producer,monkeypatch,tmp_path,owner):
+    configure_case(producer,monkeypatch,tmp_path)
+    binding=producer._binding(ROOT_NAME,'chromium','bankone','parent-pytest')
+    process=producer._OwnedProcess('child-pytest' if owner=='parent' else 'go-test','parent-pytest' if owner=='parent' else 'child-pytest',['go'],'.',None,None)
+    process.event('launch-requested');process.launched(Process([0]));process.wait(3)
+    artifact={'ref':'original.log','length':1,'sha256':'a'*64}
+    if owner=='parent':
+        value=dict(binding=binding,status='passed',child=process.data,child_artifacts=[artifact],child_artifact_status='finalized',
+            child_launch_cause=dict(stream='process-child',producer_role='parent-pytest',seq=2),primary_failure=None,
+            publication_failure=None,engine_os_exit=None,outer_pytest_exit=None)
+        name='parent-process.json';limit=65536
+    else:
+        browser=producer._OwnedProcess('browser-runner','child-pytest',['$PYTHON','$REPO/scripts/dev/workshop_browser_smoke.py'],'.',None,None)
+        browser.event('launch-requested');browser.launched(Process([0]));browser.wait(3)
+        worker=dict(ordinal=1,kind='cli',original_ref='worker-'+'a'*32+'.log',mapping='observed',alive_before_cleanup=True,
+            intentional_cleanup=True,terminated=True,exit_code=-15,reaped=True,log_finalized=True,log_hash=artifact,reason=None)
+        value=dict(binding=dict(binding,producer_role='child-pytest'),status='passed',go=process.data,browser_runner=browser.data,workers=[worker],
+            worker_mapping_status='observed',finalization_events=[],primary_failure=None,publication_failure=None,
+            engine_os_exit=None,outer_pytest_exit=None)
+        name='child-processes.json';limit=262144
+    original=producer._publish;attempt=0
+    def publish(*args):
+        nonlocal attempt
+        attempt+=1
+        if attempt==1:raise OSError('private-write-failure')
+        return original(*args)
+    monkeypatch.setattr(producer,'_publish',publish)
+    assert producer._safe_publish(tmp_path,name,value,limit) is False
+    minimal=json.loads((tmp_path/name).read_text())
+    assert minimal['status']=='failed' and minimal['publication_failure']=='publication_failed'
+    if owner=='parent':
+        assert minimal['child']['events']==[] and minimal['child_launch_cause'] is None
+        assert minimal['child_artifacts']==[] and minimal['child_artifact_status']=='unavailable'
+    else:
+        assert minimal['workers']==[] and minimal['worker_mapping_status']=='unavailable'
+
+
+@pytest.mark.parametrize('missing',['all','AUTODATA_API21_BINDING','empty_binding','AUTODATA_API21_RUN_ID','AUTODATA_API21_ATTEMPT_ID','malformed_run','malformed_attempt'])
+def test_child_never_mints_identity_when_parent_handoff_is_missing(producer,monkeypatch,tmp_path,missing):
+    configure_case(producer,monkeypatch,tmp_path)
+    parent=producer._binding(ROOT_NAME,'chromium','bankone','parent-pytest')
+    for name,value in producer._binding_env(parent,'child-pytest').items():monkeypatch.setenv(name,value)
+    if missing=='all':
+        for name in ('AUTODATA_API21_BINDING','AUTODATA_API21_RUN_ID','AUTODATA_API21_ATTEMPT_ID'):monkeypatch.delenv(name)
+    elif missing=='empty_binding':monkeypatch.setenv('AUTODATA_API21_BINDING','')
+    elif missing=='malformed_run':monkeypatch.setenv('AUTODATA_API21_RUN_ID','invalid')
+    elif missing=='malformed_attempt':monkeypatch.setenv('AUTODATA_API21_ATTEMPT_ID','invalid')
+    else:monkeypatch.delenv(missing)
+    child=producer._binding(ROOT_NAME,'chromium','bankone','child-pytest')
+    assert child['binding_state']=='partial' and child['unavailable_reason']=='source_binding_failed'
+    assert child['candidate_sha']=='a'*40 and child['source_tree']=='b'*40 and len(child['source_input_sha256'])==7
+    if missing in ('all','AUTODATA_API21_RUN_ID','malformed_run'):assert child['run_id'] is None
+    else:assert child['run_id']==parent['run_id']
+    if missing in ('all','AUTODATA_API21_ATTEMPT_ID','malformed_attempt'):assert child['attempt_id'] is None
+    else:assert child['attempt_id']==parent['attempt_id']
+
+
+def test_actual_child_without_parent_handoff_fails_before_service_setup(producer,monkeypatch,tmp_path):
+    configure_case(producer,monkeypatch,tmp_path)
+    for name in ('AUTODATA_API21_BINDING','AUTODATA_API21_RUN_ID','AUTODATA_API21_ATTEMPT_ID'):monkeypatch.delenv(name,raising=False)
+    monkeypatch.setenv('AUTODATA_WORKSHOP_BROWSER_DATABASE','fake')
+    with pytest.raises(RuntimeError,match='API21'):producer._child(ROOT_NAME,'chromium','bankone',tmp_path,monkeypatch)
+    receipt=json.loads((tmp_path/'child-processes.json').read_text())
+    assert receipt['status']=='failed' and receipt['binding']['binding_state']=='partial'
+    assert receipt['binding']['run_id'] is None and receipt['binding']['attempt_id'] is None
+    assert receipt['go']['launched'] is False and receipt['browser_runner']['launched'] is False
+    assert receipt['go']['events']==[] and receipt['browser_runner']['events']==[]
