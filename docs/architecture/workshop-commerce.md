@@ -12,7 +12,10 @@ requires the committed planning gate and an exact-base preflight.
 
 The Workshop launch is a one-time purchase of one vehicle dataset for **$20**.
 USD is the coordinator's stated currency assumption. The customer-facing domain
-is **https://cars.tk**, with DNS managed through Cloudflare.
+is **https://cars.tk**. The user reports that DNS is managed through Vercel and
+that they can change its DNS records. This establishes user-provided DNS
+ownership; hosting, proxy use, TLS certificate configuration and the deployed
+production origin remain unverified.
 
 The initial purchasable unit is the selected normalized vehicle configuration
 and region. The server resolves this scope from the catalog; clients cannot

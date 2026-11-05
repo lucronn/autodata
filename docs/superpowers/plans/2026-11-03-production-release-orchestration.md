@@ -296,9 +296,11 @@ The [independently reviewed runtime repair](2026-11-03-runtime-check-contract.md
 ## Updated user release objective and commit cadence
 
 The current [paid Workshop contract](../../architecture/workshop-commerce.md)
-records the user's $20 price, USD assumption, cars.tk/Cloudflare domain and
-proposed Firebase/Google Cloud deployment. The initial SKU is the selected
-normalized configuration and region. The previous R5 OIDC-only and role-only
+records the user's $20 price, USD assumption, cars.tk domain with user-reported
+Vercel-managed DNS and authority to change its records, and proposed
+Firebase/Google Cloud deployment. DNS ownership does not verify hosting, proxy
+use, TLS certificate configuration or the deployed production origin. The initial
+SKU is the selected normalized configuration and region. The previous R5 OIDC-only and role-only
 catalog assumptions require replacement before customer/commerce implementation.
 The requested commit rule is implemented and pushed at `85aa09a`.
 
@@ -356,9 +358,12 @@ dependency manifest, and paid orders carry a durable shared catalog-index intent
 consumed by the existing reconciler. Its38-path task/fourteen real-PG cases remain
 waiting for verified R5/039 and a fresh gate. Permanent ownership is independent
 of source/model readiness; paid article preparation and media access are later
-protected operations. The hosting proposal documents GCE/Cloudflare persistence,
-backup/restore and cutover; project/cost/recovery decisions and deployment
-configuration remain pending. Neither plan is a deployment or live-charge gate.
+protected operations. The earlier GCE/Cloudflare hosting summary is historical;
+the hosting proposal covers persistence, backup/restore and cutover. User-reported
+Vercel DNS ownership corrects the DNS assumption only; hosting, proxy use, TLS
+certificate configuration and the deployed production origin remain unverified.
+Project/cost/recovery decisions and deployment configuration remain pending.
+Neither plan is a deployment or live-charge gate.
 
 
 ### Paid access and unified customer UI handoff
