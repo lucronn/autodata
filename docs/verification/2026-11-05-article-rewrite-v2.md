@@ -162,3 +162,69 @@ v2 expected candidates, persisted operation reconstruction and validation report
 now use canonical JSON digest equality, preserving JSON scalar types. v1 remains
 unchanged. Focused pure suite: **102 passed**. The intermediate exact-6954236
 harness was interrupted for this correction and earns no complete-run credit.
+
+
+### Final exact-implementation fixture verification
+
+Tested implementation commit: `af6ba126d3c8856e929273593cd3aada1605f406`.
+The recovered full lifecycle smoke ran on 2026-11-05 from 09:19:20 to 09:23:16
+UTC: **286 passed in 236.04s; 0 failures, 0 errors, 0 skipped**, exit status 0.
+Its **51 runtime evidence records** all match their expected invariants, including
+zero duplicate publication event keys and zero unvalidated publications. Both
+v2 warm-restart records (100 ensures/reads per bank) independently measure
+`source=0, asset=0, model=0, schedule=0`. Both unsupported-bank records have
+`model=0` and no rewritten revision or publication. The actual HTTP ambiguous
+request test measures two model requests but only one revision/publication.
+All four v2 process-death boundaries publish exactly once after recovery.
+
+Command (host SHA supplied because the read-only runner cannot read Git metadata):
+
+```sh
+article_v2_sha=$(git rev-parse HEAD)
+AUTODATA_LIFECYCLE_ARTIFACT_DIR=/tmp/article-rewrite-v2-acceptance \
+AUTODATA_R3_TEST_IMAGE=autodata-article-v2-test-runner:local \
+AUTODATA_R3_CANDIDATE_SHA="$article_v2_sha" \
+docker compose -p autodata-article-v2 \
+  -f infra/compose/compose.article-lifecycle-test.yaml \
+  -f /tmp/article-rewrite-v2-compose.yaml \
+  run --rm --no-deps test-runner python3 scripts/dev/article_lifecycle_smoke.py \
+  --mode fixture --output /artifacts/exact-af6ba12-recovered.json \
+  --candidate-sha "$article_v2_sha"
+```
+
+The runner image is `sha256:ec78eadc8c43b87fa73028dbb27d716482b8c32c622f0fc6087ceaca758f4c54`.
+The local override and image are development harness setup, not shipped changes.
+The smoke JSON's existing static `fixture_project` label is `autodata-r2-lifecycle`;
+the actual isolated Compose project used here is `autodata-article-v2`, as above.
+
+The first complete af6ba12 run retained as `exact-af6ba12.*` recorded **284 passed,
+2 failed**, both existing real-NATS relay tests. The broker had started during the
+earlier disk exhaustion with JetStream maximum storage pinned to 0 B, producing
+NATS 500 / error 10047 (insufficient storage resources). Restarting only the owned
+NATS service advertised 1.10 GB maximum storage. The complete recovered run above
+passed with **identical implementation bytes**, without test exclusions or retries
+inside the smoke. The failed run and interrupted older runs remain separately
+named and earn no passing acceptance credit.
+
+Durable local evidence directory:
+`/home/corp/autodata-evidence/article-rewrite-v2/` (includes both complete runs,
+separate focused red/green records, synthetic corpus measurement, and runtime
+JSON records). Final recovered artifacts:
+
+| File | SHA-256 |
+|---|---|
+| `exact-af6ba12-recovered.json` | `84d69e1a56824ffee72af4642533597fd7a9570a696aa2a155d9466be66c0539` |
+| `exact-af6ba12-recovered.xml` | `3699d2e756dd00eb977d29042a3c5f88f8d27c94350dad8d5d9bb356a312b9ad` |
+| `exact-af6ba12-recovered.log` | `8589d798d41e2e54269b85a71ae114a56e4cb0cc1f027cb4be51e4766a982399` |
+
+The separate pure v1/v2/types suite passed **102 tests** at this implementation
+commit; the smoke's fixed required-file list does not include the new v2 pure
+module. The final evidence milestone changes documentation only. Final independent
+review and PR/CI integration remain coordinator responsibilities.
+
+**Remaining acceptance blocker:** authentic retained captures remain **bankone=0,
+banktwo=0, held-out=0**. Realistic coverage improvement, authentic technical/content
+review and all-ten-verb coverage on real articles are unmeasured. The 14 authored
+synthetic documents demonstrate bounded development behavior only. This evidence
+does not establish production readiness, authorize activation, or close the
+purchased-dataset acceptance objective.
