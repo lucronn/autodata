@@ -90,13 +90,22 @@ class Postgres17ProtocolTests(unittest.TestCase):
             'DROP TABLE public.schema_migrations;',
             'ALTER TABLE public.schema_migrations RENAME TO old; CREATE VIEW public.schema_migrations AS SELECT * FROM public.old;',
             'CREATE DOMAIN public.version_type AS text; ALTER TABLE public.schema_migrations ALTER version TYPE public.version_type;',
-            'CREATE INDEX expression_idx ON public.schema_migrations ((lower(version)));')
+            'CREATE INDEX expression_idx ON public.schema_migrations ((lower(version)));',
+            'CREATE ACCESS METHOD custom_heap TYPE TABLE HANDLER pg_catalog.heap_tableam_handler; ALTER TABLE public.schema_migrations SET ACCESS METHOD custom_heap;',
+            'CREATE DOMAIN public.time_type AS timestamptz; ALTER TABLE public.schema_migrations ALTER applied_at TYPE public.time_type;',
+            'CREATE EXTENSION IF NOT EXISTS postgres_fdw; CREATE SERVER fake FOREIGN DATA WRAPPER postgres_fdw; '
+            'ALTER TABLE public.schema_migrations RENAME TO old; CREATE FOREIGN TABLE public.schema_migrations(version text,applied_at timestamptz) SERVER fake;')
         for sql in mutations:
             with self.subTest(sql=sql):
                 # Previous PUBLIC grant is intentionally removed before reset.
                 self.sql('REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;')
                 self.setUp(); self.sql(sql)
                 with self.assertRaises(self.rt.ContractError): self.collect()
+                # ECHO=queries prints only statements actually submitted by
+                # psql: unsafe catalog facts must skip even planning the ledger.
+                query=self.rt._postgres_schema_script(self.manifest)
+                wire=self.sql('\\set ECHO queries\n'+query.decode(),role='autodata_metrics',check=False)
+                self.assertNotIn(b'FROM ONLY public.schema_migrations',wire.stdout)
 
     def test_concurrent_ddl_blocks_until_locked_protocol_finishes(self):
         script = self.rt._postgres_schema_script(self.manifest)

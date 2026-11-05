@@ -797,14 +797,18 @@ def _runtime_rendered_compose(manifest, config):
     return strict_json(bundle['compose.production.yaml'].encode())
 
 
-def _validate_service_container(manifest, service, desired, value, image_entrypoint):
+def _validate_service_container(manifest, service, desired, value, image_entrypoint, require_running=True):
     extra = ('entrypoint', 'restarts', 'networks', 'ports', 'init', 'pids_limit')
     # PostgreSQL retains its stronger established bind/socket validation.
     base_keys = ('id','name','image','user','project','service','command','running','paused','restarting','dead',
                  'started_at','readonly_root','privileged','cap_add','cap_drop','security_opt','mounts','tmpfs')
     exact_object(value, (*base_keys, *extra))
     if service == 'postgres':
-        validate_postgres_container(manifest, {key: value[key] for key in base_keys})
+        postgres_value = {key: value[key] for key in base_keys}
+        if not require_running:
+            require(type(postgres_value['running']) is bool)
+            postgres_value['running'] = True
+        validate_postgres_container(manifest, postgres_value)
     match(value['id'], HASH_PATTERN)
     require(value['name'] == '/autodata-production-' + service + '-1')
     require(value['project'] == 'autodata-production' and value['service'] == service)
@@ -814,7 +818,9 @@ def _validate_service_container(manifest, service, desired, value, image_entrypo
     require(value['entrypoint'] == desired.get('entrypoint', image_entrypoint))
     for key, expected in (('running',True),('paused',False),('restarting',False),('dead',False),
                           ('readonly_root',True),('privileged',False),('init',True)):
-        require(type(value[key]) is bool and value[key] is expected)
+        require(type(value[key]) is bool)
+        if key != 'running' or require_running:
+            require(value[key] is expected)
     require(type(value['restarts']) is int and value['restarts'] >= 0)
     match(value['started_at'], r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z')
     require(value['cap_add'] in (None, []) and value['cap_drop'] == ['ALL'])
@@ -838,7 +844,12 @@ def _validate_service_container(manifest, service, desired, value, image_entrypo
     require(type(value['networks']) is dict and set(value['networks']) == set(expected_networks))
     for network, address in expected_networks.items():
         observed = value['networks'][network]
-        require(type(observed) is dict and observed.get('IPAddress') == address)
+        require(type(observed) is dict)
+        if not require_running and value['running'] is False:
+            require(type(observed.get('IPAMConfig')) is dict and observed['IPAMConfig'].get('IPv4Address') == address)
+            require(observed.get('IPAddress') in ('', address))
+        else:
+            require(observed.get('IPAddress') == address)
         match(observed.get('NetworkID'), HASH_PATTERN)
         require(observed.get('GlobalIPv6Address') in ('', None))
     ports = {}
@@ -1012,7 +1023,13 @@ def operation_receipt(operation, source_sha, run_id, exit_code, checks, failure_
     if run_id is not None: _uuid(run_id)
     require(exit_code in EXIT_STATUS and type(checks) is dict and set(checks) <= CHECK_NAMES)
     require(all(type(value) is bool for value in checks.values()))
-    require((exit_code == 0 and failure_code is None and all(checks.values())) or
+    observation_success = all(checks.values())
+    if operation in ('deploy.sh stop', 'deploy.sh maintenance') and exit_code == 0:
+        expected = dict.fromkeys(('config','manifest','disk_uuid','metadata_guard','storage_guard','secrets',
+                                  'cached_images','migration_tree','services'), True)
+        expected['runtime_evidence'] = False
+        observation_success = checks == expected
+    require((exit_code == 0 and failure_code is None and observation_success) or
             (exit_code != 0 and failure_code in FAILURE_CODES))
     now = _timestamp()
     receipt = {'schema_version': 1, 'operation': operation, 'run_id': run_id, 'source_sha': source_sha,
@@ -1381,9 +1398,11 @@ def validate_runtime_secret_files():
             resources.callback(os.close, directory)
             filenames = {'caddy': ('maintenance.caddy',), 'nats': ('nats.conf',), 'minio': ('s3.json',)}.get(service, SECRET_NAMES.get(service))
             require(set(os.listdir(directory)) == set(filenames))
-            values = {name: _owned_bytes(directory, name, uid, uid, 0o400, empty=service == 'caddy') for name in filenames}
+            values = {name: _owned_bytes(directory, name, uid, uid, 0o444 if service == 'caddy' else 0o400, empty=service == 'caddy') for name in filenames}
             for data in values.values(): _opaque_secret(data, multiline=service in ('nats', 'minio', 'caddy'), empty=service == 'caddy')
-            if service == 'nats':
+            if service == 'caddy':
+                require(values['maintenance.caddy'] in (b'', b'respond "Maintenance" 503\n'))
+            elif service == 'nats':
                 template = (Path(__file__).parent / 'nats.conf.template').read_text()
                 pattern = re.escape(template)
                 for name in ('NATS_METRICS_USER', 'NATS_METRICS_PASSWORD'):

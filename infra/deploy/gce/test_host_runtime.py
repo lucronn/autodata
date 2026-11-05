@@ -406,6 +406,22 @@ class ContractTests(unittest.TestCase):
             with self.assertRaises(self.rt.ContractError): self.rt.validate_start_prerequisites(self.config, bad)
         with self.assertRaises(self.rt.ContractError): self.rt.validate_start_prerequisites(self.config, {})
 
+    def test_stop_maintenance_receipts_preserve_truthful_not_ready_success(self):
+        checks=dict.fromkeys(('config','manifest','disk_uuid','metadata_guard','storage_guard','secrets',
+                              'cached_images','migration_tree','services'),True)
+        checks['runtime_evidence']=False
+        for verb in ('stop','maintenance'):
+            result=self.rt.operation_receipt('deploy.sh '+verb,SHA,None,0,checks)
+            self.assertEqual(result['status'],'passed')
+            self.assertFalse(result['checks']['runtime_evidence'])
+            for name in checks:
+                broken=dict(checks); broken.pop(name)
+                with self.assertRaises(self.rt.ContractError):
+                    self.rt.operation_receipt('deploy.sh '+verb,SHA,None,0,broken)
+        for verb in ('start','check','resume'):
+            with self.assertRaises(self.rt.ContractError):
+                self.rt.operation_receipt('deploy.sh '+verb,SHA,None,0,checks)
+
     def test_receipts_reject_unknown_checks_and_inconsistent_success(self):
         for code, checks, failure in [(0, {'disk_uuid': False}, None), (4, {}, None),
                                       (0, {'secret_value': True}, None), (0, {'disk_uuid': 1}, None)]:
@@ -1321,6 +1337,68 @@ class RuntimeReadinessTests(unittest.TestCase):
             def close(inner): pass
         with patch.object(self.rt.http.client,'HTTPConnection',Connection): self.rt._collect_readyz()
 
+    def service_fixture(self, service):
+        desired=json.loads(self.rt.render_bundle(self.manifest,self.config)['compose.production.yaml'])['services'][service]
+        role='ingestion' if service in ('ingestion-http','article-worker','payment-reconciler') else service
+        value=postgres_wire(self.manifest['images'][role]['image_id'])
+        value.update(name='/autodata-production-'+service+'-1',user=desired['user'],service=service,
+            command=desired['command'],entrypoint=desired.get('entrypoint',['/image-entrypoint']),
+            restarts=0,init=True,pids_limit=256,
+            tmpfs=dict(item.split(':',1) for item in desired['tmpfs']),
+            mounts=[{'Type':'bind','Source':v['source'],'Destination':v['target'],'Mode':'','RW':not v['read_only'],
+                     'Propagation':'rprivate'} for v in desired['volumes']],
+            networks={'autodata-production-'+n:{'IPAddress':v['ipv4_address'],'NetworkID':'e'*64,'GlobalIPv6Address':''}
+                      for n,v in desired['networks'].items()},
+            ports={p.split(':')[1]:[{'HostIp':'','HostPort':p.split(':')[0]}] for p in desired.get('ports',[])})
+        return desired,value
+
+    def test_projected_graph_rejects_security_mount_command_image_network_drift(self):
+        for service in self.rt.NORMAL_SERVICES:
+            desired,value=self.service_fixture(service)
+            self.rt._validate_service_container(self.manifest,service,desired,value,['/image-entrypoint'])
+            for key,wrong in (('command',['sh']),('entrypoint',['sh']),('image','sha256:'+'0'*64),
+                              ('user','invalid'),('running',False),('paused',True),('restarting',True),
+                              ('dead',True),('readonly_root',False),('privileged',True),('cap_add',['SYS_ADMIN']),
+                              ('cap_drop',[]),('security_opt',[]),('mounts',[]),('networks',{}),
+                              ('ports',{'1234/tcp':[]}),('tmpfs',{}),('init',False),('pids_limit',999)):
+                broken=copy.deepcopy(value);broken[key]=wrong
+                with self.subTest(service=service,key=key), self.assertRaises(self.rt.ContractError):
+                    self.rt._validate_service_container(self.manifest,service,desired,broken,['/image-entrypoint'])
+            stopped=copy.deepcopy(value); stopped['running']=False
+            for network in stopped['networks'].values():
+                network['IPAMConfig']={'IPv4Address':network['IPAddress']}; network['IPAddress']=''
+            self.rt._validate_service_container(self.manifest,service,desired,stopped,['/image-entrypoint'],require_running=False)
+
+    def test_live_graph_enumeration_rejects_extra_duplicate_and_missing_roles(self):
+        compose=json.loads(self.rt.render_bundle(self.manifest,self.config)['compose.production.yaml'])
+        fixtures={}
+        for number,service in enumerate(self.rt.NORMAL_SERVICES,1):
+            _,value=self.service_fixture(service); value['id']=('%064x'%number)
+            fixtures[value['id']]=value
+        identifiers=list(fixtures)
+        def execute(argv,maximum,deadline):
+            self.assertNotIn('.Config.Env',' '.join(argv))
+            self.assertEqual(argv[:3],['/usr/bin/docker','--host','unix:///var/run/docker.sock'])
+            if argv[3:5]==['container','ls']:return ('\n'.join(identifiers)+'\n').encode()
+            if argv[3:5]==['container','inspect']:return json.dumps(fixtures[argv[-1]]).encode()
+            if argv[3:5]==['image','inspect']:return b'["/image-entrypoint"]'
+            name=argv[-1]; short=name.removeprefix('autodata-production-'); expected=self.rt.TOPOLOGY[short]
+            return json.dumps({'id':'e'*64,'name':name,'driver':'bridge','internal':expected['internal'],'ipv6':False,
+                'options':{'com.docker.network.bridge.name':expected['bridge']},'ipam':[{'Subnet':expected['subnet']}]}).encode()
+        with patch.object(self.rt,'_runtime_rendered_compose',return_value=compose), patch.object(
+                self.rt,'_bounded_schema_command',side_effect=execute):
+            result=self.rt._collect_service_graph(self.manifest,self.config,self.rt.time.monotonic()+15)
+            self.assertEqual(set(result['services']),set(self.rt.NORMAL_SERVICES))
+            baseline=list(identifiers)
+            for broken in (baseline[:-1],baseline+[baseline[0]],baseline[:-1]+[baseline[0]]):
+                identifiers[:]=broken
+                with self.assertRaises(self.rt.ContractError):
+                    self.rt._collect_service_graph(self.manifest,self.config,self.rt.time.monotonic()+15)
+            identifiers[:]=baseline
+            fixtures[baseline[0]]['service']='unexpected'
+            with self.assertRaises(self.rt.ContractError):
+                self.rt._collect_service_graph(self.manifest,self.config,self.rt.time.monotonic()+15)
+
     def test_runtime_evidence_requires_fresh_identical_graph_and_schema(self):
         self.assertTrue(callable(getattr(self.rt, 'collect_runtime_readiness', None)), 'readiness collector missing')
         with patch.object(self.rt,'collect_postgres_schema',return_value={'version':2}), patch.object(
@@ -1413,7 +1491,7 @@ class DeployCheckTests(unittest.TestCase):
     def secret_directory(self, service, files):
         directory = Path(self.rt.SECRET_ROOT) / service; directory.mkdir(mode=0o700)
         for name, value in files.items():
-            target = directory / name; target.write_bytes(value); target.chmod(0o400)
+            target = directory / name; target.write_bytes(value); target.chmod(0o444 if service == 'caddy' else 0o400)
         directory.chmod(0o500)
 
     def execute(self, argv, **kwargs):
@@ -1602,6 +1680,17 @@ class DeployCheckTests(unittest.TestCase):
         self.assertFalse(self.deploy()[1]['checks']['secrets'])
         directory.chmod(0o700); target.unlink(); other = self.base / 'other'; other.write_bytes(b'opaque-do-not-print'); other.chmod(0o400); os.link(other, target); directory.chmod(0o500)
         self.assertFalse(self.deploy()[1]['checks']['secrets'])
+
+    def test_caddy_maintenance_import_requires_exact_readable_atomic_contents(self):
+        target=Path(self.rt.SECRET_ROOT)/'caddy/maintenance.caddy'
+        for value in (b'', b'respond "Maintenance" 503\n'):
+            target.chmod(0o600); target.write_bytes(value); target.chmod(0o444)
+            self.assertTrue(self.rt.validate_runtime_secret_files())
+        for value in (b'respond "Maintenance" 200\n', b'import /tmp/other\n', b'\n'):
+            target.chmod(0o600); target.write_bytes(value); target.chmod(0o444)
+            with self.assertRaises(self.rt.ContractError): self.rt.validate_runtime_secret_files()
+        target.chmod(0o600); target.write_bytes(b''); target.chmod(0o400)
+        with self.assertRaises(self.rt.ContractError): self.rt.validate_runtime_secret_files()
 
     def test_native_secret_configs_reject_missing_unresolved_or_widened_policy(self):
         for service, filename in (('postgres', 'POSTGRES_PASSWORD'), ('nats', 'nats.conf'), ('minio', 's3.json'), ('caddy', 'maintenance.caddy')):
