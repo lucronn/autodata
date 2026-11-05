@@ -19,6 +19,10 @@ import re
 import stat
 import selectors
 import time
+import tempfile
+import http.client
+import socket
+import threading
 import subprocess
 import sys
 from urllib.parse import urlsplit
@@ -445,7 +449,7 @@ SELECT pg_catalog.json_build_object(
     'sequence_write', EXISTS (SELECT FROM app_rel x WHERE CASE WHEN x.relkind = 'S' THEN pg_catalog.has_sequence_privilege(r.oid, x.oid, 'USAGE,UPDATE') ELSE false END)
     ) FROM r CROSS JOIN d),
  'ledger_relation', (SELECT pg_catalog.json_build_object(
-    'oid', c.oid, 'schema', 'public', 'name', c.relname, 'kind', c.relkind, 'persistence', c.relpersistence,
+    'oid', c.oid::pg_catalog.int8, 'schema', 'public', 'name', c.relname, 'kind', c.relkind, 'persistence', c.relpersistence,
     'is_partition', c.relispartition,
     'has_inheritance', EXISTS (SELECT FROM pg_catalog.pg_inherits i WHERE i.inhrelid = c.oid OR i.inhparent = c.oid),
     'rls', c.relrowsecurity, 'force_rls', c.relforcerowsecurity,
@@ -456,7 +460,7 @@ SELECT pg_catalog.json_build_object(
     ) FROM c CROSS JOIN a))'''
 
 
-def _bounded_schema_command(argv, maximum, collector_deadline):
+def _bounded_schema_command(argv, maximum, collector_deadline, input_data=None):
     """Bound new schema observations before retaining bytes, including cleanup.
 
     CLI kill does not stop a remote exec; the fixed server statement_timeout
@@ -465,8 +469,18 @@ def _bounded_schema_command(argv, maximum, collector_deadline):
     deadline = min(collector_deadline, time.monotonic() + COMMAND_TIMEOUT_SECONDS)
     if time.monotonic() >= deadline:
         raise subprocess.TimeoutExpired('schema observation', COMMAND_TIMEOUT_SECONDS)
-    process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL, cwd='/', env=dict(SCHEMA_HOST_ENV))
+    input_file = None
+    if input_data is not None:
+        require(type(input_data) is bytes and len(input_data) <= 32768)
+        input_file = tempfile.TemporaryFile()
+        input_file.write(input_data)
+        input_file.seek(0)
+    try:
+        process = subprocess.Popen(argv, stdin=input_file if input_file is not None else subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, cwd='/', env=dict(SCHEMA_HOST_ENV))
+    finally:
+        if input_file is not None:
+            input_file.close()
     selector = None
     try:
         selector = selectors.DefaultSelector()
@@ -650,6 +664,279 @@ def collect_postgres_catalog(manifest):
     validate_postgres_catalog(observation)
     require(inspect(before['id']) == before)
 
+
+
+# The gate is evaluated by psql before it submits the application SELECT. All
+# operators/functions in the gate resolve in pg_catalog; no ledger expression is
+# planned until both the ordinary-heap and least-privilege checks pass.
+def _postgres_schema_script(manifest):
+    files = manifest['migrations']['files']
+    require(type(files) is list and 1 <= len(files) <= 999)
+    for item in files:
+        match(item['name'], r'[0-9]{3}_[a-z0-9_]+\.sql')
+    expected = [item['name'][:-4] for item in files]
+    require(expected == sorted(set(expected)))
+    true_rights = ('login', 'connect', 'schema_usage', 'ledger_select')
+    false_rights = ('superuser', 'create_db', 'create_role', 'replication', 'bypass_rls', 'inherit',
+                    'database_create', 'database_temp', 'database_owner', 'schema_create', 'schema_owner',
+                    'relation_owner', 'sequence_owner', 'relation_write', 'column_write', 'sequence_write')
+    rights = {key: True for key in true_rights}
+    rights.update({key: False for key in false_rights}, membership_count=0)
+    relation = {'schema': 'public', 'name': 'schema_migrations', 'kind': 'r', 'persistence': 'p',
+                'is_partition': False, 'has_inheritance': False, 'rls': False, 'force_rls': False,
+                'version_type': 'pg_catalog.text', 'version_not_null': True, 'version_generated': '',
+                'version_identity': '', 'primary_key_version': True}
+    # Only these validated primitive constants enter the SQL, never caller SQL.
+    def literal(value):
+        return "'" + canonical_bytes(value).decode().replace("'", "''") + "'::pg_catalog.jsonb"
+    catalog = POSTGRES_CATALOG_SQL
+    script = r'''BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED READ ONLY;
+SET LOCAL idle_in_transaction_session_timeout = '2000ms';
+SET LOCAL enable_indexscan = off;
+SET LOCAL enable_indexonlyscan = off;
+SET LOCAL enable_bitmapscan = off;
+LOCK TABLE ONLY public.schema_migrations IN ACCESS SHARE MODE;
+''' + 'SELECT observed::pg_catalog.text AS catalog FROM (' + catalog + r''') AS facts(observed) \gset
+SELECT (
+ (:'catalog'::pg_catalog.jsonb -> 'rights') = ''' + literal(rights) + r'''
+ AND ((:'catalog'::pg_catalog.jsonb -> 'ledger_relation') - 'oid') = ''' + literal(relation) + r'''
+ AND ((:'catalog'::pg_catalog.jsonb -> 'identity') - 'server_version_num') =
+ '{"session_user":"autodata_metrics","current_user":"autodata_metrics","database":"autodata","transaction_read_only":true,"default_transaction_read_only":true,"client_addr":null,"client_port":null}'::pg_catalog.jsonb
+ AND pg_catalog.current_setting('server_version_num')::pg_catalog.int4 BETWEEN 170000 AND 179999
+ AND (:'catalog'::pg_catalog.jsonb -> 'ledger_relation' ->> 'oid')::pg_catalog.oid = 'public.schema_migrations'::pg_catalog.regclass
+ AND EXISTS (SELECT FROM pg_catalog.pg_class c JOIN pg_catalog.pg_am am ON am.oid=c.relam
+     WHERE c.oid='public.schema_migrations'::pg_catalog.regclass AND am.amname='heap'
+       AND am.oid=2 AND NOT c.relhasrules AND NOT c.relhastriggers)
+ AND (SELECT pg_catalog.count(*) FROM pg_catalog.pg_attribute a
+     WHERE a.attrelid='public.schema_migrations'::pg_catalog.regclass AND a.attnum>0) = 2
+ AND NOT EXISTS (SELECT FROM pg_catalog.pg_attribute a
+     WHERE a.attrelid='public.schema_migrations'::pg_catalog.regclass AND a.attnum>0
+       AND (a.attisdropped OR a.atttypmod<>-1 OR a.attgenerated<>'' OR a.attidentity<>'' OR NOT a.attnotnull
+       OR NOT ((a.attname='version' AND a.atttypid=25 AND a.attcollation=100)
+            OR (a.attname='applied_at' AND a.atttypid=1184 AND a.attcollation=0))))
+ AND NOT EXISTS (SELECT FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid
+     WHERE i.indrelid='public.schema_migrations'::pg_catalog.regclass
+       AND (i.indexprs IS NOT NULL OR i.indpred IS NOT NULL OR c.relam<>403
+            OR i.indnatts<>1 OR i.indnkeyatts<>1 OR i.indclass[0]<>3126))
+) IS TRUE AS safe \gset
+\if :safe
+\echo :catalog
+SELECT pg_catalog.json_build_object('version', pg_catalog.count(*), 'migrations',
+    coalesce(pg_catalog.json_agg(b.version ORDER BY b.version COLLATE pg_catalog."C"), '[]'::pg_catalog.json)) AS ledger
+FROM (SELECT CASE WHEN pg_catalog.octet_length(version)<=128 THEN version ELSE NULL END AS version
+      FROM ONLY public.schema_migrations ORDER BY version COLLATE pg_catalog."C" LIMIT ''' + str(len(files) + 1) + r''') b \gset
+SELECT :'ledger'::pg_catalog.jsonb = ''' + literal({'version': len(expected), 'migrations': expected}) + r''' AS inventory_ok \gset
+\if :inventory_ok
+\echo :ledger
+COMMIT;
+\else
+ROLLBACK;
+\quit 3
+\endif
+\else
+ROLLBACK;
+\quit 3
+\endif
+'''
+    recheck = ('SELECT observed::pg_catalog.text AS final_catalog FROM (' + catalog + ') AS facts(observed) \\gset\n'
+               + "SELECT :'catalog'::pg_catalog.jsonb = :'final_catalog'::pg_catalog.jsonb AS unchanged \\gset\n"
+               + '\\if :unchanged\nCOMMIT;\n\\else\nROLLBACK;\n\\quit 3\n\\endif\n')
+    script = script.replace('COMMIT;\n', recheck, 1)
+    return script.encode('ascii')
+
+
+def collect_postgres_schema(manifest):
+    """Read a ledger only after locked catalog validation, in one PG17 session."""
+    deadline = time.monotonic() + COLLECTOR_TIMEOUT_SECONDS
+    prefix = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock']
+    def inspect(target):
+        wire = _bounded_schema_command(prefix + ['container', 'inspect', '--format', POSTGRES_INSPECT_TEMPLATE, target],
+                                       MAX_INSPECT_STDOUT_BYTES, deadline)
+        return validate_postgres_container(manifest, strict_json(wire))
+    before = inspect(POSTGRES_CONTAINER)
+    argv = prefix + ['exec', '-i', '--user', '999:999', '--workdir', '/', before['id'],
+        '/usr/bin/env', '-i', 'PATH=/usr/lib/postgresql/17/bin:/usr/bin:/bin', 'LANG=C', 'LC_ALL=C',
+        'HOME=/nonexistent', 'PGPASSFILE=/dev/null', 'PGSERVICEFILE=/dev/null', 'PGOPTIONS=' + POSTGRES_PGOPTIONS,
+        POSTGRES_CLIENT, '--no-psqlrc', '--no-password', '--no-align', '--tuples-only', '--quiet',
+        '--host=' + POSTGRES_SOCKET, '--port=5432', '--username=' + POSTGRES_ROLE, '--dbname=' + POSTGRES_DATABASE,
+        '--set=ON_ERROR_STOP=1', '--file=-']
+    output = _bounded_schema_command(argv, MAX_SQL_STDOUT_BYTES, deadline, input_data=_postgres_schema_script(manifest))
+    lines = output.splitlines()
+    require(len(lines) == 2)
+    validate_postgres_catalog(_catalog_json(lines[0]))
+    ledger = strict_json(lines[1])
+    validate_schema_ledger(manifest, ledger)
+    require(inspect(before['id']) == before)
+    return ledger
+
+
+def _validate_readyz(value):
+    require(type(value) is dict and set(value) in (
+        {'database', 'nats', 'object_storage'}, {'database', 'nats', 'object_storage', 'paid_catalog'}))
+    require(all(value[name] == 'ready' for name in value))
+
+
+# Fixed projections deliberately omit Config.Env and arbitrary labels.
+SERVICE_INSPECT_TEMPLATE = POSTGRES_INSPECT_TEMPLATE[:-1] + ',"entrypoint":{{json .Config.Entrypoint}},"restarts":{{json .RestartCount}},"networks":{{json .NetworkSettings.Networks}},"ports":{{json .HostConfig.PortBindings}},"init":{{json .HostConfig.Init}},"pids_limit":{{json .HostConfig.PidsLimit}}}'
+NETWORK_INSPECT_TEMPLATE = '{"id":{{json .ID}},"name":{{json .Name}},"driver":{{json .Driver}},"internal":{{json .Internal}},"ipv6":{{json .EnableIPv6}},"options":{{json .Options}},"ipam":{{json .IPAM.Config}}}'
+
+
+def _runtime_rendered_compose(manifest, config):
+    # Rendering needs no rollback authority. Rollback compatibility is separately
+    # enforced by the lifecycle before any mutation; it does not alter output.
+    rendering = copy.deepcopy(manifest)
+    rendering['rollback_source_sha'] = None
+    bundle = render_bundle(rendering, config)
+    with ExitStack() as resources:
+        root = _owned_directory(RELEASE_ROOT)
+        resources.callback(os.close, root)
+        release = _owned_directory(manifest['source_sha'], parent=root)
+        resources.callback(os.close, release)
+        for name in ('compose.production.yaml', 'Caddyfile'):
+            require(_owned_bytes(release, name, 0, 0, 0o600, MAX_JSON_BYTES) == bundle[name].encode())
+    return strict_json(bundle['compose.production.yaml'].encode())
+
+
+def _validate_service_container(manifest, service, desired, value, image_entrypoint):
+    extra = ('entrypoint', 'restarts', 'networks', 'ports', 'init', 'pids_limit')
+    # PostgreSQL retains its stronger established bind/socket validation.
+    base_keys = ('id','name','image','user','project','service','command','running','paused','restarting','dead',
+                 'started_at','readonly_root','privileged','cap_add','cap_drop','security_opt','mounts','tmpfs')
+    exact_object(value, (*base_keys, *extra))
+    if service == 'postgres':
+        validate_postgres_container(manifest, {key: value[key] for key in base_keys})
+    match(value['id'], HASH_PATTERN)
+    require(value['name'] == '/autodata-production-' + service + '-1')
+    require(value['project'] == 'autodata-production' and value['service'] == service)
+    role = 'ingestion' if service in ('ingestion-http','article-worker','payment-reconciler') else service
+    require(value['image'] == manifest['images'][role]['image_id'])
+    require(value['command'] == desired['command'] and value['user'] == desired['user'])
+    require(value['entrypoint'] == desired.get('entrypoint', image_entrypoint))
+    for key, expected in (('running',True),('paused',False),('restarting',False),('dead',False),
+                          ('readonly_root',True),('privileged',False),('init',True)):
+        require(type(value[key]) is bool and value[key] is expected)
+    require(type(value['restarts']) is int and value['restarts'] >= 0)
+    match(value['started_at'], r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z')
+    require(value['cap_add'] in (None, []) and value['cap_drop'] == ['ALL'])
+    require(value['security_opt'] == ['no-new-privileges:true'] and value['pids_limit'] == 256)
+    tmpfs = dict(item.split(':',1) for item in desired['tmpfs'])
+    require(value['tmpfs'] == tmpfs)
+    require(type(value['mounts']) is list and len(value['mounts']) == len(desired['volumes']))
+    mounts = {}
+    for observed in value['mounts']:
+        exact_object(observed, ('Type','Source','Destination','Mode','RW','Propagation'))
+        target = observed['Destination']
+        require(type(target) is str and target not in mounts)
+        mounts[target] = observed
+    for volume in desired['volumes']:
+        require(volume['target'] in mounts)
+        actual = mounts[volume['target']]
+        require(actual['Type'] == 'bind' and actual['Source'] == volume['source'])
+        require(type(actual['RW']) is bool and actual['RW'] is (not volume['read_only']))
+        require(actual['Propagation'] == 'rprivate' and actual['Mode'] in ('','ro' if volume['read_only'] else 'rw'))
+    expected_networks = {'autodata-production-' + network: details['ipv4_address'] for network,details in desired['networks'].items()}
+    require(type(value['networks']) is dict and set(value['networks']) == set(expected_networks))
+    for network, address in expected_networks.items():
+        observed = value['networks'][network]
+        require(type(observed) is dict and observed.get('IPAddress') == address)
+        match(observed.get('NetworkID'), HASH_PATTERN)
+        require(observed.get('GlobalIPv6Address') in ('', None))
+    ports = {}
+    for port in desired.get('ports',[]):
+        host, exposed = port.split(':')
+        ports[exposed] = [{'HostIp':'', 'HostPort':host}]
+    require(value['ports'] == ports if ports else value['ports'] in (None, {}))
+    return value
+
+
+def _collect_service_graph(manifest, config, deadline):
+    desired = _runtime_rendered_compose(manifest, config)
+    prefix = ['/usr/bin/docker','--host','unix:///var/run/docker.sock']
+    def execute(args, maximum=MAX_INSPECT_STDOUT_BYTES):
+        return _bounded_schema_command(prefix + args, maximum, deadline)
+    ids = execute(['container','ls','--all','--no-trunc','--filter','label=com.docker.compose.project=autodata-production',
+                   '--format','{{.ID}}']).decode('ascii').splitlines()
+    require(len(ids) == len(NORMAL_SERVICES) and len(set(ids)) == len(ids))
+    for identifier in ids: match(identifier, HASH_PATTERN)
+    entrypoints = {}
+    graph = {}
+    for identifier in sorted(ids):
+        value = strict_json(execute(['container','inspect','--format',SERVICE_INSPECT_TEMPLATE,identifier]))
+        service = value.get('service') if type(value) is dict else None
+        require(type(service) is str and service in NORMAL_SERVICES and service not in graph)
+        role = 'ingestion' if service in ('ingestion-http','article-worker','payment-reconciler') else service
+        if role not in entrypoints:
+            image = strict_json(execute(['image','inspect','--format','{{json .Config.Entrypoint}}',manifest['images'][role]['image_id']]))
+            require(image is None or (type(image) is list and all(type(item) is str for item in image)))
+            entrypoints[role] = image
+        graph[service] = _validate_service_container(manifest,service,desired['services'][service],value,entrypoints[role])
+    networks = {}
+    for network, expected in TOPOLOGY.items():
+        name = 'autodata-production-' + network
+        value = strict_json(execute(['network','inspect','--format',NETWORK_INSPECT_TEMPLATE,name]))
+        exact_object(value, ('id','name','driver','internal','ipv6','options','ipam'))
+        match(value['id'],HASH_PATTERN)
+        require(value['name'] == name and value['driver'] == 'bridge')
+        require(value['internal'] is expected['internal'] and value['ipv6'] is False)
+        require(value['options'] == {'com.docker.network.bridge.name':expected['bridge']})
+        require(type(value['ipam']) is list and len(value['ipam']) == 1)
+        require(value['ipam'][0].get('Subnet') == expected['subnet'])
+        for service in NORMAL_SERVICES:
+            if name in graph[service]['networks']:
+                require(graph[service]['networks'][name]['NetworkID'] == value['id'])
+        networks[name] = value
+    return {'services':graph,'networks':networks}
+
+
+def _collect_readyz():
+    """One bodyless local GET: dependency TCP/config evidence, no queued work."""
+    deadline = time.monotonic() + 5
+    connection = http.client.HTTPConnection('172.30.10.10',8080,timeout=5)
+    timer = None
+    try:
+        connection.connect()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0: raise subprocess.TimeoutExpired('readiness observation',5)
+        observed_socket = connection.sock
+        def expire():
+            try: observed_socket.shutdown(socket.SHUT_RDWR)
+            except OSError: pass
+        timer = threading.Timer(remaining,expire)
+        timer.daemon = True
+        timer.start()
+        connection.request('GET','/readyz',body=None,headers={'Accept':'application/json','Connection':'close'})
+        response = connection.getresponse()
+        require(response.status == 200)
+        data = bytearray()
+        while True:
+            if time.monotonic() >= deadline: raise subprocess.TimeoutExpired('readiness observation',5)
+            chunk = response.read1(min(4096,16385-len(data)))
+            if not chunk: break
+            data.extend(chunk)
+            require(len(data) <= 16384)
+        require(time.monotonic() < deadline)
+        _validate_readyz(strict_json(bytes(data)))
+    except (http.client.HTTPException, OSError):
+        if time.monotonic() >= deadline: raise subprocess.TimeoutExpired('readiness observation',5) from None
+        raise ContractError('readiness unavailable') from None
+    finally:
+        if timer is not None: timer.cancel()
+        connection.close()
+
+
+def collect_runtime_readiness(manifest, config):
+    """Actual schema, fixed owned graph and bounded dependency-only GET evidence.
+
+    Lifecycle callers must separately establish disk, guard, private-file and
+    cache prerequisites before combining this evidence into a passed receipt.
+    These observations do not attest NATS/S3 authentication or external launch.
+    """
+    collect_postgres_schema(manifest)
+    deadline = time.monotonic() + 120
+    before = _collect_service_graph(manifest,config,deadline)
+    _collect_readyz()
+    require(_collect_service_graph(manifest,config,deadline) == before)
+    return dict.fromkeys(('schema','services','postgres','nats','s3','no_work','runtime_evidence'),True)
 
 def validate_start_prerequisites(config, evidence):
     """Validate supplied evidence shape, not discover or certify actual host state.
