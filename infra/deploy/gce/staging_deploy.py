@@ -40,7 +40,7 @@ NAME = r'[a-z][a-z0-9-]{0,57}'
 CONFIG_FIELDS = ('schema_version environment source_sha project_id region zone maximum_monthly_budget_usd staging_origin '
                  'instance_name instance_id os_login_user repository_id repository_owner_id protected_environment '
                  'wif_provider service_account registry toolchain_image service_config_sha256 bundle_inventory_sha256 '
-                 'known_hosts_sha256 tools').split()
+                 'known_hosts_sha256 ssh_identity_sha256 tools').split()
 
 
 class Rejected(ValueError):
@@ -93,7 +93,7 @@ def validate_config(value, source, *, bootstrap=False):
     require(matches(value['service_account'], r'[a-z][a-z0-9-]+@' + re.escape(value['project_id']) + r'\.iam\.gserviceaccount\.com'))
     require(matches(value['registry'], re.escape(value['region']) + r'-docker\.pkg\.dev/' + re.escape(value['project_id']) + r'/[a-z0-9-]+'))
     require(matches(value['toolchain_image'], r'[a-z0-9./-]+@sha256:' + HASH))
-    for name in ('service_config_sha256', 'bundle_inventory_sha256', 'known_hosts_sha256'):
+    for name in ('service_config_sha256', 'bundle_inventory_sha256', 'known_hosts_sha256', 'ssh_identity_sha256'):
         if bootstrap and name == 'known_hosts_sha256' and value[name] is None: continue
         require(matches(value[name], HASH))
     require(type(value['tools']) is dict and set(value['tools']) == set(TOOLS))
@@ -191,14 +191,20 @@ def remote_argv(config, phase, source, service=None):
     if command[0].endswith('.py'): command = ['/usr/bin/python3', '-I'] + command
     # Every atom is a fixed literal, a validated SHA, or a fixed service name.
     remote = ' '.join(['/usr/bin/sudo', '-n', '/usr/bin/env', '-i', 'PATH=/usr/bin:/bin'] + command)
-    return [TOOLS['gcloud'], '--quiet', 'compute', 'ssh', config['os_login_user']+'@'+config['instance_name'],
-            '--project='+config['project_id'], '--zone='+config['zone'], '--tunnel-through-iap',
-            '--ssh-key-expire-after=5m', '--strict-host-key-checking=yes',
-            '--ssh-flag=-F/dev/null', '--ssh-flag=-oBatchMode=yes', '--ssh-flag=-oForwardAgent=no',
-            '--ssh-flag=-oClearAllForwardings=yes', '--ssh-flag=-oStrictHostKeyChecking=yes',
-            '--ssh-flag=-oUserKnownHostsFile='+ROOT+'/known_hosts', '--ssh-flag=-oGlobalKnownHostsFile=/dev/null',
-            '--ssh-flag=-oConnectTimeout=20', '--ssh-flag=-oServerAliveInterval=15', '--ssh-flag=-oServerAliveCountMax=2',
-            '--command='+remote]
+    # Direct OpenSSH owns every option. gcloud compute ssh is deliberately
+    # avoided: its generated options could precede and override key pinning.
+    proxy = ' '.join([TOOLS['gcloud'], '--quiet', 'compute', 'start-iap-tunnel', config['instance_name'], '22',
+                      '--listen-on-stdin', '--project='+config['project_id'], '--zone='+config['zone']])
+    options = ['IdentityFile='+ROOT+'/identity', 'BatchMode=yes', 'ForwardAgent=no', 'ClearAllForwardings=yes', 'StrictHostKeyChecking=yes',
+        'UserKnownHostsFile='+ROOT+'/known_hosts', 'GlobalKnownHostsFile=/dev/null',
+        'HostKeyAlias=compute.'+config['instance_id'], 'HostKeyAlgorithms=ssh-ed25519',
+        'IdentitiesOnly=yes', 'PasswordAuthentication=no', 'KbdInteractiveAuthentication=no',
+        'PreferredAuthentications=publickey', 'PermitLocalCommand=no', 'ControlMaster=no', 'ControlPath=none',
+        'RequestTTY=no', 'ConnectTimeout=20', 'ServerAliveInterval=15', 'ServerAliveCountMax=2',
+        'ProxyCommand='+proxy]
+    argv = [TOOLS['ssh'], '-F', '/dev/null']
+    for option in options: argv.extend(['-o', option])
+    return argv + ['--', config['os_login_user']+'@'+config['instance_name'], remote]
 
 
 def validate_receipt(phase, value, source, config_hash, service=None):
@@ -207,6 +213,17 @@ def validate_receipt(phase, value, source, config_hash, service=None):
         require(set(value) == {'status', 'source_sha', 'production_ready'} and value['status'] == 'checked' and value['production_ready'] is False)
         return
     require(type(value.get('schema_version')) is int and value['schema_version'] == 1 and value.get('status') == 'passed')
+    if phase in ('start', 'check'):
+        fields = set(('schema_version operation run_id source_sha status started_at finished_at checks failure_code').split())
+    elif phase == 'install': fields = set(_sibling('host_install')._receipt(source))
+    elif phase == 'private': fields = set(_sibling('private_material').receipt(source, service))
+    else:
+        fields = set(('schema_version authorization_id source_sha operation bundle_inventory_sha256 '
+                      'service_config_sha256 approval_sha256 production_ready status stages').split())
+        if phase in ('images', 'database'): fields.add('manifest_raw_sha256')
+        if phase == 'images': fields.add('images')
+        if phase == 'database': fields.add('image_cache_receipt_sha256')
+    require(set(value) == fields)
     operations = {'provision': ('prepare-new-empty-staging-host',), 'images': ('cache-accepted-staging-images',),
                   'database': ('initialize-fresh-staging-database', 'resume-created-staging-database'),
                   'install': ('deploy.sh install',), 'private': ('install-first-application-private-material',),
@@ -521,7 +538,7 @@ def host_argv(config, phase, source, service=None):
     helper = (BUNDLE+'/opt/autodata/bin' if phase in ('provision-check', 'provision') else BIN)+'/staging_deploy.py'
     command = ['/usr/bin/sudo', '-n', '/usr/bin/env', '-i', 'PATH=/usr/bin:/bin',
                '/usr/bin/python3', '-I', helper, '--host-phase', phase, source]
-    argv[-1] = '--command='+' '.join(command)
+    argv[-1] = ' '.join(command)
     return argv
 
 
@@ -545,11 +562,14 @@ def operate(phase, source):
             if phase != 'bootstrap':
                 known = pins.read(ROOT+'/known_hosts', mode=0o600)
                 _bound(known, config['known_hosts_sha256'])
+                require(re.fullmatch(re.escape(('compute.'+config['instance_id']+' ssh-ed25519 ').encode())+rb'[A-Za-z0-9+/]+={0,2}\n?', known) is not None)
             for name, path in TOOLS.items():
                 mode = stat.S_IMODE(os.stat(path, follow_symlinks=False).st_mode)
                 require(mode in (0o555, 0o755))
                 _bound(pins.read(path, mode=mode, maximum=64*MIB), config['tools'][name])
             pins.directory(ROOT+'/gcloud', 0o700)
+            if phase != 'bootstrap':
+                _bound(pins.read(ROOT+'/identity', maximum=65536), config['ssh_identity_sha256'])
             pins.recheck()
             try: os.mkdir(source, 0o700, dir_fd=directory)
             except FileExistsError: pass
