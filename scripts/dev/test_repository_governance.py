@@ -194,6 +194,19 @@ class RepositoryGovernanceTests(unittest.TestCase):
             self.assertIn(f'"{path_pattern}"', workflow)
 
 
+    def test_ci_event_filters_avoid_duplicate_feature_push_verification(self) -> None:
+        workflow = self.read(".github/workflows/autonomous-verification.yml")
+        triggers = _workflow_section(workflow, "on:", 0)
+        push = _workflow_section(triggers, "push:", 2)
+        self.assertEqual(re.findall(r"(?m)^    ([a-z_-]+):", push),
+                         ["branches", "paths"])
+        branches = _workflow_section(push, "branches:", 4)
+        self.assertEqual(branches.splitlines(), ["      - master"])
+        pull_request = _workflow_section(triggers, "pull_request:", 2)
+        self.assertEqual(re.findall(r"(?m)^    ([a-z_-]+):", pull_request),
+                         ["paths"])
+        self.assertEqual(_workflow_section(triggers, "workflow_dispatch:", 2).strip(), "")
+
     def test_ci_includes_gce_in_each_event_and_required_step(self) -> None:
         workflow = self.read(".github/workflows/autonomous-verification.yml")
         self.assertEqual(_gce_workflow_errors(workflow), ())

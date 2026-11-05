@@ -257,3 +257,21 @@ TODO:
 - [ ] Retain exact candidate review and fresh source-push and actual-PR three-job CI evidence, record remaining blockers and keep credits0, verified IDs[] and runtime/release authorities disabled.
 
 Root confirmed Issue186 [comment6652770502](https://github.com/lucronn/autodata/issues/186#issuecomment-6652770502) exact-body readback PASS and Project8 Source appended-pointer readback PASS (1016 bytes, prior prefix preserved), status In Progress. Recorded at `2026-11-05T07:55:25.114444+00:00`. This tracking synchronization grants no implementation or runtime authority.
+
+
+## CI cost: feature-push verification deduplication — synchronized planning
+
+Goal: Avoid duplicate Autonomous Verification suites for feature-branch pushes while retaining pull_request verification and push verification on master.
+
+Issue: https://github.com/lucronn/autodata/issues/315; Project: https://github.com/users/lucronn/projects/8; item `PVTI_lAHOCSJ8cc4BiQ2BzhGR-0Q`. Plan: `docs/superpowers/plans/2026-11-05-ci-cost-trigger-deduplication.md`. Machine record: `docs/agents/records/2026-11-05-ci-cost-trigger-deduplication.json`. Status: synchronized. Amended docs-only checkpoint supersedes `263d408c07e55f1bed287e32dc8444a3fbff5f4d`; exact new SHA is sealed in Issue #315 after commit/push and required preflight.
+
+Todo:
+
+- [ ] Re-run the exact-checkpoint planning preflight before implementation.
+- [ ] Add focused governance regression coverage for feature push, master push, pull_request and manual dispatch.
+- [ ] Limit push to master while preserving all existing paths, jobs and required checks.
+- [ ] Rebind only product_evidence.ci_profile.workflow_sha256 in the disabled R6 task to the exact master-only-push workflow digest; preserve every other byte and all disabled authorities.
+- [ ] Run structural/workflow-binding checks, inspect unchanged job definitions and push a validated implementation milestone for independent review and actual PR CI evidence.
+- [ ] Synchronize exact-source evidence and remaining blockers in canonical docs and GitHub; retain master-push verification as pending until available.
+
+Exact future implementation paths: `.github/workflows/autonomous-verification.yml`, `scripts/dev/test_repository_governance.py`, `docs/agents/tasks/2026-11-03-production-release/r6-release.json`. Only the R6 field `product_evidence.ci_profile.workflow_sha256` may change in the third path: old `3c54e7ba0613d1cd3a78819eede4915b1d268ffd904df83b2c034d914dca10e6` to new `de53b6f0552165d4ce07549d07e5cb38999995befe9369e0d030fe7d6beb543d`. Preserve every other R6 byte and disabled profile/release-authority semantic. Expected result8727 bytes/SHA256 `136619978274a7b541651ac7e9ed4cac58bc10cf826358d6f658c0c2f813cb78`/Git blob `e9f2d5c4784212d9d922628fc84c4873d89dce99`. Full-workflow binding consumers remain unchanged. Baseline binding/trusted-boundary8 PASS; builder-reported trigger-only digest mismatch is expected red evidence. Final committed source must pass binding/trusted-boundary and focused governance tests with exact byte proofs; see plan for command and evidence details. Preserve every workflow job/check/path filter and manual/PR events. This planning lane performs no implementation, PR, merge or deployment.
