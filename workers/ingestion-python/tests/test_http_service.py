@@ -1,6 +1,7 @@
 import json
 import sys
 import unittest
+from unittest.mock import patch, Mock
 from pathlib import Path
 
 
@@ -10,6 +11,24 @@ from autodata_ingestion.http_service import dispatch_request  # noqa: E402
 
 
 class HTTPServiceTests(unittest.TestCase):
+    def test_server_cleanup_cancels_background_deepening(self):
+        from autodata_ingestion.http_service import run_server
+
+        for failure in (None, RuntimeError("server stopped")):
+            with self.subTest(failure=failure):
+                server = Mock()
+                server.serve_forever.side_effect = failure
+                with patch("autodata_ingestion.http_service.ThreadingHTTPServer", return_value=server), \
+                        patch("autodata_ingestion.commerce_service.configured_commerce"), \
+                        patch("autodata_ingestion.catalog_service.cancel_selector_deepening") as cancel:
+                    if failure:
+                        with self.assertRaisesRegex(RuntimeError, "server stopped"):
+                            run_server(":8081")
+                    else:
+                        run_server(":8081")
+                cancel.assert_called_once_with()
+                server.server_close.assert_called_once_with()
+
     def test_dispatch_rejects_retired_chat_paths(self):
         with self.assertRaisesRegex(ValueError, "unknown ingestion service route"):
             dispatch_request("/v1/chat/queries", {"message": "legacy request"})

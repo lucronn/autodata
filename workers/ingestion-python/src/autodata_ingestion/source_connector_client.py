@@ -153,7 +153,8 @@ class SourceConnectorClient:
         return self._read("GET", "/v1/capabilities", operation="capabilities")
 
     def catalog(
-        self, scope: str, selector: Mapping[str, Any] | None = None, cursor: str | None = None
+        self, scope: str, selector: Mapping[str, Any] | None = None, cursor: str | None = None,
+        *, timeout: float | None = None,
     ) -> SourceEnvelopeV1:
         if not isinstance(scope, str) or scope not in _SCOPES:
             raise ValueError("unsupported catalog scope")
@@ -167,7 +168,7 @@ class SourceConnectorClient:
         if cursor is not None:
             query["cursor"] = _bounded_text(cursor, "cursor", 512)
         suffix = f"?{urlencode(query)}" if query else ""
-        return self._read("GET", f"/v1/catalog/{scope}{suffix}", operation="catalog", scope=scope)
+        return self._read("GET", f"/v1/catalog/{scope}{suffix}", operation="catalog", scope=scope, timeout=timeout)
 
     def resolve_vehicle(self, selector: Mapping[str, Any]) -> SourceEnvelopeV1:
         if not isinstance(selector, Mapping):

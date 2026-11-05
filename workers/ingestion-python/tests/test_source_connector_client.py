@@ -63,6 +63,20 @@ def _envelope(provider="bankone", **extra):
 
 
 class SourceConnectorClientTests(unittest.TestCase):
+    def test_catalog_timeout_is_per_request_and_preserves_client_default(self):
+        timeouts = []
+
+        def capture(request, timeout):
+            timeouts.append(timeout)
+            return _Response(_envelope(scope="years", items=[], complete=True, next_cursor=None), url=request.full_url)
+
+        client = SourceConnectorClient("https://bankone.test", timeout=25, opener=capture)
+        client.catalog("years", timeout=2)
+        client.catalog("years", timeout=120)
+        client.catalog("years")
+        self.assertEqual(timeouts, [2, 25, 25])
+        self.assertEqual(client.timeout, 25)
+
     def test_managed_keys_reach_only_the_matching_bank_and_override_legacy_tokens(self):
         env = {
             "AUTODATA_BANKONE_API_KEY": "managed-one-test",
