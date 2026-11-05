@@ -137,6 +137,9 @@ class LifecycleTests(FileTests):
             if sha == OLD: value['rollback_source_sha'] = None
             return value, self.config
         self.rt = types.SimpleNamespace(
+            SERVICE_INSPECT_TEMPLATE='fixed-full-inspection',
+            _runtime_rendered_compose=lambda *a: {'services':{s:{} for s in ('api','ingestion-http','article-worker','payment-reconciler','postgres','nats','minio','caddy')}},
+            _validate_service_container=lambda *a, **k: a[3],
             HOST_CONFIG=str(self.base / 'host.json'),
             _installed_deploy_inputs=manifest,
             validate_manifest=lambda *a: 'valid',
@@ -172,6 +175,7 @@ class LifecycleTests(FileTests):
         self.assertEqual(argv[:3], ['/usr/bin/docker','--host','unix:///var/run/docker.sock'])
         if argv[3:5] == ['container','ls']:
             return ('\n'.join(self.graph) + ('\n' if self.graph else '')).encode()
+        if argv[3:5] == ['image','inspect']: return b'null'
         if argv[3:5] == ['container','inspect']:
             return json.dumps(self.graph[argv[-1]]).encode()
         if argv[3:5] == ['exec','--user']:
@@ -330,3 +334,12 @@ class LifecycleDeadlineTests(unittest.TestCase):
         self.assertLess(time.monotonic() - began,1)
         self.assertEqual(signal.getsignal(signal.SIGALRM),before)
         self.assertEqual(signal.getitimer(signal.ITIMER_REAL),(0.,0.))
+
+class OwnershipTests(LifecycleTests):
+    def test_invalid_full_container_security_blocks_stop_before_mutation(self):
+        self.assertEqual(self.start()[0],0)
+        with patch.object(self.rt,'_validate_service_container',side_effect=ValueError('unsafe mount'),create=True):
+            before = len(self.events)
+            code,receipt = self.a.activation_cli(['stop',SHA])
+        self.assertEqual(code,3,receipt)
+        self.assertFalse(any(isinstance(x,list) and 'stop' in x for x in self.events[before:]))

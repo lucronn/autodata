@@ -199,7 +199,6 @@ def runtime():
     return module
 
 
-OWNERSHIP_TEMPLATE = '{"id":{{json .ID}},"project":{{json (index .Config.Labels "com.docker.compose.project")}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"image":{{json .Image}},"running":{{json .State.Running}},"paused":{{json .State.Paused}},"restarting":{{json .State.Restarting}},"dead":{{json .State.Dead}}}'
 
 
 def validate_data_directories(rt):
@@ -261,6 +260,7 @@ class Lifecycle:
         directory = self.pins.directory(RELEASES + '/' + sha)
         require(self.rt.strict_json(self.pins.pin(directory,'release.json')) == manifest)
         self.checks.update(config=True,manifest=True)
+        self.config = config
         return manifest,config
 
     def lock(self):
@@ -310,12 +310,24 @@ class Lifecycle:
         for container in ids:
             # Docker IDs, never service names/commands supplied by a caller.
             require(re.fullmatch(r'[0-9a-f]{64}',container) is not None)
-            value = self.rt.strict_json(self.command(DOCKER + ['container','inspect','--format',OWNERSHIP_TEMPLATE,container]))
-            require(type(value) is dict and set(value) == {'id','project','service','image','running','paused','restarting','dead'})
+            value = self.rt.strict_json(self.command(DOCKER + ['container','inspect','--format',self.rt.SERVICE_INSPECT_TEMPLATE,container]))
+            require(type(value) is dict)
             service = value['service']
             require(service in APPS + STATEFUL + ('caddy',) and service not in result and value['id'] == container and value['project'] == 'autodata-production')
             role = 'ingestion' if service in APPS[1:] else service
-            require(value['image'] in {manifest['images'][role]['image_id'] for manifest in manifests})
+            candidates = [m for m in manifests if m['images'][role]['image_id'] == value['image']]
+            require(candidates)
+            entrypoint = self.rt.strict_json(self.command(DOCKER + ['image','inspect','--format','{{json .Config.Entrypoint}}',value['image']]))
+            require(entrypoint is None or type(entrypoint) is list and all(type(item) is str for item in entrypoint))
+            validated = False
+            for manifest in candidates:
+                try:
+                    desired = self.rt._runtime_rendered_compose(manifest,self.config)['services'][service]
+                    self.rt._validate_service_container(manifest,service,desired,value,entrypoint,require_running=False)
+                    validated = True
+                    break
+                except ValueError: pass
+            require(validated)
             require(all(type(value[key]) is bool for key in ('running','paused','restarting','dead')))
             require(not any(value[key] for key in ('paused','restarting','dead')))
             result[service] = value
