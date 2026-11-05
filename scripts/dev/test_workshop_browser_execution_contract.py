@@ -1,4 +1,7 @@
 """Offline contract tests: none of these tests starts a child or a service."""
+import copy
+import hashlib
+import re
 import dataclasses
 import json
 import ast
@@ -10,7 +13,7 @@ import workshop_browser_execution_contract as c
 
 
 def bindings():
-    return c.RuntimeBindings(
+    base = c.RuntimeBindings(
         candidate_sha=c.CANDIDATE_SHA, candidate_tree=c.CANDIDATE_TREE,
         supervisor_sha256="a" * 64, attempt_id="b" * 32,
         source_root="/offline/source", tools_root="/offline/tools",
@@ -21,6 +24,9 @@ def bindings():
         runtime_admission_sha256=None, docker_socket="/offline/docker.sock",
         docker_config_root="/offline/config", module_cache_root="/offline/modules",
         browser_cache_root="/offline/browsers", control_root="/offline/control")
+    return dataclasses.replace(base,
+        candidate_sha="6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+        candidate_tree="47ec54b1896c83a39b6637a6ce944d3620414f4e")
 
 
 @pytest.mark.parametrize("raw", [b'{"a":1,"a":2}', b'{"a":NaN}', b'{"a":Infinity}'])
@@ -156,3 +162,181 @@ def test_modules_import_no_process_or_network_clients():
         imports = {node.module.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module}
         imports.update(alias.name.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names)
         assert not imports & {"subprocess", "socket", "docker", "requests", "http", "signal", "multiprocessing", "ctypes"}
+
+
+CURRENT_SPEC = Path(c.__file__).resolve().parents[2] / "docs/agents/specs/2026-11-05-workshop-browser-current-source-contract.json"
+
+
+def test_current_spec_is_fresh_and_validated():
+    value = c.specification()
+    assert value == json.loads(CURRENT_SPEC.read_bytes())
+    assert c.validate_source_contract(value) is None
+    value["inventory"]["api_cases"].clear()
+    assert len(c.specification()["inventory"]["api_cases"]) == 21
+
+
+@pytest.mark.parametrize("sha,tree", [
+    ("4d82e413e04fb2401ac7bc28dc828375ac662180", "d9fb2a8f49beacd009374a76327d0736c1fc9b0a"),
+    ("6949eb1b1a5b93c9b2eb0579328e24c697f6f331", "d9fb2a8f49beacd009374a76327d0736c1fc9b0a"),
+    ("4d82e413e04fb2401ac7bc28dc828375ac662180", "47ec54b1896c83a39b6637a6ce944d3620414f4e"),
+    ("c374f77af461f01d367a8b802c7d7bea886fe7ec", "47ec54b1896c83a39b6637a6ce944d3620414f4e"),
+])
+def test_old_mixed_and_tool_identities_reject_even_with_admission(sha, tree):
+    with pytest.raises(ValueError):
+        c.compile_graph(dataclasses.replace(bindings(), candidate_sha=sha,
+            candidate_tree=tree, runtime_admission_sha256="f" * 64), "api")
+
+
+# Each mutation changes one load-bearing value; a missing frozen-section check
+# would allow that mutation through the public pure validator.
+@pytest.mark.parametrize("path,replacement", [
+    (("candidate_sha",), "4d82e413e04fb2401ac7bc28dc828375ac662180"),
+    (("candidate_tree",), None),
+    (("source_candidate_sha",), "0" * 40),
+    (("source_binding", "candidate_tree"), "0" * 40),
+    (("source_manifest", 0, "blob"), "0" * 40),
+    (("source_manifest", 0, "bytes"), 1),
+    (("source_pins", "scripts/dev/workshop_browser_smoke.py", "sha256"), "0" * 64),
+    (("producer_source_input_sha256", "scripts/dev/workshop_browser_smoke.py"), "0" * 64),
+    (("current_served_asset_manifest", "app.mjs", "blob"), "0" * 40),
+    (("api21_v2_inventory", "ordered_cases", 0, "case_id"), "historical-case"),
+    (("api21_v2_inventory", "ordered_cases", 0, "required_refs"), ["arbitrary"] * 9),
+    (("api_process_command_schedule", "go", "argv", 6), "-timeout=4500s"),
+    (("dto_timing_contract", "dto_fixture_seconds"), 4400),
+    (("dto_timing_contract_sha256",), "0" * 64),
+    (("environments", "api_pytest", "AUTODATA_API21_SOURCE_TREE"), "${TREE}"),
+    (("environments", "api_pytest", "AUTODATA_R3_CANDIDATE_SHA"), "0" * 40),
+    (("inventory", "dto_cases", 0, "engine"), "unknown"),
+    (("inventory_sha256",), "0" * 64),
+    (("static_command_contract", "api", "argv", 6), "--junitxml=/artifacts/api/junit.xml"),
+    (("static_command_contract", "api", "cwd"), "/tmp"),
+    (("timeout_binding_rules", "dto_resource_wait_ms"), 4560000),
+    (("deadlines", "dto_go_test_seconds"), 4500),
+    (("support_schemas", "$defs", "Command", "properties", "timeout_ms", "maximum"), 4560000),
+])
+def test_source_contract_rejects_single_value_mutations(path, replacement):
+    value = copy.deepcopy(c.specification())
+    target = value
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = replacement
+    with pytest.raises(ValueError):
+        c.validate_source_contract(value)
+
+
+@pytest.mark.parametrize("section", ["source_pins", "producer_source_input_sha256",
+    "current_served_asset_manifest", "environments", "frozen_section_digests"])
+@pytest.mark.parametrize("change", ["missing", "extra"])
+def test_source_contract_rejects_missing_and_extra_map_keys(section, change):
+    value = copy.deepcopy(c.specification())
+    if change == "missing":
+        value[section].pop(next(iter(value[section])))
+    else:
+        value[section]["unexpected"] = "untrusted"
+    with pytest.raises(ValueError):
+        c.validate_source_contract(value)
+
+
+@pytest.mark.parametrize("replacement", [None, "", "0" * 40, "${TREE}"])
+def test_api_source_tree_cannot_be_filled_from_ambient_environment(monkeypatch, replacement):
+    monkeypatch.setenv("AUTODATA_API21_SOURCE_TREE", "47ec54b1896c83a39b6637a6ce944d3620414f4e")
+    env = c.environment("api_pytest", "/unused")
+    if replacement is None:
+        del env["AUTODATA_API21_SOURCE_TREE"]
+    else:
+        env["AUTODATA_API21_SOURCE_TREE"] = replacement
+    with pytest.raises(ValueError):
+        c.validate_environment("api", env)
+
+
+def test_exact_current_commands_and_dto_abort_bounds():
+    b = bindings()
+    api = c.producer_command(b, "api")
+    assert api.argv == ("/usr/local/bin/python3", "-m", "pytest", "-q", "-p", "no:cacheprovider",
+        "--junitxml=/artifacts/workshop-browser-api.xml",
+        "workers/ingestion-python/tests/test_workshop_browser_integration.py")
+    assert api.cwd == "/workspace" and api.timeout_ms == 2100000
+    assert dict(api.environment)["AUTODATA_API21_SOURCE_TREE"] == "47ec54b1896c83a39b6637a6ce944d3620414f4e"
+    go = c.producer_command(b, "dto_go")
+    assert go.argv == ("/usr/local/go/bin/go", "test", "-count=1", "-run",
+        "^TestWorkshopBrowserFixtureHTTP$", "-timeout=5040s", ".")
+    assert go.cwd == "/workspace/apps/api-go" and go.timeout_ms == 5100000
+    dto = c.producer_command(b, "dto", origin="https://127.0.0.1:12345")
+    assert dto.argv == ("/usr/local/bin/python3", "/workspace/scripts/dev/workshop_browser_smoke.py",
+        "--base-url", "https://127.0.0.1:12345", "--mode", "dto-fixture", "--browser", "all",
+        "--candidate-sha", "6949eb1b1a5b93c9b2eb0579328e24c697f6f331", "--output", "/artifacts/browser")
+    assert dto.cwd == "/workspace" and dto.timeout_ms == 5100000
+    for lane, bound in (("api", 2100000), ("dto", 5100000)):
+        assert c.resource_command(b, lane, "runner", "wait", resource_id="1" * 64).timeout_ms == bound
+    ops = c.compile_graph(b, "dto")
+    assert ops == c.compile_graph(b, "dto")
+    assert {op.id: op.timeout_ms for op in ops if op.id in ("dto.go.start", "dto.browser.start")} == {
+        "dto.go.start": 5100000, "dto.browser.start": 5100000}
+    assert all(op.timeout_ms == 120000 for op in ops if op.readiness or op.id == "dto.seal")
+    admitted = dataclasses.replace(b, runtime_admission_sha256="f" * 64)
+    assert {"blocked_timer_dependency", "supervisor_dto_deadline_mismatch"} <= set(c.graph_blockers(admitted, "dto"))
+    assert {"api_finite_success_proof_missing", "source_observer_not_admitted",
+        "runtime_admission_not_verified", "filesystem_identity_not_observed",
+        "go_path_resolution_not_observed", "live_adapter_not_admitted"} <= set(c.graph_blockers(admitted, "api"))
+
+
+@pytest.mark.parametrize("timeout,valid", [(1, True), (4560000, True), (5100000, True),
+    (0, False), (-1, False), (True, False), ("5100000", False), (5100001, False)])
+def test_command_timeout_current_boundary(timeout, valid):
+    def command():
+        return c.make_command("offline", "api", ["/bin/true"], "/workspace",
+            c.environment("api_pytest", "/unused"), timeout, "/artifacts/out", "/artifacts/err")
+    if valid:
+        assert command().timeout_ms == timeout
+    else:
+        with pytest.raises(ValueError):
+            command()
+
+
+def test_source_timing_and_required_env_are_inspected_without_producer_import():
+    root = Path(c.__file__).resolve().parents[2]
+    timing_bytes = (root / "scripts/dev/fixtures/workshop_customer/timing.json").read_bytes()
+    timing = json.loads(timing_bytes)
+    tree = ast.parse((root / "scripts/dev/workshop_browser_smoke.py").read_text())
+    declared = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "DTO_TIMING_V1" for t in n.targets))
+    assert timing == declared == c.specification()["dto_timing_contract"]
+    assert hashlib.sha256(timing_bytes).hexdigest() == c.specification()["dto_timing_contract_sha256"]
+    assert {k: timing[k] for k in ("dto_fixture_seconds", "go_test_seconds", "ci_exercise_seconds",
+        "producer_hard_seconds", "worker_hard_seconds")} == dict(dto_fixture_seconds=4800,
+        go_test_seconds=5040, ci_exercise_seconds=5100, producer_hard_seconds=4440, worker_hard_seconds=4380)
+    go = (root / "apps/api-go/workshop_browser_fixture_test.go").read_text()
+    expected = go.split("expected := map[string]int{", 1)[1].split("}", 1)[0]
+    assert dict((k, int(v)) for k, v in re.findall(r'"([^"]+)": ([0-9]+)', expected)) == {
+        k: v for k, v in timing.items() if k != "version"}
+    source = ast.parse((root / "workers/ingestion-python/tests/test_workshop_browser_integration.py").read_text())
+    binding = next(n for n in source.body if isinstance(n, ast.FunctionDef) and n.name == "_binding")
+    env_keys = {n.slice.value for n in ast.walk(binding) if isinstance(n, ast.Subscript)
+        and isinstance(n.value, ast.Attribute) and n.value.attr == "environ" and isinstance(n.slice, ast.Constant)}
+    assert {"AUTODATA_R3_CANDIDATE_SHA", "AUTODATA_API21_SOURCE_TREE"} <= env_keys
+
+
+def test_required_refs_and_identities_are_exact_not_just_counts():
+    spec = c.specification()
+    api = spec["api21_v2_inventory"]
+    assert [case["case_id"] for case in api["ordered_cases"]] == [case["id"] for case in spec["inventory"]["api_cases"]]
+    refs = [api["junit_ref"]] + [ref for case in api["ordered_cases"] for ref in case["required_refs"]]
+    assert len(refs) == len(set(refs)) == 190
+    assert sum(ref.endswith(("child-processes.json", "parent-process.json")) for ref in refs) == 42
+    assert api["junit_original_producer_path"] == "/artifacts/workshop-browser-api.xml"
+    assert len(spec["inventory"]["dto_cases"]) == 120
+    assert spec["accepted_case_credit"] == spec["accepted_new_case_credit"] == 0
+    assert spec["verified_case_ids"] == [] and not any(spec["authorities"].values())
+
+
+def test_missing_or_malformed_current_spec_has_no_historical_fallback(monkeypatch, tmp_path):
+    missing = tmp_path / "missing.json"
+    monkeypatch.setattr(c, "SPEC_PATH", missing)
+    with pytest.raises(OSError):
+        c.specification()
+    missing.write_bytes(b'{"candidate_sha":1,"candidate_sha":2}')
+    with pytest.raises(ValueError):
+        c.specification()
+    missing.write_text('{}')
+    with pytest.raises(ValueError):
+        c.specification()

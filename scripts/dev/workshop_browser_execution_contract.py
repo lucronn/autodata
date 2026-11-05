@@ -14,9 +14,9 @@ import re
 from urllib.parse import urlsplit
 
 
-SPEC_PATH = Path(__file__).resolve().parents[2] / "docs/agents/specs/2026-11-04-workshop-browser-static-supervisor.json"
-CANDIDATE_SHA = "4d82e413e04fb2401ac7bc28dc828375ac662180"
-CANDIDATE_TREE = "d9fb2a8f49beacd009374a76327d0736c1fc9b0a"
+SPEC_PATH = Path(__file__).resolve().parents[2] / "docs/agents/specs/2026-11-05-workshop-browser-current-source-contract.json"
+CANDIDATE_SHA = "6949eb1b1a5b93c9b2eb0579328e24c697f6f331"
+CANDIDATE_TREE = "47ec54b1896c83a39b6637a6ce944d3620414f4e"
 IMAGE_ROLES = ("runner", "postgres", "nats", "s3")
 
 
@@ -51,10 +51,50 @@ def digest(value) -> str:
     return digest_bytes(canonical_json(value))
 
 
+# Reviewed literals from the admitted c374f77 checkpoint. These expectations
+# never come from the caller's spec or a runtime source/filesystem observation.
+_CURRENT_SPEC_SHA256 = '75f412ed9ff42366dc7382364e3de1e4c0b777b1ee43ef4fb2060153e4e544ad'
+_FROZEN_SECTION_DIGESTS = {
+    "source_manifest": "316a4d15269d55b5229b4873653998c34cea80d75c5bbdfee401c991b98db722",
+    "source_pins": "8217874c03373499d3a7678cf88540d4d7b755caed5dd111635a83bcfcf096a6",
+    "producer_source_input_sha256": "f87c7488e03d8b2bcc18818177b3a30b596f4833d56409df29d84887bd5f9520",
+    "current_served_asset_manifest": "2d8f9d6e7f3ab3c75f5691f2d9adce80467dd2b17ccfce76e3cd1dbb6a95cb16",
+    "api21_v2_inventory": "9e3c5fb3b3d0502867da5120bca9ba8d1ddbc916c78720b77fe9d9d69692d185",
+    "api_process_command_schedule": "2b2496bb706e457b7d94ec6fe7d245c67805bfead4dbf627e4e112419c25078e",
+    "dto_timing_contract": "c3029bc08b5a40c323aab57ba1a65d1bc1d3dd4cd82f978839f713cb09a5cd52",
+    "environments": "ad307ca5b1f87312b1c02c3d1c8874323e6859ab4eb30cadaf335dde9dc53bdb",
+    "inventory": "0f197bd5aedecb2c0d996c5eeb0b5f34182d9614420833ab765e991695bbeead",
+    "static_command_contract": "341e5d84be3a47e018d53219fafc5e10562eb918eda51514851bb4f8ec08f085",
+    "timeout_binding_rules": "6116d2709bafadc89bf5d21753ec1d016e25716093c696fd5aef904314b61fc4"
+}
+
+
+def validate_source_contract(value: dict) -> None:
+    """Validate the exact immutable current-source static contract, without I/O."""
+    if not isinstance(value, dict):
+        raise ValueError("current-source specification must be an object")
+    if (value.get("candidate_sha") != CANDIDATE_SHA or
+            value.get("candidate_tree") != CANDIDATE_TREE or
+            value.get("source_candidate_sha") != CANDIDATE_SHA or
+            value.get("source_candidate_tree") != CANDIDATE_TREE):
+        raise ValueError("current-source specification identity mismatch")
+    if value.get("frozen_section_digests") != _FROZEN_SECTION_DIGESTS:
+        raise ValueError("current-source frozen digest map mismatch")
+    for section, expected in _FROZEN_SECTION_DIGESTS.items():
+        if section not in value or digest(value[section]) != expected:
+            raise ValueError("current-source section mismatch: " + section)
+    # Also freeze schemas, deadlines, authority barriers and root shape. A
+    # self-consistent replacement map cannot certify altered static inputs.
+    if digest(value) != _CURRENT_SPEC_SHA256:
+        raise ValueError("current-source specification mismatch")
+
+
 def specification() -> dict:
     # The canonical planning checkpoint carries literal schemas and inventories.
     # Return fresh data so callers cannot mutate the contract for other calls.
-    return strict_json(SPEC_PATH.read_bytes())
+    value = strict_json(SPEC_PATH.read_bytes())
+    validate_source_contract(value)
+    return value
 
 
 def inventory() -> dict:
@@ -251,7 +291,7 @@ def make_command(id: str, role: str, argv, cwd: str, env: dict, timeout_ms: int,
         absolute_path(p)
     if not argv or any(not isinstance(a, str) or not a or "\0" in a or a.startswith("@") for a in argv):
         raise ValueError("unresolved or malformed argv")
-    if type(timeout_ms) is not int or not 0 < timeout_ms <= 4560000:
+    if type(timeout_ms) is not int or not 0 < timeout_ms <= 5100000:
         raise ValueError("invalid command timeout")
     cmd = CommandSpec(id, role, tuple(argv), cwd, tuple(sorted(env.items())), timeout_ms,
                       stdout_path, stderr_path, tuple(depends_on), "")
@@ -332,7 +372,7 @@ def resource_command(b: RuntimeBindings, lane: str, role: str, verb: str, *,
         else:
             identity = hex_value(resource_id, 64)
             templates = {"start": (["start", identity], 10000), "inspect": (["inspect", "--type", "container", identity], 5000),
-                         "wait": (["wait", identity], 2100000 if lane == "api" else 4560000),
+                         "wait": (["wait", identity], 2100000 if lane == "api" else 5100000),
                          "logs": (["logs", "--timestamps", identity], 10000), "stop": (["stop", "--time", "2", identity], 5000),
                          "kill": (["kill", "--signal", "KILL", identity], 5000), "rm": (["rm", identity], 10000)}
             if verb not in templates:
@@ -351,14 +391,14 @@ def producer_command(b: RuntimeBindings, lane: str, *, origin: str | None = None
         argv = ["/usr/local/bin/python3", "-m", "pytest", "-q", "-p", "no:cacheprovider", "--junitxml=/artifacts/workshop-browser-api.xml", "workers/ingestion-python/tests/test_workshop_browser_integration.py"]
         role, cwd, timeout, stem = "api_pytest", "/workspace", 2100000, "/artifacts/api/pytest"
     elif lane == "dto_go":
-        argv = ["/usr/local/go/bin/go", "test", "-count=1", "-run", "^TestWorkshopBrowserFixtureHTTP$", "-timeout=4500s", "."]
-        role, cwd, timeout, stem = "dto_go", "/workspace/apps/api-go", 4560000, "/artifacts/dto/go-fixture"
+        argv = ["/usr/local/go/bin/go", "test", "-count=1", "-run", "^TestWorkshopBrowserFixtureHTTP$", "-timeout=5040s", "."]
+        role, cwd, timeout, stem = "dto_go", "/workspace/apps/api-go", 5100000, "/artifacts/dto/go-fixture"
     elif lane == "dto":
         parsed = urlsplit(origin or "")
         if parsed.scheme != "https" or parsed.hostname not in ("127.0.0.1", "localhost", "::1") or not parsed.port or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment:
             raise ValueError("exact owned loopback HTTPS ready origin required")
         argv = ["/usr/local/bin/python3", "/workspace/scripts/dev/workshop_browser_smoke.py", "--base-url", origin, "--mode", "dto-fixture", "--browser", "all", "--candidate-sha", b.candidate_sha, "--output", "/artifacts/browser"]
-        role, cwd, timeout, stem = "dto_browser", "/workspace", 4560000, "/artifacts/dto/browser"
+        role, cwd, timeout, stem = "dto_browser", "/workspace", 5100000, "/artifacts/dto/browser"
     else:
         raise ValueError("unknown producer")
     stdout, stderr = (stem + ".log", stem + ".log") if lane == "dto_go" else (stem + ".stdout.log", stem + ".stderr.log")
@@ -375,7 +415,7 @@ def graph_blockers(bindings: RuntimeBindings, lane: str) -> tuple[str, ...]:
     if bindings.runtime_admission_sha256 is None:
         result.add("runtime_admission_missing")
     if lane == "dto":
-        result.add("blocked_timer_dependency")
+        result.update(("blocked_timer_dependency", "supervisor_dto_deadline_mismatch"))
     else:
         result.add("api_finite_success_proof_missing")
     return tuple(sorted(result))
@@ -436,10 +476,10 @@ def compile_graph(bindings: RuntimeBindings, lane: str) -> tuple[OperationSpec, 
             add(prefix + ".browser-result", event="source.browser_result_and_cleanup:" + id)
     else:
         add("dto.timer-admission", event="separate_timer_gate_admitted")
-        add("dto.go.start", command=producer_command(bindings, "dto_go", depends_on=(ops[-1].id,)), timeout=4560000)
+        add("dto.go.start", command=producer_command(bindings, "dto_go", depends_on=(ops[-1].id,)), timeout=5100000)
         add("dto.go.started", event="dto.go.started:exact_process_identity")
         ready("dto.fixture.ready", "fixture_ready_tls_assets", None)
-        add("dto.browser.start", event="bound_command:dto.producer:owned_ready_origin", timeout=4560000)
+        add("dto.browser.start", event="bound_command:dto.producer:owned_ready_origin", timeout=5100000)
         add("dto.browser.result", event="exact_dto120_results_and_exits")
     for role in (("runner", "s3", "nats", "postgres") if lane == "api" else ("runner",)):
         for verb in ("wait", "logs", "stop", "kill", "rm"):
