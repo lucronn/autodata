@@ -17,6 +17,7 @@ on:
       - "packages/contracts/**"
       - "db/migrations/**"
       - "infra/compose/**"
+      - "infra/deploy/gce/**"
       - "infra/k8s/**"
       - "scripts/dev/**"
       - "scripts/r3_preparation/**"
@@ -44,6 +45,7 @@ on:
       - "packages/contracts/**"
       - "db/migrations/**"
       - "infra/compose/**"
+      - "infra/deploy/gce/**"
       - "infra/k8s/**"
       - "scripts/dev/**"
       - "scripts/r3_preparation/**"
@@ -143,6 +145,44 @@ jobs:
 
       - name: Run development adapter tests
         run: python -m unittest discover -s scripts/dev -p 'test_*.py' -v
+
+      - name: Run required GCE host delivery tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail() { printf '%s\n' "gce_ci_preflight:$1" >&2; exit 1; }
+          for tool in /usr/bin/sudo /usr/bin/setpriv /usr/bin/env /usr/bin/docker /bin/sh /usr/bin/python3 /usr/bin/openssl; do
+            test -x "$tool" || fail executable_missing
+          done
+          sudo -n /usr/bin/true || fail sudo_unavailable
+          if [ ! -e /usr/bin/python ] && [ ! -L /usr/bin/python ]; then
+            sudo -n /bin/ln -s /usr/bin/python3 /usr/bin/python
+          fi
+          test -x /usr/bin/python || fail python_alias_unavailable
+          gce_python="$(python -c 'import sys; print(sys.executable)')"
+          case "$gce_python" in /*) ;; *) fail python_not_absolute ;; esac
+          test -x "$gce_python" || fail active_python_unavailable
+          gce_temp="$(mktemp -d "${RUNNER_TEMP:?}/gce-contract.XXXXXXXX")"
+          cleanup() {
+            code=$?
+            trap - EXIT
+            sudo -n /bin/rm -rf -- "$gce_temp" || code=1
+            exit "$code"
+          }
+          trap cleanup EXIT
+          mkdir -m 700 "$gce_temp/home" "$gce_temp/tmp"
+          sudo -n /bin/chown 1000:1000 "$gce_temp" "$gce_temp/home" "$gce_temp/tmp"
+          run_gce() {
+            sudo -n /usr/bin/setpriv --reuid=1000 --regid=1000 --clear-groups /usr/bin/env -i \
+              HOME="$gce_temp/home" TMPDIR="$gce_temp/tmp" PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+              PYTHONDONTWRITEBYTECODE=1 AUTODATA_REQUIRE_PURCHASE_CONFIG_DELIVERY_COMPOSE=1 "$@"
+          }
+          run_gce "$gce_python" -B -c 'import os,pathlib,sys,tempfile; assert (os.getuid(),os.getgid(),os.geteuid(),os.getegid())==(1000,1000,1000,1000); assert sys.version_info>=(3,12); root=pathlib.Path.cwd(); assert (root/"infra/deploy/gce/runtime-entrypoint.sh").read_bytes(); assert (root/"workers/ingestion-python/src/autodata_ingestion/commerce_service.py").read_bytes(); assert os.access(sys.executable,os.X_OK); d=tempfile.TemporaryDirectory(); d.cleanup(); print("gce_ci_preflight:identity_paths_temp_pass")'
+          run_gce /usr/bin/python -B -c 'import sys; assert sys.version_info>=(3,12)'
+          run_gce /usr/bin/python3 -B -c 'import sys; assert sys.version_info>=(3,12)'
+          run_gce /usr/bin/docker compose version
+          run_gce /usr/bin/openssl version
+          run_gce "$gce_python" -B -m unittest discover -s infra/deploy/gce -p 'test_*.py' -v
 
       - name: Validate Compose definition
         env:
