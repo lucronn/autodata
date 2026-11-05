@@ -354,6 +354,24 @@ class BoundTests(unittest.TestCase):
         result,files=self.run_fixture(Fixture(mutate=not_found))
         self.assertEqual(result['banks']['bankone']['stop_code'],'NOT_FOUND')
         self.assertIn('result.json',files);self.assertIn('summary.json',files)
+    def test_unpaired_json_surrogate_does_not_drop_raw_inventory(self):
+        raw=b'{"unexpected":"'+bytes([92])+b'ud800"}'
+        def mutate(bank,request,env):
+            if bank=='bankone':return Response(raw,request.full_url)
+        result,files=self.run_fixture(Fixture(mutate=mutate))
+        inventory=json.loads(files['inventory.json'])['objects']
+        first=next(row for row in inventory if row['bank']=='bankone')
+        self.assertEqual(first['byte_count'],len(raw));self.assertEqual(first['sha256'],hashlib.sha256(raw).hexdigest())
+        self.assertEqual(first['state'],'complete');self.assertIn(raw,files.values())
+        self.assertEqual(result['banks']['banktwo']['state'],'observed_complete')
+    def test_inspection_failure_quarantines_and_keeps_inventory(self):
+        from unittest.mock import patch
+        with patch('bank_canary_transport.sensitive_payload',side_effect=RuntimeError('inert-inspector-error')):
+            result,files=self.run_fixture(Fixture())
+        first=json.loads(files['inventory.json'])['objects'][0]
+        self.assertEqual(first['state'],'quarantined')
+        self.assertEqual(result['banks']['bankone']['stop_code'],'INSPECTION_FAILURE')
+        self.assertEqual(result['banks']['banktwo']['state'],'withdrawn')
     def test_json_escaped_text_secret_quarantines_before_failed_hash(self):
         def mutate(bank,request,env):
             if 'kind' in env:

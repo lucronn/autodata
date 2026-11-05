@@ -53,9 +53,9 @@ def sensitive_payload(data,credentials=()):
     pending=[value]
     while pending:
         item=pending.pop()
-        if isinstance(item,str) and sensitive(item.encode('utf-8'),credentials):return True
+        if isinstance(item,str) and sensitive(item.encode('utf-8',errors='surrogatepass'),credentials):return True
         if isinstance(item,dict):
-            if sensitive(json.dumps(list(item),ensure_ascii=False).encode(),credentials):return True
+            if sensitive(json.dumps(dict.fromkeys(item),ensure_ascii=False).encode('utf-8',errors='surrogatepass'),credentials):return True
             pending.extend(item.values())
         elif isinstance(item,list):pending.extend(item)
     if isinstance(value,dict) and isinstance(value.get('content_base64'),str):
@@ -217,10 +217,16 @@ class CaptureTransport:
             meta.update(byte_count=len(raw),sha256=hashlib.sha256(raw).hexdigest() if raw_path.exists() else None,
                         raw_ref=raw_path.name if raw_path.exists() else None,journal_ref=journal_path.name if journal_path.exists() else None,
                         sealing='local_unsealed')
-            header_bytes=json.dumps(meta.get('headers',{})).encode()
-            if sensitive_payload(raw,self.credentials) or sensitive(header_bytes,self.credentials) or any(sensitive(str(value).encode(),self.credentials) for value in meta.get('headers',{}).values()):
-                meta.update(state='quarantined',reason='SECRET_INCIDENT',headers={},final_url=None)
+            # Publish persisted inventory before inspection, and fail closed if
+            # inspection itself cannot finish. Never promote uninspected bytes.
             self.last=meta
+            try:
+                header_bytes=json.dumps(meta.get('headers',{})).encode()
+                flagged=(sensitive_payload(raw,self.credentials) or sensitive(header_bytes,self.credentials)
+                    or any(sensitive(str(value).encode('utf-8',errors='surrogatepass'),self.credentials) for value in meta.get('headers',{}).values()))
+                if flagged:meta.update(state='quarantined',reason='SECRET_INCIDENT',headers={},final_url=None)
+            except BaseException as error:
+                meta.update(state='quarantined',reason='CANCELLED' if isinstance(error,KeyboardInterrupt) else 'INSPECTION_FAILURE',headers={},final_url=None)
         if meta['state']!='complete': raise CaptureFailure(meta['reason'] or 'TRANSPORT')
         if meta['final_url']!=request.full_url: raise CaptureFailure('REDIRECT')
         if 300<=meta['status']<400: raise CaptureFailure('REDIRECT')
