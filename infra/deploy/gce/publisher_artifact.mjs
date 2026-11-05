@@ -180,7 +180,7 @@ async function verifyTree(root,manifestBytes,approvedHash,lockBytes,scope) {
  for(const [name,pkg] of Object.entries(wanted)){
   require(entries.has(name+'/package.json'));
   const installed=strictJSON(await fixedRead(path.join(root,name,'package.json'),1024*1024,undefined,scope),1024*1024,100000,8192,50000);
-  require(installed.version===pkg.version && installed.name===name.split('node_modules/').at(-1));
+  require(installed.version===pkg.version && installed.name===(lock.packages[name].name??name.split('node_modules/').at(-1)));
  }
  scope.check();return true;
 }
