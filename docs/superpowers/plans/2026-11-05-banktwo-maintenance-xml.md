@@ -28,10 +28,10 @@ Reject DTD/entity declarations before XML parsing and prevent external resolutio
 
 ## Concrete todo
 
-- [ ] Add failing synthetic regressions for maintenance XML structure, mixed content, source identity and fail-closed rejection.
-- [ ] Add the bounded maintenance_schedule parser and route direct XML and nested HAL XML through it without changing eligibility policy.
-- [ ] Run focused adapter/capture/normalization regressions and replay retained authentic resources with unchanged hashes; report source fidelity and eligibility separately.
-- [ ] Obtain independent exact-SHA review and synchronize plan, canonical documentation, Issue and Project evidence before integration.
+- [x] Add failing synthetic regressions for maintenance XML structure, mixed content, source identity and fail-closed rejection.
+- [x] Add the bounded maintenance_schedule parser and route direct XML and nested HAL XML through it without changing eligibility policy.
+- [x] Run focused adapter/capture/normalization regressions and replay retained authentic resources with unchanged hashes; report source fidelity and eligibility separately.
+- [x] Obtain independent exact-SHA review and synchronize plan, canonical documentation, Issue and Project evidence before integration.
 
 ## One bounded task: maintenance XML adaptation
 
@@ -72,3 +72,11 @@ python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026
 ```
 
 Required result: {"status":"synchronized","errors":[]}. This planning checkpoint authorizes only the allowlisted source fidelity repair after coordinator dispatch.
+
+## Verified implementation candidate and integration boundary
+
+PR [#322](https://github.com/lucronn/autodata/pull/322) contains the three allowlisted implementation/test paths at commit `1aa8e81acc19476e32f539ba000e9fd96438e908`. The exact checkpoint preflight still returns `{"status":"synchronized","errors":[]}`. The final source adapter/capture/normalization suite passed **171 tests and 60 subtests** in 114.17 seconds; independent exact-implementation-SHA review passed, including 15 focused XML tests and 54 subtests. The review reproduced and fixed numeric/CDATA text loss, fabricated steps and truncated-XML fallback before approval. `git diff --check` passed.
+
+An offline replay of the identical 40 privately retained resources on the checkpoint and candidate preserved every original resource/envelope hash. All 40 adapted; strict-valid documents stayed 24/40 (16 pre-existing media/evidence blockers). The eight XML documents improved from zero to eight with complete observed field/order/link/evidence fidelity, and all eight passed strict validation. v1 editable coverage stayed two documents/ten slots; v2 eligibility stayed zero of 40. Private report SHA-256: `42f2ccc7245c1cb6657a56d64521a096e790e3ff72605a6386bbba2f09ee1f2b`; baseline report SHA-256: `5e10479e5d3ff4ced83d044e3e6f75473be464528f8bf9b096bd40fdb0de21ed`. No private body or credential is committed.
+
+Issue #321 and Project #8 were read back in Review with the same candidate, test and coverage facts. GitHub CI is pending at the time of this documentation checkpoint; integration still requires a passing final-head run and merge review. This source fallback repair does not satisfy the separate full-article rewrite, commerce or production release requirements.

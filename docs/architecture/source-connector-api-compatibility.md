@@ -136,9 +136,9 @@ Issue: https://github.com/lucronn/autodata/issues/321; parent #186; related #300
 Eight of 20 retained authentic Banktwo HAL resources contain maintenance_schedule XML. The existing fallback exposes tags as prose; this repair projects the observed strict grammar into existing ordered blocks. Preserve root title, operation/component id/name, component notes/warranty/qualifier, root footnote, inline br/a href, CDATA literal text, mixed-content tails and original order. Reject DTD/entities, malformed XML and unknown structure; preserve existing scope, applicability, original bytes/hash, evidence and safe-link behavior. Only source_adapters.py and its source capture/adapter tests are in scope. All 40 retained cross-bank resources currently have zero v2 eligible documents; source adaptation is measured separately from rewrite eligibility and publication. Private bodies remain local; no provider/model calls, activation, deployment, eligibility policy, schema or UI changes.
 
 Concrete todo:
-- [ ] Add failing synthetic regressions for maintenance XML structure, mixed content, source identity and fail-closed rejection.
-- [ ] Add the bounded maintenance_schedule parser and route direct XML and nested HAL XML through it without changing eligibility policy.
-- [ ] Run focused adapter/capture/normalization regressions and replay retained authentic resources with unchanged hashes; report source fidelity and eligibility separately.
-- [ ] Obtain independent exact-SHA review and synchronize plan, canonical documentation, Issue and Project evidence before integration.
+- [x] Add failing synthetic regressions for maintenance XML structure, mixed content, source identity and fail-closed rejection.
+- [x] Add the bounded maintenance_schedule parser and route direct XML and nested HAL XML through it without changing eligibility policy.
+- [x] Run focused adapter/capture/normalization regressions and replay retained authentic resources with unchanged hashes; report source fidelity and eligibility separately.
+- [x] Obtain independent exact-SHA review and synchronize plan, canonical documentation, Issue and Project evidence before integration.
 
-Status: synchronized planning; Project Ready. Implementation requires the committed checkpoint and passing exact-base preflight. No implementation evidence is claimed by this planning record.
+Status: candidate `1aa8e81acc19476e32f539ba000e9fd96438e908` independently reviewed PASS; Project Review; PR #322 and final-head CI pending. The source suite passed 171 tests and 60 subtests. Offline replay of identical retained40 kept original hashes, strict validity 24/40 and v2 eligibility 0/40, while complete observed XML fidelity improved 0/8 to 8/8. The private replay report SHA-256 is `42f2ccc7245c1cb6657a56d64521a096e790e3ff72605a6386bbba2f09ee1f2b`. Source repair alone does not establish rewrite acceptance or production readiness.
