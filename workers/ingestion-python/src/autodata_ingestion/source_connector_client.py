@@ -563,6 +563,8 @@ def _valid_asset_bindings(value: Any, declared_refs: list[str]) -> bool:
         url, ref = binding["source_url"], binding["resource_ref"]
         if not _valid_ref(url, 2048) or not _valid_ref(ref, 2048) or ref not in declared_refs or url in seen:
             return False
+        if any(127 <= ord(char) <= 159 for value in (url, ref) for char in value):
+            return False
         seen.add(url)
     return True
 

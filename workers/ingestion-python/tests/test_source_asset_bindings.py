@@ -151,3 +151,12 @@ def test_binary_resources_reject_text_sidecar():
                 sha256=sha256(raw).hexdigest(), asset_bindings=[])
     with pytest.raises(SourceConnectorError):
         client_for(body).read_resource("asset")
+
+
+@pytest.mark.parametrize("field", ["source_url", "resource_ref"])
+def test_sidecar_rejects_c1_controls_even_when_ref_is_declared(field):
+    binding = {"source_url": "/figure", "resource_ref": "asset-1"}
+    binding[field] += "\x85"
+    body = {**text_body([binding]), "asset_resource_refs": [binding["resource_ref"]]}
+    with pytest.raises(SourceConnectorError):
+        client_for(body).read_resource("body")
