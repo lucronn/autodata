@@ -5495,6 +5495,718 @@
         }
       },
       "dispatch_prerequisite": "Literal Issue186/Project8 sync, exact six-doc committed/pushed checkpoint, external SHA/tree seal, standalone+nested exact-base empty preflights, independent exact-checkpoint review, explicit one-workflow-path coordinator dispatch. All authorities remain false."
+    },
+    {
+      "schema_version": 1,
+      "task_id": "workshop-four-lane-integration",
+      "ordinal": 56,
+      "goal": "Combine the exact reviewed Task52 API21 v2 raw inspector, Task53 current-source browser compiler, Task54 inert merchant manifest validator and Task55 30-minute CI budget, and rebind only the disabled R6 profile workflow hash, into one source-only candidate on the Task51 product lineage while preserving queue history and every runtime, acceptance and release block.",
+      "todo": [
+        "Independently review the exact four source pins and their retained final review receipts, this six-document Task56 draft and queue55 preservation; synchronize this literal goal, six todos, six gate paths and seven incoming immutable paths and the exact one-field disabled R6 workflow-hash rebind in Issue186/Project8 with fresh before/after readbacks and no transferred CI or acceptance credit.",
+        "Commit and promptly push only the synchronized six-document checkpoint rooted at b2ed0829a83cd06d66b2d65a4a013d920bac8773; seal its actual SHA/tree externally, extract standalone and nested records and policy from that exact checkpoint, require both canonical preflights errors=[] and independent checkpoint review before explicit coordinator source-only integration dispatch.",
+        "Merge exact Task52 head 27d565c653897fd1d804f087c253fca01a119745, Task53 head e334b15b35b99e2dca5c65e87d3f49dfb88bca73 and Task54 head ec0f70fb08f3aaab2c9e58e1865185682c4e6a64 with history preserved; admit only their seven immutable reviewed blobs, change only product_evidence.ci_profile.workflow_sha256 in r6-release.json from adbe6221e09c0427d5abaf0ddaa566331abb483f8e246dad3dd42a3dbd6d23a3 to b7dc37359faea4cdaff29ce7b0460d2f5d289ad7d3ae4c2c0c788a8992556e4d, preserve all its other bytes/fields and enabled=false, the checkpoint queue and already-parent Task55 workflow byte for byte, and stop on any conflict, extra path or behavior adaptation.",
+        "Reproduce the existing disabled R6 workflow-hash regression before the one-field repair, require it green afterwards without test edits, and run the frozen offline raw-inspector, browser compiler/evidence/supervisor/preparation, merchant validator, developer/autonomy, Node and embedded Go checks on the exact combined tree; retain actual commands, collection, results, skips and exits, preserve v1/public CLI, producer/assets, disabled manifest and supervisor dto_running4560, and make no real acceptance claim.",
+        "Commit and promptly push validated coherent integration milestones under coordinator branch ownership, obtain independent exact combined-code/diff review, and require fresh combined source-push and actual PR-checkout Autonomous Verification terminal success for all three jobs and the complete required live Compose step under the unchanged 30-minute autonomy-policy limit; bind logs and DTO artifacts to actual checkouts and report every failure, skip and external Vercel status separately.",
+        "Keep accepted_case_credit=0, accepted_new_case_credit=0, verified_case_ids=[] and release_state=unverified; leave owner merchant policy/tax decisions, approved manifest injection/rebuild and artifact/served-byte proof, provider/Firebase/Stripe TEST enrollment, real API21/DTO120/final180 acceptance, source/runtime admission, supervisor timing, host/services, Vercel, DNS, staging, merge, deployment and release behind separate measured gates."
+      ],
+      "status": "synchronized",
+      "state": "blocked",
+      "planning_status": "synchronized",
+      "tracking_status": "synchronized",
+      "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-four-lane-integration.md",
+      "spec_ref": "docs/agents/specs/2026-11-05-workshop-four-lane-integration.json",
+      "record_ref": "docs/agents/records/2026-11-05-workshop-four-lane-integration.json",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-four-lane-integration.json",
+      "verification_ref": "docs/verification/2026-11-05-workshop-four-lane-integration.md",
+      "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+      "project_ref": "https://github.com/users/lucronn/projects/8",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "repository_doc_refs": [
+        "docs/agents/specs/2026-11-05-workshop-four-lane-integration.json",
+        "docs/verification/2026-11-05-workshop-four-lane-integration.md"
+      ],
+      "planning_materialization_parent_sha": "b2ed0829a83cd06d66b2d65a4a013d920bac8773",
+      "planning_materialization_parent_tree": "9a61b48cdff76b27892578ab0c2f302be1607591",
+      "source_candidate_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+      "source_candidate_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+      "checkpoint_sha": null,
+      "checkpoint_tree": null,
+      "implementation_base_sha": null,
+      "checkpoint_seal_ref": null,
+      "allowed_gate_document_paths": [
+        "docs/superpowers/plans/2026-11-05-workshop-four-lane-integration.md",
+        "docs/agents/specs/2026-11-05-workshop-four-lane-integration.json",
+        "docs/agents/records/2026-11-05-workshop-four-lane-integration.json",
+        "docs/agents/tasks/2026-11-03-production-release/workshop-four-lane-integration.json",
+        "docs/verification/2026-11-05-workshop-four-lane-integration.md",
+        "docs/agents/tasks/2026-11-03-production-release/queue.json"
+      ],
+      "allowed_integration_paths": [
+        "scripts/dev/release_acceptance.py",
+        "scripts/dev/test_release_acceptance.py",
+        "docs/verification/release-acceptance-runbook.md",
+        "scripts/dev/workshop_browser_execution_contract.py",
+        "scripts/dev/test_workshop_browser_execution_contract.py",
+        "scripts/dev/workshop_merchant_manifest.py",
+        "scripts/dev/test_workshop_merchant_manifest.py",
+        "docs/agents/tasks/2026-11-03-production-release/r6-release.json"
+      ],
+      "current_implementation_allowlist": [],
+      "accepted_case_credit": 0,
+      "accepted_new_case_credit": 0,
+      "verified_case_ids": [],
+      "release_state": "unverified",
+      "authorities": {
+        "implementation": false,
+        "implementation_dispatch": false,
+        "provider": false,
+        "runtime": false,
+        "host": false,
+        "host_execution": false,
+        "docker": false,
+        "network": false,
+        "cloud": false,
+        "dns": false,
+        "capture": false,
+        "profile_activation": false,
+        "acceptance": false,
+        "fixture_execution": false,
+        "image_build_pull_install": false,
+        "service_start": false,
+        "payment": false,
+        "account_mutation": false,
+        "staging": false,
+        "release": false,
+        "merge": false,
+        "deployment": false,
+        "cutover": false,
+        "secrets": false,
+        "github_write": false,
+        "code_approval": false,
+        "ci_success": false,
+        "merchant_enablement": false,
+        "manifest_injection": false,
+        "artifact_admission": false,
+        "owner_approval": false,
+        "stripe_test_acceptance": false,
+        "live_sales": false,
+        "code_import": false,
+        "ci_execution": false,
+        "capture_admission": false,
+        "fixture_api21": false,
+        "fixture_dto120": false,
+        "final180": false,
+        "current_source_browser_acceptance": false,
+        "owner_tax_decision": false,
+        "firebase_enrollment": false,
+        "stripe_test_enrollment": false,
+        "supervisor_timing_change": false,
+        "merge_to_protected_branch": false
+      },
+      "tracking_sync": {
+        "status": "synchronized",
+        "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "ownership_verified": true,
+        "literal_readback_verified": true,
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6649538225",
+        "issue_comment_id": 6649538225,
+        "issue_comment_created_at": "2026-11-05T04:17:08Z",
+        "issue_comment_body_sha256": "66ce347e8d6cfa7e6455a57d970a0952326f9cc1fa2971f27c332b6d76688c8d",
+        "before_readback": {
+          "path": "/home/corp/autodata-evidence/task56-before-tracking.json",
+          "sha256": "af30a67ff318a0bd526d8fd4a77990b0cd13051c9c06a39cd2d5eeb6a5b0aef9",
+          "observed_at": "2026-11-05T04:16:59.923028+00:00"
+        },
+        "after_readback": {
+          "path": "/home/corp/autodata-evidence/task56-after-tracking.json",
+          "sha256": "298d150a5b40db16f92d6d82eb7a221bb1d3668a44064836591bd7b6c97af492",
+          "observed_at": "2026-11-05T04:17:17.405944+00:00"
+        },
+        "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+        "project_source_sha256_before": "20274ef5398245a39d6a918b7188fa013b25d4b24b541d1eaf65652d3e218279",
+        "project_source_sha256_after": "cee1238eac5fae3c8738c0644c208a270ad425a1b7feb2330c05226caf9ebe23",
+        "issue_body_unchanged": true,
+        "prior_252_comments_unchanged": true,
+        "project_other_fields_unchanged": true,
+        "prior_project_source_preserved_verbatim_in_comment": true,
+        "literal_goal_todo_six_gate_paths_eight_integration_paths_verified": true,
+        "coordinator_sync_completed": true,
+        "scope": "Planning synchronization only. Exact six-doc checkpoint, external seal, dual positive preflights, independent checkpoint review and explicit integration dispatch remain required. All implementation/runtime/release authorities false."
+      },
+      "updated_at": "2026-11-05T04:17:08Z",
+      "id": "workshop-four-lane-integration",
+      "depends_on": [
+        "workshop-api21-v2-raw-inspector",
+        "workshop-browser-current-source-contract",
+        "workshop-merchant-manifest",
+        "workshop-autonomy-ci-timeout"
+      ],
+      "dispatch_mode": "coordinator_only_after_gate",
+      "branch_assignment": null,
+      "proposed_gate_branch": "codex/workshop-four-lane-integration-gate",
+      "reserved_implementation_branch": null,
+      "pre_implementation_record": {
+        "goal": "Combine the exact reviewed Task52 API21 v2 raw inspector, Task53 current-source browser compiler, Task54 inert merchant manifest validator and Task55 30-minute CI budget, and rebind only the disabled R6 profile workflow hash, into one source-only candidate on the Task51 product lineage while preserving queue history and every runtime, acceptance and release block.",
+        "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-four-lane-integration.md",
+        "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "repository_doc_refs": [
+          "docs/agents/specs/2026-11-05-workshop-four-lane-integration.json",
+          "docs/verification/2026-11-05-workshop-four-lane-integration.md"
+        ],
+        "todo": [
+          "Independently review the exact four source pins and their retained final review receipts, this six-document Task56 draft and queue55 preservation; synchronize this literal goal, six todos, six gate paths and seven incoming immutable paths and the exact one-field disabled R6 workflow-hash rebind in Issue186/Project8 with fresh before/after readbacks and no transferred CI or acceptance credit.",
+          "Commit and promptly push only the synchronized six-document checkpoint rooted at b2ed0829a83cd06d66b2d65a4a013d920bac8773; seal its actual SHA/tree externally, extract standalone and nested records and policy from that exact checkpoint, require both canonical preflights errors=[] and independent checkpoint review before explicit coordinator source-only integration dispatch.",
+          "Merge exact Task52 head 27d565c653897fd1d804f087c253fca01a119745, Task53 head e334b15b35b99e2dca5c65e87d3f49dfb88bca73 and Task54 head ec0f70fb08f3aaab2c9e58e1865185682c4e6a64 with history preserved; admit only their seven immutable reviewed blobs, change only product_evidence.ci_profile.workflow_sha256 in r6-release.json from adbe6221e09c0427d5abaf0ddaa566331abb483f8e246dad3dd42a3dbd6d23a3 to b7dc37359faea4cdaff29ce7b0460d2f5d289ad7d3ae4c2c0c788a8992556e4d, preserve all its other bytes/fields and enabled=false, the checkpoint queue and already-parent Task55 workflow byte for byte, and stop on any conflict, extra path or behavior adaptation.",
+          "Reproduce the existing disabled R6 workflow-hash regression before the one-field repair, require it green afterwards without test edits, and run the frozen offline raw-inspector, browser compiler/evidence/supervisor/preparation, merchant validator, developer/autonomy, Node and embedded Go checks on the exact combined tree; retain actual commands, collection, results, skips and exits, preserve v1/public CLI, producer/assets, disabled manifest and supervisor dto_running4560, and make no real acceptance claim.",
+          "Commit and promptly push validated coherent integration milestones under coordinator branch ownership, obtain independent exact combined-code/diff review, and require fresh combined source-push and actual PR-checkout Autonomous Verification terminal success for all three jobs and the complete required live Compose step under the unchanged 30-minute autonomy-policy limit; bind logs and DTO artifacts to actual checkouts and report every failure, skip and external Vercel status separately.",
+          "Keep accepted_case_credit=0, accepted_new_case_credit=0, verified_case_ids=[] and release_state=unverified; leave owner merchant policy/tax decisions, approved manifest injection/rebuild and artifact/served-byte proof, provider/Firebase/Stripe TEST enrollment, real API21/DTO120/final180 acceptance, source/runtime admission, supervisor timing, host/services, Vercel, DNS, staging, merge, deployment and release behind separate measured gates."
+        ],
+        "status": "synchronized",
+        "updated_at": "2026-11-05T04:17:08Z"
+      },
+      "source_binding": {
+        "product_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+        "product_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+        "planning_parent_sha": "b2ed0829a83cd06d66b2d65a4a013d920bac8773",
+        "planning_parent_tree": "9a61b48cdff76b27892578ab0c2f302be1607591",
+        "checkpoint_sha": null,
+        "checkpoint_tree": null,
+        "external_seal_ref": null,
+        "combined_candidate_sha": null,
+        "combined_candidate_tree": null,
+        "sources": [
+          {
+            "task": 52,
+            "branch": "codex/workshop-api21-v2-raw-inspector-code",
+            "pr": "https://github.com/lucronn/autodata/pull/276",
+            "sha": "27d565c653897fd1d804f087c253fca01a119745",
+            "tree": "01ea374295362f470743caaa2b57e5ee392d568d",
+            "gate_sha": "3fe138d6e93f005f314a942ef43b504fbe64551c",
+            "merge_into_candidate": true,
+            "already_parent": false,
+            "review_receipt": {
+              "path": "/home/corp/autodata-evidence/api21-v2-raw-inspector-final-pin-review/REPORT.md",
+              "sha256": "1463cec3e51982e95ba600dc79437e164f3d8da655aa47182616834cdcb0c661",
+              "status": "retained_report_read_source_review_only"
+            },
+            "source_manifest": [
+              {
+                "path": "scripts/dev/release_acceptance.py",
+                "git_blob": "5e1e555a4de9fefb349939f7bd7aad983259daa3",
+                "sha256": "52f036e8024cf436f8e9e0560756d61041f51e99b6c94866f4e48ea2445f09c7",
+                "bytes": 248227
+              },
+              {
+                "path": "scripts/dev/test_release_acceptance.py",
+                "git_blob": "2ba0b39cb8fe60e0c120dc7915a26c67c698eba3",
+                "sha256": "7a3b0510055d43b17d012b0c531947358aaa0928bb57c41247380301df1ea017",
+                "bytes": 349017
+              },
+              {
+                "path": "docs/verification/release-acceptance-runbook.md",
+                "git_blob": "0b690b3499911ae9bf74a4fb84849dd1cde253e7",
+                "sha256": "47badbce89d4a8b421a8c91301eecbd62e86de90f5f9ad22c01469877a879b1b",
+                "bytes": 41247
+              }
+            ]
+          },
+          {
+            "task": 53,
+            "branch": "codex/workshop-browser-current-source-contract-code",
+            "pr": "https://github.com/lucronn/autodata/pull/275",
+            "sha": "e334b15b35b99e2dca5c65e87d3f49dfb88bca73",
+            "tree": "e4984d12fcd4b3e17ca10bc3e2ba630c7dab9041",
+            "gate_sha": "c374f77af461f01d367a8b802c7d7bea886fe7ec",
+            "merge_into_candidate": true,
+            "already_parent": false,
+            "review_receipt": {
+              "path": "/home/corp/autodata-evidence/browser-current-source-task53-code-review/REPORT.md",
+              "sha256": "1743b00d48626445cb89ecc846775271ca445a628ec2b8703918d25f37774ce6",
+              "status": "retained_report_read_source_review_only"
+            },
+            "source_manifest": [
+              {
+                "path": "scripts/dev/workshop_browser_execution_contract.py",
+                "git_blob": "d7df63617a8b22a97b1edc3d9d8172fd0d810f89",
+                "sha256": "89e21a731203bffffde26f91ee89bf6ef953044b848c5c47ba53c360a40c41db",
+                "bytes": 26464
+              },
+              {
+                "path": "scripts/dev/test_workshop_browser_execution_contract.py",
+                "git_blob": "ac98637e4ff6a04d6c28d52613f594cbd71bb457",
+                "sha256": "45fc253e4dd959b71a012932668c79b4ee10f0025b8373c94617d474dcc2db8c",
+                "bytes": 18327
+              }
+            ]
+          },
+          {
+            "task": 54,
+            "branch": "codex/workshop-merchant-manifest-code",
+            "pr": "https://github.com/lucronn/autodata/pull/278",
+            "sha": "ec0f70fb08f3aaab2c9e58e1865185682c4e6a64",
+            "tree": "f21e62b98b46038619cc96d0110b897757dc6b5b",
+            "gate_sha": "0e30b18ff83c3e9fcc63dd614aa1f13562d0c026",
+            "merge_into_candidate": true,
+            "already_parent": false,
+            "review_receipt": {
+              "path": "/home/corp/autodata-evidence/merchant-manifest-task54-code-review/REPORT.md",
+              "sha256": "aca280f2bde7bd7478c5b6f8b00e19b81ebcce84d0a3a3bf48c18f871b9bc935",
+              "status": "retained_report_read_source_review_only"
+            },
+            "source_manifest": [
+              {
+                "path": "scripts/dev/workshop_merchant_manifest.py",
+                "git_blob": "33a801846e58a94e97c11582ab34a4fc1238aa22",
+                "sha256": "207089465f42c4dfdfffe28ade80e816fcdd709cce200185fd148a20e641f0e1",
+                "bytes": 14428
+              },
+              {
+                "path": "scripts/dev/test_workshop_merchant_manifest.py",
+                "git_blob": "0e3d9301e2a8d95ab927e16fab37821d5bdb85c4",
+                "sha256": "3fe539cef23462dcf1b70dc149d583a5588448cd589fc67a634be60b365e4334",
+                "bytes": 21731
+              }
+            ]
+          },
+          {
+            "task": 55,
+            "branch": "codex/workshop-ci-timeout-code",
+            "pr": "https://github.com/lucronn/autodata/pull/280",
+            "sha": "b2ed0829a83cd06d66b2d65a4a013d920bac8773",
+            "tree": "9a61b48cdff76b27892578ab0c2f302be1607591",
+            "gate_sha": "de99a109881ba2a571ae82ebeef6e46be59d0e3d",
+            "merge_into_candidate": false,
+            "already_parent": true,
+            "review_receipt": {
+              "path": "/home/corp/autodata-evidence/ci-timeout-task55-code-review/REPORT.md",
+              "sha256": "962567b8d584bb6ccc4dc8d1887f6f47842f77dd6559e6319d781eaaf4e2026a",
+              "status": "retained_report_read_source_review_only"
+            },
+            "source_manifest": [
+              {
+                "path": ".github/workflows/autonomous-verification.yml",
+                "git_blob": "86d9889e24e53f430843782795fcca35c3e645c5",
+                "sha256": "b7dc37359faea4cdaff29ce7b0460d2f5d289ad7d3ae4c2c0c788a8992556e4d",
+                "bytes": 15003
+              }
+            ]
+          }
+        ],
+        "source_reviews": "Exact four retained final reports are source-only PASS supporting evidence, with hashes frozen here; independent combined code/diff/rebind review is separate. Isolated Task55 PR280 fails disabled R6 workflow-hash assertion and is not green. Older Task52 failed reviews and cancelled2e3 CI remain historical only.",
+        "queue_parent": {
+          "path": "docs/agents/tasks/2026-11-03-production-release/queue.json",
+          "git_blob": "0eb190e21f581f8304feb6c9bbe770d30a278cd3",
+          "sha256": "1fce9ffb2acf4311e2936f31fd56a81ec04b79ed96562015580aa1b2c90f98da",
+          "bytes": 394132
+        },
+        "queue_count_before": 55,
+        "queue_count_after": 56,
+        "producer_source_input_sha256": {
+          "scripts/dev/workshop_browser_smoke.py": "e5424bfeb412d321638ebab31362774226d49caeacd53ffc929a54c00bbf9a7a",
+          "scripts/dev/fixtures/workshop_customer/scenarios.json": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+          "scripts/dev/fixtures/workshop_customer/firebase_transport.js": "96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63",
+          "scripts/dev/fixtures/workshop_customer/hostile_source.json": "076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1",
+          "scripts/dev/fixtures/workshop_customer/stripe_checkout.html": "26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083",
+          "apps/api-go/workshop_browser_fixture_test.go": "7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33",
+          "workers/ingestion-python/tests/test_workshop_browser_integration.py": "1d83bcaa7e57b59cc2a6b8e64d9e4ab9dc327389c21a905b85dbec7267bc976b"
+        },
+        "current_served_asset_manifest": {
+          "index.html": {
+            "blob": "fa2bf7a6a8dfb580267ece998234148036d56030",
+            "sha256": "8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68",
+            "bytes": 10868
+          },
+          "app.mjs": {
+            "blob": "963eca5d2a559986bd062e34d6187af6ada7b876",
+            "sha256": "2bfe85a3f5e0b77bc55fe0c18b50b35a9bab6444f6a640bf6a6a36bd57ab4c46",
+            "bytes": 37870
+          },
+          "auth.mjs": {
+            "blob": "53edaacf0c5f3d472f2cf0b65e2261f70b7bbc03",
+            "sha256": "ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2",
+            "bytes": 7908
+          },
+          "catalog.mjs": {
+            "blob": "0d91ddb47e6f0ae1bafda0a4cd1c9ae0869e5860",
+            "sha256": "cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52",
+            "bytes": 11688
+          },
+          "progress.mjs": {
+            "blob": "07769f5e8a25ef0571df4c7622a5f68e004f106b",
+            "sha256": "dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48",
+            "bytes": 1076
+          },
+          "commerce.mjs": {
+            "blob": "b14557f5c31b5e06f116121291d6c8f1ca6d2adf",
+            "sha256": "e7f8e2fd45d6cd9f4ec2ef2f3a50d3f090f34e2562d4bbc58f9c23d06e8a1142",
+            "bytes": 7369
+          },
+          "article-read.mjs": {
+            "blob": "cd845362a707d512c5d0cf56b4e1b9b057c576a1",
+            "sha256": "2957242037d4bc3ce7894ae2c7e4bae1636406d0256dd75b6150e78c1c4e5178",
+            "bytes": 2579
+          },
+          "styles.css": {
+            "blob": "3208e18430187486c7033ca7499134b790fcf33f",
+            "sha256": "c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c",
+            "bytes": 20773
+          },
+          "firebase-web.mjs": {
+            "blob": "0c9639ded829e72f88a11f8af4169abe62d1f8e7",
+            "sha256": "bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1",
+            "bytes": 112641
+          },
+          "firebase-web.mjs.LEGAL.txt": {
+            "blob": "56d5e326693d8648eece9d0b1f057c68a7979da1",
+            "sha256": "70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319",
+            "bytes": 35536
+          },
+          "firebase-web.provenance.json": {
+            "blob": "b5d611aaf078dfbc2bb556f9ed21b8d085e6fd1a",
+            "sha256": "0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a",
+            "bytes": 2237
+          }
+        },
+        "preserve_manifest": [
+          {
+            "path": ".autodata-autonomy-policy.json",
+            "git_blob": "be4d8088b3fd28c84c101a723ecc7c26768de9e7",
+            "sha256": "798e91b9854098a706ea4ab66a414492c044059a1c98edb9d2f1d003e3baad98",
+            "bytes": 2201
+          },
+          {
+            "path": ".github/workflows/autonomous-verification.yml",
+            "git_blob": "86d9889e24e53f430843782795fcca35c3e645c5",
+            "sha256": "b7dc37359faea4cdaff29ce7b0460d2f5d289ad7d3ae4c2c0c788a8992556e4d",
+            "bytes": 15003
+          },
+          {
+            "path": ".github/workflows/backup-workshop.yml",
+            "git_blob": "1762153aa370be2eead4d73b0e85fc28c4fa9edf",
+            "sha256": "063defd79405e92ea0bbfce0ecbe72364839757b96f6707531c6973e378fcb17",
+            "bytes": 4950
+          },
+          {
+            "path": ".github/workflows/monitor-workshop.yml",
+            "git_blob": "224b91c9fe5e30b12824306e5976364cf2682fac",
+            "sha256": "aaa9fd2e5c246c49168de499552da8f2dba8324d9dfd37c46a82c49362dce72d",
+            "bytes": 4570
+          },
+          {
+            "path": ".github/workflows/release-workshop.yml",
+            "git_blob": "a8f5ef0fc4ab79ee7a42afb58662a3fbe81766e9",
+            "sha256": "d74d596e6f4e2650d028afa4639c35a0da5a6fb71040ff3b58d1747fcd297975",
+            "bytes": 21962
+          },
+          {
+            "path": "apps/api-go/Dockerfile",
+            "git_blob": "b36bf6f185a92658fd50a41a9812a3d21f18d060",
+            "sha256": "bd7a4d022e89c76432cd5b8e086166252303710cb8cb24a72b5eeff31fc52559",
+            "bytes": 928
+          },
+          {
+            "path": "apps/api-go/go.mod",
+            "git_blob": "16982a9310be7447103e2bfacecf9f7cb764704e",
+            "sha256": "3306c3736c51a3c08a4ed30613a9f0ba4db7f5094d0215ebdf54545873012923",
+            "bytes": 3986
+          },
+          {
+            "path": "apps/api-go/main.go",
+            "git_blob": "bc872da610af775c18923a4dc7aa0134b6cef5b4",
+            "sha256": "6a6c78c4d84604ec4e626b49dc10e20603018e9db398c709073e689723801a77",
+            "bytes": 30491
+          },
+          {
+            "path": "apps/api-go/workshop-client.test.mjs",
+            "git_blob": "7f134dadcae81fa5ea8657a09384482a2f2759b1",
+            "sha256": "6014eb2f82255c12bfc6bc4ed0c792c7ba92f379c49fa2725056eec2c8923113",
+            "bytes": 82585
+          },
+          {
+            "path": "apps/api-go/workshop/app.mjs",
+            "git_blob": "963eca5d2a559986bd062e34d6187af6ada7b876",
+            "sha256": "2bfe85a3f5e0b77bc55fe0c18b50b35a9bab6444f6a640bf6a6a36bd57ab4c46",
+            "bytes": 37870
+          },
+          {
+            "path": "apps/api-go/workshop/article-read.mjs",
+            "git_blob": "cd845362a707d512c5d0cf56b4e1b9b057c576a1",
+            "sha256": "2957242037d4bc3ce7894ae2c7e4bae1636406d0256dd75b6150e78c1c4e5178",
+            "bytes": 2579
+          },
+          {
+            "path": "apps/api-go/workshop/auth.mjs",
+            "git_blob": "53edaacf0c5f3d472f2cf0b65e2261f70b7bbc03",
+            "sha256": "ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2",
+            "bytes": 7908
+          },
+          {
+            "path": "apps/api-go/workshop/catalog.mjs",
+            "git_blob": "0d91ddb47e6f0ae1bafda0a4cd1c9ae0869e5860",
+            "sha256": "cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52",
+            "bytes": 11688
+          },
+          {
+            "path": "apps/api-go/workshop/commerce.mjs",
+            "git_blob": "b14557f5c31b5e06f116121291d6c8f1ca6d2adf",
+            "sha256": "e7f8e2fd45d6cd9f4ec2ef2f3a50d3f090f34e2562d4bbc58f9c23d06e8a1142",
+            "bytes": 7369
+          },
+          {
+            "path": "apps/api-go/workshop/firebase-web.mjs",
+            "git_blob": "0c9639ded829e72f88a11f8af4169abe62d1f8e7",
+            "sha256": "bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1",
+            "bytes": 112641
+          },
+          {
+            "path": "apps/api-go/workshop/firebase-web.mjs.LEGAL.txt",
+            "git_blob": "56d5e326693d8648eece9d0b1f057c68a7979da1",
+            "sha256": "70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319",
+            "bytes": 35536
+          },
+          {
+            "path": "apps/api-go/workshop/firebase-web.provenance.json",
+            "git_blob": "b5d611aaf078dfbc2bb556f9ed21b8d085e6fd1a",
+            "sha256": "0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a",
+            "bytes": 2237
+          },
+          {
+            "path": "apps/api-go/workshop/index.html",
+            "git_blob": "fa2bf7a6a8dfb580267ece998234148036d56030",
+            "sha256": "8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68",
+            "bytes": 10868
+          },
+          {
+            "path": "apps/api-go/workshop/progress.mjs",
+            "git_blob": "07769f5e8a25ef0571df4c7622a5f68e004f106b",
+            "sha256": "dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48",
+            "bytes": 1076
+          },
+          {
+            "path": "apps/api-go/workshop/purchase-config.json",
+            "git_blob": "4ccd70282c336c31161800b7e73cb025311a31a7",
+            "sha256": "edb1d6d182c5eeee6c33885e873bc5b44ac7a3eb4465d9e92af5d1bc60d4b45f",
+            "bytes": 168
+          },
+          {
+            "path": "apps/api-go/workshop/styles.css",
+            "git_blob": "3208e18430187486c7033ca7499134b790fcf33f",
+            "sha256": "c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c",
+            "bytes": 20773
+          },
+          {
+            "path": "apps/api-go/workshop_browser_fixture_test.go",
+            "git_blob": "2e993a713bdaddef4b9ab5f3f17bf9e6a0143a42",
+            "sha256": "7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33",
+            "bytes": 25015
+          },
+          {
+            "path": "docs/agents/pre-implementation-gate.md",
+            "git_blob": "41076af1db25f0cff8ca41d0203c050af9b772df",
+            "sha256": "fa6e9c95c2674164c90d78e046a0427f6b406c313fb82ff627a2a2facb560ad0",
+            "bytes": 5659
+          },
+          {
+            "path": "infra/compose/article-lifecycle-test.Dockerfile",
+            "git_blob": "a6d7663a663fdb2d3bec0d58506fc5e161d3cf32",
+            "sha256": "ea1d9f043e8775ecbdeea60e9df86ade41fe2d61bd9aadb557479be745e6fc5f",
+            "bytes": 1385
+          },
+          {
+            "path": "infra/compose/compose.article-lifecycle-test.yaml",
+            "git_blob": "8bd2c5b175e7e6f3c0adc632d87435ae155b6918",
+            "sha256": "c9c0c6f58d7e60efe574c33000b97c087834163bffd8bc92ed16322587d2dd4e",
+            "bytes": 2575
+          },
+          {
+            "path": "scripts/dev/fixtures/workshop_customer/firebase_transport.js",
+            "git_blob": "38616cde5dc9f0ba45663638e772511b8adeb233",
+            "sha256": "96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63",
+            "bytes": 1386
+          },
+          {
+            "path": "scripts/dev/fixtures/workshop_customer/hostile_source.json",
+            "git_blob": "24bdbea86de6f54abab0c26581d77675cf2d2f24",
+            "sha256": "076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1",
+            "bytes": 485
+          },
+          {
+            "path": "scripts/dev/fixtures/workshop_customer/scenarios.json",
+            "git_blob": "bff0b0a52aa900e144ad8e3062632e8859a87c30",
+            "sha256": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+            "bytes": 1027
+          },
+          {
+            "path": "scripts/dev/fixtures/workshop_customer/stripe_checkout.html",
+            "git_blob": "acc3a065b4b6cc6c4c32f0eedb203d2cdd59c096",
+            "sha256": "26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083",
+            "bytes": 503
+          },
+          {
+            "path": "scripts/dev/fixtures/workshop_customer/timing.json",
+            "git_blob": "ba49588ef63865ac177f38ee2761740a98b3e5f9",
+            "sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+            "bytes": 1167
+          },
+          {
+            "path": "scripts/dev/migrate_sql.sh",
+            "git_blob": "3f833a17d7822f364f643aae3862c9ff8f3864d5",
+            "sha256": "4970eab6f20be35c354547ed5acf73c991dae1a83433094715f051463790a8f3",
+            "bytes": 10452
+          },
+          {
+            "path": "scripts/dev/requirements-workshop-browser.txt",
+            "git_blob": "316ea1ec732f063e8a628fb1a4603be39cc3f59b",
+            "sha256": "adeb8976dfd2edb0e44e74da84319fae6d821478330c93e39829516c01d5fe25",
+            "bytes": 19
+          },
+          {
+            "path": "scripts/dev/test_workshop_browser_environment.py",
+            "git_blob": "030ac978fa1ddd983f2db13f7c9511d093de584f",
+            "sha256": "770b29386cbd8a04fa517065c395a76ea4f508376e33fab63e06d685aa37d5e8",
+            "bytes": 16961
+          },
+          {
+            "path": "scripts/dev/test_workshop_browser_execution_evidence.py",
+            "git_blob": "b1f3fb8222483478826654e9d42d52edca03f773",
+            "sha256": "c0eeaad07f48c1896d22782dc303925eb52dffe8499e6e16f3127a9b242e3b60",
+            "bytes": 14411
+          },
+          {
+            "path": "scripts/dev/test_workshop_browser_execution_supervisor.py",
+            "git_blob": "12813a612734326d47521305f4cb350904d3ed10",
+            "sha256": "6bc26b51b5552dbd5d86b7f676e54080b624abdd8e76216417e4f27e73e025ce",
+            "bytes": 16553
+          },
+          {
+            "path": "scripts/dev/test_workshop_browser_preparation_probe.py",
+            "git_blob": "c02906089fe7510c979869727f54e8143e26298a",
+            "sha256": "81404fe1d9de4ac395971b0e57f84ac25b3ad6a7c17af2d698e79b6c6b2665e6",
+            "bytes": 16983
+          },
+          {
+            "path": "scripts/dev/test_workshop_browser_smoke.py",
+            "git_blob": "fc3722c27d677a4f9efa1e278c61c01bf58a4d74",
+            "sha256": "8b86b5aaba6ddc4766fb261b68f0ebaf55ba8b03cc2fdcc66e0606b2f5a59ee6",
+            "bytes": 133603
+          },
+          {
+            "path": "scripts/dev/workshop_browser_execution_evidence.py",
+            "git_blob": "ec31e9304f043eda93124580ab3491132f4c9f78",
+            "sha256": "37df0791a9fad1158f1ef057b589aa8e784d9d019803dcf96c6e3b7f1ff37cee",
+            "bytes": 42878
+          },
+          {
+            "path": "scripts/dev/workshop_browser_execution_supervisor.py",
+            "git_blob": "e945cc4d121db7a991a461b0fc99ec6d1b3d95ac",
+            "sha256": "c4972604193815a742b13cb2b48275c648eb995e0c541ee300d242226cf6bc4b",
+            "bytes": 25865
+          },
+          {
+            "path": "scripts/dev/workshop_browser_preparation_probe.py",
+            "git_blob": "53d32a830093926d543dd38787675b663cc38871",
+            "sha256": "696065d0560cebe1b8d8a2010e7aa2d8283a29d32d793e8fdf32685680504458",
+            "bytes": 13414
+          },
+          {
+            "path": "scripts/dev/workshop_browser_smoke.py",
+            "git_blob": "24bbd65d42d5edc4e9184b52173004ef1a5efb42",
+            "sha256": "e5424bfeb412d321638ebab31362774226d49caeacd53ffc929a54c00bbf9a7a",
+            "bytes": 153318
+          },
+          {
+            "path": "workers/ingestion-python/tests/lifecycle_support.py",
+            "git_blob": "ac52c479e5e4a7f625cddd409d8d61573c271765",
+            "sha256": "746eba57bfffb760e2f779d0d0494125f8b559b07de5ff6ec11099d517bf76dc",
+            "bytes": 19309
+          },
+          {
+            "path": "workers/ingestion-python/tests/test_catalog_api_integration.py",
+            "git_blob": "5b16ff5b5428547fcdeb09fb63c36c94a406ff6c",
+            "sha256": "88e6c1fd339da60614056abd7689b6a7fcd1d16bc1e239cec888b06bb6a61974",
+            "bytes": 30980
+          },
+          {
+            "path": "workers/ingestion-python/tests/test_paid_catalog_api_integration.py",
+            "git_blob": "d4d8b6d26ead3023dbbe5084d1376c0009404aae",
+            "sha256": "efd3098953dde54d3fc38c167db1f56ab97225c185fb73f032fe7f3289b70198",
+            "bytes": 19378
+          },
+          {
+            "path": "workers/ingestion-python/tests/test_workshop_browser_integration.py",
+            "git_blob": "075b3d1bea3e94eaaa8393955cd7eb887a755e0b",
+            "sha256": "1d83bcaa7e57b59cc2a6b8e64d9e4ab9dc327389c21a905b85dbec7267bc976b",
+            "bytes": 37702
+          },
+          {
+            "path": "workers/ingestion-python/tests/test_workshop_browser_observability.py",
+            "git_blob": "19863c213e1da8490cad49308793e6164cd29918",
+            "sha256": "c998af5373f4aad083493336fad82f6f6e89f821d957fbec66ff8956f852c47d",
+            "bytes": 41766
+          }
+        ],
+        "ancestry_inspected": {
+          "6949eb1b1a5b93c9b2eb0579328e24c697f6f331": true,
+          "3fe138d6e93f005f314a942ef43b504fbe64551c": true,
+          "c374f77af461f01d367a8b802c7d7bea886fe7ec": true,
+          "0e30b18ff83c3e9fcc63dd614aa1f13562d0c026": true
+        },
+        "r6_disabled_profile_rebind": {
+          "path": "docs/agents/tasks/2026-11-03-production-release/r6-release.json",
+          "json_path": "product_evidence.ci_profile.workflow_sha256",
+          "old": "adbe6221e09c0427d5abaf0ddaa566331abb483f8e246dad3dd42a3dbd6d23a3",
+          "new": "b7dc37359faea4cdaff29ce7b0460d2f5d289ad7d3ae4c2c0c788a8992556e4d",
+          "old_bytes": 8727,
+          "new_bytes": 8727,
+          "old_sha256": "016017d5aac6b968738d5110c91bdd35fa9a81c0f8c2b289f4b0a6f1aa598e67",
+          "new_sha256": "0b7a892bf0ea51d5a3197dce795d2be451bd7535809c9c82c8bbd5fe5bdecc52",
+          "old_git_blob": "dfefb8b550bf192fc867c6d2158612fe01a9a2a7",
+          "new_git_blob": "789c9e202e9cf9199853c54af9f09c7923cd00a4",
+          "operation": "Replace the sole exact old ASCII hash with new hash in original file bytes; no JSON reserialization, whitespace change or other field/byte change. Preserve enabled=false, dto_upload_required=true and every trust/authority/acceptance field. Historical R6 queue object remains untouched.",
+          "reason": "Coordinator reports isolated Task55 PR280 autonomy-policy job failed at pinned SDK/native helper step: existing DTOWorkflowBindingTests.test_dto_job_matches_shared_contract_and_disabled_r6_hash requires current workflow hash. This is a real failing assertion, not timeout/cancel; Task55 sole workflow scope forbids repairing it there. Task56 explicitly scopes only this metadata rebind.",
+          "regression_command": "PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest scripts.dev.test_workshop_browser_smoke.DTOWorkflowBindingTests.test_dto_job_matches_shared_contract_and_disabled_r6_hash -v",
+          "ci_failure_ref": "https://github.com/lucronn/autodata/pull/280",
+          "ci_failure_status": "coordinator_reported_failure_not_independently_live_queried_by_draft"
+        }
+      },
+      "ci_contract": {
+        "workflow_path": ".github/workflows/autonomous-verification.yml",
+        "required_jobs": {
+          "autonomy-policy": "Validate autonomy policy and evidence contract",
+          "workshop-dto-browser": "Workshop DTO browser inventory (not real API acceptance)",
+          "r3-preparation-unit": "R3 preparation synthetic and owned-child tests"
+        },
+        "autonomy_policy_timeout_minutes": 30,
+        "dto_job_timeout_minutes": 100,
+        "dto_exercise_timeout_minutes": 85,
+        "r3_job_timeout_minutes": 5,
+        "required_step": "Run live Compose fast-lane smoke",
+        "required_result": "Fresh combined-source push and actual PR checkout: each run completed/success, all three jobs completed/success, every required test and live Compose step completed/success. Cancellation, timeout, skipped required steps, in-progress state and historical source-lane runs do not qualify. Record ordinary test skips honestly; workflow green does not mean skip-free suites.",
+        "identity": "Retain exact source SHA/tree, actual checkout SHA/tree and checkout logs for every job; PR metadata head_sha alone is insufficient. Verify actual PR commit parents and tree. Require tree equality to reviewed combined source; if PR tree differs, freeze/review/test that actual tree or block and replan, never infer equivalence.",
+        "evidence": "Retain raw run/jobs/step/annotation/log/status JSON, actual attempts, checkout lines, workflow blob, DTO artifact ZIP hashes and extracted same-attempt receipts bound to actual checkout/candidate/timing/input identities. Record source and PR results separately and external Vercel statuses independently.",
+        "scope": "Only already-reviewed workflow CI may exercise local Compose and synthetic browser/owned-child jobs under later explicit coordinator dispatch. Draft permits no host/service/CI operation. No real provider, API21, merchant/Firebase/Stripe TEST or release acceptance credit."
+      },
+      "remaining_blocks": [
+        "No real provider credentials/enrollment, Firebase identity project/configuration or authentic Stripe TEST account/Price/checkout/webhook/durable grant/duplicate/revocation evidence is admitted; stripe_live/live sales remain blocked.",
+        "Owner must independently approve exact Terms/Privacy/Refund/Contact URLs and snapshot bytes and tax/final USD20 price treatment. prepared_offline proves supplied-byte consistency only. The shipped 168-byte disabled manifest remains unchanged; no injection/rebuild, immutable OCI/binary/served-byte artifact admission is authorized.",
+        "Task52 v2 remains internal, unavailable, complete=false, credits0 and verified IDs empty; historical v1/public CLI exit3/profiles unchanged. Task53 static contract pins Task51 product6949/tree47ec; combined tooling SHA never silently rebinds the producer/product source.",
+        "Unchanged supervisor dto_running=4560s versus compiler command ceiling5100s and whole attempt7500s is an explicit unresolved runtime blocker. No timer repair, runtime observer/admission, containment/watchdog or real API finite-success proof is admitted. Producer trace16MiB versus consumer8MiB and original authenticated JUnit/log capture remain blocked.",
+        "No real API21, DTO120 or same-candidate final180 acceptance is established. DTO CI is synthetic fixture/source smoke only, even when all120 rows pass; R3 CI is synthetic/owned-child preparation only. Local Compose smoke is CI infrastructure proof, not authentic staging/provider/customer acceptance.",
+        "cars.tk DNS is Vercel-managed and owner can change it; this is owner-provided planning context. External Vercel deployment/rate-limit failures remain separate from Actions success and prohibit a full green rollup claim while failing. No Vercel setting/retry/hosting, host execution, Docker/services, DNS, staging, protected-branch merge, deployment, cutover or release authority follows."
+      ],
+      "dispatch_prerequisite": "Draft only: coordinator fresh synchronization, exact committed/pushed checkpoint seal, standalone+nested positive preflight, independent exact checkpoint review, retained final Task55 code review, then explicit assigned source-only integration branch and eight-path dispatch including only the exact-field disabled R6 rebind. This draft grants no implementation or operational authority.",
+      "allowed_immutable_import_paths": [
+        "scripts/dev/release_acceptance.py",
+        "scripts/dev/test_release_acceptance.py",
+        "docs/verification/release-acceptance-runbook.md",
+        "scripts/dev/workshop_browser_execution_contract.py",
+        "scripts/dev/test_workshop_browser_execution_contract.py",
+        "scripts/dev/workshop_merchant_manifest.py",
+        "scripts/dev/test_workshop_merchant_manifest.py"
+      ]
     }
   ],
   "execution": {
