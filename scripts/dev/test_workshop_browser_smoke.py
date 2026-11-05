@@ -1742,6 +1742,16 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIsNotNone(buffer.snapshot()['primary_failure'])
                     self.assertTrue(browser.contexts[0].closed)
 
+    async def test_duplicate_or_out_of_order_delivery_never_upgrades_complete_case(self):
+        buffer=self.buffer();browser=API21FakeBrowser(smoke.API_CASES[0])
+        with TemporaryDirectory() as temp,patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}):
+            result=await smoke.api_case(browser,'https://127.0.0.1:32001',smoke.API_CASES[0],Path(temp),observations=buffer)
+        self.assertEqual(result['status'],'passed')
+        delivery=next(e['payload'] for e in buffer.events if e['payload']['kind']=='checkout-delivery')
+        buffer.event('checkout-first-delivery',delivery,[delivery['http_event']])
+        buffer.complete_case(smoke.API_CASES[0])
+        self.assertEqual(buffer.snapshot()['status'],'failed')
+
     def test_safe_routes_exclude_auth_and_all_capabilities_queries_hosts(self):
         self.assertIsNone(smoke.api21_route('https://local/v1/auth/session'))
         self.assertEqual(smoke.api21_route('https://local/v1/catalog/images/v2.secret?token=secret'),
