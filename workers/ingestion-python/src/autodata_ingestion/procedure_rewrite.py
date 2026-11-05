@@ -249,6 +249,9 @@ _PROTECTED_SLOT = re.compile(
 
 
 def editable_slots(document, *, profile_version=_PROFILE):
+    if profile_version == "full-prose-review-v1":
+        from .procedure_rewrite_full import prose_slots
+        return prose_slots(document)
     if profile_version == "technical-prose-v2":
         from .procedure_rewrite_v2 import plan_v2
         plan = plan_v2(document)
@@ -303,6 +306,9 @@ def protected_projection(document):
 
 
 def validate_article_rewrite(source, candidate, *, profile_version):
+    if profile_version == "full-prose-review-v1":
+        from .procedure_rewrite_full import validate_full
+        return validate_full(source, candidate)
     if profile_version == "technical-prose-v2":
         from .procedure_rewrite_v2 import validate_v2
         return validate_v2(source, candidate)
@@ -352,6 +358,9 @@ def validate_article_rewrite(source, candidate, *, profile_version):
 
 
 def build_rewrite_prompt(document, *, context, profile_version):
+    if profile_version == "full-prose-review-v1":
+        from .procedure_rewrite_full import build_full_prompt
+        return build_full_prompt(document, context=context)
     if profile_version == "technical-prose-v2":
         from .procedure_rewrite_v2 import build_v2_prompt
         return build_v2_prompt(document, context=context)
@@ -376,6 +385,23 @@ def rewrite_ordered_document(document, *, client, context, profile_version=_PROF
             digest_json(candidate), prompt_hash, metadata, profile_version, error)
     if len(prompt.encode()) > 200*1024:
         return result(source, error="REWRITE_INPUT_LIMIT")
+    if profile_version == "full-prose-review-v1":
+        from .procedure_rewrite_full import render_full, validate_full, _source_valid
+        if not _source_valid(source):
+            return result(source, error="REWRITE_DOCUMENT_INVALID")
+        if client is None:
+            return result(source, error="MODEL_NOT_CONFIGURED")
+        raw = client.complete_json(prompt)
+        if len(json.dumps(raw, ensure_ascii=False).encode()) > 1024*1024:
+            return result(source, error="REWRITE_RESPONSE_LIMIT")
+        try:
+            candidate = render_full(source, raw)
+        except ValueError as error:
+            return result(source, raw=raw if isinstance(raw, dict) else {}, error=str(error))
+        validation = validate_full(source, candidate, response=raw)
+        if not validation.passed:
+            return result(source, raw=raw, error=validation.error_codes[0])
+        return result(candidate, validation.report["changed_slots"], raw)
     if profile_version == "technical-prose-v2":
         from .procedure_rewrite_v2 import plan_v2, render_v2
         plan = plan_v2(source)
