@@ -73,6 +73,10 @@ def _hash_artifact(path,ref,expected=None):
     return {'ref':ref,'length':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
 
 
+def _private_log(path):
+    return os.fdopen(os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600),'wb')
+
+
 def _publish(directory,name,value,limit):
     if Path(name).name!=name or name in ('.','..'):raise ValueError('unsafe destination')
     raw=_canonical(value)
@@ -163,6 +167,7 @@ def _capture_workers(runtime,google,artifact_root=ARTIFACT_ROOT):
 def _finalize_workers(capture,exits,closed):
     pairs,status=capture
     if status!='observed':return [],status
+    if len(exits)!=len(pairs):return [],'unavailable'
     records=[]
     for index,(worker,log,path,identity) in enumerate(pairs):
         row=dict(ordinal=index+1,kind='cli',original_ref=path.name,mapping='observed',alive_before_cleanup=True,
@@ -175,9 +180,74 @@ def _finalize_workers(capture,exits,closed):
             row.update({key:outcome[key] for key in ('alive_before_cleanup','intentional_cleanup','terminated','exit_code')});row['reaped']=True
             if not closed or not log.closed:raise ValueError('log_not_finalized')
             row['log_hash']=_hash_artifact(path,path.name,identity);row['log_finalized']=True
-        except BaseException:row['reason']='log_not_finalized' if not closed or not log.closed else 'mapping_unavailable';status='unavailable'
+        except BaseException:row.update(mapping='unavailable',reason='log_not_finalized' if not closed or not log.closed else 'mapping_unavailable');status='unavailable'
         records.append(row)
     return records,status
+
+
+def _binding(root,engine,bank,role):
+    suffix=engine if root=='test_browser_google_exchange_checkout_library_real_api' else engine+'-'+bank
+    binding=dict(binding_state='partial',unavailable_reason='source_binding_failed',api_observability_version=API21_VERSION,
+        run_id=os.environ.get('AUTODATA_API21_RUN_ID',_RUN_ID),attempt_id=os.environ.get('AUTODATA_API21_ATTEMPT_ID') or secrets.token_hex(16),
+        case_id=root+'['+suffix+']',root=root,engine=engine,bank=bank,candidate_sha=None,source_tree=None,source_input_sha256={},producer_role=role)
+    try:
+        candidate=os.environ['AUTODATA_R3_CANDIDATE_SHA'];tree=os.environ['AUTODATA_API21_SOURCE_TREE']
+        if not re.fullmatch('[a-f0-9]{40}',candidate) or not re.fullmatch('[a-f0-9]{40}',tree):raise ValueError('source_binding_failed')
+        binding.update(candidate_sha=candidate,source_tree=tree)
+        binding['source_input_sha256']={name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in _INPUTS}
+        inherited=os.environ.get('AUTODATA_API21_BINDING')
+        if inherited:
+            expected=_strict_json(inherited);expected['producer_role']=role
+            binding.update(run_id=os.environ['AUTODATA_API21_RUN_ID'],attempt_id=os.environ['AUTODATA_API21_ATTEMPT_ID'])
+            binding.update(binding_state='complete',unavailable_reason=None)
+            if binding!=expected:raise ValueError('source_binding_failed')
+        if not all(re.fullmatch('[a-f0-9]{32}',binding[key]) for key in ('run_id','attempt_id')):raise ValueError('source_binding_failed')
+        binding.update(binding_state='complete',unavailable_reason=None)
+    except BaseException:binding.update(binding_state='partial',unavailable_reason='source_binding_failed')
+    return binding
+
+
+def _binding_env(binding,role):
+    value=dict(binding,producer_role=role)
+    return dict(AUTODATA_API21_BINDING=_canonical(value).decode().strip(),AUTODATA_API21_RUN_ID=value['run_id'],
+        AUTODATA_API21_ATTEMPT_ID=value['attempt_id'],AUTODATA_API21_SOURCE_TREE=value['source_tree'] or '')
+
+
+def _safe_publish(directory,name,receipt,limit):
+    try:_publish(directory,name,receipt,limit);return True
+    except BaseException:
+        receipt['status']='failed';receipt['publication_failure']='publication_failed'
+        if receipt.get('primary_failure') is None:receipt['primary_failure']='publication_failed'
+        # Keep the same closed schema, with bounded unavailable collections.
+        minimal=dict(receipt)
+        for key in ('workers','finalization_events','child_artifacts'):
+            if key in minimal:minimal[key]=[]
+        for key in ('go','browser_runner','child'):
+            if key in minimal:
+                minimal[key]=dict(minimal[key],events=[],output_hashes=[])
+        try:_publish(directory,name,minimal,min(limit,16384))
+        except BaseException:print('API21_PUBLICATION_FAILED',file=sys.stderr)
+        return False
+
+
+def _normalized(command,directory,origin=None):
+    result=[]
+    for value in command:
+        value=str(value)
+        if value==sys.executable:value='$PYTHON'
+        elif origin is not None and value==origin:value='$ORIGIN'
+        elif value==str(directory) or value.startswith(str(directory)+'/'):value='$CASE'+value[len(str(directory)):]
+        elif value.startswith(str(ROOT)+'/'):value='$REPO'+value[len(str(ROOT)):]
+        result.append(value)
+    if len(result)>32 or any(len(v.encode())>512 for v in result):raise ValueError('over_limit')
+    return result
+
+
+def _lifecycle(receipt,operation,state,reason=None):
+    events=receipt['finalization_events']
+    if len(events)>=64:raise ValueError('over_limit')
+    events.append(dict(seq=len(events)+1,phase=operation,caused_by=[],elapsed_us=0,
+        payload=dict(kind='lifecycle',operation=operation,state=state,reason=reason)))
 
 
 class BrowserBridge(PaidBridge):
@@ -218,12 +288,21 @@ class BrowserBridge(PaidBridge):
 
 def _child(root_name,engine,provider,directory,monkeypatch):
     deadline=time.monotonic()+78
-    candidate=os.environ['AUTODATA_R3_CANDIDATE_SHA']
-    repo=Repository(os.environ['AUTODATA_WORKSHOP_BROWSER_DATABASE'])
-    runtime=bridge=process=None
-    result={'version':'v1','mode':'api-fixture','candidate_sha':candidate,'browser':engine,'provider':provider,'test':root_name,'fixture_database':repo.database_name,'passed':False}
+    binding=_binding(root_name,engine,provider,'child-pytest')
+    runtime=bridge=process=None;capture=([],'unavailable');closed=False;failure=None
+    google=root_name=='test_browser_google_exchange_checkout_library_real_api'
+    prefix=str(directory.relative_to(ARTIFACT_ROOT))+'/'
+    go=_OwnedProcess('go-test','child-pytest',['go','test','-count=1','-run','^TestWorkshopBrowserFixtureHTTP$','-timeout=85s','.'],'apps/api-go',prefix+'go-fixture.log',prefix+'go-fixture.log')
+    browser=_OwnedProcess('browser-runner','child-pytest',[],'.',prefix+'browser.stdout.log',prefix+'browser.stderr.log')
+    sidecar=dict(binding=binding,status='failed',go=go.data,browser_runner=browser.data,workers=[],worker_mapping_status='unavailable',
+        finalization_events=[],primary_failure=None,publication_failure=None,engine_os_exit=None,outer_pytest_exit=None)
+    candidate=binding['candidate_sha']
+    result=dict(version='v1',mode='api-fixture',candidate_sha=candidate,browser=engine,provider=provider,test=root_name,
+        fixture_database=None,passed=False,api_observability_version=API21_VERSION,binding=binding)
     try:
+        assert binding['binding_state']=='complete','API21 source binding unavailable'
         with ExitStack() as stack:
+            repo=Repository(os.environ['AUTODATA_WORKSHOP_BROWSER_DATABASE']);result['fixture_database']=repo.database_name
             runtime=LifecycleRuntime(repo,stack)
             scope=configure_scoped_runtime(runtime,provider)
             bridge=BrowserBridge(runtime)
@@ -245,15 +324,20 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                 AUTODATA_PAID_TEST_CONFIGURATION_ID=scope['configuration'],AUTODATA_PAID_TEST_ADJACENT_CONFIGURATION_ID=scope['adjacent'],
                 AUTODATA_PAID_TEST_REGION_CONFIGURATION_ID=scope['other_region'],AUTODATA_PAID_TEST_UNSCOPED_ARTICLE_ID=scope['unscoped'],
                 AUTODATA_S3_ENDPOINT='minio:9000',AUTODATA_S3_ACCESS_KEY='fixture',AUTODATA_S3_SECRET_KEY='fixture',AUTODATA_SOURCE_BUCKET=runtime.bucket)
-            with (directory/'go-fixture.log').open('wb') as log:
+            with _private_log(directory/'go-fixture.log') as log:
+                go.event('launch-requested')
                 process=subprocess.Popen(['go','test','-count=1','-run','^TestWorkshopBrowserFixtureHTTP$','-timeout=85s','.'],cwd=ROOT/'apps/api-go',env=env,stdout=log,stderr=subprocess.STDOUT)
+                go.launched(process)
                 ready=directory/'ready.json'
                 while not ready.exists():
-                    assert process.poll() is None,(directory/'go-fixture.log').read_text()
+                    code=process.poll()
+                    if code is not None:go.observed(code,'poll','normal')
+                    assert code is None,'API21 fixture exited before readiness'
                     assert time.monotonic()<deadline-15,'fixture readiness budget exhausted'
                     time.sleep(.05)
                 metadata=json.loads(ready.read_text());assert metadata['kind']=='api-fixture'
                 browser_env={key:value for key,value in env.items() if key in allowed}
+                browser_env.update(_binding_env(binding,'browser-runner'))
                 browser_env.update(CANDIDATE_SHA=candidate,AUTODATA_WORKSHOP_BROWSER_CASE=root_name)
                 browser_home=(directory/'browser-home').absolute()
                 browser_home.mkdir(mode=0o700,exist_ok=False)
@@ -261,29 +345,72 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                 assert stat.S_ISDIR(home_stat.st_mode) and stat.S_IMODE(home_stat.st_mode)==0o700 and home_stat.st_uid==os.getuid(),'browser home must be an owned private directory'
                 browser_env['HOME']=str(browser_home)
                 command=[sys.executable,str(ROOT/'scripts/dev/workshop_browser_smoke.py'),'--base-url',metadata['origin'],'--mode','api-fixture','--browser',engine,'--candidate-sha',candidate,'--output',str(directory/'browser')]
-                with (directory/'browser.stdout.log').open('wb') as stdout,(directory/'browser.stderr.log').open('wb') as stderr:
-                    tested=subprocess.run(command,cwd=ROOT,env=browser_env,stdout=stdout,stderr=stderr,timeout=max(1,deadline-time.monotonic()-8))
-                assert tested.returncode==0,(directory/'browser.stderr.log').read_text()+(directory/'browser.stdout.log').read_text()
-                evidence=json.loads((directory/'browser/evidence.json').read_text())
+                browser.data['argv']=_normalized(command,directory,metadata['origin'])
+                browser.event('launch-requested');browser.data['started_us']=browser.elapsed()
+                with _private_log(directory/'browser.stdout.log') as stdout,_private_log(directory/'browser.stderr.log') as stderr:
+                    try:tested=subprocess.run(command,cwd=ROOT,env=browser_env,stdout=stdout,stderr=stderr,timeout=max(1,deadline-time.monotonic()-8))
+                    except subprocess.TimeoutExpired:browser.data['launched']=True;browser.event('timeout',reason='timeout');raise
+                    browser.data.update(launched=True);browser.event('launch-succeeded')
+                    browser.observed(tested.returncode,'wait','normal')
+                assert tested.returncode==0,'API21 browser runner failed'
+                evidence=_strict_json((directory/'browser/evidence.json').read_bytes())
                 assert len(evidence['results'])==1 and evidence['results'][0]['status']=='passed' and evidence['mode']=='api-fixture'
+                expected_binding=dict(binding,producer_role='browser-runner')
+                assert evidence['api_observability_version']==API21_VERSION and evidence['candidate_sha']==candidate
+                assert evidence['binding']==expected_binding
+                assert evidence['input_sha256']=={name:digest for name,digest in binding['source_input_sha256'].items() if name!=_INPUTS[-1]}
+                row=evidence['results'][0]
+                assert (row['browser'],row['scenario'],row['provider'])==(engine,root_name,provider)
+                observed=row['observations']
+                assert observed['binding']==expected_binding and observed['status']=='passed' and observed['primary_failure'] is None and observed['publication']=='written'
                 final=bridge.snapshot();assert not final['proxy']['errors'] and final['ensure']['active']==0
                 result['final_snapshot']=final
                 with urlopen(Request(metadata['origin']+'/__fixture/stop',method='POST'),context=ssl._create_unverified_context(),timeout=2) as response:assert response.status==204
-                assert process.wait(timeout=3)==0,(directory/'go-fixture.log').read_text();process=None
-            result['worker_exits']=bridge.stop();runtime.close();runtime=None
+                _lifecycle(sidecar,'fixture-stop','completed')
+                assert go.wait(3)==0,'API21 fixture stop failed';process=None
+            capture=_capture_workers(runtime,google)
+            _lifecycle(sidecar,'worker-stop','requested')
+            result['worker_exits']=bridge.stop();_lifecycle(sidecar,'worker-stop','completed')
+            _lifecycle(sidecar,'runtime-close','requested')
+            runtime.close();closed=True;runtime=None;_lifecycle(sidecar,'runtime-close','completed')
         result['passed']=True
+    except BaseException as exc:
+        failure=_failure(exc);sidecar['primary_failure']=failure
+        if not go.data['launched'] and go.data['events']:go.event('launch-failed',reason='launch_failed')
+        if not browser.data['launched'] and browser.data['events']:browser.event('launch-failed',reason='launch_failed')
     finally:
-        if process is not None and process.poll() is None:
-            process.terminate()
-            try:process.wait(timeout=2)
-            except subprocess.TimeoutExpired:process.kill();process.wait(timeout=2)
-        if bridge is not None:bridge.release_model.set()
+        try:go.cleanup()
+        except BaseException:
+            failure=failure or 'reap_failed';sidecar['primary_failure']=failure
         if runtime is not None:
-            try:bridge.stop() if bridge else runtime.stop_workers()
-            finally:runtime.close()
-        (directory/'result.json').write_text(json.dumps(result,indent=2,default=str)+'\n')
-        for path in directory.rglob('*'):
-            if path.is_file():path.chmod(0o600)
+            if capture[1]=='unavailable':capture=_capture_workers(runtime,google)
+            try:
+                if bridge is not None:
+                    bridge.release_model.set();result['worker_exits']=bridge.stop()
+                else:runtime.stop_workers()
+                _lifecycle(sidecar,'worker-stop','completed')
+            except BaseException:
+                failure=failure or 'close_failed';_lifecycle(sidecar,'worker-stop','failed','close_failed')
+            try:runtime.close();closed=True;_lifecycle(sidecar,'runtime-close','completed')
+            except BaseException:
+                failure=failure or 'close_failed';_lifecycle(sidecar,'runtime-close','failed','close_failed')
+        sidecar['workers'],sidecar['worker_mapping_status']=_finalize_workers(capture,result.get('worker_exits',[]),closed)
+        if sidecar['worker_mapping_status']=='unavailable':failure=failure or 'mapping_unavailable'
+        for owned in (go,browser):
+            if owned.data['reaped'] is True:
+                try:
+                    owned.data['output_hashes']=[_hash_artifact(ARTIFACT_ROOT/name,name) for name in dict.fromkeys((owned.data['stdout_ref'],owned.data['stderr_ref'])) if name]
+                except BaseException:failure=failure or 'log_not_finalized'
+        if not (go.data['return_code']==0 and browser.data['return_code']==0):failure=failure or 'not_observed'
+        result['passed']=result['passed'] and failure is None
+        sidecar.update(status='passed' if result['passed'] else 'failed',primary_failure=failure)
+        try:_publish(directory,'result.json',result,4194304)
+        except BaseException:
+            failure=failure or 'publication_failed';result['passed']=False;sidecar.update(status='failed',primary_failure=failure,publication_failure='publication_failed')
+            try:_publish(directory,'result.json',{k:v for k,v in result.items() if k not in ('final_snapshot','worker_exits')},16384)
+            except BaseException:print('API21_PUBLICATION_FAILED',file=sys.stderr)
+        if not _safe_publish(directory,'child-processes.json',sidecar,262144):failure=failure or 'publication_failed'
+    if failure:raise RuntimeError('API21 '+failure) from None
 
 
 def _case(root_name,engine,provider,fresh_database,monkeypatch):
@@ -291,25 +418,57 @@ def _case(root_name,engine,provider,fresh_database,monkeypatch):
     if os.environ.get('AUTODATA_WORKSHOP_BROWSER_CHILD')=='1':
         _child(root_name,engine,provider,Path(os.environ['AUTODATA_WORKSHOP_BROWSER_DIRECTORY']),monkeypatch);return
     start=time.monotonic()
-    directory=Path('/artifacts/workshop-browser')/root_name/(engine+'-'+provider)
-    directory.mkdir(mode=0o700,parents=True,exist_ok=False)
-    repo=fresh_database()
-    allowed=('PATH','PYTHONPATH','PYTHONDONTWRITEBYTECODE','AUTODATA_R3_CANDIDATE_SHA','AUTODATA_LIFECYCLE_TEST','AUTODATA_CATALOG_INTEGRATION_REQUIRED','AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION','GOTOOLCHAIN','GOPROXY','GOFLAGS','CGO_ENABLED','GOMODCACHE','GOCACHE','GOTMPDIR','PLAYWRIGHT_BROWSERS_PATH','XDG_CACHE_HOME','XDG_CONFIG_HOME','TMPDIR')
-    env={key:os.environ[key] for key in allowed if key in os.environ}
-    env.update(AUTODATA_WORKSHOP_BROWSER_CHILD='1',AUTODATA_WORKSHOP_BROWSER_DATABASE=repo.database_name,AUTODATA_WORKSHOP_BROWSER_DIRECTORY=str(directory))
+    directory=ARTIFACT_ROOT/'workshop-browser'/root_name/(engine+'-'+provider)
+    for parent in (ARTIFACT_ROOT/'workshop-browser',ARTIFACT_ROOT/'workshop-browser'/root_name):
+        parent.mkdir(mode=0o700,exist_ok=True)
+        info=parent.lstat()
+        assert stat.S_ISDIR(info.st_mode) and info.st_uid==os.getuid() and stat.S_IMODE(info.st_mode)==0o700,'API21 private directory required'
+    directory.mkdir(mode=0o700,exist_ok=False)
+    binding=_binding(root_name,engine,provider,'parent-pytest')
     suffix=engine if root_name=='test_browser_google_exchange_checkout_library_real_api' else engine+'-'+provider
     node='workers/ingestion-python/tests/test_workshop_browser_integration.py::'+root_name+'['+suffix+']'
     command=[sys.executable,'-m','pytest','-q','-p','no:cacheprovider',node]
-    with (directory/'child.log').open('wb') as log:
-        process=subprocess.Popen(command,cwd=ROOT,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
-        try:code=process.wait(timeout=max(1,84-(time.monotonic()-start)))
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid,signal.SIGTERM)
-            try:process.wait(timeout=2)
-            except subprocess.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL);process.wait(timeout=2)
-            pytest.fail('owned browser case exceeded90s including cleanup')
-    assert code==0,(directory/'child.log').read_text()
-    assert json.loads((directory/'result.json').read_text())['passed'] is True
+    child=_OwnedProcess('child-pytest','parent-pytest',_normalized(command,directory),'.',str((directory/'child.log').relative_to(ARTIFACT_ROOT)),str((directory/'child.log').relative_to(ARTIFACT_ROOT)))
+    receipt=dict(binding=binding,status='failed',child=child.data,child_artifacts=[],child_artifact_status='unavailable',child_launch_cause=None,
+        primary_failure=None,publication_failure=None,engine_os_exit=None,outer_pytest_exit=None)
+    failure=None
+    try:
+        assert binding['binding_state']=='complete','API21 source binding unavailable'
+        repo=fresh_database()
+        allowed=('PATH','PYTHONPATH','PYTHONDONTWRITEBYTECODE','AUTODATA_R3_CANDIDATE_SHA','AUTODATA_LIFECYCLE_TEST','AUTODATA_CATALOG_INTEGRATION_REQUIRED','AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION','GOTOOLCHAIN','GOPROXY','GOFLAGS','CGO_ENABLED','GOMODCACHE','GOCACHE','GOTMPDIR','PLAYWRIGHT_BROWSERS_PATH','XDG_CACHE_HOME','XDG_CONFIG_HOME','TMPDIR')
+        env={key:os.environ[key] for key in allowed if key in os.environ}
+        env.update(_binding_env(binding,'child-pytest'))
+        env.update(AUTODATA_WORKSHOP_BROWSER_CHILD='1',AUTODATA_WORKSHOP_BROWSER_DATABASE=repo.database_name,AUTODATA_WORKSHOP_BROWSER_DIRECTORY=str(directory))
+        with _private_log(directory/'child.log') as log:
+            child.event('launch-requested')
+            process=subprocess.Popen(command,cwd=ROOT,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+            child.launched(process)
+            try:code=child.wait(max(1,84-(time.monotonic()-start)))
+            except subprocess.TimeoutExpired:
+                child.cleanup(group=True);raise
+        assert code==0,'API21 child failed'
+        assert _strict_json((directory/'result.json').read_bytes())['passed'] is True,'API21 child result failed'
+        assert _strict_json((directory/'child-processes.json').read_bytes())['status']=='passed','API21 child receipts failed'
+        receipt['status']='passed'
+    except BaseException as exc:
+        failure=_failure(exc)
+        if not child.data['launched'] and child.data['events']:child.event('launch-failed',reason='launch_failed')
+    finally:
+        try:child.cleanup(group=True)
+        except BaseException:failure=failure or 'reap_failed'
+        if child.data['reaped'] is True:
+            names=('child.log','result.json','ready.json','go-fixture.log','browser.stdout.log','browser.stderr.log','browser/evidence.json','child-processes.json')
+            for name in names:
+                try:
+                    ref=str((directory/name).relative_to(ARTIFACT_ROOT))
+                    receipt['child_artifacts'].append(_hash_artifact(directory/name,ref))
+                except BaseException:pass
+            receipt['child_artifact_status']='finalized' if len(receipt['child_artifacts'])==8 else 'partial'
+            if receipt['child_artifact_status']!='finalized':failure=failure or 'log_not_finalized'
+            child.data['output_hashes']=[row for row in receipt['child_artifacts'] if row['ref'].endswith('/child.log')]
+        receipt.update(status='passed' if failure is None and receipt['status']=='passed' else 'failed',primary_failure=failure)
+        if not _safe_publish(directory,'parent-process.json',receipt,65536):failure=failure or 'publication_failed'
+    if failure:raise AssertionError('API21 '+failure) from None
 
 
 @pytest.mark.parametrize('engine',ENGINES)
