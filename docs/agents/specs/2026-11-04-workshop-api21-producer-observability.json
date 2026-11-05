@@ -78,7 +78,7 @@
       "external_vercel": {
         "context": "Vercel",
         "state": "FAILURE",
-        "description": "Deployment rate limited — retry in 24 hours.",
+        "description": "Deployment rate limited \u2014 retry in 24 hours.",
         "target_url": "https://vercel.com/curtt?upgradeToPro=build-rate-limit",
         "cause_established": false,
         "preview_comments_check_is_distinct": true
@@ -147,13 +147,14 @@
     "project_ref": "https://github.com/users/lucronn/projects/8",
     "ownership_verified": true,
     "literal_readback_verified": true,
-    "observed_at": "2026-11-05T00:24:02Z",
-    "planning_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646051229",
+    "observed_at": "2026-11-05T00:43:58Z",
+    "planning_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646372232",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "readback_receipt": {
-      "path": "/home/corp/autodata-evidence/api21-g2-tracking-receipt.json",
-      "sha256": "37501c71d8debe71f4b5bb506dc070913273edd48f37b9b1cf78eefb0780e097"
+      "path": "/home/corp/autodata-evidence/api21-k3b-tracking-receipt.json",
+      "sha256": "55efcc10ad2e83cefdc3a0312a45806331fd9c39670edd7f68af94fa7225f251"
     },
-    "clarification": "Coordinator-owned literal Issue186/Project8 planning write and fresh readback verified by receipt; prior225 comments, Issue body and other Project fields preserved. Planning synchronization is not implementation dispatch or runtime/acceptance authority."
+    "clarification": "Coordinator-owned prospective K3b Issue186 correction and Project8 Source pointer were freshly read back; exact literal comment, prior comments/Issue body and unrelated Project fields preserved per receipt. Planning synchronization only; no implementation dispatch, runtime/capture/acceptance authority."
   },
   "allowed_gate_document_paths": [
     "docs/superpowers/plans/2026-11-04-workshop-api21-producer-observability.md",
@@ -176,7 +177,8 @@
     "Commit/push only the six planning paths as K3; seal exact K3 externally, extract standalone/nested records and policy from K3, pass both machine preflights, obtain independent exact-K3 review and explicit narrow code-only dispatch. No authority is granted by this draft.",
     "Write red offline tests first; implement API-only observation buffering/failure-safe publication as one small validated milestone and owned process/worker mapping as another. Promptly commit/push coherent validated milestones under coordinator branch ownership.",
     "Verify exact four-code-path diff, 21/120 inventory, original JUnit name, deadlines, provenance and disabled CLI/profiles; run frozen fake suites without services/provider/browser/Go. Independently review exact code and honestly read source/actual-checkout CI, failures and skips.",
-    "Leave v2 consumer/profile, authentic capture/containment, outer launcher/engine exits, finite API schedule, static compiler rebinding, original JUnit/worker-log transport, independent raw review and all final180/release work separately gated with zero case credit."
+    "Leave v2 consumer/profile, authentic capture/containment, outer launcher/engine exits, finite API schedule, static compiler rebinding, original JUnit/worker-log transport, independent raw review and all final180/release work separately gated with zero case credit.",
+    "Resolve URL fragment, phase attempt and body classification conflicts prospectively; synchronize/reseal K3b and pass independent exact-checkpoint review before affected code integration"
   ],
   "current_implementation_allowlist": [],
   "accepted_case_credit": 0,
@@ -260,12 +262,12 @@
         "method": "GET|POST",
         "route_template": "frozen safe template, no query/UUID/capability/host/token",
         "actor": "owner|other|logged-out|disabled|fixture-control",
-        "attempt": "int 1..16",
+        "attempt": "integer excluding bool, validated jointly with phase: runtime-poll 1..100; owner-library-initial-http/owner-library-reload-http/owner-library-restart-http 1..16; checkout-first-http 1; checkout-retry-http 2; checkout-http 1; all other one-exchange HTTP phases 1 unless an existing frozen phase explicitly declares repetition",
         "status": "int 100..599|null",
         "idempotency_key": "canonical UUID|null; only checkout",
         "request": "body|null",
         "response": "body",
-        "checkout_identity": "{order_id:UUID,configuration_id:UUID,region:const US,checkout_url:strict https://checkout.stripe.com/c/pay/cs_test_[a-f0-9]{32}}|null"
+        "checkout_identity": "{order_id:UUID,configuration_id:UUID,region:const US,checkout_url:full original string satisfying source-bound HTTPS checkout URL predicate below, fragment allowed and retained verbatim}|null"
       },
       "lifecycle": {
         "kind": "const lifecycle",
@@ -465,15 +467,18 @@
       "Every new file/record carries one exact binding. Parent allocates one run_id per parent pytest session and a fresh attempt_id per case launch, passes AUTODATA_API21_RUN_ID/AUTODATA_API21_ATTEMPT_ID/AUTODATA_API21_SOURCE_TREE plus candidate context to child/browser; children echo. A binding is correlation, never authenticated capture. A retry inside one checkout uses the same case attempt_id.",
       "Parent owns parent-process.json only; child owns child-processes.json and existing result.json; Go alone owns ready.json, retained unchanged and hashed once final; browser owns browser/evidence.json. Parent never mutates child outputs. Final hashes link in one direction browser/result/ready/logs -> child sidecar -> parent sidecar; no self-hashing/cycle/live writer hashing.",
       "passed requires complete applicable phase prefix, all required observations retained and every owned required process outcome actually observed successful, with valid worker cleanup. Prior failed/partial/unavailable remains nonpass even if later final snapshot or close succeeds. Parent pytest/engine exits remain null always.",
-      "Retained body requires supported byte_source, encoding base64, canonical base64 bytes, exact nonnull length/hash; parsed is strict decoded JSON for JSON records and must agree with original bytes. hash_only permitted ONLY successful image body: encoding/base64/parsed null, real length/hash nonnull and reason not_required_image_body. unavailable requires base64/encoding/parsed null; length/hash null unless actual partial facts were observed independently, never fabricated.",
+      "Retained body requires supported byte_source, encoding base64, canonical original bytes and exact nonnull length/hash. parsed/reason follow the phase/status/source body classification rule below; retained invalid JSON/UTF8 is a failed observation, not unavailable or successful. hash_only permitted ONLY successful image body: encoding/base64/parsed null, real length/hash nonnull and reason not_required_image_body. unavailable requires base64/encoding/parsed null; length/hash null unless actual partial facts were observed independently, never fabricated.",
       "Checkout request uses post_data_buffer original bytes only; unsupported source unavailable with no text fallback asserted original. response.body bytes captured before parsing. Request key and request bytes each equal across two attempts; parsed checkout identity equal separately. Response hashes are independently recomputed but need not be equal. No TLS/wire claim.",
-      "Original JSON request/response entity bytes retained for checkout, metadata, measurement, snapshot, control, denials, library and source/detail JSON. Actual application and owned fixture-control channels distinct. Empty204 retains zero bytes with null parsed. Status observed before assertion; absent status null. Successful image retains length/hash only; denial image retains full response bytes. No header dump: only idempotency-key UUID.",
+      "Original entity bytes retained for checkout, metadata, measurement, snapshot, control, denials, library and source/detail JSON according to frozen phase/status/source classification below. Actual application and owned fixture-control channels distinct. Status observed before assertion; absent status null. Successful image retains length/hash only; denial image retains full response bytes. Normal paid API21 denial bodies are required JSON; no header dump: only idempotency-key UUID.",
       "Route templates remove query, capability, order/config/article UUID and origin. Allow only C literal route families /__fixture/{metadata,measurement,snapshot,runtime,restart,stop,disable,payment/settle,payment/refund,control/start-workers,control/release-model}, /v1/workshop/{checkout-sessions,library,quote,orders/{order}}, /v1/catalog/vehicles/{configuration}/articles[/{article}[/source]], /v1/catalog/vehicles/{adjacent|other_region|vehicle}/articles, /v1/catalog/vehicles/{configuration}/articles/{unscoped}, /v1/catalog/images/{capability}. Exact actual application route literal names are rechecked against integrated C before adoption; mismatch requires reviewed contract revision, not runtime inference.",
       "Process argv records selected actual argv preserving flags/order, replacing only sys.executable->$PYTHON, repo absolute prefix->$REPO, isolated case dir->$CASE, private loopback origin->$ORIGIN at declared slots. No environment values or credentials. Normalize while retaining selected command identity; no fabricated outer launcher argv. All owned process values recorded before assertions; poll nonnull observed Go exit retained. Existing subprocess.run timeout has null code unless reviewed owned-Popen change actually waits.",
       "Capture worker handle/log object references before Bridge.stop empties runtime.workers. Known branch maps by matching unique live handle and log creation ordinal only; partial launch/mismatched lengths/unknown branch mark mapping unavailable and nonpass. Hash original regular single-link log after actual stop/reap and log close/flush; runtime.close failure does not assert finalization. Negative intentional SIGTERM is valid cleanup, not process success.",
       "Safe exception categories apply to API run(), route/pageerror, integration assertions and cleanup too. Never concatenate raw exceptions/logs/body into stdout/stderr or public tracking. Treat fixture-scoped retained business JSON as confidential. Known secret fields/tokens cause unavailable+failed instead of redacted bytes described as original.",
       "Dedicated per-producer local monotonic seq/elapsed_us only. No cross-process timestamp comparison. HTTP checkout delivery references its fetch event; child launch observes passed parent launch context but cannot witness parent final exit. Parent hashes child finalized evidence after wait/reap; unknown cross-role ref cannot imply observation.",
-      "Write private 0600 regular single-link files in owned 0700 directories using bounded canonical serialization to exclusive sibling temporary file, flush/fsync, checked atomic replacement; reject symlink/hardlink/changed inode and escaping path, clean temporary safely. These are local publication properties, not authenticated capture. No copying/renaming original support logs or JUnit."
+      "Write private 0600 regular single-link files in owned 0700 directories using bounded canonical serialization to exclusive sibling temporary file, flush/fsync, checked atomic replacement; reject symlink/hardlink/changed inode and escaping path, clean temporary safely. These are local publication properties, not authenticated capture. No copying/renaming original support logs or JUnit.",
+      "Checkout URL predicate: retain the full original string; scheme HTTPS; hostname exactly checkout.stripe.com; no username/password or explicit port; path full-matches /c/pay/cs_test_[a-f0-9]{32}; no query; fragment allowed and retained verbatim. Do not normalize, strip or reconstruct the URL before identity or full-string retry equality. The authentic #fidkdFixtureFragment is allowed; absent fragment is also allowed; a changed fragment across retries is unequal. Request bytes/key equality and full parsed identity equality are independent of response-byte hashes, which may differ with serialization.",
+      "HTTP attempt is a non-bool integer validated together with its frozen phase: runtime-poll 1..100; three owner-library HTTP phases 1..16; checkout-first-http=1, checkout-retry-http=2, other checkout-http=1; every other one-exchange phase=1 unless another existing frozen phase explicitly declares repetition. Runtime100 caps retained actual observations, not success or timing. Keep five-second monotonic budget, timeout/sleep/schedule unchanged; retain observed ordinal/status/body/unavailable facts without clamping, dropping or renumbering. Overflow is nonpass under existing bounded-failure rules; it does not authorize new polling.",
+      "Body classification uses frozen phase/status/source expectations with no new body keys: required JSON entities retain exact bytes from a supported source, strict UTF8/duplicate-key/nonfinite-rejecting JSON decode and decoded parsed value, reason null. Expected source-defined empty204 retains canonical base64 \"\", length0, SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855, parsed null and reason null, with supported byte_source and encoding base64; never unavailable or fabricated {}. Successful images use only existing hash_only semantics. Source-defined non-JSON error/denial bytes may have retained bytes, parsed null and reason null ONLY where a separately reviewed frozen phase explicitly permits that representation; no normal paid API21 denial phase currently has that exemption. Unexpected malformed JSON or UTF8 on a required JSON phase retains original bytes where safe and bounded, parsed null, reason invalid_json or invalid_utf8, and remains nonpass even if status matches. Fixture exceptional plain-text control errors are failed outcomes, not newly successful denial phases. Unknown/unsupported/secret/over-limit entities follow existing unavailable/failure rules. Never parse-anything/catch-and-pass, rewrite bodies or invent JSON."
     ],
     "v2_identity_composition": {
       "candidate": "Actual selected new v2 implementation SHA at any future separately authorized capture; remains unselected/unexecuted here. Must agree across legacy candidate_sha and binding.candidate_sha. Never replace it with historical C, pre-checkpoint source base or K3.",
@@ -1503,16 +1508,43 @@
         "new selected v2 candidate/tree differ from C and both changed producer hashes are recomputed; legacy six-map and binding seven-map agree",
         "old C candidate or smoke hash relabeled on new v2 bytes rejected; successful base-key plus v2-extension composition accepts only declared fields"
       ]
+    },
+    {
+      "family": "k3b-checkout-url",
+      "cases": [
+        "Authentic cs_test_ + 32 lowercase hex URL with #fidkdFixtureFragment accepted and full string/original response bytes retained; otherwise-valid absent fragment accepted",
+        "Retry changed fragment rejected despite same path/session/order/configuration/region; identical full URL accepted even when response serialization/hash differs",
+        "Reject query, credentials, explicit port, wrong scheme/host/path or invalid session suffix; never strip fragment or normalize URL to force equality"
+      ]
+    },
+    {
+      "family": "k3b-phase-attempt",
+      "cases": [
+        "runtime-poll16/17/100 accepted as actual ordinals,101 nonpass; preserve status/body or unavailable and prior prefix; no clamping/renumbering/drop",
+        "Each owner-library initial/reload/restart phase16 accepted,17 nonpass; bool,0 and duplicate ordinal fail",
+        "checkout-first1/retry2 only, other checkout1 only, remaining one-exchange phase1 only; phase and payload validated jointly",
+        "Static fake checks preserve existing five-second budget and timeout/sleep/operations;100 is no finite-success guarantee"
+      ]
+    },
+    {
+      "family": "k3b-body-classification",
+      "cases": [
+        "Expected stop/restart/disable empty204: exact base64 \"\", length0, SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855, supported byte_source, parsed null/reason null; reject fabricated {}, unavailable empty body and wrong digest",
+        "Required JSON denial succeeds only after strict original-byte decode; plain-text/malformed JSON stays retained, parsed null/reason invalid_json and nonpass even at expected status; invalid UTF8 similarly invalid_utf8/nonpass",
+        "Exceptional source-defined plain-text fixture control error fake uses bytes b fixture control error followed by LF (base64 Zml4dHVyZSBjb250cm9sIGVycm9yCg==, length 22, SHA256 4b2cc897faaeda3fd9ea5deaf34907ccb74442acc1ca8ff1cafd5d1a7fded945) with exact recomputation and parsed null/reason invalid_json on required-JSON phases; remains nonpass even at matching status; no successful API21 denial exemption invented",
+        "Duplicate keys/nonfinite JSON fail; successful image hash_only unchanged; secrets/unsupported/over-limit follow existing failure rules; no schema key expansion"
+      ]
     }
   ],
   "adoption_gate": [
-    "External R2 source-bound proposal reviewed independently; this six-path planning checkpoint materializes with verified tracking. No additional GitHub writes or implementation dispatch are authorized.",
-    "Finish G1 exact-final source review plus source/actual-checkout CI; select integration base SHA/tree; record graph/drift/shared source ownership.",
-    "Exact M5 source/route/phase/module/helper and command feasibility reconciled statically before K3; see precommit_source_reconciliation. No scope/path change required. Actual fake branch execution and target-only positive collection remain future implementation verification requirements.",
-    "Verify tracking ownership and fresh literal goal/todo/six-doc/four-code-path readback.",
-    "After genuine tracking evidence populate synchronized planning status and actual UTC updated_at; materialize six files and queue append only, commit/push K3, externally seal its exact SHA/tree and implementation-base identity; extract standalone/nested records/policy from K3. Never amend K3 solely to insert its own hash.",
-    "Set synchronized only after genuine tracking evidence. Run exact K3 standalone and nested machine preflight; both status synchronized/errors[]. Independent exact K3 review plus explicit narrow dispatch before any implementation.",
-    "Code-only producer changes and fake tests thereafter; no runtime/provider execution or capture admission."
+    "K3b prospective contract correction planning/tracking is synchronized by genuine correction receipt; historical K3a remains structurally synchronized history. New K3b commit/seal/preflight/exact review/dispatch are not yet claimed.",
+    "Coordinator review of external full-file package",
+    "Fresh literal Issue186/Project8 prospective correction write/readback; preserve prior history and unrelated fields",
+    "Materialize only six reviewed gate files; update existing queue task49 only; set synchronized only after actual readback",
+    "Commit/push new K3b without amending K3/K3a; seal exact SHA/tree externally",
+    "Extract standalone/nested records and policy/validator at exact K3b; both machine preflights and independent exact-checkpoint review",
+    "Explicit narrow dispatch before prospective affected-code integration; record actual ancestry/history",
+    "No draft/source/static review/preflight grants runtime/capture/acceptance authority; no retroactive code authorization."
   ],
   "prohibited_changes": [
     "Go fixture",
@@ -1527,8 +1559,8 @@
     "application assets",
     "any fifth implementation path"
   ],
-  "actual_verification": "Exact-M5 immutable Git/source/AST/document inspection, 35 source snapshots, reviewed R2 hashes, literal tracking receipt and structural queue/record checks. No producer import, fake test/collection, runtime or CI command. Exact-K3 machine preflight results are externally sealed after commit.",
-  "draft_revision": "R1-review-B1-B2-N1-N3",
+  "actual_verification": "External static document/JSON preservation checks and verification of coordinator-provided genuine K3b tracking receipt digest/true checks only. No producer import, tests, machine preflight, runtime/provider/browser/Go/services, GitHub query/write or K3b CI by this drafting agent. Historical verification remains retained.",
+  "draft_revision": "K3b-proposed-spec-conflict-correction",
   "review_input": {
     "path": "/home/corp/autodata-evidence/api21-g2-draft-review/report.md",
     "sha256": "9d0d4ac30e22a247f3b0406a07f7a2916ff194969fb09bf273320df7914e2be7",
@@ -1569,63 +1601,29 @@
     "repetition_and_attribution": "Within each library slot attempt numbers1..16 reflect actual observation order, no duplicates or synthetic polls. Bound callbacks to the initiating existing action window, await owned observation completion before next phase/assertion, preserve actual causal refs/local seq. Record all matching response bodies before assertions. Other page responses remain in their listed source/warm slots. If integrated source does not actually emit a required response in a defined window, stop for reviewed phase-contract revision before adoption; do not manufacture network operations or alias adjacent fixture measurement as library HTTP."
   },
   "checkpoint_sealing": {
-    "source_integration_base": "M5 dddefe365ca600518f89f13512c16a690688a8ef tree e4b51785e612f9a1e0e744237a8cdc0f28cb96af admitted source-only; source push/actual PR checkout Actions passed, full rollup/Vercel failed. G2 tracking synchronized with actual receipt. K3 self-SHA null; external seal /home/corp/autodata-evidence/api21-g2-k3-checkpoint/seal.json",
-    "checkpoint_K3": "The actual SHA/tree of the committed six-document checkpoint is sealed ONLY in an external receipt after commit/push. Its own SHA cannot be embedded in its tree. Do not amend K3 merely to insert K3. Committed record may omit self-hash fields or leave them null with explicit external-seal references; no literal UNPINNED masquerading as a verified self-hash.",
-    "implementation_base": "For machine dispatch/preflight the implementation base is externally resolved exact K3, distinct from the earlier source-integration base. Extract committed standalone/nested record and policy from exact K3 and invoke validator with that external base SHA. Both pass before dispatch.",
-    "synchronization": "Planning/tracking synchronized at 2026-11-05T00:24:02Z using literal coordinator-owned Issue186/Project8 receipt. Source route/phase/command/helper feasibility statically reconciled at exact M5 in spec precommit_source_reconciliation; actual fake execution remains required during later code phase. All authorities false.",
-    "placeholder_rule": "Resolve source/tracking/command/schema adoption prerequisites before commit; future self-SHA is external sealing, not an unresolved source/tracking prerequisite or reason to rewrite published history.",
-    "external_seal_ref": "/home/corp/autodata-evidence/api21-g2-k3-checkpoint/seal.json"
+    "status": "synchronized",
+    "historical_K3a_sha": "046b141f80dbb0a28bfeb3e0ab7f9635f4ab349c",
+    "checkpoint_K3b": null,
+    "implementation_base_sha": null,
+    "external_seal_ref": null,
+    "rule": "Planning tracking synchronized by genuine K3b correction receipt. K3b SHA/tree/implementation base/CI/preflight remain unobserved/null until reviewed six files are committed/pushed and externally sealed. Extract exact committed records/policy and pass both machine preflights plus independent exact-checkpoint review before narrow dispatch. Historical K3/K3a structural passes do not authorize K3b implementation; no self-SHA amendment.",
+    "tracking_synchronized_at": "2026-11-05T00:43:58Z"
   },
   "provisional_materialization": {
     "status": "synchronized",
-    "materialization_kind": "committed_planning_checkpoint_only",
-    "candidate_label": "M5",
-    "candidate_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
-    "candidate_tree": "e4b51785e612f9a1e0e744237a8cdc0f28cb96af",
-    "immediate_parent_sha": "414dec460e594241ec96ae293cdc9305b23c4932",
-    "planning_ancestor_K2": "50289d1215fa335786ba2aab620321e36d209e95",
-    "source_admitted": true,
-    "candidate_selected_as_source_integration": true,
-    "exact_github_policy_ci": "source_push_and_actual_PR_merge_checkout_Actions_success_independently_audited",
-    "actual_merge_checkout_sha": "2729269bbba3c8196b135422cf63c17db0055f2d",
-    "actual_merge_checkout_ci": "success_source_only",
-    "checkpoint_K3": null,
+    "materialization_kind": "external_full_file_synchronized_planning_package_only",
+    "checkpoint_K3b": null,
     "implementation_base_sha": null,
     "tracking_sync": "synchronized",
     "accepted_case_credit": 0,
     "accepted_new_case_credit": 0,
     "verified_case_ids": [],
     "release_state": "unverified",
-    "rule": "M5 admitted source-only for G2 planning; source Actions passed while full rollup/Vercel failed. G2 planning/tracking synchronized; K3 exact identity and machine results sealed externally after commit. No implementation dispatch, runtime/capture or acceptance authority.",
-    "revision": "R2-source-only-CI",
-    "source_admission_scope": "M5 source-only for G2 planning; no runtime/product/merchant/real API/capture/acceptance/merge/release permission",
-    "actual_merge_checkout_tree": "e4b51785e612f9a1e0e744237a8cdc0f28cb96af",
-    "full_check_rollup_conclusion": "failure",
-    "external_vercel_state": "FAILURE",
-    "source_ci_receipt": {
-      "path": "/home/corp/autodata-evidence/api21-g1-ci-audit-final/receipt.json",
-      "snapshot": "receipts/source_ci_audit.json",
-      "bytes": 3476,
-      "sha256": "4152f474d0e40535f2642d4d1232e848807e7e9ceb27e241e37d05405e92080c"
-    },
-    "source_review_receipt": {
-      "path": "/home/corp/autodata-evidence/api21-g1-m5-review/report.md",
-      "snapshot": "receipts/source_review.md",
-      "bytes": 5420,
-      "sha256": "477981e1deeba269d631836aec50aff462c900c18b7ce2eb20071be8e87f8a53"
-    },
-    "local_verification_receipt": {
-      "path": "/home/corp/autodata-evidence/api21-g1-code/final-m5.json",
-      "snapshot": "receipts/local_verification.json",
-      "bytes": 4219,
-      "sha256": "c77cec574ae2aea08a7a4627651ccd6c9c069b6a7630e7a111d38265a6625bb5"
-    },
-    "ci_result_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6645992673",
-    "ci_result_tracking_scope": "Coordinator-provided literal Issue186/Project8 CI result reference only; not fresh G2 goal/todo/six-path/four-code synchronization/readback"
+    "rule": "Genuine correction tracking readback is present. No repository materialization by this drafting agent, K3b commit/seal/preflight, implementation dispatch or runtime/acceptance authority. Source-only M5 history remains unchanged."
   },
-  "updated_at": "2026-11-05T00:24:02Z",
+  "updated_at": "2026-11-05T00:43:58Z",
   "precommit_source_reconciliation": {
-    "status": "PASS_static_exact_M5_precommit_with_original_log_correction",
+    "status": "historical_static_review_has_semantic_gaps_K3b_correction_pending",
     "source_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
     "source_tree": "e4b51785e612f9a1e0e744237a8cdc0f28cb96af",
     "evidence_kind": "Git blobs, source/AST/route inspection only; no producer import, fake collection, test, service or browser execution",
@@ -1709,6 +1707,23 @@
       "path": "/home/corp/autodata-evidence/api21-g2-source-reconcile/report.md",
       "sha256": "5030af60319c2fc731f6dedd73cc37dc1214a20ab668fc6e382c5664bb4583a3",
       "scope": "static source-dependent route/phase/command/helper reconciliation; findings corrected before checkpoint; no code/runtime authority"
+    },
+    "current_correction": {
+      "status": "synchronized",
+      "review": {
+        "path": "/home/corp/autodata-evidence/api21-spec-conflict-review/report.md",
+        "sha256": "c2c29fc7e85b963ef2ebbe18a229691d9f87f5f4b252f9f1c26f3888a84f7c8e"
+      },
+      "findings": [
+        "K3a checkout full-string DSL incorrectly excludes authentic fragment",
+        "Generic attempt1..16 conflicts with runtime-poll1..100",
+        "Empty204 already represented; clarify conservative expected-JSON versus exceptional plain-text classification without broadening successful paid denials"
+      ],
+      "resolution": "Prospective normative corrections and targeted fake obligations above; previous static evidence preserved, no new execution/source admission.",
+      "tracking_readback_receipt": {
+        "path": "/home/corp/autodata-evidence/api21-k3b-tracking-receipt.json",
+        "sha256": "55efcc10ad2e83cefdc3a0312a45806331fd9c39670edd7f68af94fa7225f251"
+      }
     }
   },
   "process_command_schedule": {
@@ -1796,6 +1811,302 @@
       "path": "/home/corp/autodata-evidence/api21-g2-source-reconcile/report.md",
       "sha256": "5030af60319c2fc731f6dedd73cc37dc1214a20ab668fc6e382c5664bb4583a3",
       "scope": "static source-dependent route/phase/command/helper reconciliation; findings corrected before checkpoint; no code/runtime authority"
+    }
+  },
+  "historical_K3a_metadata": {
+    "status": "synchronized",
+    "updated_at": "2026-11-05T00:24:02Z",
+    "draft_revision": "R1-review-B1-B2-N1-N3",
+    "tracking_sync": {
+      "status": "synchronized",
+      "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+      "project_ref": "https://github.com/users/lucronn/projects/8",
+      "ownership_verified": true,
+      "literal_readback_verified": true,
+      "observed_at": "2026-11-05T00:24:02Z",
+      "planning_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646051229",
+      "readback_receipt": {
+        "path": "/home/corp/autodata-evidence/api21-g2-tracking-receipt.json",
+        "sha256": "37501c71d8debe71f4b5bb506dc070913273edd48f37b9b1cf78eefb0780e097"
+      },
+      "clarification": "Coordinator-owned literal Issue186/Project8 planning write and fresh readback verified by receipt; prior225 comments, Issue body and other Project fields preserved. Planning synchronization is not implementation dispatch or runtime/acceptance authority."
+    },
+    "checkpoint_sealing": {
+      "source_integration_base": "M5 dddefe365ca600518f89f13512c16a690688a8ef tree e4b51785e612f9a1e0e744237a8cdc0f28cb96af admitted source-only; source push/actual PR checkout Actions passed, full rollup/Vercel failed. G2 tracking synchronized with actual receipt. K3 self-SHA null; external seal /home/corp/autodata-evidence/api21-g2-k3-checkpoint/seal.json",
+      "checkpoint_K3": "The actual SHA/tree of the committed six-document checkpoint is sealed ONLY in an external receipt after commit/push. Its own SHA cannot be embedded in its tree. Do not amend K3 merely to insert K3. Committed record may omit self-hash fields or leave them null with explicit external-seal references; no literal UNPINNED masquerading as a verified self-hash.",
+      "implementation_base": "For machine dispatch/preflight the implementation base is externally resolved exact K3, distinct from the earlier source-integration base. Extract committed standalone/nested record and policy from exact K3 and invoke validator with that external base SHA. Both pass before dispatch.",
+      "synchronization": "Planning/tracking synchronized at 2026-11-05T00:24:02Z using literal coordinator-owned Issue186/Project8 receipt. Source route/phase/command/helper feasibility statically reconciled at exact M5 in spec precommit_source_reconciliation; actual fake execution remains required during later code phase. All authorities false.",
+      "placeholder_rule": "Resolve source/tracking/command/schema adoption prerequisites before commit; future self-SHA is external sealing, not an unresolved source/tracking prerequisite or reason to rewrite published history.",
+      "external_seal_ref": "/home/corp/autodata-evidence/api21-g2-k3-checkpoint/seal.json"
+    },
+    "provisional_materialization": {
+      "status": "synchronized",
+      "materialization_kind": "committed_planning_checkpoint_only",
+      "candidate_label": "M5",
+      "candidate_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
+      "candidate_tree": "e4b51785e612f9a1e0e744237a8cdc0f28cb96af",
+      "immediate_parent_sha": "414dec460e594241ec96ae293cdc9305b23c4932",
+      "planning_ancestor_K2": "50289d1215fa335786ba2aab620321e36d209e95",
+      "source_admitted": true,
+      "candidate_selected_as_source_integration": true,
+      "exact_github_policy_ci": "source_push_and_actual_PR_merge_checkout_Actions_success_independently_audited",
+      "actual_merge_checkout_sha": "2729269bbba3c8196b135422cf63c17db0055f2d",
+      "actual_merge_checkout_ci": "success_source_only",
+      "checkpoint_K3": null,
+      "implementation_base_sha": null,
+      "tracking_sync": "synchronized",
+      "accepted_case_credit": 0,
+      "accepted_new_case_credit": 0,
+      "verified_case_ids": [],
+      "release_state": "unverified",
+      "rule": "M5 admitted source-only for G2 planning; source Actions passed while full rollup/Vercel failed. G2 planning/tracking synchronized; K3 exact identity and machine results sealed externally after commit. No implementation dispatch, runtime/capture or acceptance authority.",
+      "revision": "R2-source-only-CI",
+      "source_admission_scope": "M5 source-only for G2 planning; no runtime/product/merchant/real API/capture/acceptance/merge/release permission",
+      "actual_merge_checkout_tree": "e4b51785e612f9a1e0e744237a8cdc0f28cb96af",
+      "full_check_rollup_conclusion": "failure",
+      "external_vercel_state": "FAILURE",
+      "source_ci_receipt": {
+        "path": "/home/corp/autodata-evidence/api21-g1-ci-audit-final/receipt.json",
+        "snapshot": "receipts/source_ci_audit.json",
+        "bytes": 3476,
+        "sha256": "4152f474d0e40535f2642d4d1232e848807e7e9ceb27e241e37d05405e92080c"
+      },
+      "source_review_receipt": {
+        "path": "/home/corp/autodata-evidence/api21-g1-m5-review/report.md",
+        "snapshot": "receipts/source_review.md",
+        "bytes": 5420,
+        "sha256": "477981e1deeba269d631836aec50aff462c900c18b7ce2eb20071be8e87f8a53"
+      },
+      "local_verification_receipt": {
+        "path": "/home/corp/autodata-evidence/api21-g1-code/final-m5.json",
+        "snapshot": "receipts/local_verification.json",
+        "bytes": 4219,
+        "sha256": "c77cec574ae2aea08a7a4627651ccd6c9c069b6a7630e7a111d38265a6625bb5"
+      },
+      "ci_result_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6645992673",
+      "ci_result_tracking_scope": "Coordinator-provided literal Issue186/Project8 CI result reference only; not fresh G2 goal/todo/six-path/four-code synchronization/readback"
+    },
+    "actual_verification": "Exact-M5 immutable Git/source/AST/document inspection, 35 source snapshots, reviewed R2 hashes, literal tracking receipt and structural queue/record checks. No producer import, fake test/collection, runtime or CI command. Exact-K3 machine preflight results are externally sealed after commit."
+  },
+  "prospective_K3b_correction": {
+    "revision": "K3b-proposed-spec-conflict-correction",
+    "status": "synchronized",
+    "tracking_status": "synchronized",
+    "drafted_at": "2026-11-05T00:41:41Z",
+    "historical_K3a_sha": "046b141f80dbb0a28bfeb3e0ab7f9635f4ab349c",
+    "historical_K3a_tree": "55cbdaf8b68162a828e7867a769cbab12b75dbe3",
+    "independent_review": {
+      "path": "/home/corp/autodata-evidence/api21-spec-conflict-review/report.md",
+      "sha256": "c2c29fc7e85b963ef2ebbe18a229691d9f87f5f4b252f9f1c26f3888a84f7c8e"
+    },
+    "checkpoint_K3b": null,
+    "implementation_base_sha": null,
+    "K3b_ci": null,
+    "K3b_preflight": "not_run",
+    "scope": "Prospective six-document correction only. No retrospective authorization of existing working bytes; no implementation/capture/runtime/acceptance authority.",
+    "required_sequence": [
+      "Coordinator review of external full-file package",
+      "Fresh literal Issue186/Project8 prospective correction write/readback; preserve prior history and unrelated fields",
+      "Materialize only six reviewed gate files; update existing queue task49 only; set synchronized only after actual readback",
+      "Commit/push new K3b without amending K3/K3a; seal exact SHA/tree externally",
+      "Extract standalone/nested records and policy/validator at exact K3b; both machine preflights and independent exact-checkpoint review",
+      "Explicit narrow dispatch before prospective affected-code integration; record actual ancestry/history"
+    ],
+    "correction_todo": "Resolve URL fragment, phase attempt and body classification conflicts prospectively; synchronize/reseal K3b and pass independent exact-checkpoint review before affected code integration",
+    "test_families": [
+      "k3b-checkout-url",
+      "k3b-phase-attempt",
+      "k3b-body-classification"
+    ],
+    "tracking_synchronized_at": "2026-11-05T00:43:58Z",
+    "tracking_readback_receipt": {
+      "path": "/home/corp/autodata-evidence/api21-k3b-tracking-receipt.json",
+      "sha256": "55efcc10ad2e83cefdc3a0312a45806331fd9c39670edd7f68af94fa7225f251"
+    },
+    "tracking_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646372232"
+  },
+  "historical_K3a_contract_correction_inputs": {
+    "http_attempt": "int 1..16",
+    "checkout_identity": "{order_id:UUID,configuration_id:UUID,region:const US,checkout_url:strict https://checkout.stripe.com/c/pay/cs_test_[a-f0-9]{32}}|null",
+    "rules": [
+      "Complete binding requires all identity fields nonnull and unavailable_reason null. Before setup/source identity is known, partial binding permits null only for actually unavailable identity fields, retains all known fields and requires a safe unavailable_reason; only failed/partial/unavailable records may carry it. Never forge candidate/tree/input hashes to make a minimal receipt fit. All fields still present. Complete source-input map has exactly the six original paths plus integration producer; fresh actual hashes.",
+      "Additional lifecycle phases setup, browser-launch, context-create, page-create, context-close, browser-close, fixture-stop, worker-start, worker-stop, runtime-close, publish are allowed only for matching lifecycle payloads; HTTP phase IDs follow the matrix. stream disambiguates seq references: each process has its own32-event stream, browser observations512 and finalization64. No reference to an event not actually retained.",
+      "Auth /auth/config,/auth/session,/auth/firebase/session,/auth/logout and external Firebase token exchanges are excluded from raw body collection entirely; do not buffer their tokens or CSRF bodies. Original auth-cookie/session claims remain producer assertions supported by nonsecret fixture measurements. New evidence collects only listed claim-bearing catalogue/commerce/fixture responses, never blanket page/network bodies.",
+      "Every new file/record carries one exact binding. Parent allocates one run_id per parent pytest session and a fresh attempt_id per case launch, passes AUTODATA_API21_RUN_ID/AUTODATA_API21_ATTEMPT_ID/AUTODATA_API21_SOURCE_TREE plus candidate context to child/browser; children echo. A binding is correlation, never authenticated capture. A retry inside one checkout uses the same case attempt_id.",
+      "Parent owns parent-process.json only; child owns child-processes.json and existing result.json; Go alone owns ready.json, retained unchanged and hashed once final; browser owns browser/evidence.json. Parent never mutates child outputs. Final hashes link in one direction browser/result/ready/logs -> child sidecar -> parent sidecar; no self-hashing/cycle/live writer hashing.",
+      "passed requires complete applicable phase prefix, all required observations retained and every owned required process outcome actually observed successful, with valid worker cleanup. Prior failed/partial/unavailable remains nonpass even if later final snapshot or close succeeds. Parent pytest/engine exits remain null always.",
+      "Retained body requires supported byte_source, encoding base64, canonical base64 bytes, exact nonnull length/hash; parsed is strict decoded JSON for JSON records and must agree with original bytes. hash_only permitted ONLY successful image body: encoding/base64/parsed null, real length/hash nonnull and reason not_required_image_body. unavailable requires base64/encoding/parsed null; length/hash null unless actual partial facts were observed independently, never fabricated.",
+      "Checkout request uses post_data_buffer original bytes only; unsupported source unavailable with no text fallback asserted original. response.body bytes captured before parsing. Request key and request bytes each equal across two attempts; parsed checkout identity equal separately. Response hashes are independently recomputed but need not be equal. No TLS/wire claim.",
+      "Original JSON request/response entity bytes retained for checkout, metadata, measurement, snapshot, control, denials, library and source/detail JSON. Actual application and owned fixture-control channels distinct. Empty204 retains zero bytes with null parsed. Status observed before assertion; absent status null. Successful image retains length/hash only; denial image retains full response bytes. No header dump: only idempotency-key UUID.",
+      "Route templates remove query, capability, order/config/article UUID and origin. Allow only C literal route families /__fixture/{metadata,measurement,snapshot,runtime,restart,stop,disable,payment/settle,payment/refund,control/start-workers,control/release-model}, /v1/workshop/{checkout-sessions,library,quote,orders/{order}}, /v1/catalog/vehicles/{configuration}/articles[/{article}[/source]], /v1/catalog/vehicles/{adjacent|other_region|vehicle}/articles, /v1/catalog/vehicles/{configuration}/articles/{unscoped}, /v1/catalog/images/{capability}. Exact actual application route literal names are rechecked against integrated C before adoption; mismatch requires reviewed contract revision, not runtime inference.",
+      "Process argv records selected actual argv preserving flags/order, replacing only sys.executable->$PYTHON, repo absolute prefix->$REPO, isolated case dir->$CASE, private loopback origin->$ORIGIN at declared slots. No environment values or credentials. Normalize while retaining selected command identity; no fabricated outer launcher argv. All owned process values recorded before assertions; poll nonnull observed Go exit retained. Existing subprocess.run timeout has null code unless reviewed owned-Popen change actually waits.",
+      "Capture worker handle/log object references before Bridge.stop empties runtime.workers. Known branch maps by matching unique live handle and log creation ordinal only; partial launch/mismatched lengths/unknown branch mark mapping unavailable and nonpass. Hash original regular single-link log after actual stop/reap and log close/flush; runtime.close failure does not assert finalization. Negative intentional SIGTERM is valid cleanup, not process success.",
+      "Safe exception categories apply to API run(), route/pageerror, integration assertions and cleanup too. Never concatenate raw exceptions/logs/body into stdout/stderr or public tracking. Treat fixture-scoped retained business JSON as confidential. Known secret fields/tokens cause unavailable+failed instead of redacted bytes described as original.",
+      "Dedicated per-producer local monotonic seq/elapsed_us only. No cross-process timestamp comparison. HTTP checkout delivery references its fetch event; child launch observes passed parent launch context but cannot witness parent final exit. Parent hashes child finalized evidence after wait/reap; unknown cross-role ref cannot imply observation.",
+      "Write private 0600 regular single-link files in owned 0700 directories using bounded canonical serialization to exclusive sibling temporary file, flush/fsync, checked atomic replacement; reject symlink/hardlink/changed inode and escaping path, clean temporary safely. These are local publication properties, not authenticated capture. No copying/renaming original support logs or JUnit."
+    ],
+    "precommit_source_reconciliation": {
+      "status": "PASS_static_exact_M5_precommit_with_original_log_correction",
+      "source_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
+      "source_tree": "e4b51785e612f9a1e0e744237a8cdc0f28cb96af",
+      "evidence_kind": "Git blobs, source/AST/route inspection only; no producer import, fake collection, test, service or browser execution",
+      "sources": [
+        {
+          "path": "scripts/dev/workshop_browser_smoke.py",
+          "blob": "713a9c94733ba7980668e64e24383e42f8c178d3",
+          "sha256": "95f95f25de9c1718901f1dc99580a89d5588a17dd43b8a3a013f8b459e6ba2bc",
+          "bytes": 106108
+        },
+        {
+          "path": "scripts/dev/test_workshop_browser_smoke.py",
+          "blob": "1e7a2d3d108a1c7e2ababf49f584d9ba003afc3d",
+          "sha256": "2c6cf6e2cea42bb25ccdbfa597303d5da01a3800f785043a9cb2f6620af91175",
+          "bytes": 77222
+        },
+        {
+          "path": "workers/ingestion-python/tests/test_workshop_browser_integration.py",
+          "blob": "3b8a9de3b5e7d822b36731c5c7f3e9723b1787db",
+          "sha256": "b16ab3953b863a2c7156cf57936a2bca4f56f2c3078c68f93ba616318793e801",
+          "bytes": 12589
+        },
+        {
+          "path": "workers/ingestion-python/tests/lifecycle_support.py",
+          "blob": "ac52c479e5e4a7f625cddd409d8d61573c271765",
+          "sha256": "746eba57bfffb760e2f779d0d0494125f8b559b07de5ff6ec11099d517bf76dc",
+          "bytes": 19309
+        },
+        {
+          "path": "workers/ingestion-python/tests/test_paid_catalog_api_integration.py",
+          "blob": "d4d8b6d26ead3023dbbe5084d1376c0009404aae",
+          "sha256": "efd3098953dde54d3fc38c167db1f56ab97225c185fb73f032fe7f3289b70198",
+          "bytes": 19378
+        },
+        {
+          "path": "workers/ingestion-python/tests/test_catalog_api_integration.py",
+          "blob": "5b16ff5b5428547fcdeb09fb63c36c94a406ff6c",
+          "sha256": "88e6c1fd339da60614056abd7689b6a7fcd1d16bc1e239cec888b06bb6a61974",
+          "bytes": 30980
+        },
+        {
+          "path": "apps/api-go/workshop/app.mjs",
+          "blob": "849609b437d1f24f2a7ca6107b2ad2a0683c08b3",
+          "sha256": "4a3e16b3b407e738ed013f4b7ae416fe6c47eb1548d123e90b5b867df5c74788",
+          "bytes": 37545
+        }
+      ],
+      "route_phase_evidence": [
+        "smoke.py:663-715 APIFixture.route reserves Google attempt before fetch; actual checkout status200/201, completed abort then fulfill, identical key/request/identity; other18 continue actual checkout and need passive response observation rather than synthetic loss/retry.",
+        "smoke.py:736-763 maps measurement/control/snapshot helpers to /__fixture/measurement, /__fixture/* and /__fixture/snapshot; 765-841 has setup/metadata/initial/signin/checkout/return/settlement/library/restart phase order for all21.",
+        "app.mjs:829-844 library() performs GET /v1/workshop/library?limit=20; 1087-1093 My vehicles updates library URL and invokes library; 998-1011 restoreRoute restores library after explicit reload. smoke.py:817-837 uses click/reload/restart/reload in the three required observation windows. Observe all responses in each action window; no new API calls are needed.",
+        "smoke.py:845-872 maps start-workers, source article/image/review, release-model, warm snapshot/reader/reload/image/pinned-source/snapshot/reader in order. Browser page/article/source-review exchanges require bounded passive response listeners; direct context.request image/pinned-source exchanges require direct original-body capture.",
+        "smoke.py:875-897 maps four adjacent/region/unscoped/legacy denials, other account catalogue/library/image, logout-image, disable-image; 899-907 maps refund old-image/source/detail/revoked measurement. Final measurement at908 follows root-specific branches.",
+        "integration.py:67-160 defines _child/_case with Go/browser child/subprocess and cleanup ownership. lifecycle_support.py:221-242 appends log before Popen, appends worker after launch, and clears workers on stop; :330-332 stop then original log close. test_catalog_api_integration.py:400-429 Bridge.stop captures original handles, allows intentional cleanup, and returns exits. Capture handles/logs before stop; on partial launch preserve unavailable association; hash only after stop plus close. No helper edit is needed."
+      ],
+      "offline_injection": [
+        "Target new test file only. Private importlib module loading of actual integration.py receives sys.modules stubs lifecycle_support(fresh_database,LifecycleRuntime,Repository) and test_paid_catalog_api_integration(PaidBridge,configure_scoped_runtime,serve); class-only PaidBridge supports BrowserBridge definition; all callable stubs fail unless replaced for the explicit fake branch. Do not expose imported test functions under test_* names.",
+        "Module top level imports stdlib, pytest and those two stubs; defines functions/classes/parametrize marks, but creates no runtime. REQUIRED stays false with three flags removed. Its pytestmark belongs to private module and is not inherited by the new test module. No tests/conftest.py exists at M5. Real psycopg and paid/catalog import chain are never loaded.",
+        "Before private exec_module patch subprocess.Popen/run, os.killpg, urllib.request.urlopen, socket constructors and DB constructors to fail on real use; replace bound integration.urlopen (from-import), integration.Repository/LifecycleRuntime/BrowserBridge/configure_scoped_runtime/serve plus fresh_database argument with controlled fakes. Patch smoke Playwright imports through sys.modules with fake async API when actual api_case/run branches are called. New helpers remain in the four-path allowlist.",
+        "All existing unittest command module paths resolve at M5; broad discovery directories exist; pytest explicit new-file path is intentionally absent until implementation. Target-only --confcutdir, plugin autoload off, cache plugin disabled and environment flags removed are compatible with static module boundaries. Actual positive collection, zero new-file skips and sentinels are mandatory later code verification, not claimed here."
+      ],
+      "scope_change_required": false,
+      "prospective_code_paths_unchanged": true,
+      "future_fake_execution_required": true,
+      "implementation_dispatch": false,
+      "contract_corrections": [
+        {
+          "finding": "R2 worker.original_ref required canonical hyphenated UUID, contradicting M5 lifecycle_support.py:229 uuid.uuid4().hex",
+          "resolution": "worker-[a-f0-9]{32}.log exact original basename; no rename/copy; four code paths unchanged"
+        },
+        {
+          "finding": "Process argv/deadline requirements were generic",
+          "resolution": "process_command_schedule freezes exact selected source argv/cwd/wait/readiness/TERM/KILL and browser remaining-deadline formula; 78s belongs to entire child"
+        },
+        {
+          "finding": "Initial added schedule incorrectly attributed DTO15000ms launch to API",
+          "resolution": "API launch() has no explicit timeout; Playwright default remains, api_case65s and API main4440s; no finite schedule or timeout change"
+        }
+      ],
+      "independent_review": {
+        "path": "/home/corp/autodata-evidence/api21-g2-source-reconcile/report.md",
+        "sha256": "5030af60319c2fc731f6dedd73cc37dc1214a20ab668fc6e382c5664bb4583a3",
+        "scope": "static source-dependent route/phase/command/helper reconciliation; findings corrected before checkpoint; no code/runtime authority"
+      }
+    },
+    "adoption_gate": [
+      "External R2 source-bound proposal reviewed independently; this six-path planning checkpoint materializes with verified tracking. No additional GitHub writes or implementation dispatch are authorized.",
+      "Finish G1 exact-final source review plus source/actual-checkout CI; select integration base SHA/tree; record graph/drift/shared source ownership.",
+      "Exact M5 source/route/phase/module/helper and command feasibility reconciled statically before K3; see precommit_source_reconciliation. No scope/path change required. Actual fake branch execution and target-only positive collection remain future implementation verification requirements.",
+      "Verify tracking ownership and fresh literal goal/todo/six-doc/four-code-path readback.",
+      "After genuine tracking evidence populate synchronized planning status and actual UTC updated_at; materialize six files and queue append only, commit/push K3, externally seal its exact SHA/tree and implementation-base identity; extract standalone/nested records/policy from K3. Never amend K3 solely to insert its own hash.",
+      "Set synchronized only after genuine tracking evidence. Run exact K3 standalone and nested machine preflight; both status synchronized/errors[]. Independent exact K3 review plus explicit narrow dispatch before any implementation.",
+      "Code-only producer changes and fake tests thereafter; no runtime/provider execution or capture admission."
+    ]
+  },
+  "historical_provisional_K3b_metadata": {
+    "status": "proposed_unsynchronized",
+    "updated_at": "2026-11-05T00:41:41Z",
+    "tracking_sync": {
+      "status": "pending",
+      "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+      "project_ref": "https://github.com/users/lucronn/projects/8",
+      "ownership_verified": false,
+      "literal_readback_verified": false,
+      "observed_at": null,
+      "planning_comment": null,
+      "readback_receipt": null,
+      "clarification": "K3b correction has not been posted/read back. Prior verified G2 readback is retained as historical evidence and cannot attest to the changed contract/todo."
+    },
+    "checkpoint_sealing": {
+      "status": "proposed_unsynchronized",
+      "historical_K3a_sha": "046b141f80dbb0a28bfeb3e0ab7f9635f4ab349c",
+      "checkpoint_K3b": null,
+      "implementation_base_sha": null,
+      "external_seal_ref": null,
+      "rule": "K3b has no SHA/tree/CI/preflight/readback yet. Seal externally only after genuine synchronization and new commit/push; do not insert self-SHA by amendment. Historical K3/K3a structural passes do not resolve semantic contradictions or authorize K3b implementation."
+    },
+    "provisional_materialization": {
+      "status": "proposed_unsynchronized",
+      "materialization_kind": "external_full_file_draft_only",
+      "checkpoint_K3b": null,
+      "implementation_base_sha": null,
+      "tracking_sync": "pending",
+      "accepted_case_credit": 0,
+      "accepted_new_case_credit": 0,
+      "verified_case_ids": [],
+      "release_state": "unverified",
+      "rule": "No repository/GitHub changes or implementation authority. Source-only M5 evidence is historical and unchanged in source_binding."
+    },
+    "actual_verification": "External static document/JSON consistency and preservation checks only; no producer import, tests, machine gate preflight, runtime/provider/browser/Go/services, fresh GitHub query/write or K3b CI. Historical verification retained in historical_K3a_metadata.",
+    "prospective_K3b_correction": {
+      "revision": "K3b-proposed-spec-conflict-correction",
+      "status": "proposed_unsynchronized",
+      "tracking_status": "pending",
+      "drafted_at": "2026-11-05T00:41:41Z",
+      "historical_K3a_sha": "046b141f80dbb0a28bfeb3e0ab7f9635f4ab349c",
+      "historical_K3a_tree": "55cbdaf8b68162a828e7867a769cbab12b75dbe3",
+      "independent_review": {
+        "path": "/home/corp/autodata-evidence/api21-spec-conflict-review/report.md",
+        "sha256": "c2c29fc7e85b963ef2ebbe18a229691d9f87f5f4b252f9f1c26f3888a84f7c8e"
+      },
+      "checkpoint_K3b": null,
+      "implementation_base_sha": null,
+      "K3b_ci": null,
+      "K3b_preflight": "not_run",
+      "scope": "Prospective six-document correction only. No retrospective authorization of existing working bytes; no implementation/capture/runtime/acceptance authority.",
+      "required_sequence": [
+        "Coordinator review of external full-file package",
+        "Fresh literal Issue186/Project8 prospective correction write/readback; preserve prior history and unrelated fields",
+        "Materialize only six reviewed gate files; update existing queue task49 only; set synchronized only after actual readback",
+        "Commit/push new K3b without amending K3/K3a; seal exact SHA/tree externally",
+        "Extract standalone/nested records and policy/validator at exact K3b; both machine preflights and independent exact-checkpoint review",
+        "Explicit narrow dispatch before prospective affected-code integration; record actual ancestry/history"
+      ],
+      "correction_todo": "Resolve URL fragment, phase attempt and body classification conflicts prospectively; synchronize/reseal K3b and pass independent exact-checkpoint review before affected code integration",
+      "test_families": [
+        "k3b-checkout-url",
+        "k3b-phase-attempt",
+        "k3b-body-classification"
+      ]
     }
   }
 }
