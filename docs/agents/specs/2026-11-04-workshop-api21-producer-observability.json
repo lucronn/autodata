@@ -336,7 +336,7 @@
       "worker": {
         "ordinal": "int 1..2",
         "kind": "const cli",
-        "original_ref": "const basename matching ^worker-[a-f0-9]{32}\\.log$ under /artifacts, exactly the original observed uuid.uuid4().hex filename; no hyphen insertion, renaming or copy",
+        "original_ref": "const basename matching ^worker-[a-f0-9]{32}[.]log$ under /artifacts, exactly the original observed uuid.uuid4().hex filename; no hyphen insertion, renaming or copy",
         "mapping": "observed|unavailable",
         "alive_before_cleanup": "bool|null",
         "intentional_cleanup": "bool|null",
