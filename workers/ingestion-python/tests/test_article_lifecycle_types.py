@@ -20,3 +20,12 @@ def test_identity_preserves_provider_and_exact_opaque_scope():
     assert ResourceRef("bankone", "same") != ResourceRef("banktwo", "same")
     with pytest.raises(ValueError):
         ArticleKey("bankone", key.vehicle_id, None, "v", "bad\x7f")
+
+
+def test_explicit_v2_has_distinct_transformation_key_and_v1_remains_default():
+    from autodata_ingestion.article_lifecycle_types import REWRITE_PROFILE_VERSION, transformation_key
+    assert REWRITE_PROFILE_VERSION == "technical-prose-v1"
+    article = uuid4()
+    v1 = transformation_key(article, "same-source", "ordered-article-v1", REWRITE_PROFILE_VERSION)
+    v2 = transformation_key(article, "same-source", "ordered-article-v1", "technical-prose-v2")
+    assert v1 != v2
