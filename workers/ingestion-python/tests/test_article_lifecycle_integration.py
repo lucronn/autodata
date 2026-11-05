@@ -333,3 +333,214 @@ def test_matching_scoped_applicability_persists_actual_context_for_replay(runtim
     with runtime.repo.connect() as conn:
         conn.execute("UPDATE vehicle_configurations SET trim='Changed later' WHERE vehicle_configuration_id=%s",(configuration,))
     assert load_source_revision(runtime.repo,source_id).vehicle==source.vehicle
+
+
+# Kept local because the immutable v1 fixture server is deliberately unchanged.
+# This real HTTP stub exercises Mercury transport and records both profile prompts.
+from contextlib import contextmanager
+
+
+@contextmanager
+def operation_model():
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from threading import Thread
+    from types import SimpleNamespace
+    import json
+    import time
+    model = SimpleNamespace(calls=0, prompts=[], mode="valid", delay=0)
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args): pass
+        def do_POST(self):
+            if self.headers.get("Authorization") != "Bearer fixture-model":
+                self.send_error(401); return
+            payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            prompt = json.loads(payload["messages"][-1]["content"])
+            model.calls += 1; model.prompts.append(prompt)
+            time.sleep(model.delay)
+            if model.mode == "transport":
+                self.send_error(503); return
+            response = {"operations": [{key: op[key] for key in ("block_id", "path", "operation_id")}
+                                       for op in prompt["plan"]["operations"]]}
+            if model.mode == "unsafe": response["operations"][0]["text"] = "invented"
+            raw = json.dumps({"choices": [{"message": {"content": json.dumps(response)}}]}).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw))); self.end_headers()
+            try: self.wfile.write(raw)
+            except BrokenPipeError: pass
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True); thread.start()
+    model.url = f"http://127.0.0.1:{server.server_port}/v1"
+    try: yield model
+    finally: server.shutdown(); server.server_close(); thread.join()
+
+
+def target_v2(runtime, body=None):
+    from autodata_ingestion.source_job_persistence import refresh_article_job
+    model = runtime.stack.enter_context(operation_model())
+    runtime.model = model
+    runtime.env["INCEPTION_API_BASE_URL"] = model.url
+    if body is not None: runtime.change_fixture_body(body)
+    return refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="explicit v2 target",
+                               rewrite_profile_version="technical-prose-v2")
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_v2_explicit_refresh_preserves_v1_and_warm_restart_has_zero_calls(runtime, provider):
+    from autodata_ingestion.source_job_persistence import ensure_article_job, refresh_article_job
+    old = runtime.ingest_to_publication(provider); runtime.stop_workers()
+    with runtime.repo.connect() as conn:
+        original = conn.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s", (old,)).fetchone()
+    runtime.reset_counters(); target_v2(runtime)
+    assert runtime.read_current()["content_origin"] == "source"
+    runtime.start_workers(2); new = runtime.await_publication(); runtime.stop_workers()
+    assert new != old and runtime.read_current()["body"] == "The pump is to be removed."
+    assert runtime.read_current()["review_status"] == "UNREVIEWED"
+    assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
+    other = "banktwo" if provider == "bankone" else "bankone"
+    assert runtime.servers[other].calls == []
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s", (old,)).fetchone() == original
+        revisions = conn.execute("SELECT transformation_key,rewrite_profile_version FROM canonical_article_revisions").fetchall()
+        assert len({r["transformation_key"] for r in revisions}) == 2
+        assert {r["rewrite_profile_version"] for r in revisions} == {"technical-prose-v1", "technical-prose-v2"}
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 2
+    owner = runtime.current_job_id()
+    with runtime.repo.connect() as conn:
+        owner_before = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (owner,)).fetchone()
+    refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="same source and v2", rewrite_profile_version="technical-prose-v2")
+    runtime.start_workers(2); runtime.await_phase("completed"); runtime.stop_workers()
+    assert runtime.read_current()["canonical_revision_id"] == new and runtime.model.calls == 1
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (owner,)).fetchone() == owner_before
+        inspection = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (runtime.current_job_id(),)).fetchone()
+        assert inspection["checkpoint"]["reused_transformation_job_id"] == str(owner)
+        assert inspection["checkpoint"]["reused_published_revision_id"] == str(new)
+        assert inspection["transformation_key"] is None
+    owner = runtime.current_job_id()  # Reader tracks the completed observation job.
+    runtime.restart_workers(); runtime.reset_counters()
+    for _ in range(100):
+        assert runtime.read_current()["canonical_revision_id"] == new
+        assert ensure_article_job(runtime.repo, runtime.article_id, normalization_version="ordered-article-v1",
+                                  rewrite_profile_version="technical-prose-v2").job_id == owner
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 0}
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_v2_v1_ineligible_prose_renders_full_document_and_preserves_media(runtime, provider):
+    runtime.article_id = runtime.articles[provider]
+    body = b'<p>Inspect the pump.</p><p>Tighten the bolts to 25 Nm.</p><p>Do not start the engine.</p><table><tr><td>25 Nm</td></tr></table><img src="https://provider.invalid/unavailable">'
+    target_v2(runtime, body); runtime.start_workers(2); revision = runtime.await_publication(); runtime.stop_workers()
+    state = runtime.read_current()
+    assert state["canonical_revision_id"] == revision and "The pump is to be inspected." in state["body"]
+    assert "The bolts are to be tightened to 25 Nm." in state["body"]
+    with runtime.repo.connect() as conn:
+        row = conn.execute("SELECT * FROM canonical_article_revisions").fetchone()
+        source, candidate = row["normalized_source_document"], row["canonical_document"]
+        assert candidate["blocks"][2:] == source["blocks"][2:]
+        assert row["validation_report"]["changed_clauses"] == 2
+        assert row["validation_report"]["complete_rewrite"]
+        assert row["validation_report"]["grammar_version"] == "complete-directive-v2"
+        attempt = conn.execute("SELECT * FROM canonical_article_rewrite_attempts").fetchone()
+        assert attempt["profile_version"] == "technical-prose-v2" and set(attempt["response"]) == {"operations"}
+    assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_v2_unsupported_article_never_dispatches_and_retains_readable_source(runtime, provider):
+    runtime.article_id = runtime.articles[provider]
+    target_v2(runtime, b"<p>Inspect the pump.</p><p>The cover provides access.</p>")
+    runtime.start_workers(2); runtime.await_phase("needs_review"); runtime.stop_workers()
+    state = runtime.read_current()
+    assert state["content_origin"] == "source" and "The cover provides access." in state["body"]
+    assert state["processing_error_code"] == "REWRITE_UNSUPPORTED_PROSE" and not state["retryable"]
+    assert runtime.model.calls == 0
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 0
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 0
+
+
+@pytest.mark.parametrize("point", ["after_source_commit", "after_model_dispatch", "after_model_result_commit", "inside_publication"])
+def test_v2_process_death_recovers_saved_stage_with_one_publication(runtime, point):
+    target_v2(runtime, b"<p>Inspect the pump.</p>")
+    runtime.pause(point); runtime.start_workers(1); runtime.await_barrier()
+    job = runtime.current_job_id(); runtime.kill_worker(); runtime.expire_lease(job)
+    runtime.barrier = None; runtime.start_workers(2); runtime.await_publication(); runtime.stop_workers()
+    assert runtime.counters()["source"] == 1 and runtime.counters()["model"] == 1
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
+        attempts = conn.execute("SELECT status FROM canonical_article_rewrite_attempts ORDER BY created_at").fetchall()
+        assert [a["status"] for a in attempts] == (["ambiguous", "succeeded"] if point == "after_model_dispatch" else ["succeeded"])
+
+
+def test_v2_exhausted_same_source_refresh_does_not_reset_budget(runtime):
+    from autodata_ingestion.source_job_persistence import refresh_article_job
+    target_v2(runtime, b"<p>Inspect the pump.</p>"); runtime.model.mode = "transport"
+    runtime.start_workers(2)
+    for claim in range(1, 4):
+        def reached():
+            with runtime.repo.connect() as conn:
+                row = conn.execute("SELECT retry_count,status FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (runtime.current_job_id(),)).fetchone()
+            return row["retry_count"] == claim and row["status"] in {"failed", "dead_letter"}
+        runtime.wait_for(reached)
+        if claim < 3: runtime.make_due()
+    runtime.stop_workers()
+    with runtime.repo.connect() as conn:
+        owner = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (runtime.current_job_id(),)).fetchone()
+    runtime.reset_counters()
+    refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="same exhausted v2", rewrite_profile_version="technical-prose-v2")
+    runtime.start_workers(2); runtime.wait_for(lambda: runtime.current_job_id() == owner["source_fetch_job_id"]); runtime.stop_workers()
+    assert runtime.counters() == {"source": 1, "asset": 0, "model": 0, "schedule": 1}
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (owner["source_fetch_job_id"],)).fetchone() == owner
+
+
+def test_v2_invalid_selector_stays_source_readable_with_failed_bound_attempt(runtime):
+    target_v2(runtime, b"<p>Inspect the pump.</p>"); runtime.model.mode = "unsafe"
+    runtime.start_workers(2); runtime.await_phase("needs_review"); runtime.stop_workers()
+    state = runtime.read_current()
+    assert state["body"] == "Inspect the pump." and state["content_origin"] == "source"
+    assert state["processing_error_code"] == "REWRITE_OPERATION_MISMATCH"
+    with runtime.repo.connect() as conn:
+        attempt = conn.execute("SELECT status,error_code FROM canonical_article_rewrite_attempts").fetchone()
+        assert attempt == {"status": "failed", "error_code": "REWRITE_OPERATION_MISMATCH"}
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 0
+
+
+def test_v2_actual_request_ambiguity_uses_bounded_replay(runtime):
+    target_v2(runtime, b"<p>Inspect the pump.</p>"); runtime.model.delay = 1
+    runtime.start_workers(1); runtime.wait_for(lambda: runtime.model.calls == 1)
+    job = runtime.current_job_id(); runtime.kill_worker(); runtime.expire_lease(job)
+    runtime.model.delay = 0; runtime.start_workers(2); runtime.await_publication(); runtime.stop_workers()
+    assert runtime.counters()["source"] == 1 and runtime.counters()["model"] == 2
+    with runtime.repo.connect() as conn:
+        assert [r["status"] for r in conn.execute("SELECT status FROM canonical_article_rewrite_attempts ORDER BY created_at").fetchall()] == ["ambiguous", "succeeded"]
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
+
+
+def test_v2_changed_source_refresh_rejects_stale_publisher_and_keeps_old_revision(runtime):
+    from autodata_ingestion.source_job_persistence import claim_source_job, refresh_article_job, LeaseLost
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.procedure_rewrite import validate_article_rewrite
+    target_v2(runtime, b"<p>Inspect the pump.</p>")
+    runtime.pause("after_model_result_commit"); runtime.start_workers(1); runtime.await_barrier()
+    job = runtime.current_job_id(); runtime.kill_worker(); runtime.expire_lease(job)
+    lease = claim_source_job(runtime.repo, worker_id=uuid4())
+    candidate = store.load_candidate(runtime.repo, lease)
+    validation = validate_article_rewrite(candidate["normalized_source_document"], candidate["canonical_document"], profile_version="technical-prose-v2")
+    store.store_validation(runtime.repo, lease, validation)
+    store.publish_article_revision(runtime.repo, lease, candidate["canonical_article_revision_id"])
+    runtime.change_fixture_body(b"<p>Clean the cover.</p>")
+    refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="changed v2 source", rewrite_profile_version="technical-prose-v2")
+    with pytest.raises(LeaseLost):
+        store.publish_article_revision(runtime.repo, lease, candidate["canonical_article_revision_id"])
+    with runtime.repo.connect() as conn:
+        before = conn.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s", (candidate["canonical_article_revision_id"],)).fetchone()
+    runtime.pause("after_source_commit"); runtime.start_workers(1); runtime.await_barrier()
+    assert runtime.read_current()["content_origin"] == "source"
+    assert runtime.read_current()["canonical_revision_id"] is None
+    runtime.release("after_source_commit"); new = runtime.await_publication(); runtime.stop_workers()
+    assert new != candidate["canonical_article_revision_id"]
+    assert runtime.read_current()["body"] == "The cover is to be cleaned."
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s", (candidate["canonical_article_revision_id"],)).fetchone() == before
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 2

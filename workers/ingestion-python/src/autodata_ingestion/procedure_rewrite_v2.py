@@ -37,10 +37,22 @@ _CLAUSE = re.compile(
 )
 # These clauses are deliberately retained, never transformed. A number alone is
 # not a safety classification and cannot hide an unsupported ordinary directive.
-_PROTECTED = re.compile(
-    r"\b(?:warning|caution|danger|note|notice|no|never|not|must|always|only|if|unless|except|"
-    r"applicable|applicability)\b", re.I,
+_PROTECTED_START = re.compile(
+    r"^(?:warning|caution|danger|note|notice|never|no|do not|if|unless|except|only|always)\b", re.I,
 )
+_SINGLE_SENTENCE = re.compile(r"[^.!?;\n\r]+[.!?]")
+_COORDINATION = re.compile(r"\b(?:and|or|then)\b", re.I)
+
+
+def _protected_clause(text):
+    # A marker cannot exempt an entire mixed prose leaf from complete rewriting.
+    # Only a single marked safety/conditional clause is intentionally verbatim.
+    # Other modality/technical structures remain readable via whole-source fallback.
+    return bool(_PROTECTED_START.match(text) and _SINGLE_SENTENCE.fullmatch(text)
+                and not _COORDINATION.search(text)
+                and ("," not in text or (text.count(",") == 1
+                     and re.match(r"^(?:if|unless|except)\b", text, re.I))))
+
 
 
 def _leaves(document):
@@ -91,7 +103,7 @@ def plan_v2(document) -> dict:
                        "adjunct_span": list(match.span("adjunct")), "verb": verb}
             plan["operations"].append({**binding, "operation_id": digest_json(binding)})
             classification, reason = "transformable", None
-        elif _PROTECTED.search(text):
+        elif _protected_clause(text):
             classification, reason = "protected", "SAFETY_OR_CONDITION_VERBATIM"
         else:
             classification, reason = "unsupported", "UNREVIEWED_COMPLETE_CLAUSE"
@@ -173,10 +185,12 @@ def validate_v2(source, candidate) -> ValidationResult:
     protected_hash = digest_json(_masked(source, plan))
     report = {"passed": not errors, "validator_version": VALIDATOR_VERSION, "profile_version": PROFILE,
         "grammar_version": GRAMMAR_VERSION, "changed_slots": changed, "changed_clauses": len(changed),
+        "prose_clauses": len(plan["classifications"]), "eligible_clauses": len(plan["operations"]),
+        "unsupported_clauses": len(plan["unsupported_paths"]),
         "retained_protected_clauses": sum(c["classification"] == "protected" for c in plan["classifications"]),
         "unsupported_paths": plan["unsupported_paths"], "classifications": plan["classifications"],
         "complete_rewrite": not errors, "evidence_ids": sorted(evidence), "error_codes": sorted(set(errors)),
         "source_hash": digest_json(source), "candidate_hash": digest_json(candidate),
-        "source_protected_hash": protected_hash, "target_protected_hash": protected_hash if not errors else None,
+        "source_protected_hash": protected_hash, "target_protected_hash": digest_json(_masked(candidate, plan)) if not errors else None,
         "skeleton_hash": protected_hash, "operations_hash": digest_json(plan["operations"])}
     return ValidationResult(not errors, tuple(sorted(set(errors))), report)

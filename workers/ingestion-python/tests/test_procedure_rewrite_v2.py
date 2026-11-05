@@ -168,3 +168,53 @@ def test_frozen_development_corpus_hashes_eligibility_and_protected_context():
         else:
             assert result.error_code == "REWRITE_UNSUPPORTED_PROSE", row["identity"]
             assert result.document == source
+
+
+@pytest.mark.parametrize("text", ["Remove the cover. Note: Do not start the engine.",
+    "Note: Do not start the engine. Remove the cover.",
+    "Do not start the engine; remove the cover.",
+    "Do not start the engine and remove the cover.",
+    "If equipped, remove the cover\nInstall the pump."])
+def test_mixed_safety_and_ordinary_clauses_never_earn_complete_rewrite(text):
+    source = document("Inspect the pump.", text)
+    model = Selector()
+    result = rewrite.rewrite_ordered_document(source, client=model, context={}, profile_version=PROFILE)
+    assert result.error_code == "REWRITE_UNSUPPORTED_PROSE"
+    assert result.document == source and model.calls == 0
+    report = rewrite.validate_article_rewrite(source, source, profile_version=PROFILE).report
+    assert not report["complete_rewrite"] and report["unsupported_paths"] == ["/blocks/1/text"]
+
+
+@pytest.mark.parametrize("payload", [None, [], "{}", {"operations": None}, {"operations": []}])
+def test_invalid_selector_shape_retains_source(payload):
+    class Bad(Selector):
+        def complete_json(self, prompt): return payload
+    source = document("Inspect the pump.")
+    result = rewrite.rewrite_ordered_document(source, client=Bad(), context={}, profile_version=PROFILE)
+    assert result.error_code == "REWRITE_OPERATION_MISMATCH" and result.document == source
+
+
+def test_safety_only_document_is_not_a_complete_rewrite():
+    source = document("Do not start the engine.", "If equipped, remove the pump.")
+    model = Selector()
+    result = rewrite.rewrite_ordered_document(source, client=model, context={}, profile_version=PROFILE)
+    assert result.error_code == "REWRITE_NOT_APPLICABLE" and result.document == source and model.calls == 0
+    assert not rewrite.validate_article_rewrite(source, source, profile_version=PROFILE).report["complete_rewrite"]
+
+
+def test_v2_oversized_response_falls_back_before_render():
+    class Oversized(Selector):
+        def complete_json(self, prompt): return {"operations": [], "text": "x" * (1024*1024)}
+    source = document("Inspect the pump.")
+    result = rewrite.rewrite_ordered_document(source, client=Oversized(), context={}, profile_version=PROFILE)
+    assert result.error_code == "REWRITE_RESPONSE_LIMIT" and result.document == source
+
+
+def test_validation_reports_whole_document_classification_counts_even_on_fallback():
+    source = document("Inspect the pump.", "Do not start the engine.", "The cover provides access.")
+    report = rewrite.validate_article_rewrite(source, source, profile_version=PROFILE).report
+    assert report.get("prose_clauses") == 3
+    assert report.get("eligible_clauses") == 1
+    assert report.get("unsupported_clauses") == 1
+    assert report["retained_protected_clauses"] == 1 and report["changed_clauses"] == 0
+    assert not report["complete_rewrite"]

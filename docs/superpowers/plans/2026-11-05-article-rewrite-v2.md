@@ -105,3 +105,23 @@ git diff --check
 Expected preflight: `{"status":"synchronized","errors":[]}`. Verify Issue300 body, Project8 item Source field, and parent Issue186 link by readback. Implementation dispatch belongs to the coordinator; this plan turn performs no implementation.
 
 Tracking readback: Issue300 body and Project8 item Source/status verified literally; parent Issue186 body unchanged. Parent link: https://github.com/lucronn/autodata/issues/186#issuecomment-6653871087. Readback hashes are in the synchronized record.
+
+## Development progress after synchronized dispatch
+
+The exact-base preflight passed at `694ba2af0946710ae39ef4b0f7a867766c4dceb0`.
+Milestone `1d6eda5` introduced the bounded v2 parser, selector, renderer and
+independent candidate validator; its first v2 test failed on the original
+`REWRITE_PROFILE_UNSUPPORTED` boundary before implementation.
+The durable worker now checks the lease profile and retains specific unsupported
+prose failures; result/validation/publication reconstruct saved v2 operation
+selections under existing locks. Independent review identified mixed safety/ordinary
+leaf masking and the worker's v1-only eligibility preflight; both have red/green
+regressions and narrowed behavior. No source-job, schema or UI files were changed.
+
+The four global todo items above remain open as acceptance items. Task 1's authentic
+retained corpus, pre-tuning holdout, per-bank improvement and full content review
+cannot be completed from the available synthetic connector fixtures. The committed
+14-document synthetic development corpus earns no authentic acceptance credit.
+No activation, merge, deploy or universal rewrite claim follows from passing tests.
+Measured test evidence and the remaining remediation register are in
+`docs/verification/2026-11-05-article-rewrite-v2.md`.

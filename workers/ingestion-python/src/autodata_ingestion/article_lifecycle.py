@@ -105,7 +105,13 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 store.save_normalized_input(repo,lease,normalized)
                 document=normalized["normalized_document"]
                 if model_client is None:raise ValueError("MODEL_NOT_CONFIGURED")
-                if not editable_slots(document):raise ValueError("REWRITE_NOT_APPLICABLE")
+                if lease.rewrite_profile_version == "technical-prose-v2":
+                    from .procedure_rewrite_v2 import plan_v2
+                    plan = plan_v2(document)
+                    if not plan["eligible"]:raise ValueError(plan["error_code"])
+                elif lease.rewrite_profile_version != "technical-prose-v1":
+                    raise ValueError("REWRITE_PROFILE_UNSUPPORTED")
+                if not editable_slots(document, profile_version=lease.rewrite_profile_version):raise ValueError("REWRITE_NOT_APPLICABLE")
                 prompt=build_rewrite_prompt(document,context=source.vehicle,profile_version=lease.rewrite_profile_version)
                 if len(prompt.encode())>200*1024:raise ValueError("REWRITE_INPUT_LIMIT")
                 attempt=store.prepare_rewrite_attempt(repo,lease,document,context=source.vehicle,model=getattr(model_client,"_model","mercury-2"))

@@ -62,3 +62,75 @@ Remediation register:
 Source fallback preserves availability; it is not rewrite completion. No production
 activation, deployment, universal coverage or purchased-dataset completion is claimed.
 Independent content/code review and exact-SHA isolated lifecycle evidence remain pending.
+
+## Durable v2 development and review corrections
+
+The isolated initial red (after infrastructure recovery) produced **5 failed**:
+v2-only `Inspect`/torque articles hit v1 worker eligibility in both banks; unsupported
+ordinary prose persisted `REWRITE_NOT_APPLICABLE` instead of its specific reason;
+and a rehashed forged operation selection was accepted at publication.
+The worker now routes eligibility by lease profile. Result storage, validation and
+publication reconstruct v2 operations under existing locks, in addition to their
+original source/result/projection/attempt checks.
+
+Independent early code review identified the safety-keyword masking defect and
+worker preflight defect. Five pure red regressions confirmed that mixed ordinary
+and safety sentences were falsely accepted. Safety classification now requires an
+anchored marker and a single sentence without semicolons, newline, coordination
+or ambiguous commas. Other unsupported technical/safety prose remains source-
+readable through whole-source fallback. Focused pure suite after narrowing and
+limit/response-shape checks: **94 passed**.
+
+The isolated stack uses project `autodata-article-v2`, the checked-in lifecycle
+Compose configuration, its owned test-runner build, and no external source/model
+credentials. Initial setup hit Docker-root disk exhaustion, then SeaweedFS refused
+volume allocation with less than 3% free. The coordinator reclaimed unused build
+cache. A local uncommitted `/tmp/article-rewrite-v2-compose.yaml` override binds
+only the isolated SeaweedFS `/data` to `/tmp/article-rewrite-v2-s3`, where space is
+available. No repository infrastructure files or application database were modified.
+These setup errors are not counted as code red or acceptance passes.
+
+Development corpus measurement (offline deterministic selector, no provider calls):
+
+| Metric | Synthetic documents only |
+|---|---:|
+| Documents / ordinary-or-protected prose leaves | 14 / 38 |
+| v1 documents with accepted opening substitutions / changed slots | 4 / 5 |
+| v2 complete bounded documents / changed directive clauses | 10 / 20 |
+| v2 protected prose clauses retained in accepted documents | 10 |
+| v2 whole-source fallbacks | 4 |
+| Authentic documents / authentic held-out documents | 0 / 0 |
+
+The v1 figures measure its original opening substitutions; they are not meaningful
+whole-article completion. These development counts are not per-bank coverage or
+independent holdout performance. Every synthetic fallback has `/blocks/0/text`
+unsupported with `REWRITE_UNSUPPORTED_PROSE`; the committed fixture supplies exact
+source hashes for `synthetic:coordinated`, `synthetic:declarative`,
+`synthetic:unknown-component` and `synthetic:ambiguous-adjunct`. Their owner is the
+coordinator/content owner. Extension requires authentic family mapping, full context
+review and a new reviewed grammar/profile or separately designed expert path.
+Local machine-readable measurements: `/tmp/article-rewrite-v2-acceptance/development-corpus.json`.
+
+The expanded isolated v2 suite passed **16 tests, 0 failures/errors/skips**
+(`v2-integration-green.xml`). It exercises both-bank explicit v1-to-v2 profile
+refresh with unchanged source and immutable v1 revisions; unchanged v2 refresh
+references the completed transformation owner without resetting it; failed v2
+attempts stay source-readable; unsupported articles dispatch zero model calls;
+full documents retain safety/table/unavailable-media context; two worker processes
+emit one publication per transformation; process death before/after durable model
+results and inside publication recovers; actual HTTP request ambiguity is bounded;
+exhausted same-source refresh retains the owner/budget; changed-source refresh
+fences the old publisher and selects source while pending; 100 ensures/reads after
+restart measure **source=0, asset=0, model=0, schedule=0** for each bank.
+
+The first expanded test draft assumed active refresh supersedes work and completed
+refresh makes the original transformation job the reader pointer. Inspection of
+the existing refresh contract showed that active jobs coalesce and completed
+observations reference the unchanged transformation owner in their checkpoint.
+Tests now assert those existing semantics; source-job code was not changed.
+
+An additional publication-binding rerun passed **1 test** after asserting that
+both store-validation and publication reject a rehashed foreign operation.
+Final focused pure suite with explicit classification-count reports: **95 passed**.
+These results cover synthetic fixture lifecycle correctness, not authentic corpus
+acceptance. Full exact-commit harness and final independent code review follow.

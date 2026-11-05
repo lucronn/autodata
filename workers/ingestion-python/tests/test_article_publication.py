@@ -143,3 +143,31 @@ def test_literal_source_and_canonical_read_rows(fresh_database,capture_fixture,c
     assert tuple(state[key] for key in keys)==expected
     assert state["canonical_revision_id"]==(revision if case in {"canonical","retired"} else None)
     if case=="takedown":assert state["document"] is None and state["images"] is None and state["steps"] is None
+
+
+def test_v2_publication_rebinds_saved_operation_response_even_with_rehashed_attempt(runtime):
+    from test_article_lifecycle_integration import target_v2
+    from autodata_ingestion.article_lifecycle_types import digest_json
+    from psycopg.types.json import Jsonb
+    target_v2(runtime)
+    runtime.pause("after_model_result_commit"); runtime.start_workers(1); runtime.await_barrier()
+    job = runtime.current_job_id(); runtime.kill_worker(); runtime.expire_lease(job)
+    lease = claim_source_job(runtime.repo, worker_id=uuid4())
+    candidate = store.load_candidate(runtime.repo, lease)
+    validation = validate_article_rewrite(candidate["normalized_source_document"], candidate["canonical_document"], profile_version=lease.rewrite_profile_version)
+    from dataclasses import replace
+    forged = replace(validation, report={**validation.report, "changed_clauses": 1000})
+    with pytest.raises(ValueError, match="binding"):
+        store.store_validation(runtime.repo, lease, forged)
+    store.store_validation(runtime.repo, lease, validation)
+    with runtime.repo.connect() as conn:
+        response = conn.execute("SELECT response FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s", (candidate["canonical_article_revision_id"],)).fetchone()["response"]
+        response["operations"][0]["operation_id"] = "unbound"
+        conn.execute("UPDATE canonical_article_rewrite_attempts SET response=%s,response_hash=%s WHERE canonical_article_revision_id=%s", (Jsonb(response), digest_json(response), candidate["canonical_article_revision_id"]))
+    with pytest.raises(ValueError, match="binding"):
+        store.store_validation(runtime.repo, lease, validation)
+    with pytest.raises(ValueError, match="binding"):
+        store.publish_article_revision(runtime.repo, lease, candidate["canonical_article_revision_id"])
+    assert runtime.read_current()["content_origin"] == "source"
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 0

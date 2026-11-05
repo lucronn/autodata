@@ -263,3 +263,24 @@ Concrete todo:
 - [ ] Verify corpus meaning, source fallback, dual-bank isolation, concurrency, restart and zero-call warm reads; publish exact coverage and independent review.
 
 This is a docs-only planning checkpoint. Its committed full SHA/tree and canonical preflight result are pinned externally after commit; the coordinator owns subsequent implementation dispatch.
+
+### v2 development implementation status (not release acceptance)
+
+The synchronized base `694ba2af0946710ae39ef4b0f7a867766c4dceb0` passed the
+canonical preflight before implementation. Development uses source-hash/path/span/
+grammar-bound operation identifiers and deterministic complete directive rendering.
+The initial vocabulary is finite and exercised only on synthetic regressions;
+unknown components or ordinary clauses make the whole article ineligible.
+Intentionally verbatim prose is restricted to one marked safety/conditional clause;
+a marker cannot exempt mixed ordinary prose or multiple sentences from rewriting.
+All other block members, evidence and media remain immutable. v2 is explicitly
+routed by the lease profile; the v1 default and validator behavior remain unchanged.
+Result storage, validation and publication bind the saved v2 selector operations
+back to the complete source-derived candidate under the existing locks.
+
+No authentic retained capture package is available in this checkout. The 14-document
+fixture corpus is synthetic development evidence, with no bank attribution or
+realistic acceptance credit. Authentic per-bank baseline, held-out coverage, all-ten-
+verb presence and independent content review remain unmeasured. The purchased-
+dataset outcome and production activation remain blocked on that evidence and
+unsupported-family remediation. See `docs/verification/2026-11-05-article-rewrite-v2.md`.
