@@ -52,3 +52,7 @@ Timeout for the entire disposable local proof is900seconds, including120seconds 
 ## Owner inputs and remaining release evidence
 
 Local implementation uses synthetic identifiers and cached verified image IDs. It needs no real cloud values. Live operation requires accepted nightly maintenance/RPO24h/RTO4h (currently proposed), actual data volume and measured backup window, selected project/region/disk UUID/backup bucket, retention and restore operator, fixed least-privilege WIF/snapshot/upload adapters, protected helper installation, actual restore isolation, secret rehydration and notification destination with delivered failure/missing-heartbeat alerts. Local tests do not satisfy these owner decisions or authorize mutation.
+
+## Synchronized planning checkpoint
+
+Gate `90bc004386a8b48afac98886108c91f0484c2925` is committed/pushed on `codex/workshop-backup-restore-plan`. Full-SHA preflight returned exit0, `status: synchronized`, errors `[]`; baseline cloud-ops57 tests passed. Actual Issue308 child link and Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhGPueE` references/all five todos were read back. [Exact pin](https://github.com/lucronn/autodata/issues/308#issuecomment-6656294952). Machine receipt: `docs/agents/records/2026-11-05-workshop-backup-restore-preflight.json`. No implementation or runtime operation was performed. Coordinator review and fresh dispatch remain required.

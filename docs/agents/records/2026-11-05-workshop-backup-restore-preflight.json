@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "scope": "planning only",
+  "gate_sha": "90bc004386a8b48afac98886108c91f0484c2925",
+  "source_baseline": "5d14c891e8efd14a297b07e482304ea2a6b9cd7f",
+  "branch": "codex/workshop-backup-restore-plan",
+  "worktree": "/home/corp/.codex/worktrees/workshop-backup-restore-plan/autodata",
+  "preflight": {
+    "command": "python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026-11-05-workshop-backup-restore.json --base-sha 90bc004386a8b48afac98886108c91f0484c2925",
+    "exit_code": 0,
+    "stdout": {
+      "status": "synchronized",
+      "errors": []
+    }
+  },
+  "baseline_tests": {
+    "command": "python3 -m unittest discover -s infra/deploy/gce -p 'test_cloud_ops.py' -q",
+    "tests": 57,
+    "result": "OK"
+  },
+  "issue_ref": "https://github.com/lucronn/autodata/issues/308",
+  "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGPueE",
+  "project_status": "Ready",
+  "readback": {
+    "parent_child_relationship": true,
+    "issue_goal_references_all5_todos": true,
+    "project_linked_body_all5_todos": true
+  },
+  "tracking_pin_comment": "https://github.com/lucronn/autodata/issues/308#issuecomment-6656294952",
+  "implementation_allowlist": [
+    "infra/deploy/gce/backup-host.sh",
+    "infra/deploy/gce/backup_restore.py",
+    "infra/deploy/gce/restore.sh",
+    "infra/deploy/gce/autodata-backup-resume.service",
+    "infra/deploy/gce/autodata-backup-resume.timer",
+    "infra/deploy/gce/test_backup_restore.py",
+    "scripts/dev/workshop_backup_restore_fixture.py",
+    "scripts/dev/test_workshop_backup_restore_fixture.py"
+  ],
+  "no_implementation_changed": true,
+  "worktree_registration": "native creation succeeded; attachment failed at >100 artifact identity cap; returned checkout used, no duplicate created",
+  "updated_at": "2026-11-05T11:00:24.785255Z"
+}
