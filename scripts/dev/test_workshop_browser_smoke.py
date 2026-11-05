@@ -1433,8 +1433,37 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('synthetic-secret',json.dumps(body))
         safe=b'{"safe\\u005fkey":"fixture text",}'
         body=smoke.api21_body(safe,'playwright-response-body')
-        self.assertEqual(body['availability'],'retained');self.assertEqual(body['reason'],'invalid_json')
-        self.assertEqual(smoke.base64.b64decode(body['base64']),safe)
+        self.assertEqual(body['availability'],'unavailable');self.assertEqual(body['reason'],'secret_detected')
+        self.assertIsNone(body['base64']);self.assertIsNone(body['sha256'])
+        valid=b'{"safe\\u005fkey":"fixture text"}'
+        body=smoke.api21_body(valid,'playwright-response-body')
+        self.assertEqual(body['availability'],'retained');self.assertIsNone(body['reason'])
+        self.assertEqual(smoke.base64.b64decode(body['base64']),valid)
+
+    async def test_ambiguous_malformed_boundaries_never_publish_original_entity(self):
+        variants=(b'{"foo":"unterminated, "to\\u006ben":"synthetic-secret",}',
+            b'" {"to\\u006ben":"synthetic-secret",}',
+            b'{"nested":{"foo":"unterminated, "authoriz\\u0061tion":"synthetic-secret",}}',
+            b'{"foo":"unterminated, "message":"bearer\\u0020synthetic-secret",}',
+            b'" {"to\\u006ben":"synthetic-secret", "bad":"\xff"}',
+            b'{"safe":"unterminated, "safe":"fixture",}')
+        for index,raw in enumerate(variants):
+            with self.subTest(variant=index):
+                body=smoke.api21_body(raw,'playwright-response-body')
+                self.assertEqual(body['availability'],'unavailable')
+                for field in ('base64','length','sha256','parsed','encoding'):self.assertIsNone(body[field])
+                smoke.api21_validate_body(body)
+                buffer=self.buffer();response=API21FakeResponse('https://local/v1/workshop/library',raw,403)
+                await buffer.http(response,response.url,phase='refund-source-denial')
+                self.assertEqual(buffer.status,'failed')
+                retained=buffer.events[0]['payload']['response']
+                self.assertEqual(retained,body)
+                self.assertNotIn('synthetic-secret',json.dumps(buffer.snapshot()))
+        for raw in (b'fixture control error\n',b'{"safe":"fixture"}',b'{"safe":"fixture","safe":"fixture"}'):
+            body=smoke.api21_body(raw,'playwright-response-body')
+            self.assertEqual(body['availability'],'retained')
+            self.assertEqual(smoke.base64.b64decode(body['base64']),raw)
+            self.assertEqual(body['sha256'],smoke.hashlib.sha256(raw).hexdigest())
 
     def test_bounds_fail_without_discarding_prefix_or_promoting_pass(self):
         buffer=self.buffer(max_events=1)

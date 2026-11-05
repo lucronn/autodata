@@ -720,16 +720,18 @@ def api21_body(raw, source, *, image=False, reason=None, json_required=True):
         return isinstance(value,str) and bool(re.search(r'(?i)(bearer |__Host-autodata_session=|eyJ[A-Za-z0-9_-]+\.eyJ)',value))
     text=raw.decode('utf-8',errors='replace')
     raw_secret=any(secret.fullmatch(key) for key in re.findall(r'[\"\']([^\"\']+)[\"\']\s*:',text))
-    # A malformed outer entity can still contain valid escaped JSON strings.
-    # Decode those strings independently so escaped secret keys/tokens cannot
-    # bypass the privacy check merely because the full entity did not parse.
-    escaped_secret=False
-    for match in re.finditer(r'"(?:\\.|[^"\\])*"',text):
-        try:value=api21_load(match.group().encode('utf-8'))
-        except (ValueError,UnicodeError,TypeError,RecursionError):continue
-        if sensitive(value) or secret.fullmatch(value) and text[match.end():].lstrip().startswith(':'):
-            escaped_secret=True;break
-    if sensitive(parsed) or sensitive(text) or raw_secret or escaped_secret:body['reason']='secret_detected';return body
+    if sensitive(parsed) or sensitive(text) or raw_secret:body['reason']='secret_detected';return body
+    if decode_reason is not None:
+        # Without a valid outer entity, string/escape boundaries are untrusted.
+        # Do not infer safety by matching individual quoted substrings: malformed
+        # boundaries can hide an escaped protected key from such a scan.
+        if chr(92) in text:body['reason']='secret_detected';return body
+        if any(character in text for character in ('"',"'",'{','}','[',']')):
+            try:json.loads(text)
+            except (ValueError,TypeError,RecursionError):body['reason']=decode_reason;return body
+        # json.loads above is only a boundary safety check. The strict failure,
+        # null parsed value and exact original bytes remain authoritative; this
+        # never turns duplicate-key/nonfinite/invalid-UTF8 entities into a pass.
     return dict(body,availability='retained',byte_source=source,encoding='base64',
         base64=base64.b64encode(raw).decode('ascii'),length=len(raw),
         sha256=hashlib.sha256(raw).hexdigest(),parsed=parsed,reason=decode_reason)
