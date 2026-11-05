@@ -406,6 +406,22 @@ class ContractTests(unittest.TestCase):
             with self.assertRaises(self.rt.ContractError): self.rt.validate_start_prerequisites(self.config, bad)
         with self.assertRaises(self.rt.ContractError): self.rt.validate_start_prerequisites(self.config, {})
 
+    def test_stop_maintenance_receipts_preserve_truthful_not_ready_success(self):
+        checks=dict.fromkeys(('config','manifest','disk_uuid','metadata_guard','storage_guard','secrets',
+                              'cached_images','migration_tree','services'),True)
+        checks['runtime_evidence']=False
+        for verb in ('stop','maintenance'):
+            result=self.rt.operation_receipt('deploy.sh '+verb,SHA,None,0,checks)
+            self.assertEqual(result['status'],'passed')
+            self.assertFalse(result['checks']['runtime_evidence'])
+            for name in checks:
+                broken=dict(checks); broken.pop(name)
+                with self.assertRaises(self.rt.ContractError):
+                    self.rt.operation_receipt('deploy.sh '+verb,SHA,None,0,broken)
+        for verb in ('start','check','resume'):
+            with self.assertRaises(self.rt.ContractError):
+                self.rt.operation_receipt('deploy.sh '+verb,SHA,None,0,checks)
+
     def test_receipts_reject_unknown_checks_and_inconsistent_success(self):
         for code, checks, failure in [(0, {'disk_uuid': False}, None), (4, {}, None),
                                       (0, {'secret_value': True}, None), (0, {'disk_uuid': 1}, None)]:
@@ -1223,7 +1239,7 @@ class CatalogObservationTests(unittest.TestCase):
             self.assertIsNone(self.rt.validate_postgres_catalog(self.observation))
             for candidate in candidates:
                 with self.assertRaises(self.rt.ContractError): self.rt.validate_postgres_catalog(candidate)
-        self.assertFalse(hasattr(self.rt, 'collect_postgres_schema'))
+        self.assertTrue(callable(getattr(self.rt, 'collect_postgres_schema', None)))
         self.assertFalse(hasattr(self.rt, 'validate_schema_observation'))
 
     def test_wire_numeric_string_depth_and_framing_bounds(self):
@@ -1270,6 +1286,129 @@ class CatalogObservationTests(unittest.TestCase):
             self.assertEqual(self.application_code_executions, 0)
             self.assertEqual(sum('--command=' + sql in cmd for cmd in self.calls), 1)
 
+
+
+class LockedSchemaTests(unittest.TestCase):
+    def setUp(self):
+        ContractTests.setUp(self)
+
+    def test_schema_cannot_be_inferred_from_catalog(self):
+        self.assertTrue(callable(getattr(self.rt, 'collect_postgres_schema', None)), 'locked schema collector missing')
+        with patch.object(self.rt, 'collect_postgres_catalog', return_value={}), patch.object(
+                self.rt, '_bounded_schema_command', side_effect=self.rt.ContractError('unavailable')):
+            with self.assertRaises(self.rt.ContractError):
+                self.rt.collect_postgres_schema(self.manifest)
+
+    def test_locked_protocol_gates_ledger_and_bounds_inventory(self):
+        self.assertTrue(callable(getattr(self.rt, '_postgres_schema_script', None)), 'locked protocol missing')
+        script = self.rt._postgres_schema_script(self.manifest).decode()
+        self.assertLess(script.index('LOCK TABLE ONLY public.schema_migrations'), script.index('WITH'))
+        self.assertLess(script.index('\\if :safe'), script.index('FROM ONLY public.schema_migrations'))
+        self.assertIn('LIMIT 3', script)
+        self.assertIn('COMMIT;', script)
+        self.assertIn('idle_in_transaction_session_timeout', script)
+
+    def test_runtime_readiness_does_not_accept_missing_dependency_fields(self):
+        self.assertTrue(callable(getattr(self.rt, '_validate_readyz', None)), 'readyz validator missing')
+        for value in ({}, {'database':'ready'}, {'database':'ready','nats':'ready','object_storage':'ready','paid_catalog':'unavailable'}):
+            with self.assertRaises(self.rt.ContractError): self.rt._validate_readyz(value)
+        self.rt._validate_readyz({'database':'ready','nats':'ready','object_storage':'ready'})
+
+
+class RuntimeReadinessTests(unittest.TestCase):
+    def setUp(self):
+        ContractTests.setUp(self)
+
+    def test_fixed_readyz_uses_bodyless_get_and_fails_closed(self):
+        self.assertTrue(callable(getattr(self.rt, '_collect_readyz', None)), 'readyz collector missing')
+        class Response:
+            status = 200
+            def __init__(self, payload): self.payload = payload
+            def read1(self, size): data,self.payload=self.payload[:size],self.payload[size:]; return data
+        class Sock:
+            def shutdown(self, how): pass
+        class Connection:
+            def __init__(inner, host, port, timeout):
+                self.assertEqual((host,port),('172.30.10.10',8080)); inner.sock=Sock()
+            def connect(inner): pass
+            def request(inner, method, path, body=None, headers=None):
+                self.assertEqual((method,path,body),('GET','/readyz',None))
+            def getresponse(inner): return Response(b'{"database":"ready","nats":"ready","object_storage":"ready"}')
+            def close(inner): pass
+        with patch.object(self.rt.http.client,'HTTPConnection',Connection): self.rt._collect_readyz()
+
+    def service_fixture(self, service):
+        desired=json.loads(self.rt.render_bundle(self.manifest,self.config)['compose.production.yaml'])['services'][service]
+        role='ingestion' if service in ('ingestion-http','article-worker','payment-reconciler') else service
+        value=postgres_wire(self.manifest['images'][role]['image_id'])
+        value.update(name='/autodata-production-'+service+'-1',user=desired['user'],service=service,
+            command=desired['command'],entrypoint=desired.get('entrypoint',['/image-entrypoint']),
+            restarts=0,init=True,pids_limit=256,
+            tmpfs=dict(item.split(':',1) for item in desired['tmpfs']),
+            mounts=[{'Type':'bind','Source':v['source'],'Destination':v['target'],'Mode':'','RW':not v['read_only'],
+                     'Propagation':'rprivate'} for v in desired['volumes']],
+            networks={'autodata-production-'+n:{'IPAddress':v['ipv4_address'],'NetworkID':'e'*64,'GlobalIPv6Address':''}
+                      for n,v in desired['networks'].items()},
+            ports={p.split(':')[1]:[{'HostIp':'','HostPort':p.split(':')[0]}] for p in desired.get('ports',[])})
+        return desired,value
+
+    def test_projected_graph_rejects_security_mount_command_image_network_drift(self):
+        for service in self.rt.NORMAL_SERVICES:
+            desired,value=self.service_fixture(service)
+            self.rt._validate_service_container(self.manifest,service,desired,value,['/image-entrypoint'])
+            for key,wrong in (('command',['sh']),('entrypoint',['sh']),('image','sha256:'+'0'*64),
+                              ('user','invalid'),('running',False),('paused',True),('restarting',True),
+                              ('dead',True),('readonly_root',False),('privileged',True),('cap_add',['SYS_ADMIN']),
+                              ('cap_drop',[]),('security_opt',[]),('mounts',[]),('networks',{}),
+                              ('ports',{'1234/tcp':[]}),('tmpfs',{}),('init',False),('pids_limit',999)):
+                broken=copy.deepcopy(value);broken[key]=wrong
+                with self.subTest(service=service,key=key), self.assertRaises(self.rt.ContractError):
+                    self.rt._validate_service_container(self.manifest,service,desired,broken,['/image-entrypoint'])
+            stopped=copy.deepcopy(value); stopped['running']=False
+            for network in stopped['networks'].values():
+                network['IPAMConfig']={'IPv4Address':network['IPAddress']}; network['IPAddress']=''
+            self.rt._validate_service_container(self.manifest,service,desired,stopped,['/image-entrypoint'],require_running=False)
+
+    def test_live_graph_enumeration_rejects_extra_duplicate_and_missing_roles(self):
+        compose=json.loads(self.rt.render_bundle(self.manifest,self.config)['compose.production.yaml'])
+        fixtures={}
+        for number,service in enumerate(self.rt.NORMAL_SERVICES,1):
+            _,value=self.service_fixture(service); value['id']=('%064x'%number)
+            fixtures[value['id']]=value
+        identifiers=list(fixtures)
+        def execute(argv,maximum,deadline):
+            self.assertNotIn('.Config.Env',' '.join(argv))
+            self.assertEqual(argv[:3],['/usr/bin/docker','--host','unix:///var/run/docker.sock'])
+            if argv[3:5]==['container','ls']:return ('\n'.join(identifiers)+'\n').encode()
+            if argv[3:5]==['container','inspect']:return json.dumps(fixtures[argv[-1]]).encode()
+            if argv[3:5]==['image','inspect']:return b'["/image-entrypoint"]'
+            name=argv[-1]; short=name.removeprefix('autodata-production-'); expected=self.rt.TOPOLOGY[short]
+            return json.dumps({'id':'e'*64,'name':name,'driver':'bridge','internal':expected['internal'],'ipv6':False,
+                'options':{'com.docker.network.bridge.name':expected['bridge']},'ipam':[{'Subnet':expected['subnet']}]}).encode()
+        with patch.object(self.rt,'_runtime_rendered_compose',return_value=compose), patch.object(
+                self.rt,'_bounded_schema_command',side_effect=execute):
+            result=self.rt._collect_service_graph(self.manifest,self.config,self.rt.time.monotonic()+15)
+            self.assertEqual(set(result['services']),set(self.rt.NORMAL_SERVICES))
+            baseline=list(identifiers)
+            for broken in (baseline[:-1],baseline+[baseline[0]],baseline[:-1]+[baseline[0]]):
+                identifiers[:]=broken
+                with self.assertRaises(self.rt.ContractError):
+                    self.rt._collect_service_graph(self.manifest,self.config,self.rt.time.monotonic()+15)
+            identifiers[:]=baseline
+            fixtures[baseline[0]]['service']='unexpected'
+            with self.assertRaises(self.rt.ContractError):
+                self.rt._collect_service_graph(self.manifest,self.config,self.rt.time.monotonic()+15)
+
+    def test_runtime_evidence_requires_fresh_identical_graph_and_schema(self):
+        self.assertTrue(callable(getattr(self.rt, 'collect_runtime_readiness', None)), 'readiness collector missing')
+        with patch.object(self.rt,'collect_postgres_schema',return_value={'version':2}), patch.object(
+                self.rt,'_collect_service_graph',side_effect=[{'id':'first'},{'id':'changed'}]), patch.object(
+                self.rt,'_collect_readyz'):
+            with self.assertRaises(self.rt.ContractError): self.rt.collect_runtime_readiness(self.manifest,self.config)
+        with patch.object(self.rt,'collect_postgres_schema',return_value={'version':2}), patch.object(
+                self.rt,'_collect_service_graph',return_value={'id':'first'}), patch.object(self.rt,'_collect_readyz'):
+            result=self.rt.collect_runtime_readiness(self.manifest,self.config)
+        self.assertEqual(result,dict.fromkeys(('schema','services','postgres','nats','s3','no_work','runtime_evidence'),True))
 
 
 class DeployCheckTests(unittest.TestCase):
@@ -1352,7 +1491,7 @@ class DeployCheckTests(unittest.TestCase):
     def secret_directory(self, service, files):
         directory = Path(self.rt.SECRET_ROOT) / service; directory.mkdir(mode=0o700)
         for name, value in files.items():
-            target = directory / name; target.write_bytes(value); target.chmod(0o400)
+            target = directory / name; target.write_bytes(value); target.chmod(0o444 if service == 'caddy' else 0o400)
         directory.chmod(0o500)
 
     def execute(self, argv, **kwargs):
@@ -1380,34 +1519,56 @@ class DeployCheckTests(unittest.TestCase):
                                        'started_at', 'finished_at', 'checks', 'failure_code'})
         return code, receipt
 
-    def test_valid_local_prerequisites_do_not_claim_unimplemented_runtime_evidence(self):
+    def test_valid_local_prerequisites_do_not_certify_missing_live_evidence(self):
         code, receipt = self.deploy()
         self.assertEqual(code, 3)
         self.assertEqual(receipt['failure_code'], 'missing_dependency')
         self.assertEqual(receipt['checks'], {'config': True, 'manifest': True, 'disk_uuid': True,
             'metadata_guard': True, 'storage_guard': True, 'secrets': True, 'cached_images': True, 'migration_tree': True,
-            'schema': False, 'services': False, 'runtime_evidence': False})
+            'schema': False, 'services': False, 'postgres': False, 'nats': False, 's3': False, 'no_work': False, 'runtime_evidence': False})
         self.assertEqual(len(self.calls), 11)
 
-    def test_catalog_and_cached_validators_cannot_promote_schema_or_readiness(self):
-        fixture = CatalogObservationTests(); fixture.rt = self.rt; fixture.manifest = self.manifest
-        fixture.container = postgres_wire(self.manifest['images']['postgres']['image_id'], self.rt.DATA_ROOT, self.rt.SECRET_ROOT)
-        fixture.observation = catalog_wire(); fixture.calls = []; fixture.children = []; fixture.after = None; fixture.sql_payload = None
-        fixture.application_code_executions = 0
-        for result in (True, False, AssertionError('offline validator must be unreachable')):
-            option = {'side_effect': result} if isinstance(result, Exception) else {'return_value': result}
-            with patch.object(self.rt, 'validate_schema_ledger', **option) as offline, patch.object(subprocess, 'Popen', side_effect=fixture.fake_exec), patch.object(self.rt.selectors, 'DefaultSelector', side_effect=FakeSchemaSelector):
-                code, receipt = self.deploy()
-            offline.assert_not_called()
-            self.assertEqual(code, 3); self.assertEqual(receipt['failure_code'], 'missing_dependency')
-            self.assertTrue(receipt['checks']['cached_images']); self.assertTrue(receipt['checks']['migration_tree'])
-            self.assertFalse(receipt['checks']['schema']); self.assertFalse(receipt['checks']['services']); self.assertFalse(receipt['checks']['runtime_evidence'])
-            self.assertEqual(len(fixture.calls), 3); self.assertEqual(fixture.application_code_executions, 0)
-            fixture.calls.clear()
-        for error, expected in ((FileNotFoundError('opaque-do-not-print'), 3), (subprocess.TimeoutExpired('fake', 5), 5)):
-            with patch.object(subprocess, 'Popen', side_effect=error):
-                code, receipt = self.deploy()
-            self.assertEqual(code, expected); self.assertFalse(receipt['checks']['schema'])
+    def test_check_passes_only_after_live_schema_graph_and_readyz_observations(self):
+        events=[]
+        def schema(manifest):
+            self.assertEqual(manifest,self.manifest);events.append('schema')
+            return {'version':2,'migrations':['001_initial','002_next']}
+        def graph(manifest,config,deadline):
+            self.assertEqual((manifest,config),(self.manifest,self.config));events.append('graph')
+            return {'services':'fresh-identities'}
+        with patch.object(self.rt,'collect_postgres_schema',side_effect=schema), patch.object(
+                self.rt,'_collect_service_graph',side_effect=graph), patch.object(
+                self.rt,'_collect_readyz',side_effect=lambda:events.append('readyz')), patch.object(
+                self.rt,'collect_postgres_catalog',side_effect=AssertionError('legacy catalog cannot certify check')):
+            code,receipt=self.rt.deploy_cli(['check',SHA])
+        self.assertEqual(code,0);self.assertEqual(receipt['status'],'passed')
+        self.assertEqual(events,['schema','graph','readyz','graph'])
+        self.assertEqual(set(receipt['checks']),self.rt.CHECK_NAMES)
+        self.assertTrue(all(value is True for value in receipt['checks'].values()))
+
+    def test_check_rejects_missing_false_extra_and_nonboolean_runtime_evidence(self):
+        valid=dict.fromkeys(('schema','services','postgres','nats','s3','no_work','runtime_evidence'),True)
+        candidates=[None,{},dict(valid,extra=True)]
+        for name in valid:
+            missing=dict(valid);missing.pop(name);candidates.append(missing)
+            for wrong in (False,1,None):
+                malformed=dict(valid);malformed[name]=wrong;candidates.append(malformed)
+        for value in candidates:
+            with self.subTest(value=value),patch.object(self.rt,'collect_runtime_readiness',return_value=value):
+                code,receipt=self.deploy()
+                self.assertEqual(code,3)
+                self.assertFalse(receipt['checks']['schema']);self.assertFalse(receipt['checks']['runtime_evidence'])
+
+    def test_catalog_only_and_collector_failures_never_promote_check(self):
+        for error,expected in ((self.rt.ContractError('opaque-do-not-print'),3),
+                               (FileNotFoundError('opaque-do-not-print'),3),
+                               (subprocess.TimeoutExpired('fake',5),5)):
+            with patch.object(self.rt,'collect_postgres_catalog',return_value={}) as catalog, patch.object(
+                    self.rt,'collect_postgres_schema',side_effect=error) as schema:
+                code,receipt=self.deploy()
+            self.assertEqual(code,expected);self.assertFalse(receipt['checks']['schema'])
+            self.assertFalse(receipt['checks']['runtime_evidence'])
+            schema.assert_called_once_with(self.manifest);catalog.assert_not_called()
 
     def test_every_cached_role_requires_selected_digest_and_local_image_id(self):
         for role in self.images:
@@ -1541,6 +1702,17 @@ class DeployCheckTests(unittest.TestCase):
         self.assertFalse(self.deploy()[1]['checks']['secrets'])
         directory.chmod(0o700); target.unlink(); other = self.base / 'other'; other.write_bytes(b'opaque-do-not-print'); other.chmod(0o400); os.link(other, target); directory.chmod(0o500)
         self.assertFalse(self.deploy()[1]['checks']['secrets'])
+
+    def test_caddy_maintenance_import_requires_exact_readable_atomic_contents(self):
+        target=Path(self.rt.SECRET_ROOT)/'caddy/maintenance.caddy'
+        for value in (b'', b'respond "Maintenance" 503\n'):
+            target.chmod(0o600); target.write_bytes(value); target.chmod(0o444)
+            self.assertTrue(self.rt.validate_runtime_secret_files())
+        for value in (b'respond "Maintenance" 200\n', b'import /tmp/other\n', b'\n'):
+            target.chmod(0o600); target.write_bytes(value); target.chmod(0o444)
+            with self.assertRaises(self.rt.ContractError): self.rt.validate_runtime_secret_files()
+        target.chmod(0o600); target.write_bytes(b''); target.chmod(0o400)
+        with self.assertRaises(self.rt.ContractError): self.rt.validate_runtime_secret_files()
 
     def test_native_secret_configs_reject_missing_unresolved_or_widened_policy(self):
         for service, filename in (('postgres', 'POSTGRES_PASSWORD'), ('nats', 'nats.conf'), ('minio', 's3.json'), ('caddy', 'maintenance.caddy')):
