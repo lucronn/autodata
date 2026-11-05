@@ -16,7 +16,9 @@ VALIDATOR_VERSION = "full-prose-validator-v1"
 TOKEN_GRAMMAR_VERSION = "literal-technical-tokens-v1"
 
 # Longest whitespace-separated unit spellings first. Attached units remain
-# literal even if unfamiliar. Do not convert, normalize or relocate tokens.
+# literal even if unfamiliar. The first word after a bare number is also
+# protected conservatively: an unfamiliar unit cannot be inferred safely from
+# prose. Do not convert, normalize or relocate tokens.
 _UNITS = (
     r"N[·.]m", r"N m", r"Nm", r"lb[·-]ft", r"lb[·-]in", r"ft[·-]lb",
     r"kgf[·-]m", r"kg[·-]m", r"m/s²", r"m/s", r"km/h", r"mph", r"rpm",
@@ -25,17 +27,17 @@ _UNITS = (
     r"litres?", r"liters?", r"volts?", r"amps?", r"ohms?", r"V", r"A",
     r"Ω", r"Hz", r"kW", r"W", r"L", r"l", r"m", r"s", r"°C", r"°F", r"°", r"%",
 )
-_NUMBER = r"\d+(?:[.,٫٬/]\d+)*"
+_NUMBER = r"\d+(?:[.,٫٬/\u00a0\u202f\x20]\d+)*"
 _SIGN = r"(?:<=|>=|[<>≤≥±+−-])[ \t]*"
 _NUMERIC = (
     r"(?:" + _SIGN + r")?" + _NUMBER
     + r"(?:[ \t]*[–—−~…-][ \t]*(?:[+−-])?" + _NUMBER + r")?"
-    + r"(?:[ \t]+(?:" + "|".join(_UNITS) + r")(?!\w)|[^\W\d_][\w·°%/^-]*|[%°])?"
+    + r"(?:\s+(?:" + "|".join(_UNITS) + r"|[^\W\d_][\w·°%/^-]*)(?!\w)|[^\W\d_][\w·°%/^-]*|[%°])?"
 )
 # URL and Markdown targets are preserved independently of the label; literal
 # mixed letter/digit references (including hyphenated tool IDs) stay together.
 _TARGET = r"(?<=\]\()[^\s)]+|(?:https?://|urn:)[^\s<>\[\]()]+|(?<!\w)#[\w.-]+"
-_IDENTIFIER = r"(?<!\w)(?=[\w.-]*\d)(?=[\w.-]*[^\W\d_])[^\W\d_][\w-]*(?:[.]\w+)*"
+_IDENTIFIER = r"(?<!\w)(?=[\w.-]*\d)(?=[\w.-]*[^\W\d_])[^\W\d_][\w/-]*(?:[.]\w+)*"
 _TOKENS = re.compile(_TARGET + "|" + _IDENTIFIER + "|" + _NUMERIC)
 
 
