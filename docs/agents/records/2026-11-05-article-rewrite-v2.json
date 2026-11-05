@@ -13,7 +13,7 @@
     "Verify corpus meaning, source fallback, dual-bank isolation, concurrency, restart and zero-call warm reads; publish exact coverage and independent review."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-05T08:54:30Z",
+  "updated_at": "2026-11-05T08:57:28.921421Z",
   "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
   "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGN8dM",
   "inspected_source_sha": "38b53eca633eee94f045fc33d9c90bb36da7618d",
@@ -44,6 +44,6 @@
     "issue_body_sha256": "72e560b2c8092f345fa73242858d1efb996bf4857e8aa2a270db96afe12d7770",
     "project_source_sha256": "caad22cae8ae4cf9a1a1c6673943169475fa6b290668928d1e798c36b3203612",
     "parent_body_unchanged": true,
-    "verified_at": "2026-11-05T09:04:00Z"
+    "verified_at": "2026-11-05T08:57:28.921421Z"
   }
 }
