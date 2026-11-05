@@ -197,3 +197,59 @@ reviewed concrete executor and approved bounded POST read. No current bank
 acceptance, canonical publication, model transfer, R6 later2 collector acceptance,
 full population coverage, final180/API21/DTO120, staging/deployment or cutover is
 conferred. This work does not implement the broader release architecture.
+
+## Concrete offline schema and implementation receipt
+
+Nested `resources` is exactly `{items, absent_roles, membership_attestation_ref}`.
+`items` has frozen `{ref, role, media_type, required, source_revision,
+expected_bytes, sha256}` entries; `first_observed: true` plus
+`provider_revision_attestation_ref` replaces `sha256` in that mode. Optional
+asset/labor descriptors remain part of full frozen membership but are never
+fetched. Shared references preserve each role in the enrollment and fetch once.
+`absent_roles` explicitly lists absent asset/labor roles.
+
+`applicability_mapping` is exactly `{configuration_field, region_field,
+source_field, expected_source, owner_approval_ref}`. This candidate accepts
+`configuration`, `region`, `source_label` as the three field mappings and binds
+the selected configuration row to the selector and approved expected source.
+`procedure_content_rule` is exactly `{markers, minimum_text_length,
+owner_approval_ref}`. No marker executes or renders content.
+
+## Offline implementation candidate verification
+
+Code candidate `be9398ea052478fa954ba3ee33d159d2d23e0b35` on `codex/bank-canary-executor-build` derives from gate
+`8bb4f98b2701372fb3ed4ed7bb79e66e47e9ca7b`. The builder independently read back Issue #304 and Project #8 item
+`PVTI_lAHOCSJ8cc4BiQ2BzhGO_X0` and ran exact-base preflight before any
+implementation edit: `status: synchronized`, `errors: []`.
+
+The focused offline suite passes **46 tests**; the unchanged source-client suite
+passes **19 tests**. Syntax compilation and `git diff --check` pass. The source
+client suite retains its pre-existing HTTPError ResourceWarning. Tests exercise
+116 calls/115 seconds of fake-clock start spacing; page 10 rejection; frozen
+membership, provider, revision and applicability; non-200/HTTPError originals;
+parser/hash rejection; exact byte ceilings and framing; blocked/trickling child
+cancellation and reap; decoded secrets before failed hash validation; quarantine;
+output failure; cancellation finalization; and strict public summary fields.
+All origins are reserved `.invalid` fixtures, direct TLS is tested with an inert
+patched connection, and slow reads use a local socketpair. No real network,
+credential access, source capture or application stack was used.
+
+The first independent review of `fab03ae1e751674a3de543e6ac02be1d9274336d`
+found five failure-path gaps. They remain visible in history and are fixed with
+regressions in `233779b7c278a7586ef95a2ea95162bdae8dcff1`: the injected opener
+also runs in a watched child; 404/source error enums retain summaries; encoded
+resource secrets are checked before client hash/schema rejection; socket read
+errors remain bank-local; interruption finalizes evidence. The candidate adds
+strict malformed-scalar rejection and scans JSON-decoded text before failed
+hash validation, closing the escaped-secret follow-up found on the revised
+candidate. Independent exact-final-SHA review remains
+pending; this is a tool-delivery candidate, with real-source acceptance zero.
+
+The `capture` command currently returns `EXECUTION_GATE_REQUIRED` before any
+approval/credential descriptor is read. `validate` checks syntax only.
+`offline-selftest` runs the committed inert test suite. `run_capture` requires
+an explicitly offline transport factory and two `.invalid` origins; its
+transports use the same watched-child spool path. The direct standard-library
+HTTPS worker has no authorized real-run entrypoint under this gate. A later
+committed enrolled gate must provide the distinct approval boundary before
+authenticated execution; a fabricated receipt cannot unlock this candidate.

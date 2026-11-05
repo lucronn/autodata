@@ -95,5 +95,38 @@
     "Attempted page 11, request 59, response/aggregate overflow, slow trickle, blocked connect, cancellation and cleanup obey hard bounds.",
     "All rejected/non-200/partial/HTTP-error/parser-error bytes are inventoried before validation; absent and truncated evidence never passes.",
     "Wrong bank/selector/region/revision/membership, null terminal cursor, missing enrollment and secret-bearing outputs fail closed without retries or leakage."
-  ]
+  ],
+  "implementation_verification": {
+    "gate_sha": "8bb4f98b2701372fb3ed4ed7bb79e66e47e9ca7b",
+    "candidate_code_sha": "be9398ea052478fa954ba3ee33d159d2d23e0b35",
+    "branch": "codex/bank-canary-executor-build",
+    "status": "offline_candidate_review_pending",
+    "canary_tests": 46,
+    "source_client_tests": 19,
+    "authenticated_calls": 0,
+    "real_source_acceptance": 0,
+    "independent_review": "pending exact final SHA",
+    "commands": [
+      {
+        "command": "PYTHONPATH=workers/ingestion-python/src python3 -m unittest discover -s scripts/dev/tests -p test_bank_canary_capture.py -q",
+        "exit": 0,
+        "tests": 46
+      },
+      {
+        "command": "PYTHONPATH=workers/ingestion-python/src python3 -m unittest discover -s workers/ingestion-python/tests -p test_source_connector_client.py -q",
+        "exit": 0,
+        "tests": 19,
+        "note": "Existing suite emits its baseline HTTPError ResourceWarning."
+      },
+      {
+        "command": "python3 -m py_compile scripts/dev/bank_canary_capture.py scripts/dev/bank_canary_transport.py scripts/dev/tests/test_bank_canary_capture.py",
+        "exit": 0
+      },
+      {
+        "command": "git diff --check",
+        "exit": 0
+      }
+    ],
+    "execution_boundary": "capture CLI rejects EXECUTION_GATE_REQUIRED before descriptor/approval reads; run_capture requires explicitly offline factory and reserved .invalid origins; all openers run in watchdog-controlled children."
+  }
 }

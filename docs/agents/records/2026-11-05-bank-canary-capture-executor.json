@@ -61,5 +61,38 @@
     "issue_body_sha256": "163ec99f0555d366c55c8e7a18e9fa1d12ef4458af5fbaa8b9daed365a436699",
     "project_source": "Parent #186; offline-only executor/raw-failure contract. Plan docs/superpowers/plans/2026-11-05-bank-canary-capture-executor.md; spec docs/agents/specs/2026-11-05-bank-canary-capture-executor.md; record docs/agents/records/2026-11-05-bank-canary-capture-executor.json. No bank execution authority. Exact gate SHA follows checkpoint push.",
     "evidence_directory": "/home/corp/autodata-evidence/bank-canary-executor-gate"
+  },
+  "implementation_verification": {
+    "gate_sha": "8bb4f98b2701372fb3ed4ed7bb79e66e47e9ca7b",
+    "candidate_code_sha": "be9398ea052478fa954ba3ee33d159d2d23e0b35",
+    "branch": "codex/bank-canary-executor-build",
+    "status": "offline_candidate_review_pending",
+    "canary_tests": 46,
+    "source_client_tests": 19,
+    "authenticated_calls": 0,
+    "real_source_acceptance": 0,
+    "independent_review": "pending exact final SHA",
+    "commands": [
+      {
+        "command": "PYTHONPATH=workers/ingestion-python/src python3 -m unittest discover -s scripts/dev/tests -p test_bank_canary_capture.py -q",
+        "exit": 0,
+        "tests": 46
+      },
+      {
+        "command": "PYTHONPATH=workers/ingestion-python/src python3 -m unittest discover -s workers/ingestion-python/tests -p test_source_connector_client.py -q",
+        "exit": 0,
+        "tests": 19,
+        "note": "Existing suite emits its baseline HTTPError ResourceWarning."
+      },
+      {
+        "command": "python3 -m py_compile scripts/dev/bank_canary_capture.py scripts/dev/bank_canary_transport.py scripts/dev/tests/test_bank_canary_capture.py",
+        "exit": 0
+      },
+      {
+        "command": "git diff --check",
+        "exit": 0
+      }
+    ],
+    "execution_boundary": "capture CLI rejects EXECUTION_GATE_REQUIRED before descriptor/approval reads; run_capture requires explicitly offline factory and reserved .invalid origins; all openers run in watchdog-controlled children."
   }
 }
