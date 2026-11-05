@@ -8,13 +8,14 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import sys
 import time
 from urllib.parse import quote, urlsplit
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'workers/ingestion-python/src'))
 from autodata_ingestion.source_connector_client import SourceConnectorClient, SourceConnectorError
-from bank_canary_transport import CaptureTransport, CaptureFailure, exclusive, private_json
+from bank_canary_transport import CaptureTransport, CaptureFailure, exclusive, private_json, sensitive
 
 BANKS=('bankone','banktwo')
 LIMITS=dict(bank_requests=58,global_requests=116,pages=10,response_bytes=20_000_000,
@@ -25,6 +26,7 @@ BANK=set('origin owner_identity_ref deployment_revision key_version_ref egress_i
 REFS=set('operator_ref reviewer_ref custodian_ref execution_approval_ref protected_storage_ref rights_ref'.split())
 BANKREFS=set('owner_identity_ref deployment_revision key_version_ref egress_identity_ref license_ref revision_attestation_ref expected_source_revision source_vehicle_ref article_ref body_ref incident_procedure_ref'.split())
 
+STOP_CODES={'PAGE_LIMIT','PAGINATION','SELECTOR','IDENTITY','FETCHED_AT','CAPABILITIES','DEADLINE','REQUEST_LIMIT','BYTE_LIMIT','GRAPH','CATALOG_MEMBERSHIP','APPLICABILITY','VEHICLE_MEMBERSHIP','ARTICLE_MEMBERSHIP','RESOURCE_MEMBERSHIP','RESOURCE_CONTENT','PROCEDURE_CONTENT','SECRET_INCIDENT','OUTPUT_FAILURE','CONNECT_TLS','REDIRECT','FRAMING','INTERRUPTED','CLEANUP','TRANSPORT_PROTOCOL','UPSTREAM_UNAVAILABLE','INVALID_UPSTREAM_RESPONSE','RATE_LIMITED','UNAUTHORIZED','FORBIDDEN','TRANSPORT'}
 
 def _require(condition, code='ENROLLMENT'):
     if not condition: raise ValueError(code)
@@ -75,7 +77,7 @@ def validate_enrollment(document):
         for k,limit in (('make',160),('model',160),('configuration',512),('region',64)): _text(selector[k],limit)
         resources=b['resources'];_fields(resources,('items','absent_roles','membership_attestation_ref'))
         _text(resources['membership_attestation_ref'])
-        _require(isinstance(resources['items'],list) and 1<=len(resources['items'])<=6)
+        _require(isinstance(resources['items'],list) and 1<=len(resources['items'])<=134)
         _require(isinstance(resources['absent_roles'],list) and all(role in ('asset','labor') for role in resources['absent_roles']) and len(set(resources['absent_roles']))==len(resources['absent_roles']))
         roles={role:[] for role in ('body','asset','labor')};seen={}
         for resource in resources['items']:
@@ -84,7 +86,7 @@ def validate_enrollment(document):
             first='first_observed' in resource
             _fields(resource,frozen|({'first_observed','provider_revision_attestation_ref'} if first else {'sha256'}))
             for k in ('ref','media_type','source_revision'): _text(resource[k])
-            _require(resource['role'] in roles and type(resource['required']) is bool and resource['required'])
+            _require(resource['role'] in roles and type(resource['required']) is bool)
             _require(type(resource['expected_bytes']) is int and 0<resource['expected_bytes']<=20_000_000)
             _require(resource['source_revision']==b['expected_source_revision'])
             if first:
@@ -94,7 +96,8 @@ def validate_enrollment(document):
             descriptor={k:v for k,v in resource.items() if k!='role'}
             _require(resource['ref'] not in seen or seen[resource['ref']]==descriptor)
             seen[resource['ref']]=descriptor
-        _require(roles['body']==[b['body_ref']] and len(set(roles['asset']))<=4 and len(roles['labor'])<=1)
+        _require(roles['body']==[b['body_ref']] and next(r for r in resources['items'] if r['role']=='body')['required'])
+        _require(len({r['ref'] for r in resources['items'] if r['role']=='asset' and r['required']})<=4 and len({r['ref'] for r in resources['items'] if r['role']=='labor' and r['required']})<=1)
         _require(set(resources['absent_roles'])=={role for role in ('asset','labor') if not roles[role]})
         mapping=b['applicability_mapping'];_fields(mapping,('configuration_field','region_field','source_field','expected_source','owner_approval_ref'))
         _require(mapping['configuration_field']=='configuration' and mapping['region_field']=='region' and mapping['source_field']=='source_label')
@@ -105,6 +108,29 @@ def validate_enrollment(document):
         _require(type(rule['minimum_text_length']) is int and 1<=rule['minimum_text_length']<=10_000_000)
     _require(len(set(origins))==2 and len(set(keys))==2)
     return copy.deepcopy(document)
+
+
+def validate_summary(summary):
+    """Reject unknown fields and non-conserving public counters."""
+    _fields(summary,('schema','run_ref','evidence_ref','banks'))
+    _require(summary['schema']==1)
+    for key in ('run_ref','evidence_ref'):
+        _require(isinstance(summary[key],str) and bool(re.fullmatch(r'[A-Za-z0-9_-]{1,80}',summary[key])))
+    _fields(summary['banks'],BANKS)
+    for row in summary['banks'].values():
+        _fields(row,('state','stop_code','review_state','intended','attempted','successful'))
+        _require(row['state'] in {'pending','failed','incomplete','withdrawn','observed_complete'})
+        _require(row['review_state'] in {'pending','accepted','rejected'})
+        _require(row['stop_code'] is None or row['stop_code'] in STOP_CODES)
+        _fields(row['intended'],('selected_articles','required_resources'))
+        _require(row['intended']['selected_articles']==1 and type(row['intended']['required_resources']) is int and 1<=row['intended']['required_resources']<=6)
+        for field in ('attempted','successful'):
+            _fields(row[field],('requests','selected_articles','required_resources'))
+            _require(all(type(v) is int and v>=0 for v in row[field].values()))
+        _require(row['successful']['requests']<=row['attempted']['requests']<=58)
+        for field in ('selected_articles','required_resources'):
+            _require(row['successful'][field]<=row['attempted'][field]<=row['intended'][field])
+    return summary
 
 
 class Clock:
@@ -122,8 +148,8 @@ def _digest(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 class Evidence:
     def __init__(self,root,doc,clock):
-        root=Path(root)
-        _require(root.is_dir() and not root.is_symlink(),'OUTPUT_FAILURE')
+        root=Path(os.path.abspath(root))
+        _require(root.is_dir() and all(not p.is_symlink() for p in (root,*root.parents)) and not stat.S_IMODE(root.stat().st_mode)&0o077 and root.stat().st_uid==os.getuid(),'OUTPUT_FAILURE')
         # Open parent with O_NOFOLLOW and create relative to the held descriptor.
         parent=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
         try: os.mkdir(doc['run_id'],0o700,dir_fd=parent)
@@ -132,12 +158,12 @@ class Evidence:
         for bank in BANKS:
             (self.root/bank).mkdir(mode=0o700)
             (self.root/bank/'quarantine').mkdir(mode=0o700)
-        self.attempts=exclusive(self.root/'attempts.jsonl')
         private_json(self.root/'run.json',dict(schema=1,enrollment_sha256=hashlib.sha256(_canonical(doc)).hexdigest(),
             enrollment=doc,executor_bytes={Path(p).name:_digest(p) for p in (__file__,Path(__file__).with_name('bank_canary_transport.py'))},
             actual_client_sha256=_digest(sys.modules[SourceConnectorClient.__module__].__file__),
             runtime={'python':sys.version.split()[0],'platform':sys.platform},limits=LIMITS,started_at=clock.utcnow().isoformat(),
-            intended={bank:{'selected_articles':1,'required_resources':len({r['ref'] for r in doc['banks'][bank]['resources']['items']})} for bank in BANKS}))
+            intended={bank:{'selected_articles':1,'required_resources':len({r['ref'] for r in doc['banks'][bank]['resources']['items'] if r['required']})} for bank in BANKS}))
+        self.attempts=exclusive(self.root/'attempts.jsonl')
     def attempt(self,row):
         self.attempts.write(_canonical(row)+b'\n');os.fsync(self.attempts.fileno())
     def capture(self,bank,sequence,transport):
@@ -155,6 +181,14 @@ class Evidence:
                 item[name]=str(target.relative_to(self.root))
         self.inventory.append(item)
         return item
+    def quarantine(self,bank,sequence):
+        for item in self.inventory:
+            if item['bank']==bank and item['sequence']==sequence:
+                item.update(state='quarantined',reason='SECRET_INCIDENT',headers={},final_url=None)
+                for name in ('raw_ref','journal_ref'):
+                    if item.get(name):
+                        source=self.root/item[name];target=self.root/bank/'quarantine'/source.name
+                        os.rename(source,target);item[name]=str(target.relative_to(self.root))
     def decoded(self,bank,ref,payload,sequence):
         path=self.root/bank/f'{sequence:04d}.decoded'
         with exclusive(path) as file: file.write(payload);os.fsync(file.fileno())
@@ -168,7 +202,7 @@ class Evidence:
         summary=dict(schema=1,run_ref=result['run_ref'],evidence_ref=result['run_ref'],banks={bank:{
             'state':row['state'],'stop_code':row['stop_code'],'review_state':row['review_state'],
             'intended':row['intended'],'attempted':row['attempted'],'successful':row['successful']} for bank,row in result['banks'].items()})
-        private_json(self.root/'summary.json',summary)
+        private_json(self.root/'summary.json',validate_summary(summary))
 
 
 def run_capture(enrollment,transport_factory,clock,evidence_root):
@@ -181,11 +215,14 @@ def run_capture(enrollment,transport_factory,clock,evidence_root):
     _require(getattr(transport_factory,'offline',False) is True,'OFFLINE_REQUIRED')
     _require(all(urlsplit(b['origin']).hostname.endswith('.invalid') for b in doc['banks'].values()),'OFFLINE_REQUIRED')
     now=clock.utcnow();_require(_utc(doc['window_start'])<=now<_utc(doc['window_end']) and now<_utc(doc['retention_delete_at']),'WINDOW')
-    evidence=Evidence(evidence_root,doc,clock)
+    try:
+        evidence=Evidence(evidence_root,doc,clock)
+    except (OSError,ValueError):
+        return {'schema':1,'run_ref':doc['run_id'],'banks':{bank:dict(state='incomplete',stop_code='OUTPUT_FAILURE',review_state='pending',intended={'selected_articles':1,'required_resources':len({r['ref'] for r in doc['banks'][bank]['resources']['items'] if r['required']})},attempted={'requests':0,'selected_articles':0,'required_resources':0},successful={'requests':0,'selected_articles':0,'required_resources':0},resource_coverage=[]) for bank in BANKS}}
     run_start=clock.monotonic();last_start=None;total=0;shared=None
     result={'schema':1,'run_ref':doc['run_id'],'banks':{}}
     for bank in BANKS:
-        b=doc['banks'][bank];resources=b['resources']['items'];required={r['ref']:r for r in resources}
+        b=doc['banks'][bank];resources=b['resources']['items'];required={r['ref']:r for r in resources if r['required']}
         row=dict(state='pending',stop_code=None,review_state='pending',
             intended={'selected_articles':1,'required_resources':len(required)},attempted={'requests':0,'selected_articles':0,'required_resources':0},
             successful={'requests':0,'selected_articles':0,'required_resources':0},resource_coverage=[])
@@ -279,6 +316,9 @@ def run_capture(enrollment,transport_factory,clock,evidence_root):
                 row['attempted']['required_resources']+=1
                 env=call('resource','GET','/v1/resources/'+quote(ref,safe=''),lambda:client.read_resource(ref),resource_ref=ref)
                 payload=env.raw_resource
+                if payload is not None and sensitive(payload):
+                    evidence.quarantine(bank,row['attempted']['requests'])
+                    raise CaptureFailure('SECRET_INCIDENT')
                 _require(payload is not None and len(payload)==r['expected_bytes'] and env.body['media_type']==r['media_type'],'RESOURCE_CONTENT')
                 _require('sha256' not in r or hashlib.sha256(payload).hexdigest()==r['sha256'],'RESOURCE_CONTENT')
                 if ref==b['body_ref']:
@@ -290,10 +330,10 @@ def run_capture(enrollment,transport_factory,clock,evidence_root):
                 evidence.decoded(bank,ref,payload,row['attempted']['requests'])
                 row['successful']['required_resources']+=1;row['resource_coverage'].append(ref)
             row['successful']['selected_articles']=1;row.update(state='observed_complete')
-        except (ValueError,CaptureFailure,SourceConnectorError,OSError) as error:
-            code=error.code if isinstance(error,(CaptureFailure,SourceConnectorError)) else (str(error) if isinstance(error,ValueError) else 'OUTPUT_FAILURE')
-            allowed={'PAGE_LIMIT','PAGINATION','SELECTOR','IDENTITY','FETCHED_AT','CAPABILITIES','DEADLINE','REQUEST_LIMIT','BYTE_LIMIT','GRAPH','CATALOG_MEMBERSHIP','APPLICABILITY','VEHICLE_MEMBERSHIP','ARTICLE_MEMBERSHIP','RESOURCE_MEMBERSHIP','RESOURCE_CONTENT','PROCEDURE_CONTENT','SECRET_INCIDENT','OUTPUT_FAILURE','CONNECT_TLS','REDIRECT','FRAMING','INTERRUPTED','CLEANUP','TRANSPORT_PROTOCOL','UPSTREAM_UNAVAILABLE','INVALID_UPSTREAM_RESPONSE','RATE_LIMITED','UNAUTHORIZED','FORBIDDEN'}
-            code=code if code in allowed else 'VALIDATION'
+        except Exception as error:
+            code=error.code if isinstance(error,(CaptureFailure,SourceConnectorError)) else (str(error) if isinstance(error,ValueError) else ('OUTPUT_FAILURE' if isinstance(error,OSError) else 'TRANSPORT'))
+
+            code=code if code in STOP_CODES else 'VALIDATION'
             row.update(state='incomplete' if code in {'DEADLINE','BYTE_LIMIT','PAGE_LIMIT','OUTPUT_FAILURE','CONNECT_TLS'} else 'failed',stop_code=code)
             if code in {'SECRET_INCIDENT','OUTPUT_FAILURE','CLEANUP'}:shared=code
             try:evidence.attempt(dict(event='validation',bank=bank,sequence=row['attempted']['requests'],outcome=code))

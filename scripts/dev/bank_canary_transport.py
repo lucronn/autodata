@@ -156,7 +156,7 @@ class CaptureTransport:
                         sealing='local_unsealed')
             header_bytes=json.dumps(meta.get('headers',{})).encode()
             if sensitive(raw,self.credentials) or sensitive(header_bytes,self.credentials):
-                meta.update(state='quarantined',reason='SECRET_INCIDENT')
+                meta.update(state='quarantined',reason='SECRET_INCIDENT',headers={},final_url=None)
             self.last=meta
         if meta['state']!='complete': raise CaptureFailure(meta['reason'] or 'TRANSPORT')
         if meta['final_url']!=request.full_url: raise CaptureFailure('REDIRECT')
