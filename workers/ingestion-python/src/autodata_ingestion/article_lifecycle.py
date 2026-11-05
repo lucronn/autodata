@@ -109,9 +109,9 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                     from .procedure_rewrite_v2 import plan_v2
                     plan = plan_v2(document)
                     if not plan["eligible"]:raise ValueError(plan["error_code"])
-                elif lease.rewrite_profile_version != "technical-prose-v1":
+                elif lease.rewrite_profile_version not in ("technical-prose-v1", "full-prose-review-v1"):
                     raise ValueError("REWRITE_PROFILE_UNSUPPORTED")
-                if not editable_slots(document, profile_version=lease.rewrite_profile_version):raise ValueError("REWRITE_NOT_APPLICABLE")
+                if lease.rewrite_profile_version != "full-prose-review-v1" and not editable_slots(document, profile_version=lease.rewrite_profile_version):raise ValueError("REWRITE_NOT_APPLICABLE")
                 prompt=build_rewrite_prompt(document,context=source.vehicle,profile_version=lease.rewrite_profile_version)
                 if len(prompt.encode())>200*1024:raise ValueError("REWRITE_INPUT_LIMIT")
                 attempt=store.prepare_rewrite_attempt(repo,lease,document,context=source.vehicle,model=getattr(model_client,"_model","mercury-2"))
@@ -121,8 +121,17 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 if lost.is_set():raise LeaseLost("heartbeat lost during model IO")
                 store.store_rewrite_result(repo,lease,result)
                 _hook(hooks,"after_model_result_commit")
+                if lease.rewrite_profile_version == "full-prose-review-v1" and not result.error_code:
+                    return
                 candidate=store.load_candidate(repo,lease)
-            validation=validate_article_rewrite(candidate["normalized_source_document"],candidate["canonical_document"],profile_version=lease.rewrite_profile_version)
+            if lease.rewrite_profile_version == "full-prose-review-v1":
+                # A saved failed response is original evidence, not a successful
+                # draft to reconstruct; retain its specific mechanical failure.
+                lease=_live(repo,lease)
+                if lease.checkpoint.get("rewrite_error_code"):
+                    fail_source_job(repo,lease,code=lease.checkpoint["rewrite_error_code"],retryable=False)
+                    return
+            validation=store.validate_saved_candidate(repo,lease,candidate)
             store.store_validation(repo,lease,validation)
             lease=_live(repo,lease)
             if not validation.passed or lease.checkpoint.get("rewrite_error_code"):

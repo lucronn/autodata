@@ -101,3 +101,120 @@ def test_stale_error_recording_does_not_stop_worker_polling(monkeypatch):
     def expired(*args,**kwargs):raise LeaseLost("lease expired while recording transport error")
     monkeypatch.setattr(lifecycle,"run_article_job",expired)
     assert lifecycle.run_article_worker_once(None,worker_id=uuid4(),registry={},object_store=None,model_client=None)
+
+
+class FullModel:
+    _model = 'fixture'
+    calls = 0
+    def complete_json(self, prompt):
+        import json
+        self.calls += 1
+        slots = json.loads(prompt)['slots']
+        return {'introduction':'This article describes removing the pump.', 'replacements':[
+            {**slot,'action':'rewrite','text':slot['text'].replace('Remove','Take off'), 'reason':''} for slot in slots]}
+
+
+def prepare_full(repo, fixture, *, provider="bankone", body=None):
+    from test_article_source_persistence import prepare
+    from dataclasses import replace
+    context,lease,captured = prepare(repo,fixture,provider=provider)
+    if body is not None:
+        from autodata_ingestion.source_article_capture import capture_source_article
+        fixture.body(provider,body)
+        captured = capture_source_article(context,registry=fixture.registry,object_store=fixture.objects)
+    with repo.connect() as conn:
+        conn.execute("UPDATE canonical_articles SET target_rewrite_profile_version='full-prose-review-v1' WHERE canonical_article_id=%s", (lease.canonical_article_id,))
+        conn.execute("UPDATE source_fetch_jobs SET rewrite_profile_version='full-prose-review-v1' WHERE source_fetch_job_id=%s", (lease.job_id,))
+    lease = replace(lease,rewrite_profile_version='full-prose-review-v1')
+    revision = store.store_captured_source(repo,lease,captured)
+    return replace(lease,source_revision_id=revision),store.load_source_revision(repo,revision)
+
+
+def test_full_draft_parks_source_and_100_ensures_never_redraft(fresh_database,capture_fixture):
+    from autodata_ingestion.article_lifecycle import run_article_job,run_article_worker_once
+    from autodata_ingestion.source_job_persistence import ensure_article_job
+    repo = fresh_database(); lease,_ = prepare_full(repo,capture_fixture)
+    model = FullModel()
+    run_article_job(repo,lease,registry={},object_store=None,model_client=model)
+    state = store.load_article_state(repo,lease.canonical_article_id)
+    assert state['content_origin'] == 'source'
+    assert state['processing_state'] == 'needs_review'
+    assert state['processing_error_code'] == 'CONTENT_REVIEW_REQUIRED'
+    assert model.calls == 1
+    for _ in range(100):
+        assert not ensure_article_job(repo,lease.canonical_article_id,normalization_version=lease.normalization_version,rewrite_profile_version=lease.rewrite_profile_version).created
+        assert not run_article_worker_once(repo,worker_id=uuid4(),registry={},object_store=None,model_client=model)
+    with repo.connect() as conn:
+        job = conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(lease.job_id,)).fetchone()
+        assert job['lease_owner'] is None and job['lease_expires_at'] is None
+        assert job['checkpoint']['content_review']['state'] == 'awaiting_review'
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_revisions').fetchone()['n'] == 1
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n'] == 1
+    assert model.calls == 1
+
+
+def test_full_table_only_draft_still_requires_complete_human_review(fresh_database,capture_fixture):
+    from autodata_ingestion.article_lifecycle import run_article_job
+    repo = fresh_database()
+    lease,_ = prepare_full(repo,capture_fixture,body=b'<table><tr><td>Pump</td><td>10 Nm</td></tr></table>')
+    model = FullModel()
+    run_article_job(repo,lease,registry={},object_store=None,model_client=model)
+    state = store.load_article_state(repo,lease.canonical_article_id)
+    assert model.calls == 1
+    assert state['content_origin'] == 'source' and state['processing_error_code'] == 'CONTENT_REVIEW_REQUIRED'
+
+
+def test_full_saved_result_atomically_parks_at_exhausted_delivery_budget(fresh_database,capture_fixture):
+    from autodata_ingestion.procedure_rewrite import rewrite_ordered_document
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    repo = fresh_database();lease,source = prepare_full(repo,capture_fixture)
+    store.save_normalized_input(repo,lease,source.as_article())
+    attempt = store.prepare_rewrite_attempt(repo,lease,source.source_document,context=source.vehicle,model='fixture')
+    store.mark_rewrite_dispatched(repo,lease,attempt)
+    with repo.connect() as conn:
+        conn.execute('UPDATE source_fetch_jobs SET retry_count=3 WHERE source_fetch_job_id=%s',(lease.job_id,))
+    result = rewrite_ordered_document(source.source_document,client=FullModel(),context=source.vehicle,profile_version=lease.rewrite_profile_version)
+    revision = store.store_rewrite_result(repo,lease,result)
+    # Simulate immediate process loss after the durable model-result commit.
+    assert claim_source_job(repo,worker_id=uuid4()) is None
+    with repo.connect() as conn:
+        job = conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(lease.job_id,)).fetchone()
+        candidate = conn.execute('SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s',(revision,)).fetchone()
+        assert job['status'] == 'needs_review' and job['retry_count'] == 3
+        assert job['error_code'] == 'CONTENT_REVIEW_REQUIRED' and job['lease_owner'] is None
+        assert candidate['status'] == 'validated'
+
+
+@pytest.mark.parametrize('crash_after_save',[False,True])
+def test_full_failed_response_preserves_specific_error_and_original_response(fresh_database,capture_fixture,crash_after_save):
+    from autodata_ingestion.article_lifecycle import run_article_job,run_article_worker_once
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    from test_article_source_persistence import InjectedFailure
+    class InvalidModel(FullModel):
+        def complete_json(self,prompt):
+            self.response = super().complete_json(prompt)
+            self.response['replacements'][0]['text'] += ' Use 10 Nm.'
+            return self.response
+    repo = fresh_database();lease,_ = prepare_full(repo,capture_fixture)
+    model = InvalidModel()
+    def crash(point):
+        if point == 'after_model_result_commit':raise InjectedFailure()
+    if crash_after_save:
+        with pytest.raises(InjectedFailure):
+            run_article_job(repo,lease,registry={},object_store=None,model_client=model,hooks=crash)
+        with repo.connect() as conn:
+            conn.execute("UPDATE source_fetch_jobs SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE source_fetch_job_id=%s",(lease.job_id,))
+        current = claim_source_job(repo,worker_id=uuid4())
+        run_article_job(repo,current,registry={},object_store=None,model_client=model)
+    else:
+        run_article_job(repo,lease,registry={},object_store=None,model_client=model)
+    state = store.load_article_state(repo,lease.canonical_article_id)
+    assert state['content_origin'] == 'source' and state['processing_state'] == 'needs_review'
+    assert state['processing_error_code'] == 'REWRITE_TECHNICAL_MUTATION'
+    with repo.connect() as conn:
+        attempt = conn.execute('SELECT * FROM canonical_article_rewrite_attempts').fetchone()
+        assert attempt['status'] == 'failed' and attempt['error_code'] == state['processing_error_code']
+        assert attempt['response'] == model.response
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n'] == 1
+    assert model.calls == 1
+    assert not run_article_worker_once(repo,worker_id=uuid4(),registry={},object_store=None,model_client=model)
