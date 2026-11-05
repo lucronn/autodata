@@ -1,0 +1,34 @@
+{
+  "goal": "Accept authentic Banktwo application/hal+json article resources through the existing bound JSON/HTML adapter without losing source content, media references or provenance.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-banktwo-hal-source-adaptation.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/317",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/source-connector-api-compatibility.md"
+  ],
+  "todo": [
+    "Add red regressions for HAL nested article HTML, ordered structure, source identity and malformed envelopes.",
+    "Accept exact application/hal+json through the existing bound JSON adaptation path with fail-closed envelope handling; preserve all other media behavior.",
+    "Run focused source capture/adapter regressions and offline replay of all 20 privately retained authentic Banktwo resources; record hashes, normalization and remaining media/rewrite blockers.",
+    "Obtain independent exact-SHA review and synchronize Issue/Project evidence; keep activation and deployment disabled."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T14:17:20.711785+00:00",
+  "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "related_issue_ref": "https://github.com/lucronn/autodata/issues/300",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGS0GA",
+  "inspected_source_sha": "27b959bf3845bb6bc3f20c3b40db5a582c61573e",
+  "branch": "codex/banktwo-hal-gate",
+  "checkpoint_kind": "planning_only",
+  "implementation_allowlist": [
+    "workers/ingestion-python/src/autodata_ingestion/source_adapters.py",
+    "workers/ingestion-python/tests/test_source_article_capture.py"
+  ],
+  "provider_calls_authorized": false,
+  "production_activation_authorized": false,
+  "tracking": {
+    "issue_body_sha256": "869bd4a6dc54e8bdb8d56c026ae602e83cbcd0ad4f12d7ca5987d15d96e46251",
+    "project_source_sha256": "4605cd7695fed820d15cb90667a5ad2a64075718b3e28655267057a6e208a7a8",
+    "verified_at": "2026-11-05T14:17:20.711858+00:00"
+  }
+}
