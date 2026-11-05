@@ -2838,11 +2838,16 @@ def _api21_v2_lifecycle(payload):
     require(payload['state'] in ('requested','completed','failed') and (payload['state']=='failed' or payload['reason'] is None),'api21_v2_lifecycle_reason')
 
 
+def _api21_v2_outer_failure(event):
+    payload=event['payload']
+    return event['phase']=='setup' and event['caused_by']==[] and type(payload) is dict and payload.get('reason') in ('internal_error','cancelled') and payload==dict(kind='lifecycle',operation='setup',state='failed',reason=payload['reason'])
+
+
 def _api21_v2_browser_lifecycle(events,*,passed):
     # Frozen run()/api_case() setup, followed by case observations and finally cleanup.
     setup=[('setup','completed'),('metadata','requested'),('metadata','completed'),('browser-launch','requested'),('browser-launch','completed'),('context-create','requested'),('context-create','completed'),('page-create','requested'),('page-create','completed')]
     cursor=0;cleanup=[];phase='setup';failed=False
-    for event in events:
+    for index,event in enumerate(events):
         payload=event['payload']
         if payload['kind']!='lifecycle':
             trailing=not passed and payload['kind']=='http' and payload['channel']=='application' and event['phase']==phase and not any(op=='browser-close' for op,state in cleanup)
@@ -2859,6 +2864,9 @@ def _api21_v2_browser_lifecycle(events,*,passed):
             normalized=[(op,'completed' if st=='failed' else st) for op,st in cleanup]
             require(normalized==expected[:len(normalized)],'api21_v2_browser_cleanup')
         elif state=='failed':
+            if cleanup:
+                # run() records a manager-exit exception after its browser finally.
+                require(not passed and index==len(events)-1 and _api21_v2_outer_failure(event) and normalized==expected,'api21_v2_outer_failure');continue
             require(not passed and not cleanup and not failed,'api21_v2_lifecycle_failure');phase=event['phase']
             # Routing the new context can fail before page-create/requested.
             require(operation=='setup' or event['phase']=='setup' and (cursor<len(setup) and setup[cursor]==(operation,'completed') or operation=='page-create' and cursor==7),'api21_v2_lifecycle_failure')
@@ -2878,7 +2886,10 @@ def _api21_v2_observations(observations,binding,case,row,*,passed):
     events=observations['events'];array(events);require(len(events)<=512,'api21_v2_events');phases=API21_V2_PHASES[case[1]];seen=[];last=-1;elapsed=-1;by_phase={};assertions=[]
     for index,event in enumerate(events):
         exact(event,('seq','phase','caused_by','elapsed_us','payload'));integer(event['seq'],1);integer(event['elapsed_us']);require(event['seq']==index+1 and event['elapsed_us']>=elapsed,'api21_v2_event_sequence');elapsed=event['elapsed_us'];_api21_v2_size(event,262144)
-        phase=event['phase'];require(type(phase) is str and phase in phases,'api21_v2_phase');rank=phases.index(phase);require(rank>=last,'api21_v2_phase_order');last=rank
+        phase=event['phase'];require(type(phase) is str and phase in phases,'api21_v2_phase');rank=phases.index(phase)
+        terminal=not passed and index==len(events)-1 and _api21_v2_outer_failure(event)
+        require(rank>=last or terminal,'api21_v2_phase_order')
+        if not terminal:last=rank
         if phase not in seen:seen.append(phase)
         refs=event['caused_by'];array(refs);require(len(refs)<=8,'api21_v2_causes')
         for ref in refs:_api21_v2_ref(ref,index)

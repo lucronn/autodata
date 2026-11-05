@@ -4400,6 +4400,35 @@ class Api21V2RawInspectorTests(unittest.TestCase):
         item['evidence']['results'][0]['observations']['events']=events
         self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
 
+    def test_outer_manager_exit_failure_is_a_terminal_nonpass_marker(self):
+        for reason,earlier_failure in (('internal_error',False),('cancelled',False),('internal_error',True)):
+            with self.subTest(reason=reason,earlier_failure=earlier_failure):
+                model=self.model();item=self.fail(model[0],reason='http_failed' if earlier_failure else reason);item['result'].pop('final_snapshot',None)
+                events=item['evidence']['results'][0]['observations']['events']
+                if earlier_failure:
+                    events.insert(len(events)-4,dict(phase=events[-1]['phase'],caused_by=[],payload=dict(kind='lifecycle',operation='setup',state='failed',reason='http_failed')))
+                    for i,event in enumerate(events):event.update(seq=i+1,elapsed_us=i+1)
+                events.append(dict(seq=len(events)+1,phase='setup',elapsed_us=events[-1]['elapsed_us']+1,caused_by=[],payload=dict(kind='lifecycle',operation='setup',state='failed',reason=reason)))
+                self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
+
+    def test_outer_manager_failure_cannot_authorize_general_phase_resets(self):
+        for kind in ('success','not-terminal','wrong-operation','wrong-state','wrong-reason','missing-browser-close','before-cleanup','cause'):
+            with self.subTest(kind=kind):
+                model=self.model();item=model[0] if kind=='success' else self.fail(model[0],reason='internal_error')
+                if kind!='success':item['result'].pop('final_snapshot',None)
+                events=item['evidence']['results'][0]['observations']['events']
+                terminal=dict(phase='setup',caused_by=[],payload=dict(kind='lifecycle',operation='setup',state='failed',reason='internal_error'))
+                if kind=='wrong-operation':terminal['payload']['operation']='metadata'
+                elif kind=='wrong-state':terminal['payload']['state']='completed';terminal['payload']['reason']=None
+                elif kind=='wrong-reason':terminal['payload']['reason']='close_failed'
+                elif kind=='cause':terminal['caused_by']=[dict(stream='observations',producer_role='browser-runner',seq=1)]
+                elif kind=='missing-browser-close':events.pop()
+                if kind=='before-cleanup':events.insert(len(events)-4,terminal)
+                else:events.append(terminal)
+                if kind=='not-terminal':events.append(copy.deepcopy(events[-2]))
+                for i,event in enumerate(events):event.update(seq=i+1,elapsed_us=i+1)
+                self.reject(model)
+
 
     def test_every_retained_measurement_phase_has_closed_nonnegative_shape(self):
         covered=set()
