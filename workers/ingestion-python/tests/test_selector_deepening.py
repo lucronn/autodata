@@ -60,7 +60,8 @@ class Client:
 
 
 @pytest.fixture(autouse=True)
-def idle_slot():
+def idle_slot(monkeypatch):
+    monkeypatch.setattr(catalog, "_DEEPEN_NEXT_DISPATCH", 0.0, raising=False)
     yield
     cancel = getattr(catalog, "cancel_selector_deepening", None)
     if cancel:
@@ -249,3 +250,23 @@ def test_cancel_active_run_before_thread_dispatch_releases_slot(monkeypatch):
     started[0]["target"](*started[0]["args"])
     assert not catalog._DEEPEN_IN_FLIGHT
     assert catalog._DEEPEN_CONTROL is None
+
+
+@pytest.mark.parametrize("rate_limited", [False, True])
+def test_adjacent_runs_preserve_six_second_dispatch_spacing(clock, rate_limited):
+    def fetch(scope, n):
+        if rate_limited:
+            raise SourceConnectorError("RATE_LIMITED", status=429)
+        return page(scope)
+
+    first = Client(clock, fetch)
+    provider = catalog._SourceCatalogProvider(first, deepening_control=control(clock))
+    if rate_limited:
+        with pytest.raises(catalog._SelectorDeepeningStopped):
+            provider.resolve_catalog(REQUEST)
+    else:
+        provider.resolve_catalog(REQUEST)
+    second = Client(clock)
+    catalog._SourceCatalogProvider(second, deepening_control=control(clock)).resolve_catalog(REQUEST)
+    assert first.calls[0][0] == 0
+    assert second.calls[0][0] == 6

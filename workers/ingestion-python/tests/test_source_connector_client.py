@@ -42,6 +42,9 @@ class _Response:
         self.offset += len(result)
         return result
 
+    def read1(self, limit=-1):
+        return self.read(limit)
+
     def geturl(self):
         return self.url
 
@@ -63,6 +66,47 @@ def _envelope(provider="bankone", **extra):
 
 
 class SourceConnectorClientTests(unittest.TestCase):
+    def test_catalog_deadline_stops_trickling_response_body(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from threading import Event, Thread
+        import time
+
+        stopped = Event()
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = json.dumps(_envelope(scope="years", items=[], complete=True, next_cursor=None)).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                try:
+                    for offset in range(0, len(body), 8):
+                        self.wfile.write(body[offset:offset + 8])
+                        self.wfile.flush()
+                        if stopped.wait(0.04):
+                            break
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        client = SourceConnectorClient(f"http://127.0.0.1:{server.server_port}")
+        try:
+            started = time.monotonic()
+            with self.assertRaises(SourceConnectorError) as caught:
+                client.catalog("years", timeout=0.1)
+            self.assertEqual(caught.exception.code, "UPSTREAM_UNAVAILABLE")
+            self.assertLess(time.monotonic() - started, 0.5)
+        finally:
+            stopped.set()
+            server.shutdown()
+            server.server_close()
+            thread.join(2)
+
     def test_catalog_timeout_is_per_request_and_preserves_client_default(self):
         timeouts = []
 

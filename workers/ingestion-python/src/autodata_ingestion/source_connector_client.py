@@ -16,6 +16,7 @@ import json
 import os
 import re
 import socket
+import time
 from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit
@@ -168,7 +169,14 @@ class SourceConnectorClient:
         if cursor is not None:
             query["cursor"] = _bounded_text(cursor, "cursor", 512)
         suffix = f"?{urlencode(query)}" if query else ""
-        return self._read("GET", f"/v1/catalog/{scope}{suffix}", operation="catalog", scope=scope, timeout=timeout)
+        # The elapsed deadline covers dispatch and body reads. urllib's
+        # pre-response header parsing retains its socket idle timeout, so
+        # trickled headers can still exceed the total wall-clock budget.
+        deadline = time.monotonic() + min(self.timeout, timeout) if timeout is not None else None
+        return self._read(
+            "GET", f"/v1/catalog/{scope}{suffix}", operation="catalog", scope=scope,
+            timeout=timeout, deadline=deadline,
+        )
 
     def resolve_vehicle(self, selector: Mapping[str, Any]) -> SourceEnvelopeV1:
         if not isinstance(selector, Mapping):
@@ -201,7 +209,7 @@ class SourceConnectorClient:
 
     def _read(
         self, method: str, path: str, *, operation: str, payload: Mapping[str, Any] | None = None,
-        scope: str | None = None, timeout: float | None = None,
+        scope: str | None = None, timeout: float | None = None, deadline: float | None = None,
     ) -> SourceEnvelopeV1:
         url = self.base_url + path
         data = json.dumps(payload, separators=(",", ":")).encode() if payload is not None else None
@@ -227,7 +235,32 @@ class SourceConnectorClient:
                             raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
                     except ValueError as error:
                         raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE") from error
-                raw = response.read(self.max_bytes + 1)
+                if deadline is None:
+                    raw = response.read(self.max_bytes + 1)
+                else:
+                    # read() can wait forever when a peer trickles bytes inside
+                    # the socket idle timeout. read1() returns available chunks
+                    # so background catalog reads can enforce elapsed time too.
+                    chunks: list[bytes] = []
+                    size = 0
+                    while size <= self.max_bytes:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise TimeoutError("catalog deadline exceeded")
+                        # urllib exposes the HTTPResponse socket through its
+                        # buffered stream. Tighten each read to the time left.
+                        stream = getattr(getattr(response, "fp", None), "raw", None)
+                        transport_socket = getattr(stream, "_sock", None)
+                        if transport_socket is not None:
+                            transport_socket.settimeout(min(self.timeout, remaining))
+                        chunk = response.read1(min(65536, self.max_bytes + 1 - size))
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError("catalog deadline exceeded")
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                        size += len(chunk)
+                    raw = b"".join(chunks)
                 if len(raw) > self.max_bytes:
                     raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
                 media = (_header(response_headers, "content-type") or "").split(";", 1)[0].strip().lower()

@@ -304,6 +304,8 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
 _DEEPEN_LOCK = RLock()
 _DEEPEN_IN_FLIGHT: set[str] = set()
 _DEEPEN_CONTROL: _SelectorDeepeningControl | None = None
+# Keep the dispatch floor across successful, failed and canceled runs.
+_DEEPEN_NEXT_DISPATCH = 0.0
 
 
 class _SelectorDeepeningStopped(Exception):
@@ -311,13 +313,12 @@ class _SelectorDeepeningStopped(Exception):
 
 
 class _SelectorDeepeningControl:
-    """One run's cancelable budget, shared by all providers and pages."""
+    """Bound dispatch/body reads across providers; urllib headers use socket timeouts."""
 
     def __init__(self):
         self.cancelled = Event()
         self.deadline = time.monotonic() + 120.0
         self.remaining_attempts = 12
-        self.next_dispatch = time.monotonic()
 
     def remaining(self) -> float:
         seconds = self.deadline - time.monotonic()
@@ -326,17 +327,19 @@ class _SelectorDeepeningControl:
         return seconds
 
     def before_request(self) -> float:
-        remaining = self.remaining()
+        global _DEEPEN_NEXT_DISPATCH
+
         if self.remaining_attempts <= 0:
             raise _SelectorDeepeningStopped()
-        delay = self.next_dispatch - time.monotonic()
-        while delay > 0:
-            self.cancelled.wait(min(delay, remaining))
+        while True:
             remaining = self.remaining()
-            delay = self.next_dispatch - time.monotonic()
-        self.remaining_attempts -= 1
-        self.next_dispatch = time.monotonic() + 6.0
-        return self.remaining()
+            with _DEEPEN_LOCK:
+                delay = _DEEPEN_NEXT_DISPATCH - time.monotonic()
+                if delay <= 0:
+                    self.remaining_attempts -= 1
+                    _DEEPEN_NEXT_DISPATCH = time.monotonic() + 6.0
+                    return self.remaining()
+            self.cancelled.wait(min(delay, remaining))
 
 
 def cancel_selector_deepening() -> None:
