@@ -1,0 +1,267 @@
+name: GCE workspace access diagnostic
+
+on:
+  push:
+    branches: [codex/gce-workspace-access-diagnostic]
+    paths: [.github/workflows/gce-workspace-access-diagnostic.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    name: GCE workspace access diagnostic (no acceptance credit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 25d44588cb1ab82fab3e39d28ef1ee5a12b5fb44
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Observe workspace access and original first preflight
+        shell: bash
+        env:
+          DIAG_EVENT_SHA: ${{ github.sha }}
+          DIAG_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          DIAG_WORKFLOW_REF: ${{ github.workflow_ref }}
+          DIAG_EVENT: ${{ github.event_name }}
+          DIAG_REF: ${{ github.ref }}
+          DIAG_RUN: ${{ github.run_id }}
+          DIAG_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          umask_value="$(umask)"
+          gce_temp=''
+          evidence="${RUNNER_TEMP:?}/gce-access-diagnostic"
+          test ! -e "$evidence"
+          mkdir -m 700 "$evidence"
+          diag_rc=0
+          probe_rc=null
+          cleanup() {
+            code=$?
+            trap - EXIT INT TERM
+            cleanup_rc=0
+            if [ "$probe_rc" = null ]; then diag_rc=1; fi
+            if [ -n "$gce_temp" ]; then
+              sudo -n /bin/rm -rf -- "$gce_temp" || cleanup_rc=1
+              test ! -e "$gce_temp" && test ! -L "$gce_temp" || cleanup_rc=1
+            fi
+            printf 'cleanup_exit=%s\n' "$cleanup_rc" >> "$evidence/metadata.log"
+            if [ "$cleanup_rc" -ne 0 ]; then code=1; fi
+            printf '{"original_preflight_exit":%s,"diagnostic_infrastructure_exit":%s,"cleanup_exit":%s,"final_exit":%s}\n' \
+              "$probe_rc" "$diag_rc" "$cleanup_rc" "$code" > "$evidence/result.json"
+            exit "$code"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          for tool in /usr/bin/sudo /usr/bin/setpriv /usr/bin/env /usr/bin/python3 /usr/bin/namei /usr/bin/timeout; do
+            test -x "$tool" || { printf 'required_tool_missing=%s\n' "$tool" >> "$evidence/metadata.log"; exit 1; }
+          done
+          sudo -n /usr/bin/true
+          gce_python="$(python -c 'import sys; print(sys.executable)')"
+          case "$gce_python" in /*) ;; *) exit 1 ;; esac
+          test -x "$gce_python"
+          export DIAG_GCE_PYTHON="$gce_python" DIAG_UMASK="$umask_value"
+          test "$(git rev-parse HEAD)" = 25d44588cb1ab82fab3e39d28ef1ee5a12b5fb44
+          test "$(git rev-parse HEAD^{tree})" = 264fc8d7711c461d781d7eaa7af34391c802edac
+          test "$PWD" = /home/runner/work/autodata/autodata
+          printf 'actual_checkout_sha=%s\nactual_checkout_tree=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" >> "$evidence/metadata.log"
+          run_gce() {
+            sudo -n /usr/bin/setpriv --reuid=1000 --regid=1000 --clear-groups /usr/bin/env -i \
+              HOME="$gce_temp/home" TMPDIR="$gce_temp/tmp" PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+              PYTHONDONTWRITEBYTECODE=1 AUTODATA_REQUIRE_PURCHASE_CONFIG_DELIVERY_COMPOSE=1 "$@"
+          }
+          observe() {
+            /usr/bin/timeout 45 /usr/bin/python3 -B - "$gce_temp" <<'PY'
+          import json, os, pathlib, stat, subprocess, sys
+          import os, selectors, signal, subprocess, time
+
+          def bounded_capture(argv, *, limit, timeout):
+              # Retain at most limit bytes, drain/discard excess, and time-bound our owned session.
+              process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                         start_new_session=True)
+              selector = selectors.DefaultSelector()
+              retained = bytearray()
+              truncated = False
+              deadline = time.monotonic() + timeout
+              selector.register(process.stdout, selectors.EVENT_READ)
+              try:
+                  while selector.get_map() or process.poll() is None:
+                      remaining = deadline - time.monotonic()
+                      if remaining <= 0:
+                          raise subprocess.TimeoutExpired(argv, timeout, output=bytes(retained))
+                      for key, _ in selector.select(min(remaining, 0.1)):
+                          chunk = os.read(key.fd, 65536)
+                          if not chunk:
+                              selector.unregister(key.fileobj)
+                              continue
+                          room = limit - len(retained)
+                          retained.extend(chunk[:room])
+                          if len(chunk) > room:
+                              truncated = True
+                  return process.returncode, bytes(retained), truncated
+              finally:
+                  # Also stop descendants that could otherwise retain our pipe after the leader exits.
+                  try:
+                      os.killpg(process.pid, signal.SIGKILL)
+                  except ProcessLookupError:
+                      pass
+                  selector.close()
+                  process.stdout.close()
+                  process.wait(timeout=1)
+
+          def emit(**value): print(json.dumps(value, sort_keys=True), flush=True)
+          def attempt(label, operation):
+              try: emit(label=label, result=operation())
+              except OSError as error: emit(label=label, errno=error.errno, error=type(error).__name__)
+          def command(argv):
+              try:
+                  code, output, truncated = bounded_capture(argv, limit=16384, timeout=5)
+                  emit(command=argv, exit=code, output=output.decode('utf-8','replace'), truncated=truncated)
+              except (OSError, subprocess.TimeoutExpired) as error:
+                  emit(command=argv, unavailable=type(error).__name__, errno=getattr(error,'errno',None))
+          emit(observer='ambient', uid=os.getuid(), gid=os.getgid(), euid=os.geteuid(), egid=os.getegid(), groups=os.getgroups(), cwd=os.getcwd(), runner_temp=os.environ['RUNNER_TEMP'], interpreter=sys.executable, version=sys.version)
+          for key in ('DIAG_EVENT_SHA','DIAG_WORKFLOW_SHA','DIAG_WORKFLOW_REF','DIAG_EVENT','DIAG_REF','DIAG_RUN','DIAG_ATTEMPT','DIAG_GCE_PYTHON','DIAG_UMASK','ImageOS','ImageVersion'):
+              emit(metadata_key=key, value=os.environ.get(key))
+          root=pathlib.Path.cwd()
+          paths=[str(root/'infra/deploy/gce/runtime-entrypoint.sh'),str(root/'workers/ingestion-python/src/autodata_ingestion/commerce_service.py'),os.environ['RUNNER_TEMP'],os.environ['DIAG_GCE_PYTHON']]
+          if sys.argv[1]: paths += [sys.argv[1],sys.argv[1]+'/home',sys.argv[1]+'/tmp']
+          seen=set()
+          for target in paths:
+              resolved=os.path.realpath(target)
+              emit(target=target, resolved=resolved)
+              command(['/usr/bin/namei','-l',target])
+              for spelling in (target,resolved):
+                  p=pathlib.Path(spelling)
+                  for component in [*reversed(p.parents),p]:
+                      name=str(component)
+                      if name in seen: continue
+                      seen.add(name)
+                      if len(seen)>160: raise SystemExit('ancestry_limit_exceeded')
+                      for follow in (False,True):
+                          def inspect():
+                              s=os.stat(name,follow_symlinks=follow)
+                              return dict(mode=oct(stat.S_IMODE(s.st_mode)),type=stat.S_IFMT(s.st_mode),uid=s.st_uid,gid=s.st_gid,dev=s.st_dev,ino=s.st_ino,link=os.readlink(name) if not follow and stat.S_ISLNK(s.st_mode) else None)
+                          attempt(name+(':stat' if follow else ':lstat'),inspect)
+                      if os.path.isfile('/usr/bin/getfacl'):
+                          command(['/usr/bin/getfacl','-n','-p','--',name])
+                      if os.path.isfile('/usr/bin/findmnt'):
+                          command(['/usr/bin/findmnt','--noheadings','--target',name,'--output','TARGET,FSTYPE,OPTIONS'])
+          emit(optional_getfacl_available=os.path.isfile('/usr/bin/getfacl'),optional_findmnt_available=os.path.isfile('/usr/bin/findmnt'))
+          # Metadata only, bounded security labels; no complete /proc, environment or mount dumps.
+          def security_label(name):
+              with open(name, 'rb') as stream:
+                  value = stream.read(4097)
+              return dict(text=value[:4096].decode('utf-8','replace'), truncated=len(value)>4096)
+          for name in ('/proc/self/attr/current','/sys/kernel/security/lsm'):
+              attempt(name,lambda: security_label(name))
+          PY
+          }
+          observe >> "$evidence/metadata.log" 2>&1 || diag_rc=1
+          gce_temp="$(mktemp -d "${RUNNER_TEMP:?}/gce-contract.XXXXXXXX")"
+          mkdir -m 700 "$gce_temp/home" "$gce_temp/tmp"
+          sudo -n /bin/chown 1000:1000 "$gce_temp" "$gce_temp/home" "$gce_temp/tmp"
+          observe >> "$evidence/metadata.log" 2>&1 || diag_rc=1
+          run_gce /usr/bin/timeout 45 /usr/bin/python3 -B - "$gce_python" <<'PY' > "$evidence/uid1000.log" 2>&1 || diag_rc=1
+          import errno, json, os, pathlib, stat, subprocess, sys, tempfile
+          import os, selectors, signal, subprocess, time
+
+          def bounded_capture(argv, *, limit, timeout):
+              # Retain at most limit bytes, drain/discard excess, and time-bound our owned session.
+              process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                         start_new_session=True)
+              selector = selectors.DefaultSelector()
+              retained = bytearray()
+              truncated = False
+              deadline = time.monotonic() + timeout
+              selector.register(process.stdout, selectors.EVENT_READ)
+              try:
+                  while selector.get_map() or process.poll() is None:
+                      remaining = deadline - time.monotonic()
+                      if remaining <= 0:
+                          raise subprocess.TimeoutExpired(argv, timeout, output=bytes(retained))
+                      for key, _ in selector.select(min(remaining, 0.1)):
+                          chunk = os.read(key.fd, 65536)
+                          if not chunk:
+                              selector.unregister(key.fileobj)
+                              continue
+                          room = limit - len(retained)
+                          retained.extend(chunk[:room])
+                          if len(chunk) > room:
+                              truncated = True
+                  return process.returncode, bytes(retained), truncated
+              finally:
+                  # Also stop descendants that could otherwise retain our pipe after the leader exits.
+                  try:
+                      os.killpg(process.pid, signal.SIGKILL)
+                  except ProcessLookupError:
+                      pass
+                  selector.close()
+                  process.stdout.close()
+                  process.wait(timeout=1)
+
+          def emit(**value): print(json.dumps(value, sort_keys=True),flush=True)
+          def attempt(label,operation):
+              try: emit(label=label,result=operation())
+              except OSError as error: emit(label=label,errno=error.errno,error=type(error).__name__)
+          emit(observer='uid1000',uid=os.getuid(),gid=os.getgid(),euid=os.geteuid(),egid=os.getegid(),groups=os.getgroups(),interpreter=sys.executable,version=sys.version)
+          assert (os.getuid(),os.getgid(),os.geteuid(),os.getegid())==(1000,1000,1000,1000)
+          assert os.getgroups()==[]
+          assert set(os.environ)=={'HOME','TMPDIR','PATH','LANG','LC_ALL','PYTHONDONTWRITEBYTECODE','AUTODATA_REQUIRE_PURCHASE_CONFIG_DELIVERY_COMPOSE'}
+          attempt('cwd',os.getcwd)
+          root=pathlib.Path.cwd()
+          paths=[str(root/'infra/deploy/gce/runtime-entrypoint.sh'),str(root/'workers/ingestion-python/src/autodata_ingestion/commerce_service.py'),os.environ['HOME'],os.environ['TMPDIR'],sys.argv[1]]
+          seen=set()
+          for target in paths:
+              for spelling in (target,os.path.realpath(target)):
+                  p=pathlib.Path(spelling)
+                  for component in [*reversed(p.parents),p]:
+                      name=str(component)
+                      if name in seen: continue
+                      seen.add(name)
+                      if len(seen)>160: raise SystemExit('ancestry_limit_exceeded')
+                      def inspect():
+                          s=os.stat(name)
+                          return dict(mode=oct(stat.S_IMODE(s.st_mode)),uid=s.st_uid,gid=s.st_gid,dev=s.st_dev,ino=s.st_ino)
+                      attempt(name+':stat',inspect)
+                      # Traversal/chdir yields an actual search errno, not an os.access boolean.
+                      def search():
+                          result=subprocess.run(['/usr/bin/true'],cwd=name,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=5,check=False)
+                          return dict(chdir_exit=result.returncode)
+                      try: attempt(name+':search',search)
+                      except subprocess.TimeoutExpired: emit(label=name+':search',error='TimeoutExpired')
+              if target in paths[:2]:
+                  def read():
+                      with open(target,'rb') as stream: return dict(bytes_read=len(stream.read(1)),contents_discarded=True)
+                  attempt(target+':read',read)
+          def temporary():
+              with tempfile.TemporaryDirectory() as directory:
+                  with tempfile.TemporaryFile(dir=directory) as stream: stream.write(b'x'); stream.flush()
+              return 'create_write_cleanup_ok'
+          attempt('temporary_file',temporary)
+          def interpreter():
+              code, output, truncated = bounded_capture(
+                  [sys.argv[1],'-B','-c','import sys; print(sys.executable); print(sys.version)'],
+                  limit=4096, timeout=5)
+              return dict(exit=code, output=output.decode('utf-8','replace'), truncated=truncated)
+          try: attempt('setup_python_execution',interpreter)
+          except subprocess.TimeoutExpired: emit(label='setup_python_execution',error='TimeoutExpired')
+          PY
+          # This is the original first preflight, unchanged; the captured setup-python interpreter is intentional.
+          set +e
+          run_gce "$gce_python" -B -c 'import os,pathlib,sys,tempfile; assert (os.getuid(),os.getgid(),os.geteuid(),os.getegid())==(1000,1000,1000,1000); assert sys.version_info>=(3,12); root=pathlib.Path.cwd(); assert (root/"infra/deploy/gce/runtime-entrypoint.sh").read_bytes(); assert (root/"workers/ingestion-python/src/autodata_ingestion/commerce_service.py").read_bytes(); assert os.access(sys.executable,os.X_OK); d=tempfile.TemporaryDirectory(); d.cleanup(); print("gce_ci_preflight:identity_paths_temp_pass")' > "$evidence/original-preflight.log" 2>&1
+          probe_rc=$?
+          set -e
+          cat "$evidence/original-preflight.log"
+          if [ "$probe_rc" -ne 0 ]; then exit "$probe_rc"; fi
+          exit "$diag_rc"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gce-access-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gce-access-diagnostic
+          retention-days: 14
+          if-no-files-found: error
