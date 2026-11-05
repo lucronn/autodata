@@ -8348,6 +8348,131 @@
         "No new implementation, local green or fresh source-push/actual-PR CI exists for Task65 at checkpoint creation.",
         "Owner/host/immutable generation/activation/staging/restore/provider/identity/payment/browser/DNS/final180/observer/containment/trace-admission boundaries remain; credits0 and all authorities false."
       ]
+    },
+    {
+      "id": "workshop-gce-runner-access",
+      "goal": "Restore UID/GID1000 workspace traversal in required GCE CI by granting only the missing execute bit on the ephemeral runner home, preserving the existing fail-closed preflight, complete suite, identity contract and R6 workflow binding.",
+      "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-gce-runner-access.md",
+      "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+      "project_ref": "https://github.com/users/lucronn/projects/8",
+      "repository_doc_refs": [
+        "docs/agents/tasks/2026-11-03-production-release/workshop-gce-runner-access.json",
+        "docs/agents/tasks/2026-11-03-production-release/queue.json"
+      ],
+      "todo": [
+        "Synchronize this literal goal, four todos, four gate documents and three implementation paths in Issue186/Project8; commit/push the planning checkpoint, pin its actual SHA/tree, pass standalone and nested exact-base preflights and obtain coordinator dispatch before implementation.",
+        "Insert only sudo -n /bin/chmod o+x /home/runner immediately before the first run_gce Python preflight; preserve every other workflow byte, update the literal GCE script digest and add a deletion mutation in governance tests, and replace only the single R6 workflow_sha256 value with the corrected workflow digest.",
+        "Run focused governance and workflow/R6 binding checks plus complete developer tests; verify the exact three-path implementation diff and unchanged UID/GID1000, cleared groups, sanitized environment, required Compose flag, source-read preflight and full GCE discovery command; commit and promptly push the validated milestone.",
+        "Retain exact-source push and actual pull_request CI receipts for all three required jobs, including the first UID1000 preflight, complete required GCE suite and live Compose; append honest results while preserving historical failures, release blockers and acceptance credits0, without merge or deployment."
+      ],
+      "status": "synchronized",
+      "updated_at": "2026-11-05T07:44:43.308138Z",
+      "schema_version": 1,
+      "task_id": "workshop-gce-runner-access",
+      "ordinal": 68,
+      "state": "blocked_pending_checkpoint_preflight_dispatch",
+      "planning_status": "synchronized",
+      "tracking_status": "synchronized",
+      "record_ref": "docs/agents/records/2026-11-05-workshop-gce-runner-access.json",
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-gce-runner-access.json",
+      "source_candidate_sha": "25d44588cb1ab82fab3e39d28ef1ee5a12b5fb44",
+      "source_candidate_tree": "264fc8d7711c461d781d7eaa7af34391c802edac",
+      "checkpoint_sha": null,
+      "implementation_base_sha": null,
+      "allowed_gate_document_paths": [
+        "docs/superpowers/plans/2026-11-05-workshop-gce-runner-access.md",
+        "docs/agents/records/2026-11-05-workshop-gce-runner-access.json",
+        "docs/agents/tasks/2026-11-03-production-release/workshop-gce-runner-access.json",
+        "docs/agents/tasks/2026-11-03-production-release/queue.json"
+      ],
+      "allowed_implementation_paths": [
+        ".github/workflows/autonomous-verification.yml",
+        "scripts/dev/test_repository_governance.py",
+        "docs/agents/tasks/2026-11-03-production-release/r6-release.json"
+      ],
+      "current_implementation_allowlist": [],
+      "pre_implementation_record": {
+        "goal": "Restore UID/GID1000 workspace traversal in required GCE CI by granting only the missing execute bit on the ephemeral runner home, preserving the existing fail-closed preflight, complete suite, identity contract and R6 workflow binding.",
+        "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-gce-runner-access.md",
+        "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "repository_doc_refs": [
+          "docs/agents/tasks/2026-11-03-production-release/workshop-gce-runner-access.json",
+          "docs/agents/tasks/2026-11-03-production-release/queue.json"
+        ],
+        "todo": [
+          "Synchronize this literal goal, four todos, four gate documents and three implementation paths in Issue186/Project8; commit/push the planning checkpoint, pin its actual SHA/tree, pass standalone and nested exact-base preflights and obtain coordinator dispatch before implementation.",
+          "Insert only sudo -n /bin/chmod o+x /home/runner immediately before the first run_gce Python preflight; preserve every other workflow byte, update the literal GCE script digest and add a deletion mutation in governance tests, and replace only the single R6 workflow_sha256 value with the corrected workflow digest.",
+          "Run focused governance and workflow/R6 binding checks plus complete developer tests; verify the exact three-path implementation diff and unchanged UID/GID1000, cleared groups, sanitized environment, required Compose flag, source-read preflight and full GCE discovery command; commit and promptly push the validated milestone.",
+          "Retain exact-source push and actual pull_request CI receipts for all three required jobs, including the first UID1000 preflight, complete required GCE suite and live Compose; append honest results while preserving historical failures, release blockers and acceptance credits0, without merge or deployment."
+        ],
+        "status": "synchronized",
+        "updated_at": "2026-11-05T07:44:43.308138Z",
+        "tracking_sync": {
+          "status": "synchronized",
+          "writer": "root",
+          "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+          "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6652598903",
+          "project_ref": "https://github.com/users/lucronn/projects/8",
+          "project_source_path": "/home/corp/autodata-evidence/task68-tracking/PROJECT-SOURCE.txt",
+          "project_source_sha256": "e2c54c913e8bd33754534ea8958964fb61f8a4c3745842c7a946d83082d6570b",
+          "project_source_characters": 969,
+          "prior_project_source_prefix_preserved": true,
+          "verification_source": "Root-provided live tracking synchronization receipt; local source file digest verified."
+        }
+      },
+      "tracking_sync": {
+        "status": "synchronized",
+        "writer": "root",
+        "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+        "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6652598903",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "project_source_path": "/home/corp/autodata-evidence/task68-tracking/PROJECT-SOURCE.txt",
+        "project_source_sha256": "e2c54c913e8bd33754534ea8958964fb61f8a4c3745842c7a946d83082d6570b",
+        "project_source_characters": 969,
+        "prior_project_source_prefix_preserved": true,
+        "verification_source": "Root-provided live tracking synchronization receipt; local source file digest verified."
+      },
+      "authorities": {
+        "implementation": false,
+        "implementation_dispatch": false,
+        "github_write": false,
+        "commit": false,
+        "push": false,
+        "merge": false,
+        "deployment": false,
+        "release": false,
+        "acceptance": false,
+        "profile_activation": false,
+        "provider": false,
+        "runtime": false,
+        "host": false,
+        "payment": false,
+        "publication": false,
+        "live_sales": false
+      },
+      "accepted_case_credit": 0,
+      "accepted_new_case_credit": 0,
+      "release_state": "unverified",
+      "diagnostic_evidence": {
+        "run_ref": "https://github.com/lucronn/autodata/actions/runs/41988867014",
+        "artifact_id": 13397466412,
+        "result": "Task67 diagnostic: /home/runner UID/GID1001 mode0750 prevents UID1000 with cleared groups traversing readable source; configured TMPDIR is inaccessible through the same ancestor but generic tempfile falls back; original preflight exits1 EACCES. Coordinator-provided receipt, not locally re-executed."
+      },
+      "reviewed_change": {
+        "workflow_insert_before": "run_gce \"$gce_python\" -B -c",
+        "inserted_line": "sudo -n /bin/chmod o+x /home/runner",
+        "old_workflow_sha256": "b9ccf5f8c8fc974d113f0461871e9288e30a1a61ddeff6fc67cfd8a6fb3e7418",
+        "new_workflow_sha256": "3c54e7ba0613d1cd3a78819eede4915b1d268ffd904df83b2c034d914dca10e6",
+        "old_gce_script_sha256": "5adc3b0b3b56c75f8df1faed2dd461a71ac37c3622b973af185baf99941e3502",
+        "new_gce_script_sha256": "d305124edec61fca89e86d463413305f02a8c37208538d46bbe1de6c2766a602",
+        "r6_field": "product_evidence.ci_profile.workflow_sha256",
+        "old_r6_sha256": "09562c3da23fbf1283c5276023967c97ab51d53b1133c49ddf7cd6b6f4b87be7",
+        "new_r6_sha256": "05b43e5a775e685d76bd44f0b05675cbd286476547c17e7e2cb9dade03a4e32d",
+        "r6_bytes": 8727,
+        "r6_operation": "Replace the single old workflow digest once in raw bytes; all other bytes and disabled authorities unchanged."
+      },
+      "dispatch_prerequisite": "Root verifies live Issue186/Project8 literal tracking and preservation receipts, synchronizes records, commits/pushes the planning-only checkpoint, seals its actual SHA/tree, passes standalone and nested exact-checkpoint preflights, and issues explicit three-path dispatch. This draft grants no implementation authority."
     }
   ],
   "execution": {
