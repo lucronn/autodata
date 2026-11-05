@@ -469,7 +469,7 @@ function renderBlocks(parent, blocks, images, review, g) {
       const content = element("div");
       content.append(element("span", block.text ?? ""));
       for (const ref of block.images || [])
-        addImage(content, find(ref), ref.alt, g);
+        addImage(content, (ref?.asset_id || ref?.image_id) ? find(ref) : undefined, ref.alt, g);
       aside.append(element("strong", block.label ?? "Note"), content);
       parent.append(aside);
     } else if (type === "image")
@@ -498,7 +498,7 @@ function renderBlocks(parent, blocks, images, review, g) {
       }
       parent.append(list);
       for (const ref of block.images || [])
-        addImage(parent, find(ref), ref.alt, g);
+        addImage(parent, (ref?.asset_id || ref?.image_id) ? find(ref) : undefined, ref.alt, g);
     } else if (type === "table") {
       const table = element("table", undefined, "article-table");
       if (block.label || block.caption)

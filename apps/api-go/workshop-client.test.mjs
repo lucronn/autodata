@@ -1152,6 +1152,29 @@ test('article block media mixed document preserves each contextual placement and
 });
 
 for (const type of ['ordered_list', 'unordered_list', 'callout']) {
+  for (const [name, ref] of [
+    ['missing IDs', { status: 'unavailable', unavailable_reason: 'source image reference is missing' }],
+    ['empty IDs', { asset_id: '', image_id: '' }],
+  ]) {
+    for (const origin of [undefined, 'source', 'canonical']) {
+      test(`article block media ${type} rejects ${name} with a valid unrelated pool in ${origin || 'renderContent'}`, () => {
+        const h = articleMediaHarness();
+        const article = mediaArticle([{ type, items: ['Check'], text: 'Note', images: [ref] }],
+          [{ id: 'unrelated', url: mediaURL('unrelated') }], origin ? { content_origin: origin } : {});
+        const parent = origin ? h.render(article) : h.content(article);
+        assert.equal(mediaDescendants(parent, 'img').length, 0, 'ID-less references must not render an unrelated pool image');
+        const figures = mediaDescendants(parent, 'figure');
+        assert.equal(figures.length, 1);
+        assert.deepEqual(mediaTags(figures[0]), ['p']);
+        assert.equal(figures[0].textContent, 'Illustration unavailable.');
+        assert.equal(figures[0].children[0].className, 'image-missing');
+        assert.equal(mediaDescendants(parent, 'figcaption').length, 0);
+      });
+    }
+  }
+}
+
+for (const type of ['ordered_list', 'unordered_list', 'callout']) {
   for (const refKey of ['asset_id', 'image_id']) for (const poolKey of ['id', 'image_id', 'asset_id']) {
     test(`article block media ${type} resolves ${refKey} through pool ${poolKey} and ignores inline URL`, () => {
       const h = articleMediaHarness();
@@ -1165,7 +1188,7 @@ for (const type of ['ordered_list', 'unordered_list', 'callout']) {
   }
   const unavailable = [
     ['missing mapping', { asset_id: 'absent', url: mediaURL('inline') }, []],
-    ['absent ID', { url: mediaURL('inline') }, [{ url: mediaURL('safe') }]],
+    ['absent ID', { url: mediaURL('inline') }, [{ id: 'unrelated', url: mediaURL('safe') }]],
     ['missing URL', { asset_id: 'a' }, [{ id: 'a' }]],
     ['unavailable asset', { asset_id: 'a' }, [{ id: 'a', unavailable: true }]],
     ...['https://provider.example/image.png', 'javascript:alert(1)', 'data:image/png;base64,YQ==',
