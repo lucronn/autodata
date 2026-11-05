@@ -1,12 +1,17 @@
 """Synthetic mechanical-boundary regressions; these are not content acceptance."""
 from copy import deepcopy
 import json
+from pathlib import Path
+import sys
 
 import pytest
 
-from autodata_ingestion import procedure_rewrite as rewrite
-from autodata_ingestion.article_document import validate_ordered_document
-from autodata_ingestion.article_lifecycle_types import digest_json
+ROOT = Path(__file__).parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from autodata_ingestion import procedure_rewrite as rewrite  # noqa: E402
+from autodata_ingestion.article_document import validate_ordered_document  # noqa: E402
+from autodata_ingestion.article_lifecycle_types import digest_json  # noqa: E402
 
 PROFILE = "full-prose-review-v1"
 
