@@ -18,7 +18,7 @@ import ssl
 import socket
 import time
 from urllib.error import HTTPError
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, unquote_to_bytes
 
 HEADERS = frozenset(x.lower() for x in ('Content-Type','Content-Length','Retry-After',
     'X-Request-Id','X-Provider','X-Source-Revision','X-Fetched-At','X-Source-Locator',
@@ -39,14 +39,25 @@ def private_json(path, value):
 
 
 def sensitive(data, credentials=()):
-    return bool(SECRET_PATTERN.search(data) or any(token and token in data for token in credentials))
+    normalized=unquote_to_bytes(data)
+    return bool(SECRET_PATTERN.search(data) or SECRET_PATTERN.search(normalized) or any(token and (token in data or token in normalized) for token in credentials))
 
 
 def sensitive_payload(data,credentials=()):
     """Inspect bounded resource bytes even when later schema/hash validation fails."""
     if sensitive(data,credentials):return True
     try:value=json.loads(data)
-    except (ValueError,UnicodeError):return False
+    except (ValueError,UnicodeError,RecursionError):return False
+    # Inspect semantic strings before product validation. A rejected hash or
+    # schema must not bypass scanning of JSON escape sequences.
+    pending=[value]
+    while pending:
+        item=pending.pop()
+        if isinstance(item,str) and sensitive(item.encode('utf-8'),credentials):return True
+        if isinstance(item,dict):
+            if sensitive(json.dumps(list(item),ensure_ascii=False).encode(),credentials):return True
+            pending.extend(item.values())
+        elif isinstance(item,list):pending.extend(item)
     if isinstance(value,dict) and isinstance(value.get('content_base64'),str):
         try:decoded=base64.b64decode(value['content_base64'],validate=True)
         except (ValueError,binascii.Error):return False
@@ -207,7 +218,7 @@ class CaptureTransport:
                         raw_ref=raw_path.name if raw_path.exists() else None,journal_ref=journal_path.name if journal_path.exists() else None,
                         sealing='local_unsealed')
             header_bytes=json.dumps(meta.get('headers',{})).encode()
-            if sensitive_payload(raw,self.credentials) or sensitive(header_bytes,self.credentials):
+            if sensitive_payload(raw,self.credentials) or sensitive(header_bytes,self.credentials) or any(sensitive(str(value).encode(),self.credentials) for value in meta.get('headers',{}).values()):
                 meta.update(state='quarantined',reason='SECRET_INCIDENT',headers={},final_url=None)
             self.last=meta
         if meta['state']!='complete': raise CaptureFailure(meta['reason'] or 'TRANSPORT')

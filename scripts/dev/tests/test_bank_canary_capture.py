@@ -354,6 +354,16 @@ class BoundTests(unittest.TestCase):
         result,files=self.run_fixture(Fixture(mutate=not_found))
         self.assertEqual(result['banks']['bankone']['stop_code'],'NOT_FOUND')
         self.assertIn('result.json',files);self.assertIn('summary.json',files)
+    def test_json_escaped_text_secret_quarantines_before_failed_hash(self):
+        def mutate(bank,request,env):
+            if 'kind' in env:
+                env.update(content='https://fixture.invalid/?token=INERT-ESCAPED',sha256='0'*64)
+                raw=json.dumps(env).encode().replace(b'token',b'tok'+bytes([92])+b'u0065n')
+                return Response(raw,request.full_url)
+        result,files=self.run_fixture(Fixture(mutate=mutate))
+        self.assertEqual(result['banks']['bankone']['stop_code'],'SECRET_INCIDENT')
+        self.assertEqual(result['banks']['banktwo']['state'],'withdrawn')
+        self.assertEqual(json.loads(files['inventory.json'])['objects'][-1]['state'],'quarantined')
     def test_encoded_secret_is_quarantined_even_when_client_hash_will_fail(self):
         import base64
         def mutate(bank,request,env):
