@@ -39,7 +39,7 @@ func loadCustomerAuthConfig(getenv func(string) string) (customerAuthConfig, err
 	if origin.Scheme != "https" && !(c.Environment == "test" && origin.Scheme == "http" && loopback) {
 		return c, invalid
 	}
-	if c.Environment == "production" && c.Origin != "https://cars.tk" {
+	if c.Environment == "production" && c.Origin != "https://cars.tk" && c.Origin != "https://autodata.cars.tk" {
 		return c, invalid
 	}
 	if c.Mode == "local" {

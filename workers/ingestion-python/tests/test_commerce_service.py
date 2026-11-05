@@ -54,7 +54,17 @@ class CommerceAuthorityTests(unittest.TestCase):
         self.assertNotEqual(canonical_checkout_hash('id','US','v1'),canonical_checkout_hash('id','CA','v1'))
 
     def test_return_origin_is_server_configured_and_environment_bound(self):
-        self.assertEqual(checkout_return_origin('production','https://cars.tk'),'https://cars.tk')
+        for origin in ('https://autodata.cars.tk', 'https://cars.tk'):
+            with self.subTest(origin=origin):
+                self.assertEqual(checkout_return_origin('production', origin), origin)
+        for origin in ('https://other.example', 'https://www.cars.tk', 'https://evil.autodata.cars.tk',
+                       'https://autodata.cars.tk.evil.example', 'http://autodata.cars.tk',
+                       'https://autodata.cars.tk/', 'https://autodata.cars.tk/workshop/',
+                       'https://autodata.cars.tk:443', 'https://user@autodata.cars.tk',
+                       'https://autodata.cars.tk?q=1', 'https://autodata.cars.tk#fragment',
+                       'https://autodata.cars.tk.', 'https://AUTODATA.cars.tk'):
+            with self.subTest(origin=origin), self.assertRaises(CommerceError):
+                checkout_return_origin('production', origin)
         self.assertEqual(checkout_return_origin('staging','https://stage.example:8443'),'https://stage.example:8443')
         self.assertEqual(checkout_return_origin('test','http://127.0.0.1:8080'),'http://127.0.0.1:8080')
         for environment,value in [('production','https://other.test'),('staging','http://localhost'),
