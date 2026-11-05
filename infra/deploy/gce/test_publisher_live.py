@@ -18,6 +18,7 @@ import unittest
 import zipfile
 
 HERE = Path(__file__).resolve().parent
+BUILDKIT_IMAGE = 'moby/buildkit@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe'
 
 
 def load():
@@ -28,13 +29,30 @@ def load():
 
 
 class LiveTests(unittest.TestCase):
+    def require_real_docker(self, *, buildkit=False):
+        # A Docker executable does not imply daemon access: the required host
+        # CI runs as an unprivileged UID with all supplementary groups removed.
+        # Required local validation must fail, rather than silently skip.
+        probes = [('Docker daemon unavailable',['version','--format','{{.Server.Version}}']),
+                  ('Buildx unavailable',['buildx','version'])]
+        if buildkit:
+            probes.append(('pinned BuildKit image unavailable locally',['image','inspect',BUILDKIT_IMAGE]))
+        for reason,arguments in probes:
+            try:
+                result = subprocess.run(['/usr/bin/docker',*arguments],capture_output=True,timeout=10)
+                available = result.returncode == 0
+            except (OSError,subprocess.TimeoutExpired): available = False
+            if not available:
+                if os.environ.get('AUTODATA_REQUIRE_PUBLISHER_DOCKER') == '1': self.fail(reason)
+                self.skipTest(reason)
+
     def buildx_owner_fixture(self, p, root):
         import hashlib
         import test_publisher_adapters
         context = test_publisher_adapters.context_fixture()
         context['run_id'] = str(int.from_bytes(os.urandom(6),'big'))
         builder = 'workshop-'+context['run_id']+'-'+str(context['run_attempt'])
-        image = 'moby/buildkit@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe'
+        image = BUILDKIT_IMAGE
         owner = {'protocol_version':1,'context_sha256':p.a.digest(p.a.canonical(context)),
                  'builder_name':builder,'container_name':'buildx_buildkit_'+builder+'0',
                  'owner_nonce':os.urandom(32).hex(),'buildkit_image':image}
@@ -42,11 +60,13 @@ class LiveTests(unittest.TestCase):
         (creds/'docker').mkdir(mode=0o700)
         p.a.private_write(creds,'buildx-owner.json',p.a.canonical(owner))
         pin = {'path':'/usr/bin/docker','version':'28.5.2',
-               'sha256':hashlib.sha256(Path('/usr/bin/docker').read_bytes()).hexdigest()}
+               'sha256':hashlib.sha256(Path('/usr/bin/docker').read_bytes()).hexdigest()
+                         if Path('/usr/bin/docker').is_file() else '0'*64}
         policy = {'tools':{'docker':pin,'buildkit-image':pin|{'version':image}}}
         return p.LiveDependencies(root,policy,context,{},budget=p.a.Budget()),creds,owner
 
     def test_real_buildx_owned_nonce_container_and_labeled_volume_cleanup(self):
+        self.require_real_docker(buildkit=True)
         import unittest.mock
         p = load()
         with p.a.private_workspace() as root:
@@ -71,6 +91,7 @@ class LiveTests(unittest.TestCase):
                     deps.cleanup()
 
     def test_real_buildx_preexisting_daemon_resources_are_never_adopted_or_removed(self):
+        self.require_real_docker(buildkit=True)
         import unittest.mock
         p = load()
         for collision in ('container','volume'):
@@ -92,6 +113,7 @@ class LiveTests(unittest.TestCase):
                                    else ['/usr/bin/docker','volume','rm',name],capture_output=True,check=True,timeout=10)
 
     def test_real_buildx_failed_creation_retains_owner_for_cleanup(self):
+        self.require_real_docker(buildkit=True)
         import unittest.mock
         p = load()
         for phase in ('volume','bootstrap'):
@@ -117,6 +139,7 @@ class LiveTests(unittest.TestCase):
                     finally: deps.cleanup()
 
     def test_real_buildx_cleanup_refuses_replacement_container_with_wrong_nonce(self):
+        self.require_real_docker(buildkit=True)
         import unittest.mock
         p = load()
         with p.a.private_workspace() as root:
@@ -139,6 +162,7 @@ class LiveTests(unittest.TestCase):
                     deps.cleanup()
 
     def test_real_buildx_cleanup_refuses_replacement_volume_without_owner_label(self):
+        self.require_real_docker(buildkit=True)
         import unittest.mock
         p = load()
         with p.a.private_workspace() as root:
@@ -243,6 +267,7 @@ class LiveTests(unittest.TestCase):
             signal.signal(signal.SIGINT,old_int); signal.signal(signal.SIGTERM,old_term)
 
     def test_real_buildx_metadata_explicit0644_is_adopted_privately(self):
+        self.require_real_docker()
         p = load()
         with p.a.private_workspace() as root:
             source = root/'source'; source.mkdir(mode=0o700)
