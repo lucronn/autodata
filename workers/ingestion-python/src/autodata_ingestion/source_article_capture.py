@@ -476,4 +476,5 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
             else "readable"
         ),
         datetime.now(timezone.utc),
+        projection_version="source-projection-v2",
     )

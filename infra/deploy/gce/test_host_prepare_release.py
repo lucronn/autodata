@@ -86,7 +86,7 @@ class RealFreshDatabaseTests(unittest.TestCase):
         expected = [path.stem for path in sorted((HERE.parents[2]/'db/migrations').glob('*.sql'))]
         actual = self.sql('SELECT version FROM public.schema_migrations ORDER BY version;','autodata_metrics').stdout.decode().splitlines()
         self.assertEqual(actual,expected)
-        self.assertEqual(len(actual),40)
+        self.assertEqual(len(actual),41)
         rights = self.sql("SELECT has_table_privilege('autodata_api','public.schema_migrations','INSERT'),has_table_privilege('autodata_api','public.workshop_orders','INSERT'),has_table_privilege('autodata_outbox','public.publication_events','DELETE'),has_column_privilege('autodata_outbox','public.publication_events','delivery_status','UPDATE'),has_database_privilege('autodata_metrics','autodata','TEMP');").stdout.strip()
         self.assertEqual(rights,b'f|t|f|t|f')
         unsafe = self.sql("SELECT count(*) FROM pg_roles r WHERE rolname IN ('autodata_migrator','autodata_api','autodata_http','autodata_article','autodata_reconciler','autodata_metrics','autodata_outbox') AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit OR EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid));").stdout.strip()

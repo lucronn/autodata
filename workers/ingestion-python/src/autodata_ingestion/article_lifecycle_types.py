@@ -86,15 +86,24 @@ def transformation_key(
     source_fingerprint,
     normalization_version,
     rewrite_profile_version,
+    *,
+    projection_version="source-projection-v1",
 ):
-    return digest_json(
-        {
-            "canonical_article_id": str(canonical_article_id),
-            "source_fingerprint": source_fingerprint,
-            "normalization_version": normalization_version,
-            "rewrite_profile_version": rewrite_profile_version,
-        }
-    )
+    if projection_version not in ("source-projection-v1", "source-projection-v2"):
+        raise ValueError("unsupported source projection version")
+    payload = {
+        "canonical_article_id": str(canonical_article_id),
+        "source_fingerprint": source_fingerprint,
+        "normalization_version": normalization_version,
+        "rewrite_profile_version": rewrite_profile_version,
+    }
+    # Historical v1 keys are persisted identities: preserve their exact payload.
+    if projection_version == "source-projection-v2":
+        payload.update(
+            projection_version=projection_version,
+            domain="autodata:article-transformation:v2",
+        )
+    return digest_json(payload)
 
 
 @dataclass(frozen=True)
@@ -133,6 +142,7 @@ class CapturedSource:
     evidence_manifest: list[dict]
     projection_status: str
     captured_at: datetime
+    projection_version: str = "source-projection-v1"
 
 
 @dataclass(frozen=True)

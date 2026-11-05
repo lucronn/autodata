@@ -285,3 +285,140 @@ realistic acceptance credit. Authentic per-bank baseline, held-out coverage, all
 verb presence and independent content review remain unmeasured. The purchased-
 dataset outcome and production activation remain blocked on that evidence and
 unsupported-family remediation. See `docs/verification/2026-11-05-article-rewrite-v2.md`.
+
+
+## Source projection v2 — development implementation, not activated
+
+Issue: https://github.com/lucronn/autodata/issues/325. Project: https://github.com/users/lucronn/projects/8; item `PVTI_lAHOCSJ8cc4BiQ2BzhGUxxM`.
+Plan: `docs/superpowers/plans/2026-11-05-source-projection-v2.md`.
+Record: `docs/agents/records/2026-11-05-source-projection-v2.json`.
+
+Version corrected source projections and support bounded source-only offline reprojection from retained body bytes without provider/model calls.
+
+This is a prospective amendment to the original source-projection-v1 contract in
+`docs/superpowers/specs/2026-11-03-canonical-article-lifecycle-design.md`.
+The historical v1 spec and rows remain immutable. A parser fix can change readable
+projection while provider bytes remain identical; raw fingerprint alone therefore
+cannot identify a projection revision. Migration 041 permits v1 and v2 and keys
+source revisions by `(canonical_article_id, source_fingerprint, projection_version)`.
+Raw fingerprint calculation, resource content hashes and raw snapshot identities
+are preserved. New capture explicitly selects source-projection-v2; historical
+captures/readback expose their stored version. Same-version recapture dedupes the
+source row and appends the existing immutable observation for each new capture job.
+
+Legacy v1 transformation keys keep the exact existing four-field digest payload.
+For v2, the payload additionally carries `projection_version: source-projection-v2`
+and `domain: autodata:article-transformation:v2`; unknown versions reject. No stored
+key is recomputed. New v2 work cannot reuse published or terminal v1 transformations.
+Source persistence, observation, transformation ownership and source/canonical
+pointer transition stay atomic under existing lease/generation locks. A v2 source
+clears stale v1 canonical publication from the current pointer while retaining all
+historical rows; readable source is available before any model work. Only matching
+v2 publication/reuse may populate the canonical pointer.
+
+The store rejects v1 capture when the locked article currently points to v2; a
+database pointer guard also rejects direct v2-to-v1 downgrade. Separately authorized
+rollout must drain all old workers before migration, migrate, replace every worker,
+then resume. Removing the old unique pair makes old two-column ON CONFLICT SQL fail
+closed. Mixed binaries and schema/binary rollback against v2 state are unsupported;
+retain history and forward-fix. No read-time reprojection, automatic refresh or bulk
+recapture is introduced. Existing API/current-source view remains the reader contract.
+
+Concrete todo:
+
+- [x] Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; extend the migration driver and its tests through 041, then verify populated upgrade and migration-driver rerun.
+- [x] Carry explicit projection identity through captured/stored sources and version-aware dedupe; preserve raw fingerprint/snapshot hashes and immutable history.
+- [x] Keep legacy v1 transformation-key bytes stable, domain-separate v2 keys, and atomically switch current source with stale canonical cleared.
+- [x] Prove identical-byte v1-to-v2 append, repeat-v2 reuse, historical reads, terminal/published v1 isolation, readable fallback before model and stale-worker rejection; run focused and isolated PostgreSQL regressions.
+- [x] Add bounded body-only offline preview/apply from verified retained bytes, with atomic exact-job source-only storage, NULL transformation key, no provider/model calls and fail-closed reconstruction tests.
+- [x] Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.
+
+
+- [x] Repair PR #326 required CI by changing only the current GCE bundle and SQL-ledger migration-count assertions from 40 to 41 in host_provision.py, test_host_provision.py and test_host_prepare_release.py; run focused and full GCE tests plus driver/diff checks and obtain exact-SHA repair review. Track fresh final-head required CI separately as pending.
+
+The bounded offline projector supports exactly one saved body resource (max 1 MiB,
+30-second deadline), complete immutable observation context/provenance and matching
+manifest/snapshot/content-addressed SHA. Reconstruct the saved SourceEnvelopeV1 and
+reuse current capture through an exact-ref OfflineClient and verify-only object
+sink. Preserve fingerprint, body snapshot, manifest, provenance, evidence and original
+captured_at. Missing/extra/optional resources, discovered images/assets, identity or
+hash drift fail closed; no real connector/model or object write is permitted.
+Preview is default and reports hashes/counts/IDs only. Apply binds explicit article,
+expected revision and preview hashes; actor/reason are required. In one transaction,
+lock/check current source and inactive prior job, increment generation, create/mark
+and exact-claim a source-only job, append v2/observation and switch pointers. Generic
+queue claim/sweeps exclude source-only jobs. Finish needs_review with nonretryable
+SOURCE_ONLY_REPROJECTION, no lease and NULL transformation_key; normal future v2
+refresh can still own a canonical transformation. Repeat exact apply is idempotent;
+races/failures roll back the complete transaction. Historical rows remain unchanged.
+
+Read-only stage audit proved feasibility for the retained 3853-byte Banktwo body:
+current capture replay produced 29 blocks/no images with identical raw identity and
+saved provenance, no provider call, S3 put or database mutation. This is not a
+repaired stage article. Implementation tests, review, explicit stage apply and
+browser acceptance are still required. CANARY_REQUEST_LIMIT blocks reliance on
+provider refetch; offline apply does not need it.
+
+This checkpoint authorizes bounded source/schema/tests and offline projector/CLI
+implementation after committed preflight and coordinator dispatch. No live
+provider/model call, stage mutation, deployment, UI/auth/payment/rewrite-model
+change is authorized. Exact checkpoint SHA/preflight are pinned externally after
+this docs-only commit; runtime apply requires separate authorization after review.
+
+### Source projection v2 migration-driver scope amendment
+
+The driver currently pins its expected migration chain through 040. The v2 plan
+prospectively adds only `scripts/dev/migrate_sql.sh` and `scripts/dev/test_migrations.py`
+to recognize 041 and verify ordered apply/restart behavior. Preserve ledger checks,
+ordering, locking, transaction and failure semantics. All prior source identity,
+offline-only implementation and separate stage-activation boundaries remain binding.
+
+Development candidate `e45541ca2058e9fa25b70b6eace329922ee96ca5` implements the
+versioned source/store and bounded offline source-only path. Local isolated
+schema/migration/integration tests passed 113 cases before the final added cases;
+the exact committed-candidate focused selection passed 33 cases with 45 deselected
+and no skips (21.07 s). The coordinator confirmed independent exact-SHA review with
+zero actionable findings; reviewer migration-driver unittests passed 25. All six
+development work items are complete; fresh CI/runtime acceptance remain open. See
+`docs/verification/2026-11-05-source-projection-v2.md` for run bindings and limitations.
+This does not establish stage application or authenticated browser acceptance.
+
+### Required-CI bundle-count repair gate
+
+PR https://github.com/lucronn/autodata/pull/326 required CI failed at
+https://github.com/lucronn/autodata/actions/runs/42065098477 because current GCE
+bundle validation and its test expect 40 migrations while migration 041 makes 41.
+Only `infra/deploy/gce/host_provision.py` and
+`infra/deploy/gce/test_host_provision.py` are added to the source-projection scope
+(18 total historical/current implementation paths; the active repair allowlist is
+these two). Change only the two current count assertions from 40 to 41; preserve
+all bundle integrity checks and historical frozen receipt collectors. The first
+six development items retain prior evidence; the new CI-repair item is pending
+committed checkpoint/preflight, coordinator dispatch, focused tests, exact-SHA
+review and fresh required CI. This gate grants no runtime or merge authority.
+
+### Second required-CI repair amendment — current SQL-ledger test
+
+The first two count assertions were repaired at
+`7aa196122953b3ba150f434dd10decfb5ce79a1d`. Broader GCE verification ran 559
+tests with one failure/seven skips: the current real SQL-ledger test in
+`infra/deploy/gce/test_host_prepare_release.py:89` still expects 40 rows, actual41;
+ledger contents already matched the exact sorted manifest. Add only this test path
+(three active repair paths, 19 total historical/current paths), permitting only
+that current count40→41 assertion after committed preflight and coordinator
+dispatch. Preserve all role/grant/ledger/refusal checks and historical receipts.
+Focused/full GCE tests, review and fresh required CI remain pending; no runtime
+or merge authority is added.
+
+### Post-CI-repair evidence
+
+Candidate `66efbf55ac3658e7a86d3adb2341b512453bb047` repairs exactly three current
+GCE migration-count assertions40→41 in the gated two commits; source lifecycle
+behavior and historical frozen receipts are unchanged. Failed required CI run
+42065098477 traced to stale current bundle validation; broader local tests found
+the same stale count in current real SQL-ledger verification. Final focused real-DB
+regression passed1/no skips; full GCE559 tests OK with7 root/environment skips;
+driver25 tests OK before the final test-only line. Original lifecycle113 earlier
+isolated cases, exact-source-candidate33 focused/no skips and independent review
+remain separately bound evidence. The coordinator confirmed independent exact-SHA repair review of `66efbf55ac3658e7a86d3adb2341b512453bb047` with zero actionable findings. Seventh local repair/review todo is complete; fresh final-head required CI, stage apply and browser acceptance remain open.
+See `docs/verification/2026-11-05-source-projection-v2.md` for exact SHAs and limits.
