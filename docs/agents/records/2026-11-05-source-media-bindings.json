@@ -1,0 +1,19 @@
+{
+  "goal": "Bind dual-bank source images at exact article positions while preserving raw article bytes, hash, provenance, and source fallback.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-source-media-bindings.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/331",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/normalized-article-document.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Commit the synchronized planning checkpoint and pass exact-base preflight.",
+    "Test and implement the bounded AutoData exact-URL media-binding consumer.",
+    "Review and merge the AutoData consumer before deploying connector producers.",
+    "Verify Bankone and Banktwo producer refs and Banktwo binary image route.",
+    "Run bounded real dual-bank image-order and source-fallback canaries."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T23:00:00Z"
+}

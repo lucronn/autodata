@@ -454,3 +454,27 @@ before the client change and then passed (16 tests, 3 subtests). Full ingestion
 worker verification passed (895 tests, 143 subtests, 239 skips) using the pinned
 Stripe SDK in a temporary test environment; `git diff --check` passed. Live
 provider acceptance remains pending.
+
+### Dual-bank source media bindings
+
+Goal: place declared source images at their actual article positions without
+changing the provider's raw body, hash, revision, rights, or provenance. The
+optional authenticated connector `asset_bindings` sidecar maps an exact decoded
+HTML image URL to a declared opaque `resource_ref`. AutoData validates the
+bounded mapping and binds only exact URL matches; malformed, conflicting, or
+unknown mappings fail closed. Repeated occurrences of one URL keep their
+original positions. No positional guess or detached duplicate gallery may
+substitute for a valid source position. The existing source fallback remains
+visible until canonical publication completes.
+
+Plan: `docs/superpowers/plans/2026-11-05-source-media-bindings.md`.
+Tracking: https://github.com/lucronn/autodata/issues/331 in
+https://github.com/users/lucronn/projects/8; parent release issue #186.
+
+Concrete todo:
+
+- [ ] Commit the synchronized planning checkpoint and pass exact-base preflight.
+- [ ] Test and implement the AutoData bounded, exact-URL consumer.
+- [ ] Review and merge the consumer before deploying connector producers.
+- [ ] Verify Bankone and Banktwo producer refs and Banktwo binary image route.
+- [ ] Run bounded real dual-bank image-order and fallback canaries.
