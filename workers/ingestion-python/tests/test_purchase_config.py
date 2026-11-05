@@ -93,3 +93,42 @@ class PurchaseConfigTests(unittest.TestCase):
             with patch.dict('os.environ',{'AUTODATA_COMMERCE_MODE':'stripe_test','AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON':raw},clear=True):
                 with self.assertNoLogs('autodata_ingestion.commerce_service'):
                     with self.assertRaises(CommerceError):configured_commerce()
+
+    def test_valid_financial_startup_survives_malformed_notices_and_preserves_checks(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+        from autodata_ingestion.commerce_service import configured_commerce
+        calls=[]
+        class Provider:
+            def __init__(self,**kwargs):pass
+            def verify_merchant(self,account):calls.append(('merchant',account))
+            def verify_price(self,price,mode):calls.append(('price',price,mode))
+        class Cursor:
+            def execute(self,sql,args=None):self.sql=sql;calls.append(('sql',sql))
+            def fetchone(self):
+                if 'schema_migrations' in self.sql:return {'present':1}
+                if 'stripe_account_id<>' in self.sql:return None
+                if 'dataset_products' in self.sql:return {'dataset_product_id':'fixture'}
+                raise AssertionError(self.sql)
+        @contextmanager
+        def transaction(_):yield None,Cursor()
+        stripe=SimpleNamespace(StripeClient=lambda *a,**k:object(),RequestsClient=lambda **k:object())
+        env=dict(AUTODATA_COMMERCE_MODE='stripe_test',AUTODATA_ENV='test',AUTODATA_PUBLIC_ORIGIN='http://127.0.0.1:3000',
+            AUTODATA_STRIPE_SECRET_KEY='sk_test_fixture',AUTODATA_STRIPE_WEBHOOK_SECRET='whsec_fixture',
+            AUTODATA_STRIPE_ACCOUNT_ID='acct_fixture',AUTODATA_STRIPE_PRICE_ID='price_fixture',AUTODATA_INGESTION_INTERNAL_TOKEN='fixture-token')
+        for raw,enabled,diagnostic in (('{"enabled":false}',False,True),(json.dumps(DISABLED),False,False),(json.dumps(enabled_public()),True,False)):
+            calls.clear()
+            with patch.dict('os.environ',dict(env,AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON=raw),clear=True),patch.dict('sys.modules',{'stripe':stripe}),patch('autodata_ingestion.stripe_adapter.StripePaymentProvider',Provider),patch.object(CommerceService,'transaction',transaction):
+                with (self.assertLogs('autodata_ingestion.commerce_service') if diagnostic else self.assertNoLogs('autodata_ingestion.commerce_service')) as logs:
+                    service=configured_commerce(connection_factory=lambda:None)
+                self.assertEqual(service.purchase_configuration()['enabled'],enabled)
+                self.assertIn(('merchant','acct_fixture'),calls)
+                self.assertIn(('price','price_fixture',False),calls)
+                self.assertEqual(sum('schema_migrations' in str(call) for call in calls),1)
+                self.assertEqual(sum('stripe_account_id<>' in str(call) for call in calls),1)
+                self.assertEqual(sum('dataset_products' in str(call) for call in calls),1)
+                if diagnostic:self.assertEqual(len(logs.output),1)
+
+    def test_notice_cannot_be_only_ecmascript_whitespace(self):
+        for notice in ('\ufeff',' \ufeff '):
+            self.assertTrue(parse_purchase_config(json.dumps(dict(enabled_public(),tax_notice=notice)))[1])

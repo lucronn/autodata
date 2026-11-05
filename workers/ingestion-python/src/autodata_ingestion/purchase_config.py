@@ -50,7 +50,7 @@ class PurchaseConfig:
             for key in _URL_KEYS:
                 _url(getattr(self, key))
             notice = self.tax_notice
-            if (not isinstance(notice, str) or not notice.strip() or
+            if (not isinstance(notice, str) or not any(not _forbidden(ord(c)) for c in notice) or
                 len(notice.encode('utf-8')) > 1024 or
                 any(ord(c) < 32 or 127 <= ord(c) <= 159 or ord(c) in (0x2028, 0x2029) for c in notice)):
                 raise ValueError('invalid purchase configuration')

@@ -196,7 +196,7 @@ func decodeWorkshopPurchaseConfig(b []byte) (workshopPurchaseConfig, error) {
 			return bad()
 		}
 	}
-	if result.TaxNotice == nil || len(*result.TaxNotice) > 1024 || strings.TrimSpace(*result.TaxNotice) == "" || strings.ContainsFunc(*result.TaxNotice, func(c rune) bool { return c < 32 || c >= 127 && c <= 159 || c == 0x2028 || c == 0x2029 }) {
+	if result.TaxNotice == nil || len(*result.TaxNotice) > 1024 || strings.TrimFunc(*result.TaxNotice, purchaseForbidden) == "" || strings.ContainsFunc(*result.TaxNotice, func(c rune) bool { return c < 32 || c >= 127 && c <= 159 || c == 0x2028 || c == 0x2029 }) {
 		return bad()
 	}
 	return result, nil

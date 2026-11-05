@@ -219,7 +219,7 @@ func TestPurchaseConfigBoundariesAndUnavailable(t *testing.T) {
 		valid        bool
 	}{
 		{"tax_notice", strings.Repeat("x", 1024), true}, {"tax_notice", strings.Repeat("x", 1025), false},
-		{"tax_notice", "a\nb", false}, {"tax_notice", "a\u2028b", false}, {"tax_notice", "a\u007fb", false}, {"tax_notice", " ", false},
+		{"tax_notice", "a\nb", false}, {"tax_notice", "a\u2028b", false}, {"tax_notice", "a\u007fb", false}, {"tax_notice", " ", false}, {"tax_notice", "\ufeff", false}, {"tax_notice", " \ufeff ", false},
 		{"terms_url", "https://legal.example.test/" + strings.Repeat("x", 2048-len("https://legal.example.test/")), true},
 		{"terms_url", "https://legal.example.test/" + strings.Repeat("x", 2049-len("https://legal.example.test/")), false},
 		{"terms_url", "https://a.co/", true}, {"terms_url", "https://a.c/", false},
