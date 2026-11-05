@@ -693,3 +693,45 @@ Todo:
 - [ ] Append honest exact-source local/CI results and retain the prior R6 digest/Task64 failures as historical evidence; preserve all disabled profiles, trusted-loader boundaries, owner/staging/activation/payment/browser/provider/DNS blockers, credits0 and every release authority false; perform no merge/deployment/publication.
 
 Current implementation allowlist=[]; independent checkpoint review and explicit two-path dispatch required after actual checkpoint seal and standalone/nested exact-base preflights. Every authority false; credits0; verified_case_ids=[]; release_state=unverified. Preserve disabled profiles/trusted-loader contract and all owner/staging/activation/payment/browser/provider/DNS blockers. No merge/deployment/publication.
+
+
+## Provisioned-host activation successor (Issue299)
+
+The [activation plan](../superpowers/plans/2026-11-05-host-release-activation.md), [record](../agents/records/2026-11-05-host-release-activation.json), and [task](../agents/tasks/2026-11-03-production-release/host-release-activation.json) govern the next real host code milestone: Activate an already provisioned AutoData host using immutable local releases, maintenance-first lifecycle operations, actual PostgreSQL/service/dependency readiness, and schema-compatible rollback. Tracking: https://github.com/lucronn/autodata/issues/299, linked beneath https://github.com/lucronn/autodata/issues/186, and https://github.com/users/lucronn/projects/8 (separate activation item). The source base is `38b53eca633eee94f045fc33d9c90bb36da7618d`.
+
+This is a synchronized implementation plan, not an implemented capability or deployment receipt. It explicitly supersedes earlier lifecycle/locked-schema code exclusions only for this bounded successor. It authorizes real fixed on-host start/stop/maintenance/resume code, a single-transaction PG17 lock-before-catalog/ledger collector, actual container and GET-only local dependency readiness, immutable current selection and one schema-compatible rollback. Already provisioned tools/storage/guards/schema/socket identity/image cache/private files are prerequisites. Cloud operations, actual production credentials, image publication, SQL migration/role provisioning, provider calls and live activation are outside implementation scope.
+
+Concrete todo:
+
+- [ ] Implement a fixed bounded PG17 single-transaction collector: lock before catalog validation, reject unsafe ledger/catalog/role facts before reading ledger rows, compare exact migration inventory, and prove the protocol with real disposable PostgreSQL17 adversarial tests.
+- [ ] Implement real fixed-path host lifecycle execution with one host operation lock, verified immutable local Compose/Caddy material, cached images only, validated mounts/guards/secrets, and maintenance-first start/stop/maintenance/resume operations.
+- [ ] Collect actual service/container/image/configuration and local GET /readyz evidence without scheduling provider/payment/model work; set schema/services/postgres/nats/s3/no_work/runtime_evidence only from their corresponding successful observations.
+- [ ] Atomically select a successfully verified release and restore only the manifest-designated prior release with identical schema/configuration on activation failure; prove failure, timeout, concurrent invocation and recovery behavior with bounded executor tests.
+- [ ] Run focused host regressions, real disposable PG17 protocol tests, shell/Python syntax, exact-base preflight and diff checks; commit/push coherent milestones and independently review the exact candidate before integration. Update the runbook with actual executable prerequisites and remaining launch blockers.
+
+Implementation allowlist:
+
+- `infra/deploy/gce/deploy.sh`
+- `infra/deploy/gce/runtime-check.py`
+- `infra/deploy/gce/host_activation.py`
+- `infra/deploy/gce/runtime-grants.sql`
+- `infra/deploy/gce/test_host_runtime.py`
+- `infra/deploy/gce/test_host_activation.py`
+- `infra/deploy/gce/test_host_schema_pg17.py`
+- `docs/operations/workshop-gcp.md`
+
+### Issue299 executable lifecycle contract
+
+The successor adds installed `host_activation.py` behind the environment-cleared `deploy.sh start|stop|maintenance|resume SHA` launcher. `check` remains the runtime helper path and `install` retains its staging-only inert-install behavior. Operators must separately install the reviewed helper/schema/template set; this change neither installs host packages nor activates a host. Earlier descriptions of unavailable lifecycle verbs are historical for those earlier milestones.
+
+Before use, provision and verify the configured data filesystem and private tmpfs, metadata/storage guards, immutable image cache, accepted release manifest/SQL inventory, exact private files, initialized PostgreSQL17 data, NATS/SeaweedFS/Caddy data directories, and the current migrated schema with the reviewed socket probe identity/grants. Activation never runs SQL migrations or role grants, initializes a database, creates a bucket, pulls an image, delivers a credential or contacts a cloud API. Missing prerequisites fail closed. Runtime secret delivery and activation share `/run/autodata/state/operation.lock`; activation then acquires `/var/lib/autodata/operations/activation.lock` without waiting. Release/configuration bytes and ancestor identities are rechecked before execution and success.
+
+`start` renders the exact validated nonsecret Compose/Caddy files into the selected immutable release using exclusive mode0600 creation. Different existing bytes, symlinks, hardlinks or untrusted metadata are rejected. It enables `respond "Maintenance" 503` in the fixed Caddy import, reloads a running edge, starts PostgreSQL/NATS/S3 with explicit `--no-deps --pull never`, verifies the live schema, then starts API/private HTTP/article worker/payment reconciler/Caddy and observes readiness. It selects `/opt/autodata/current` atomically only after readiness and clears maintenance only after that selection. Starting workers is a real activation that can process existing work; the observation itself submits no work.
+
+`maintenance` requires the current SHA and an owned running graph, atomically enables the import and reloads Caddy. `resume` requires the current SHA, retains maintenance while full schema/service/readiness checks run, then clears the import and reloads. A failed reload stops the edge and retains a closed recovery state. The import file is root-owned mode0444 in the protected mounted Caddy directory; replacing the file in that directory lets Caddy see its new bytes. `stop` confirms ownership, enters maintenance, stops application services, edge, then stateful services in explicit lists, and inspects the resulting stopped state. It preserves containers, networks and data. Repeated stop is idempotent for an owned absent/stopped graph. Successful maintenance/stop receipts carry `runtime_evidence:false`; they do not claim the graph is ready.
+
+Live readiness separately inspects the fixed service graph and PG17 schema protocol, then performs only a bodyless local `GET http://172.30.10.10:8080/readyz`. The handler's database/NATS/object-storage states establish its limited TCP connectivity checks and local paid-catalog configuration. They do not establish authenticated NATS/S3 rights, external provider/merchant configuration or paid-product acceptance. `no_work` describes the observation's lack of work submission, not an empty queue or idle workers.
+
+A changed-source start requires the captured current release to equal the target manifest's rollback source and the manifests to have identical configuration/platform/migration inventory. Failed target activation gets one bounded attempt to stop target application/edge services and recover that exact compatible prior graph, with maintenance retained until explicit resume. Successful recovery still returns a failed activation receipt. A failed first activation leaves `current` absent and application/edge services stopped. No SQL, credential version or paid data rollback occurs. Inspect `recovery_incomplete` before attempting further operations; the helper never searches arbitrary historical releases.
+
+Commands capture at most1MiB combined output with fixed sanitized environment and no shell evaluation, and kill/reap their process group on timeout/cancellation. Inspect/probes have5second limits; Compose/reload/stop have30second limits; activation reserves the final30seconds of its120second lifecycle budget for recovery. Redacted receipts are fsynced under the verified data filesystem's operations directory. Exit2 means invalid input,3 a failed prerequisite/authorization/ownership check,4 failed activation,5 timeout and6 incomplete recovery. These receipts describe local operations only; independent exact-source review, actual host acceptance and external launch approvals remain required. No host/cloud/provider/credential operation was performed while developing this implementation.
