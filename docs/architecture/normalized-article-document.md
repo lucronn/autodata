@@ -241,3 +241,25 @@ For each ref in the new list and callout block.images loops, evaluate ref?.asset
 Native ol/ul contain only li children; block figures remain list siblings. Callout is aside > strong + div, with span then retained figures in the div. Missing-ID refs must never display an unrelated pool asset: use existing unavailable figure text through addImage. Existing authorized URL, alt/caption, source evidence, aliases, renewal, reconciliation and rights clearing remain unchanged. Actual renderContent and source/canonical renderArticle regressions require valid unrelated ID-bearing pool assets; existing stored-source/renewal tests remain required. Keep browser/accessibility/narrow-screen/print/current-source product acceptance open.
 
 This K4a section supersedes only the earlier K4 unguarded snippets prospectively. Historical K4 source/tracking evidence is retained in the canonical record's k4_history and the external source-k4 snapshot. K4a source cd64 is not task49's separate K3c amendment; queue root/prior49/history/order remain unchanged.
+
+
+## Meaningful article rewrite v2 — planned, not released
+
+Issue: https://github.com/lucronn/autodata/issues/300 (parent https://github.com/lucronn/autodata/issues/186). Project: https://github.com/users/lucronn/projects/8; item `PVTI_lAHOCSJ8cc4BiQ2BzhGN8dM`.
+Plan: `docs/superpowers/plans/2026-11-05-article-rewrite-v2.md`.
+Record: `docs/agents/records/2026-11-05-article-rewrite-v2.json`.
+
+Improve meaningful source-bound article rewriting through immutable technical-prose-v2, preserving complete technical instructions, consistent ordered-document display, and readable source fallback.
+
+The existing technical-prose-v1 opening-verb substitutions do not establish meaningful full-article coverage. Planned technical-prose-v2 uses a finite full-clause grammar, source-bound operation IDs and server-rendered complete procedural directives. The server recomputes the full candidate and all source/protected/technical/evidence bindings. Arbitrary generated prose, model-judge shortcuts and numeric-token-only safety checks are excluded. Exact clause examples and parser limits live in the plan. Existing ordered-document formatting, source fallback, atomic publication, warm-read reuse and provider-scoped identity remain the contract. v1 remains immutable; v2 requires explicit profile refresh and a new transformation key, without rewriting on read.
+
+Unsupported ordinary prose remains source-readable with a reason and a tracked remediation owner; it does not receive full canonical-rewrite credit. An independently reviewed corpus of complete retained source documents must measure both-bank article/clause coverage and every changed technical context. The immediate bounded implementation may improve coverage, but the user outcome remains open until the entire intended purchased-dataset scope has unique consistent-format accepted rewrites. Remaining prose needs reviewed grammar extensions or a separately designed expert rewrite/approval path. Source fallback provides availability while that requirement is unresolved. Cross-bank combination is pending user clarification and not authorized here. No universal rewrite, production activation or readiness is claimed.
+
+Concrete todo:
+
+- [ ] Freeze representative full-document corpus and baseline coverage, with provenance and unsupported cases.
+- [ ] Implement source-bound complete-clause operations and server rendering with exact technical span preservation and fail-closed validation.
+- [ ] Route immutable v1/v2 profiles through durable attempts, validation, publication and explicit refresh.
+- [ ] Verify corpus meaning, source fallback, dual-bank isolation, concurrency, restart and zero-call warm reads; publish exact coverage and independent review.
+
+This is a docs-only planning checkpoint. Its committed full SHA/tree and canonical preflight result are pinned externally after commit; the coordinator owns subsequent implementation dispatch.
