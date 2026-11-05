@@ -212,20 +212,22 @@ def _finalize_workers(capture,exits,closed):
 def _binding(root,engine,bank,role):
     suffix=engine if root=='test_browser_google_exchange_checkout_library_real_api' else engine+'-'+bank
     binding=dict(binding_state='partial',unavailable_reason='source_binding_failed',api_observability_version=API21_VERSION,
-        run_id=_RUN_ID if role=='parent-pytest' else os.environ.get('AUTODATA_API21_RUN_ID',_RUN_ID),attempt_id=secrets.token_hex(16) if role=='parent-pytest' else os.environ.get('AUTODATA_API21_ATTEMPT_ID') or secrets.token_hex(16),
+        run_id=_RUN_ID if role=='parent-pytest' else os.environ.get('AUTODATA_API21_RUN_ID'),attempt_id=secrets.token_hex(16) if role=='parent-pytest' else os.environ.get('AUTODATA_API21_ATTEMPT_ID'),
         case_id=root+'['+suffix+']',root=root,engine=engine,bank=bank,candidate_sha=None,source_tree=None,source_input_sha256={},producer_role=role)
+    for key in ('run_id','attempt_id'):
+        if not isinstance(binding[key],str) or not re.fullmatch('[a-f0-9]{32}',binding[key]):binding[key]=None
     try:
         candidate=os.environ['AUTODATA_R3_CANDIDATE_SHA'];tree=os.environ['AUTODATA_API21_SOURCE_TREE']
         if not re.fullmatch('[a-f0-9]{40}',candidate) or not re.fullmatch('[a-f0-9]{40}',tree):raise ValueError('source_binding_failed')
         binding.update(candidate_sha=candidate,source_tree=tree)
         for name in _INPUTS:binding['source_input_sha256'][name]=hashlib.sha256((ROOT/name).read_bytes()).hexdigest()
         inherited=os.environ.get('AUTODATA_API21_BINDING') if role!='parent-pytest' else None
-        if inherited:
+        if role!='parent-pytest':
+            if not inherited or binding['run_id'] is None or binding['attempt_id'] is None:raise ValueError('source_binding_failed')
             expected=_strict_json(inherited);expected['producer_role']=role
-            binding.update(run_id=os.environ['AUTODATA_API21_RUN_ID'],attempt_id=os.environ['AUTODATA_API21_ATTEMPT_ID'])
             binding.update(binding_state='complete',unavailable_reason=None)
             if binding!=expected:raise ValueError('source_binding_failed')
-        if not all(re.fullmatch('[a-f0-9]{32}',binding[key]) for key in ('run_id','attempt_id')):raise ValueError('source_binding_failed')
+        if any(binding[key] is None for key in ('run_id','attempt_id')):raise ValueError('source_binding_failed')
         binding.update(binding_state='complete',unavailable_reason=None)
     except BaseException:binding.update(binding_state='partial',unavailable_reason='source_binding_failed')
     return binding
@@ -250,6 +252,9 @@ def _safe_publish(directory,name,receipt,limit,reserve=None):
         for key in ('go','browser_runner','child'):
             if key in minimal:
                 minimal[key]=dict(minimal[key],events=[],output_hashes=[])
+        if 'child_launch_cause' in minimal:minimal['child_launch_cause']=None
+        if 'child_artifact_status' in minimal:minimal['child_artifact_status']='unavailable'
+        if minimal.get('worker_mapping_status')=='observed':minimal['worker_mapping_status']='unavailable'
         try:_publish(directory,name,minimal,min(limit,16384))
         except BaseException:print('API21_PUBLICATION_FAILED',file=sys.stderr)
         return False
@@ -339,7 +344,7 @@ def _child(root_name,engine,provider,directory,monkeypatch):
     deadline=time.monotonic()+78
     result_reserve=bytearray(16384);sidecar_reserve=bytearray(16384)
     binding=_binding(root_name,engine,provider,'child-pytest')
-    runtime=bridge=process=None;capture=([],'unavailable');closed=False;failure=None
+    runtime=bridge=process=None;capture=([],'unavailable');closed=False;workers_stopped=False;failure=None
     google=root_name=='test_browser_google_exchange_checkout_library_real_api'
     prefix=str(directory.relative_to(ARTIFACT_ROOT))+'/'
     go=_OwnedProcess('go-test','child-pytest',['go','test','-count=1','-run','^TestWorkshopBrowserFixtureHTTP$','-timeout=85s','.'],'apps/api-go',prefix+'go-fixture.log',prefix+'go-fixture.log')
@@ -420,7 +425,7 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                 assert go.wait(3)==0,'API21 fixture stop failed';process=None
             capture=_capture_workers(runtime,google)
             _lifecycle(sidecar,'worker-stop','requested',elapsed_us=go.elapsed())
-            result['worker_exits']=bridge.stop();_lifecycle(sidecar,'worker-stop','completed',elapsed_us=go.elapsed())
+            result['worker_exits']=bridge.stop();workers_stopped=True;_lifecycle(sidecar,'worker-stop','completed',elapsed_us=go.elapsed())
             _lifecycle(sidecar,'runtime-close','requested',elapsed_us=go.elapsed())
             runtime.close();closed=True;runtime=None;_lifecycle(sidecar,'runtime-close','completed',elapsed_us=go.elapsed())
         result['passed']=True
@@ -435,10 +440,12 @@ def _child(root_name,engine,provider,directory,monkeypatch):
         if runtime is not None:
             if capture[1]=='unavailable':capture=_capture_workers(runtime,google)
             try:
-                if bridge is not None:
-                    bridge.release_model.set();result['worker_exits']=bridge.stop()
-                else:runtime.stop_workers()
-                _lifecycle(sidecar,'worker-stop','completed',elapsed_us=go.elapsed())
+                if bridge is not None:bridge.release_model.set()
+                if not workers_stopped:
+                    if bridge is not None:result['worker_exits']=bridge.stop()
+                    else:runtime.stop_workers()
+                    workers_stopped=True
+                    _lifecycle(sidecar,'worker-stop','completed',elapsed_us=go.elapsed())
             except BaseException:
                 failure=failure or 'close_failed';_lifecycle(sidecar,'worker-stop','failed','close_failed',elapsed_us=go.elapsed())
             try:runtime.close();closed=True;_lifecycle(sidecar,'runtime-close','completed',elapsed_us=go.elapsed())
