@@ -12,11 +12,13 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import hashlib
+from http.client import HTTPException
 import json
 import os
 import re
 import socket
 import time
+from threading import Timer
 from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit
@@ -243,24 +245,44 @@ class SourceConnectorClient:
                     # so background catalog reads can enforce elapsed time too.
                     chunks: list[bytes] = []
                     size = 0
-                    while size <= self.max_bytes:
-                        remaining = deadline - time.monotonic()
-                        if remaining <= 0:
-                            raise TimeoutError("catalog deadline exceeded")
-                        # urllib exposes the HTTPResponse socket through its
-                        # buffered stream. Tighten each read to the time left.
-                        stream = getattr(getattr(response, "fp", None), "raw", None)
-                        transport_socket = getattr(stream, "_sock", None)
-                        if transport_socket is not None:
-                            transport_socket.settimeout(min(self.timeout, remaining))
-                        chunk = response.read1(min(65536, self.max_bytes + 1 - size))
+                    stream = getattr(getattr(response, "fp", None), "raw", None)
+                    transport_socket = getattr(stream, "_sock", None)
+                    timer = None
+                    if transport_socket is not None:
+                        def interrupt_body_read():
+                            # read1 can block inside chunk framing. Shutdown
+                            # interrupts that parser without a request thread.
+                            try:
+                                transport_socket.shutdown(socket.SHUT_RDWR)
+                            except OSError:
+                                pass  # The peer or normal reader already closed.
+
+                        timer = Timer(max(0.0, deadline - time.monotonic()), interrupt_body_read)
+                        timer.daemon = True
+                        timer.start()
+                    try:
+                        while size <= self.max_bytes:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                raise TimeoutError("catalog deadline exceeded")
+                            if transport_socket is not None:
+                                transport_socket.settimeout(min(self.timeout, remaining))
+                            chunk = response.read1(min(65536, self.max_bytes + 1 - size))
+                            if time.monotonic() >= deadline:
+                                raise TimeoutError("catalog deadline exceeded")
+                            if not chunk:
+                                break
+                            chunks.append(chunk)
+                            size += len(chunk)
+                        raw = b"".join(chunks)
+                    except (HTTPException, OSError, ValueError):
                         if time.monotonic() >= deadline:
-                            raise TimeoutError("catalog deadline exceeded")
-                        if not chunk:
-                            break
-                        chunks.append(chunk)
-                        size += len(chunk)
-                    raw = b"".join(chunks)
+                            raise TimeoutError("catalog deadline exceeded") from None
+                        raise
+                    finally:
+                        if timer is not None:
+                            timer.cancel()
+                            timer.join()
                 if len(raw) > self.max_bytes:
                     raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
                 media = (_header(response_headers, "content-type") or "").split(";", 1)[0].strip().lower()

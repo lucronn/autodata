@@ -66,6 +66,52 @@ def _envelope(provider="bankone", **extra):
 
 
 class SourceConnectorClientTests(unittest.TestCase):
+    def test_catalog_deadline_interrupts_trickled_chunk_framing(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from threading import Event, Thread
+        import time
+
+        stopped = Event()
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self):
+                body = json.dumps(_envelope(scope="years", items=[], complete=True, next_cursor=None)).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Transfer-Encoding", "chunked")
+                self.end_headers()
+                framing = f"{len(body):x};delay=123456789abcdef\r\n".encode()
+                try:
+                    for value in framing:
+                        self.wfile.write(bytes([value]))
+                        self.wfile.flush()
+                        if stopped.wait(0.04):
+                            return
+                    self.wfile.write(body + b"\r\n0\r\n\r\n")
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        client = SourceConnectorClient(f"http://127.0.0.1:{server.server_port}")
+        try:
+            started = time.monotonic()
+            with self.assertRaises(SourceConnectorError) as caught:
+                client.catalog("years", timeout=0.1)
+            self.assertEqual(caught.exception.code, "UPSTREAM_UNAVAILABLE")
+            self.assertLess(time.monotonic() - started, 0.4)
+        finally:
+            stopped.set()
+            server.shutdown()
+            server.server_close()
+            thread.join(2)
+
     def test_catalog_deadline_stops_trickling_response_body(self):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
         from threading import Event, Thread
