@@ -964,3 +964,16 @@ def test_maintenance_xml_notes_preserve_literal_numbers_and_cdata(capture_fixtur
     )
     assert captured.source_body.splitlines() == ["Service", "Inspect (o)", "Belt (c)", expected]
     assert captured.source_steps == []
+
+
+def test_capture_explicitly_versions_corrected_projection(capture_fixture):
+    from autodata_ingestion.source_article_capture import capture_source_article
+    context = capture_fixture.context("banktwo")
+    capture_fixture.body("banktwo", MAINTENANCE_XML.encode(), "application/xml")
+    captured = capture_source_article(context, registry=capture_fixture.registry,
+                                     object_store=capture_fixture.objects)
+    assert captured.projection_version == "source-projection-v2"
+    historical = replace(captured, projection_version="source-projection-v1")
+    assert historical.source_fingerprint == captured.source_fingerprint
+    assert historical.body_source_snapshot_id == captured.body_source_snapshot_id
+    assert historical.resources == captured.resources

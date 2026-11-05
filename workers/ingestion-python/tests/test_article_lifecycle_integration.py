@@ -544,3 +544,85 @@ def test_v2_changed_source_refresh_rejects_stale_publisher_and_keeps_old_revisio
     with runtime.repo.connect() as conn:
         assert conn.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s", (candidate["canonical_article_revision_id"],)).fetchone() == before
         assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 2
+
+
+def projection_capture(runtime, lease):
+    from autodata_ingestion.article_lifecycle import _capture_context
+    from autodata_ingestion.source_article_capture import capture_source_article
+    return capture_source_article(_capture_context(runtime.repo, lease),
+                                  registry=runtime.registry, object_store=runtime.objects)
+
+
+@pytest.mark.parametrize("terminal", [False, True])
+def test_projection_v2_append_isolates_historical_results(runtime, monkeypatch, terminal):
+    from dataclasses import replace
+    from autodata_ingestion import source_article_capture as capture_module
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.article_lifecycle_store import load_source_revision, store_captured_source
+    from autodata_ingestion.source_job_persistence import claim_source_job, fail_source_job, LeaseLost
+    from autodata_ingestion.mercury2 import Mercury2Client
+    original_capture = capture_module.capture_source_article
+    monkeypatch.setattr(capture_module, "capture_source_article", lambda *a, **kw:
+                        replace(original_capture(*a, **kw), projection_version="source-projection-v1"))
+    model = None if terminal else Mercury2Client(api_key="fixture-model", base_url=runtime.model.url,
+                                                 model="fixture-mercury")
+    runtime.ensure()
+    assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+                                   object_store=runtime.objects, model_client=model)
+    old_state = runtime.read_current()
+    old_id, old_job = old_state["source_revision_id"], runtime.current_job_id()
+    old = load_source_revision(runtime.repo, old_id)
+    assert old.projection_version == "source-projection-v1"
+    assert (old_state["canonical_revision_id"] is None) == terminal
+    with runtime.repo.connect() as conn:
+        preserved = {table: conn.execute("SELECT * FROM " + table).fetchall() for table in (
+            "canonical_article_source_revisions", "canonical_article_source_observations",
+            "canonical_article_revisions", "publication_events")}
+        owner = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (old_job,)).fetchone()
+    monkeypatch.setattr(capture_module, "capture_source_article", original_capture)
+    runtime.refresh()
+    lease = claim_source_job(runtime.repo, worker_id=uuid4())
+    captured = projection_capture(runtime, lease)
+    new_id = store_captured_source(runtime.repo, lease, captured)
+    new = load_source_revision(runtime.repo, new_id)
+    assert new_id != old_id and new.projection_version == "source-projection-v2"
+    assert new.source_fingerprint == old.source_fingerprint
+    assert new.body_source_snapshot_id == old.body_source_snapshot_id
+    assert new.resource_manifest == old.resource_manifest
+    assert runtime.read_current()["content_origin"] == "source"
+    assert runtime.read_current()["canonical_revision_id"] is None
+    with runtime.repo.connect() as conn:
+        new_job = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (lease.job_id,)).fetchone()
+        assert new_job["transformation_key"] != owner["transformation_key"]
+        assert conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (old_job,)).fetchone() == owner
+        for table, before in preserved.items():
+            after = conn.execute("SELECT * FROM " + table).fetchall()
+            assert all(row in after for row in before)
+    fail_source_job(runtime.repo, lease, code="FIXTURE_TERMINAL", retryable=False)
+    runtime.refresh(); repeat = claim_source_job(runtime.repo, worker_id=uuid4())
+    assert store_captured_source(runtime.repo, repeat, projection_capture(runtime, repeat)) == new_id
+    with pytest.raises(LeaseLost):
+        store_captured_source(runtime.repo, lease, captured)
+    runtime.refresh(); downgrade = claim_source_job(runtime.repo, worker_id=uuid4())
+    with runtime.repo.connect() as conn:
+        before = conn.execute("SELECT count(*) AS n FROM canonical_article_source_observations").fetchone()["n"]
+    with pytest.raises(ValueError, match="downgrade"):
+        store_captured_source(runtime.repo, downgrade, replace(captured, projection_version="source-projection-v1"))
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_source_observations").fetchone()["n"] == before
+        assert conn.execute("SELECT transformation_key FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (downgrade.job_id,)).fetchone()["transformation_key"] is None
+
+
+def test_unknown_projection_rejected_before_any_persistence(runtime):
+    from dataclasses import replace
+    from autodata_ingestion.article_lifecycle_store import store_captured_source
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    runtime.ensure(); lease = claim_source_job(runtime.repo, worker_id=uuid4())
+    captured = projection_capture(runtime, lease)
+    with runtime.repo.connect() as conn:
+        before = {t: conn.execute("SELECT count(*) AS n FROM " + t).fetchone()["n"] for t in
+                  ("canonical_article_source_revisions", "canonical_article_source_observations", "source_snapshots")}
+    with pytest.raises(ValueError, match="unsupported source projection"):
+        store_captured_source(runtime.repo, lease, replace(captured, projection_version="future"))
+    with runtime.repo.connect() as conn:
+        assert {t: conn.execute("SELECT count(*) AS n FROM " + t).fetchone()["n"] for t in before} == before

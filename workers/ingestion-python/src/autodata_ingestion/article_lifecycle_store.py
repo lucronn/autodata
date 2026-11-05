@@ -125,6 +125,14 @@ def _remap_snapshot_references(value, snapshots):
 
 def store_captured_source(repo, lease, captured):
     """Source revision, observation, pointer and transformation transition are atomic."""
+    with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+        return _store_captured_source(cur, lease, captured)
+
+
+def _store_captured_source(cur, lease, captured):
+    """Use the caller's transaction, including exact source-only job creation."""
+    if captured.projection_version not in ("source-projection-v1", "source-projection-v2"):
+        raise ValueError("unsupported source projection version")
     context = captured.context
     if (
         article_id(context.key) != lease.canonical_article_id
@@ -132,139 +140,154 @@ def store_captured_source(repo, lease, captured):
         or not captured.source_document.get("blocks")
     ):
         raise ValueError("captured article identity/body mismatch")
-    with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
-        job = lock_live_lease(cur, lease)
-        article = cur.execute(
-            "SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
-            (lease.canonical_article_id,),
-        ).fetchone()
-        if (
-            article["request_generation"] != job["request_generation"]
-            or article["current_job_id"] != lease.job_id
-        ):
-            raise LeaseLost("article generation changed")
-        observed = cur.execute(
-            "SELECT source_revision_id FROM canonical_article_source_observations WHERE source_fetch_job_id=%s",
-            (lease.job_id,),
-        ).fetchone()
-        if observed:
-            return observed["source_revision_id"]
-        snapshots = {}
-        for resource in captured.resources:
-            snapshots[str(resource["source_snapshot_id"])] = persist_resource(
-                cur, resource
-            )
-        body_snapshot = snapshots[str(captured.body_source_snapshot_id)]
-        revision_id = uuid4()
-        row = cur.execute(
-            """INSERT INTO canonical_article_source_revisions(source_revision_id,canonical_article_id,source_fingerprint,body_source_snapshot_id,resource_manifest,source_document,source_images,source_body,source_steps,projection_status,evidence_manifest,captured_at)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(canonical_article_id,source_fingerprint) DO NOTHING RETURNING source_revision_id""",
-            (
-                revision_id,
-                lease.canonical_article_id,
-                captured.source_fingerprint,
-                body_snapshot,
-                Jsonb(
-                    _remap_snapshot_references(captured.resource_manifest, snapshots)
-                ),
-                Jsonb(captured.source_document),
-                Jsonb(captured.source_images),
-                captured.source_body,
-                Jsonb(captured.source_steps),
-                captured.projection_status,
-                Jsonb(
-                    _remap_snapshot_references(captured.evidence_manifest, snapshots)
-                ),
-                captured.captured_at,
-            ),
-        ).fetchone()
-        if row is None:
-            row = cur.execute(
-                "SELECT source_revision_id FROM canonical_article_source_revisions WHERE canonical_article_id=%s AND source_fingerprint=%s",
-                (lease.canonical_article_id, captured.source_fingerprint),
-            ).fetchone()
-        revision_id = row["source_revision_id"]
-        provenance = _remap_snapshot_references(captured.resource_provenance, snapshots)
-        body_resource = next(r for r in captured.resources if r["role"] == "body")
-        cur.execute(
-            """INSERT INTO canonical_article_source_observations(source_observation_id,canonical_article_id,source_revision_id,source_fetch_job_id,request_generation,body_provider_revision,resource_provenance,captured_context,resolution_source_snapshot_id,descriptor_source_snapshot_id,captured_at)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (
-                uuid4(),
-                lease.canonical_article_id,
-                revision_id,
-                lease.job_id,
-                job["request_generation"],
-                next(
-                    (
-                        r.get("source_revision")
-                        for r in provenance
-                        if r.get("role") == "body"
-                    ),
-                    body_resource["source_revision"],
-                ),
-                Jsonb(provenance),
-                Jsonb(
-                    {
-                        "vehicle": context.vehicle,
-                        "descriptor": context.descriptor,
-                        "evidence_ids": list(context.evidence_ids),
-                    }
-                ),
-                context.resolution_snapshot_id,
-                context.descriptor_snapshot_id,
-                captured.captured_at,
-            ),
+    job = lock_live_lease(cur, lease)
+    article = cur.execute(
+        "SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
+        (lease.canonical_article_id,),
+    ).fetchone()
+    if (
+        article["request_generation"] != job["request_generation"]
+        or article["current_job_id"] != lease.job_id
+    ):
+        raise LeaseLost("article generation changed")
+    if captured.projection_version == "source-projection-v1" and article["current_source_revision_id"]:
+        current = cur.execute("SELECT projection_version FROM canonical_article_source_revisions WHERE source_revision_id=%s",
+                              (article["current_source_revision_id"],)).fetchone()
+        if current["projection_version"] == "source-projection-v2":
+            raise ValueError("source projection downgrade is not supported")
+    observed = cur.execute(
+        "SELECT source_revision_id FROM canonical_article_source_observations WHERE source_fetch_job_id=%s",
+        (lease.job_id,),
+    ).fetchone()
+    if observed:
+        return observed["source_revision_id"]
+    snapshots = {}
+    for resource in captured.resources:
+        snapshots[str(resource["source_snapshot_id"])] = persist_resource(
+            cur, resource
         )
-        key = transformation_key(
+    body_snapshot = snapshots[str(captured.body_source_snapshot_id)]
+    revision_id = uuid4()
+    row = cur.execute(
+        """INSERT INTO canonical_article_source_revisions(source_revision_id,canonical_article_id,source_fingerprint,body_source_snapshot_id,resource_manifest,source_document,source_images,source_body,source_steps,projection_status,evidence_manifest,captured_at,projection_version)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(canonical_article_id,source_fingerprint,projection_version) DO NOTHING RETURNING source_revision_id""",
+        (
+            revision_id,
             lease.canonical_article_id,
             captured.source_fingerprint,
-            job["normalization_version"],
-            job["rewrite_profile_version"],
-        )
-        owner = cur.execute(
-            "SELECT * FROM source_fetch_jobs WHERE transformation_key=%s", (key,)
+            body_snapshot,
+            Jsonb(
+                _remap_snapshot_references(captured.resource_manifest, snapshots)
+            ),
+            Jsonb(captured.source_document),
+            Jsonb(captured.source_images),
+            captured.source_body,
+            Jsonb(captured.source_steps),
+            captured.projection_status,
+            Jsonb(
+                _remap_snapshot_references(captured.evidence_manifest, snapshots)
+            ),
+            captured.captured_at,
+            captured.projection_version,
+        ),
+    ).fetchone()
+    if row is None:
+        row = cur.execute(
+            "SELECT source_revision_id FROM canonical_article_source_revisions WHERE canonical_article_id=%s AND source_fingerprint=%s AND projection_version=%s",
+            (lease.canonical_article_id, captured.source_fingerprint, captured.projection_version),
         ).fetchone()
-        published = cur.execute(
-            "SELECT canonical_article_revision_id FROM canonical_article_revisions WHERE transformation_key=%s AND status='published'",
-            (key,),
-        ).fetchone()
-        rejected = cur.execute(
-            "SELECT canonical_article_revision_id FROM canonical_article_revisions WHERE transformation_key=%s AND status='rejected'",
-            (key,),
-        ).fetchone()
-        current_job = lease.job_id
-        current_canonical = (
-            published["canonical_article_revision_id"] if published else None
-        )
-        if owner and owner["source_fetch_job_id"] != lease.job_id:
-            terminal = owner["status"] in ("needs_review", "dead_letter") or bool(
-                rejected
-            )
-            if not published and not terminal:
-                raise LeaseLost("transformation already has an owner")
-            checkpoint = {
-                "reused_terminal_result": terminal,
-                "reused_transformation_job_id": str(owner["source_fetch_job_id"]),
-            }
-            if published:
-                checkpoint["reused_published_revision_id"] = str(current_canonical)
-            cur.execute(
-                """UPDATE source_fetch_jobs SET source_revision_id=%s,phase='completed',status='completed',checkpoint=checkpoint||%s,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,retryable=false,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",
-                (revision_id, Jsonb(checkpoint), lease.job_id),
-            )
-            if terminal:
-                current_job = owner["source_fetch_job_id"]
-        else:
-            cur.execute(
-                "UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=%s,phase='normalizing',updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",
-                (revision_id, key, lease.job_id),
-            )
-        cur.execute(
-            """UPDATE canonical_articles SET current_source_revision_id=%s,current_canonical_revision_id=%s,current_job_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
-            (revision_id, current_canonical, current_job, lease.canonical_article_id),
-        )
+    revision_id = row["source_revision_id"]
+    provenance = _remap_snapshot_references(captured.resource_provenance, snapshots)
+    body_resource = next(r for r in captured.resources if r["role"] == "body")
+    cur.execute(
+        """INSERT INTO canonical_article_source_observations(source_observation_id,canonical_article_id,source_revision_id,source_fetch_job_id,request_generation,body_provider_revision,resource_provenance,captured_context,resolution_source_snapshot_id,descriptor_source_snapshot_id,captured_at)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (
+            uuid4(),
+            lease.canonical_article_id,
+            revision_id,
+            lease.job_id,
+            job["request_generation"],
+            next(
+                (
+                    r.get("source_revision")
+                    for r in provenance
+                    if r.get("role") == "body"
+                ),
+                body_resource["source_revision"],
+            ),
+            Jsonb(provenance),
+            Jsonb(
+                {
+                    "vehicle": context.vehicle,
+                    "descriptor": context.descriptor,
+                    "evidence_ids": list(context.evidence_ids),
+                }
+            ),
+            context.resolution_snapshot_id,
+            context.descriptor_snapshot_id,
+            captured.captured_at,
+        ),
+    )
+    if job["checkpoint"].get("source_only_reprojection") is True:
+        cur.execute("""UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=NULL,
+            status='needs_review',phase='completed',error_code='SOURCE_ONLY_REPROJECTION',retryable=false,
+            next_attempt_at=NULL,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,
+            updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""", (revision_id, lease.job_id))
+        cur.execute("""UPDATE canonical_articles SET current_source_revision_id=%s,current_canonical_revision_id=NULL,
+            current_job_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
+            (revision_id, lease.job_id, lease.canonical_article_id))
         return revision_id
+    key = transformation_key(
+        lease.canonical_article_id,
+        captured.source_fingerprint,
+        job["normalization_version"],
+        job["rewrite_profile_version"],
+        projection_version=captured.projection_version,
+    )
+    owner = cur.execute(
+        "SELECT * FROM source_fetch_jobs WHERE transformation_key=%s", (key,)
+    ).fetchone()
+    published = cur.execute(
+        "SELECT canonical_article_revision_id FROM canonical_article_revisions WHERE transformation_key=%s AND status='published'",
+        (key,),
+    ).fetchone()
+    rejected = cur.execute(
+        "SELECT canonical_article_revision_id FROM canonical_article_revisions WHERE transformation_key=%s AND status='rejected'",
+        (key,),
+    ).fetchone()
+    current_job = lease.job_id
+    current_canonical = (
+        published["canonical_article_revision_id"] if published else None
+    )
+    if owner and owner["source_fetch_job_id"] != lease.job_id:
+        terminal = owner["status"] in ("needs_review", "dead_letter") or bool(
+            rejected
+        )
+        if not published and not terminal:
+            raise LeaseLost("transformation already has an owner")
+        checkpoint = {
+            "reused_terminal_result": terminal,
+            "reused_transformation_job_id": str(owner["source_fetch_job_id"]),
+        }
+        if published:
+            checkpoint["reused_published_revision_id"] = str(current_canonical)
+        cur.execute(
+            """UPDATE source_fetch_jobs SET source_revision_id=%s,phase='completed',status='completed',checkpoint=checkpoint||%s,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,retryable=false,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",
+            (revision_id, Jsonb(checkpoint), lease.job_id),
+        )
+        if terminal:
+            current_job = owner["source_fetch_job_id"]
+    else:
+        cur.execute(
+            "UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=%s,phase='normalizing',updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",
+            (revision_id, key, lease.job_id),
+        )
+    cur.execute(
+        """UPDATE canonical_articles SET current_source_revision_id=%s,current_canonical_revision_id=%s,current_job_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
+        (revision_id, current_canonical, current_job, lease.canonical_article_id),
+    )
+    return revision_id
 
 
 @dataclass(frozen=True)
@@ -281,6 +304,7 @@ class StoredSource:
     resource_manifest: list
     projection_status: str
     captured_at: object
+    projection_version: str
 
     @property
     def vehicle(self):
@@ -345,6 +369,7 @@ def load_source_revision(repo, source_revision_id):
             row["resource_manifest"],
             row["projection_status"],
             row["captured_at"],
+            row["projection_version"],
         )
 
 
